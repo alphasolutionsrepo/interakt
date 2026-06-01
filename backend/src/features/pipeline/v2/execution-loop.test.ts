@@ -9,6 +9,14 @@ vi.mock('@/shared/logger/logger', () => ({
   }),
 }));
 
+// Per-action param extraction reaches resolveTemplate() (a DB query); unit tests
+// are DB-free, so force the deterministic inline-prompt fallback (null template).
+// Without this the postgres client hangs on connect in CI and the test times out.
+vi.mock('@/features/prompt-templates', () => ({
+  resolveTemplate: vi.fn().mockResolvedValue(null),
+  renderTemplate: vi.fn((content: string) => content),
+}));
+
 import { executeLoop } from './execution-loop';
 import { _buildSnapshot } from './action-steps/result-capture.step';
 import { _isEmptyResult, _relaxQueryForFilters } from './action-steps/zero-result-retry.step';

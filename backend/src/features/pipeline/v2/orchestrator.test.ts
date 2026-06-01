@@ -9,6 +9,14 @@ vi.mock('@/shared/logger/logger', () => ({
   }),
 }));
 
+// Every pipeline phase reaches resolveTemplate() (a DB query); unit tests are
+// DB-free, so force the deterministic inline-prompt fallback (null template).
+// Without this the postgres client hangs on connect in CI and the test times out.
+vi.mock('@/features/prompt-templates', () => ({
+  resolveTemplate: vi.fn().mockResolvedValue(null),
+  renderTemplate: vi.fn((content: string) => content),
+}));
+
 import { runV2Pipeline } from './orchestrator';
 import type { V2PipelineInput, V2PipelineDeps } from './orchestrator';
 import type { PipelineStreamEvent } from '../pipeline.types';
