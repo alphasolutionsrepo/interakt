@@ -40,7 +40,7 @@ The **? icon** in the top-right of every screen opens a help drawer with the doc
 If you're brand new:
 
 1. [What is Interakt](getting-started/what-is-interakt) — the building blocks: data sources, indexes, experiences, tools.
-2. [How Interakt fits together](getting-started/how-interakt-fits-together) — the mental model with illustrations: how the pieces relate, when you need each one.
+2. [Architecture — how Interakt fits together](getting-started/architecture) — the mental model with illustrations: how the pieces relate, when you need each one.
 3. [Initial setup](getting-started/initial-setup) — getting through the first-boot wizard.
 4. [Your first experience](getting-started/first-experience) — a 15-minute walkthrough end-to-end.
 

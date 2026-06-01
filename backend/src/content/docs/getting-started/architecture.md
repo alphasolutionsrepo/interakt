@@ -2,9 +2,9 @@
 sidebar_position: 2
 ---
 
-# How Interakt fits together
+# Architecture
 
-The previous page named the building blocks. This one shows how they relate, so the rest of the docs feel less like a glossary and more like a system.
+This is the architecture overview: how Interakt's pieces fit together. The previous page named the building blocks; this one shows how they relate, so the rest of the docs feel less like a glossary and more like a system.
 
 Read this before you start clicking around. Ten minutes here saves an hour of wandering through screens trying to figure out which thing connects to which.
 
