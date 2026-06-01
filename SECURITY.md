@@ -13,7 +13,8 @@ Instead, use GitHub's private vulnerability reporting:
    impact you've identified.
 
 This routes the report privately to the maintainers. If you're unable to use that
-channel, contact the maintainers at Alpha Solutions to arrange a private disclosure.
+channel, email the maintainers at **interakt@alpha-solutions.us** to arrange a
+private disclosure.
 
 Please include enough detail to reproduce and assess the issue — ideally a minimal
 proof of concept, the affected endpoint or component, and any relevant configuration.
