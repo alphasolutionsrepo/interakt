@@ -81,7 +81,7 @@ Two ways to get there:
 Recommended starting points:
 
 1. [What is Interakt](http://localhost:3000/docs/getting-started/what-is-interakt) — the building-blocks glossary.
-2. [How Interakt fits together](http://localhost:3000/docs/getting-started/how-interakt-fits-together) — the mental model with illustrations.
+2. [Architecture — how Interakt fits together](http://localhost:3000/docs/getting-started/architecture) — the mental model with illustrations.
 
 ## 4. Demo site
 
