@@ -1,0 +1,1 @@
+ALTER TYPE "public"."executor_type" ADD VALUE 'web_search' BEFORE 'mcp';

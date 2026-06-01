@@ -1,0 +1,292 @@
+{
+  "common": {
+    "getStarted": "Kom i gang",
+    "documentation": "Dokumentation & Support",
+    "platformOnline": "Platform Online"
+  },
+  "home": {
+    "badge": {
+      "title": "Interakt Søge- og Chat-platform"
+    },
+    "hero": {
+      "title": "Intelligent Søgning & AI Chat",
+      "description": "Byg kraftfulde søgeoplevelser og AI-chatbots. Forbind dine data, konfigurer søgealgoritmer og implementer samtale-AI-grænseflader."
+    },
+    "features": {
+      "searchIndexes": {
+        "title": "Søgeindekser",
+        "description": "Forbind datakilder, konfigurer feltmapping og administrer søgbart indhold med semantiske og hybride søgefunktioner."
+      },
+      "searchTuning": {
+        "title": "Søgejustering", 
+        "description": "Finjuster rangering algoritmer, boost specifikke felter og optimer søgerelevans for dine brugere."
+      },
+      "aiChatFlows": {
+        "title": "AI Chat-flows",
+        "description": "Design samtaleforløb med AI-drevne chatbots og tilpasset workflow-automatisering."
+      }
+    },
+    "quickStart": {
+      "title": "Klar til at komme i gang?",
+      "description": "Opret dit første søgeindeks eller gå til legepladsen for at teste eksisterende konfigurationer.",
+      "createIndex": "Opret Søgeindeks",
+      "tryPlayground": "Prøv Søgelegeplads"
+    },
+    "loading": "Indlæser..."
+  },
+  "sidebar": {
+    "groups": {
+      "main": "Hoved",
+      "analytics": "Analyse",
+      "overview": "Oversigt",
+      "aiSearch": "AI & Søgning",
+      "searchManagement": "Data & Konfiguration",
+      "capabilities": "Funktioner",
+      "aiPlatform": "AI Platform",
+      "experiences": "Oplevelser",
+      "playground": "Legeplads",
+      "developer": "Developer",
+      "administration": "Administration",
+      "platform": "Platform"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "docs": "Dokumentation",
+      "analytics": "Analyse",
+      "overview": "Oversigt",
+      "performance": "Ydeevne",
+      "dataChat": "Data Chat",
+      "searchIndexes": "Indekser",
+      "createIndex": "Opret Indeks",
+      "allIndexes": "Alle Indekser",
+      "globalSearchSettings": "Globale Søgeindstillinger",
+      "configurations": "Konfigurationer",
+      "chatConfiguration": "Chat Konfiguration",
+      "searchConfiguration": "Søge Konfiguration",
+      "playground": "Legeplads",
+      "searchTesting": "Søgetest",
+      "searchExperiences": "Søgning",
+      "createExperience": "Opret Oplevelse",
+      "allExperiences": "Alle Oplevelser",
+      "utilities": "Værktøjer",
+      "initialSetup": "Indledende opsætning",
+      "userManagement": "Brugerstyring",
+      "systemSettings": "Systemindstillinger",
+      "aiProviders": "AI Udbydere",
+      "searchSettings": "Søgeindstillinger",
+      "settings": "Indstillinger",
+      "health": "Sundhed",
+      "cache": "Cache",
+      "healthMonitoring": "Sundhedsovervågning",
+      "cacheManagement": "Cache Styring",
+      "traces": "Spor",
+      "aiServices": "AI Udbyder",
+      "indexSearch": "Søgning",
+      "unifiedSearch": "Experience Søgning",
+      "apiDocs": "API Docs",
+      "tools": "Værktøjer",
+      "createTool": "Opret Værktøj",
+      "allTools": "Alle Værktøjer",
+      "aiExperiences": "AI",
+      "createAIExperience": "Opret Oplevelse",
+      "allAIExperiences": "Alle Oplevelser",
+      "experiences": "Oplevelser",
+      "promptTemplates": "Prompt Skabeloner",
+      "secrets": "Hemmeligheder",
+      "dataSources": "Datakilder",
+      "createDataSource": "Opret Datakilde",
+      "allDataSources": "Alle Datakilder",
+      "mcpConnections": "MCP Forbindelser",
+      "createMcpConnection": "Opret MCP Forbindelse",
+      "allMcpConnections": "Alle MCP Forbindelser",
+      "dropinWidget": "Drop-in Widget"
+    }
+  },
+  "analytics": {
+    "title": "Søgeanalyse",
+    "subtitle": "Realtidsindsigt i din søgeydelse",
+    "chat": {
+      "title": "Analyse Chat",
+      "subtitle": "Stil spørgsmål om dine data og få AI-drevne indsigter",
+      "welcomeMessage": "Hej! Jeg er din analyseassistent. Jeg kan hjælpe dig med at analysere dine søgedata, identificere tendenser og give handlingsrettede indsigter. Hvad vil du gerne udforske i dag?",
+      "history": {
+        "title": "Chat Historik",
+        "loadingConversations": "Indlæser...",
+        "conversationCount": "{{count}} samtaler",
+        "recentChats": "Seneste Chats",
+        "noHistory": "Ingen chat historik endnu",
+        "noHistoryDescription": "Start en samtale for at se den her",
+        "loginRequired": "Log ind for at gemme og gense tidligere chats!",
+        "startNewChat": "Start Ny Chat",
+        "deleteChat": "Slet Chat",
+        "deleteChatDescription": "Er du sikker på, at du vil slette denne chat? Denne handling kan ikke fortrydes og vil permanent fjerne samtalen fra vores servere.",
+        "cancel": "Annuller",
+        "delete": "Slet"
+      },
+      "interface": {
+        "quickStart": "Hurtig Start",
+        "loadingModels": "Indlæser modeller...",
+        "typing": "Skriver...",
+        "messageCount": "{{count}}"
+      },
+      "quickOptions": {
+        "analyticsOverview": "Analyse oversigt",
+        "topQueries": "Top forespørgsler i dag", 
+        "searchPerformance": "Søgeydelse",
+        "noResultQueries": "Forespørgsler uden resultater",
+        "unusualPatterns": "Usædvanlige mønstre",
+        "improvementSuggestions": "Forbedringsforslag",
+        "monthlyReport": "Månedlig rapport"
+      }
+    },
+    "filters": {
+      "allIndexes": "Alle Indekser",
+      "allTypes": "Alle Typer",
+      "timeRanges": {
+        "1h": "1 Time",
+        "24h": "24 Timer",
+        "7d": "7 Dage",
+        "30d": "30 Dage"
+      }
+    },
+    "sections": {
+      "keyInsights": "Vigtige Indsigter",
+      "keyInsightsDescription": "Hvad der sker med din søgning lige nu",
+      "searchVolume": "Søgevolumen & Forbrug",
+      "searchVolumeDescription": "Forståelse af dine søgetrafikmønstre",
+      "searchTrends": "Søgetendenser",
+      "searchTrendsDescription": "Søgevolumen over tid efter type",
+      "searchTypes": "Søgetyper",
+      "searchTypesDescription": "Fordeling af søgetyper",
+      "popularSearches": "Populære Søgninger",
+      "popularSearchesDescription": "Mest hyppige forespørgsler grupperet efter hensigt",
+      "failedSearches": "Mislykkede Søgninger",
+      "failedSearchesDescription": "Forespørgsler der ikke gav resultater - optimeingsmuligheder",
+      "recentIssues": "Seneste Problemer",
+      "recentIssuesDescription": "Nyeste søgefejl der kræver opmærksomhed",
+      "indexPerformance": "Indeksydelse",
+      "indexPerformanceDescription": "Brugs- og ydelsesmålinger efter søgeindeks",
+      "searchSummary": "Søgesammendrag",
+      "searchSummaryDescription": "Hurtig oversigt for den valgte periode"
+    },
+    "metrics": {
+      "totalSearches": "Samlede Søgninger",
+      "failedSearches": "Mislykkede Søgninger",
+      "userEngagement": "Brugerengagement",
+      "mostPopularSearch": "Mest Populære Søgning",
+      "searchesPerUser": "søgninger per bruger i gennemsnit",
+      "searchedTimes": "søgt {{count}} gange",
+      "inLast": "i sidste {{timeRange}}",
+      "ofAllSearches": "{{percentage}}% af alle søgninger",
+      "successRate": "{{rate}}% succes",
+      "attempts": "forsøg",
+      "success": "Succesrate",
+      "searchSpeed": "Søgehastighed",
+      "activeUsers": "Aktive Brugere"
+    },
+    "table": {
+      "indexName": "Indeksnavn",
+      "searches": "Søgninger",
+      "avgTime": "Gns. Tid",
+      "avgResults": "Gns. Resultater",
+      "users": "Brugere",
+      "types": "Typer",
+      "lastUsed": "Sidst Brugt"
+    },
+    "messages": {
+      "noFailedSearches": "Ingen mislykkede søgninger fundet!",
+      "allSearchesSuccessful": "Alle søgninger returnerer resultater",
+      "retry": "Prøv igen",
+      "loading": "Indlæser..."
+    },
+    "performance": {
+      "title": "Ydeevne Analyse",
+      "metrics": {
+        "averageResponseTime": "Gennemsnitlig Svartid",
+        "95thPercentile": "95. Percentil", 
+        "slowQueries": "Langsomme Forespørgsler",
+        "errorRate": "Fejlrate",
+        "totalSearches": "Samlede Søgninger",
+        "avgResults": "Gns. Resultater",
+        "avgRelevance": "Gns. Relevans"
+      },
+      "descriptions": {
+        "95thPercentile": "95% af forespørgsler under denne tid",
+        "slowQueriesPercentage": "{{percentage}}% af alle forespørgsler",
+        "errorRateDescription": "af alle søgeanmodninger"
+      },
+      "levels": {
+        "excellent": "FREMRAGENDE",
+        "good": "GOD", 
+        "fair": "RIMELIG",
+        "poor": "DÅRLIG",
+        "critical": "KRITISK"
+      },
+      "sections": {
+        "responseTimeBreakdown": "Svartids Opdeling",
+        "responseTimeBreakdownDescription": "Fordeling af forespørgselstider",
+        "performanceTrends": "Ydeevne Tendenser",
+        "performanceTrendsDescription": "Gennemsnitlig svartid over tid",
+        "detailedMetrics": "Detaljerede Ydeevne Målinger",
+        "detailedMetricsDescription": "Omfattende ydeevnestatistikker for den valgte periode"
+      },
+      "breakdown": {
+        "excellent": "Fremragende (< 100ms)",
+        "good": "God (< 500ms)",
+        "fair": "Rimelig (< 1s)",
+        "slow": "Langsom (> 1s)"
+      },
+      "stats": {
+        "minimum": "Minimum:",
+        "average": "Gennemsnit:",
+        "maximum": "Maksimum:",
+        "responseTimes": "Svartider",
+        "queryStatistics": "Forespørgselsstatistik",
+        "healthIndicators": "Sundhedsindikatorer",
+        "performanceLevel": "Ydeevneniveau:",
+        "slowQueryRate": "Langsom Forespørgselsrate:"
+      }
+    }
+  },
+  "health": {
+    "title": "Sundhedsovervågning",
+    "subtitle": "Overvåg systemsundhedsstatus for databaser, søgetjenester og systemressourcer.",
+    "systemHealthCheck": "System Sundhedstjek",
+    "systemHealthSubtitle": "Overvåg databaser, indekser og overordnet systemsundhedsstatus.",
+    "overallSystemStatus": "Overordnet Systemstatus",
+    "lastUpdated": "Sidst opdateret: {{time}}",
+    "runHealthCheck": "Kør Sundhedstjek",
+    "checking": "Tjekker...",
+    "healthCheckCompleted": "Sundhedstjek gennemført med succes",
+    "healthCheckFailed": "Kunne ikke udføre sundhedstjek",
+    "databases": "Databaser",
+    "searchIndexes": "Søgeindekser",
+    "healthyComponents": "Sunde Komponenter",
+    "status": {
+      "healthy": "Sund",
+      "warning": "Advarsel",
+      "error": "Fejl",
+      "unknown": "Ukendt"
+    },
+    "metrics": {
+      "responseTime": "Svartid",
+      "tables": "Tabeller",
+      "indexes": "Indekser",
+      "size": "Størrelse",
+      "connections": "Forbindelser",
+      "documents": "Dokumenter",
+      "settings": "Indstillinger",
+      "lastChecked": "Sidst tjekket: {{time}}"
+    },
+    "databaseTypes": {
+      "PostgreSQL": "PostgreSQL",
+      "AnalyticsDB": "Analyse DB",
+      "Elasticsearch": "Elasticsearch"
+    },
+    "indexTypes": {
+      "PostgreSQLIndex": "PostgreSQL Indeks",
+      "ElasticsearchIndex": "Elasticsearch Indeks"
+    },
+    "connectionUsage": "Forbindelsesforbrug"
+  }
+}

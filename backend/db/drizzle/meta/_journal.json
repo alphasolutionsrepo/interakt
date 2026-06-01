@@ -1,0 +1,181 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1764543799722,
+      "tag": "0000_windy_praxagora",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1764918965366,
+      "tag": "0001_flashy_mephistopheles",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765521755569,
+      "tag": "0002_empty_pride",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1765761318934,
+      "tag": "0003_nostalgic_proteus",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1765769514559,
+      "tag": "0004_stale_mandrill",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1765773574178,
+      "tag": "0005_chief_jackal",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1765945200457,
+      "tag": "0006_add_display_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1766366466343,
+      "tag": "0007_cleanup_global_search_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1766906808360,
+      "tag": "0008_robust_the_fallen",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1768285601714,
+      "tag": "0009_massive_raza",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1768518459419,
+      "tag": "0010_add_filter_value_mappings",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1771392898489,
+      "tag": "0011_thankful_gertrude_yorkes",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1771476103346,
+      "tag": "0012_swift_captain_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1772092800000,
+      "tag": "0013_add_tools_and_ai_experiences",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1772680716343,
+      "tag": "0014_fancy_logan",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1772937219688,
+      "tag": "0015_wonderful_dark_phoenix",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1773112443750,
+      "tag": "0017_ambitious_norman_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1773189502965,
+      "tag": "0018_illegal_sersi",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1773276000000,
+      "tag": "0019_add_agentic_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1773362400000,
+      "tag": "0020_add_user_memories",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1773448800000,
+      "tag": "0021_add_knowledge_base",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1773535200000,
+      "tag": "0022_add_tool_display_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1773814102245,
+      "tag": "0022_chubby_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1775442149382,
+      "tag": "0023_ancient_midnight",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780003347033,
+      "tag": "0024_worried_whizzer",
+      "breakpoints": true
+    }
+  ]
+}

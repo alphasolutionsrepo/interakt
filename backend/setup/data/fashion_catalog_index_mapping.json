@@ -1,0 +1,710 @@
+{
+  "_version": 1,
+  "_indexName": "fashion-catalog-hybrid-index",
+  "_searchProvider": "elasticsearch",
+  "fields": [
+    {
+      "fieldName": "additionalData",
+      "fieldType": "json",
+      "displayName": "Additional Data",
+      "isSystemField": true,
+      "isRequired": false,
+      "mapping": {
+        "mode": "collect",
+        "sourceField": null,
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": false,
+        "includeInResponse": false,
+        "boostValue": 0.3,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "createdAt",
+      "fieldType": "datetime",
+      "displayName": "Created At",
+      "isSystemField": true,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "createdAt",
+        "transform": "none",
+        "generator": "timestamp"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "customFields",
+      "fieldType": "json",
+      "displayName": "Custom Fields",
+      "isSystemField": true,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": null,
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 0.5,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "language",
+      "fieldType": "keyword",
+      "displayName": "Language",
+      "isSystemField": true,
+      "isRequired": false,
+      "mapping": {
+        "mode": "static",
+        "sourceField": null,
+        "transform": "none",
+        "staticValue": "en"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "uniqueId",
+      "fieldType": "keyword",
+      "displayName": "Unique ID",
+      "isSystemField": true,
+      "isRequired": true,
+      "mapping": {
+        "mode": "reference",
+        "sourceField": null,
+        "transform": "none",
+        "sourceFromField": "productId"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 0.1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "updatedAt",
+      "fieldType": "datetime",
+      "displayName": "Updated At",
+      "isSystemField": true,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "updatedAt",
+        "transform": "none",
+        "generator": "timestamp"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "additionalImageUrls",
+      "fieldType": "array",
+      "displayName": "Additional Images",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "additionalImageUrls",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": false,
+        "includeInResponse": false,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "ageGroup",
+      "fieldType": "keyword",
+      "displayName": "Age Group",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "ageGroup",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 3,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "availableColors",
+      "fieldType": "array",
+      "displayName": "Available Colors",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "computed",
+        "sourceField": null,
+        "transform": "trim_lowercase",
+        "computed": {
+          "sourceArrayPath": "variants",
+          "extractField": "color",
+          "aggregation": "unique"
+        }
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 3,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "availableSizes",
+      "fieldType": "array",
+      "displayName": "Available Sizes",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "computed",
+        "sourceField": null,
+        "transform": "none",
+        "computed": {
+          "sourceArrayPath": "variants",
+          "extractField": "size",
+          "aggregation": "unique"
+        }
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 2,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "brand",
+      "fieldType": "keyword",
+      "displayName": "Brand",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "brand",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 7.5,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "careInstructions",
+      "fieldType": "text",
+      "displayName": "Care Instructions",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "careInstructions",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 2,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "category",
+      "fieldType": "keyword",
+      "displayName": "Category",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "category",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 5,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "currency",
+      "fieldType": "keyword",
+      "displayName": "Currency",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "static",
+        "sourceField": null,
+        "transform": "none",
+        "staticValue": "USD"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "fitTypes",
+      "fieldType": "array",
+      "displayName": "Fit Types",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": null,
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 3,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "gender",
+      "fieldType": "keyword",
+      "displayName": "Gender",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "gender",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 10,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "hasDiscount",
+      "fieldType": "boolean",
+      "displayName": "Has Discount",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "hasDiscount",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": true,
+        "includeInResponse": false,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "inStock",
+      "fieldType": "boolean",
+      "displayName": "In Stock",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "computed",
+        "sourceField": null,
+        "transform": "none",
+        "computed": {
+          "sourceArrayPath": "variants",
+          "extractField": "inStock",
+          "aggregation": "any"
+        }
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "longDescription",
+      "fieldType": "text",
+      "displayName": "Long Description",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "longDescription",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 7,
+        "isVectorSource": true
+      }
+    },
+    {
+      "fieldName": "material",
+      "fieldType": "text",
+      "displayName": "Material",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "material",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 4,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "maxPrice",
+      "fieldType": "number",
+      "displayName": "Maximum Price",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "computed",
+        "sourceField": null,
+        "transform": "none",
+        "computed": {
+          "sourceArrayPath": "variants",
+          "extractField": "price",
+          "aggregation": "max"
+        }
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "minPrice",
+      "fieldType": "number",
+      "displayName": "Minimum Price",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "computed",
+        "sourceField": null,
+        "transform": "none",
+        "computed": {
+          "sourceArrayPath": "variants",
+          "extractField": "price",
+          "aggregation": "min"
+        }
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "name",
+      "fieldType": "text",
+      "displayName": "Product Name",
+      "isSystemField": false,
+      "isRequired": true,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "name",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 9,
+        "isVectorSource": false
+      },
+      "providerFieldSettings": {
+        "isAutocomplete": true
+      }
+    },
+    {
+      "fieldName": "primaryColor",
+      "fieldType": "keyword",
+      "displayName": "Primary Color",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "primaryColor",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 4,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "primaryImageUrl",
+      "fieldType": "image_url",
+      "displayName": "Primary Image",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "primaryImageUrl",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "productId",
+      "fieldType": "keyword",
+      "displayName": "Product ID",
+      "isSystemField": false,
+      "isRequired": true,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "productId",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 2,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "rating",
+      "fieldType": "number",
+      "displayName": "Rating",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "rating",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "ratingCount",
+      "fieldType": "number",
+      "displayName": "Rating Count",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "ratingCount",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "season",
+      "fieldType": "keyword",
+      "displayName": "Season",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "season",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 3,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "shortDescription",
+      "fieldType": "text",
+      "displayName": "Short Description",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "shortDescription",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 2.4,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "style",
+      "fieldType": "keyword",
+      "displayName": "Style",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "style",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 5,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "subCategory",
+      "fieldType": "keyword",
+      "displayName": "Sub Category",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "subCategory",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": false,
+        "boostValue": 3,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "tags",
+      "fieldType": "array",
+      "displayName": "Tags",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "tags",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": true,
+        "includeInResponse": true,
+        "boostValue": 2.4,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "totalStockQuantity",
+      "fieldType": "number",
+      "displayName": "Total Stock Quantity",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "computed",
+        "sourceField": null,
+        "transform": "none",
+        "computed": {
+          "sourceArrayPath": "variants",
+          "extractField": "stockQuantity",
+          "aggregation": "sum"
+        }
+      },
+      "attributes": {
+        "isSearchable": false,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 1,
+        "isVectorSource": false
+      }
+    },
+    {
+      "fieldName": "variants",
+      "fieldType": "json",
+      "displayName": "Product Variants",
+      "isSystemField": false,
+      "isRequired": false,
+      "mapping": {
+        "mode": "source",
+        "sourceField": "variants",
+        "transform": "none"
+      },
+      "attributes": {
+        "isSearchable": true,
+        "isFacetable": false,
+        "includeInResponse": true,
+        "boostValue": 3,
+        "isVectorSource": false
+      }
+    }
+  ]
+}

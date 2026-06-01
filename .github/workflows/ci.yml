@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend · lint · type-check · test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run type-check
+
+      # Unit tests only — server-only / next-auth are stubbed in vitest.config.ts,
+      # so no Postgres or Elasticsearch is required.
+      - name: Test
+        run: npm test
+
+  widgets:
+    name: Widgets · lint · build · test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/widgets
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: backend/widgets/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # `build` runs `tsc --noEmit && vite build`, so type-checking is covered here.
+      # The bundle-size test asserts against the produced dist bundle, so build runs first.
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test

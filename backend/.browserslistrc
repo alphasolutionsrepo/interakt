@@ -1,0 +1,7 @@
+# Browsers that are supported by this project
+# For more information, see https://github.com/browserslist/browserslist
+
+> 0.5%
+last 2 versions
+not dead
+not op_mini all

@@ -1,0 +1,36 @@
+# Ignore files and folders for Prettier formatting
+
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Next.js build outputs
+.next/
+out/
+build/
+dist/
+
+# Generated files
+.vercel
+.coverage
+
+# Generated Drizzle files
+/lib/drizzle/
+/drizzle/
+
+# Environment variables
+.env*.local
+
+# Misc
+.DS_Store
+*.pem
+Thumbs.db
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

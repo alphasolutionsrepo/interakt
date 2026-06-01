@@ -1,0 +1,363 @@
+# =============================================================================
+# Interakt demo manifest — the single source of truth for `npm run setup:demo`.
+#
+# This file declares everything the Fashion Catalog demo needs: the search
+# index, its data, tools, and the search + chat experiences. `npm run setup:demo`
+# reads it and creates each entity in dependency order, idempotently.
+#
+# It is ALSO your manual-setup reference: if you'd rather click through the
+# Admin UI than run the script, each section below maps 1:1 to a screen.
+#
+# What is NOT here (by design):
+#   - Any API key. The OpenAI key is entered on the Demo Setup page and stored
+#     on the provider record (never in this file or .env), so the manifest stays
+#     secret-free and safe to commit.
+#   - Infra connection strings (Postgres, Elasticsearch). Those are .env.
+#
+# Dependency order the seeder follows:
+#   provider+defaults -> index -> fields -> load docs -> data source -> tools
+#   -> search experience -> chat experience -> analytics warm-up
+# =============================================================================
+
+version: 1
+
+demo:
+  # Stable key used by the seed-registry for idempotency / change detection.
+  key: fashion-catalog-demo
+  name: Fashion Catalog Demo
+  description: >-
+    200 products, 1,089 variant SKUs, 20 brands. Drives interakt-demo-script.md.
+
+# -----------------------------------------------------------------------------
+# 1. AI provider + system defaults
+# The demo can run on either provider — the user picks on the Demo Setup page:
+#   - ollama (recommended default): local, free, no API key. Needs Ollama running
+#     and the listed models pulled. Embeddings are 768-dim (nomic-embed-text).
+#   - openai: cloud, best demo quality. Needs an API key (entered on the page,
+#     stored on the provider). Embeddings are 1536-dim (text-embedding-3-small).
+#
+# IMPORTANT: embedding dimensions are baked into the Elasticsearch index, so the
+# provider cannot be switched on an existing demo — reset, then re-seed.
+#
+# The provider catalog (ollama + openai + their models) is seeded at boot. Models
+# are referenced by model_key (stable), not numeric id, so this works on a fresh
+# DB. requiredModels drives the "are these pulled?" readiness check for Ollama.
+# -----------------------------------------------------------------------------
+provider:
+  recommended: openai
+  options:
+    ollama:
+      key: ollama
+      label: Ollama
+      tagline: Local & free — for powerful machines (~24GB+ RAM)
+      authType: none
+      defaultBaseUrl: http://localhost:11434
+      baseUrlEnv: OLLAMA_BASE_URL # optional override; falls back to defaultBaseUrl
+      # Models the user must `ollama pull` before setup. The page checks these
+      # against the Ollama server's pulled models and shows the pull commands.
+      # Both the chat and embedding models are chosen by the admin at setup time
+      # from the models pulled on the Ollama server; the defaults below are just
+      # the recommended pre-selections. requiredModels stays empty — there's no
+      # single fixed model to gate on; readiness is "≥1 chat + ≥1 embedding model
+      # pulled", enforced by the Demo Setup page.
+      requiredModels: []
+      embeddingDimensions: 768 # default embedding dims; the chosen model's actual dims win
+      defaults:
+        chatModel: qwen2.5:14b # recommended default; admin can pick any pulled chat model (32b needs a very powerful box)
+        textModel: qwen2.5:14b # follows the chosen chat model
+        embeddingModel: nomic-embed-text # recommended default; admin can pick any pulled embedding model
+    openai:
+      key: openai
+      label: OpenAI
+      tagline: Cloud — recommended; best quality & speed, no local hardware
+      authType: api_key
+      embeddingDimensions: 1536
+      defaults:
+        chatModel: gpt-4o
+        textModel: gpt-4o
+        embeddingModel: text-embedding-3-small
+
+# -----------------------------------------------------------------------------
+# 2. Search index (Elasticsearch, hybrid)
+# Index-level config lives here; the 35 field mappings live in the referenced
+# JSON (kept as JSON because it's large + machine-generated). Embedding model
+# is resolved from provider.defaults.embeddingModel above.
+# -----------------------------------------------------------------------------
+index:
+  name: fashion-catalog
+  displayName: Fashion Catalog
+  description: Demo fashion catalog — apparel, footwear, and accessories.
+  searchType: hybrid # lexical | semantic | hybrid
+  searchProvider: elasticsearch
+  indexingStrategy: on_upload
+  language: english
+  synonyms:
+    - "bags => handbags"
+  stopWords: []
+  vectorSimilarity: cosine
+  rrfRankConstant: 50
+  rrfWindowSize: 20
+  numberOfShards: 1
+  numberOfReplicas: 0
+  refreshInterval: "1s"
+  # Field mappings (35 fields) — applied via createFieldsFromJson.
+  mappingFile: fashion_catalog_index_mapping.json
+  # 200 product documents — bulk-loaded + embedded via indexDocuments.
+  documentsFile: fashion_catalog.json
+
+# -----------------------------------------------------------------------------
+# 3. Data source — wraps the local index so tools can target it.
+# config.searchIndexId is filled in by the seeder after the index is created.
+# -----------------------------------------------------------------------------
+dataSource:
+  name: Fashion Catalog
+  slug: fashion-catalog
+  type: search_index
+
+# -----------------------------------------------------------------------------
+# 4. Tools — auto-scaffolded for the data source (search / inspect / enumerate
+# / lookup). createToolsForDataSource generates the executor config and AI
+# descriptions for each operation; no per-tool config needed here.
+# -----------------------------------------------------------------------------
+tools:
+  scaffold: [search, inspect, enumerate, lookup]
+  # Display config for the result-returning tools (search/lookup). Without it the
+  # chat can't map result fields to visual roles, so response synthesis always
+  # falls back to rich_text. Applied at seed time to the search + lookup tools
+  # (lookup/find also inherit by data source). Shape = ToolDisplayConfig:
+  # fields[] of { source (catalog field), role, format?, currency?, priority? }.
+  displayConfig:
+    fields:
+      - { source: name, role: title }
+      - { source: brand, role: badge }
+      - { source: category, role: subtitle }
+      - { source: primaryImageUrl, role: image, format: image_url }
+      - { source: minPrice, role: price, format: currency, currency: USD }
+      - { source: rating, role: rating, format: stars, priority: secondary }
+      - { source: shortDescription, role: description, priority: secondary }
+    preferredPresets: [item_grid, single_card]
+
+# -----------------------------------------------------------------------------
+# 5. Search experience — the public search widget.
+# -----------------------------------------------------------------------------
+searchExperience:
+  name: Fashion Catalog Search
+  slug: fashion-catalog-search
+  description: AI-powered fashion catalog search.
+  # primary index = the index created above (wired by slug at seed time)
+  searchConfig:
+    defaultPageSize: 10
+    maxPageSize: 100
+    enableHighlighting: true
+    enableFacets: true
+    multiIndexStrategy: primary_only
+    autocomplete:
+      enabled: true
+      minLength: 2
+      maxSuggestions: 8
+      debounceMs: 150
+    hybridConfig:
+      lexicalWeight: 1
+      semanticWeight: 1
+      rrfRankConstant: 60
+      rrfWindowSize: 100
+  aiConfig:
+    enabled: true
+    summary:
+      enabled: true
+      maxResultsForContext: 10
+      maxTokens: 500
+      customInstructions: |
+        ## Custom Instructions for Fashion Catalog Search Experience
+
+        ### Persona Definition
+        - The AI assistant should be a savvy and stylish fashion enthusiast with a keen eye for detail and trends.
+        - It should demonstrate expertise in fashion terminology, styling tips, and product knowledge.
+        - The overall personality should be approachable, enthusiastic, and trend-forward, making users feel excited about their fashion choices.
+
+        ### Domain Knowledge
+        - Understand the significance of **Brand**, **Category**, **Material**, and **Fit Types** in fashion selections.
+        - Be knowledgeable about **Available Colors** and **Sizes** to help users find the perfect match.
+        - Explain the benefits of **Care Instructions** and **Material** for long-lasting wear.
+        - Highlight products with **Has Discount** for budget-conscious users.
+        - Familiarize with **Gender** and **Age Group** to make appropriate recommendations.
+
+        ### Communication Style
+        - Tone: Friendly and engaging with a dash of elegance.
+        - Response approach: Concise yet informative, providing key details and context.
+        - Language preferences: Use fashion-forward language that resonates with style-conscious users.
+
+        ### Business Rules
+        - Prioritize recommending in-stock items and those with available discounts.
+        - Emphasize the uniqueness of products based on brand, color, or fit.
+        - Avoid promoting products that are out of stock or not available in the user's preferred size and color.
+
+        ### Response Guidelines
+        - Always include the product's **Primary Image** and **Product Name** in responses.
+        - Provide a brief overview of **Category**, **Brand**, and **Material** to aid decision-making.
+        - Offer styling tips related to **Fit Types** or **Available Colors** when applicable.
+        - Avoid overwhelming users with too much technical jargon; keep it simple and stylish.
+        - Address common queries about **Care Instructions** and emphasize **In Stock** status for assured purchases.
+  toolsConfig:
+    enabled: [search]
+  displayConfig:
+    displayFields:
+      - { fieldName: name, role: title, label: Product Name, order: 0 }
+      - { fieldName: brand, role: badge, label: Brand, order: 1 }
+      - { fieldName: primaryImageUrl, role: image, label: Primary Image, order: 2 }
+
+# -----------------------------------------------------------------------------
+# 6. Chat (AI) experience — the public chat widget. Deterministic pipeline:
+# the backend orchestrates intent -> search -> response; the AI proposes,
+# business rules enforce. Provider/model come from system defaults (step 1).
+# -----------------------------------------------------------------------------
+chatExperience:
+  name: Fashion Product Assistant
+  slug: fashion-product-assistant
+  pipelineMode: deterministic
+  persona:
+    tone: friendly
+    systemInstructions: |
+      You are the AI assistant for "Fashion product assistant". When users ask questions, use your tools to search for relevant results, look up specific items by ID, inspect available data fields, discover available filter values. Always present real data from tool results — never make up information. If the user's request is vague, ask a clarifying question. Use the enumerate tool to discover valid filter values before applying filters.
+    responseFormats:
+      enabledPresets: [rich_text, single_card, item_grid, comparison_table, summary_with_sources]
+      defaultPreset: rich_text
+      enableCitations: false
+      citationStyle: none
+  session:
+    sessionTtlMinutes: 1440
+    maxContextMessages: 10
+    enableConversationSummary: false
+    summaryThreshold: 30
+    enableUserContext: false
+  guardrails:
+    input:
+      enabled: true
+      onBlock:
+        message: Your message was blocked by content policy.
+      rules:
+        # Semantic topic gate. termEmbeddings/generalTermEmbeddings are NOT
+        # stored here — the guardrail service regenerates them from these
+        # terms at seed time (that's the 2 MB the UI stores; we keep the seed).
+        - id: topic-gate-1
+          name: Domain Scope
+          type: topic_gate
+          action: block
+          priority: 0
+          enabled: true
+          config:
+            domainFilterEnabled: true
+            friendlyMessage: I am sorry but I can only help with fashion related products and questions
+            threshold: 0.3
+            allowedDomains:
+              - fashion
+              - clothes
+              - fashion products
+              - fashion trends
+              - clothing related queries
+              - Apparels related general questions
+              - clothing products
+              - maintain clothes
+              - shoes
+              - fashion shoes
+              - formal and informal clothes
+              - how to wash clothes
+            generalThreshold: 0.25
+            generalTerms:
+              - how are you doing today
+              - nice weather we're having
+              - what can you help me with
+              - are you a real person
+              - thanks that was helpful
+              - great answer, appreciate it
+              - can you explain that differently
+              - I don't understand what you mean
+              - tell me more about that
+              - that's interesting, go on
+              - goodbye for now, take care
+              - that's all I needed, thanks
+              - go back to main menu
+              - show me options available
+              - what else can you tell me
+              - I have a quick question
+              - can you help me with something
+              - what do you think about that
+              - I need more information
+              - could you clarify that for me
+              - what should I do next
+              - is there anything else I should know
+              - let's talk about something else
+              - I appreciate your assistance
+              - this has been really helpful
+        - id: blocklist-1
+          name: Blocked Terms
+          type: blocklist
+          action: block
+          priority: 10
+          enabled: true
+          config:
+            terms: [profanity, nudity, crime, criminal]
+    output:
+      enabled: false
+  access:
+    allowedOrigins: []
+    rateLimits:
+      chatPerMinute: 60
+      requestsPerDay: 10000
+    embed:
+      widgetTheme: auto
+      widgetPosition: bottom-right
+      launcher: floating
+      placement: bottom-right
+      primaryColor: "#eb2442"
+      welcomeMessage: How can I help you today?
+      welcomeDescription: I can help with all your fashion needs
+      placeholder: Ask anything...
+      showBranding: true
+      suggestedQuestions:
+        - Show me winter jackets
+        - What's trending right now?
+  observability:
+    telemetryDetailLevel: full
+    enableConversationLogging: true
+    conversationRetentionDays: 90
+  # Tools the assistant may call, by data-source operation. inspect is
+  # available but left off to match the reference demo.
+  tools:
+    enabled: [search, enumerate, lookup]
+
+# -----------------------------------------------------------------------------
+# 7. Analytics / traces warm-up.
+# After everything is created, replay the demo-script queries against the live
+# pipeline so the Analytics, Chat Analytics, and Traces screens are populated
+# the moment the presenter opens the Admin Console. Set enabled: false to skip.
+# -----------------------------------------------------------------------------
+warmup:
+  enabled: true
+  searches:
+    - bomber jacket
+    - cashmere sweater
+    - elegant dress for an evening out
+    - vegan leather bags under $200
+    - women's minimalist jeans
+    - winter jacket under $200
+    - athleisure for working from home
+    - kids back to school
+    # Intentional zero/low-result queries to populate the "zero-result" report:
+    - plus size dresses
+    - maternity wear
+  # Each chat is a conversation — turns run in sequence to exercise multi-turn
+  # context, comparison tables, and cross-sell.
+  chats:
+    - - Tell me about the Vesper & Co Crew Neck Sweater — is it worth the price?
+      - What sizes does the crew come in? And is the tan one available in XL?
+    - - Show me women's dresses for a spring wedding
+    - - I'm going to buy the Aurelia Lane Wrap Dress. What bag and shoes would go with it?
+    - - Compare the Solstice Apparel skinny jeans and the Skyline Fashion slim-fit jeans
+  # "Analytics Chat" conversations — an admin asking questions ABOUT the
+  # analytics. These populate the Chat Analytics page's session list.
+  analyticsChats:
+    - - What are my most popular search queries?
+    - - Which customer searches returned zero results?
+      - What product categories should we add based on those gaps?
+    - - How is the chat assistant performing — how many conversations so far?

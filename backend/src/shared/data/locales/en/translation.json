@@ -1,0 +1,291 @@
+{
+  "common": {
+    "getStarted": "Get started",
+    "documentation": "Documentation & Support",
+    "platformOnline": "Platform Online"
+  },
+  "home": {
+    "badge": {
+      "title": "Interakt Search & Chat Platform"
+    },
+    "hero": {
+      "title": "Intelligent Search & AI Chat",
+      "description": "Build powerful search experiences and AI chatbots. Connect your data, configure search algorithms, and deploy conversational AI interfaces."
+    },
+    "features": {
+      "searchIndexes": {
+        "title": "Search Indexes",
+        "description": "Connect data sources, configure field mappings, and manage searchable content with semantic and hybrid search capabilities."
+      },
+      "searchTuning": {
+        "title": "Search Tuning", 
+        "description": "Fine-tune ranking algorithms, boost specific fields, and optimize search relevance for your users."
+      },
+      "aiChatFlows": {
+        "title": "AI Chat Flows",
+        "description": "Design conversational experiences with AI-powered chatbots and custom workflow automation."
+      }
+    },
+    "quickStart": {
+      "title": "Ready to get started?",
+      "description": "Create your first search index or jump into the playground to test existing configurations.",
+      "createIndex": "Create Search Index",
+      "tryPlayground": "Try Search Playground"
+    },
+    "loading": "Loading..."
+  },
+  "sidebar": {
+    "groups": {
+      "main": "Main",
+      "analytics": "Analytics",
+      "overview": "Overview",
+      "aiSearch": "AI & Search",
+      "searchManagement": "Data & Configuration",
+      "capabilities": "Capabilities",
+      "aiPlatform": "AI Platform",
+      "experiences": "Experiences",
+      "playground": "Playground",
+      "developer": "Developer",
+      "administration": "Administration",
+      "platform": "Platform"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "docs": "Documentation",
+      "analytics": "Analytics",
+      "overview": "Overview",
+      "chat": "Chat",
+      "searchIndexes": "Indexes",
+      "createIndex": "Create Index",
+      "allIndexes": "All Indexes",
+      "globalSearchSettings": "Global Search Settings",
+      "configurations": "Configurations",
+      "chatConfiguration": "Chat Configuration",
+      "searchConfiguration": "Search Configuration",
+      "playground": "Playground",
+      "searchTesting": "Search Testing",
+      "searchExperiences": "Search",
+      "createExperience": "Create Experience",
+      "allExperiences": "All Experiences",
+      "utilities": "Utilities",
+      "initialSetup": "Initial Setup",
+      "userManagement": "User Management",
+      "systemSettings": "System Settings",
+      "aiProviders": "AI Providers",
+      "searchSettings": "Search Settings",
+      "settings": "Settings",
+      "health": "Health",
+      "cache": "Cache",
+      "healthMonitoring": "Health Monitoring",
+      "cacheManagement": "Cache Management",
+      "traces": "Traces",
+      "aiServices": "AI Provider",
+      "indexSearch": "Search",
+      "unifiedSearch": "Experience Search",
+      "apiDocs": "API Docs",
+      "tools": "Tools",
+      "createTool": "Create Tool",
+      "allTools": "All Tools",
+      "aiExperiences": "AI",
+      "createAIExperience": "Create Experience",
+      "allAIExperiences": "All Experiences",
+      "experiences": "Experiences",
+      "promptTemplates": "Prompt Templates",
+      "secrets": "Secrets Vault",
+      "dataSources": "Data Sources",
+      "createDataSource": "Create Data Source",
+      "allDataSources": "All Data Sources",
+      "mcpConnections": "MCP Connections",
+      "createMcpConnection": "Create MCP Connection",
+      "allMcpConnections": "All MCP Connections",
+      "dropinWidget": "Drop-in Widget"
+    }
+  },
+  "analytics": {
+    "title": "Search Analytics",
+    "subtitle": "Real-time insights into your search performance",
+    "chat": {
+      "title": "Analytics Chat",
+      "subtitle": "Ask questions about your data and get AI-powered insights",
+      "welcomeMessage": "Hello! I'm your analytics assistant. I can help you analyze your search data, identify trends, and provide actionable insights. What would you like to explore today?",
+      "history": {
+        "title": "Chat History",
+        "loadingConversations": "Loading...",
+        "conversationCount": "{{count}} conversations",
+        "recentChats": "Recent Chats",
+        "noHistory": "No chat history yet",
+        "noHistoryDescription": "Start a conversation to see it here",
+        "loginRequired": "Login to save and revisit previous chats!",
+        "startNewChat": "Start New Chat",
+        "deleteChat": "Delete Chat",
+        "deleteChatDescription": "Are you sure you want to delete this chat? This action cannot be undone and will permanently remove the conversation from our servers.",
+        "cancel": "Cancel",
+        "delete": "Delete"
+      },
+      "interface": {
+        "quickStart": "Quick Start",
+        "loadingModels": "Loading models...",
+        "typing": "Typing...",
+        "messageCount": "{{count}}"
+      },
+      "quickOptions": {
+        "analyticsOverview": "Analytics overview",
+        "topQueries": "Top queries today", 
+        "searchPerformance": "Search performance",
+        "noResultQueries": "No-result queries",
+        "unusualPatterns": "Unusual patterns",
+        "improvementSuggestions": "Improvement suggestions",
+        "monthlyReport": "Monthly report"
+      }
+    },
+    "filters": {
+      "allIndexes": "All Indexes",
+      "allTypes": "All Types",
+      "timeRanges": {
+        "1h": "1 Hour",
+        "24h": "24 Hours",
+        "7d": "7 Days",
+        "30d": "30 Days"
+      }
+    },
+    "sections": {
+      "keyInsights": "Key Insights",
+      "keyInsightsDescription": "What's happening with your search right now",
+      "searchVolume": "Search Volume & Usage",
+      "searchVolumeDescription": "Understanding your search traffic patterns",
+      "searchTrends": "Search Trends",
+      "searchTrendsDescription": "Search volume over time by type",
+      "searchTypes": "Search Types",
+      "searchTypesDescription": "Distribution of search types",
+      "popularSearches": "Popular Searches",
+      "popularSearchesDescription": "Most frequent queries grouped by intent",
+      "failedSearches": "Failed Searches",
+      "failedSearchesDescription": "Queries that returned no results - optimization opportunities",
+      "recentIssues": "Recent Issues",
+      "recentIssuesDescription": "Latest search errors that need attention",
+      "indexPerformance": "Index Performance",
+      "indexPerformanceDescription": "Usage and performance metrics by search index",
+      "searchSummary": "Search Summary",
+      "searchSummaryDescription": "Quick overview for the selected period"
+    },
+    "metrics": {
+      "totalSearches": "Total Searches",
+      "failedSearches": "Failed Searches",
+      "userEngagement": "User Engagement",
+      "mostPopularSearch": "Most Popular Search",
+      "searchesPerUser": "searches per user on average",
+      "searchedTimes": "searched {{count}} times",
+      "inLast": "in last {{timeRange}}",
+      "ofAllSearches": "{{percentage}}% of all searches",
+      "successRate": "{{rate}}% success",
+      "attempts": "attempts",
+      "success": "Success Rate",
+      "searchSpeed": "Search Speed",
+      "activeUsers": "Active Users"
+    },
+    "table": {
+      "indexName": "Index Name",
+      "searches": "Searches",
+      "avgTime": "Avg Time",
+      "avgResults": "Avg Results",
+      "users": "Users",
+      "types": "Types",
+      "lastUsed": "Last Used"
+    },
+    "messages": {
+      "noFailedSearches": "No failed searches found!",
+      "allSearchesSuccessful": "All searches are returning results",
+      "retry": "Retry",
+      "loading": "Loading..."
+    },
+    "performance": {
+      "title": "Performance Analytics",
+      "metrics": {
+        "averageResponseTime": "Average Response Time",
+        "95thPercentile": "95th Percentile", 
+        "slowQueries": "Slow Queries",
+        "errorRate": "Error Rate",
+        "totalSearches": "Total Searches",
+        "avgResults": "Avg Results",
+        "avgRelevance": "Avg Relevance"
+      },
+      "descriptions": {
+        "95thPercentile": "95% of queries under this time",
+        "slowQueriesPercentage": "{{percentage}}% of total queries",
+        "errorRateDescription": "of all search requests"
+      },
+      "levels": {
+        "excellent": "EXCELLENT",
+        "good": "GOOD", 
+        "fair": "FAIR",
+        "poor": "POOR",
+        "critical": "CRITICAL"
+      },
+      "sections": {
+        "responseTimeBreakdown": "Response Time Breakdown",
+        "responseTimeBreakdownDescription": "Distribution of query execution times",
+        "performanceTrends": "Performance Trends",
+        "performanceTrendsDescription": "Average response time over time",
+        "detailedMetrics": "Detailed Performance Metrics",
+        "detailedMetricsDescription": "Comprehensive performance statistics for the selected period"
+      },
+      "breakdown": {
+        "excellent": "Excellent (< 100ms)",
+        "good": "Good (< 500ms)",
+        "fair": "Fair (< 1s)",
+        "slow": "Slow (> 1s)"
+      },
+      "stats": {
+        "minimum": "Minimum:",
+        "average": "Average:",
+        "maximum": "Maximum:",
+        "responseTimes": "Response Times",
+        "queryStatistics": "Query Statistics",
+        "healthIndicators": "Health Indicators",
+        "performanceLevel": "Performance Level:",
+        "slowQueryRate": "Slow Query Rate:"
+      }
+    }
+  },
+  "health": {
+    "title": "Health Monitoring",
+    "subtitle": "Monitor system health status for databases, search services, and system resources.",
+    "systemHealthCheck": "System Health Check",
+    "systemHealthSubtitle": "Monitor databases, indexes, and overall system health status.",
+    "overallSystemStatus": "Overall System Status",
+    "lastUpdated": "Last updated: {{time}}",
+    "runHealthCheck": "Run Health Check",
+    "checking": "Checking...",
+    "healthCheckCompleted": "Health check completed successfully",
+    "healthCheckFailed": "Failed to perform health check",
+    "databases": "Databases",
+    "searchIndexes": "Search Indexes",
+    "healthyComponents": "Healthy Components",
+    "status": {
+      "healthy": "Healthy",
+      "warning": "Warning",
+      "error": "Error",
+      "unknown": "Unknown"
+    },
+    "metrics": {
+      "responseTime": "Response Time",
+      "tables": "Tables",
+      "indexes": "Indexes",
+      "size": "Size",
+      "connections": "Connections",
+      "documents": "Documents",
+      "settings": "Settings",
+      "lastChecked": "Last checked: {{time}}"
+    },
+    "databaseTypes": {
+      "PostgreSQL": "PostgreSQL",
+      "AnalyticsDB": "Analytics DB", 
+      "Elasticsearch": "Elasticsearch"
+    },
+    "indexTypes": {
+      "PostgreSQLIndex": "PostgreSQL Index",
+      "ElasticsearchIndex": "Elasticsearch Index"
+    },
+    "connectionUsage": "Connection Usage"
+  }
+}

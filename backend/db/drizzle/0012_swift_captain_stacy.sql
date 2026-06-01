@@ -1,0 +1,2 @@
+ALTER TABLE "search_index" ADD COLUMN "provider_settings" json DEFAULT '{}'::json;--> statement-breakpoint
+ALTER TABLE "search_index_fields" ADD COLUMN "provider_field_settings" json DEFAULT '{}'::json;

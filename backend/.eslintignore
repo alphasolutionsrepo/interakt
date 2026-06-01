@@ -1,0 +1,45 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Next.js build outputs
+.next/
+out/
+build/
+dist/
+
+# Generated files
+.vercel
+.coverage
+.nyc_output
+
+# Cache directories
+.npm
+.eslintcache
+
+# Environment variables
+.env*.local
+
+# Temp directories
+.temp
+.tmp
+.cache
+.swc
+
+# Generated Drizzle files
+/lib/drizzle/
+/drizzle/
+
+# Misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ShadCN files
+.components/ui/

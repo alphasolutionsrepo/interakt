@@ -1,0 +1,96 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    // 1) Debug the Next.js *server* (getServerSideProps, API routes, middleware, etc.)
+    {
+      "name": "Next.js: server (break on start)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "/Users/himanshu-work/.nvm/versions/node/v24.3.0/bin/node",
+      "runtimeArgs": [
+        "--inspect-brk"
+      ],
+      "program": "${workspaceFolder}/backend/node_modules/next/dist/bin/next",
+      "args": [
+        "dev"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "env": {
+        "NODE_OPTIONS": "--enable-source-maps"
+      },
+      "serverReadyAction": {
+        "action": "debugWithChrome",
+        "killOnServerStop": true,
+        // Works with the typical Next.js dev log: "ready - started server on 0.0.0.0:3000, url: http://localhost:3000"
+        "pattern": "url: (https?://.+)",
+        "uriFormat": "%s",
+        "webRoot": "${workspaceFolder}/backend"
+      }
+    },
+    // 2) Attach to an already running Next.js (started with --inspect or NODE_OPTIONS=--inspect)
+    {
+      "name": "Next.js: attach to server (9229)",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    // 3) Launch Chrome to debug the *client* (React components running in the browser)
+    {
+      "name": "Next.js: client (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/backend",
+      "sourceMapPathOverrides": {
+        "../*": "${webRoot}/*",
+        "../../*": "${webRoot}/*"
+      }
+    },
+    // 4) Debug the Next.js *server* (getServerSideProps, API routes, middleware, etc.)
+    {
+      "name": "Next.js: Backend server (break on start)",
+      "type": "node",
+      "request": "launch",
+      "runtimeArgs": [
+        "--inspect-brk"
+      ],
+      "program": "${workspaceFolder}/backend/node_modules/next/dist/bin/next",
+      "args": [
+        "dev"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "env": {
+        "NODE_OPTIONS": "--enable-source-maps"
+      },
+      "serverReadyAction": {
+        "action": "debugWithChrome",
+        "killOnServerStop": true,
+        // Works with the typical Next.js dev log: "ready - started server on 0.0.0.0:3000, url: http://localhost:3000"
+        "pattern": "url: (https?://.+)",
+        "uriFormat": "%s",
+        "webRoot": "${workspaceFolder}/backend"
+      }
+    },
+  ],
+  "compounds": [
+    {
+      "name": "Next.js: full stack",
+      "configurations": [
+        "Next.js: server (break on start)",
+        "Next.js: client (Chrome)"
+      ]
+    }
+  ]
+}

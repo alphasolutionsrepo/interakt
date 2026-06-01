@@ -1,0 +1,22 @@
+# =============================================================================
+# Interakt setup config.
+#
+# Copy this file:
+#   cp setup/setup.config.example.yaml setup/setup.config.yaml
+#
+# Edit the admin block below with your email + password, then start the app:
+#   npm run dev
+#
+# On first boot the server creates the admin user from this file. Everything
+# else (AI providers, demo content) is configured from inside the app at /setup
+# after you log in. This file is gitignored — your password stays on your
+# machine.
+#
+# Password rules: min 8 chars, at least one lowercase, uppercase, and digit.
+# =============================================================================
+
+admin:
+  email: admin@interakt.com
+  password: ChangeMe123!
+  firstName: Admin
+  lastName: User

@@ -1,0 +1,1 @@
+ALTER TABLE "search_index_fields" ADD COLUMN "is_autocomplete" boolean DEFAULT false NOT NULL;

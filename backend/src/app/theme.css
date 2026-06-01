@@ -1,0 +1,66 @@
+/* Font imports */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+/* Root styles to ensure Montserrat is used as the primary font */
+:root {
+  /* Use the same variable name as defined in layout.tsx */
+  --font-primary: var(--font-montserrat), 'Montserrat', sans-serif;
+}
+
+/* Apply Montserrat font to common elements */
+body, 
+button,
+input,
+select,
+textarea,
+h1, h2, h3, h4, h5, h6,
+p, span, div {
+  font-family: var(--font-primary) !important;
+}
+
+/* This class is now defined by Tailwind plugin */
+/* .font-montserrat is defined in tailwind.config.js */
+
+/* Professional styling for cards and containers */
+.card,
+.container,
+.panel {
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Standardized button styles */
+button {
+  font-weight: 500;
+}
+
+/* Navbar consistent styling */
+header {
+  backdrop-filter: blur(10px);
+}
+
+/* Footer styling */
+footer {
+  font-family: var(--font-primary);
+  font-size: 0.875rem;
+}
+
+/* Fix for gradient text clipping issues */
+.bg-clip-text {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  /* Ensure descenders aren't clipped */
+  padding-bottom: 0.125rem;
+  /* Better text rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent text cutoff */
+  line-height: 1.1;
+  overflow: visible;
+}

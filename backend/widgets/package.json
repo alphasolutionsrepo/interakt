@@ -1,0 +1,41 @@
+{
+  "name": "@interakt/widgets",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Drop-in search and chat widgets for Interakt. Built as a self-contained IIFE bundle that exposes window.SearchDropinUI and window.ChatDropinUI.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0"
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.0.2",
+    "dompurify": "^3.2.3",
+    "marked": "^15.0.7",
+    "preact": "^10.25.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.29.0",
+    "@playwright/test": "^1.50.0",
+    "@preact/preset-vite": "^2.10.5",
+    "@testing-library/preact": "^3.2.4",
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^24",
+    "eslint": "^9.29.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "jsdom": "^26.0.0",
+    "terser": "^5.46.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.34.1",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
+  }
+}

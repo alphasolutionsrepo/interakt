@@ -1,0 +1,1 @@
+ALTER TABLE "search_experiences" ADD COLUMN "display_config" json;

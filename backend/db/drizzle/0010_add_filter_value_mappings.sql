@@ -1,0 +1,1 @@
+ALTER TABLE "search_index_fields" ADD COLUMN "filter_value_mappings" json DEFAULT '{}'::json;

@@ -1,0 +1,1174 @@
+/* ==========================================================================
+   Interakt widget styles — scoped to the Shadow DOM root.
+   All variables prefixed --ik-* are set per-instance by theme.ts.
+   Host CSS does not reach in, and these styles never leak out.
+   ========================================================================== */
+
+:host,
+.interakt-root {
+  all: initial;
+  display: block;
+  color: var(--ik-fg);
+  font-family: var(--ik-font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.interakt-root *,
+.interakt-root *::before,
+.interakt-root *::after {
+  box-sizing: border-box;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── Launcher (floating) ─────────────────────────────────────────────────── */
+.ik-launcher {
+  position: fixed;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--ik-primary);
+  color: var(--ik-primary-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--ik-shadow);
+  transition: transform 0.15s ease;
+  z-index: 2147483000;
+  /* Default anchor: bottom-right. Overridden by placement modifiers below. */
+  right: 20px;
+  bottom: 20px;
+}
+.ik-launcher:hover {
+  transform: translateY(-1px);
+}
+
+/* Placement modifiers — drive where floating launcher + panel anchor. */
+.ik-launcher--bottom-right { right: 20px; bottom: 20px; top: auto; left: auto; }
+.ik-launcher--bottom-left  { left: 20px;  bottom: 20px; top: auto; right: auto; }
+.ik-launcher--top-right    { right: 20px; top: 20px;    bottom: auto; left: auto; }
+.ik-launcher--top-left     { left: 20px;  top: 20px;    bottom: auto; right: auto; }
+
+/* Search launcher sits beside the chat launcher when both are bottom-right. */
+.ik-launcher--search {
+  right: 90px;
+}
+
+/* ── Chat panel ──────────────────────────────────────────────────────────── */
+.ik-panel {
+  background: var(--ik-bg);
+  color: var(--ik-fg);
+  border: 1px solid var(--ik-border);
+  border-radius: var(--ik-radius);
+  box-shadow: var(--ik-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ik-panel--floating {
+  position: fixed;
+  width: min(380px, calc(100vw - 40px));
+  height: min(560px, calc(100vh - 40px));
+  z-index: 2147483000;
+  /* Default placement — overridden by modifiers below. */
+  right: 20px;
+  bottom: 20px;
+}
+
+.ik-panel--bottom-right { right: 20px; bottom: 20px; top: auto; left: auto; }
+.ik-panel--bottom-left  { left: 20px;  bottom: 20px; top: auto; right: auto; }
+.ik-panel--top-right    { right: 20px; top: 20px;    bottom: auto; left: auto; }
+.ik-panel--top-left     { left: 20px;  top: 20px;    bottom: auto; right: auto; }
+
+/* Expanded "center" size overrides placement + width/height to anchor the
+   panel to the viewport center. Wins over the corner placement rules above
+   because it's more specific (two modifier classes). */
+.ik-panel--floating.ik-panel--size-center {
+  width: min(1024px, 90vw);
+  height: min(780px, 90vh);
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 639px) {
+  .ik-panel--floating.ik-panel--size-center {
+    width: 100vw;
+    height: 100vh;
+    top: 0;
+    left: 0;
+    transform: none;
+    border-radius: 0;
+  }
+}
+
+.ik-panel--inline {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+
+.ik-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--ik-primary);
+  color: var(--ik-primary-fg);
+}
+
+.ik-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ik-header-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.ik-title {
+  font-weight: 600;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ik-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ik-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border-radius: 6px;
+  color: inherit;
+}
+.ik-icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+.ik-icon-btn:disabled {
+  opacity: 0.45;
+}
+
+.ik-close {
+  font-size: 22px;
+  width: 28px;
+  height: 28px;
+  line-height: 1;
+  border-radius: 6px;
+  color: inherit;
+}
+.ik-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Messages ───────────────────────────────────────────────────────────── */
+.ik-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  /* Extra top padding + mask-image fade so messages scrolled off the top
+     don't look abruptly clipped behind the header. */
+  padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ik-bg);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 100%);
+}
+
+.ik-msg {
+  max-width: 85%;
+  padding: 10px 13px;
+  border-radius: 12px;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* When a message carries a preset (grid/list/card), let it span the full
+   panel width so cards aren't cramped inside an 85%-wide bubble. */
+.ik-msg--assistant:has(.ik-preset) {
+  max-width: 100%;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+.ik-msg--assistant:has(.ik-preset) .ik-msg-body {
+  background: var(--ik-surface);
+  color: var(--ik-fg);
+  padding: 10px 13px;
+  border-radius: 12px;
+  border-bottom-left-radius: 4px;
+  display: inline-block;
+  max-width: 85%;
+  margin-bottom: 8px;
+}
+.ik-msg--user {
+  align-self: flex-end;
+  background: var(--ik-primary);
+  color: var(--ik-primary-fg);
+  border-bottom-right-radius: 4px;
+}
+.ik-msg--assistant {
+  align-self: flex-start;
+  background: var(--ik-surface);
+  color: var(--ik-fg);
+  border-bottom-left-radius: 4px;
+}
+.ik-msg--error {
+  align-self: flex-start;
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.ik-msg p {
+  margin: 0 0 6px;
+}
+.ik-msg p:last-child {
+  margin-bottom: 0;
+}
+.ik-msg code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+.ik-msg pre {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.ik-msg pre code {
+  background: transparent;
+  padding: 0;
+}
+.ik-msg a {
+  color: var(--ik-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ik-msg a:hover {
+  text-decoration-thickness: 2px;
+}
+.ik-msg ul,
+.ik-msg ol {
+  margin: 6px 0 6px 18px;
+  padding: 0;
+}
+
+/* ── Suggestions ────────────────────────────────────────────────────────── */
+.ik-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+.ik-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--ik-surface);
+  border: 1px solid var(--ik-border);
+  color: var(--ik-fg);
+  font-size: 12.5px;
+  transition: background 0.12s ease;
+}
+.ik-chip:hover:not(:disabled) {
+  background: var(--ik-border);
+}
+
+/* ── Input row ──────────────────────────────────────────────────────────── */
+.ik-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--ik-border);
+  background: var(--ik-bg);
+}
+.ik-input {
+  flex: 1;
+  resize: none;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--ik-surface);
+  border: 1px solid var(--ik-border);
+  min-height: 40px;
+  max-height: 120px;
+  font-size: 14px;
+}
+.ik-input:focus {
+  border-color: var(--ik-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ik-primary) 20%, transparent);
+}
+.ik-send {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--ik-primary);
+  color: var(--ik-primary-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ik-branding {
+  text-align: center;
+  font-size: 11px;
+  padding: 6px;
+  color: var(--ik-muted);
+  background: var(--ik-bg);
+  border-top: 1px solid var(--ik-border);
+}
+
+/* ── Search widget ──────────────────────────────────────────────────────── */
+.ik-search--modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: min(80px, 10vh);
+}
+.ik-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+.ik-search-panel {
+  position: relative;
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 120px);
+  background: var(--ik-bg);
+  color: var(--ik-fg);
+  border-radius: var(--ik-radius);
+  box-shadow: var(--ik-shadow);
+  border: 1px solid var(--ik-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ik-search--inline .ik-search-panel {
+  width: 100%;
+  max-height: none;
+  box-shadow: none;
+}
+
+.ik-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ik-border);
+}
+.ik-search-input {
+  flex: 1;
+  font-size: 15px;
+}
+
+.ik-status {
+  padding: 20px;
+  text-align: center;
+  color: var(--ik-muted);
+}
+.ik-status--error {
+  color: #991b1b;
+}
+
+.ik-results {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ik-result {
+  border-bottom: 1px solid var(--ik-border);
+}
+.ik-result:last-child {
+  border-bottom: none;
+}
+/* .ik-result-link layout is defined further down (it composes a flex row
+   with optional thumbnail + body + arrow). */
+.ik-result-title {
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--ik-fg);
+}
+.ik-result-snippet {
+  margin-top: 3px;
+  color: var(--ik-muted);
+  font-size: 13px;
+}
+
+.ik-search-footer {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--ik-muted);
+  border-top: 1px solid var(--ik-border);
+  background: var(--ik-surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Chat activity line (tool-call progress) ─────────────────────────────── */
+.ik-activity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ik-muted);
+  font-style: italic;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ik-primary) 8%, transparent);
+}
+.ik-activity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ik-primary);
+  animation: ik-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ik-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* ── Chat sources/citations ──────────────────────────────────────────────── */
+.ik-sources {
+  margin-top: 8px;
+  border-top: 1px dashed var(--ik-border);
+  padding-top: 8px;
+}
+.ik-sources-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--ik-muted);
+  transition: background 0.12s ease;
+}
+.ik-sources-toggle:hover {
+  background: var(--ik-border);
+  color: var(--ik-fg);
+}
+.ik-caret {
+  transition: transform 0.15s ease;
+  font-size: 10px;
+}
+.ik-caret--open {
+  transform: rotate(180deg);
+}
+.ik-sources-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ik-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--ik-surface);
+  border: 1px solid var(--ik-border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.ik-source-title {
+  color: var(--ik-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ik-source-meta {
+  color: var(--ik-muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+/* ── Chat retry button ────────────────────────────────────────────────────── */
+.ik-retry {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #991b1b;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+}
+.ik-retry:hover {
+  background: #7f1d1d;
+}
+
+/* Split the assistant-bubble body + footer so sources/activity sit below nicely */
+.ik-msg-body {
+  min-width: 0;
+}
+
+/* ── Search result highlights (from server <mark> tags) ──────────────────── */
+.ik-result-title mark,
+.ik-result-snippet mark {
+  background: color-mix(in srgb, var(--ik-primary) 28%, transparent);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* ── Search result layout with optional thumbnail ────────────────────────── */
+.ik-result-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+.ik-result-link:hover {
+  background: var(--ik-surface);
+}
+.ik-result-image {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--ik-surface);
+  border: 1px solid var(--ik-border);
+  flex-shrink: 0;
+}
+.ik-result-body {
+  flex: 1;
+  min-width: 0;
+}
+.ik-result-arrow {
+  color: var(--ik-muted);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.ik-result:hover .ik-result-arrow,
+.ik-result--selected .ik-result-arrow {
+  opacity: 1;
+}
+
+/* ── Keyboard-selected result (arrow nav) ────────────────────────────────── */
+.ik-result--selected {
+  background: var(--ik-surface);
+}
+.ik-result--selected .ik-result-link {
+  background: color-mix(in srgb, var(--ik-primary) 10%, var(--ik-surface));
+}
+.ik-result--selected .ik-result-title {
+  color: var(--ik-primary);
+}
+
+/* ── kbd hint chips ───────────────────────────────────────────────────────── */
+.ik-kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border: 1px solid var(--ik-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--ik-muted);
+  background: var(--ik-bg);
+  line-height: 1;
+  min-width: 16px;
+  text-align: center;
+}
+.ik-kbd-hints {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ik-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Category chips row — single row of quick filters derived from the first
+   terms facet in the search response. Intentionally lightweight: one
+   dimension of faceting, single-select. Rich browsing lives on the full
+   search page product.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ik-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ik-border);
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.ik-chips-label {
+  color: var(--ik-muted);
+  font-weight: 500;
+  margin-right: 4px;
+}
+.ik-chip--facet {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--ik-surface);
+  border: 1px solid var(--ik-border);
+  color: var(--ik-fg);
+  font-size: 12px;
+  transition: background 0.12s, border-color 0.12s;
+  cursor: pointer;
+}
+.ik-chip--facet:hover {
+  border-color: var(--ik-primary);
+}
+.ik-chip--facet.ik-chip--active {
+  background: var(--ik-primary);
+  color: var(--ik-primary-fg);
+  border-color: var(--ik-primary);
+}
+.ik-chip-count {
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Result card meta — title + price on the same row; badge + rating sit on
+   their own line below the title but above the snippet. Any of these may
+   be absent for content-style results; the layout collapses cleanly.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ik-result-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ik-result-price {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ik-fg);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ik-result-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+.ik-result-badge {
+  display: inline-block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ik-primary) 14%, transparent);
+  color: var(--ik-primary);
+}
+.ik-result-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: #f59e0b;
+  font-size: 11px;
+}
+.ik-result-rating-num {
+  color: var(--ik-muted);
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Footer — "See all results" link sits next to the kbd hints.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ik-footer-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.ik-see-all {
+  color: var(--ik-primary);
+  font-weight: 500;
+  font-size: 12px;
+  text-decoration: none;
+}
+.ik-see-all:hover {
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Chat preset renderers — single_card, item_grid, item_list
+   Rendered beneath the assistant's text bubble when backend emits a
+   `preset` event with items + displayConfig.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ik-preset {
+  display: block;
+  width: 100%;
+}
+
+/* Shared card bits */
+.ik-card-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--ik-surface);
+  display: block;
+}
+.ik-card-image--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ik-muted);
+  aspect-ratio: 4 / 3;
+}
+.ik-card-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ik-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ik-fg);
+  line-height: 1.3;
+  margin: 0;
+}
+.ik-card-title--sm {
+  font-size: 13px;
+}
+.ik-card-subtitle {
+  font-size: 12px;
+  color: var(--ik-muted);
+  line-height: 1.4;
+}
+.ik-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ik-card-price {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ik-fg);
+  flex-shrink: 0;
+}
+.ik-card-price--sm {
+  font-size: 13px;
+}
+.ik-card-desc {
+  font-size: 12.5px;
+  color: var(--ik-muted);
+  line-height: 1.45;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ik-card-desc--sm {
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+}
+.ik-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ik-primary);
+  font-weight: 500;
+  margin-top: 2px;
+  text-decoration: none;
+}
+.ik-card-link:hover {
+  text-decoration: underline;
+}
+
+.ik-badge {
+  display: inline-block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ik-primary) 14%, transparent);
+  color: var(--ik-primary);
+  width: fit-content;
+}
+.ik-badge--over {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #fff;
+}
+
+/* Stars */
+.ik-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #f59e0b;
+  font-size: 11px;
+}
+.ik-stars-num {
+  color: var(--ik-muted);
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+/* ── Single card ──────────────────────────────────────────────────────── */
+.ik-card--single {
+  border: 1px solid var(--ik-border);
+  border-radius: 12px;
+  background: var(--ik-bg);
+  overflow: hidden;
+  cursor: default;
+}
+.ik-card--single[role='link'] {
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.ik-card--single[role='link']:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+}
+
+/* ── Item grid ─────────────────────────────────────────────────────────── */
+.ik-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+/* 2-col when the panel has room (inline/expanded or side-docked) */
+@container (min-width: 420px) {
+  .ik-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (min-width: 420px) {
+  .ik-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ik-grid-cell {
+  border: 1px solid var(--ik-border);
+  border-radius: 10px;
+  background: var(--ik-bg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.ik-grid-cell[role='link'] {
+  cursor: pointer;
+}
+.ik-grid-cell[role='link']:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.10);
+}
+.ik-grid-cell-img {
+  position: relative;
+}
+.ik-grid-cell-body {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ik-grid-cell-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* ── Item list ─────────────────────────────────────────────────────────── */
+.ik-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ik-list-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--ik-border);
+  border-radius: 10px;
+  background: var(--ik-bg);
+  transition: background 0.12s ease;
+}
+.ik-list-row[role='link'] {
+  cursor: pointer;
+}
+.ik-list-row[role='link']:hover {
+  background: var(--ik-surface);
+}
+.ik-list-row .ik-card-image {
+  width: 64px;
+  height: 64px;
+  aspect-ratio: unset;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.ik-list-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ik-list-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Chat welcome screen — shown when the thread is empty. Surfaces persona,
+   greeting, description, and suggested questions.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ik-welcome {
+  flex: 1;
+  padding: 20px 20px 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  background: var(--ik-bg);
+}
+.ik-welcome-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ik-primary) 14%, transparent);
+  color: var(--ik-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px 0 8px;
+}
+.ik-welcome-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ik-fg);
+  line-height: 1.2;
+}
+.ik-welcome-greeting {
+  font-size: 14.5px;
+  color: var(--ik-fg);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.ik-welcome-desc {
+  font-size: 13px;
+  color: var(--ik-muted);
+  line-height: 1.55;
+  margin-top: 2px;
+}
+.ik-welcome-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 18px;
+}
+.ik-welcome-questions-label {
+  font-size: 11px;
+  color: var(--ik-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.ik-welcome-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--ik-surface);
+  border: 1px solid var(--ik-border);
+  color: var(--ik-fg);
+  font-size: 13px;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+}
+.ik-welcome-q:not(:disabled):hover {
+  border-color: var(--ik-primary);
+  background: color-mix(in srgb, var(--ik-primary) 8%, var(--ik-surface));
+  transform: translateX(2px);
+}
+.ik-welcome-q:not(:disabled):hover .ik-welcome-q-arrow {
+  color: var(--ik-primary);
+  transform: translateX(2px);
+}
+.ik-welcome-q-text {
+  flex: 1;
+  min-width: 0;
+}
+.ik-welcome-q-arrow {
+  color: var(--ik-muted);
+  flex-shrink: 0;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Search — AI summary above results. Streams in when the experience has
+   summary.enabled=true in its aiConfig; absent otherwise (403 → empty).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ik-summary {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ik-border);
+  background: color-mix(in srgb, var(--ik-primary) 5%, var(--ik-bg));
+}
+.ik-summary-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ik-primary);
+  margin-bottom: 4px;
+}
+.ik-summary-body {
+  font-size: 13px;
+  color: var(--ik-fg);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.ik-summary-body--loading {
+  color: var(--ik-muted);
+  font-style: italic;
+}
+.ik-summary-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--ik-primary);
+  vertical-align: text-bottom;
+  margin-left: 1px;
+  animation: ik-blink 1s steps(2, start) infinite;
+}
+@keyframes ik-blink {
+  to { visibility: hidden; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Broader branding — subtle touches that pick up the experience's primary
+   color so the widget feels like part of the host brand, not foreign.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Scrollbars within the panel */
+.ik-messages::-webkit-scrollbar,
+.ik-welcome::-webkit-scrollbar,
+.ik-results::-webkit-scrollbar {
+  width: 8px;
+}
+.ik-messages::-webkit-scrollbar-thumb,
+.ik-welcome::-webkit-scrollbar-thumb,
+.ik-results::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ik-primary) 30%, transparent);
+  border-radius: 4px;
+}
+.ik-messages::-webkit-scrollbar-thumb:hover,
+.ik-welcome::-webkit-scrollbar-thumb:hover,
+.ik-results::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ik-primary) 50%, transparent);
+}
+
+/* Focus rings on interactive elements — accent the brand color */
+.ik-input:focus,
+.ik-search-input:focus-visible,
+.ik-welcome-q:focus-visible,
+.ik-chip:focus-visible,
+.ik-icon-btn:focus-visible,
+.ik-send:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ik-primary) 25%, transparent);
+}
