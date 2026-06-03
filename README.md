@@ -2,7 +2,7 @@
 
 AI-powered search and chat platform. This README gets a new developer running the full stack locally — backend admin/API + demo site — and walks through first-boot configuration.
 
-## Repo layout
+## Repo layout! 
 
 ```
 interakt/
