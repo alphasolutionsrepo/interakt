@@ -68,10 +68,12 @@ export const selectedSearchProvider: SearchProviderType =
 
 const azureSelected = selectedSearchProvider === 'azure-ai-search';
 
-// Back-compat: Azure AI Search may also be configured as a (non-default)
-// secondary provider whenever AZURE_SEARCH_ENDPOINT is present — preserving the
-// previous behavior for environments that ran ES-default + Azure-secondary.
+// A provider is also enabled (as a non-default secondary) whenever its connection
+// info is present. This lets an instance run BOTH backends at once — e.g. Azure
+// AI Search as default plus a self-hosted Elasticsearch container, or vice versa —
+// with `SEARCH_PROVIDER` only deciding which is the default for new indexes.
 const azureConfigured = !!process.env.AZURE_SEARCH_ENDPOINT;
+const esConfigured = !!process.env.ELASTICSEARCH_URL;
 
 // ============================================================================
 // CONFIGURATION
@@ -86,7 +88,9 @@ export const searchProvidersConfig: SearchProvidersConfig = {
         // as the sole backend (SEARCH_PROVIDER=azure-ai-search).
         {
             type: 'elasticsearch',
-            enabled: !azureSelected,
+            // Default when Azure isn't the selected backend; also enabled as a
+            // secondary whenever an Elasticsearch URL is wired (multi-provider).
+            enabled: !azureSelected || esConfigured,
             isDefault: !azureSelected,
             // ES connection settings are managed via config/elasticsearch.config.ts
         },

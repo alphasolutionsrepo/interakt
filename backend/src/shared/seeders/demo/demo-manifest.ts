@@ -19,6 +19,7 @@ import { resolve, dirname, isAbsolute } from 'node:path';
 
 import YAML from 'yaml';
 import { z } from 'zod';
+import { selectedSearchProvider } from '@/config/search-provider.config';
 
 // A loose object that we forward to a service DTO verbatim.
 const looseObject = z.record(z.unknown());
@@ -69,7 +70,10 @@ export const demoManifestSchema = z.object({
     displayName: z.string(),
     description: z.string().optional(),
     searchType: z.enum(['lexical', 'semantic', 'hybrid']),
-    searchProvider: z.enum(['elasticsearch', 'azure-ai-search']).default('elasticsearch'),
+    // When a manifest omits searchProvider, fall back to the deployment's
+    // configured default (env-driven) rather than hardcoding elasticsearch — so
+    // demo data loads into Azure AI Search on an Azure-only deploy.
+    searchProvider: z.enum(['elasticsearch', 'azure-ai-search']).default(() => selectedSearchProvider),
     indexingStrategy: z.enum(['on_upload', 'scheduled', 'manual']).default('on_upload'),
     language: z.string().default('english'),
     synonyms: z.array(z.string()).default([]),

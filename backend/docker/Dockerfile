@@ -72,6 +72,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/package.json ./package.json
 
+# Markdown docs are read from the filesystem at runtime (the in-app Read drawer,
+# the /docs route, and the Documentation Assistant seeder all resolve
+# process.cwd()/src/content/docs). Without this they 404 / ENOENT in the container.
+COPY --from=builder /app/src/content ./src/content
+
 # Migration tooling (run standalone via tsx, independent of the Next.js server)
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/db ./db
