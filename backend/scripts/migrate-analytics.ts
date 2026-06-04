@@ -28,8 +28,10 @@ if (!connectionString) {
 async function runMigrations() {
   console.log('🔄 Connecting to Analytics database...');
   
-  // Create a connection for migrations (with max 1 connection)
-  const migrationClient = postgres(connectionString, { max: 1 });
+  // Create a connection for migrations (with max 1 connection). Managed Postgres
+  // (e.g. Azure Flexible Server) requires TLS — honor sslmode from the URL.
+  const useSsl = /[?&]sslmode=(require|prefer|verify-ca|verify-full)/i.test(connectionString!);
+  const migrationClient = postgres(connectionString!, { max: 1, ssl: useSsl ? 'require' : undefined });
   const db = drizzle(migrationClient);
 
   console.log('📦 Running Analytics database migrations...');
