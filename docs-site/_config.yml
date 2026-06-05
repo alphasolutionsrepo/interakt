@@ -1,0 +1,23 @@
+# Standard GitHub Pages (Jekyll) config for the public docs site.
+# The Markdown source of truth stays at backend/src/content/docs (also served
+# in-app); the Pages workflow stages a copy alongside this file and builds it.
+
+title: Interakt Docs
+description: AI-powered search & chat platform
+
+# Project Pages live under /<repo>/. For a custom domain or user/org site,
+# set baseurl: "" and url to the domain.
+url: "https://alphasolutionsrepo.github.io"
+baseurl: "/interakt"
+
+# just-the-docs is a standard GitHub Pages-compatible docs theme (sidebar + search).
+# Swap remote_theme for any supported theme, or remove it for the default.
+remote_theme: just-the-docs/just-the-docs
+search_enabled: true
+
+plugins:
+  - jekyll-remote-theme
+
+# Don't let Jekyll try to process non-doc files.
+exclude:
+  - "*.yaml"

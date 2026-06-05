@@ -1,0 +1,63 @@
+name: Docs to GitHub Pages
+
+# Standard GitHub Pages (Jekyll) build of the public docs site from
+# backend/src/content/docs — the same Markdown the app serves at /docs.
+#
+# One-time: repo Settings → Pages → Build and deployment → Source = "GitHub Actions".
+# The Markdown source of truth stays in backend/src/content/docs; this stages a
+# copy with docs-site/_config.yml and builds it with Jekyll.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - 'backend/src/content/docs/**'
+      - 'docs-site/_config.yml'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage docs (+ Jekyll config; sidebar_position → nav_order)
+        run: |
+          rm -rf _pages_src && mkdir -p _pages_src
+          cp -R backend/src/content/docs/. _pages_src/
+          cp docs-site/_config.yml _pages_src/_config.yml
+          # just-the-docs orders nav by `nav_order`; the docs use Docusaurus's
+          # `sidebar_position`. Map it so ordering is preserved (source untouched).
+          find _pages_src -name '*.md' -type f -exec sed -i -E 's/^sidebar_position:/nav_order:/' {} +
+
+      - uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./_pages_src
+          destination: ./_site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
