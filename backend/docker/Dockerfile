@@ -72,10 +72,12 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/package.json ./package.json
 
-# Markdown docs are read from the filesystem at runtime (the in-app Read drawer,
-# the /docs route, and the Documentation Assistant seeder all resolve
-# process.cwd()/src/content/docs). Without this they 404 / ENOENT in the container.
+# Assets read from the filesystem at runtime via process.cwd() — must be in the
+# image or they ENOENT:
+#  - src/content/docs        → in-app Read drawer, /docs route, docs seeder
+#  - src/features/chat/prompts → chat / summary / custom-instruction prompts
 COPY --from=builder /app/src/content ./src/content
+COPY --from=builder /app/src/features/chat/prompts ./src/features/chat/prompts
 
 # Migration tooling (run standalone via tsx, independent of the Next.js server)
 COPY --from=builder /app/scripts ./scripts
@@ -86,6 +88,11 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # setup/ supplies the local-dev admin-seed YAML path. In managed deployments the
 # admin is seeded from SETUP_ADMIN_* env vars instead; the dir is harmless here.
 COPY --from=builder /app/setup ./setup
+
+# Next.js writes its runtime cache (image optimization, fetch cache) under
+# .next/cache. The copied .next is root-owned, so the non-root runtime user can't
+# create it → EACCES. Pre-create + hand it to nextjs.
+RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next/cache
 
 USER nextjs
 EXPOSE 3000
