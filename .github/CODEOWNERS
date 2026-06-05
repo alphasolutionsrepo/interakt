@@ -1,0 +1,21 @@
+# CODEOWNERS for Interakt
+# ------------------------------------------------------------------
+# This file defines who is automatically requested for review on PRs.
+# Combined with the "require_code_owner_review" rule on main/develop,
+# it ensures no PR merges without a maintainer's approval.
+#
+# Rules:
+#   - Owners must have WRITE access to the repo (teams must be granted access).
+#   - The LAST matching pattern wins, so keep the broad "*" line at the top
+#     and put more specific paths below it.
+#
+# ------------------------------------------------------------------
+
+# Default owner for everything not matched by a more specific rule below.
+# Use a maintainers TEAM if you have one, otherwise your personal handle.
+*                       @alphasolutionsrepo/interakt-maintainers
+
+# CI, automation, and repo config — keep tightly held.
+/.github/               @alphasolutionsrepo/interakt-maintainers
+/.github/workflows/     @alphasolutionsrepo/interakt-maintainers
+/.github/CODEOWNERS     @alphasolutionsrepo/interakt-maintainers
