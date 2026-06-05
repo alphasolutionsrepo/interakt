@@ -45,9 +45,9 @@
     "db:generate-analytics": "node scripts/db-migrate-analytics.js generate",
     "db:migrate-analytics": "node scripts/db-migrate-analytics.js apply",
     "db:migrate-all": "npm run db:generate && npm run db:migrate && npm run db:generate-analytics && npm run db:migrate-analytics",
-    "infra:up": "docker compose -f infra/docker-compose.yml up -d --wait",
-    "infra:down": "docker compose -f infra/docker-compose.yml down",
-    "infra:reset": "docker compose -f infra/docker-compose.yml down -v",
+    "infra:up": "docker compose -f docker/docker-compose.dev.yml up -d --wait",
+    "infra:down": "docker compose -f docker/docker-compose.dev.yml down",
+    "infra:reset": "docker compose -f docker/docker-compose.dev.yml down -v",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

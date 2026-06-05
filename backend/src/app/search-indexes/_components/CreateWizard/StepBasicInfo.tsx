@@ -135,6 +135,8 @@ function getSearchTypeColor(type: SearchType, isSelected: boolean) {
 
 export function StepBasicInfo({ formData, errors, updateField, setExternalError }: StepBasicInfoProps) {
     const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
+    // Providers actually enabled for THIS deployment (env-driven), with which is default.
+    const [enabledProviders, setEnabledProviders] = useState<Array<{ type: string; isDefault: boolean }> | null>(null);
 
     const { isAvailable, isChecking, isDebouncing } = useNameAvailability(
         formData.name || '',
@@ -164,6 +166,31 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
             }
         }
     }, [formData.displayName, formData.name, isNameManuallyEdited, updateField]);
+
+    // Load the providers enabled for this deployment and default the selection to
+    // the configured default. Without this the wizard keeps its static
+    // 'elasticsearch' default and creates indexes against a provider that isn't
+    // enabled (e.g. on an Azure-only deploy, the index never reaches Azure).
+    useEffect(() => {
+        let cancelled = false;
+        fetch('/api/search-indexes/providers')
+            .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+            .then((data: { providers?: Array<{ type: string; isDefault?: boolean }> }) => {
+                if (cancelled) return;
+                const list = (data?.providers ?? []).map((p) => ({ type: p.type, isDefault: !!p.isDefault }));
+                setEnabledProviders(list);
+                if (list.length > 0 && !list.some((p) => p.type === formData.searchProvider)) {
+                    const def = list.find((p) => p.isDefault)?.type ?? list[0].type;
+                    updateField('searchProvider', def);
+                }
+            })
+            .catch(() => {
+                // Leave the form default; the server applies the configured default as a backstop.
+            });
+        return () => { cancelled = true; };
+        // Run once on mount; intentionally not keyed on formData.searchProvider.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleNameChange = useCallback((value: string) => {
         setIsNameManuallyEdited(true);
@@ -253,16 +280,22 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
 
             {/* Search Provider Selection */}
             {(() => {
-                const providers = getAllProviderUIs();
-                // Only show selector if more than one provider is registered
+                // Show only providers enabled for this deployment (env-driven). Until
+                // the fetch resolves, fall back to the full registry.
+                const enabledTypes = enabledProviders?.map((p) => p.type) ?? null;
+                const providers = enabledTypes
+                    ? getAllProviderUIs().filter((p) => enabledTypes.includes(p.type))
+                    : getAllProviderUIs();
+                // Only show selector if more than one provider is enabled
                 if (providers.length <= 1) return null;
+                const defaultType = enabledProviders?.find((p) => p.isDefault)?.type ?? providers[0]?.type;
                 return (
                     <div className="space-y-2">
                         <Label htmlFor="searchProvider" className="text-sm font-semibold text-foreground">
                             Search Provider
                         </Label>
                         <Select
-                            value={formData.searchProvider || 'elasticsearch'}
+                            value={formData.searchProvider || defaultType}
                             onValueChange={(value) => updateField('searchProvider', value)}
                         >
                             <SelectTrigger className="h-11 rounded-xl transition-colors focus-visible:border-primary focus-visible:ring-primary/20">
