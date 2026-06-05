@@ -88,7 +88,9 @@ index:
   displayName: Fashion Catalog
   description: Demo fashion catalog — apparel, footwear, and accessories.
   searchType: hybrid # lexical | semantic | hybrid
-  searchProvider: elasticsearch
+  # Omitted on purpose: the demo follows the deployment's default provider
+  # (SEARCH_PROVIDER → selectedSearchProvider). Set explicitly only to force a
+  # specific backend regardless of the deployment default.
   indexingStrategy: on_upload
   language: english
   synonyms:
