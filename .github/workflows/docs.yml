@@ -9,7 +9,7 @@ name: Docs to GitHub Pages
 on:
   workflow_dispatch:
   push:
-    branches: [develop]
+    branches: [main]
     paths:
       - 'backend/src/content/docs/**'
       - 'docs-site/**'
