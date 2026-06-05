@@ -1,0 +1,6 @@
+# The docs are staged here from backend/src/content/docs during the Pages build.
+/docs/
+# Build + dependency artifacts
+/build/
+/.docusaurus/
+/node_modules/

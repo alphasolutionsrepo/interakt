@@ -7,10 +7,13 @@
 
 import { NextResponse } from 'next/server';
 import { getEnabledProviderTypes, getSearchEngineProvider } from '@/features/search/providers';
+import { searchProvidersConfig } from '@/config/search-provider.config';
 
 export async function GET() {
     try {
         const enabledTypes = getEnabledProviderTypes();
+        const isDefaultType = (type: string) =>
+            searchProvidersConfig.providers.some(p => p.type === type && p.isDefault && p.enabled);
 
         const providers = enabledTypes.map(type => {
             try {
@@ -18,6 +21,7 @@ export async function GET() {
                 const capabilities = provider.getCapabilities();
                 return {
                     type: capabilities.type,
+                    isDefault: isDefaultType(capabilities.type),
                     displayName: capabilities.displayName,
                     description: capabilities.description,
                     supportedSearchTypes: capabilities.supportedSearchTypes,
@@ -32,6 +36,7 @@ export async function GET() {
                 // Provider may not be initialized yet
                 return {
                     type,
+                    isDefault: isDefaultType(type),
                     displayName: type,
                     description: `${type} search provider`,
                     supportedSearchTypes: [],

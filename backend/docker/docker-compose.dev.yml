@@ -1,3 +1,9 @@
+# ============================================================================
+# LOCAL DEVELOPMENT ONLY — Postgres (pgvector), pgAdmin, Elasticsearch.
+# Start with `npm run infra:up`. NOT used in production.
+# Production runs the app image built from docker/Dockerfile on Azure Container
+# Apps, against managed Postgres + Azure AI Search (see the interakt-azure-deploy repo).
+# ============================================================================
 services:
   postgres:
     image: pgvector/pgvector:pg17

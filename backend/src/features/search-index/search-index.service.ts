@@ -39,6 +39,7 @@ import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
 import { getSearchEngineProvider, type SearchProviderType } from '@/features/search/providers';
+import { selectedSearchProvider } from '@/config/search-provider.config';
 import { getProviderSettings, getProviderFieldSettings } from './provider-settings.utils';
 
 const logger = createLogger('search-index-service');
@@ -93,7 +94,10 @@ function mapSearchIndexDtoToInsert(
         dataTemplateId: undefined,
         searchType: input.searchType,
         indexingStrategy: input.indexingStrategy ?? 'on_upload',
-        searchProvider: input.searchProvider ?? 'elasticsearch',
+        // Fall back to the deployment's configured default provider (env-driven),
+        // never a hardcoded 'elasticsearch' — otherwise an Azure-only deploy would
+        // create indexes against a provider that isn't enabled.
+        searchProvider: input.searchProvider ?? selectedSearchProvider,
 
         // Provider-agnostic settings (JSON blob)
         providerSettings,

@@ -1,0 +1,35 @@
+# Dependencies & build output (rebuilt inside the image)
+node_modules
+widgets/node_modules
+.next
+widgets/dist
+out
+dist
+
+# VCS & local tooling
+.git
+.gitignore
+.github
+
+# Local env & secrets — never bake into the image
+.env
+.env.*
+!.env.example
+setup/setup.config.yaml
+
+# Docker tooling (prod Dockerfile is read via --file; dev compose is local-only)
+docker
+.dockerignore
+
+# Tests & coverage
+coverage
+**/*.test.ts
+**/*.test.tsx
+
+# Logs & misc
+logs
+*.log
+.DS_Store
+.vscode
+.idea
+uploads

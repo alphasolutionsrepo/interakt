@@ -1,0 +1,18 @@
+{
+  "name": "interakt-docs-site",
+  "private": true,
+  "description": "Public docs site (GitHub Pages) built from backend/src/content/docs",
+  "scripts": {
+    "build": "docusaurus build",
+    "start": "docusaurus start"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.6.3",
+    "@docusaurus/preset-classic": "^3.6.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "engines": {
+    "node": ">=18.0"
+  }
+}

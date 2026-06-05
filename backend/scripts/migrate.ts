@@ -8,6 +8,10 @@ import { parse } from "pg-connection-string";
 // Load environment variables
 config({ path: ".env" });
 
+/** Whether a connection string asks for TLS (managed Postgres requires it). */
+const requiresSsl = (connectionString: string): boolean =>
+  /[?&]sslmode=(require|prefer|verify-ca|verify-full)/i.test(connectionString);
+
 const ensureDatabaseExists = async (connectionString: string, verbose = true) => {
   const config = parse(connectionString);
 
@@ -24,7 +28,11 @@ const ensureDatabaseExists = async (connectionString: string, verbose = true) =>
   const defaultDb = "postgres";
 
   const adminConnectionString = `postgresql://${user}:${password}@${host}:${port ?? 5432}/${defaultDb}`;
-  const sql = postgres(adminConnectionString, { max: 1 });
+  // Managed Postgres (e.g. Azure Flexible Server) requires TLS. The rebuilt
+  // admin connection string drops the source query params, so carry the SSL
+  // requirement over explicitly — otherwise the server rejects it with
+  // "no pg_hba.conf entry ... no encryption".
+  const sql = postgres(adminConnectionString, { max: 1, ssl: requiresSsl(connectionString) ? 'require' : undefined });
 
   const dbExistsQuery = sql`
     SELECT 1 FROM pg_database WHERE datname = ${dbName}
@@ -66,12 +74,18 @@ const runMigrations = async (options: {
     console.log(`⏳ Database URL: ${postgresUrl.substring(0, 20)}...`);
   }
 
-  const connection = postgres(postgresUrl, { max: 1 });
+  const connection = postgres(postgresUrl, { max: 1, ssl: requiresSsl(postgresUrl) ? 'require' : undefined });
   const db = drizzle(connection);
 
   const start = Date.now();
 
   try {
+    // Ensure pgvector exists before migrations that use the `vector` type.
+    // Idempotent; mirrors the dev init script for managed/self-hosted Postgres
+    // (e.g. Azure Flexible Server, where the extension is allow-listed but no
+    // separate bootstrap runs). Requires the extension to be allow-listed.
+    await connection.unsafe('CREATE EXTENSION IF NOT EXISTS vector');
+
     await migrate(db, { migrationsFolder });
     const end = Date.now();
     if (verbose) {
@@ -100,7 +114,11 @@ const dbsetup = async () => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runMigrations()
     .then(() => process.exit(0))
-    .catch(() => process.exit(1));
+    .catch((err) => {
+      console.error("❌ Migration failed");
+      console.error(err);
+      process.exit(1);
+    });
 }
 
 export default dbsetup;

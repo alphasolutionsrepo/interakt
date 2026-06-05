@@ -1,0 +1,62 @@
+name: Docs to GitHub Pages
+
+# Builds the public docs site from backend/src/content/docs (the same Markdown the
+# app serves at /docs) with Docusaurus and deploys it to GitHub Pages.
+#
+# One-time: repo Settings → Pages → Build and deployment → Source = "GitHub Actions".
+# Source of truth stays in backend/src/content/docs; this stages a copy and builds it.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/src/content/docs/**'
+      - 'docs-site/**'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Stage docs into the site
+        run: |
+          rm -rf docs-site/docs
+          mkdir -p docs-site/docs
+          cp -R backend/src/content/docs/. docs-site/docs/
+
+      - name: Install & build
+        working-directory: docs-site
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
