@@ -1,11 +1,10 @@
 name: Docs to GitHub Pages
 
-# Standard GitHub Pages (Jekyll) build of the public docs site from
-# backend/src/content/docs — the same Markdown the app serves at /docs.
+# Builds the public docs site from backend/src/content/docs (the same Markdown the
+# app serves at /docs) with Docusaurus and deploys it to GitHub Pages.
 #
 # One-time: repo Settings → Pages → Build and deployment → Source = "GitHub Actions".
-# The Markdown source of truth stays in backend/src/content/docs; this stages a
-# copy with docs-site/_config.yml and builds it with Jekyll.
+# Source of truth stays in backend/src/content/docs; this stages a copy and builds it.
 
 on:
   workflow_dispatch:
@@ -13,7 +12,7 @@ on:
     branches: [develop]
     paths:
       - 'backend/src/content/docs/**'
-      - 'docs-site/_config.yml'
+      - 'docs-site/**'
       - '.github/workflows/docs.yml'
 
 permissions:
@@ -31,26 +30,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Stage docs (+ Jekyll config; sidebar_position → nav_order)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Stage docs into the site
         run: |
-          rm -rf _pages_src && mkdir -p _pages_src
-          cp -R backend/src/content/docs/. _pages_src/
-          cp docs-site/_config.yml _pages_src/_config.yml
-          # just-the-docs orders nav by `nav_order`; the docs use Docusaurus's
-          # `sidebar_position`. Map it so ordering is preserved (source untouched).
-          find _pages_src -name '*.md' -type f -exec sed -i -E 's/^sidebar_position:/nav_order:/' {} +
+          rm -rf docs-site/docs
+          mkdir -p docs-site/docs
+          cp -R backend/src/content/docs/. docs-site/docs/
+
+      - name: Install & build
+        working-directory: docs-site
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
 
       - uses: actions/configure-pages@v5
-
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./_pages_src
-          destination: ./_site
-
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ./_site
+          path: docs-site/build
 
   deploy:
     needs: build
