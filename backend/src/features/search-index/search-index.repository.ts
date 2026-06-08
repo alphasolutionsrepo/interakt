@@ -62,6 +62,70 @@ export async function createSearchIndexOnly(
 // ============================================================================
 
 /**
+ * Minimal auth record used to validate an ingestion API key.
+ */
+export interface SearchIndexIngestAuth {
+    id: string;
+    isActive: boolean;
+    status: string;
+    createdBy: string | null;
+}
+
+/**
+ * Resolve an ingestion token to its search index (minimal fields).
+ * Returns null if no index has the given token.
+ */
+export async function getSearchIndexByIngestToken(
+    token: string
+): Promise<SearchIndexIngestAuth | null> {
+    const [row] = await db
+        .select({
+            id: searchIndex.id,
+            isActive: searchIndex.isActive,
+            status: searchIndex.status,
+            createdBy: searchIndex.createdBy,
+        })
+        .from(searchIndex)
+        .where(eq(searchIndex.ingestToken, token))
+        .limit(1);
+
+    return row ?? null;
+}
+
+/**
+ * Get the current ingestion token for an index.
+ * Returns null if the index does not exist.
+ */
+export async function getIngestToken(id: string): Promise<string | null> {
+    const [row] = await db
+        .select({ ingestToken: searchIndex.ingestToken })
+        .from(searchIndex)
+        .where(eq(searchIndex.id, id))
+        .limit(1);
+
+    return row?.ingestToken ?? null;
+}
+
+/**
+ * Regenerate (rotate) the ingestion token for an index, revoking the old one.
+ * Returns the new token, or null if the index does not exist.
+ */
+export async function regenerateIngestToken(id: string): Promise<string | null> {
+    const [updated] = await db
+        .update(searchIndex)
+        .set({ ingestToken: sql`gen_random_uuid()`, updatedAt: new Date() })
+        .where(eq(searchIndex.id, id))
+        .returning({ ingestToken: searchIndex.ingestToken });
+
+    if (!updated) {
+        return null;
+    }
+
+    logger.info('Regenerated ingest token', { indexId: id });
+    return updated.ingestToken;
+}
+
+/**
  * Get search index by ID with all relations
  * NOW: Uses searchIndexFields instead of indexFieldMappings
  */
