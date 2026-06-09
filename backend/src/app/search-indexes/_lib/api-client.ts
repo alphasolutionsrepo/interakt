@@ -268,6 +268,29 @@ export const searchIndexesApi = {
     },
 
     // ========================================================================
+    // INGEST TOKEN (per-index API key for external document uploads)
+    // ========================================================================
+
+    /**
+     * Get the index's ingestion API key (used for external document uploads
+     * at POST /api/v1/search-indexes/:id/documents).
+     */
+    getIngestToken: async (id: string): Promise<{ ingestToken: string }> => {
+        const response = await fetch(`/api/search-indexes/${id}/ingest-token`);
+        return handleResponse<{ ingestToken: string }>(response);
+    },
+
+    /**
+     * Rotate the index's ingestion API key, immediately revoking the old one.
+     */
+    regenerateIngestToken: async (id: string): Promise<{ ingestToken: string }> => {
+        const response = await fetch(`/api/search-indexes/${id}/ingest-token`, {
+            method: 'POST',
+        });
+        return handleResponse<{ ingestToken: string }>(response);
+    },
+
+    // ========================================================================
     // AI CONFIGURATION
     // ========================================================================
 

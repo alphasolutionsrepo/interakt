@@ -66,6 +66,7 @@ export {
 
 export {
     handleIndexDocuments,
+    handleIngestDocuments,
     handleListBatches,
     handleGetBatchStatus,
     handleCancelBatch,
