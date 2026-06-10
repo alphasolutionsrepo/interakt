@@ -17,7 +17,17 @@ const config = {
 
   // Don't fail the build on a stray relative link in the authored docs.
   onBrokenLinks: 'warn',
-  onBrokenMarkdownLinks: 'warn',
+
+  markdown: {
+    // Force CommonMark for ALL Markdown (not MDX), so plain-Markdown constructs in
+    // the authored docs — literal <angle> placeholders, { braces }, etc. — are
+    // treated as text and never break the build. ('detect' still MDX-parses files
+    // that look MDX-ish, which these aren't.)
+    format: 'md',
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
+  },
 
   presets: [
     [

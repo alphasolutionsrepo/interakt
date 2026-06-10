@@ -1574,3 +1574,76 @@ export async function handleImportSearchIndex(request: NextRequest) {
         return apiResponse.error(error as Error);
     }
 }
+
+// ============================================================================
+// INGEST TOKEN (per-index API key for external document uploads)
+// ============================================================================
+
+/**
+ * GET /api/search-indexes/:id/ingest-token
+ * Return the index's ingestion API key (session-authenticated, admin UI).
+ */
+export async function handleGetIngestToken(
+    request: NextRequest,
+    context: { params: Promise<{ id: string }> }
+) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return apiResponse.unauthorized('You must be logged in');
+        }
+
+        const params = await context.params;
+        const validation = searchIndexIdSchema.safeParse({ id: params.id });
+        if (!validation.success) {
+            return apiResponse.validationError(validation.error);
+        }
+
+        const ingestToken = await service.getIngestToken(validation.data.id);
+        return apiResponse.success({ ingestToken });
+    } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to get ingest token', err);
+        if (err.message.includes('not found')) {
+            return apiResponse.notFound(err.message);
+        }
+        return apiResponse.error(err);
+    }
+}
+
+/**
+ * POST /api/search-indexes/:id/ingest-token
+ * Rotate the index's ingestion API key, revoking the previous one
+ * (session-authenticated, admin UI).
+ */
+export async function handleRegenerateIngestToken(
+    request: NextRequest,
+    context: { params: Promise<{ id: string }> }
+) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return apiResponse.unauthorized('You must be logged in');
+        }
+
+        const params = await context.params;
+        const validation = searchIndexIdSchema.safeParse({ id: params.id });
+        if (!validation.success) {
+            return apiResponse.validationError(validation.error);
+        }
+
+        const ingestToken = await service.regenerateIngestToken(validation.data.id);
+        logger.info('Regenerated ingest token via API', {
+            indexId: validation.data.id,
+            userId,
+        });
+        return apiResponse.success({ ingestToken });
+    } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to regenerate ingest token', err);
+        if (err.message.includes('not found')) {
+            return apiResponse.notFound(err.message);
+        }
+        return apiResponse.error(err);
+    }
+}

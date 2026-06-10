@@ -1435,3 +1435,31 @@ export async function importSearchIndex(
         throw error;
     }
 }
+
+// ============================================================================
+// INGEST TOKEN (per-index API key for external document uploads)
+// ============================================================================
+
+/**
+ * Get the ingestion API key for an index.
+ * @throws Error if the index does not exist.
+ */
+export async function getIngestToken(id: string): Promise<string> {
+    const token = await repository.getIngestToken(id);
+    if (token === null) {
+        throw new Error(`Search index with ID ${id} not found`);
+    }
+    return token;
+}
+
+/**
+ * Rotate the ingestion API key for an index, immediately revoking the old key.
+ * @throws Error if the index does not exist.
+ */
+export async function regenerateIngestToken(id: string): Promise<string> {
+    const token = await repository.regenerateIngestToken(id);
+    if (token === null) {
+        throw new Error(`Search index with ID ${id} not found`);
+    }
+    return token;
+}
