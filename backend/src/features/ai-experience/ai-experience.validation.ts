@@ -297,6 +297,28 @@ export const updateToolAssignmentSchema = z.object({
 export type UpdateToolAssignmentDTO = z.infer<typeof updateToolAssignmentSchema>;
 
 // ============================================================================
+// PUBLIC CHAT REQUEST SCHEMA  (POST /api/v1/ai-experiences/chat and /{slug}/chat)
+// ============================================================================
+
+/**
+ * Upper bound on a single user turn. The message flows straight into the chat
+ * pipeline, which fans out into several LLM calls — an unbounded body is both a
+ * cost leak and a cheap DoS vector on a token-authenticated public endpoint.
+ */
+export const MAX_CHAT_MESSAGE_LENGTH = 8_000;
+
+export const chatRequestSchema = z.object({
+  message: z
+    .string()
+    .trim()
+    .min(1, 'message is required and must be a non-empty string')
+    .max(MAX_CHAT_MESSAGE_LENGTH, `message must be ${MAX_CHAT_MESSAGE_LENGTH} characters or less`),
+  sessionId: z.string().trim().max(200).optional(),
+});
+
+export type ChatRequestDTO = z.infer<typeof chatRequestSchema>;
+
+// ============================================================================
 // QUERY SCHEMAS
 // ============================================================================
 

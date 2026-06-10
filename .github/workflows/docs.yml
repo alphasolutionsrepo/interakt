@@ -47,6 +47,10 @@ jobs:
         working-directory: docs-site
         run: |
           npm install --no-audit --no-fund
+          # Generate the API reference MDX from the committed OpenAPI spec
+          # (static/openapi/interakt-v1.yaml) before building. Runs after the
+          # content docs are staged so both land in the same docs/ tree.
+          npm run gen-api-docs
           npm run build
 
       - uses: actions/configure-pages@v5

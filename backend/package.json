@@ -45,6 +45,7 @@
     "db:generate-analytics": "node scripts/db-migrate-analytics.js generate",
     "db:migrate-analytics": "node scripts/db-migrate-analytics.js apply",
     "db:migrate-all": "npm run db:generate && npm run db:migrate && npm run db:generate-analytics && npm run db:migrate-analytics",
+    "openapi:generate": "tsx src/features/public-api/generate-openapi.ts",
     "infra:up": "docker compose -f docker/docker-compose.dev.yml up -d --wait",
     "infra:down": "docker compose -f docker/docker-compose.dev.yml down",
     "infra:reset": "docker compose -f docker/docker-compose.dev.yml down -v",
@@ -139,10 +140,10 @@
     "tailwind-merge": "^3.4.0",
     "uuid": "^14.0.0",
     "vaul": "^1.1.2",
-    "yaml": "^2.8.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@eslint/js": "^9.29.0",
     "@next/eslint-plugin-next": "^16.2.4",
     "@tailwindcss/postcss": "^4",
@@ -172,7 +173,8 @@
     "typescript": "^5",
     "typescript-eslint": "^8.34.1",
     "vite": "^8.0.10",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "yaml": "^2.9.0"
   },
   "overrides": {
     "@types/react": "19.2.7",
