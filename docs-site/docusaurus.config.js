@@ -9,9 +9,10 @@
 const config = {
   title: 'Interakt Docs',
   tagline: 'AI-powered search & chat platform',
-  url: 'https://alphasolutionsrepo.github.io',
-  // Project Pages live under /<repo>/. Use '/' for a user/org site or custom domain.
-  baseUrl: '/interakt/',
+  url: 'https://docs.interakt.app',
+  // Served at the root of the custom domain, so baseUrl is '/'.
+  // (Was '/interakt/' for project Pages under alphasolutionsrepo.github.io.)
+  baseUrl: '/',
   organizationName: 'alphasolutionsrepo',
   projectName: 'interakt',
 
