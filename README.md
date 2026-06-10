@@ -2,6 +2,8 @@
 
 AI-powered search and chat platform. This README gets a new developer running the full stack locally — backend admin/API + demo site — and walks through first-boot configuration.
 
+📖 **Documentation:** [docs.interakt.app](https://docs.interakt.app)
+
 ## Repo layout
 
 ```

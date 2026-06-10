@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/features/auth/auth.api.handlers';
 import { getAIExperienceBySlug } from '@/features/ai-experience/ai-experience.service';
+import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
 import { runChatPipeline } from '@/features/pipeline/chat-pipeline';
 import { flushTelemetry } from '@/features/telemetry';
 import type { PipelineStreamEvent } from '@/features/pipeline/pipeline.types';
@@ -28,25 +29,23 @@ export async function POST(
 ) {
   const { slug } = await context.params;
 
-  // ── Parse body ─────────────────────────────────────────────────────────────
-  let body: { message?: unknown; sessionId?: unknown };
+  // ── Parse & validate body ──────────────────────────────────────────────────
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const message =
-    typeof body.message === 'string' ? body.message.trim() : '';
-  if (!message) {
+  const parsed = chatRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: '"message" is required and must be a non-empty string' },
+      { error: parsed.error.errors[0]?.message ?? 'Invalid request body' },
       { status: 400 },
     );
   }
 
-  const clientSessionId =
-    typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+  const { message, sessionId: clientSessionId } = parsed.data;
 
   // ── Load experience ────────────────────────────────────────────────────────
   const experience = await getAIExperienceBySlug(slug);
