@@ -4,16 +4,12 @@
   "description": "Public docs site (GitHub Pages) built from backend/src/content/docs",
   "scripts": {
     "build": "docusaurus build",
-    "start": "docusaurus start",
-    "gen-api-docs": "docusaurus gen-api-docs all",
-    "clean-api-docs": "docusaurus clean-api-docs all"
+    "start": "docusaurus start"
   },
   "dependencies": {
-    "@docusaurus/core": "^3.6.3",
-    "@docusaurus/preset-classic": "^3.6.3",
-    "docusaurus-plugin-openapi-docs": "^4.4.0",
-    "docusaurus-theme-openapi-docs": "^4.4.0",
-    "path-browserify": "^1.0.1",
+    "@docusaurus/core": "^3.10.1",
+    "@docusaurus/preset-classic": "^3.10.1",
+    "redocusaurus": "^2.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
