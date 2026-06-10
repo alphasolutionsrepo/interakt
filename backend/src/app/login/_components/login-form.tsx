@@ -2,6 +2,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -85,6 +86,24 @@ export function LoginForm() {
                     }`}
             >
                 <CardHeader className="space-y-1 pb-6">
+                    <div className="flex justify-center pb-4">
+                        <Image
+                            src="/logo/interakt_logo_highres.png"
+                            alt="Interakt"
+                            width={160}
+                            height={46}
+                            priority
+                            className="h-10 w-auto object-contain dark:hidden"
+                        />
+                        <Image
+                            src="/logo/interakt_logo_highres_dark.png"
+                            alt="Interakt"
+                            width={160}
+                            height={46}
+                            priority
+                            className="hidden h-10 w-auto object-contain dark:block"
+                        />
+                    </div>
                     <CardTitle className="text-3xl font-bold text-center">
                         Welcome Back
                     </CardTitle>
