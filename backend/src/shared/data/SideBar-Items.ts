@@ -25,6 +25,7 @@ import {
     Rocket,
     Boxes,
     MessageCircle,
+    Clock,
 } from "lucide-react";
 
 export const sidebarGroups = [
@@ -199,6 +200,11 @@ export const sidebarGroups = [
                         icon: MemoryStick,
                     },
                 ]
+            },
+            {
+                title: "sidebar.items.backgroundJobs",
+                url: "/jobs",
+                icon: Clock,
             },
             {
                 title: "sidebar.items.healthMonitoring",

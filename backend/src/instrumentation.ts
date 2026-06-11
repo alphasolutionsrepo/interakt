@@ -66,5 +66,11 @@ export async function register() {
     // This is what makes `npm run dev` self-bootstrapping.
     const { seedAdminFromYaml } = await import('@/shared/setup/admin-seed');
     await seedAdminFromYaml();
+
+    // Start the background jobs engine (pg-boss). Fire-and-forget: failures are
+    // logged inside startJobs and must not block server boot. Respects
+    // ENABLE_JOBS. Runs in-process; safe across multiple replicas.
+    const { startJobs } = await import('@/features/jobs');
+    void startJobs();
   }
 }
