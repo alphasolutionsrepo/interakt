@@ -63,6 +63,7 @@ Each job type has **one** schedule; saving again replaces it, and **Remove sched
 
 ## Notes
 
+- **Admin only.** Viewing, running, scheduling, and managing jobs all require the **admin** role.
 - The engine runs in-process with the app and is safe across multiple replicas — each scheduled or queued job runs exactly once regardless of how many app instances are running.
 - To disable background jobs entirely, set `ENABLE_JOBS=false`.
 
