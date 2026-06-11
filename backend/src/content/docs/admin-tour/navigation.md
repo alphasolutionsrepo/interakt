@@ -51,6 +51,7 @@ Cross-cutting infrastructure and admin.
 - **Settings**:
   - **Search settings** — global search behaviour: timeouts, hybrid-search weights.
   - **Cache management** — see what's cached, clear when you need to.
+- **Background jobs** — run long-running work on demand or on a recurring schedule (e.g. refreshing AI insights), and review every run.
 - **Health monitoring** — service status page.
 - **User management** — create, edit, deactivate users; assign roles.
 - **Initial setup** — the first-boot wizard. Comes back here to tear down or re-run the demo.

@@ -119,6 +119,7 @@ const HELP_ROUTES: HelpRoute[] = [
   { match: '/analytics', title: 'Analytics', doc: 'concepts/analytics' },
 
   // Administration
+  { match: '/jobs', title: 'Background Jobs', doc: 'concepts/background-jobs' },
   { match: '/setup', title: 'Initial setup', doc: 'getting-started/initial-setup' },
   { match: '/users', title: 'User management', doc: 'concepts/users' },
   { match: '/dashboard', title: 'Dashboard', doc: 'admin-tour/dashboard' },
