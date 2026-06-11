@@ -133,7 +133,8 @@ function assertValidCron(cron: string): void {
 /** A single job with full payload/output, or null if not found. */
 export async function getJob(queue: string, id: string): Promise<JobRecord | null> {
   const boss = getBoss();
-  const job = await boss.getJobById(queue, id);
+  // findJobs (not the deprecated getJobById) — filter by id within the queue.
+  const [job] = await boss.findJobs(queue, { id });
   if (!job) return null;
   return {
     id: job.id,
