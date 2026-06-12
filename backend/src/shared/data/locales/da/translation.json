@@ -78,6 +78,7 @@
       "health": "Sundhed",
       "cache": "Cache",
       "healthMonitoring": "Sundhedsovervågning",
+      "backgroundJobs": "Baggrundsjob",
       "cacheManagement": "Cache Styring",
       "traces": "Spor",
       "aiServices": "AI Udbyder",

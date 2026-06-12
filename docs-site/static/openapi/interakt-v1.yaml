@@ -1,0 +1,856 @@
+openapi: 3.1.0
+info:
+  title: Interakt Public API
+  version: 1.0.0
+  description: >-
+    Public, token-authenticated REST API for embedding Interakt search and AI
+    chat into your own applications.
+
+
+    All endpoints live under `/api/v1`. Authenticate with your experience’s
+    access token via the `X-Access-Token` header (or `Authorization: Bearer`).
+    Document ingestion uses a separate per-index `X-Api-Key`.
+servers:
+  - url: https://admin.interakt.app
+    description: Hosted Interakt
+tags:
+  - name: Search
+    description: Query indexes and fetch documents.
+  - name: AI
+    description: AI summaries and chat experiences.
+  - name: Embed
+    description: Drop-in widget embedding.
+  - name: Ingestion
+    description: Push documents into an index.
+components:
+  securitySchemes:
+    AccessToken:
+      type: apiKey
+      in: header
+      name: X-Access-Token
+      description: Per-experience access token. Find it in the dashboard under the
+        Search or AI Experience’s "Access" tab.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: "The same access token may be sent as `Authorization: Bearer
+        <token>` instead of `X-Access-Token`."
+    IngestApiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: Per-index ingestion API key, used only by the document ingestion
+        endpoint.
+  schemas:
+    SearchHit:
+      type: object
+      properties:
+        id:
+          type: string
+        score:
+          type: number
+        source:
+          type: object
+          additionalProperties: {}
+          description: Indexed document fields (subject to field-level include/exclude
+            config).
+        highlights:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      required:
+        - id
+        - score
+        - source
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+        totalItems:
+          type: integer
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
+      required:
+        - page
+        - pageSize
+        - totalPages
+    Facet:
+      type: object
+      properties:
+        field:
+          type: string
+        type:
+          type: string
+        label:
+          type: string
+        buckets:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                anyOf:
+                  - type: string
+                  - type: number
+              count:
+                type: integer
+            required:
+              - key
+              - count
+      required:
+        - field
+        - type
+        - buckets
+    SearchResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/SearchHit"
+            total:
+              type: object
+              properties:
+                value:
+                  type: integer
+                relation:
+                  type: string
+              required:
+                - value
+            pagination:
+              $ref: "#/components/schemas/Pagination"
+            facets:
+              type: array
+              items:
+                $ref: "#/components/schemas/Facet"
+            took:
+              type: integer
+              description: Total round-trip time in milliseconds.
+            searchExperienceId:
+              type: string
+              format: uuid
+            indexesSearched:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  name:
+                    type: string
+                  displayName:
+                    type: string
+                required:
+                  - id
+                  - name
+                  - displayName
+            displayConfig:
+              type: object
+              additionalProperties: {}
+          required:
+            - results
+            - total
+            - pagination
+            - took
+            - searchExperienceId
+            - indexesSearched
+      required:
+        - success
+        - data
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - false
+        error:
+          type: string
+          example: Invalid access token
+        code:
+          type: string
+          example: UNAUTHORIZED
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+            required:
+              - field
+              - message
+          description: Per-field validation errors (present on 400 VALIDATION_ERROR).
+      required:
+        - error
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        indexId:
+          type: string
+          format: uuid
+        searchType:
+          type: string
+          enum:
+            - lexical
+            - semantic
+            - hybrid
+            - auto
+        filters:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                minLength: 1
+              operator:
+                type: string
+              value: {}
+              filters:
+                type: array
+                items: {}
+            required:
+              - field
+              - operator
+        facets:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                minLength: 1
+              type:
+                type: string
+              size:
+                type: integer
+                minimum: 1
+                maximum: 100
+            required:
+              - field
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        sort:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                minLength: 1
+              direction:
+                type: string
+                enum:
+                  - asc
+                  - desc
+            required:
+              - field
+              - direction
+        includeFields:
+          type: array
+          items:
+            type: string
+        excludeFields:
+          type: array
+          items:
+            type: string
+      required:
+        - query
+    AutocompleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: object
+          properties:
+            suggestions:
+              type: array
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  score:
+                    type: number
+                  field:
+                    type: string
+                  indexId:
+                    type: string
+                  indexName:
+                    type: string
+                  highlight:
+                    type: string
+                required:
+                  - text
+            query:
+              type: string
+            took:
+              type: integer
+          required:
+            - suggestions
+            - query
+      required:
+        - success
+        - data
+    AutocompleteRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 200
+        indexId:
+          type: string
+          format: uuid
+        maxSuggestions:
+          type: integer
+          minimum: 1
+          maximum: 20
+      required:
+        - query
+    SummarizeRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        filters:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                minLength: 1
+              operator:
+                type: string
+                enum:
+                  - eq
+                  - neq
+                  - gt
+                  - gte
+                  - lt
+                  - lte
+                  - in
+                  - nin
+                  - contains
+                  - prefix
+                  - exists
+                  - missing
+                  - range
+              value: {}
+            required:
+              - field
+              - operator
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              index:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                required:
+                  - id
+                  - name
+              fields:
+                type: object
+                additionalProperties: {}
+            required:
+              - id
+              - index
+              - fields
+          minItems: 1
+          maxItems: 50
+        totalResults:
+          type: integer
+          minimum: 0
+        instruction:
+          type: string
+          maxLength: 500
+      required:
+        - query
+        - results
+    DocumentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: object
+          properties:
+            document:
+              type: object
+              properties:
+                id:
+                  type: string
+                fields:
+                  type: object
+                  additionalProperties: {}
+                indexId:
+                  type: string
+                indexName:
+                  type: string
+              required:
+                - id
+                - fields
+                - indexId
+                - indexName
+            displayConfig:
+              type: object
+              additionalProperties: {}
+          required:
+            - document
+      required:
+        - success
+        - data
+    ChatRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 8000
+        sessionId:
+          type: string
+          maxLength: 200
+      required:
+        - message
+    WidgetConfigResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: object
+          properties:
+            name:
+              type: string
+            greeting:
+              type: string
+            description:
+              type: string
+            suggestedQuestions:
+              type: array
+              items:
+                type: string
+            placeholder:
+              type: string
+            showBranding:
+              type: boolean
+          required:
+            - name
+            - showBranding
+      required:
+        - success
+        - data
+    EmbedSnippetResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: object
+          properties:
+            widget:
+              type: string
+              enum:
+                - chat
+                - search
+            experienceName:
+              type: string
+            scriptUrl:
+              type: string
+              format: uri
+            containerId:
+              type: string
+            globalName:
+              type: string
+            appliedConfig:
+              type: object
+              properties:
+                theme:
+                  type:
+                    - string
+                    - "null"
+                primaryColor:
+                  type:
+                    - string
+                    - "null"
+                launcher:
+                  type:
+                    - string
+                    - "null"
+                placement:
+                  type:
+                    - string
+                    - "null"
+              required:
+                - theme
+                - primaryColor
+                - launcher
+                - placement
+            html:
+              type: string
+              description: Ready-to-paste HTML embed snippet.
+          required:
+            - widget
+            - experienceName
+            - scriptUrl
+            - containerId
+            - globalName
+            - appliedConfig
+            - html
+      required:
+        - success
+        - data
+    IngestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: object
+          properties:
+            indexed:
+              type: integer
+            failed:
+              type: integer
+          description: Ingestion outcome counts.
+      required:
+        - success
+        - data
+    IngestRequest:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          minItems: 1
+          description: Array of document objects to index.
+      required:
+        - documents
+  parameters: {}
+paths:
+  /api/v1/search:
+    post:
+      tags:
+        - Search
+      summary: Run a search query
+      description: Executes a query against a Search Experience and returns ranked
+        results, facets, and pagination.
+      security: &a1
+        - AccessToken: []
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          description: Invalid request body or no valid indexes configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Search provider unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/autocomplete:
+    post:
+      tags:
+        - Search
+      summary: Autocomplete suggestions
+      description: Returns type-ahead suggestions for a partial query.
+      security: *a1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutocompleteRequest"
+      responses:
+        "200":
+          description: Suggestions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutocompleteResponse"
+        "401":
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/summarize:
+    post:
+      tags:
+        - AI
+      summary: Summarize search results (streaming)
+      description: "Generates an AI summary over a set of search results. Server-Sent
+        Events stream (`text/event-stream`). Each line is `data: <json>`. Event
+        objects carry a `type` of `content` | `tool_call` | `tool_result` |
+        `done` | `error`."
+      security: *a1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SummarizeRequest"
+      responses:
+        "200":
+          description: SSE stream of summary content.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: AI summarization is not enabled for this experience.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/documents/{documentId}:
+    get:
+      tags:
+        - Search
+      summary: Fetch a document by ID
+      description: Returns a single document from the experience’s indexes, respecting
+        field-level response config.
+      security: *a1
+      parameters:
+        - schema:
+            type: string
+            example: sku-12345
+          required: true
+          name: documentId
+          in: path
+      responses:
+        "200":
+          description: The document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "401":
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document not found in any active index.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ai-experiences/chat:
+    post:
+      tags:
+        - AI
+      summary: Chat with an AI Experience (streaming)
+      description: "Sends a user message to the AI Experience identified by the access
+        token and streams the assistant response. Server-Sent Events stream
+        (`text/event-stream`). Each line is `data: <json>`. Event objects carry
+        a `type` of `content` | `tool_call` | `tool_result` | `done` | `error`."
+      security: *a1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: SSE stream of the assistant turn.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: AI Experience is not active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ai-experiences/widget-config:
+    get:
+      tags:
+        - AI
+      summary: Public widget configuration
+      description: Returns the greeting, suggested questions, and branding flags a
+        chat widget needs before the first message.
+      security: *a1
+      responses:
+        "200":
+          description: Widget configuration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WidgetConfigResponse"
+        "401":
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: AI Experience is not active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/embed-snippet:
+    get:
+      tags:
+        - Embed
+      summary: Get the drop-in embed snippet
+      description: Returns a ready-to-paste HTML snippet (and resolved config) for the
+        experience the token identifies.
+      security: *a1
+      parameters:
+        - schema:
+            type: string
+            description: DOM id the widget mounts into.
+          required: false
+          name: containerId
+          in: query
+      responses:
+        "200":
+          description: Embed snippet and applied config.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedSnippetResponse"
+        "401":
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/search-indexes/{id}/documents:
+    post:
+      tags:
+        - Ingestion
+      summary: Ingest documents into an index
+      description: "Uploads documents for indexing from an external system.
+        Authenticated with a per-index ingestion key (`X-Api-Key` or
+        `Authorization: Bearer`)."
+      security:
+        - IngestApiKey: []
+        - BearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            description: Search index UUID.
+          required: true
+          name: id
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestRequest"
+      responses:
+        "200":
+          description: Ingestion accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid ingestion key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+webhooks: {}
