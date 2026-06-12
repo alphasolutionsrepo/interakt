@@ -267,15 +267,9 @@ export function hashIP(ip: string): string {
  * Generate a session ID for client-side use
  */
 export function generateSessionId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  // Fallback
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  // crypto.randomUUID is available in all supported runtimes (Node 16+, modern
+  // browsers). No insecure Math.random fallback.
+  return crypto.randomUUID();
 }
 
 /**

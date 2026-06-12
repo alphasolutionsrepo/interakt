@@ -64,6 +64,30 @@ function createPinoOptions(): LoggerOptions {
     base: {
       env: process.env.NODE_ENV || 'development',
     },
+    // Defensive redaction: if a secret/credential is ever passed in a log
+    // context, replace it with [Redacted] rather than emitting it in clear text.
+    redact: {
+      paths: [
+        'apiKey',
+        'apiKeySecret',
+        'password',
+        'token',
+        'accessToken',
+        'secret',
+        'authorization',
+        '*.apiKey',
+        '*.apiKeySecret',
+        '*.password',
+        '*.token',
+        '*.accessToken',
+        '*.secret',
+        '*.authorization',
+        'headers.authorization',
+        'req.headers.authorization',
+        'req.headers.cookie',
+      ],
+      censor: '[Redacted]',
+    },
     timestamp: pino.stdTimeFunctions.isoTime,
     formatters: {
       level: (label) => ({ level: label }),
