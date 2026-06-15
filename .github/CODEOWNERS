@@ -1,7 +1,7 @@
 # CODEOWNERS for Interakt
 # ------------------------------------------------------------------
 # This file defines who is automatically requested for review on PRs.
-# Combined with the "require_code_owner_review" rule on main/develop,
+# Combined with the "require_code_owner_review" rule on main,
 # it ensures no PR merges without a maintainer's approval.
 #
 # Rules:

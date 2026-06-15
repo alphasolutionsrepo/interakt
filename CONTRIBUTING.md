@@ -45,7 +45,7 @@ to a feature, match the surrounding structure rather than introducing a new patt
 
 ## Development workflow
 
-1. Branch from `develop` (the default branch): `git checkout -b feature/your-change`.
+1. Branch from `main` (the default branch): `git checkout -b feature/your-change`.
 2. Make your change. Add or update tests for any non-trivial logic (see below).
 3. Run the full local check before opening a PR:
 
@@ -57,7 +57,7 @@ to a feature, match the surrounding structure rather than introducing a new patt
    ```
 
    If you touched `backend/widgets/`, also run `npm --prefix widgets run build && npm --prefix widgets test`.
-4. Open a PR against `develop`. CI (lint · type-check · test, for both backend and widgets)
+4. Open a PR against `main`. CI (lint · type-check · test, for both backend and widgets)
    must pass.
 
 ## Database changes

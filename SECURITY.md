@@ -29,7 +29,7 @@ proof of concept, the affected endpoint or component, and any relevant configura
 ## Supported versions
 
 Interakt is in active early development (0.x). Security fixes are applied to the latest
-`develop` and `main`; there are no long-term support branches for older revisions yet.
+`main`; there are no long-term support branches for older revisions yet.
 
 ## Scope and hardening notes
 
