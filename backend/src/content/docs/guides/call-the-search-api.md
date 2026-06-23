@@ -66,3 +66,4 @@ The exact JSON shape evolves. Two living references that are always current:
 - [Embed widgets](../concepts/embed-widgets) — the easier path.
 - [Access tokens](../concepts/access-tokens) — how auth works.
 - [Search experiences](../concepts/search-experiences) — the experience's full configuration.
+- [Frontend frameworks](../Integrations/frontend/) — framework-specific guides (React / Next.js) showing this call wired into a real UI.

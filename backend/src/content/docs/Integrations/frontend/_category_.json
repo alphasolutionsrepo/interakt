@@ -1,0 +1,8 @@
+{
+  "label": "Frontend frameworks",
+  "position": 3,
+  "link": {
+    "type": "doc",
+    "id": "Integrations/frontend/index"
+  }
+}
