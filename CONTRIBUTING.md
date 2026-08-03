@@ -60,6 +60,23 @@ to a feature, match the surrounding structure rather than introducing a new patt
 4. Open a PR against `main`. CI (lint · type-check · test, for both backend and widgets)
    must pass.
 
+## Code review
+
+Every review thread has to be resolved before a PR can merge — this is enforced on `main`. So
+that the rule doesn't turn every passing remark into a blocker, prefix comments with intent:
+
+- `nit:` — style or taste. The author may resolve it without changing anything.
+- `suggestion:` — a concrete improvement worth weighing, but not blocking.
+- `question:` — wants an answer, not necessarily a code change.
+- `issue:` — blocking. Fix it, or agree explicitly to drop it, before merge.
+
+**Who resolves:** the author, once they've addressed the comment *and* replied saying how. If
+the reply doesn't settle things, the reviewer re-opens the thread. Don't resolve a thread
+without responding to it — a silent resolve reads as dismissing the feedback.
+
+`main` requires linear history, so PRs land by **squash** or **rebase**; merge commits are
+disabled. If `main` moves while your PR is open, rebase onto it rather than merging it in.
+
 ## Database changes
 
 Schema lives in `backend/db/schema/` (main) and `backend/db/analytics-schema/` (analytics),
