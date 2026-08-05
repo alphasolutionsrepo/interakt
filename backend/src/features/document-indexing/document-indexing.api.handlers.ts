@@ -201,7 +201,7 @@ export async function handleIndexDocuments(
             return apiResponse.validationError(paramValidation.error);
         }
 
-          // Authenticate. This handler previously read the user id without checking
+        // Authenticate. This handler previously read the user id without checking
         // it, which let anyone index documents anonymously — and, because indexing
         // generates embeddings, run up AI spend.
         const authResult = await resolveDocumentActor(request, {
@@ -213,16 +213,14 @@ export async function handleIndexDocuments(
         }
         const actor = authResult.actor;
 
-        // Check content length (for Vercel limits)
-        const contentLength = request.headers.get('content-length');
-        if (contentLength) {
-            const size = parseInt(contentLength, 10);
-            if (size > elasticsearchConfig.indexing.maxFileSizeBytes) {
-                return apiResponse.badRequest(
-                    `File too large. Maximum size: ${Math.round(elasticsearchConfig.indexing.maxFileSizeBytes / 1024 / 1024)}MB`
-                );
-            }
-        }
+        return await runDocumentIndexing(
+            request,
+            paramValidation.data.id,
+            actor.type === 'user' ? actor.userId : null
+        );
+    } catch (error) {
+        const err = error as Error;
+        logger.error('Document indexing failed', err);
 
         if (err.message.includes('not found')) {
             return apiResponse.notFound(err.message);
