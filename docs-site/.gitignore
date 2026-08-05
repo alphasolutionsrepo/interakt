@@ -4,3 +4,5 @@
 /build/
 /.docusaurus/
 /node_modules/
+
+# Generated API reference (docusaurus-plugin-openapi-docs)

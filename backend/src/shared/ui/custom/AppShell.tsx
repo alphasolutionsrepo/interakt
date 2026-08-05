@@ -26,17 +26,23 @@ export function AppShell({ children }: AppShellProps) {
       <div className="min-h-screen flex flex-col">
         <header className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border shadow-sm">
           <div className="flex items-center justify-between px-4 py-3">
-            <a href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-gradient-to-br from-slate-900 to-slate-700">
-                <Image
-                  src="/logo/interakt_logo_highres.png"
-                  alt="Interakt"
-                  width={20}
-                  height={20}
-                  className="object-contain brightness-0 invert"
-                />
-              </div>
-              <span className="font-bold text-lg tracking-tight">Interakt</span>
+            <a href="/" aria-label="Interakt home" className="flex items-center hover:opacity-80 transition-opacity">
+              <Image
+                src="/logo/interakt_logo_highres.png"
+                alt="Interakt"
+                width={112}
+                height={32}
+                priority
+                className="h-7 w-auto object-contain dark:hidden"
+              />
+              <Image
+                src="/logo/interakt_logo_highres_dark.png"
+                alt="Interakt"
+                width={112}
+                height={32}
+                priority
+                className="hidden h-7 w-auto object-contain dark:block"
+              />
             </a>
             <Navbar />
           </div>

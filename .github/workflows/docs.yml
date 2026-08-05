@@ -28,11 +28,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Stage docs into the site
         run: |
@@ -47,10 +47,12 @@ jobs:
         working-directory: docs-site
         run: |
           npm install --no-audit --no-fund
+          # Redocusaurus renders the API reference from the committed OpenAPI spec
+          # (static/openapi/interakt-v1.yaml) at build time — no codegen step.
           npm run build
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site/build
 
@@ -62,4 +64,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

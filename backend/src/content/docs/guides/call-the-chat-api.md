@@ -68,3 +68,4 @@ The exact JSON shape evolves. Two living references that are always current:
 - [Embed widgets](../concepts/embed-widgets) — the easier path.
 - [Access tokens](../concepts/access-tokens) — how auth works.
 - [Chat experiences](../concepts/chat-experiences) — the experience's full configuration.
+- [Frontend frameworks](../Integrations/frontend/) — framework-specific guides (React / Next.js) including the SSE streaming code wired into a real chat UI.

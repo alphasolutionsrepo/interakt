@@ -48,6 +48,13 @@ export const searchIndex = pgTable('search_index', {
 
   description: text('description'),
 
+  /**
+   * Per-index ingestion API key for external (server-to-server) document uploads.
+   * Auto-generated; presented via X-Api-Key / Authorization: Bearer for
+   * POST /api/v1/search-indexes/:id/documents. Regenerate to revoke.
+   */
+  ingestToken: uuid('ingest_token').defaultRandom().unique().notNull(),
+
   // ============================================================================
   // DATA TEMPLATE LINKAGE (legacy — nullable, FK removed)
   // ============================================================================
@@ -140,6 +147,7 @@ export const searchIndex = pgTable('search_index', {
   searchTypeIdx: index('search_index_search_type_idx').on(table.searchType),
   statusIdx: index('search_index_status_idx').on(table.status),
   isActiveIdx: index('search_index_is_active_idx').on(table.isActive),
+  ingestTokenIdx: index('search_index_ingest_token_idx').on(table.ingestToken),
 }));
 
 // ============================================================================

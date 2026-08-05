@@ -2,8 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [develop, main]
+    branches: [main]
   pull_request:
+
+# Least privilege: CI only needs to read the repo contents.
+permissions:
+  contents: read
 
 # Cancel superseded runs on the same ref.
 concurrency:
@@ -18,9 +22,9 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -46,9 +50,9 @@ jobs:
       run:
         working-directory: backend/widgets
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm

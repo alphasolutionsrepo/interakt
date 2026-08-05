@@ -29,7 +29,11 @@ function defaultBaseUrl(): string {
 const SCRIPT_ORIGIN = defaultBaseUrl();
 
 export function resolveApiBase(override?: string): string {
-  return (override ?? SCRIPT_ORIGIN).replace(/\/+$/, '');
+  // Linear trailing-slash trim — avoids the polynomial backtracking of /\/+$/.
+  const base = override ?? SCRIPT_ORIGIN;
+  let end = base.length;
+  while (end > 0 && base.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return base.slice(0, end);
 }
 
 function buildHeaders(accessToken: string, contentType = 'application/json'): HeadersInit {

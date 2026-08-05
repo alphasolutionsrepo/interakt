@@ -110,6 +110,8 @@ Paste the same snippet into every page where you want the widget. It de-duplicat
 
 You don't have to use the widget. The same experiences are reachable as REST endpoints — the snippet is just a convenience wrapper. If you have a custom frontend, see [Access tokens](access-tokens) for how the API auth works, and the in-app **Playground → Experience Search / AI Service** to see actual request and response shapes.
 
+For framework-specific walkthroughs of both the widget and the custom-API path, see the [Frontend frameworks](../Integrations/frontend/) integration guides (React / Next.js, with more coming).
+
 ## Common gotchas
 
 - **CORS errors.** Make sure the page's origin is in **Allowed origins** on the experience. The browser console error mentions "blocked by CORS policy" — that's the give-away.

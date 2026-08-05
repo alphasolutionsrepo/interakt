@@ -89,10 +89,14 @@ export interface SpanFilterOptions {
 // ============================================================================
 
 /**
- * Escape special SQL LIKE pattern characters (% and _) in user input.
+ * Escape special SQL LIKE pattern characters in user input.
+ *
+ * Postgres LIKE/ILIKE uses backslash as the default escape character, so the
+ * backslash itself must be escaped first — otherwise user input containing a
+ * '\' produces a dangling escape sequence (malformed pattern / wrong matches).
  */
 function escapeLikePattern(input: string): string {
-  return input.replace(/[%_]/g, '\\$&');
+  return input.replace(/[\\%_]/g, '\\$&');
 }
 
 function getDateRange(timeRange: TimeRange): { from: Date; to: Date } {

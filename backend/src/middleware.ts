@@ -3,38 +3,49 @@ import { NextResponse } from 'next/server';
 
 export default auth((req) => {
   const { nextUrl } = req;
+  const { pathname } = nextUrl;
   const isLoggedIn = !!req.auth;
 
-  // Define protected routes - all pages except landing page (/) and auth pages
-  const protectedRoutes = [
-    '/dashboard',
-    '/search-indexes',
-    '/search-experiences',
-    '/ai-experiences',
-    '/experiences',
-    '/analytics',
-    '/settings',
-    '/playground',
-    '/users',
-    '/admin',
-    '/health',
-  ];
-  
-  const authRoutes = ['/login', '/register'];
+  // --- API routes ----------------------------------------------------------
+  // Public API surface: NextAuth's own endpoints, the external widget / demo /
+  // ingestion endpoints under /v1 (they self-authenticate via access token or
+  // API key), and the unconditional liveness probe used by k8s/Azure. Every
+  // other /api route requires a session and gets 401 JSON — never an HTML
+  // redirect.
+  if (pathname.startsWith('/api')) {
+    const isPublicApi =
+      pathname.startsWith('/api/auth') ||
+      pathname.startsWith('/api/v1') ||
+      pathname === '/api/health/live';
 
-  const isProtectedRoute = protectedRoutes.some(route => 
-    nextUrl.pathname.startsWith(route)
-  );
-  const isAuthRoute = authRoutes.includes(nextUrl.pathname);
+    if (!isPublicApi && !isLoggedIn) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
+        { status: 401 }
+      );
+    }
+    return NextResponse.next();
+  }
 
-  // Redirect logged-in users away from auth pages and landing page to dashboard
-  if (isLoggedIn && (isAuthRoute || nextUrl.pathname === '/')) {
+  // --- Pages ---------------------------------------------------------------
+  // Deny-by-default: every page requires authentication EXCEPT the routes
+  // listed here. New routes are protected automatically — nothing to maintain.
+  const publicRoutes = ['/login', '/register'];
+
+  // Static assets in /public (e.g. /logo/foo.png, /manifest.json) are served at
+  // root paths and must stay reachable so public pages can render their images.
+  const isStaticAsset = /\.[^/]+$/.test(pathname);
+  const isPublicRoute = publicRoutes.includes(pathname);
+
+  // Logged-in users have no reason to see the auth pages or the bare landing
+  // route — send them straight to the dashboard.
+  if (isLoggedIn && (isPublicRoute || pathname === '/')) {
     return NextResponse.redirect(new URL('/dashboard', nextUrl));
   }
-  
-  // Redirect non-logged-in users to login for protected routes
-  if (!isLoggedIn && isProtectedRoute) {
-    const callbackUrl = nextUrl.pathname + nextUrl.search;
+
+  // Anyone not logged in hitting a non-public, non-asset route → login.
+  if (!isLoggedIn && !isPublicRoute && !isStaticAsset) {
+    const callbackUrl = pathname + nextUrl.search;
     return NextResponse.redirect(
       new URL(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`, nextUrl)
     );
@@ -44,5 +55,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

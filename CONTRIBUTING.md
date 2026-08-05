@@ -45,7 +45,7 @@ to a feature, match the surrounding structure rather than introducing a new patt
 
 ## Development workflow
 
-1. Branch from `develop` (the default branch): `git checkout -b feature/your-change`.
+1. Branch from `main` (the default branch): `git checkout -b feature/your-change`.
 2. Make your change. Add or update tests for any non-trivial logic (see below).
 3. Run the full local check before opening a PR:
 
@@ -57,8 +57,25 @@ to a feature, match the surrounding structure rather than introducing a new patt
    ```
 
    If you touched `backend/widgets/`, also run `npm --prefix widgets run build && npm --prefix widgets test`.
-4. Open a PR against `develop`. CI (lint · type-check · test, for both backend and widgets)
+4. Open a PR against `main`. CI (lint · type-check · test, for both backend and widgets)
    must pass.
+
+## Code review
+
+Every review thread has to be resolved before a PR can merge — this is enforced on `main`. So
+that the rule doesn't turn every passing remark into a blocker, prefix comments with intent:
+
+- `nit:` — style or taste. The author may resolve it without changing anything.
+- `suggestion:` — a concrete improvement worth weighing, but not blocking.
+- `question:` — wants an answer, not necessarily a code change.
+- `issue:` — blocking. Fix it, or agree explicitly to drop it, before merge.
+
+**Who resolves:** the author, once they've addressed the comment *and* replied saying how. If
+the reply doesn't settle things, the reviewer re-opens the thread. Don't resolve a thread
+without responding to it — a silent resolve reads as dismissing the feedback.
+
+`main` requires linear history, so PRs land by **squash** or **rebase**; merge commits are
+disabled. If `main` moves while your PR is open, rebase onto it rather than merging it in.
 
 ## Database changes
 

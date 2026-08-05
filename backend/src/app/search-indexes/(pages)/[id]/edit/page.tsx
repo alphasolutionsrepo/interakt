@@ -45,12 +45,14 @@ import {
   Gauge,
   Copy,
   Check,
+  KeyRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchIndex, searchIndexKeys } from '../../../_lib/hooks/useSearchIndexes';
 import { searchIndexesApi } from '../../../_lib/api-client';
 import { ChangeAIConfigDialog } from '../../../_components/ChangeAIConfigDialog';
+import { IngestTokenCard } from '../../../_components/IngestTokenCard';
 import {
   updateSearchIndexSchema,
   INDEXING_STRATEGY_INFO,
@@ -500,6 +502,13 @@ export default function EditSearchIndexPage() {
               <Settings className="size-4" />
               <span>{providerLabel}</span>
             </TabsTrigger>
+            <TabsTrigger
+              value="api-access"
+              className="rounded-xl px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:border-border/60 data-[state=inactive]:hover:bg-muted/60 gap-2"
+            >
+              <KeyRound className="size-4" />
+              <span>API Access</span>
+            </TabsTrigger>
             {isAIEnabled && (
               <TabsTrigger
                 value="ai"
@@ -901,6 +910,11 @@ export default function EditSearchIndexPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* API Access Tab */}
+          <TabsContent value="api-access" className="space-y-6">
+            <IngestTokenCard indexId={indexId} />
           </TabsContent>
 
           {/* AI Tab */}

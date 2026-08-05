@@ -32,6 +32,44 @@ async function clearDetailCache(_id: string, _slug: string) {
   await cache.clear();
 }
 
+/**
+ * Strip topic-gate embedding vectors from a guardrailConfig for list responses.
+ *
+ * Topic-gate rules persist `termEmbeddings`/`generalTermEmbeddings` (number[][])
+ * inline in the rule config. These run into hundreds of KB per experience and are
+ * only needed at runtime (loaded via the by-slug/by-id fetch into the topic-gate
+ * cache) or in the detail editor. The list view never reads them, so returning
+ * them bloated the list response to ~460 KB/row (11.5 MB for a default page of 25).
+ * Returns a shallow copy with the embedding arrays removed; original is untouched.
+ */
+function stripGuardrailEmbeddings<T>(guardrailConfig: T): T {
+  const config = guardrailConfig as Record<string, unknown> | null;
+  if (!config) return guardrailConfig;
+
+  const stripRules = (guardrail: unknown) => {
+    const g = guardrail as { rules?: Array<Record<string, unknown>> } | undefined;
+    if (!g?.rules?.length) return guardrail;
+    return {
+      ...g,
+      rules: g.rules.map((rule) => {
+        const ruleConfig = rule.config as Record<string, unknown> | undefined;
+        if (!ruleConfig) return rule;
+        const { termEmbeddings, generalTermEmbeddings, ...rest } = ruleConfig;
+        // Touch the destructured fields so lint doesn't flag them as unused.
+        void termEmbeddings;
+        void generalTermEmbeddings;
+        return { ...rule, config: rest };
+      }),
+    };
+  };
+
+  return {
+    ...config,
+    inputGuardrail: stripRules(config.inputGuardrail),
+    outputGuardrail: stripRules(config.outputGuardrail),
+  } as T;
+}
+
 // ============================================================================
 // CRUD OPERATIONS
 // ============================================================================
@@ -117,7 +155,10 @@ export async function getAIExperienceByAccessToken(accessToken: string) {
 export async function listAIExperiences(query: ListAIExperiencesQuery): Promise<AIExperienceListResponse> {
   const result = await repository.listAIExperiences(query);
   return {
-    experiences: result.experiences as any[],
+    experiences: result.experiences.map((experience) => ({
+      ...experience,
+      guardrailConfig: stripGuardrailEmbeddings(experience.guardrailConfig),
+    })) as any[],
     pagination: result.pagination,
   };
 }
