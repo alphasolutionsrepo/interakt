@@ -43,6 +43,7 @@ import { JsonSourceInput } from '../../../_components/JsonSourceInput';
 import { parseJsonForFields, isTypeCompatible } from '../../../_lib/utils/JsonFieldParser';
 import { fieldsToJson } from '../../../_lib/utils/field-mappings-json';
 import { ReindexDialog } from '../../../_components/ReindexDialog';
+import { DeleteFieldDialog } from '../../../_components/DeleteFieldDialog';
 import {
     FieldInferenceReviewDialog,
     type InferredField,
@@ -250,6 +251,9 @@ export default function FieldMappingsPage() {
     // Import dialog state
     const [importDialogOpen, setImportDialogOpen] = useState(false);
     const [addFieldDialogOpen, setAddFieldDialogOpen] = useState(false);
+
+    // Field pending deletion — drives the delete dialog
+    const [fieldToDelete, setFieldToDelete] = useState<SearchIndexField | null>(null);
 
     // Tracks the entire save flow (bulk mappings + attribute updates)
     const [isSaving, setIsSaving] = useState(false);
@@ -993,6 +997,7 @@ export default function FieldMappingsPage() {
                             mappings={localMappings}
                             onMappingChange={handleMappingChange}
                             onAttributeChange={handleAttributeChange}
+                            onDeleteField={setFieldToDelete}
                             isLoading={isLoadingFields}
                             hasSourceData={hasSourceData}
                             isVectorSearchEnabled={isVectorSearchEnabled}
@@ -1094,6 +1099,21 @@ export default function FieldMappingsPage() {
                 }}
                 onSuccess={() => {
                     setReindexNeeded(false);
+                }}
+            />
+
+            {/* Delete Field Dialog */}
+            <DeleteFieldDialog
+                open={fieldToDelete !== null}
+                onOpenChange={(open) => {
+                    if (!open) setFieldToDelete(null);
+                }}
+                searchIndexId={indexId}
+                field={fieldToDelete}
+                onDeleted={() => {
+                    // Deleting a field changes the mapping, so the provider index
+                    // is now out of step until a rebuild.
+                    setReindexNeeded(true);
                 }}
             />
 

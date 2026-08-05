@@ -163,6 +163,39 @@ export async function performHealthCheck(id: string): Promise<HealthCheckResult>
   return result;
 }
 
+/**
+ * Re-derive the field snapshot for every data source backed by a search index.
+ *
+ * `data_sources.schema.fields` is a denormalized copy of the index's fields, and
+ * it is what the tool description generator tells the model the index contains.
+ * It is otherwise only refreshed as a side effect of a health check, so without
+ * this an index field that was just deleted keeps being advertised to the LLM.
+ *
+ * Best-effort: a failure here must not fail the field change that triggered it.
+ */
+export async function refreshSchemaForSearchIndex(searchIndexId: string): Promise<void> {
+  try {
+    const sources = await repository.getDataSourcesBySearchIndexId(searchIndexId);
+
+    await Promise.all(
+      sources.map(source =>
+        performHealthCheck(source.id).catch(err => {
+          logger.warn('Failed to refresh data source schema', {
+            dataSourceId: source.id,
+            searchIndexId,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          });
+        })
+      )
+    );
+  } catch (err) {
+    logger.warn('Failed to refresh data source schemas for search index', {
+      searchIndexId,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    });
+  }
+}
+
 // ============================================================================
 // SEARCH INDEX HEALTH (internal)
 // ============================================================================

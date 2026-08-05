@@ -17,6 +17,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { searchIndex } from './search-index.schema';
+import { ingestionKeys } from './ingestion-keys.schema';
 
 // ============================================================================
 // BATCH STATUS ENUM
@@ -124,7 +125,25 @@ export const indexingBatches = pgTable('indexing_batches', {
     // ============================================================================
     // AUDIT
     // ============================================================================
+
+    /**
+     * User who started the batch, when it came from the admin UI.
+     * Null for machine uploads — see createdByKeyId.
+     */
     createdBy: uuid('created_by'),
+
+    /**
+     * Ingestion key that started the batch, when it came from a server-to-server
+     * upload.
+     *
+     * Kept separate from createdBy rather than overloading it: that column is a
+     * uuid with no foreign key, so a token identifier stored there would be
+     * indistinguishable from a real user id — and a null there would be
+     * indistinguishable from an unauthenticated write.
+     */
+    createdByKeyId: uuid('created_by_key_id')
+        .references(() => ingestionKeys.id, { onDelete: 'set null' }),
+
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
 

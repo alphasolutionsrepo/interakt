@@ -36,6 +36,7 @@ import {
   Layers,
   ArrowRight,
   Upload,
+  FileCog,
   RefreshCw,
   Wrench,
 } from 'lucide-react';
@@ -47,6 +48,7 @@ import { FieldMappingsCard } from '../../_components/FieldMappingsCard';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ReindexDialog } from '../../_components/ReindexDialog';
+import { IngestionKeysCard } from '../../_components/IngestionKeysCard';
 import { ExportImportButtons } from '../../_components/ExportImportButtons';
 import {
   SEARCH_TYPE_INFO,
@@ -395,6 +397,14 @@ export default function SearchIndexDetailPage() {
             >
               <Upload className="h-4 w-4 mr-2" />
               Upload
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => router.push(`/search-indexes/${indexId}/documents`)}
+            >
+              <FileCog className="h-4 w-4 mr-2" />
+              Documents
             </Button>
             <Button
               variant={searchIndex.isActive ? 'outline' : 'default'}
@@ -822,6 +832,9 @@ export default function SearchIndexDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Ingestion Keys */}
+      <IngestionKeysCard searchIndexId={indexId} />
 
       {/* Danger Zone */}
       <Card className="border-destructive/30 shadow-sm rounded-2xl">

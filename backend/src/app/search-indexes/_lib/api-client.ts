@@ -382,8 +382,111 @@ export const searchIndexesApi = {
 };
 
 // ============================================================================
+// Ingestion Keys API
+// ============================================================================
+
+export type IngestionOperation = 'write' | 'delete';
+
+export interface IngestionKeySummary {
+    id: string;
+    name: string;
+    /** Public half of the key — safe to display, e.g. "ik_a1b2c3d4e5f6" */
+    keyPrefix: string;
+    operations: IngestionOperation[];
+    searchIndexIds: string[];
+    lastUsedAt: string | null;
+    revokedAt: string | null;
+    expiresAt: string | null;
+    createdAt: string;
+    isActive: boolean;
+}
+
+export interface CreatedIngestionKey {
+    key: IngestionKeySummary;
+    /** Shown once. Not stored, not recoverable. */
+    plaintextKey: string;
+}
+
+export interface CreateIngestionKeyInput {
+    name: string;
+    operations: IngestionOperation[];
+    additionalSearchIndexIds?: string[];
+    expiresAt?: string;
+}
+
+export const ingestionKeysApi = {
+    /**
+     * List the keys granting access to an index. Never returns key secrets.
+     */
+    list: async (searchIndexId: string): Promise<{ keys: IngestionKeySummary[] }> => {
+        const response = await fetch(`/api/search-indexes/${searchIndexId}/ingestion-keys`);
+        return handleResponse<{ keys: IngestionKeySummary[] }>(response);
+    },
+
+    /**
+     * Create a key. The plaintext comes back exactly once.
+     */
+    create: async (
+        searchIndexId: string,
+        data: CreateIngestionKeyInput
+    ): Promise<CreatedIngestionKey> => {
+        const response = await fetch(`/api/search-indexes/${searchIndexId}/ingestion-keys`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        return handleResponse<CreatedIngestionKey>(response);
+    },
+
+    /**
+     * Revoke a key. Takes effect immediately.
+     */
+    revoke: async (
+        searchIndexId: string,
+        keyId: string
+    ): Promise<{ key: IngestionKeySummary }> => {
+        const response = await fetch(
+            `/api/search-indexes/${searchIndexId}/ingestion-keys/${keyId}`,
+            { method: 'DELETE' }
+        );
+        return handleResponse<{ key: IngestionKeySummary }>(response);
+    },
+};
+
+// ============================================================================
 // Search Index Fields API
 // ============================================================================
+
+/** Something that would break if a field were deleted. */
+export type FieldDependentKind =
+    | 'field-reference'
+    | 'experience-display'
+    | 'tool-display'
+    | 'tool-executor'
+    | 'tool-override'
+    | 'last-vector-source';
+
+export interface FieldDependent {
+    kind: FieldDependentKind;
+    /** Human-readable owner, e.g. 'Search experience "Smart Search"' */
+    label: string;
+    /** What it does with the field */
+    detail: string;
+}
+
+/** A non-blocking consequence of deleting a field. */
+export interface FieldDeletionWarning {
+    label: string;
+    detail: string;
+}
+
+export interface FieldDependentsResponse {
+    /** Must be empty for the delete to be allowed */
+    dependents: FieldDependent[];
+    /** Advisory only — the delete proceeds regardless */
+    warnings: FieldDeletionWarning[];
+    canDelete: boolean;
+}
 
 export const searchIndexFieldsApi = {
     /**
@@ -523,7 +626,10 @@ export const searchIndexFieldsApi = {
 
     /**
      * Delete a custom field from a search index.
-     * System fields cannot be deleted.
+     *
+     * System fields cannot be deleted, and neither can a field something
+     * references — that comes back as a 409 whose `details.dependents` lists what
+     * is blocking it.
      */
     deleteField: async (
         searchIndexId: string,
@@ -533,6 +639,19 @@ export const searchIndexFieldsApi = {
             method: 'DELETE',
         });
         return handleResponse<{ message: string }>(response);
+    },
+
+    /**
+     * List what would break if a field were deleted.
+     */
+    getFieldDependents: async (
+        searchIndexId: string,
+        fieldId: number
+    ): Promise<FieldDependentsResponse> => {
+        const response = await fetch(
+            `/api/search-indexes/${searchIndexId}/fields/${fieldId}/dependents`
+        );
+        return handleResponse<FieldDependentsResponse>(response);
     },
 
     /**
@@ -720,6 +839,94 @@ export interface BatchListItem {
     durationMs: number | null;
 }
 
+// ============================================================================
+// INCREMENTAL DOCUMENT UPDATES
+// ============================================================================
+
+export interface GetDocumentResponse {
+    documentId: string;
+    document: Record<string, unknown>;
+}
+
+/** One operation in a bulk incremental write. */
+export type DocumentWriteOperation =
+    | { action: 'upload'; document: Record<string, unknown>; documentId?: string }
+    | { action: 'merge'; document: Record<string, unknown>; documentId?: string }
+    | { action: 'delete'; documentId: string };
+
+export interface WriteDocumentsResponse {
+    success: boolean;
+    message: string;
+    summary: {
+        total: number;
+        succeeded: number;
+        failed: number;
+        counts: {
+            upload: number;
+            merge: number;
+            delete: number;
+        };
+    };
+    embeddingStats?: {
+        enabled: boolean;
+        generated: number;
+        failed: number;
+        skipped: number;
+    };
+    errors?: Array<{
+        operationIndex: number;
+        documentId?: string;
+        error: string;
+        field?: string;
+    }>;
+    warnings?: string[];
+    durationMs: number;
+}
+
+/** Filter clause — same shape the search API accepts. */
+export interface DocumentFilterClause {
+    field: string;
+    operator: string;
+    value?: unknown;
+}
+
+/** A document summarised for a table. */
+export interface DocumentSummary {
+    id: string;
+    fields: Record<string, unknown>;
+}
+
+/** Column to render a document summary with. */
+export interface DocumentColumnDescriptor {
+    field: string;
+    label: string;
+}
+
+export interface ListDocumentsResponse {
+    documents: DocumentSummary[];
+    columns: DocumentColumnDescriptor[];
+    pagination: {
+        page: number;
+        pageSize: number;
+        totalPages: number;
+        totalItems: number;
+    };
+}
+
+export interface DeleteByFilterResponse {
+    matched: number;
+    deleted: number;
+    /**
+     * Sample of matching documents — dry run only. Always a subset: the delete
+     * applies to all `matched` documents, not just these.
+     */
+    sample: DocumentSummary[];
+    columns: DocumentColumnDescriptor[];
+    dryRun: boolean;
+    message: string;
+    durationMs: number;
+}
+
 export const documentIndexingApi = {
     /**
      * Upload and index documents
@@ -771,6 +978,135 @@ export const documentIndexingApi = {
             method: 'DELETE',
         });
         return handleResponse<{ cancelled: boolean; batchId: string }>(response);
+    },
+
+    // ========================================================================
+    // INCREMENTAL UPDATES
+    // ========================================================================
+
+    /**
+     * Page through the documents in an index
+     */
+    listDocuments: async (
+        searchIndexId: string,
+        params?: { page?: number; pageSize?: number }
+    ): Promise<ListDocumentsResponse> => {
+        const query = new URLSearchParams();
+        if (params?.page !== undefined) query.set('page', String(params.page));
+        if (params?.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
+
+        const response = await fetch(
+            `/api/search-indexes/${searchIndexId}/documents${query.toString() ? `?${query}` : ''}`
+        );
+        return handleResponse<ListDocumentsResponse>(response);
+    },
+
+    /**
+     * Get a single indexed document by its id (the mapped uniqueId value)
+     */
+    getDocument: async (
+        searchIndexId: string,
+        documentId: string
+    ): Promise<GetDocumentResponse> => {
+        const response = await fetch(
+            `/api/search-indexes/${searchIndexId}/documents/${encodeURIComponent(documentId)}`
+        );
+        return handleResponse<GetDocumentResponse>(response);
+    },
+
+    /**
+     * Replace a document in full. Creates it if it does not exist.
+     */
+    replaceDocument: async (
+        searchIndexId: string,
+        documentId: string,
+        document: Record<string, unknown>
+    ): Promise<WriteDocumentsResponse> => {
+        const response = await fetch(
+            `/api/search-indexes/${searchIndexId}/documents/${encodeURIComponent(documentId)}`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ document }),
+            }
+        );
+        return handleResponse<WriteDocumentsResponse>(response);
+    },
+
+    /**
+     * Partially update a document. Fields absent from the payload keep their
+     * stored values. Fails with 404 if the document does not exist.
+     */
+    mergeDocument: async (
+        searchIndexId: string,
+        documentId: string,
+        document: Record<string, unknown>
+    ): Promise<WriteDocumentsResponse> => {
+        const response = await fetch(
+            `/api/search-indexes/${searchIndexId}/documents/${encodeURIComponent(documentId)}`,
+            {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ document }),
+            }
+        );
+        return handleResponse<WriteDocumentsResponse>(response);
+    },
+
+    /**
+     * Delete a single document
+     */
+    deleteDocument: async (
+        searchIndexId: string,
+        documentId: string
+    ): Promise<WriteDocumentsResponse> => {
+        const response = await fetch(
+            `/api/search-indexes/${searchIndexId}/documents/${encodeURIComponent(documentId)}`,
+            { method: 'DELETE' }
+        );
+        return handleResponse<WriteDocumentsResponse>(response);
+    },
+
+    /**
+     * Apply a batch of mixed add/update/delete operations
+     */
+    bulkWriteDocuments: async (
+        searchIndexId: string,
+        operations: DocumentWriteOperation[]
+    ): Promise<WriteDocumentsResponse> => {
+        const response = await fetch(`/api/search-indexes/${searchIndexId}/documents/bulk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operations }),
+        });
+        return handleResponse<WriteDocumentsResponse>(response);
+    },
+
+    /**
+     * Delete every document matching a filter.
+     *
+     * Pass dryRun to get the matched count plus a sample of the matches without
+     * deleting anything. sampleSize caps that sample (0 skips it).
+     */
+    deleteDocumentsByFilter: async (
+        searchIndexId: string,
+        filters: DocumentFilterClause[],
+        dryRun = false,
+        sampleSize?: number
+    ): Promise<DeleteByFilterResponse> => {
+        const response = await fetch(
+            `/api/search-indexes/${searchIndexId}/documents/delete-by-filter`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filters,
+                    dryRun,
+                    ...(sampleSize !== undefined ? { sampleSize } : {}),
+                }),
+            }
+        );
+        return handleResponse<DeleteByFilterResponse>(response);
     },
 };
 

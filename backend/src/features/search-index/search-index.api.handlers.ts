@@ -17,6 +17,7 @@ import { getCurrentUserId } from '@/shared/utils/auth-utils';
 // Service imports
 import * as service from './search-index.service';
 import * as fieldsService from './search-index-fields.service';
+import { refreshSchemaForSearchIndex } from '@/features/data-source/data-source.service';
 
 // Validation imports
 import {
@@ -961,7 +962,17 @@ export async function handleDeleteField(
             return apiResponse.validationError(fieldIdValidation.error);
         }
 
-        await fieldsService.deleteField(fieldIdValidation.data.fieldId, userId);
+        await fieldsService.deleteField(
+            idValidation.data.id,
+            fieldIdValidation.data.fieldId,
+            userId
+        );
+
+        // The data source's field list is a denormalized snapshot of the index's
+        // fields, and it is what the LLM is told the index contains. Refresh it
+        // here rather than in the service — data-source.service reads index
+        // fields, so calling it from the fields service would be circular.
+        await refreshSchemaForSearchIndex(idValidation.data.id);
 
         logger.info('Deleted field via API', {
             fieldId: fieldIdValidation.data.fieldId,
@@ -972,6 +983,15 @@ export async function handleDeleteField(
         return apiResponse.success({ message: 'Field deleted successfully' });
     } catch (error) {
         const err = error as Error;
+
+        // Blocked by a dependency — return the list so the caller knows what to fix
+        if (err instanceof fieldsService.FieldHasDependentsError) {
+            logger.info('Field delete blocked by dependents', {
+                dependentCount: err.dependents.length,
+            });
+            return apiResponse.conflict(err.message, { dependents: err.dependents });
+        }
+
         logger.error('Failed to delete field', err);
 
         if (err.message.includes('not found')) {
@@ -979,6 +999,56 @@ export async function handleDeleteField(
         }
         if (err.message.includes('Cannot delete')) {
             return apiResponse.badRequest(err.message);
+        }
+
+        return apiResponse.error(err);
+    }
+}
+
+/**
+ * GET /api/search-indexes/:id/fields/:fieldId/dependents
+ * List what would break if this field were deleted
+ */
+export async function handleGetFieldDependents(
+    request: NextRequest,
+    context: { params: Promise<{ id: string; fieldId: string }> }
+) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return apiResponse.unauthorized('You must be logged in');
+        }
+
+        const params = await context.params;
+
+        const idValidation = searchIndexIdSchema.safeParse({ id: params.id });
+        if (!idValidation.success) {
+            return apiResponse.validationError(idValidation.error);
+        }
+
+        const fieldIdValidation = searchIndexFieldIdSchema.safeParse({
+            fieldId: parseInt(params.fieldId, 10),
+        });
+        if (!fieldIdValidation.success) {
+            return apiResponse.validationError(fieldIdValidation.error);
+        }
+
+        const result = await fieldsService.getFieldDependents(
+            idValidation.data.id,
+            fieldIdValidation.data.fieldId
+        );
+
+        return apiResponse.success({
+            dependents: result.dependents,
+            warnings: result.warnings,
+            canDelete: result.dependents.length === 0,
+        });
+    } catch (error) {
+        const err = error as Error;
+        logger.error('Failed to get field dependents', err);
+
+        if (err.message.includes('not found')) {
+            return apiResponse.notFound(err.message);
         }
 
         return apiResponse.error(err);

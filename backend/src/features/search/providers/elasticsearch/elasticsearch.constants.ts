@@ -11,6 +11,23 @@
  */
 
 // ============================================================================
+// VECTOR FIELD
+// ============================================================================
+
+/**
+ * Field the document embedding is stored in.
+ *
+ * Mirrors EMBEDDING_FIELD_NAME in the document-indexing feature, which owns the
+ * write side. Duplicated deliberately: the provider layer must not depend on a
+ * feature module (document-indexer.service.ts already imports from here, so an
+ * import back would be circular).
+ *
+ * Reads that feed a UI exclude this field — a dense_vector is thousands of
+ * floats and useless to display.
+ */
+export const EMBEDDING_FIELD_NAME = 'content_embedding';
+
+// ============================================================================
 // ELASTICSEARCH INDEX SETTINGS TYPE
 // ============================================================================
 

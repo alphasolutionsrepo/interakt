@@ -56,8 +56,15 @@ Tokens **cannot**:
 - Read raw index data.
 - Use the admin API.
 - Modify any configuration.
+- **Write, update, or delete documents.** Access tokens are read-only. That is what makes it safe for one to sit in your page source.
 
 If a token leaks, the worst case is more requests to that one experience — which is what the rate limit and allowed-origins list are there for.
+
+### Pushing data in? You need a different credential
+
+If you are uploading documents from a CMS, an ETL job, or any other backend, an access token will not work — those endpoints return `401` for one. Use an [ingestion key](ingestion-keys) instead: a server-side secret, scoped to specific indexes and operations, stored hashed and revocable.
+
+Same transport (`Authorization: Bearer`), different class of credential. The split is deliberate — a credential that can delete your data must never be one that ships to a browser.
 
 ## Where to store the token
 

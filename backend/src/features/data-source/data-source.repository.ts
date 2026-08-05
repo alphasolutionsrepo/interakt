@@ -23,6 +23,25 @@ export async function getDataSourceById(id: string) {
   }
 }
 
+/**
+ * All data sources backed by a given search index.
+ *
+ * Used to refresh their denormalized field snapshot when the index's fields
+ * change.
+ */
+export async function getDataSourcesBySearchIndexId(searchIndexId: string) {
+  try {
+    return await db.query.dataSources.findMany({
+      where: eq(dataSources.searchIndexId, searchIndexId),
+    });
+  } catch (error) {
+    logger.error('Failed to get data sources by search index id', error as Error, {
+      searchIndexId,
+    });
+    throw error;
+  }
+}
+
 export async function getDataSourceBySlug(slug: string) {
   try {
     const result = await db.query.dataSources.findFirst({
