@@ -52,7 +52,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSearchIndex, searchIndexKeys } from '../../../_lib/hooks/useSearchIndexes';
 import { searchIndexesApi } from '../../../_lib/api-client';
 import { ChangeAIConfigDialog } from '../../../_components/ChangeAIConfigDialog';
-import { IngestTokenCard } from '../../../_components/IngestTokenCard';
+import { IngestionKeysCard } from '../../../_components/IngestionKeysCard';
 import {
   updateSearchIndexSchema,
   INDEXING_STRATEGY_INFO,
@@ -914,7 +914,7 @@ export default function EditSearchIndexPage() {
 
           {/* API Access Tab */}
           <TabsContent value="api-access" className="space-y-6">
-            <IngestTokenCard indexId={indexId} />
+            <IngestionKeysCard searchIndexId={indexId} />
           </TabsContent>
 
           {/* AI Tab */}

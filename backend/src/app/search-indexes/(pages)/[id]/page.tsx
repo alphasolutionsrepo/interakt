@@ -48,7 +48,6 @@ import { FieldMappingsCard } from '../../_components/FieldMappingsCard';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ReindexDialog } from '../../_components/ReindexDialog';
-import { IngestionKeysCard } from '../../_components/IngestionKeysCard';
 import { ExportImportButtons } from '../../_components/ExportImportButtons';
 import {
   SEARCH_TYPE_INFO,
@@ -832,9 +831,6 @@ export default function SearchIndexDetailPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* Ingestion Keys */}
-      <IngestionKeysCard searchIndexId={indexId} />
 
       {/* Danger Zone */}
       <Card className="border-destructive/30 shadow-sm rounded-2xl">

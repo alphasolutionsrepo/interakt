@@ -82,10 +82,25 @@ const searchIndexIdSchema = z.object({
  * @param searchIndexId  The index to write to (already authorized).
  * @param createdBy      User id for audit, or null for API-key uploads.
  */
+/**
+ * How an upload is attributed.
+ *
+ * Built by each caller rather than derived here, because the callers authenticate
+ * differently and only they know what is true: a session knows its user, an
+ * ingestion key knows its key row, and an index ingest token knows neither.
+ * Guessing on their behalf is how an audit trail ends up lying.
+ */
+interface IndexingAttribution {
+    /** Audit columns for the batch. Omit both when the actor has no identity to record. */
+    audit: { createdBy?: string; createdByKeyId?: string };
+    /** Actor fields for the log line */
+    log: Record<string, unknown>;
+}
+
 async function runDocumentIndexing(
     request: NextRequest,
     searchIndexId: string,
-    createdBy: string | null
+    attribution: IndexingAttribution
 ): Promise<NextResponse> {
     // Check content length (for Vercel limits)
     const contentLength = request.headers.get('content-length');
@@ -118,7 +133,7 @@ async function runDocumentIndexing(
         searchIndexId,
         documentCount: documents.length,
         sourceFileName,
-        createdBy,
+        ...attribution.log,
     });
 
     // Index documents
@@ -127,7 +142,7 @@ async function runDocumentIndexing(
         documents,
         sourceFileName,
         sourceSizeBytes: contentLength ? parseInt(contentLength, 10) : undefined,
-        createdBy: createdBy ?? undefined,
+        ...attribution.audit,
     });
 
     // Build response message
@@ -213,86 +228,13 @@ export async function handleIndexDocuments(
         }
         const actor = authResult.actor;
 
-        return await runDocumentIndexing(
-            request,
-            paramValidation.data.id,
-            actor.type === 'user' ? actor.userId : null
-        );
+        return await runDocumentIndexing(request, paramValidation.data.id, {
+            audit: actorAuditColumns(actor),
+            log: actorLogContext(actor),
+        });
     } catch (error) {
         const err = error as Error;
         logger.error('Document indexing failed', err);
-
-        if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
-        }
-
-        return apiResponse.error(err);
-    }
-}
-
-/**
- * POST /api/v1/search-indexes/:id/documents
- * Upload and index documents authenticated by a per-index ingestion API key
- * (X-Api-Key or Authorization: Bearer). For external, server-to-server use.
- */
-export async function handleIngestDocuments(
-    request: NextRequest,
-    context: { params: Promise<{ id: string }> }
-) {
-    try {
-        const params = await context.params;
-
-        logger.info('Starting document indexing', {
-            searchIndexId,
-            documentCount: documents.length,
-            sourceFileName,
-            ...actorLogContext(actor),
-        });
-
-        // Index documents
-        const result = await indexDocuments({
-            searchIndexId,
-            documents,
-            sourceFileName,
-            sourceSizeBytes: contentLength ? parseInt(contentLength, 10) : undefined,
-            ...actorAuditColumns(actor),
-        });
-
-        // Build response message
-        let message = result.success
-            ? `Successfully indexed ${result.indexedDocuments} documents`
-            : `Indexing completed with ${result.failedDocuments} failures`;
-
-        // Add embedding info to message if applicable
-        if (result.embeddingStats?.enabled && result.embeddingStats.generated > 0) {
-            message += ` (${result.embeddingStats.generated} embeddings generated)`;
-        }
-        const searchIndexId = paramValidation.data.id;
-
-        // Extract API key from X-Api-Key or Authorization: Bearer
-        const apiKey =
-            request.headers.get('x-api-key') ||
-            request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
-            null;
-
-        if (!apiKey) {
-            return apiResponse.unauthorized('API key is required');
-        }
-
-        // Resolve key -> index and verify it matches the requested index
-        const indexAuth = await getSearchIndexByIngestToken(apiKey);
-        if (!indexAuth || indexAuth.id !== searchIndexId) {
-            return apiResponse.unauthorized('Invalid API key');
-        }
-
-        if (!indexAuth.isActive) {
-            return apiResponse.forbidden('Search index is not active');
-        }
-
-        return await runDocumentIndexing(request, searchIndexId, indexAuth.createdBy);
-    } catch (error) {
-        const err = error as Error;
-        logger.error('Document ingestion failed', err);
 
         if (err.message.includes('not found')) {
             return apiResponse.notFound(err.message);
