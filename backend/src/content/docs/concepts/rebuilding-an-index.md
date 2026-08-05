@@ -59,7 +59,10 @@ After changes that require a rebuild, the floating save bar has a **Reindex Now*
 - Every document is re-read from internal storage.
 - Run through the current text-analysis pipeline (language, stop words, synonyms).
 - Re-mapped through your current field mappings.
+- **Fields that are no longer in your configuration are dropped** — this is what actually purges a [field you deleted](index-fields#removing-a-field). Values for it survive in the search engine until this point.
 - Written back to the search index.
+
+Once the rebuild succeeds the "Reindex needed" flag clears.
 
 For Semantic / Hybrid indexes, the embeddings are *not* regenerated — only the lexical side is reprocessed. This is fast.
 

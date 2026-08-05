@@ -26,6 +26,17 @@ import type { SearchProviderType } from '@/features/search/providers/search-engi
 const logger = createLogger('document-transformer');
 
 // ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/**
+ * System fields that are regenerated on every write, including partial (merge)
+ * writes. `updatedAt` must move forward whenever a document changes, even when
+ * the payload only carries one unrelated field.
+ */
+const PARTIAL_ALWAYS_REFRESH_FIELDS = new Set(['updatedAt']);
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -54,6 +65,23 @@ export interface TransformOptions {
      * Only used when a field has mode='collect'
      */
     collectableFields?: string[];
+
+    /**
+     * Produce a *partial* document containing only fields carried by the source
+     * payload, for use with the `merge` write action (PATCH).
+     *
+     * In this mode fields whose value does not originate from the payload are
+     * omitted entirely, so the stored values survive the merge. Without it a
+     * partial payload would silently reset `createdAt` (mode 'generated') and
+     * mint a fresh `uniqueId` (a 'default' mode uuid generator fallback),
+     * detaching the update from the document it was meant to change.
+     *
+     * Fields in PARTIAL_ALWAYS_REFRESH_FIELDS are the exception — they are
+     * regenerated on every write.
+     *
+     * @default false
+     */
+    partial?: boolean;
 
     /**
      * Target search provider. Controls per-provider serialization quirks:
@@ -138,15 +166,25 @@ function applyTransform(value: unknown, transform: ValueTransform): unknown {
 
 /**
  * Resolve the value for a single field based on its mapping configuration
+ *
+ * @param partial - When true, only resolve values that originate from the source
+ *   payload; fields that would be filled from a static value or generator are
+ *   left undefined so a merge write does not overwrite stored values.
  */
 function resolveFieldValue(
     sourceDocument: Record<string, unknown>,
     field: SearchIndexField,
     collectableFields?: string[],
-    allFields?: SearchIndexField[]
+    allFields?: SearchIndexField[],
+    partial = false
 ): { value: unknown; error?: string } {
     const config = getFieldMappingConfig(field.transformConfig);
     const { mode, staticValue, generator, computed, collectFields, sourceFromField, transform } = config;
+
+    // In partial mode, fields regenerated on every write bypass the source-only
+    // restriction below (e.g. updatedAt).
+    const alwaysRefresh = partial && PARTIAL_ALWAYS_REFRESH_FIELDS.has(field.fieldName);
+    const sourceOnly = partial && !alwaysRefresh;
 
     let value: unknown;
 
@@ -155,6 +193,13 @@ function resolveFieldValue(
             case 'source': {
                 // Get value from source field
                 if (!field.sourceFieldName && !field.sourceFieldPath) {
+                    // A field with no source mapping can never appear in a partial
+                    // payload — omit it rather than reporting an error on every
+                    // merge. Genuine mapping problems surface via
+                    // validateFieldMappings() and the full-upload path.
+                    if (sourceOnly) {
+                        return { value: undefined };
+                    }
                     return { value: undefined, error: 'No source field configured' };
                 }
                 const path = field.sourceFieldPath || field.sourceFieldName || '';
@@ -163,6 +208,10 @@ function resolveFieldValue(
             }
 
             case 'static': {
+                // Not carried by the payload — omit on a partial write
+                if (sourceOnly) {
+                    return { value: undefined };
+                }
                 // Use the static value
                 value = staticValue;
                 break;
@@ -174,6 +223,11 @@ function resolveFieldValue(
                     const path = field.sourceFieldPath || field.sourceFieldName || '';
                     value = getNestedValue(sourceDocument, path);
                 }
+                // On a partial write the fallbacks would invent a value the caller
+                // never sent (e.g. a fresh uniqueId uuid) — stop at the source.
+                if (sourceOnly) {
+                    break;
+                }
                 if (value === undefined || value === null) {
                     value = staticValue;
                 }
@@ -184,6 +238,10 @@ function resolveFieldValue(
             }
 
             case 'generated': {
+                // Not carried by the payload — omit on a partial write
+                if (sourceOnly) {
+                    return { value: undefined };
+                }
                 // Generate a value
                 if (!generator) {
                     return { value: undefined, error: 'No generator configured' };
@@ -195,6 +253,10 @@ function resolveFieldValue(
             case 'computed': {
                 // Compute value from nested array
                 if (!computed) {
+                    // Unresolvable from a payload — omit silently on a partial write
+                    if (sourceOnly) {
+                        return { value: undefined };
+                    }
                     return { value: undefined, error: 'No computed config' };
                 }
                 value = resolveComputedValue(sourceDocument, computed);
@@ -223,18 +285,28 @@ function resolveFieldValue(
                 // Reference another field's source path
                 // Used for uniqueId to copy value from another mapped field like productId
                 if (!sourceFromField) {
+                    // Unresolvable from a payload — omit silently on a partial write
+                    if (sourceOnly) {
+                        return { value: undefined };
+                    }
                     return { value: undefined, error: 'No source field reference configured' };
                 }
 
                 // Find the referenced field
                 const referencedField = allFields?.find(f => f.fieldName === sourceFromField);
                 if (!referencedField) {
+                    if (sourceOnly) {
+                        return { value: undefined };
+                    }
                     return { value: undefined, error: `Referenced field "${sourceFromField}" not found` };
                 }
 
                 // Get the source path from the referenced field
                 const refPath = referencedField.sourceFieldPath || referencedField.sourceFieldName;
                 if (!refPath) {
+                    if (sourceOnly) {
+                        return { value: undefined };
+                    }
                     return { value: undefined, error: `Referenced field "${sourceFromField}" has no source mapping` };
                 }
 
@@ -279,7 +351,7 @@ export function transformDocument(
     fields: SearchIndexField[],
     options: TransformOptions = {}
 ): TransformResult {
-    const { continueOnError = true, collectableFields, provider } = options;
+    const { continueOnError = true, collectableFields, provider, partial = false } = options;
 
     const result: TransformResult = {
         success: true,
@@ -316,7 +388,8 @@ export function transformDocument(
             sourceDocument,
             field,
             config.mode === 'collect' ? (config.collectFields || unmappedFields) : undefined,
-            fields
+            fields,
+            partial
         );
 
         if (error) {
@@ -338,8 +411,9 @@ export function transformDocument(
             continue;
         }
 
-        // Check required fields
-        if (field.isRequired && (value === undefined || value === null)) {
+        // Check required fields. A partial payload legitimately omits required
+        // fields — the stored document already carries them.
+        if (!partial && field.isRequired && (value === undefined || value === null)) {
             result.errors.push({
                 field: field.fieldName,
                 error: 'Required field has no value',

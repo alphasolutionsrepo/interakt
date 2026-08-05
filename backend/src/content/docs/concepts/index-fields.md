@@ -48,7 +48,7 @@ You can also click **Add field** in the table header to add fields manually.
 | **Source field** | Which field in your source data this maps to. Editable as a dropdown when sample data is loaded. |
 | **Mapping mode** | How the value gets in (from source, static, generated, computed — see below). |
 | **Attributes** | Icons showing what's enabled — searchable, facetable, autocomplete, vector source. |
-| **Actions** | A gear icon that opens the full configuration sidebar for the field. |
+| **Actions** | A gear icon that opens the full configuration sidebar, and a trash icon to remove the field (see below). System fields show a padlock instead and cannot be removed. |
 
 ## The field config sidebar (click the gear)
 
@@ -175,6 +175,43 @@ The **Import** and **Export** buttons in the header dump or load the entire fiel
 - Backing up your config to a version-control system.
 
 The exported JSON is also what you see in **JSON mode**.
+
+## Removing a field
+
+Click the trash icon on a field's row. Fields accumulate — auto-detected from a sample document, imported from a mapping, added by hand — so pruning the ones you don't use keeps the index honest.
+
+**System fields can't be removed.** `uniqueId`, `additionalData` and `customFields` are structural; the indexing pipeline assumes they exist. They show a padlock rather than a trash icon.
+
+### What deletion actually does
+
+Removing a field takes it out of the index **configuration**. Immediately:
+
+- It stops being searched, faceted, and returned in results.
+- It disappears from the fields list and from anything derived from it.
+
+But the values already written into Elasticsearch or Azure AI Search **stay there**. Neither engine can drop a field from a live index mapping, so the only way to purge stored values is to rebuild. Deleting a field therefore marks the index as needing a [reindex](rebuilding-an-index) — run it and the field is gone from the stored documents too.
+
+Until you do, the database and the search engine disagree: the field is absent from your configuration but still present on the documents. Search won't use it, so this is safe to leave — it's just untidy.
+
+### When you can't delete a field
+
+If something references a field, deletion is refused and the dialog lists exactly what:
+
+| What | Why it blocks |
+|---|---|
+| **Another field in this index** uses it as its source (mapping mode **Reference**) | The dependent field's value would stop resolving. Most serious when `uniqueId` references it — that breaks document IDs for the whole index. |
+| **A search experience** displays it (as title, image, price, …) | The result card would render a blank slot. |
+| **A tool** renders it in chat results, or names it in its configuration — as the lookup `idField`, a default sort, a default filter, or a projection list | Tool calls would error or silently return nothing. A missing `idField` breaks every document lookup that tool performs. |
+| **An AI experience** overrides a tool's configuration to use it | Same as above. These overrides are easy to forget, so they're checked too. |
+| **It's the last vector-source field** on a semantic or hybrid index | Embeddings would stop being generated, quietly removing every document from semantic search. |
+
+Remove those references first, then delete the field. Nothing is auto-repaired for you — the point is that you see what you're breaking.
+
+Some consequences are only warnings, and don't block:
+
+- **Filter value mappings on the field are lost.** Hand-curated value aliases can't be recovered.
+- **It's the last autocomplete field.** Autocomplete stops returning suggestions.
+- Any **field mappings JSON you exported earlier** still contains the field, so re-importing it would reintroduce a broken reference.
 
 ## What changes require a rebuild?
 

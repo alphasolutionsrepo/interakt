@@ -1,5 +1,5 @@
 {
-  "id": "4971eaad-163c-4a4d-9f45-7b9984f4b2e2",
+  "id": "dd9d5dcc-6a80-4b98-9720-6094d780b5a9",
   "prevId": "c59111e7-8d52-4cf3-9fac-7e2b9e32d2c2",
   "version": "7",
   "dialect": "postgresql",
@@ -105,13 +105,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "ingest_token": {
-          "name": "ingest_token",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "gen_random_uuid()"
         },
         "data_template_id": {
           "name": "data_template_id",
@@ -375,21 +368,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "search_index_ingest_token_idx": {
-          "name": "search_index_ingest_token_idx",
-          "columns": [
-            {
-              "expression": "ingest_token",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -427,13 +405,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "name"
-          ]
-        },
-        "search_index_ingest_token_unique": {
-          "name": "search_index_ingest_token_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "ingest_token"
           ]
         }
       },
@@ -835,6 +806,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "created_by_key_id": {
+          "name": "created_by_key_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -910,10 +887,251 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "indexing_batches_created_by_key_id_ingestion_keys_id_fk": {
+          "name": "indexing_batches_created_by_key_id_ingestion_keys_id_fk",
+          "tableFrom": "indexing_batches",
+          "tableTo": "ingestion_keys",
+          "columnsFrom": [
+            "created_by_key_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ingestion_key_indexes": {
+      "name": "ingestion_key_indexes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "ingestion_key_id": {
+          "name": "ingestion_key_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "search_index_id": {
+          "name": "search_index_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ingestion_key_indexes_key_id_idx": {
+          "name": "ingestion_key_indexes_key_id_idx",
+          "columns": [
+            {
+              "expression": "ingestion_key_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ingestion_key_indexes_search_index_id_idx": {
+          "name": "ingestion_key_indexes_search_index_id_idx",
+          "columns": [
+            {
+              "expression": "search_index_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ingestion_key_indexes_ingestion_key_id_ingestion_keys_id_fk": {
+          "name": "ingestion_key_indexes_ingestion_key_id_ingestion_keys_id_fk",
+          "tableFrom": "ingestion_key_indexes",
+          "tableTo": "ingestion_keys",
+          "columnsFrom": [
+            "ingestion_key_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ingestion_key_indexes_search_index_id_search_index_id_fk": {
+          "name": "ingestion_key_indexes_search_index_id_search_index_id_fk",
+          "tableFrom": "ingestion_key_indexes",
+          "tableTo": "search_index",
+          "columnsFrom": [
+            "search_index_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "unique_ingestion_key_index": {
+          "name": "unique_ingestion_key_index",
+          "nullsNotDistinct": false,
+          "columns": [
+            "ingestion_key_id",
+            "search_index_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ingestion_keys": {
+      "name": "ingestion_keys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_prefix": {
+          "name": "key_prefix",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_hash": {
+          "name": "key_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operations": {
+          "name": "operations",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::json"
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ingestion_keys_key_prefix_idx": {
+          "name": "ingestion_keys_key_prefix_idx",
+          "columns": [
+            {
+              "expression": "key_prefix",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ingestion_keys_revoked_at_idx": {
+          "name": "ingestion_keys_revoked_at_idx",
+          "columns": [
+            {
+              "expression": "revoked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ingestion_keys_key_prefix_unique": {
+          "name": "ingestion_keys_key_prefix_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "key_prefix"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

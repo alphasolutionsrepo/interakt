@@ -7,16 +7,32 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
 
   // --- API routes ----------------------------------------------------------
-  // Public API surface: NextAuth's own endpoints, the external widget / demo /
-  // ingestion endpoints under /v1 (they self-authenticate via access token or
-  // API key), and the unconditional liveness probe used by k8s/Azure. Every
-  // other /api route requires a session and gets 401 JSON — never an HTML
-  // redirect.
+  // Public API surface: NextAuth's own endpoints, the external widget / demo
+  // endpoints under /v1 (they self-authenticate via experience access token),
+  // and the unconditional liveness probe used by k8s/Azure. Every other /api
+  // route requires a session and gets 401 JSON — never an HTML redirect.
   if (pathname.startsWith('/api')) {
+    // Document routes on a search index accept either a session (admin UI) or an
+    // ingestion key (server-to-server sync). Key validation needs a database
+    // lookup, which this middleware cannot do at the edge — so a request
+    // presenting a bearer credential is passed through for the route to
+    // authenticate. Every one of those handlers calls resolveDocumentActor, so
+    // an invalid key is still rejected there; nothing is trusted on the strength
+    // of the header alone.
+    //
+    // Scoped to this subtree on purpose. Exempting any /api path that merely
+    // carries an Authorization header would expose the handlers that have no
+    // check of their own and rely on this middleware as their only gate.
+    const hasBearerCredential =
+      req.headers.get('authorization')?.startsWith('Bearer ') ?? false;
+    const isSelfAuthenticatingDocumentRoute =
+      /^\/api\/search-indexes\/[^/]+\/documents(\/.*)?$/.test(pathname);
+
     const isPublicApi =
       pathname.startsWith('/api/auth') ||
       pathname.startsWith('/api/v1') ||
-      pathname === '/api/health/live';
+      pathname === '/api/health/live' ||
+      (isSelfAuthenticatingDocumentRoute && hasBearerCredential);
 
     if (!isPublicApi && !isLoggedIn) {
       return NextResponse.json(

@@ -57,7 +57,10 @@ export interface IndexingRequest {
     documents: Record<string, unknown>[];
     sourceFileName?: string;
     sourceSizeBytes?: number;
+    /** User who started the upload, for an admin-UI upload */
     createdBy?: string;
+    /** Ingestion key that started the upload, for a server-to-server upload */
+    createdByKeyId?: string;
 }
 
 export interface IndexingProgress {
@@ -115,6 +118,7 @@ async function createBatch(
         sourceFileName?: string;
         sourceSizeBytes?: number;
         createdBy?: string;
+        createdByKeyId?: string;
     }
 ): Promise<IndexingBatch> {
     const [batch] = await db.insert(indexingBatches).values({
@@ -123,7 +127,9 @@ async function createBatch(
         status: 'pending',
         sourceFileName: options?.sourceFileName,
         sourceSizeBytes: options?.sourceSizeBytes,
+        // Exactly one of these is set — see actorAuditColumns
         createdBy: options?.createdBy,
+        createdByKeyId: options?.createdByKeyId,
     }).returning();
 
     return batch;
@@ -200,8 +206,12 @@ export async function listBatches(
 
 /**
  * Update search index stats after indexing
+ *
+ * Also used by the incremental write path (document-writer.service.ts) so
+ * documentCount / indexSizeBytes / lastIndexedAt stay accurate after single
+ * document writes and deletes.
  */
-async function updateIndexStats(
+export async function updateIndexStats(
     searchIndexId: string,
     additionalDocuments: number
 ): Promise<void> {
@@ -231,7 +241,7 @@ async function updateIndexStats(
 // EMBEDDING CONFIGURATION
 // ============================================================================
 
-interface EmbeddingConfig {
+export interface EmbeddingConfig {
     enabled: boolean;
     providerId?: string | null;
     modelId?: number | null;
@@ -242,7 +252,7 @@ interface EmbeddingConfig {
 /**
  * Extract embedding configuration from search index
  */
-function getEmbeddingConfig(index: {
+export function getEmbeddingConfig(index: {
     searchType: string;
     aiProviderId?: string | null;
     aiModelId?: number | null;
@@ -263,7 +273,7 @@ function getEmbeddingConfig(index: {
 /**
  * Get text content from vector source fields for embedding
  */
-function getEmbeddingText(
+export function getEmbeddingText(
     document: Record<string, unknown>,
     vectorSourceFields: SearchIndexField[]
 ): string {
@@ -531,7 +541,14 @@ async function ensureIndex(
 export async function indexDocuments(
     request: IndexingRequest
 ): Promise<IndexingResult> {
-    const { searchIndexId, documents, sourceFileName, sourceSizeBytes, createdBy } = request;
+    const {
+        searchIndexId,
+        documents,
+        sourceFileName,
+        sourceSizeBytes,
+        createdBy,
+        createdByKeyId,
+    } = request;
     const startTime = Date.now();
     const warnings: string[] = [];
     const allErrors: IndexingResult['errors'] = [];
@@ -581,6 +598,7 @@ export async function indexDocuments(
         sourceFileName,
         sourceSizeBytes,
         createdBy,
+        createdByKeyId,
     });
 
     try {

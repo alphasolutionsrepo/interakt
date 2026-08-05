@@ -7,9 +7,8 @@
  * UPDATED: Uses searchIndexFields instead of indexFieldMappings
  */
 
-import { CacheManager } from '@/shared/cache/cache-manager';
-import { cacheConfig } from '@/config/cache.config';
 import { createLogger } from '@/shared/logger/logger';
+import { cache, clearIndexCache, SEARCH_INDEX_CACHE_TTL } from './search-index.cache';
 import * as repository from './search-index.repository';
 import type { SearchIndexReference } from './search-index.repository';
 import * as fieldsService from './search-index-fields.service';
@@ -56,16 +55,9 @@ export class SearchIndexInUseError extends Error {
     }
 }
 
-// Cache TTL - use config or default to 5 minutes
-const SEARCH_INDEX_CACHE_TTL = cacheConfig.features?.searchIndexes ?? 300;
-
-// Store cache on globalThis to survive Next.js module re-evaluation in dev mode.
-// Without this, delete and list calls can hit different CacheManager instances.
-const globalKey = '__searchIndexCache';
-const cache: CacheManager = (globalThis as Record<string, unknown>)[globalKey] as CacheManager
-    ?? ((globalThis as Record<string, unknown>)[globalKey] = new CacheManager('search-index', {
-        defaultTTL: SEARCH_INDEX_CACHE_TTL,
-    }));
+// The cache instance and its invalidation helpers live in search-index.cache.ts
+// so the fields service can invalidate without importing this module (which
+// would be circular — see that file's header).
 
 // ============================================================================
 // TYPE MAPPERS (Transform API DTOs to Repository types)
@@ -958,11 +950,42 @@ export async function triggerReindex(
                 documentCount: documents.length,
             });
 
-            // Convert scroll documents to bulk format, preserving IDs
-            const bulkDocs = documents.map(doc => ({
-                _id: doc._id,
-                ...doc._source,
-            }));
+            // Convert scroll documents to bulk format, preserving IDs.
+            //
+            // Bodies are filtered to the fields that are still configured. Without
+            // this, a field deleted from the configuration comes straight back:
+            // the new mapping omits it, but Elasticsearch's dynamic mapping
+            // re-adds it from the document body, so the rebuild would silently
+            // fail to purge anything. The embedding field is kept because it is
+            // stored but not a configured field.
+            const allowedFields = new Set<string>([
+                ...fields.map(f => f.fieldName),
+                ...(embeddingConfig ? [embeddingConfig.fieldName] : []),
+            ]);
+
+            const bulkDocs = documents.map(doc => {
+                const source: Record<string, unknown> = {};
+                for (const [key, value] of Object.entries(doc._source)) {
+                    if (allowedFields.has(key)) {
+                        source[key] = value;
+                    }
+                }
+                return { _id: doc._id, ...source };
+            });
+
+            const droppedFieldNames = [
+                ...new Set(
+                    documents.flatMap(doc =>
+                        Object.keys(doc._source).filter(key => !allowedFields.has(key))
+                    )
+                ),
+            ];
+            if (droppedFieldNames.length > 0) {
+                logger.info('Dropping unconfigured fields during reindex', {
+                    indexName,
+                    droppedFields: droppedFieldNames,
+                });
+            }
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
 
@@ -987,6 +1010,11 @@ export async function triggerReindex(
 
         // Update status back to active
         await repository.updateSearchIndexStatus(searchIndexId, 'active');
+
+        // The provider index now matches the field configuration, so the pending
+        // mapping change is resolved. Without this the flag latches on forever and
+        // the index reports "requires reindex" even immediately after one.
+        await repository.markMappingSynced(searchIndexId);
 
         // Clear caches so UI gets fresh data
         await clearIndexCache(searchIndexId, indexName);
@@ -1132,16 +1160,6 @@ export async function recreateEmptyIndex(
 // ============================================================================
 // CACHE MANAGEMENT
 // ============================================================================
-
-/**
- * Clear cache for a specific index
- */
-async function clearIndexCache(id: string, name: string): Promise<void> {
-    await Promise.all([
-        cache.delete(`index:${id}`),
-        cache.delete(`index:name:${name}`),
-    ]);
-}
 
 /**
  * Clear all list caches
@@ -1436,30 +1454,7 @@ export async function importSearchIndex(
     }
 }
 
-// ============================================================================
-// INGEST TOKEN (per-index API key for external document uploads)
-// ============================================================================
-
-/**
- * Get the ingestion API key for an index.
- * @throws Error if the index does not exist.
- */
-export async function getIngestToken(id: string): Promise<string> {
-    const token = await repository.getIngestToken(id);
-    if (token === null) {
-        throw new Error(`Search index with ID ${id} not found`);
-    }
-    return token;
-}
-
-/**
- * Rotate the ingestion API key for an index, immediately revoking the old key.
- * @throws Error if the index does not exist.
- */
-export async function regenerateIngestToken(id: string): Promise<string> {
-    const token = await repository.regenerateIngestToken(id);
-    if (token === null) {
-        throw new Error(`Search index with ID ${id} not found`);
-    }
-    return token;
-}
+// Server-to-server document ingestion is authenticated by ingestion keys, not by
+// a per-index token — see @/features/ingestion-keys. Keys are hashed, scoped to
+// specific indexes and operations, individually revocable, and attributable in
+// the audit trail.

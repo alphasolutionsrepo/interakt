@@ -10,6 +10,7 @@ import 'server-only';
 import { Client, type ClientOptions } from '@elastic/elasticsearch';
 import { elasticsearchConfig } from '@/config';
 import { createLogger } from '@/shared/logger/logger';
+import { EMBEDDING_FIELD_NAME } from './elasticsearch.constants';
 
 const logger = createLogger('elasticsearch-client');
 
@@ -219,7 +220,7 @@ export async function getIndexMapping(indexName: string): Promise<{
 
         // Extract embedding dimensions if present
         const properties = indexMapping.mappings?.properties as Record<string, unknown> | undefined;
-        const embeddingField = properties?.['content_embedding'] as { dims?: number } | undefined;
+        const embeddingField = properties?.[EMBEDDING_FIELD_NAME] as { dims?: number } | undefined;
         const embeddingDimensions = embeddingField?.dims;
 
         return {
@@ -295,66 +296,106 @@ export interface BulkIndexResult {
     took: number;
 }
 
+export type BulkWriteAction = 'upload' | 'merge' | 'delete';
+
+export interface BulkWriteOperation {
+    action: BulkWriteAction;
+    _id?: string;
+    document?: Record<string, unknown>;
+}
+
+export interface BulkWriteResult extends BulkIndexResult {
+    counts: Record<BulkWriteAction, number>;
+}
+
 /**
- * Bulk index documents
- * Handles batching internally based on config
+ * Build the two-line (or one-line, for delete) bulk payload for a single operation.
+ *
+ * - upload → `index` op: full document replace, creates when absent
+ * - merge  → `update` op with `doc_as_upsert`: unlisted fields keep their values
+ * - delete → `delete` op
  */
-export async function bulkIndex(
+function buildBulkOperationLines(
     indexName: string,
-    documents: BulkIndexDocument[],
+    operation: BulkWriteOperation
+): unknown[] {
+    const { action, _id, document } = operation;
+    const meta: Record<string, unknown> = { _index: indexName };
+    if (_id) {
+        meta._id = _id;
+    }
+
+    switch (action) {
+        case 'merge':
+            return [{ update: meta }, { doc: document ?? {}, doc_as_upsert: true }];
+        case 'delete':
+            return [{ delete: meta }];
+        case 'upload':
+        default:
+            return [{ index: meta }, document ?? {}];
+    }
+}
+
+/**
+ * Apply a batch of mixed write actions (upload / merge / delete).
+ * Handles batching internally based on config.
+ */
+export async function bulkWrite(
+    indexName: string,
+    operations: BulkWriteOperation[],
     options?: {
         refresh?: boolean | 'wait_for';
     }
-): Promise<BulkIndexResult> {
+): Promise<BulkWriteResult> {
     const es = getElasticsearchClient();
     const batchSize = elasticsearchConfig.indexing.batchSize;
 
     let totalIndexed = 0;
     let totalFailed = 0;
     const allErrors: BulkIndexResult['errors'] = [];
+    const counts: Record<BulkWriteAction, number> = { upload: 0, merge: 0, delete: 0 };
     const startTime = Date.now();
 
     // Process in batches
-    for (let i = 0; i < documents.length; i += batchSize) {
-        const batch = documents.slice(i, i + batchSize);
-
-        // Build bulk operations
-        const operations = batch.flatMap((doc, batchIndex) => {
-            const { _id, ...body } = doc;
-            const indexOp: Record<string, unknown> = { _index: indexName };
-            if (_id) {
-                indexOp._id = _id;
-            }
-            return [{ index: indexOp }, body];
-        });
+    for (let i = 0; i < operations.length; i += batchSize) {
+        const batch = operations.slice(i, i + batchSize);
+        const payload = batch.flatMap(op => buildBulkOperationLines(indexName, op));
 
         try {
             const response = await es.bulk({
-                operations,
+                operations: payload,
                 refresh: options?.refresh,
             });
 
-            // Process results
+            // Process results. Response items come back in request order, one per
+            // operation, keyed by the action ES performed.
             if (response.items) {
                 response.items.forEach((item, batchIndex) => {
-                    const indexResult = item.index;
-                    if (indexResult?.error) {
+                    const opResult = item.index ?? item.update ?? item.delete;
+                    const action = batch[batchIndex]?.action ?? 'upload';
+
+                    // A delete of an absent document is not an error — deletes are
+                    // idempotent, which keeps incremental sync retryable.
+                    const isMissingOnDelete = action === 'delete' && opResult?.result === 'not_found';
+
+                    if (opResult?.error && !isMissingOnDelete) {
                         totalFailed++;
                         allErrors.push({
                             index: i + batchIndex,
-                            id: indexResult._id,
-                            error: typeof indexResult.error === 'string'
-                                ? indexResult.error
-                                : indexResult.error.reason || 'Unknown error',
+                            id: opResult._id,
+                            error: typeof opResult.error === 'string'
+                                ? opResult.error
+                                : opResult.error.reason || 'Unknown error',
                         });
                     } else {
                         totalIndexed++;
+                        counts[action]++;
                     }
                 });
             }
         } catch (error) {
             // Entire batch failed
-            logger.error('Bulk index batch failed', {
+            logger.error('Bulk write batch failed', {
                 indexName,
                 batchStart: i,
                 batchSize: batch.length,
@@ -373,11 +414,12 @@ export async function bulkIndex(
 
     const took = Date.now() - startTime;
 
-    logger.info('Bulk index completed', {
+    logger.info('Bulk write completed', {
         indexName,
-        total: documents.length,
-        indexed: totalIndexed,
+        total: operations.length,
+        succeeded: totalIndexed,
         failed: totalFailed,
+        counts,
         took,
     });
 
@@ -386,8 +428,218 @@ export async function bulkIndex(
         indexed: totalIndexed,
         failed: totalFailed,
         errors: allErrors,
+        counts,
         took,
     };
+}
+
+/**
+ * Bulk index documents (full replace)
+ * Thin wrapper over bulkWrite() using the 'upload' action.
+ */
+export async function bulkIndex(
+    indexName: string,
+    documents: BulkIndexDocument[],
+    options?: {
+        refresh?: boolean | 'wait_for';
+    }
+): Promise<BulkIndexResult> {
+    return bulkWrite(
+        indexName,
+        documents.map(({ _id, ...document }) => ({
+            action: 'upload' as const,
+            _id,
+            document,
+        })),
+        options
+    );
+}
+
+// ============================================================================
+// PAGED DOCUMENT LISTING
+// ============================================================================
+
+export interface ListedDocument {
+    id: string;
+    fields: Record<string, unknown>;
+}
+
+export interface ListDocumentsResult {
+    success: boolean;
+    documents: ListedDocument[];
+    total: number;
+    error?: string;
+}
+
+/**
+ * Build the `_source` clause for a read that must never return the vector.
+ *
+ * A dense_vector is thousands of floats; returning it to a UI that wants to show
+ * a document is pure waste. An explicit allowlist wins when given, otherwise
+ * everything-except-the-embedding.
+ */
+function buildSourceForRead(fields?: string[]): Record<string, unknown> | string[] {
+    if (fields && fields.length > 0) {
+        return fields;
+    }
+    return { excludes: [EMBEDDING_FIELD_NAME] };
+}
+
+/**
+ * Map an ES hit into the provider-agnostic listed-document shape.
+ *
+ * `_id` is optional in the client's typings, so it is coerced — in practice a
+ * search hit always carries one.
+ */
+function toListedDocument(hit: { _id?: string; _source?: unknown }): ListedDocument {
+    return {
+        id: hit._id ?? '',
+        fields: (hit._source ?? {}) as Record<string, unknown>,
+    };
+}
+
+/**
+ * List documents one page at a time.
+ *
+ * Uses from/size rather than the scroll API: a browse UI jumps between arbitrary
+ * pages, which scroll cursors cannot do. The trade-off is ES's max_result_window
+ * ceiling on `from + size` — callers are expected to cap deep paging.
+ */
+export async function listDocuments(
+    indexName: string,
+    options?: {
+        offset?: number;
+        limit?: number;
+        fields?: string[];
+        sortField?: string;
+    }
+): Promise<ListDocumentsResult> {
+    try {
+        const es = getElasticsearchClient();
+
+        const exists = await indexExists(indexName);
+        if (!exists) {
+            return { success: false, documents: [], total: 0, error: `Index "${indexName}" does not exist` };
+        }
+
+        const response = await es.search({
+            index: indexName,
+            from: options?.offset ?? 0,
+            size: options?.limit ?? 25,
+            query: { match_all: {} },
+            _source: buildSourceForRead(options?.fields),
+            // Sorting by a stable field keeps paging repeatable; without it ES
+            // orders by (equal) score and rows can repeat or vanish between pages.
+            ...(options?.sortField
+                ? { sort: [{ [options.sortField]: { order: 'asc' as const } }] }
+                : {}),
+            // Without this ES stops counting at 10 000 and reports a lower bound,
+            // which would make the pager lie on large indexes.
+            track_total_hits: true,
+        });
+
+        const total = typeof response.hits.total === 'number'
+            ? response.hits.total
+            : response.hits.total?.value ?? 0;
+
+        return {
+            success: true,
+            documents: response.hits.hits.map(toListedDocument),
+            total,
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to list documents';
+        logger.error('Failed to list documents', { indexName, error: message });
+        return { success: false, documents: [], total: 0, error: message };
+    }
+}
+
+// ============================================================================
+// DELETE BY QUERY
+// ============================================================================
+
+export interface DeleteByQueryResult {
+    success: boolean;
+    matched: number;
+    deleted: number;
+    sample?: ListedDocument[];
+    error?: string;
+}
+
+/**
+ * Delete every document matching a query.
+ *
+ * With `dryRun`, counts matches without deleting anything — used to let callers
+ * confirm the blast radius before running a destructive purge. `sampleSize` also
+ * returns the first N matches so the caller can see *which* documents a filter
+ * caught, not just how many.
+ */
+export async function deleteByQuery(
+    indexName: string,
+    query: Record<string, unknown>,
+    options?: {
+        refresh?: boolean;
+        dryRun?: boolean;
+        sampleSize?: number;
+        sampleFields?: string[];
+    }
+): Promise<DeleteByQueryResult> {
+    const es = getElasticsearchClient();
+
+    try {
+        // es.count is exact, whereas a search total can come back as a capped
+        // lower bound — and "delete 412 documents" has to be a real number.
+        const countResponse = await es.count({ index: indexName, query });
+        const matched = countResponse.count ?? 0;
+
+        if (options?.dryRun) {
+            const sampleSize = options.sampleSize ?? 0;
+
+            if (sampleSize <= 0 || matched === 0) {
+                return { success: true, matched, deleted: 0, sample: [] };
+            }
+
+            const sampleResponse = await es.search({
+                index: indexName,
+                query,
+                size: sampleSize,
+                _source: buildSourceForRead(options.sampleFields),
+            });
+
+            return {
+                success: true,
+                matched,
+                deleted: 0,
+                sample: sampleResponse.hits.hits.map(toListedDocument),
+            };
+        }
+
+        // conflicts: 'proceed' so a concurrent update to one document doesn't
+        // abort the whole purge.
+        const response = await es.deleteByQuery({
+            index: indexName,
+            query,
+            refresh: options?.refresh,
+            conflicts: 'proceed',
+        });
+
+        logger.info('Delete by query completed', {
+            indexName,
+            matched,
+            deleted: response.deleted ?? 0,
+            versionConflicts: response.version_conflicts ?? 0,
+        });
+
+        return {
+            success: true,
+            matched,
+            deleted: response.deleted ?? 0,
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Delete by query failed';
+        logger.error('Delete by query failed', { indexName, error: message });
+        return { success: false, matched: 0, deleted: 0, error: message };
+    }
 }
 
 // ============================================================================

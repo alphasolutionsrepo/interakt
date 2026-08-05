@@ -36,6 +36,7 @@ import {
   Layers,
   ArrowRight,
   Upload,
+  FileCog,
   RefreshCw,
   Wrench,
 } from 'lucide-react';
@@ -395,6 +396,14 @@ export default function SearchIndexDetailPage() {
             >
               <Upload className="h-4 w-4 mr-2" />
               Upload
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => router.push(`/search-indexes/${indexId}/documents`)}
+            >
+              <FileCog className="h-4 w-4 mr-2" />
+              Documents
             </Button>
             <Button
               variant={searchIndex.isActive ? 'outline' : 'default'}

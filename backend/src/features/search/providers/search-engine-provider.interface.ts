@@ -17,6 +17,7 @@
 import 'server-only';
 
 import type { ProviderCapabilities } from './provider-capabilities';
+import type { FilterClause, SearchContext } from '../search.types';
 
 // ============================================================================
 // PROVIDER TYPE IDENTIFIER
@@ -165,6 +166,82 @@ export interface BulkIndexResult {
 }
 
 /**
+ * A single write action in a bulk write.
+ *
+ * - `upload` — full document replace (create if absent)
+ * - `merge`  — partial update; unlisted fields keep their stored values
+ * - `delete` — remove the document by key
+ *
+ * Semantics are normalized across providers: `upload` maps to an ES `index` op
+ * / Azure `uploadDocuments`, `merge` to an ES `update` with `doc_as_upsert`
+ * / Azure `mergeOrUploadDocuments`, `delete` to an ES `delete` op
+ * / Azure `deleteDocuments`.
+ */
+export type BulkWriteAction = 'upload' | 'merge' | 'delete';
+
+/**
+ * One operation in a mixed-action bulk write.
+ */
+export interface BulkWriteOperation {
+    action: BulkWriteAction;
+    /**
+     * Provider document key. Required for `merge` and `delete`.
+     * Optional for `upload` — the provider generates one if omitted.
+     */
+    _id?: string;
+    /** Field values. Required for `upload`/`merge`, ignored for `delete`. */
+    document?: Record<string, unknown>;
+}
+
+/**
+ * Result of a mixed-action bulk write.
+ */
+export interface BulkWriteResult extends BulkIndexResult {
+    /** Successful operation counts broken down by action. */
+    counts: Record<BulkWriteAction, number>;
+}
+
+/**
+ * A document returned by a listing/sampling read.
+ *
+ * `fields` never contains the embedding vector — it is excluded at the provider
+ * level so a 1536-float array never travels to a caller that just wants to show
+ * a document.
+ */
+export interface ListedDocument {
+    id: string;
+    fields: Record<string, unknown>;
+}
+
+/**
+ * Result of a paged document listing.
+ */
+export interface ListDocumentsResult {
+    success: boolean;
+    documents: ListedDocument[];
+    /** Exact total document count in the index, for pagination. */
+    total: number;
+    error?: string;
+}
+
+/**
+ * Result of a delete-by-filter operation.
+ */
+export interface DeleteByFilterResult {
+    success: boolean;
+    /** Documents matching the filter. */
+    matched: number;
+    /** Documents actually deleted (0 for a dry run). */
+    deleted: number;
+    /**
+     * Sample of the matching documents, so a caller can see *what* a filter
+     * caught rather than just how much. Populated on a dry run only.
+     */
+    sample?: ListedDocument[];
+    error?: string;
+}
+
+/**
  * A document fetched via scroll/pagination (used during reindexing).
  */
 export interface ScrollDocument {
@@ -254,12 +331,72 @@ export interface IndexProvider {
  * Covers bulk indexing, fetching, and single-document operations.
  */
 export interface DocumentProvider {
-    /** Bulk index multiple documents */
+    /**
+     * Bulk index multiple documents (full replace).
+     *
+     * Convenience wrapper over bulkWrite() with action 'upload' for every document.
+     */
     bulkIndex(
         indexName: string,
         documents: BulkDocument[],
         options?: { refresh?: boolean | 'wait_for' }
     ): Promise<BulkIndexResult>;
+
+    /**
+     * Apply a batch of mixed write actions (upload / merge / delete).
+     *
+     * Errors are reported per operation using the caller's array positions, so a
+     * partial failure never loses track of which operation failed.
+     */
+    bulkWrite(
+        indexName: string,
+        operations: BulkWriteOperation[],
+        options?: { refresh?: boolean | 'wait_for' }
+    ): Promise<BulkWriteResult>;
+
+    /**
+     * List documents in index order, one page at a time.
+     *
+     * Distinct from fetchAllDocuments(), which pulls the whole index into memory
+     * for reindexing. This is the read behind an admin browse screen, so it talks
+     * straight to the provider and is unaffected by application-level index
+     * status flags.
+     *
+     * Ordering: providers sort by `sortField` when they can. Elasticsearch always
+     * can; Azure's key field is declared non-sortable, so it falls back to
+     * provider-defined order and paging is best-effort there.
+     */
+    listDocuments(
+        indexName: string,
+        options?: {
+            offset?: number;
+            limit?: number;
+            /** Field allowlist. Omit to return everything except the embedding vector. */
+            fields?: string[];
+            /** Field to sort by for stable paging, when the provider supports it. */
+            sortField?: string;
+        }
+    ): Promise<ListDocumentsResult>;
+
+    /**
+     * Delete every document matching a provider-native filter expression.
+     *
+     * Build the expression with buildFilterExpression() rather than constructing
+     * it by hand — the shape is provider-specific (ES query DSL vs OData string).
+     *
+     * On a dry run, pass `sampleSize` to also get back a sample of what would be
+     * deleted; `sampleFields` narrows which fields each sample carries.
+     */
+    deleteByFilter(
+        indexName: string,
+        filterExpression: unknown,
+        options?: {
+            refresh?: boolean;
+            dryRun?: boolean;
+            sampleSize?: number;
+            sampleFields?: string[];
+        }
+    ): Promise<DeleteByFilterResult>;
 
     /** Fetch all documents from an index (for reindexing operations) */
     fetchAllDocuments(
@@ -395,6 +532,18 @@ export interface SearchEngineProvider extends IndexProvider, DocumentProvider {
      * analyzers, etc.) inside the provider, keeping the service layer clean.
      */
     buildIndexSettings(context: IndexSettingsBuildContext): IndexSettingsResult;
+
+    /**
+     * Translate application-level filter clauses into this provider's native
+     * filter expression (ES query DSL object, Azure OData `$filter` string, ...).
+     *
+     * Keeps filter translation inside the provider so callers such as
+     * deleteByFilter() stay provider-agnostic. Uses the same filter builders as
+     * search, so filter semantics match the search API exactly.
+     *
+     * @throws SearchError when a clause references an unfilterable field
+     */
+    buildFilterExpression(filters: FilterClause[], context: SearchContext): unknown;
 
     /**
      * Map a provider-specific error to a standardized error descriptor.

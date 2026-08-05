@@ -33,6 +33,15 @@ import { searchIndexFields } from './search-index-fields.schema';
 export * from './indexing-batches.schema';
 import { indexingBatches, indexingBatchesRelations } from './indexing-batches.schema';
 
+// Ingestion Keys (server-to-server write/delete credentials)
+export * from './ingestion-keys.schema';
+import {
+    ingestionKeys,
+    ingestionKeyIndexes,
+    ingestionKeysRelations,
+    ingestionKeyIndexesRelations,
+} from './ingestion-keys.schema';
+
 // Seed Registry
 export * from './seed-registry.schema';
 import { seedRegistry } from './seed-registry.schema';
@@ -242,6 +251,12 @@ export const schema = {
   // Indexing Batches
   indexingBatches,
   indexingBatchesRelations,
+
+  // Ingestion Keys
+  ingestionKeys,
+  ingestionKeyIndexes,
+  ingestionKeysRelations,
+  ingestionKeyIndexesRelations,
 
   // Seed Registry
   seedRegistry,

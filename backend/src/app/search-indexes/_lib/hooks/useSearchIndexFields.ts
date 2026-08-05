@@ -30,6 +30,8 @@ export const fieldKeys = {
     list: (indexId: string) => [...fieldKeys.all(indexId), 'list'] as const,
     summary: (indexId: string) => [...fieldKeys.all(indexId), 'summary'] as const,
     validation: (indexId: string) => [...fieldKeys.all(indexId), 'validation'] as const,
+    dependents: (indexId: string, fieldId: number) =>
+        [...fieldKeys.all(indexId), 'dependents', fieldId] as const,
 };
 
 // ============================================================================
@@ -113,6 +115,57 @@ export function useUpdateField(searchIndexId: string) {
         },
         onError: (error: ApiError) => {
             toast.error(error.message || 'Failed to update field');
+        },
+    });
+}
+
+// ============================================================================
+// Delete Field Hooks
+// ============================================================================
+
+/**
+ * Hook to fetch what would break if a field were deleted.
+ *
+ * Pass a null fieldId to keep the query idle until a delete is actually being
+ * considered — there is no point asking for every row in the table.
+ */
+export function useFieldDependents(
+    searchIndexId: string,
+    fieldId: number | null,
+    options?: { enabled?: boolean }
+) {
+    return useQuery({
+        queryKey: fieldKeys.dependents(searchIndexId, fieldId ?? -1),
+        queryFn: () => searchIndexFieldsApi.getFieldDependents(searchIndexId, fieldId!),
+        enabled: (options?.enabled ?? true) && fieldId !== null,
+        // Always re-check: a reference could have been added since last time
+        staleTime: 0,
+    });
+}
+
+/**
+ * Hook to delete a field.
+ *
+ * The server blocks system fields and referenced fields, so a rejection here is
+ * expected rather than exceptional — the error message carries the reason.
+ */
+export function useDeleteField(searchIndexId: string) {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (fieldId: number) =>
+            searchIndexFieldsApi.deleteField(searchIndexId, fieldId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: fieldKeys.list(searchIndexId) });
+            queryClient.invalidateQueries({ queryKey: fieldKeys.summary(searchIndexId) });
+            queryClient.invalidateQueries({ queryKey: fieldKeys.validation(searchIndexId) });
+            // The index now reports requiresReindex — refresh the detail view
+            queryClient.invalidateQueries({ queryKey: searchIndexKeys.detail(searchIndexId) });
+
+            toast.success('Field deleted');
+        },
+        onError: (error: ApiError) => {
+            toast.error(error.message || 'Failed to delete field');
         },
     });
 }

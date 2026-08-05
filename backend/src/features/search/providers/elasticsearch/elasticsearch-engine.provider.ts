@@ -24,11 +24,15 @@ import {
     getIndexMapping as esGetIndexMapping,
     refreshIndex as esRefreshIndex,
     bulkIndex as esBulkIndex,
+    bulkWrite as esBulkWrite,
+    deleteByQuery as esDeleteByQuery,
+    listDocuments as esListDocuments,
     fetchAllDocuments as esFetchAllDocuments,
     getDocumentById as esGetDocumentById,
     closeClient as esCloseClient,
     type CreateIndexOptions as ESCreateIndexOptions,
     type BulkIndexDocument,
+    type BulkWriteOperation as ESBulkWriteOperation,
 } from './elasticsearch.client';
 
 import { createLogger } from '@/shared/logger/logger';
@@ -36,7 +40,9 @@ import { ElasticsearchFieldMapper } from './elasticsearch-field-mapper';
 import { ELASTICSEARCH_CAPABILITIES } from './elasticsearch-capabilities';
 import { AUTOCOMPLETE_ANALYZER_SETTINGS } from './elasticsearch.constants';
 import { registerProviderClass } from '../search-engine-provider.factory';
+import { buildFilterQuery } from './query-builders/filter.builder';
 import type { ProviderCapabilities } from '../provider-capabilities';
+import type { FilterClause, SearchContext } from '../../search.types';
 
 import type {
     SearchEngineProvider,
@@ -49,6 +55,10 @@ import type {
     IndexMappingResult,
     BulkDocument,
     BulkIndexResult,
+    BulkWriteOperation,
+    BulkWriteResult,
+    DeleteByFilterResult,
+    ListDocumentsResult,
     FetchAllResult,
     GetDocumentResult,
     ProviderHealthStatus,
@@ -118,6 +128,44 @@ export class ElasticsearchEngineProvider implements SearchEngineProvider {
     ): Promise<BulkIndexResult> {
         // BulkDocument and BulkIndexDocument have the same shape
         return esBulkIndex(indexName, documents as BulkIndexDocument[], options);
+    }
+
+    async bulkWrite(
+        indexName: string,
+        operations: BulkWriteOperation[],
+        options?: { refresh?: boolean | 'wait_for' }
+    ): Promise<BulkWriteResult> {
+        // BulkWriteOperation is structurally identical to the client's own type
+        return esBulkWrite(indexName, operations as ESBulkWriteOperation[], options);
+    }
+
+    async listDocuments(
+        indexName: string,
+        options?: {
+            offset?: number;
+            limit?: number;
+            fields?: string[];
+            sortField?: string;
+        }
+    ): Promise<ListDocumentsResult> {
+        return esListDocuments(indexName, options);
+    }
+
+    async deleteByFilter(
+        indexName: string,
+        filterExpression: unknown,
+        options?: {
+            refresh?: boolean;
+            dryRun?: boolean;
+            sampleSize?: number;
+            sampleFields?: string[];
+        }
+    ): Promise<DeleteByFilterResult> {
+        return esDeleteByQuery(
+            indexName,
+            filterExpression as Record<string, unknown>,
+            options
+        );
     }
 
     async fetchAllDocuments(
@@ -300,6 +348,26 @@ export class ElasticsearchEngineProvider implements SearchEngineProvider {
             settings: Object.keys(indexSettings).length > 0 ? indexSettings : undefined,
             mappings: { properties },
         };
+    }
+
+    // ========================================================================
+    // FILTER TRANSLATION
+    // ========================================================================
+
+    /**
+     * Translate filter clauses into ES query DSL.
+     *
+     * Reuses the same builder as search, so a filter that selects documents in
+     * search selects exactly the same documents in deleteByFilter().
+     */
+    buildFilterExpression(filters: FilterClause[], context: SearchContext): unknown {
+        // No filters would match every document — refuse rather than let a caller
+        // accidentally purge an entire index.
+        const query = buildFilterQuery(filters, context);
+        if (!query) {
+            throw new Error('At least one filter clause is required');
+        }
+        return query;
     }
 
     // ========================================================================

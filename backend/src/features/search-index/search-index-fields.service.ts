@@ -12,6 +12,13 @@
 import { createLogger } from '@/shared/logger/logger';
 import * as repository from './search-index-fields.repository';
 import * as searchIndexRepository from './search-index.repository';
+import { clearIndexCache } from './search-index.cache';
+import { getDependencySources } from './field-dependents.repository';
+import {
+    findFieldDependents,
+    type FieldDependent,
+    type FieldDependentsResult,
+} from './field-dependents';
 import type { SearchIndexField, NewSearchIndexField } from '@/db/schema/search-index-fields.schema';
 import type {
     UpdateSearchIndexFieldDTO,
@@ -608,16 +615,73 @@ export async function createFieldsFromReview(
 }
 
 /**
+ * Thrown when a field cannot be deleted because something references it.
+ * Carries the dependants so the API can tell the caller what to fix.
+ */
+export class FieldHasDependentsError extends Error {
+    constructor(
+        message: string,
+        public readonly dependents: FieldDependent[]
+    ) {
+        super(message);
+        this.name = 'FieldHasDependentsError';
+    }
+}
+
+/**
+ * Work out what would break if a field were deleted.
+ *
+ * Exposed separately from deleteField so the UI can warn *before* asking for
+ * confirmation, rather than only failing afterwards.
+ */
+export async function getFieldDependents(
+    searchIndexId: string,
+    fieldId: number
+): Promise<FieldDependentsResult> {
+    const field = await repository.getFieldById(fieldId);
+    if (!field || field.searchIndexId !== searchIndexId) {
+        throw new Error(`Field with ID ${fieldId} not found`);
+    }
+
+    const [index, allFields, sources] = await Promise.all([
+        searchIndexRepository.getSearchIndexById(searchIndexId),
+        repository.getFieldsBySearchIndexId(searchIndexId),
+        getDependencySources(searchIndexId),
+    ]);
+
+    if (!index) {
+        throw new Error(`Search index with ID ${searchIndexId} not found`);
+    }
+
+    return findFieldDependents({
+        field,
+        allFields,
+        searchType: index.searchType,
+        experiences: sources.experiences,
+        tools: sources.tools,
+    });
+}
+
+/**
  * Delete a custom field from a search index.
- * System fields cannot be deleted.
+ *
+ * System fields cannot be deleted, and neither can a field something else
+ * references — see getFieldDependents. Removing the definition stops the field
+ * being searched, faceted or returned immediately; the values already stored in
+ * the provider index survive until the next rebuild, which is why this marks the
+ * index as requiring a reindex.
  */
 export async function deleteField(
+    searchIndexId: string,
     fieldId: number,
     userId: string
 ): Promise<void> {
     try {
         const field = await repository.getFieldById(fieldId);
-        if (!field) {
+
+        // Scope by index: without this check a field can be deleted through any
+        // index's URL, because the lookup is by field id alone.
+        if (!field || field.searchIndexId !== searchIndexId) {
             throw new Error(`Field with ID ${fieldId} not found`);
         }
 
@@ -625,10 +689,25 @@ export async function deleteField(
             throw new Error('Cannot delete system fields');
         }
 
+        const { dependents } = await getFieldDependents(searchIndexId, fieldId);
+        if (dependents.length > 0) {
+            throw new FieldHasDependentsError(
+                `Cannot delete "${field.fieldName}": ${dependents.length} ${dependents.length === 1 ? 'thing depends' : 'things depend'} on it`,
+                dependents
+            );
+        }
+
         await repository.deleteField(fieldId);
 
         // Mark index as requiring reindex
         await searchIndexRepository.incrementMappingVersion(field.searchIndexId, true);
+
+        // Drop the cached index definition, or reads keep serving the deleted
+        // field — including the search context built from it.
+        const index = await searchIndexRepository.getSearchIndexById(searchIndexId);
+        if (index) {
+            await clearIndexCache(index.id, index.name);
+        }
 
         logger.info('Deleted field', {
             fieldId,
@@ -637,6 +716,11 @@ export async function deleteField(
             deletedBy: userId,
         });
     } catch (error) {
+        // A blocked delete is an expected outcome, not a failure — don't log it
+        // at error level.
+        if (error instanceof FieldHasDependentsError) {
+            throw error;
+        }
         logger.error('Failed to delete field', error as Error, { fieldId });
         throw error;
     }

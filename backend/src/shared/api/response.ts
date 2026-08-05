@@ -164,12 +164,17 @@ function forbidden(message: string = 'Forbidden'): NextResponse<APIErrorResponse
 
 /**
  * Conflict error (409)
+ *
+ * `details` carries machine-readable context about what conflicted — e.g. the
+ * list of things blocking a delete — so the client can render it rather than
+ * only showing the message.
  */
-function conflict(message: string): NextResponse<APIErrorResponse> {
+function conflict(message: string, details?: any): NextResponse<APIErrorResponse> {
     return NextResponse.json(
         {
             success: false,
             error: message,
+            ...(details !== undefined && { details }),
             code: 'CONFLICT',
         },
         { status: 409 }

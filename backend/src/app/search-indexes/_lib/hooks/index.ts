@@ -4,3 +4,4 @@ export * from './useSearchIndexes';
 export * from './useSearchIndexFields';
 export * from './useDocumentIndexing';
 export * from './useSearchIndexExport';
+export * from './useIngestionKeys';

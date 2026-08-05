@@ -37,6 +37,7 @@ import {
     Filter,
     Lock,
     Settings2,
+    Trash2,
     Link2,
     Type,
     Hash,
@@ -97,6 +98,11 @@ interface FieldMappingTableProps {
     ) => void;
     /** Callback for field attribute changes */
     onAttributeChange?: (change: FieldAttributeChange) => void;
+    /**
+     * Callback to remove a field. When omitted, no delete affordance is shown.
+     * Never offered for system fields — those cannot be deleted.
+     */
+    onDeleteField?: (field: SearchIndexField) => void;
     isLoading?: boolean;
     hasSourceData: boolean;
     readOnly?: boolean;
@@ -367,6 +373,7 @@ export function FieldMappingTable({
     mappings,
     onMappingChange,
     onAttributeChange,
+    onDeleteField,
     isLoading,
     hasSourceData,
     readOnly = false,
@@ -678,6 +685,20 @@ export function FieldMappingTable({
                                                     onClick={() => openSheet(field)}
                                                 >
                                                     <Settings2 className="h-4 w-4" />
+                                                </Button>
+                                            )}
+
+                                            {/* Delete button — system fields cannot be
+                                                deleted, and already carry a Lock badge */}
+                                            {!readOnly && onDeleteField && !field.isSystemField && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 w-7 p-0 text-slate-400 hover:text-red-600"
+                                                    onClick={() => onDeleteField(field)}
+                                                    aria-label={`Delete field ${field.fieldName}`}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             )}
                                         </div>

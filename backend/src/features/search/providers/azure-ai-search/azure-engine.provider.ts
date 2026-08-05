@@ -20,7 +20,9 @@ import {
     checkAzureHealth,
 } from './azure-client';
 import { registerProviderClass } from '../search-engine-provider.factory';
+import { buildAzureFilter } from './query-builders/filter.builder';
 import type { ProviderCapabilities } from '../provider-capabilities';
+import type { FilterClause, SearchContext } from '../../search.types';
 
 import type {
     SearchEngineProvider,
@@ -33,6 +35,12 @@ import type {
     IndexMappingResult,
     BulkDocument,
     BulkIndexResult,
+    BulkWriteAction,
+    BulkWriteOperation,
+    BulkWriteResult,
+    DeleteByFilterResult,
+    ListedDocument,
+    ListDocumentsResult,
     FetchAllResult,
     GetDocumentResult,
     ProviderHealthStatus,
@@ -61,6 +69,99 @@ const HIGH_PRIORITY_PATTERNS = [
 
 /** Field name patterns that indicate a good title field (short, identifying). */
 const TITLE_PATTERNS = [/\btitle\b/i, /\bname\b/i, /\bheading\b/i, /\bsubject\b/i, /\blabel\b/i];
+
+// ============================================================================
+// BULK WRITE HELPERS
+// ============================================================================
+
+/**
+ * Azure's document key field name, as declared in buildIndexSettings.
+ */
+const AZURE_KEY_FIELD = 'id';
+
+/** A run of consecutive operations sharing one action. */
+interface ActionRun {
+    action: BulkWriteAction;
+    operations: BulkWriteOperation[];
+    /** Original position in the caller's operations array, per entry above. */
+    indices: number[];
+}
+
+/**
+ * Split a mixed-action operation list into contiguous same-action runs.
+ *
+ * Azure's typed client exposes one method per action, so operations must be
+ * grouped before submission. Grouping *contiguously* (rather than by action
+ * globally) preserves the caller's ordering, which matters when the same
+ * document id is written more than once in a single request.
+ */
+function groupContiguousByAction(operations: BulkWriteOperation[]): ActionRun[] {
+    const runs: ActionRun[] = [];
+
+    operations.forEach((operation, index) => {
+        const last = runs[runs.length - 1];
+        if (last && last.action === operation.action) {
+            last.operations.push(operation);
+            last.indices.push(index);
+        } else {
+            runs.push({
+                action: operation.action,
+                operations: [operation],
+                indices: [index],
+            });
+        }
+    });
+
+    return runs;
+}
+
+/**
+ * Split an Azure document into its key and its remaining fields.
+ *
+ * Azure returns the key inline as `id` (see buildIndexSettings) rather than as
+ * separate metadata the way Elasticsearch does with `_id`, so it has to be lifted
+ * back out to match ListedDocument.
+ */
+function toListedDocumentFromAzure(document: Record<string, unknown>): ListedDocument {
+    const { id, ...fields } = document;
+    return {
+        id: id === undefined || id === null ? '' : String(id),
+        fields,
+    };
+}
+
+/**
+ * Add the key field to a `select` allowlist.
+ *
+ * Azure only returns fields named in `select`, and the key is not implicit the way
+ * Elasticsearch's `_id` is — omit it and every document comes back without an id,
+ * leaving the caller unable to address the rows it just read.
+ */
+function withKeyField(fields: string[]): string[] {
+    return fields.includes(AZURE_KEY_FIELD) ? fields : [AZURE_KEY_FIELD, ...fields];
+}
+
+/**
+ * Convert an operation into the flat shape Azure expects.
+ *
+ * Azure's key field is always `id` (see buildIndexSettings), so the logical
+ * document key — passed as `_id`, or already present as `id` — is normalized
+ * onto that field. Deletes carry the key only.
+ */
+function toAzureDocument(
+    operation: BulkWriteOperation,
+    action: BulkWriteAction
+): Record<string, unknown> {
+    const { _id, document } = operation;
+    const rest = document ?? {};
+    const id = _id ?? rest.id;
+
+    if (action === 'delete') {
+        return { id: String(id) };
+    }
+
+    return { ...rest, id: String(id) };
+}
 
 interface SemanticFieldSlots {
     /** Best single field for the title slot */
@@ -284,62 +385,260 @@ export class AzureEngineProvider implements SearchEngineProvider {
     async bulkIndex(
         indexName: string,
         documents: BulkDocument[],
-        _options?: { refresh?: boolean | 'wait_for' }
+        options?: { refresh?: boolean | 'wait_for' }
     ): Promise<BulkIndexResult> {
+        return this.bulkWrite(
+            indexName,
+            documents.map(({ _id, ...document }) => ({
+                action: 'upload' as const,
+                _id,
+                document,
+            })),
+            options
+        );
+    }
+
+    async bulkWrite(
+        indexName: string,
+        operations: BulkWriteOperation[],
+        _options?: { refresh?: boolean | 'wait_for' }
+    ): Promise<BulkWriteResult> {
+        const counts: Record<BulkWriteAction, number> = { upload: 0, merge: 0, delete: 0 };
+        const errors: Array<{ index: number; id?: string; error: string }> = [];
+        const startTime = Date.now();
+
         try {
             const client = getSearchClient(indexName);
 
-            // Azure uses mergeOrUploadDocuments for upsert behavior
-            const azureDocs = documents.map(doc => {
-                const { _id, ...rest } = doc;
-                const id = _id || rest.id;
-                return { ...rest, id: String(id) };
-            });
-
-            // Azure allows max 1000 docs per batch
-            const batchSize = 1000;
-            let totalIndexed = 0;
+            let totalSucceeded = 0;
             let totalFailed = 0;
-            const errors: Array<{ index: number; id?: string; error: string }> = [];
-            const startTime = Date.now();
 
-            let globalIndex = 0;
-            for (let i = 0; i < azureDocs.length; i += batchSize) {
-                const batch = azureDocs.slice(i, i + batchSize);
-                const result = await client.mergeOrUploadDocuments(batch);
+            // Azure has no mixed-action batch on the typed client, so split into
+            // contiguous same-action runs. Original array positions are carried
+            // along so per-operation errors stay addressable by the caller.
+            for (const run of groupContiguousByAction(operations)) {
+                const azureDocs = run.operations.map(op =>
+                    toAzureDocument(op, run.action)
+                );
 
-                for (const r of result.results) {
-                    if (r.succeeded) {
-                        totalIndexed++;
-                    } else {
-                        totalFailed++;
-                        errors.push({
-                            index: globalIndex,
-                            id: r.key || undefined,
-                            error: r.errorMessage || 'Unknown error',
-                        });
-                    }
-                    globalIndex++;
+                // Azure allows max 1000 docs per batch
+                const batchSize = 1000;
+                for (let i = 0; i < azureDocs.length; i += batchSize) {
+                    const batch = azureDocs.slice(i, i + batchSize);
+                    const result = await this.submitAzureBatch(client, run.action, batch);
+
+                    result.results.forEach((r, batchIndex) => {
+                        // Original position of this operation in the caller's array
+                        const originalIndex = run.indices[i + batchIndex];
+
+                        // Deleting an absent document is not an error — deletes are
+                        // idempotent, which keeps incremental sync retryable.
+                        const isMissingOnDelete =
+                            run.action === 'delete' && r.statusCode === 404;
+
+                        if (r.succeeded || isMissingOnDelete) {
+                            totalSucceeded++;
+                            counts[run.action]++;
+                        } else {
+                            totalFailed++;
+                            errors.push({
+                                index: originalIndex,
+                                id: r.key || undefined,
+                                error: r.errorMessage || 'Unknown error',
+                            });
+                        }
+                    });
                 }
             }
 
+            logger.info('Azure bulk write completed', {
+                indexName,
+                total: operations.length,
+                succeeded: totalSucceeded,
+                failed: totalFailed,
+                counts,
+            });
+
             return {
                 success: totalFailed === 0,
-                indexed: totalIndexed,
+                indexed: totalSucceeded,
                 failed: totalFailed,
                 errors,
+                counts,
                 took: Date.now() - startTime,
             };
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Bulk index failed';
-            logger.error('Azure bulk index failed', { indexName, error: message });
+            const message = error instanceof Error ? error.message : 'Bulk write failed';
+            logger.error('Azure bulk write failed', { indexName, error: message });
             return {
                 success: false,
                 indexed: 0,
-                failed: documents.length,
+                failed: operations.length,
                 errors: [{ index: 0, error: message }],
-                took: 0,
+                counts,
+                took: Date.now() - startTime,
             };
+        }
+    }
+
+    /**
+     * Dispatch one same-action batch to the matching Azure client method.
+     *
+     * upload → uploadDocuments        (full replace)
+     * merge  → mergeOrUploadDocuments (partial update, creates when absent)
+     * delete → deleteDocuments
+     */
+    private async submitAzureBatch(
+        client: ReturnType<typeof getSearchClient>,
+        action: BulkWriteAction,
+        batch: Array<Record<string, unknown>>
+    ) {
+        switch (action) {
+            case 'merge':
+                return client.mergeOrUploadDocuments(batch);
+            case 'delete':
+                return client.deleteDocuments(batch);
+            case 'upload':
+            default:
+                return client.uploadDocuments(batch);
+        }
+    }
+
+    async listDocuments(
+        indexName: string,
+        options?: {
+            offset?: number;
+            limit?: number;
+            fields?: string[];
+            /**
+             * Ignored on Azure: the key field is declared non-sortable in
+             * buildIndexSettings, so orderby is unavailable and paging falls back
+             * to provider-defined order (same as fetchAllDocuments).
+             */
+            sortField?: string;
+        }
+    ): Promise<ListDocumentsResult> {
+        try {
+            const client = getSearchClient(indexName);
+
+            const results = await client.search('*', {
+                top: options?.limit ?? 25,
+                skip: options?.offset ?? 0,
+                includeTotalCount: true,
+                // Azure has no _source excludes — narrowing has to be an
+                // allowlist. Omitting select returns every retrievable field;
+                // vectors are typically non-retrievable, so they stay out.
+                ...(options?.fields && options.fields.length > 0
+                    ? { select: withKeyField(options.fields) }
+                    : {}),
+            });
+
+            const documents: ListedDocument[] = [];
+            for await (const result of results.results) {
+                documents.push(toListedDocumentFromAzure(result.document as Record<string, unknown>));
+            }
+
+            return {
+                success: true,
+                documents,
+                total: results.count ?? documents.length,
+            };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to list documents';
+            logger.error('Azure list documents failed', { indexName, error: message });
+            return { success: false, documents: [], total: 0, error: message };
+        }
+    }
+
+    async deleteByFilter(
+        indexName: string,
+        filterExpression: unknown,
+        options?: {
+            refresh?: boolean;
+            dryRun?: boolean;
+            sampleSize?: number;
+            sampleFields?: string[];
+        }
+    ): Promise<DeleteByFilterResult> {
+        const filter = String(filterExpression);
+
+        try {
+            const client = getSearchClient(indexName);
+
+            // Azure has no delete-by-query: page through the matches collecting
+            // keys, then delete them in batches.
+            const countResult = await client.search('*', {
+                filter,
+                top: 0,
+                includeTotalCount: true,
+            });
+            const matched = countResult.count ?? 0;
+
+            if (options?.dryRun) {
+                const sampleSize = options.sampleSize ?? 0;
+
+                if (sampleSize <= 0 || matched === 0) {
+                    return { success: true, matched, deleted: 0, sample: [] };
+                }
+
+                const sampleResults = await client.search('*', {
+                    filter,
+                    top: sampleSize,
+                    ...(options.sampleFields && options.sampleFields.length > 0
+                        ? { select: withKeyField(options.sampleFields) }
+                        : {}),
+                });
+
+                const sample: ListedDocument[] = [];
+                for await (const result of sampleResults.results) {
+                    sample.push(toListedDocumentFromAzure(result.document as Record<string, unknown>));
+                }
+
+                return { success: true, matched, deleted: 0, sample };
+            }
+
+            const keys: string[] = [];
+            const pageSize = 1000;
+            let skip = 0;
+            let hasMore = true;
+
+            while (hasMore) {
+                const results = await client.search('*', {
+                    filter,
+                    select: ['id'],
+                    top: pageSize,
+                    skip,
+                });
+
+                let pageCount = 0;
+                for await (const result of results.results) {
+                    const doc = result.document as Record<string, unknown>;
+                    if (doc.id !== undefined && doc.id !== null) {
+                        keys.push(String(doc.id));
+                    }
+                    pageCount++;
+                }
+
+                skip += pageSize;
+                hasMore = pageCount === pageSize;
+            }
+
+            let deleted = 0;
+            for (let i = 0; i < keys.length; i += pageSize) {
+                const batch = keys.slice(i, i + pageSize).map(id => ({ id }));
+                const result = await client.deleteDocuments(batch);
+                deleted += result.results.filter(
+                    r => r.succeeded || r.statusCode === 404
+                ).length;
+            }
+
+            logger.info('Azure delete by filter completed', { indexName, matched, deleted });
+
+            return { success: true, matched, deleted };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Delete by filter failed';
+            logger.error('Azure delete by filter failed', { indexName, error: message });
+            return { success: false, matched: 0, deleted: 0, error: message };
         }
     }
 
@@ -649,6 +948,26 @@ export class AzureEngineProvider implements SearchEngineProvider {
             mappings: { fields },
             settings: Object.keys(settings).length > 0 ? settings : undefined,
         };
+    }
+
+    // ========================================================================
+    // FILTER TRANSLATION
+    // ========================================================================
+
+    /**
+     * Translate filter clauses into an Azure OData $filter string.
+     *
+     * Reuses the same builder as search, so a filter that selects documents in
+     * search selects exactly the same documents in deleteByFilter().
+     */
+    buildFilterExpression(filters: FilterClause[], context: SearchContext): unknown {
+        // No filters would match every document — refuse rather than let a caller
+        // accidentally purge an entire index.
+        const filter = buildAzureFilter(filters, context.allFields);
+        if (!filter) {
+            throw new Error('At least one filter clause is required');
+        }
+        return filter;
     }
 
     // ========================================================================

@@ -113,7 +113,20 @@ Open the route, click the gear icon, paste the backend URL and matching token, S
 - `POST /api/chat` — AI chat with context awareness
 - Admin APIs for templates, providers, indexes, analytics
 
-API keys are issued from the admin UI.
+Indexing a search index (`/api/search-indexes/:id`):
+
+- `POST /documents` — bulk load; creates the index and tracks progress in a batch record
+- `GET /documents` — page through the indexed documents
+- `GET|PUT|PATCH|DELETE /documents/:documentId` — read, replace, partially update, or delete one document
+- `POST /documents/bulk` — mixed add/update/delete batch
+- `POST /documents/delete-by-filter` — delete everything matching a filter (`dryRun` to preview)
+
+Two credential types, and they are not interchangeable:
+
+- **Access tokens** — issued per experience in the admin UI. Public by design (they ship in the embed snippet) and therefore **read-only**: search, autocomplete, document lookup.
+- **Ingestion keys** — issued per search index in the admin UI. Server-side secrets, scoped to specific indexes and to write/delete, stored hashed and revocable. Required for every endpoint in the indexing list above.
+
+Both are sent as `Authorization: Bearer <credential>`; an access token is rejected on the write endpoints.
 
 ## License
 
