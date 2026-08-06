@@ -26,6 +26,7 @@ import type {
     BulkUpdateFieldMappingsDTO,
     FieldMappingConfig,
 } from '@/features/search-index';
+import type { FieldType } from '@/shared/constants/field-types';
 
 // ============================================================================
 // EXPORT/IMPORT TYPES
@@ -900,6 +901,11 @@ export interface DocumentSummary {
 export interface DocumentColumnDescriptor {
     field: string;
     label: string;
+    /**
+     * The field's declared type, used to pick a cell renderer. `'id'` is the
+     * document key column, which has no field definition behind it.
+     */
+    type: FieldType | 'id';
 }
 
 export interface ListDocumentsResponse {

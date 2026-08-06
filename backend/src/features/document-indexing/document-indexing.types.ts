@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import { filterClauseSchema } from '@/features/search/search.validation';
+import type { FieldType } from '@/shared/constants/field-types';
 
 // ============================================================================
 // VALIDATION SCHEMAS
@@ -148,8 +149,9 @@ export type {
     DocumentReadResult,
     DeleteByFilterOutcome,
     ListDocumentsOutcome,
-    DocumentColumn,
 } from './document-writer.service';
+
+export type { DocumentColumn } from './document-columns';
 
 export type {
     IndexingRequest,
@@ -271,6 +273,14 @@ export interface DocumentSummary {
 export interface DocumentColumnDescriptor {
     field: string;
     label: string;
+    /**
+     * The field's declared type, so the cell can be rendered as what it is — a
+     * thumbnail, a link, a formatted date — instead of a stringified value.
+     *
+     * `'id'` marks the document key column, which has no field definition of its
+     * own on an index that does not define uniqueId.
+     */
+    type: FieldType | 'id';
 }
 
 /**

@@ -49,6 +49,8 @@ import {
     ChevronRight,
     ChevronDown,
     ChevronLeft,
+    Check,
+    X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -121,6 +123,149 @@ function formatCellValue(value: unknown): string {
     return String(value);
 }
 
+/** Stop a link or control inside a row from also toggling the row's expansion. */
+function stopRowToggle(event: React.MouseEvent) {
+    event.stopPropagation();
+}
+
+/**
+ * Format a date value for a table cell, keeping the exact value in the tooltip.
+ *
+ * Anything unparseable falls back to the raw string — a malformed date in an index
+ * is worth seeing verbatim, not hiding behind "Invalid Date".
+ */
+function formatDateCell(value: unknown): { text: string; title: string } {
+    const raw = String(value);
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+        return { text: raw, title: raw };
+    }
+    return { text: parsed.toLocaleString(), title: raw };
+}
+
+/**
+ * Summarise an array in one cell: a couple of primitive values, or a count.
+ *
+ * A tags array is worth reading inline; an array of objects is not, so it
+ * collapses to "N items" and leaves the detail to the expanded row.
+ */
+function summariseArray(values: unknown[]): string {
+    if (values.length === 0) return 'empty';
+    if (values.some(entry => entry !== null && typeof entry === 'object')) {
+        return `${values.length} item${values.length === 1 ? '' : 's'}`;
+    }
+    const shown = values.slice(0, 2).map(String).join(', ');
+    return values.length > 2 ? `${shown} +${values.length - 2}` : shown;
+}
+
+/**
+ * A document's image field as a thumbnail, falling back to the URL text.
+ *
+ * A broken image icon says nothing useful about the document; the URL that failed
+ * to load is exactly what someone inspecting a bad document needs to see.
+ */
+function ThumbnailCell({ url }: { url: string }) {
+    const [failed, setFailed] = useState(false);
+
+    if (failed) {
+        return <span className="text-xs text-muted-foreground" title={url}>{url}</span>;
+    }
+
+    return (
+        // next/image is not usable here: document image URLs point at arbitrary
+        // remote hosts and next.config declares no images.remotePatterns.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+            src={url}
+            alt=""
+            title={url}
+            className="h-8 w-8 rounded border object-cover"
+            onError={() => setFailed(true)}
+        />
+    );
+}
+
+/**
+ * Render one document field according to its declared type.
+ *
+ * The index already knows what each field holds, so a cell can show a thumbnail,
+ * a followable link or a formatted date instead of a stringified value. Cells are
+ * summaries by design — the expanded row still shows the raw document, so
+ * anything collapsed here is one click from being seen in full.
+ */
+function DocumentCell({
+    value,
+    type,
+}: {
+    value: unknown;
+    type: DocumentColumnDescriptor['type'];
+}) {
+    if (value === null || value === undefined || value === '') {
+        return <span className="text-muted-foreground">—</span>;
+    }
+
+    switch (type) {
+        case 'boolean': {
+            const truthy = value === true || value === 'true';
+            return truthy
+                ? <Check className="h-4 w-4 text-emerald-600" aria-label="true" />
+                : <X className="h-4 w-4 text-muted-foreground" aria-label="false" />;
+        }
+
+        case 'number': {
+            const numeric = typeof value === 'number' ? value : Number(value);
+            return (
+                <span className="tabular-nums">
+                    {Number.isNaN(numeric) ? String(value) : numeric.toLocaleString()}
+                </span>
+            );
+        }
+
+        case 'date':
+        case 'datetime': {
+            const { text, title } = formatDateCell(value);
+            return <span className="whitespace-nowrap" title={title}>{text}</span>;
+        }
+
+        case 'image_url':
+            return <ThumbnailCell url={String(value)} />;
+
+        case 'url':
+        case 'email': {
+            const href = type === 'email' ? `mailto:${String(value)}` : String(value);
+            return (
+                <a
+                    href={href}
+                    target={type === 'url' ? '_blank' : undefined}
+                    rel={type === 'url' ? 'noreferrer' : undefined}
+                    onClick={stopRowToggle}
+                    className="text-primary underline-offset-2 hover:underline"
+                    title={String(value)}
+                >
+                    {String(value)}
+                </a>
+            );
+        }
+
+        case 'array':
+            return (
+                <Badge variant="secondary" className="font-normal" title={JSON.stringify(value)}>
+                    {Array.isArray(value) ? summariseArray(value) : formatCellValue(value)}
+                </Badge>
+            );
+
+        case 'json':
+            return (
+                <Badge variant="secondary" className="font-normal" title={JSON.stringify(value)}>
+                    {'{…}'}
+                </Badge>
+            );
+
+        default:
+            return <span title={formatCellValue(value)}>{formatCellValue(value)}</span>;
+    }
+}
+
 /**
  * A document table shared by the browse card and the delete-by-filter preview,
  * so both present documents the same way.
@@ -187,7 +332,12 @@ function DocumentTable({
                                         >
                                             {columnIndex === 0
                                                 ? document.id
-                                                : formatCellValue(document.fields[column.field])}
+                                                : (
+                                                    <DocumentCell
+                                                        value={document.fields[column.field]}
+                                                        type={column.type}
+                                                    />
+                                                )}
                                         </TableCell>
                                     ))}
                                 </TableRow>

@@ -37,6 +37,12 @@ import type {
 } from '@/features/search/providers/search-engine-provider.interface';
 import { buildSearchContext } from '@/features/search/search-context.builder';
 import type { FilterClause, SearchContext } from '@/features/search/search.types';
+import {
+    DOCUMENT_KEY_FIELD,
+    resolveDisplayColumns,
+    toProviderFields,
+    type DocumentColumn,
+} from './document-columns';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as fieldsService from '@/features/search-index/search-index-fields.service';
 import * as fieldsRepository from '@/features/search-index/search-index-fields.repository';
@@ -154,6 +160,12 @@ interface ResolvedIndex {
     providerType: SearchProviderType;
     fields: SearchIndexField[];
     embeddingConfig: EmbeddingConfig;
+    /**
+     * Whether the field definitions have drifted from the provider mapping. When
+     * true, a field row existing in Postgres is no proof the provider knows the
+     * field, so optional columns are not requested.
+     */
+    requiresReindex: boolean;
 }
 
 /**
@@ -194,6 +206,7 @@ async function resolveIndex(searchIndexId: string): Promise<ResolvedIndex> {
         providerType,
         fields,
         embeddingConfig: getEmbeddingConfig(index),
+        requiresReindex: index.requiresReindex ?? false,
     };
 }
 
@@ -216,80 +229,6 @@ async function resolveSearchContextUngated(searchIndexId: string): Promise<Searc
         throw new SearchIndexNotFoundError('Search index not found');
     }
     return buildSearchContext(index);
-}
-
-// ============================================================================
-// DISPLAY COLUMNS
-// ============================================================================
-
-/** Maximum non-key columns in a document summary. */
-const MAX_DISPLAY_COLUMNS = 4;
-
-/** Field the document key is mapped from. */
-const DOCUMENT_KEY_FIELD = 'uniqueId';
-
-export interface DocumentColumn {
-    field: string;
-    label: string;
-}
-
-/**
- * Pick a compact set of fields for summarising a document in a table.
- *
- * Starts from context.defaultResponseFields, which is already filtered for
- * retrievability (includeInResponse && isIndexed && hasDataAvailable &&
- * !isEmptySystemField). That filter matters beyond tidiness: Azure's `select`
- * throws on a field the index does not actually have.
- *
- * The key field always leads so a row can be acted on, and vector-source fields
- * are skipped — they hold long prose that makes a table unreadable.
- */
-function resolveDisplayColumns(
-    index: ResolvedIndex,
-    context: SearchContext
-): DocumentColumn[] {
-    const byName = new Map(index.fields.map(f => [f.fieldName, f]));
-    const label = (fieldName: string) =>
-        byName.get(fieldName)?.displayName || fieldName;
-
-    // The key column always leads, and is always present even when the index has
-    // no mapped uniqueId field — the provider returns a document key regardless,
-    // and without it a table row has nothing to act on. Callers rely on this
-    // position: columns[0] is the document id.
-    const columns: DocumentColumn[] = [{
-        field: DOCUMENT_KEY_FIELD,
-        label: byName.has(DOCUMENT_KEY_FIELD) ? label(DOCUMENT_KEY_FIELD) : 'ID',
-    }];
-
-    for (const fieldName of context.defaultResponseFields) {
-        if (columns.length > MAX_DISPLAY_COLUMNS) {
-            break;
-        }
-        if (fieldName === DOCUMENT_KEY_FIELD || fieldName === EMBEDDING_FIELD_NAME) {
-            continue;
-        }
-        if (byName.get(fieldName)?.isVectorSource) {
-            continue;
-        }
-        columns.push({ field: fieldName, label: label(fieldName) });
-    }
-
-    return columns;
-}
-
-/**
- * Narrow display columns to field names the index actually has.
- *
- * The key column can be synthetic (see resolveDisplayColumns), and Azure's
- * `select` throws on a field the index does not define — so the list handed to a
- * provider has to be filtered even though the column list is not.
- */
-function toProviderFields(
-    columns: DocumentColumn[],
-    index: ResolvedIndex
-): string[] {
-    const known = new Set(index.fields.map(f => f.fieldName));
-    return columns.map(c => c.field).filter(field => known.has(field));
 }
 
 /**
@@ -344,19 +283,39 @@ export async function listDocuments(
     const { page, pageSize } = options;
 
     const index = await resolveIndex(searchIndexId);
-    const context = await resolveSearchContextUngated(searchIndexId);
-    const columns = resolveDisplayColumns(index, context);
 
-    const result = await index.provider.listDocuments(index.name, {
-        offset: (page - 1) * pageSize,
-        limit: pageSize,
-        fields: toProviderFields(columns, index),
-        // Only sort by the key when it is a real field; sorting on a field the
-        // index does not define fails outright.
-        ...(index.fields.some(f => f.fieldName === DOCUMENT_KEY_FIELD)
-            ? { sortField: DOCUMENT_KEY_FIELD }
-            : {}),
-    });
+    // Timestamps are only requested when the field definitions are known to match
+    // the provider mapping. Selecting a field Azure does not have throws, which
+    // would fail the whole page rather than blank one column.
+    const includeTimestamps = !index.requiresReindex;
+    let columns = resolveDisplayColumns(index.fields, { includeTimestamps });
+
+    const fetchPage = (forColumns: DocumentColumn[]) =>
+        index.provider.listDocuments(index.name, {
+            offset: (page - 1) * pageSize,
+            limit: pageSize,
+            fields: toProviderFields(forColumns, index.fields),
+            // Only sort by the key when it is a real field; sorting on a field the
+            // index does not define fails outright.
+            ...(index.fields.some(f => f.fieldName === DOCUMENT_KEY_FIELD)
+                ? { sortField: DOCUMENT_KEY_FIELD }
+                : {}),
+        });
+
+    let result = await fetchPage(columns);
+
+    // The requiresReindex flag is the primary guard, but it only catches drift the
+    // platform recorded. If the selection failed anyway, retry once without the
+    // optional columns — browsing without a timestamp column beats not browsing.
+    if (!result.success && includeTimestamps) {
+        logger.warn('Document listing failed with optional columns; retrying without them', {
+            searchIndexId,
+            indexName: index.name,
+            error: result.error,
+        });
+        columns = resolveDisplayColumns(index.fields, { includeTimestamps: false });
+        result = await fetchPage(columns);
+    }
 
     if (!result.success) {
         throw new Error(result.error || 'Failed to list documents');
@@ -722,19 +681,40 @@ export async function deleteDocumentsByFilter(
     // validation (is this field filterable? what type is it?) matches search.
     const context = await resolveSearchContextUngated(searchIndexId);
     const filterExpression = index.provider.buildFilterExpression(filters, context);
-    const columns = resolveDisplayColumns(index, context);
 
-    const result = await index.provider.deleteByFilter(index.name, filterExpression, {
-        refresh: elasticsearchConfig.indexing.refreshOnComplete,
-        dryRun,
-        // Only a dry run needs a sample; the real delete pays nothing for it.
-        ...(dryRun
-            ? {
-                sampleSize: options?.sampleSize ?? 0,
-                sampleFields: toProviderFields(columns, index),
-            }
-            : {}),
-    });
+    // Same column set as browse, so the preview a user confirms against looks like
+    // the table they were just looking at — including the timestamp guard.
+    const includeTimestamps = !index.requiresReindex;
+    let columns = resolveDisplayColumns(index.fields, { includeTimestamps });
+
+    const runDelete = (forColumns: DocumentColumn[]) =>
+        index.provider.deleteByFilter(index.name, filterExpression, {
+            refresh: elasticsearchConfig.indexing.refreshOnComplete,
+            dryRun,
+            // Only a dry run needs a sample; the real delete pays nothing for it.
+            ...(dryRun
+                ? {
+                    sampleSize: options?.sampleSize ?? 0,
+                    sampleFields: toProviderFields(forColumns, index.fields),
+                }
+                : {}),
+        });
+
+    let result = await runDelete(columns);
+
+    // Retry without the optional columns on a failed selection, mirroring
+    // listDocuments — but only for a dry run. A real delete is never re-run: it
+    // may have deleted documents before failing, and sampleFields is not even
+    // sent on that path, so the columns cannot be what broke it.
+    if (!result.success && dryRun && includeTimestamps) {
+        logger.warn('Delete-by-filter preview failed with optional columns; retrying without them', {
+            searchIndexId,
+            indexName: index.name,
+            error: result.error,
+        });
+        columns = resolveDisplayColumns(index.fields, { includeTimestamps: false });
+        result = await runDelete(columns);
+    }
 
     if (!result.success) {
         throw new Error(result.error || 'Delete by filter failed');

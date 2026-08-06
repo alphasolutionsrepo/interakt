@@ -10,6 +10,7 @@ import type {
 import type { ExternalSearchIndexConfig, DataSourceField, DataSourceSchema, DataSourceCapabilities } from '@/db/schema/data-sources.schema';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { resolveSecret } from '@/features/secrets/secrets.service';
+import { inferFieldRole } from '@/shared/utils/field-roles';
 
 const logger = createLogger('data-source-service');
 
@@ -239,20 +240,6 @@ function mapSearchIndexFieldsToSchema(fields: SearchIndexField[]): DataSourceFie
       isFacetable: f.isFacetable,
       isFilterable: f.isFacetable, // facetable fields are also filterable
     }));
-}
-
-function inferFieldRole(fieldName: string): DataSourceField['role'] {
-  const name = fieldName.toLowerCase();
-  if (name === 'title' || name === 'name' || name === 'product_name') return 'title';
-  if (name === 'description' || name === 'summary') return 'description';
-  if (name === 'content' || name === 'body' || name === 'text') return 'content';
-  if (name === 'price' || name === 'cost') return 'price';
-  if (name === 'image' || name === 'image_url' || name === 'thumbnail') return 'image';
-  if (name === 'category' || name === 'categories') return 'category';
-  if (name === 'url' || name === 'link' || name === 'href') return 'url';
-  if (name === 'id' || name === 'unique_id') return 'id';
-  if (name.includes('date') || name.includes('created') || name.includes('updated')) return 'date';
-  return null;
 }
 
 // ============================================================================
