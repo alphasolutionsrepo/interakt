@@ -1,0 +1,19 @@
+-- Drop the orphaned per-index ingestion token left behind by PR #28.
+--
+-- Background: the original 0025 added search_index.ingest_token (PR #17). PR #28
+-- replaced that credential model with the hashed, scoped ingestion_keys tables
+-- and rewrote migration 0025 in place instead of adding a new one. Databases
+-- that had already applied the original 0025 therefore still carry the column,
+-- its unique constraint and its index, while freshly-migrated databases never
+-- create them — and because neither the Drizzle schema nor the 0025 snapshot
+-- mentions the column any more, drizzle-kit will never generate a drop for it.
+--
+-- This migration converges the two. IF EXISTS makes it a no-op on a fresh
+-- database and a cleanup on an existing one. Dropping the column also drops the
+-- dependent search_index_ingest_token_idx index and the
+-- search_index_ingest_token_unique constraint, so those need no statements.
+--
+-- No data is at risk: nothing reads ingest_token. The code that did was removed
+-- in PR #28, so any integration still presenting one of those tokens is already
+-- failing today.
+ALTER TABLE "search_index" DROP COLUMN IF EXISTS "ingest_token";
