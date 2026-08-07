@@ -24,7 +24,7 @@ Storyblok owns the content. Interakt owns search and chat. The job of the integr
    │              │ <────────────────────────    │                  │
    └──────────────┘  (2) story.published         └──────────────────┘
           │              webhook                     │
-          │                                          │ POST /api/v1/search-indexes/{id}/documents
+          │                                          │ POST /api/search-indexes/{id}/documents
           │                                          ▼
           │                                 ┌──────────────────┐
           │                                 │     Interakt     │
@@ -48,7 +48,7 @@ The key design point: **Storyblok's webhook payload is intentionally lightweight
 - A Storyblok **Content Delivery API token** (Settings → Access Tokens — the public `published` token is fine).
 - An Interakt account with:
   - A **Search Index** (you'll create one below).
-  - A per-index **ingestion key** (`X-Api-Key`).
+  - An **ingestion key** scoped to that index, sent as `Authorization: Bearer`.
   - A **Search Experience** and/or **AI (Chat) Experience** with an **access token** for the widgets.
 - A place to run a small webhook handler reachable over HTTPS (a serverless function on Vercel/Netlify/Cloudflare Workers, or any small Node service).
 
@@ -62,9 +62,13 @@ The key design point: **Storyblok's webhook payload is intentionally lightweight
 
 In the Interakt admin console, create a new **Search Index** for your Storyblok content (e.g. `storyblok-content`). Note its **index ID** (a UUID) — you'll need it for ingestion.
 
-### 1.2 Get your ingestion key
+### 1.2 Create an ingestion key
 
-Document ingestion uses a **separate per-index key** from your widget access tokens. Copy the index's **ingestion key** (`X-Api-Key`) from the index settings. Treat it like a secret — it's write access to your index, so it lives only on your server, never in browser code.
+Writing documents uses an **ingestion key**, which is a different credential from the access tokens your widgets use. On the index page, open the **Ingestion Keys** card and create one, granting it the `write` operation (add `delete` too if you plan to remove documents — see [Part 4](#part-4--handle-unpublishes-and-deletes)).
+
+The key is shown **once, at creation time**, and only a hash of it is stored — so copy it straight into your server's environment. If you lose it, revoke that key and create another.
+
+Treat it like a password: it grants write access to your index, so it belongs only on your server, never in browser code. Keys are scoped to the indexes and operations you grant them, and can be revoked individually without disturbing anything else.
 
 ### 1.3 Create your experiences
 
@@ -176,12 +180,12 @@ async function fetchAllStories() {
 
 async function ingest(documents) {
   const res = await fetch(
-    `${INTERAKT_URL}/api/v1/search-indexes/${INDEX_ID}/documents`,
+    `${INTERAKT_URL}/api/search-indexes/${INDEX_ID}/documents`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Api-Key": INGEST_KEY,
+        "Authorization": `Bearer ${INGEST_KEY}`,
       },
       body: JSON.stringify({ documents }),
     }
@@ -268,9 +272,12 @@ async function fetchStory(fullSlug) {
 }
 
 async function ingest(documents) {
-  return fetch(`${INTERAKT_URL}/api/v1/search-indexes/${INDEX_ID}/documents`, {
+  return fetch(`${INTERAKT_URL}/api/search-indexes/${INDEX_ID}/documents`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Api-Key": INGEST_KEY },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${INGEST_KEY}`,
+    },
     body: JSON.stringify({ documents }),
   });
 }
@@ -293,7 +300,8 @@ export default async function handler(req, res) {
       const story = await fetchStory(full_slug);
       await ingest([storyToDocument(story)]);
     } else if (action === "unpublished" || action === "deleted") {
-      // See "Handling unpublish & delete" below.
+      // Delete by the same id you indexed with — see below.
+      await removeDocument(payload.story_id_uuid);
     }
     return res.status(202).json({ ok: true });
   } catch (err) {
@@ -307,17 +315,37 @@ export default async function handler(req, res) {
 
 #### Handling unpublish & delete
 
-The public ingestion endpoint upserts documents; <!-- AUTHOR NOTE: confirm whether a delete-from-index endpoint exists. If it does, document it here. --> if there is no delete endpoint available to you, a reliable pattern is to keep a status field on each document and filter on it in the Search/AI Experience:
+When an editor unpublishes or deletes a story, remove the matching document. Interakt has a delete endpoint that takes the document id, so the mapping stays simple — the Storyblok `uuid` you used as the document id is the same id you delete by.
+
+The ingestion key needs the `delete` operation for this; if you only granted `write` in step 1.2, add it (or create a second key) before wiring this up.
 
 ```js
-// In storyToDocument(), add:
-//   status: "published"
-//
-// On unpublish/delete, re-ingest the same id with status "unpublished":
-await ingest([{ id: payload.story_id_uuid, status: "unpublished" }]);
+// Deleting is idempotent: removing a document that isn't there still
+// reports success, so a replayed webhook is harmless.
+async function removeDocument(documentId) {
+  const res = await fetch(
+    `${INTERAKT_URL}/api/search-indexes/${INDEX_ID}/documents/${documentId}`,
+    {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${INGEST_KEY}` },
+    }
+  );
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+  return res.json();
+}
+
+// In the webhook handler, for story.unpublished / story.deleted:
+await removeDocument(payload.story_id_uuid);
 ```
 
-Then configure the Search Experience to only return documents where `status = "published"`. This keeps unpublished content out of results without needing a hard delete.
+The id you delete by must be the id you indexed with — the story's `uuid`, set in `storyToDocument()`. Note that a deleted story can no longer be fetched from the Content Delivery API, so the uuid has to come from the webhook payload itself.
+
+<!-- AUTHOR NOTE: confirm the exact payload field carrying the story UUID
+     against a real Storyblok webhook (the payload comment above lists
+     story_id, which is the numeric id, not the uuid). -->
+
+
+**If you'd rather keep the content and hide it**, the alternative is a status field — add `status: "published"` in `storyToDocument()`, write `status: "unpublished"` on those events, and configure the Search Experience to only return documents where `status = "published"`. That preserves history at the cost of carrying unpublished content in the index. Prefer a real delete unless you specifically need that.
 
 ---
 
