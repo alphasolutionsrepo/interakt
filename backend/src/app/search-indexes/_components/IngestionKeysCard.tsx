@@ -10,6 +10,14 @@
  * ships in the embed snippet and is readable from any page running the widget —
  * so it can only ever read. An ingestion key is a secret that can write and
  * delete, which is why it is shown once and never again.
+ *
+ * Every Button here sets type="button" explicitly, and must keep doing so. The
+ * card renders inside the edit page's <form>, and the shared Button spreads its
+ * props onto a bare <button> without defaulting `type` — so an unmarked button
+ * is type="submit" and submits that form. The cost is not cosmetic: submitting
+ * navigates away, and on the create button that means the key is written to the
+ * database and the reveal panel never renders. Only its hash is stored, so the
+ * key is then unrecoverable.
  */
 
 'use client';
@@ -111,7 +119,7 @@ function KeyReveal({
                 <code className="flex-1 overflow-x-auto rounded border border-amber-300 bg-background px-3 py-2 font-mono text-xs">
                     {plaintextKey}
                 </code>
-                <Button variant="outline" size="sm" onClick={handleCopy}>
+                <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
                     {copied ? (
                         <Check className="mr-2 h-3.5 w-3.5" />
                     ) : (
@@ -128,7 +136,7 @@ function KeyReveal({
                         Authorization: Bearer &lt;key&gt;
                     </code>
                 </p>
-                <Button variant="ghost" size="sm" onClick={onDismiss}>
+                <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
                     I&apos;ve saved it
                 </Button>
             </div>
@@ -225,7 +233,7 @@ function CreateKeyForm({
             </div>
 
             <div className="flex items-center gap-2">
-                <Button onClick={handleSubmit} disabled={createKey.isPending}>
+                <Button type="button" onClick={handleSubmit} disabled={createKey.isPending}>
                     {createKey.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
@@ -233,7 +241,7 @@ function CreateKeyForm({
                     )}
                     Create key
                 </Button>
-                <Button variant="ghost" onClick={onCancel} disabled={createKey.isPending}>
+                <Button type="button" variant="ghost" onClick={onCancel} disabled={createKey.isPending}>
                     Cancel
                 </Button>
             </div>
@@ -365,6 +373,7 @@ export function IngestionKeysCard({ searchIndexId }: IngestionKeysCardProps) {
                                         <TableCell>
                                             {key.isActive && (
                                                 <Button
+                                                    type="button"
                                                     variant="ghost"
                                                     size="sm"
                                                     className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600"
@@ -395,7 +404,7 @@ export function IngestionKeysCard({ searchIndexId }: IngestionKeysCardProps) {
                 )}
 
                 {!showForm && (
-                    <Button variant="outline" className="w-full rounded-xl" onClick={() => setShowForm(true)}>
+                    <Button type="button" variant="outline" className="w-full rounded-xl" onClick={() => setShowForm(true)}>
                         <Plus className="mr-2 h-4 w-4" />
                         Create ingestion key
                     </Button>
