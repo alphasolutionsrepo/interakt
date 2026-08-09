@@ -250,6 +250,56 @@ export function resolveDisplayColumns(
     return columns;
 }
 
+// ============================================================================
+// RETRY
+// ============================================================================
+
+/**
+ * Whether two column sets are the same selection.
+ *
+ * Guards the fallback retry: on an index with no createdAt/updatedAt, dropping the
+ * optional columns produces an identical list, so retrying is a guaranteed-identical
+ * second round trip against a provider that just failed.
+ */
+export function sameColumns(a: DocumentColumn[], b: DocumentColumn[]): boolean {
+    if (a.length !== b.length) {
+        return false;
+    }
+    return a.every((column, index) => column.field === b[index].field);
+}
+
+/**
+ * Substrings that indicate a provider rejected the *field selection*, rather than
+ * failing for some unrelated reason. Azure throws on selecting a field its index
+ * does not define; Elasticsearch phrases the same class of problem differently.
+ */
+const FIELD_SELECTION_ERROR_PATTERNS = [
+    'unknown field',
+    'no field named',
+    'cannot be selected',
+    'could not find field',
+    'invalid field',
+    'no such field',
+    'unknown key',
+];
+
+/**
+ * Whether a provider error looks like a rejected field selection.
+ *
+ * Providers return a bare string — `{ success: false, error: message }` with no
+ * code — so this cannot be exact. It errs towards NOT retrying: an unrecognised
+ * message means the original error propagates untouched, which is the point. The
+ * previous condition retried on any failure at all, so an auth or network error
+ * was replaced by the retry's error and the real cause survived only in a log line.
+ */
+export function isFieldSelectionError(message: string | undefined): boolean {
+    if (!message) {
+        return false;
+    }
+    const normalized = message.toLowerCase();
+    return FIELD_SELECTION_ERROR_PATTERNS.some(pattern => normalized.includes(pattern));
+}
+
 /**
  * Narrow display columns to field names the index actually has.
  *

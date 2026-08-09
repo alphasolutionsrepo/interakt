@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+    isFieldSelectionError,
     resolveDisplayColumns,
+    sameColumns,
     scoreColumnCandidate,
     toProviderFields,
     MAX_ATTRIBUTE_COLUMNS,
@@ -404,5 +406,66 @@ describe('toProviderFields', () => {
         const columns = resolveDisplayColumns(fields);
 
         expect(toProviderFields(columns, fields)).toContain('uniqueId');
+    });
+});
+
+// ============================================================================
+// RETRY GUARDS
+// ============================================================================
+
+describe('sameColumns', () => {
+    it('is true when dropping timestamps changes nothing', () => {
+        // The identical-retry case: an index with no createdAt/updatedAt produces
+        // the same selection either way, so retrying would repeat a failed call.
+        const fields = [keyField(), field({ fieldName: 'status', isFacetable: true })];
+
+        expect(sameColumns(
+            resolveDisplayColumns(fields, { includeTimestamps: true }),
+            resolveDisplayColumns(fields, { includeTimestamps: false }),
+        )).toBe(true);
+    });
+
+    it('is false when a timestamp column is actually present', () => {
+        const fields = [
+            keyField(),
+            field({ fieldName: 'status', isFacetable: true }),
+            timestampField('updatedAt'),
+        ];
+
+        expect(sameColumns(
+            resolveDisplayColumns(fields, { includeTimestamps: true }),
+            resolveDisplayColumns(fields, { includeTimestamps: false }),
+        )).toBe(false);
+    });
+
+    it('compares field order, not just membership', () => {
+        const a = [{ field: 'x', label: 'X', type: 'keyword' as const }];
+        const b = [{ field: 'y', label: 'Y', type: 'keyword' as const }];
+
+        expect(sameColumns(a, a)).toBe(true);
+        expect(sameColumns(a, b)).toBe(false);
+    });
+});
+
+describe('isFieldSelectionError', () => {
+    it('recognises a rejected field selection', () => {
+        expect(isFieldSelectionError('Unknown field \'updatedAt\' in $select')).toBe(true);
+        expect(isFieldSelectionError('no field named updatedAt')).toBe(true);
+        expect(isFieldSelectionError("Could not find field 'createdAt'")).toBe(true);
+        expect(isFieldSelectionError('Field cannot be selected')).toBe(true);
+    });
+
+    it('does NOT match unrelated failures', () => {
+        // The regression this guards: retrying on any failure replaced the real
+        // error with the retry's, so the actual cause never reached the caller.
+        expect(isFieldSelectionError('Unauthorized')).toBe(false);
+        expect(isFieldSelectionError('connect ECONNREFUSED 127.0.0.1:9200')).toBe(false);
+        expect(isFieldSelectionError('index_not_found_exception')).toBe(false);
+        expect(isFieldSelectionError('Request timed out')).toBe(false);
+    });
+
+    it('treats a missing message as not retryable', () => {
+        expect(isFieldSelectionError(undefined)).toBe(false);
+        expect(isFieldSelectionError('')).toBe(false);
     });
 });

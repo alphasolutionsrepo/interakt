@@ -54,6 +54,7 @@ import {
     Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { safeUrl, safeMailto } from '@/shared/utils/safe-url';
 import {
     useBrowseDocuments,
     useDocument,
@@ -169,7 +170,12 @@ function summariseArray(values: unknown[]): string {
 function ThumbnailCell({ url }: { url: string }) {
     const [failed, setFailed] = useState(false);
 
-    if (failed) {
+    // A document controls this URL, and an <img src> fetches from whatever host it
+    // names as soon as the row renders — before any click. Anything that is not a
+    // web URL degrades to the same text fallback a broken image already uses.
+    const src = safeUrl(url);
+
+    if (failed || !src) {
         return <span className="text-xs text-muted-foreground" title={url}>{url}</span>;
     }
 
@@ -178,7 +184,7 @@ function ThumbnailCell({ url }: { url: string }) {
         // remote hosts and next.config declares no images.remotePatterns.
         // eslint-disable-next-line @next/next/no-img-element
         <img
-            src={url}
+            src={src}
             alt=""
             title={url}
             className="h-8 w-8 rounded border object-cover"
@@ -232,14 +238,34 @@ function DocumentCell({
         case 'image_url':
             return <ThumbnailCell url={String(value)} />;
 
-        case 'url':
-        case 'email': {
-            const href = type === 'email' ? `mailto:${String(value)}` : String(value);
+        // url and email validate differently, so they no longer share a branch.
+        case 'url': {
+            const href = safeUrl(String(value));
+            if (!href) {
+                return <span title={String(value)}>{String(value)}</span>;
+            }
             return (
                 <a
                     href={href}
-                    target={type === 'url' ? '_blank' : undefined}
-                    rel={type === 'url' ? 'noreferrer' : undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={stopRowToggle}
+                    className="text-primary underline-offset-2 hover:underline"
+                    title={String(value)}
+                >
+                    {String(value)}
+                </a>
+            );
+        }
+
+        case 'email': {
+            const href = safeMailto(String(value));
+            if (!href) {
+                return <span title={String(value)}>{String(value)}</span>;
+            }
+            return (
+                <a
+                    href={href}
                     onClick={stopRowToggle}
                     className="text-primary underline-offset-2 hover:underline"
                     title={String(value)}

@@ -39,7 +39,9 @@ import { buildSearchContext } from '@/features/search/search-context.builder';
 import type { FilterClause, SearchContext } from '@/features/search/search.types';
 import {
     DOCUMENT_KEY_FIELD,
+    isFieldSelectionError,
     resolveDisplayColumns,
+    sameColumns,
     toProviderFields,
     type DocumentColumn,
 } from './document-columns';
@@ -341,16 +343,30 @@ export async function listDocuments(
     let result = await fetchPage(columns);
 
     // The requiresReindex flag is the primary guard, but it only catches drift the
-    // platform recorded. If the selection failed anyway, retry once without the
-    // optional columns — browsing without a timestamp column beats not browsing.
-    if (!result.success && includeTimestamps) {
-        logger.warn('Document listing failed with optional columns; retrying without them', {
-            searchIndexId,
-            indexName: index.name,
-            error: result.error,
-        });
-        columns = resolveDisplayColumns(index.fields, { includeTimestamps: false });
-        result = await fetchPage(columns);
+    // platform recorded. If the *field selection* was rejected anyway, retry once
+    // without the optional columns — browsing without a timestamp column beats not
+    // browsing. Any other failure (auth, network, missing index) is left alone so
+    // its error reaches the caller intact.
+    if (!result.success && includeTimestamps && isFieldSelectionError(result.error)) {
+        const fallbackColumns = resolveDisplayColumns(index.fields, { includeTimestamps: false });
+
+        if (!sameColumns(columns, fallbackColumns)) {
+            logger.warn('Document listing failed on field selection; retrying without optional columns', {
+                searchIndexId,
+                indexName: index.name,
+                error: result.error,
+            });
+
+            const retry = await fetchPage(fallbackColumns);
+
+            // Only adopt the retry when it worked. Otherwise `result` still holds the
+            // original failure, so the error thrown below describes the real cause
+            // rather than the retry's.
+            if (retry.success) {
+                columns = fallbackColumns;
+                result = retry;
+            }
+        }
     }
 
     if (!result.success) {
@@ -738,18 +754,29 @@ export async function deleteDocumentsByFilter(
 
     let result = await runDelete(columns);
 
-    // Retry without the optional columns on a failed selection, mirroring
+    // Retry without the optional columns on a rejected field selection, mirroring
     // listDocuments — but only for a dry run. A real delete is never re-run: it
     // may have deleted documents before failing, and sampleFields is not even
     // sent on that path, so the columns cannot be what broke it.
-    if (!result.success && dryRun && includeTimestamps) {
-        logger.warn('Delete-by-filter preview failed with optional columns; retrying without them', {
-            searchIndexId,
-            indexName: index.name,
-            error: result.error,
-        });
-        columns = resolveDisplayColumns(index.fields, { includeTimestamps: false });
-        result = await runDelete(columns);
+    if (!result.success && dryRun && includeTimestamps && isFieldSelectionError(result.error)) {
+        const fallbackColumns = resolveDisplayColumns(index.fields, { includeTimestamps: false });
+
+        if (!sameColumns(columns, fallbackColumns)) {
+            logger.warn('Delete-by-filter preview failed on field selection; retrying without optional columns', {
+                searchIndexId,
+                indexName: index.name,
+                error: result.error,
+            });
+
+            const retry = await runDelete(fallbackColumns);
+
+            // Keep the original failure unless the retry actually succeeded, so the
+            // error thrown below is the one describing the real cause.
+            if (retry.success) {
+                columns = fallbackColumns;
+                result = retry;
+            }
+        }
     }
 
     if (!result.success) {
