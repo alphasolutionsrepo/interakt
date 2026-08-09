@@ -90,6 +90,10 @@ export async function updateContent(
     .set({ ...data, updatedAt: new Date() })
     .where(eq(promptTemplates.id, id))
     .returning();
+
+  if (!row) {
+    throw new Error(`Prompt template not found: ${id}`);
+  }
   logger.info('Prompt template content updated', { id: row.id, step: row.step });
   return row;
 }
