@@ -296,8 +296,12 @@ export function getEmbeddingText(
 
 /**
  * Generate embeddings for documents
+ *
+ * Exported because a reindex has to rebuild vectors too: `content_embedding` is
+ * not carried in `_source`, so a rebuild that only copies documents across
+ * produces an index with no vectors at all.
  */
-async function generateDocumentEmbeddings(
+export async function generateDocumentEmbeddings(
     documents: Array<{ _id?: string; [key: string]: unknown }>,
     vectorSourceFields: SearchIndexField[],
     embeddingConfig: EmbeddingConfig,

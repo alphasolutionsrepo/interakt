@@ -13,6 +13,11 @@ import * as repository from './search-index.repository';
 import type { SearchIndexReference } from './search-index.repository';
 import * as fieldsService from './search-index-fields.service';
 import { invalidateSearchExperienceCacheBySearchIndex } from '@/features/search-experience';
+import {
+    EMBEDDING_FIELD_NAME,
+    generateDocumentEmbeddings,
+    getEmbeddingConfig,
+} from '@/features/document-indexing/document-indexer.service';
 import type {
     // DTOs
     CreateSearchIndexDTO,
@@ -956,12 +961,16 @@ export async function triggerReindex(
             // this, a field deleted from the configuration comes straight back:
             // the new mapping omits it, but Elasticsearch's dynamic mapping
             // re-adds it from the document body, so the rebuild would silently
-            // fail to purge anything. The embedding field is kept because it is
-            // stored but not a configured field.
-            const allowedFields = new Set<string>([
-                ...fields.map(f => f.fieldName),
-                ...(embeddingConfig ? [embeddingConfig.fieldName] : []),
-            ]);
+            // fail to purge anything.
+            //
+            // The embedding field is deliberately NOT carried over. It is not
+            // present in _source at all, so there would be nothing to copy — a
+            // rebuild that relied on copying produced an index with zero vectors
+            // and reported success. Vectors are regenerated below instead, which
+            // is also the correct semantics: a reindex is exactly when the vector
+            // source configuration may have changed, so an old vector would
+            // describe the wrong text.
+            const allowedFields = new Set<string>(fields.map(f => f.fieldName));
 
             const bulkDocs = documents.map(doc => {
                 const source: Record<string, unknown> = {};
@@ -976,7 +985,9 @@ export async function triggerReindex(
             const droppedFieldNames = [
                 ...new Set(
                     documents.flatMap(doc =>
-                        Object.keys(doc._source).filter(key => !allowedFields.has(key))
+                        Object.keys(doc._source).filter(
+                            key => !allowedFields.has(key) && key !== EMBEDDING_FIELD_NAME
+                        )
                     )
                 ),
             ];
@@ -985,6 +996,52 @@ export async function triggerReindex(
                     indexName,
                     droppedFields: droppedFieldNames,
                 });
+            }
+
+            // Step 5b: Rebuild embeddings before writing.
+            //
+            // Failing here aborts the whole reindex. Writing the documents anyway
+            // would leave a semantic/hybrid index whose vector half is silently
+            // dead — every document unreachable by kNN — while the operation
+            // reported success. An index that still has its old mapping is far
+            // easier to recover from than one that looks healthy and is not.
+            const reindexEmbeddingConfig = getEmbeddingConfig(searchIndex);
+
+            if (reindexEmbeddingConfig.enabled) {
+                const vectorSourceFields = await fieldsService.getVectorSourceFields(searchIndexId);
+
+                if (vectorSourceFields.length === 0) {
+                    logger.warn('Embeddings enabled but no vector source fields configured', {
+                        indexName,
+                    });
+                } else {
+                    const embeddingResult = await generateDocumentEmbeddings(
+                        bulkDocs,
+                        vectorSourceFields,
+                        reindexEmbeddingConfig,
+                        `reindex-${searchIndexId}`
+                    );
+
+                    if (embeddingResult.stats.failed > 0) {
+                        throw new Error(
+                            `Embedding generation failed for ${embeddingResult.stats.failed} of `
+                            + `${bulkDocs.length} documents: `
+                            + `${embeddingResult.errors[0]?.error ?? 'unknown error'}`
+                        );
+                    }
+
+                    embeddingResult.embeddings.forEach((vector, docIndex) => {
+                        if (vector) {
+                            bulkDocs[docIndex][EMBEDDING_FIELD_NAME] = vector;
+                        }
+                    });
+
+                    logger.info('Embeddings regenerated during reindex', {
+                        indexName,
+                        generated: embeddingResult.stats.generated,
+                        skipped: embeddingResult.stats.skipped,
+                    });
+                }
             }
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
