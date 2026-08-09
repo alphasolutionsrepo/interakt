@@ -49,8 +49,12 @@ import {
     ChevronRight,
     ChevronDown,
     ChevronLeft,
+    Check,
+    X,
+    Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { safeUrl, safeMailto } from '@/shared/utils/safe-url';
 import {
     useBrowseDocuments,
     useDocument,
@@ -61,6 +65,7 @@ import {
 import type {
     DocumentColumnDescriptor,
     DocumentSummary,
+    EmbeddingPreview,
 } from '../../_lib/api-client';
 
 // ============================================================================
@@ -119,6 +124,174 @@ function formatCellValue(value: unknown): string {
     if (value === null || value === undefined) return '—';
     if (typeof value === 'object') return JSON.stringify(value);
     return String(value);
+}
+
+/** Stop a link or control inside a row from also toggling the row's expansion. */
+function stopRowToggle(event: React.MouseEvent) {
+    event.stopPropagation();
+}
+
+/**
+ * Format a date value for a table cell, keeping the exact value in the tooltip.
+ *
+ * Anything unparseable falls back to the raw string — a malformed date in an index
+ * is worth seeing verbatim, not hiding behind "Invalid Date".
+ */
+function formatDateCell(value: unknown): { text: string; title: string } {
+    const raw = String(value);
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+        return { text: raw, title: raw };
+    }
+    return { text: parsed.toLocaleString(), title: raw };
+}
+
+/**
+ * Summarise an array in one cell: a couple of primitive values, or a count.
+ *
+ * A tags array is worth reading inline; an array of objects is not, so it
+ * collapses to "N items" and leaves the detail to the expanded row.
+ */
+function summariseArray(values: unknown[]): string {
+    if (values.length === 0) return 'empty';
+    if (values.some(entry => entry !== null && typeof entry === 'object')) {
+        return `${values.length} item${values.length === 1 ? '' : 's'}`;
+    }
+    const shown = values.slice(0, 2).map(String).join(', ');
+    return values.length > 2 ? `${shown} +${values.length - 2}` : shown;
+}
+
+/**
+ * A document's image field as a thumbnail, falling back to the URL text.
+ *
+ * A broken image icon says nothing useful about the document; the URL that failed
+ * to load is exactly what someone inspecting a bad document needs to see.
+ */
+function ThumbnailCell({ url }: { url: string }) {
+    const [failed, setFailed] = useState(false);
+
+    // A document controls this URL, and an <img src> fetches from whatever host it
+    // names as soon as the row renders — before any click. Anything that is not a
+    // web URL degrades to the same text fallback a broken image already uses.
+    const src = safeUrl(url);
+
+    if (failed || !src) {
+        return <span className="text-xs text-muted-foreground" title={url}>{url}</span>;
+    }
+
+    return (
+        // next/image is not usable here: document image URLs point at arbitrary
+        // remote hosts and next.config declares no images.remotePatterns.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+            src={src}
+            alt=""
+            title={url}
+            className="h-8 w-8 rounded border object-cover"
+            onError={() => setFailed(true)}
+        />
+    );
+}
+
+/**
+ * Render one document field according to its declared type.
+ *
+ * The index already knows what each field holds, so a cell can show a thumbnail,
+ * a followable link or a formatted date instead of a stringified value. Cells are
+ * summaries by design — the expanded row still shows the raw document, so
+ * anything collapsed here is one click from being seen in full.
+ */
+function DocumentCell({
+    value,
+    type,
+}: {
+    value: unknown;
+    type: DocumentColumnDescriptor['type'];
+}) {
+    if (value === null || value === undefined || value === '') {
+        return <span className="text-muted-foreground">—</span>;
+    }
+
+    switch (type) {
+        case 'boolean': {
+            const truthy = value === true || value === 'true';
+            return truthy
+                ? <Check className="h-4 w-4 text-emerald-600" aria-label="true" />
+                : <X className="h-4 w-4 text-muted-foreground" aria-label="false" />;
+        }
+
+        case 'number': {
+            const numeric = typeof value === 'number' ? value : Number(value);
+            return (
+                <span className="tabular-nums">
+                    {Number.isNaN(numeric) ? String(value) : numeric.toLocaleString()}
+                </span>
+            );
+        }
+
+        case 'date':
+        case 'datetime': {
+            const { text, title } = formatDateCell(value);
+            return <span className="whitespace-nowrap" title={title}>{text}</span>;
+        }
+
+        case 'image_url':
+            return <ThumbnailCell url={String(value)} />;
+
+        // url and email validate differently, so they no longer share a branch.
+        case 'url': {
+            const href = safeUrl(String(value));
+            if (!href) {
+                return <span title={String(value)}>{String(value)}</span>;
+            }
+            return (
+                <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={stopRowToggle}
+                    className="text-primary underline-offset-2 hover:underline"
+                    title={String(value)}
+                >
+                    {String(value)}
+                </a>
+            );
+        }
+
+        case 'email': {
+            const href = safeMailto(String(value));
+            if (!href) {
+                return <span title={String(value)}>{String(value)}</span>;
+            }
+            return (
+                <a
+                    href={href}
+                    onClick={stopRowToggle}
+                    className="text-primary underline-offset-2 hover:underline"
+                    title={String(value)}
+                >
+                    {String(value)}
+                </a>
+            );
+        }
+
+        case 'array':
+            return (
+                <Badge variant="secondary" className="font-normal" title={JSON.stringify(value)}>
+                    {Array.isArray(value) ? summariseArray(value) : formatCellValue(value)}
+                </Badge>
+            );
+
+        case 'json':
+            return (
+                <Badge variant="secondary" className="font-normal" title={JSON.stringify(value)}>
+                    {'{…}'}
+                </Badge>
+            );
+
+        default:
+            return <span title={formatCellValue(value)}>{formatCellValue(value)}</span>;
+    }
 }
 
 /**
@@ -187,7 +360,12 @@ function DocumentTable({
                                         >
                                             {columnIndex === 0
                                                 ? document.id
-                                                : formatCellValue(document.fields[column.field])}
+                                                : (
+                                                    <DocumentCell
+                                                        value={document.fields[column.field]}
+                                                        type={column.type}
+                                                    />
+                                                )}
                                         </TableCell>
                                     ))}
                                 </TableRow>
@@ -387,6 +565,79 @@ function BrowseDocuments({ searchIndexId }: { searchIndexId: string }) {
     );
 }
 
+/**
+ * Why a field contributed nothing, in words — the three causes have three
+ * different fixes, so they must not read the same.
+ */
+const EXCLUSION_HINTS: Record<string, string> = {
+    missing: 'No value on this document — check the ingest data or the field mapping',
+    empty: 'A value exists but is blank, e.g. an empty list',
+    'unsupported-type': 'Objects and lists of objects cannot be embedded — this field will never contribute',
+};
+
+/**
+ * Show exactly the text this document's vector was built from.
+ *
+ * The stored vector is stripped from every read and a bad one is
+ * indistinguishable from a good one, so the text is the only visible evidence of
+ * why a document does or does not match semantically. Excluded fields are listed
+ * rather than hidden: a vector-source field contributing nothing — a json blob,
+ * an empty array — is exactly the kind of thing that quietly ruins a result set.
+ */
+function EmbeddingPreviewPanel({ preview }: { preview: EmbeddingPreview }) {
+    const included = preview.parts.filter(part => part.included);
+    const excluded = preview.parts.filter(part => !part.included);
+
+    return (
+        <div className="space-y-3 rounded-md border p-4">
+            <div className="flex flex-wrap items-center gap-2">
+                <Sparkles className="h-4 w-4 text-violet-500" />
+                <span className="text-sm font-medium">Embedded text</span>
+                <Badge variant="secondary" className="font-normal">
+                    {preview.totalChars.toLocaleString()} chars
+                </Badge>
+                <Badge variant="secondary" className="font-normal">
+                    {included.length} of {preview.parts.length} fields
+                </Badge>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+                This exact string was sent to the embedding model. Fields appear in
+                boost order — earlier text carries more weight.
+            </p>
+
+            <ScrollArea className="h-56 rounded-md border bg-muted/30">
+                <pre className="whitespace-pre-wrap break-words p-4 text-xs">
+                    {preview.text || '(empty — this document has no vector)'}
+                </pre>
+            </ScrollArea>
+
+            {excluded.length > 0 && (
+                <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                        Contributing nothing
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                        {excluded.map(part => (
+                            <Badge
+                                key={part.fieldName}
+                                variant="outline"
+                                className="font-normal text-xs"
+                                title={EXCLUSION_HINTS[part.excludedBecause ?? 'missing']}
+                            >
+                                {part.label}
+                                <span className="ml-1 text-muted-foreground">
+                                    {part.excludedBecause}
+                                </span>
+                            </Badge>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
     const [inputValue, setInputValue] = useState('');
     // Only set once the user submits, so we don't fetch on every keystroke
@@ -483,6 +734,10 @@ function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
                                 {JSON.stringify(data.document, null, 2)}
                             </pre>
                         </ScrollArea>
+
+                        {data.embeddingPreview && (
+                            <EmbeddingPreviewPanel preview={data.embeddingPreview} />
+                        )}
                     </div>
                 )}
 

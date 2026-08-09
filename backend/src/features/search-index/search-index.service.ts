@@ -13,6 +13,11 @@ import * as repository from './search-index.repository';
 import type { SearchIndexReference } from './search-index.repository';
 import * as fieldsService from './search-index-fields.service';
 import { invalidateSearchExperienceCacheBySearchIndex } from '@/features/search-experience';
+import {
+    EMBEDDING_FIELD_NAME,
+    generateDocumentEmbeddings,
+    getEmbeddingConfig,
+} from '@/features/document-indexing/document-indexer.service';
 import type {
     // DTOs
     CreateSearchIndexDTO,
@@ -843,6 +848,112 @@ export async function getIndexStats(
  * 3. Recreate with updated mappings (including autocomplete analyzers)
  * 4. Re-index all documents
  */
+/**
+ * Build the document bodies a reindex will write back, embeddings included.
+ *
+ * Kept separate from triggerReindex, and called BEFORE the index is deleted, so
+ * that every fallible step — field filtering, and above all the external
+ * embedding call — happens while the existing index is still intact. Previously
+ * this ran after the delete, so a transient AI-provider error threw with the only
+ * copy of the documents sitting in a discarded in-memory array, permanently
+ * emptying the index.
+ *
+ * Throws on embedding failure. The caller has not destroyed anything yet, so the
+ * reindex simply aborts and the index keeps its old mapping and its documents.
+ */
+async function prepareReindexDocuments(input: {
+    documents: Array<{ _id: string; _source: Record<string, unknown> }>;
+    fields: Awaited<ReturnType<typeof fieldsService.getFieldsBySearchIndexId>>;
+    searchIndex: Parameters<typeof getEmbeddingConfig>[0];
+    searchIndexId: string;
+    indexName: string;
+}): Promise<Array<{ _id: string; [key: string]: unknown }>> {
+    const { documents, fields, searchIndex, searchIndexId, indexName } = input;
+
+    if (documents.length === 0) {
+        return [];
+    }
+
+    // Bodies are filtered to the fields that are still configured. Without this, a
+    // field deleted from the configuration comes straight back: the new mapping
+    // omits it, but Elasticsearch's dynamic mapping re-adds it from the document
+    // body, so the rebuild would silently fail to purge anything.
+    //
+    // The embedding field is deliberately NOT carried over. It is not present in
+    // _source at all, so there would be nothing to copy — a rebuild that relied on
+    // copying produced an index with zero vectors and reported success. Vectors are
+    // regenerated below instead, which is also the correct semantics: a reindex is
+    // exactly when the vector source configuration may have changed, so an old
+    // vector would describe the wrong text.
+    const allowedFields = new Set<string>(fields.map(f => f.fieldName));
+
+    const bulkDocs = documents.map(doc => {
+        const source: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(doc._source)) {
+            if (allowedFields.has(key)) {
+                source[key] = value;
+            }
+        }
+        return { _id: doc._id, ...source };
+    });
+
+    const droppedFieldNames = [
+        ...new Set(
+            documents.flatMap(doc =>
+                Object.keys(doc._source).filter(
+                    key => !allowedFields.has(key) && key !== EMBEDDING_FIELD_NAME
+                )
+            )
+        ),
+    ];
+    if (droppedFieldNames.length > 0) {
+        logger.info('Dropping unconfigured fields during reindex', {
+            indexName,
+            droppedFields: droppedFieldNames,
+        });
+    }
+
+    const reindexEmbeddingConfig = getEmbeddingConfig(searchIndex);
+    if (!reindexEmbeddingConfig.enabled) {
+        return bulkDocs;
+    }
+
+    const vectorSourceFields = await fieldsService.getVectorSourceFields(searchIndexId);
+    if (vectorSourceFields.length === 0) {
+        logger.warn('Embeddings enabled but no vector source fields configured', { indexName });
+        return bulkDocs;
+    }
+
+    const embeddingResult = await generateDocumentEmbeddings(
+        bulkDocs,
+        vectorSourceFields,
+        reindexEmbeddingConfig,
+        `reindex-${searchIndexId}`
+    );
+
+    if (embeddingResult.stats.failed > 0) {
+        throw new Error(
+            `Embedding generation failed for ${embeddingResult.stats.failed} of `
+            + `${bulkDocs.length} documents: `
+            + `${embeddingResult.errors[0]?.error ?? 'unknown error'}`
+        );
+    }
+
+    embeddingResult.embeddings.forEach((vector, docIndex) => {
+        if (vector) {
+            bulkDocs[docIndex][EMBEDDING_FIELD_NAME] = vector;
+        }
+    });
+
+    logger.info('Embeddings regenerated during reindex', {
+        indexName,
+        generated: embeddingResult.stats.generated,
+        skipped: embeddingResult.stats.skipped,
+    });
+
+    return bulkDocs;
+}
+
 export async function triggerReindex(
     searchIndexId: string,
     userId: string
@@ -888,18 +999,11 @@ export async function triggerReindex(
                 });
             }
 
-            // Step 2: Delete the existing index
-            logger.info('Deleting existing index', { indexName });
-            const deleteResult = await provider.deleteIndex(indexName);
-
-            if (!deleteResult.success) {
-                throw new Error(`Failed to delete index: ${deleteResult.error}`);
-            }
         } else {
             logger.info('Index does not exist, will create fresh', { indexName });
         }
 
-        // Step 3: Get field configurations and build provider-native index settings
+        // Step 2: Get field configurations and build provider-native index settings
         const fields = await fieldsService.getFieldsBySearchIndexId(searchIndexId);
 
         // Get embedding config from the DB record (not from documents, since vector
@@ -935,7 +1039,33 @@ export async function triggerReindex(
             provider: searchIndex.searchProvider,
         });
 
-        // Step 4: Create the new index with provider-built settings
+        // Step 3: Prepare the documents to write back — INCLUDING their embeddings.
+        //
+        // Everything that can fail happens here, while the existing index is still
+        // intact. Embedding generation calls an external AI provider, so it is the
+        // most likely step to fail; doing it after the delete meant a transient
+        // provider error destroyed the index, because the only copy of the
+        // documents was the in-memory array discarded with the thrown error.
+        const preparedDocs = await prepareReindexDocuments({
+            documents,
+            fields,
+            searchIndex,
+            searchIndexId,
+            indexName,
+        });
+
+        // Step 4: Delete the existing index — the first destructive step, and
+        // deliberately the last thing that happens before recreating it.
+        if (indexExistsNow) {
+            logger.info('Deleting existing index', { indexName });
+            const deleteResult = await provider.deleteIndex(indexName);
+
+            if (!deleteResult.success) {
+                throw new Error(`Failed to delete index: ${deleteResult.error}`);
+            }
+        }
+
+        // Step 5: Create the new index with provider-built settings
         logger.info('Creating index with new mappings', { indexName });
         const createResult = await provider.createIndex(indexName, indexConfig);
 
@@ -943,49 +1073,14 @@ export async function triggerReindex(
             throw new Error(`Failed to create index: ${createResult.error}`);
         }
 
-        // Step 5: Re-index all documents
-        if (documents.length > 0) {
+        // Step 6: Write the prepared documents back
+        if (preparedDocs.length > 0) {
             logger.info('Re-indexing documents', {
                 indexName,
-                documentCount: documents.length,
+                documentCount: preparedDocs.length,
             });
 
-            // Convert scroll documents to bulk format, preserving IDs.
-            //
-            // Bodies are filtered to the fields that are still configured. Without
-            // this, a field deleted from the configuration comes straight back:
-            // the new mapping omits it, but Elasticsearch's dynamic mapping
-            // re-adds it from the document body, so the rebuild would silently
-            // fail to purge anything. The embedding field is kept because it is
-            // stored but not a configured field.
-            const allowedFields = new Set<string>([
-                ...fields.map(f => f.fieldName),
-                ...(embeddingConfig ? [embeddingConfig.fieldName] : []),
-            ]);
-
-            const bulkDocs = documents.map(doc => {
-                const source: Record<string, unknown> = {};
-                for (const [key, value] of Object.entries(doc._source)) {
-                    if (allowedFields.has(key)) {
-                        source[key] = value;
-                    }
-                }
-                return { _id: doc._id, ...source };
-            });
-
-            const droppedFieldNames = [
-                ...new Set(
-                    documents.flatMap(doc =>
-                        Object.keys(doc._source).filter(key => !allowedFields.has(key))
-                    )
-                ),
-            ];
-            if (droppedFieldNames.length > 0) {
-                logger.info('Dropping unconfigured fields during reindex', {
-                    indexName,
-                    droppedFields: droppedFieldNames,
-                });
-            }
+            const bulkDocs = preparedDocs;
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
 

@@ -166,11 +166,47 @@ function buildDefaultResponseFields(fields: SearchIndexField[]): string[] {
 }
 
 /**
+ * Build the list of fields worth showing when browsing an index's documents.
+ *
+ * Same retrievability predicate as buildDefaultResponseFields, with two
+ * deliberate differences:
+ *
+ * - Generated timestamps are admitted. They are useless noise in a search
+ *   response, but "when did this document last change" is one of the most
+ *   useful columns an admin browse table can have.
+ * - Field rows are returned rather than names, because the caller ranks
+ *   candidates by fieldType/isFacetable to decide which ones make good columns.
+ *
+ * Timestamps are opt-in rather than the default because a field row existing in
+ * Postgres does not prove the field exists in the provider mapping — see the
+ * caller's requiresReindex guard.
+ */
+export function buildBrowsableFields(
+    fields: SearchIndexField[],
+    options: { includeGeneratedTimestamps?: boolean } = {}
+): SearchIndexField[] {
+    const allowGeneratedTimestamps = options.includeGeneratedTimestamps ?? false;
+    return fields.filter(field =>
+        field.includeInResponse
+        && field.isIndexed
+        && hasDataAvailable(field)
+        && !isEmptySystemField(field, { allowGeneratedTimestamps })
+    );
+}
+
+/**
  * Check if a system field is empty/unconfigured and shouldn't be requested.
  * Also excludes auto-generated system timestamp fields (createdAt, updatedAt)
  * which are not useful in search responses and may not exist in the provider index.
+ *
+ * `allowGeneratedTimestamps` keeps the timestamp fields in — used only by
+ * document browse (see buildBrowsableFields). It defaults to false so search
+ * behaviour is unchanged.
  */
-function isEmptySystemField(field: SearchIndexField): boolean {
+function isEmptySystemField(
+    field: SearchIndexField,
+    options: { allowGeneratedTimestamps?: boolean } = {}
+): boolean {
     if (!field.isSystemField) return false;
     const config = field.transformConfig as { mode?: string; collectFields?: string[]; generator?: string } | null;
     // additionalData/customFields with mode='none' or mode='collect' with empty collectFields
@@ -181,7 +217,7 @@ function isEmptySystemField(field: SearchIndexField): boolean {
     // Auto-generated timestamp fields (createdAt, updatedAt) — these exist in the DB
     // but are not useful in search responses and may not be retrievable in all providers
     if (config?.mode === 'generated' && config.generator === 'timestamp') {
-        return true;
+        return !options.allowGeneratedTimestamps;
     }
     return false;
 }

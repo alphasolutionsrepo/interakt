@@ -7,6 +7,8 @@
 
 import { z } from 'zod';
 import { filterClauseSchema } from '@/features/search/search.validation';
+import type { FieldType } from '@/shared/constants/field-types';
+import type { EmbeddingPreview } from './embedding-text';
 
 // ============================================================================
 // VALIDATION SCHEMAS
@@ -148,8 +150,15 @@ export type {
     DocumentReadResult,
     DeleteByFilterOutcome,
     ListDocumentsOutcome,
-    DocumentColumn,
 } from './document-writer.service';
+
+export type { DocumentColumn } from './document-columns';
+
+export type {
+    EmbeddingPreview,
+    EmbeddingTextPart,
+    EmbeddingPartExclusion,
+} from './embedding-text';
 
 export type {
     IndexingRequest,
@@ -223,6 +232,14 @@ export interface IndexDocumentsResponse {
 export interface GetDocumentResponse {
     documentId: string;
     document: Record<string, unknown>;
+    /**
+     * Exactly the text this document's vector was built from, with a per-field
+     * breakdown of what contributed and what did not. Absent when the index does
+     * not embed. The stored vector is stripped from every read and a bad one
+     * looks like a good one, so this is the only way to see why a document does
+     * or does not match semantically.
+     */
+    embeddingPreview?: EmbeddingPreview;
 }
 
 /**
@@ -271,6 +288,14 @@ export interface DocumentSummary {
 export interface DocumentColumnDescriptor {
     field: string;
     label: string;
+    /**
+     * The field's declared type, so the cell can be rendered as what it is — a
+     * thumbnail, a link, a formatted date — instead of a stringified value.
+     *
+     * `'id'` marks the document key column, which has no field definition of its
+     * own on an index that does not define uniqueId.
+     */
+    type: FieldType | 'id';
 }
 
 /**

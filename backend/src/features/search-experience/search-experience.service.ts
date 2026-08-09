@@ -35,6 +35,7 @@ import type {
 import {
   DEFAULT_SEARCH_CONFIG,
   DEFAULT_AI_CONFIG,
+  DEFAULT_QUERY_UNDERSTANDING_CONFIG,
   DEFAULT_TOOLS_CONFIG,
 } from './search-experience.types';
 import { setExperienceTelemetryOverride } from '@/features/telemetry';
@@ -154,10 +155,16 @@ export async function createSearchExperience(
     autocomplete: { ...DEFAULT_SEARCH_CONFIG.autocomplete, ...validated.searchConfig?.autocomplete },
     hybridConfig, // Always include hybridConfig with resolved values
   };
+  // Each nested block is merged explicitly: a spread of aiConfig alone would
+  // replace a sub-object wholesale, silently dropping any field the caller omitted.
   const aiConfig = {
     ...DEFAULT_AI_CONFIG,
     ...validated.aiConfig,
     summary: { ...DEFAULT_AI_CONFIG.summary, ...validated.aiConfig?.summary },
+    queryUnderstanding: {
+      ...DEFAULT_QUERY_UNDERSTANDING_CONFIG,
+      ...validated.aiConfig?.queryUnderstanding,
+    },
   };
   const toolsConfig = { ...DEFAULT_TOOLS_CONFIG, ...validated.toolsConfig };
 
@@ -396,6 +403,11 @@ export async function updateSearchExperience(
       summary: {
         ...existing.aiConfig.summary,
         ...validated.aiConfig.summary,
+      },
+      queryUnderstanding: {
+        ...DEFAULT_QUERY_UNDERSTANDING_CONFIG,
+        ...existing.aiConfig.queryUnderstanding,
+        ...validated.aiConfig.queryUnderstanding,
       },
     };
   }

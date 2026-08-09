@@ -291,6 +291,12 @@ export interface ActionResult {
   parameters: Record<string, unknown>;
   result: ToolExecutionResultV2;
   durationMs: number;
+  /**
+   * Constraints abandoned by zero-result retry, if any. Surfaced to synthesis so
+   * the answer can say what it could not honour instead of silently returning
+   * results that do not match the request.
+   */
+  relaxation?: { droppedFilters: string[]; droppedAll: boolean };
 }
 
 export interface ToolExecutionResultV2 {

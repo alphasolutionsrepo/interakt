@@ -30,6 +30,7 @@ import * as fieldsRepository from '@/features/search-index/search-index-fields.r
 import { generateEmbeddings } from '@/features/ai-service';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { getProviderSettings, getProviderFieldSettings } from '@/features/search-index/provider-settings.utils';
+import { getEmbeddingText } from './embedding-text';
 
 const logger = createLogger('document-indexer');
 
@@ -271,33 +272,21 @@ export function getEmbeddingConfig(index: {
 }
 
 /**
- * Get text content from vector source fields for embedding
+ * Get text content from vector source fields for embedding.
+ *
+ * Re-exported from embedding-text.ts, which owns the construction rules and is
+ * shared with the preview the admin UI renders, so the two can never drift.
  */
-export function getEmbeddingText(
-    document: Record<string, unknown>,
-    vectorSourceFields: SearchIndexField[]
-): string {
-    const textParts: string[] = [];
-
-    for (const field of vectorSourceFields) {
-        const value = document[field.fieldName];
-        if (value !== undefined && value !== null) {
-            if (typeof value === 'string') {
-                textParts.push(value);
-            } else if (Array.isArray(value)) {
-                // Join array values
-                textParts.push(value.filter(v => typeof v === 'string').join(' '));
-            }
-        }
-    }
-
-    return textParts.join('\n\n');
-}
+export { getEmbeddingText };
 
 /**
  * Generate embeddings for documents
+ *
+ * Exported because a reindex has to rebuild vectors too: `content_embedding` is
+ * not carried in `_source`, so a rebuild that only copies documents across
+ * produces an index with no vectors at all.
  */
-async function generateDocumentEmbeddings(
+export async function generateDocumentEmbeddings(
     documents: Array<{ _id?: string; [key: string]: unknown }>,
     vectorSourceFields: SearchIndexField[],
     embeddingConfig: EmbeddingConfig,

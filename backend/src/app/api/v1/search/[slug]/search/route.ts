@@ -19,6 +19,8 @@ import type { SearchRequest, SearchResponse, FacetResult, FacetType } from '@/fe
 import { SearchError } from '@/features/search/search.types';
 import * as repository from '@/features/search-experience/search-experience.repository';
 import { publicSearchRequestSchema } from '@/features/search-experience/search-experience.schemas';
+import { applyQueryInterpretation } from '@/features/search-experience/query-interpreter';
+import type { QueryInterpretation } from '@/features/search-experience/query-interpreter';
 import type {
   SearchExperienceWithIndexes,
   SearchExperienceIndex,
@@ -108,7 +110,11 @@ export async function POST(
     }
 
     // 5. Build search request
-    const searchRequest = buildSearchRequest(validated, experience);
+    const { request: searchRequest, interpretation } = await buildSearchRequest(
+      validated,
+      experience,
+      indexesToSearch[0]?.searchIndexId
+    );
 
     // 6. Execute search (pass experience for hybrid config)
     const results = await executeMultiIndexSearch(indexesToSearch, searchRequest, experience);
@@ -116,6 +122,15 @@ export async function POST(
     // 7. Transform results for response
     const response = {
       query: validated.query,
+      // What the phrase was understood to mean, so a client can show it (and let
+      // the user undo it). Absent when interpretation is off or was skipped.
+      ...(interpretation?.interpreted && {
+        interpretation: {
+          effectiveQuery: interpretation.effectiveQuery,
+          appliedFilters: interpretation.appliedFilters,
+          droppedFilters: interpretation.droppedFilters,
+        },
+      }),
       results: results.hits.map((hit) => ({
         id: hit.id,
         index: {
@@ -174,12 +189,26 @@ function resolveIndexesToSearch(
   return activeIndexes;
 }
 
-function buildSearchRequest(
+async function buildSearchRequest(
   input: PlaygroundSearchRequest,
-  experience: SearchExperienceWithIndexes
-): SearchRequest {
+  experience: SearchExperienceWithIndexes,
+  primarySearchIndexId: string | undefined
+): Promise<{ request: SearchRequest; interpretation?: QueryInterpretation }> {
   const searchConfig = experience.searchConfig;
-  const filters = input.filters as SearchRequest['filters'];
+
+  // Natural-language understanding: turn "men's t-shirts below $110" into a clean
+  // query plus real filters before searching. No-op unless the experience opts in.
+  const interpreted = await applyQueryInterpretation({
+    query: input.query,
+    clientFilters: input.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
+    searchIndexId: primarySearchIndexId,
+    config: experience.aiConfig?.queryUnderstanding,
+    providerId: experience.aiConfig?.providerId,
+    modelId: experience.aiConfig?.modelId,
+    experienceId: experience.id,
+  });
+
+  const filters = interpreted.filters as SearchRequest['filters'];
   const facets = input.facets?.map((f: { field: string; type?: string; size?: number }) => ({
     field: f.field,
     type: (f.type ?? 'terms') as 'terms' | 'range' | 'date_range' | 'date_histogram' | 'histogram',
@@ -197,8 +226,8 @@ function buildSearchRequest(
     ? input.searchType
     : (searchConfig.defaultSearchType ?? 'auto');
 
-  return {
-    query: input.query,
+  const request: SearchRequest = {
+    query: interpreted.query,
     searchType,
     filters,
     facets,
@@ -214,6 +243,8 @@ function buildSearchRequest(
       ? { preTag: '<em>', postTag: '</em>' }
       : undefined,
   };
+
+  return { request, interpretation: interpreted.interpretation };
 }
 
 async function executeMultiIndexSearch(

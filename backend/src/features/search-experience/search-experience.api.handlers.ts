@@ -23,6 +23,7 @@ import {
   handleCorsPreflight,
 } from './access-token.middleware';
 import { publicSearchRequestSchema, autocompleteRequestSchema } from './search-experience.schemas';
+import { applyQueryInterpretation } from './query-interpreter';
 import type {
   SearchExperienceWithIndexes,
   PublicSearchRequest,
@@ -179,8 +180,19 @@ async function buildSearchRequest(
 ): Promise<SearchRequest> {
   const searchConfig = experience.searchConfig;
 
-  // Cast filters to the expected types (they come validated from schema)
-  const filters = publicRequest.filters as SearchRequest['filters'];
+  // Natural-language understanding: turn "men's t-shirts below $110" into a clean
+  // query plus real filters before searching. No-op unless the experience opts in.
+  const interpreted = await applyQueryInterpretation({
+    query: publicRequest.query,
+    clientFilters: publicRequest.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
+    searchIndexId: indexes[0]?.searchIndex?.id,
+    config: experience.aiConfig?.queryUnderstanding,
+    providerId: experience.aiConfig?.providerId,
+    modelId: experience.aiConfig?.modelId,
+    experienceId: experience.id,
+  });
+
+  const filters = interpreted.filters as SearchRequest['filters'];
 
   // Handle facets: either use explicit facets from request or auto-generate from facetable fields
   let facets: SearchRequest['facets'] | undefined;
@@ -198,7 +210,7 @@ async function buildSearchRequest(
   }
 
   return {
-    query: publicRequest.query,
+    query: interpreted.query,
     searchType: publicRequest.searchType ?? 'auto',
     filters,
     facets,

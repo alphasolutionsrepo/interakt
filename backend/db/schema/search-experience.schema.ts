@@ -128,6 +128,30 @@ export interface SearchExperienceAISummaryConfig {
 }
 
 /**
+ * Natural-language query understanding settings.
+ *
+ * When enabled, a search query is parsed into a cleaned query plus structured
+ * filters before searching — "men's t-shirts below $110" becomes
+ * `t-shirts` + `gender=Men` + `minPrice<=110`.
+ *
+ * Off by default. It adds an LLM call to the search path, which costs latency and
+ * money on every query, so it is a deliberate choice per experience rather than
+ * something existing search boxes silently inherit.
+ */
+export interface SearchExperienceQueryUnderstandingConfig {
+  /** Enable natural-language filter extraction */
+  enabled: boolean;
+  /**
+   * Skip interpretation for queries shorter than this many words. A one- or
+   * two-word lookup like "sweatshirt" has no filters to find and should not pay
+   * for an LLM round trip.
+   */
+  minWords: number;
+  /** Extra guidance appended to the interpreter instructions */
+  customInstructions?: string;
+}
+
+/**
  * AI configuration settings
  */
 export interface SearchExperienceAIConfig {
@@ -139,6 +163,11 @@ export interface SearchExperienceAIConfig {
   modelId: number | null;
   /** Summary generation settings */
   summary: SearchExperienceAISummaryConfig;
+  /**
+   * Natural-language query understanding. Optional so experiences created before
+   * this feature existed keep working — treat a missing value as disabled.
+   */
+  queryUnderstanding?: SearchExperienceQueryUnderstandingConfig;
 }
 
 /**

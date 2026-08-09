@@ -686,6 +686,7 @@ export async function handleGetDocument(
         const response: GetDocumentResponse = {
             documentId: result.documentId,
             document: result.document,
+            embeddingPreview: result.embeddingPreview,
         };
 
         return apiResponse.success(response);

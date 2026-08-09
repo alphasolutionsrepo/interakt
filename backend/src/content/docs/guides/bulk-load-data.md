@@ -163,12 +163,23 @@ curl "/api/search-indexes/$INDEX/documents?page=1&pageSize=25"
   "success": true,
   "data": {
     "documents": [
-      { "id": "PROD-001", "fields": { "name": "Pacific runner sneaker", "price": 89.99 } }
+      {
+        "id": "PROD-001",
+        "fields": {
+          "name": "Pacific runner sneaker",
+          "category": "footwear",
+          "price": 89.99,
+          "updatedAt": "2025-03-04T09:12:44Z"
+        }
+      }
     ],
-    // A compact set of columns picked from your field config, ID first
+    // A compact set of columns derived from your field config, ID first
     "columns": [
-      { "field": "uniqueId", "label": "ID" },
-      { "field": "name", "label": "Name" }
+      { "field": "uniqueId", "label": "ID", "type": "id" },
+      { "field": "name", "label": "Name", "type": "text" },
+      { "field": "category", "label": "Category", "type": "keyword" },
+      { "field": "price", "label": "Price", "type": "number" },
+      { "field": "updatedAt", "label": "Updated", "type": "datetime" }
     ],
     "pagination": { "page": 1, "pageSize": 25, "totalPages": 17, "totalItems": 412 }
   }
@@ -177,12 +188,23 @@ curl "/api/search-indexes/$INDEX/documents?page=1&pageSize=25"
 
 `pageSize` defaults to 25 and caps at 100. Each document's `id` is the value you pass to the single-document routes above.
 
-Two things to know:
+**Which columns you get.** Indexes have nothing in common but the document key, so the column set isn't fixed — it's derived from your own field configuration, and it follows the same rules on every index:
+
+1. **The key comes first**, always, even on an index that doesn't map a `uniqueId` field.
+2. **Then a title**, if one can be identified — a field named `title`, `name` or `product_name`, otherwise the first searchable text field.
+3. **Then up to three attributes**, ranked by how well they fit in a table cell. Types that render as a single value (`keyword`, `boolean`, `number`, `date`, `datetime`, `url`) rank above prose and structures (`text`, `array`, `json`), and facetable fields rank above non-facetable ones of the same type — a field worth faceting has few distinct values, which is what makes a column scannable.
+4. **Then `updatedAt`** (or `createdAt`), if your index defines them.
+
+Fields marked as a vector source never appear: they hold the long prose that was embedded. Nothing here is configurable — change which fields are searchable, facetable or included in responses, and the columns follow.
+
+Each column carries its `type`, so a client can render the cell as what it is — a thumbnail for `image_url`, a link for `url`, a formatted date for `datetime` — rather than printing a raw value.
+
+Two more things to know:
 
 - **Paging is capped at 10,000 documents.** Past that you get a `400` — Elasticsearch refuses deep pagination and Azure has its own ceiling. To extract an entire large index, use a full export rather than walking pages.
 - **Ordering.** On Elasticsearch documents come back sorted by `uniqueId`, so paging is repeatable. On Azure AI Search the key field is not sortable, so order is provider-defined and rows can in principle shift between pages.
 
-Only a few fields come back per document, not the whole thing — enough to fill a table. Fetch a single document by id for everything. Embedding vectors are never returned by any of these reads; a vector is thousands of floats and useless to look at.
+Only these columns come back per document, not the whole thing — enough to fill a table. Fetch a single document by id for everything. Embedding vectors are never returned by any of these reads; a vector is thousands of floats and useless to look at.
 
 ### Replace vs. partial update
 

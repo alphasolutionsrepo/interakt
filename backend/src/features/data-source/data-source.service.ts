@@ -10,6 +10,8 @@ import type {
 import type { ExternalSearchIndexConfig, DataSourceField, DataSourceSchema, DataSourceCapabilities } from '@/db/schema/data-sources.schema';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { resolveSecret } from '@/features/secrets/secrets.service';
+import { inferFieldRole } from '@/shared/utils/field-roles';
+import * as toolsService from '@/features/tools/tools.service';
 
 const logger = createLogger('data-source-service');
 
@@ -179,13 +181,30 @@ export async function refreshSchemaForSearchIndex(searchIndexId: string): Promis
 
     await Promise.all(
       sources.map(source =>
-        performHealthCheck(source.id).catch(err => {
-          logger.warn('Failed to refresh data source schema', {
-            dataSourceId: source.id,
-            searchIndexId,
-            error: err instanceof Error ? err.message : 'Unknown error',
-          });
-        })
+        performHealthCheck(source.id)
+          .then(async () => {
+            // The data source snapshot is only half of it. A tool's inputSchema —
+            // including the filters[].field enum, the only list of filterable
+            // fields the model ever sees — is generated at scaffold time and never
+            // again. Without this, making a field filterable has no visible
+            // effect: the model still cannot name it in a filter.
+            const refreshed = await repository.getDataSourceById(source.id);
+            if (refreshed) {
+              await toolsService.regenerateSchemasForDataSource(
+                refreshed.id,
+                refreshed.name,
+                refreshed.type,
+                refreshed.schema as DataSourceSchema | null,
+              );
+            }
+          })
+          .catch(err => {
+            logger.warn('Failed to refresh data source schema', {
+              dataSourceId: source.id,
+              searchIndexId,
+              error: err instanceof Error ? err.message : 'Unknown error',
+            });
+          })
       )
     );
   } catch (err) {
@@ -239,20 +258,6 @@ function mapSearchIndexFieldsToSchema(fields: SearchIndexField[]): DataSourceFie
       isFacetable: f.isFacetable,
       isFilterable: f.isFacetable, // facetable fields are also filterable
     }));
-}
-
-function inferFieldRole(fieldName: string): DataSourceField['role'] {
-  const name = fieldName.toLowerCase();
-  if (name === 'title' || name === 'name' || name === 'product_name') return 'title';
-  if (name === 'description' || name === 'summary') return 'description';
-  if (name === 'content' || name === 'body' || name === 'text') return 'content';
-  if (name === 'price' || name === 'cost') return 'price';
-  if (name === 'image' || name === 'image_url' || name === 'thumbnail') return 'image';
-  if (name === 'category' || name === 'categories') return 'category';
-  if (name === 'url' || name === 'link' || name === 'href') return 'url';
-  if (name === 'id' || name === 'unique_id') return 'id';
-  if (name.includes('date') || name.includes('created') || name.includes('updated')) return 'date';
-  return null;
 }
 
 // ============================================================================

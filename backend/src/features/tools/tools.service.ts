@@ -158,6 +158,63 @@ export async function createToolsForDataSource(
   return createdTools;
 }
 
+/**
+ * Rebuild the generated schemas of a data source's scaffolded tools.
+ *
+ * A tool's inputSchema is generated once, at scaffold time — including the
+ * `filters[].field` enum, which is the only list of filterable fields the model
+ * ever sees. Making a field filterable afterwards therefore had no effect: the
+ * field never entered the enum, so the model could not filter on it and the user
+ * saw the filter silently ignored.
+ *
+ * Only `isSystem` tools are touched. A hand-created or hand-edited tool has an
+ * aiDescription someone wrote deliberately, and regenerating would discard it.
+ *
+ * Best-effort by design: this runs as a side effect of a field-config change,
+ * and a stale enum must not fail that change.
+ *
+ * @returns how many tools were updated
+ */
+export async function regenerateSchemasForDataSource(
+  dataSourceId: string,
+  dataSourceName: string,
+  dataSourceType: DataSourceType,
+  schema?: DataSourceSchema | null,
+): Promise<number> {
+  const existingTools = await repository.getToolsByDataSourceId(dataSourceId);
+  let updated = 0;
+
+  for (const tool of existingTools) {
+    if (!tool.isSystem || !tool.operation) {
+      continue;
+    }
+
+    try {
+      const { aiDescription, inputSchema } = generateToolDescription(
+        dataSourceName,
+        dataSourceType,
+        tool.operation as DataSourceOperation,
+        schema,
+      );
+      await repository.updateTool(tool.id, { aiDescription, inputSchema });
+      updated++;
+    } catch (err) {
+      logger.warn('Failed to regenerate tool schema', {
+        toolId: tool.id,
+        slug: tool.slug,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
+  }
+
+  if (updated > 0) {
+    await clearListCache();
+    logger.info('Regenerated tool schemas after schema change', { dataSourceId, updated });
+  }
+
+  return updated;
+}
+
 // ============================================================================
 // DESCRIPTION GENERATION (for UI pre-fill)
 // ============================================================================
