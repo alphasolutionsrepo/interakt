@@ -153,11 +153,12 @@ export class ZeroResultRetryStep implements ActionStep {
     // Work out what the user asked for that we could not honour. Comparing the
     // final filter set against the original is more reliable than tracking each
     // relaxation branch, and covers the semantic fallback that drops them all.
-    const finalFilters = (finalParams.filters ?? []) as Array<{ field: string; value: unknown }>;
-    const finalKeys = new Set(finalFilters.map((f) => `${f.field}=${f.value}`));
+    const finalFilters = (finalParams.filters ?? []) as Array<{ field: string; operator?: string; value: unknown }>;
+    const keyOf = (f: { field: string; operator?: string; value: unknown }) => `${f.field}|${f.operator ?? ''}|${String(f.value)}`;
+    const finalKeys = new Set(finalFilters.map(keyOf));
     const droppedFilters = originalFilters
-      .map((f) => `${f.field}=${f.value}`)
-      .filter((key) => !finalKeys.has(key));
+      .filter((f) => !finalKeys.has(keyOf(f)))
+      .map((f) => `${f.field}=${f.value}`);
 
     const relaxation = droppedFilters.length > 0
       ? { droppedFilters, droppedAll: finalFilters.length === 0 }
