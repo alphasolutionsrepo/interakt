@@ -35,7 +35,6 @@ export const registry = new OpenAPIRegistry();
 
 const ACCESS_TOKEN = 'AccessToken';
 const BEARER = 'BearerAuth';
-const INGEST_KEY = 'IngestApiKey';
 
 registry.registerComponent('securitySchemes', ACCESS_TOKEN, {
   type: 'apiKey',
@@ -49,13 +48,6 @@ registry.registerComponent('securitySchemes', BEARER, {
   type: 'http',
   scheme: 'bearer',
   description: 'The same access token may be sent as `Authorization: Bearer <token>` instead of `X-Access-Token`.',
-});
-
-registry.registerComponent('securitySchemes', INGEST_KEY, {
-  type: 'apiKey',
-  in: 'header',
-  name: 'X-Api-Key',
-  description: 'Per-index ingestion API key, used only by the document ingestion endpoint.',
 });
 
 const tokenAuth = [{ [ACCESS_TOKEN]: [] }, { [BEARER]: [] }];
@@ -189,18 +181,6 @@ const embedSnippetResponseSchema = z
     }),
   })
   .openapi('EmbedSnippetResponse');
-
-const ingestResponseSchema = z
-  .object({
-    success: z.literal(true),
-    data: z
-      .object({
-        indexed: z.number().int().optional(),
-        failed: z.number().int().optional(),
-      })
-      .openapi({ description: 'Ingestion outcome counts.' }),
-  })
-  .openapi('IngestResponse');
 
 // SSE streams can't be fully modelled in OpenAPI; document the event envelope.
 const sseDescription =
@@ -340,38 +320,6 @@ registry.registerPath({
   },
 });
 
-registry.registerPath({
-  method: 'post',
-  path: '/api/v1/search-indexes/{id}/documents',
-  tags: ['Ingestion'],
-  summary: 'Ingest documents into an index',
-  description:
-    'Uploads documents for indexing from an external system. Authenticated with a per-index ingestion key (`X-Api-Key` or `Authorization: Bearer`).',
-  security: [{ [INGEST_KEY]: [] }, { [BEARER]: [] }],
-  request: {
-    params: z.object({
-      id: z.string().uuid().openapi({ param: { name: 'id', in: 'path' }, description: 'Search index UUID.' }),
-    }),
-    body: {
-      content: json(
-        z
-          .object({
-            documents: z
-              .array(z.record(z.unknown()))
-              .min(1)
-              .openapi({ description: 'Array of document objects to index.' }),
-          })
-          .openapi('IngestRequest'),
-      ),
-    },
-  },
-  responses: {
-    200: { description: 'Ingestion accepted.', content: json(ingestResponseSchema) },
-    400: errorResponse('Invalid payload.'),
-    401: errorResponse('Missing or invalid ingestion key.'),
-  },
-});
-
 // ============================================================================
 // DOCUMENT BUILDER
 // ============================================================================
@@ -386,14 +334,16 @@ export function buildOpenApiDocument() {
       description:
         'Public, token-authenticated REST API for embedding Interakt search and AI chat into your own applications.\n\n' +
         'All endpoints live under `/api/v1`. Authenticate with your experience’s access token via the `X-Access-Token` ' +
-        'header (or `Authorization: Bearer`). Document ingestion uses a separate per-index `X-Api-Key`.',
+        'header (or `Authorization: Bearer`). Access tokens are read-only.\n\n' +
+        'Writing documents into an index is a separate, server-to-server concern and is not part of this API. ' +
+        'It uses scoped ingestion keys against the admin endpoints under `/api/search-indexes/{id}/documents` — ' +
+        'see the “Load data in bulk” guide in the documentation.',
     },
     servers: [{ url: 'https://admin.interakt.app', description: 'Hosted Interakt' }],
     tags: [
       { name: 'Search', description: 'Query indexes and fetch documents.' },
       { name: 'AI', description: 'AI summaries and chat experiences.' },
       { name: 'Embed', description: 'Drop-in widget embedding.' },
-      { name: 'Ingestion', description: 'Push documents into an index.' },
     ],
   });
 }
