@@ -322,8 +322,8 @@ export async function listDocuments(
 
     const index = await resolveIndex(searchIndexId);
 
-    // Timestamps are only requested when the field definitions are known to match
-    // the provider mapping. Selecting a field Azure does not have throws, which
+    // Generated timestamps (createdAt/updatedAt) are only requested when the field definitions are
+    // known to match the provider mapping. Selecting a field Azure does not have throws, which
     // would fail the whole page rather than blank one column.
     const includeTimestamps = !index.requiresReindex;
     let columns = resolveDisplayColumns(index.fields, { includeTimestamps });
