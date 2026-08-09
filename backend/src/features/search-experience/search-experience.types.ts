@@ -453,11 +453,18 @@ export const DEFAULT_AI_SUMMARY_CONFIG = {
   maxTokens: 500,
 };
 
+/** Off by default: it adds an LLM call to every search. */
+export const DEFAULT_QUERY_UNDERSTANDING_CONFIG = {
+  enabled: false,
+  minWords: 3,
+};
+
 export const DEFAULT_AI_CONFIG: SearchExperienceAIConfig = {
   enabled: true,
   providerId: null,
   modelId: null,
   summary: DEFAULT_AI_SUMMARY_CONFIG,
+  queryUnderstanding: DEFAULT_QUERY_UNDERSTANDING_CONFIG,
 };
 
 export const DEFAULT_TOOLS_CONFIG: SearchExperienceToolsConfig = {

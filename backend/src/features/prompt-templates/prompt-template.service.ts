@@ -161,17 +161,41 @@ export async function removeExperienceOverride(experienceId: string, step: Promp
 
 /**
  * Seed system default prompt templates from the code-defined defaults.
- * Idempotent — only creates rows that don't already exist.
- * Called at application startup.
+ *
+ * Creates missing rows, and re-syncs untouched seed rows whose content has since
+ * changed in code. Called at application startup.
+ *
+ * The re-sync matters: this used to be insert-only, which meant editing a default
+ * in code had no effect on any existing installation — the stale row kept winning
+ * at resolve time, silently, forever. A prompt fix that cannot reach a running
+ * system is not a fix.
+ *
+ * Only a pristine seed row is rewritten — `version: 1` with no `parentId`. A
+ * user-authored version that was promoted to system default has a parent or a
+ * higher version, and is left alone; overwriting someone's deliberate prompt with
+ * a platform default would be far worse than a stale default.
  */
 export async function seedSystemDefaults() {
   let created = 0;
+  let updated = 0;
   let skipped = 0;
 
   for (const def of SYSTEM_DEFAULT_TEMPLATES) {
     const existing = await repo.getSystemDefault(def.step);
+
     if (existing) {
-      skipped++;
+      const isPristineSeed = existing.version === 1 && !existing.parentId;
+
+      if (isPristineSeed && existing.content !== def.content) {
+        await repo.updateContent(existing.id, {
+          label: def.label,
+          content: def.content,
+          metadata: def.metadata,
+        });
+        updated++;
+      } else {
+        skipped++;
+      }
       continue;
     }
 
@@ -188,8 +212,11 @@ export async function seedSystemDefaults() {
     created++;
   }
 
-  if (created > 0) {
-    logger.info('Seeded prompt templates', { created, skipped });
+  if (created > 0 || updated > 0) {
+    // Resolved templates are cached; a rewritten row would otherwise keep
+    // serving its old content for the life of the process.
+    invalidateTemplateCache();
+    logger.info('Seeded prompt templates', { created, updated, skipped });
   } else {
     logger.debug('All prompt templates already seeded', { skipped });
   }

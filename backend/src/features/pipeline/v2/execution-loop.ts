@@ -163,6 +163,7 @@ export async function executeLoop(
         parameters: finalContext.finalParams ?? finalContext.validatedParams ?? finalContext.extractedParams ?? {},
         result: finalContext.toolResult ?? { success: false, data: null, error: 'No tool result' },
         durationMs: Date.now() - actionStart,
+        ...(finalContext.relaxation && { relaxation: finalContext.relaxation }),
       };
 
       executedActions.push(actionResult);

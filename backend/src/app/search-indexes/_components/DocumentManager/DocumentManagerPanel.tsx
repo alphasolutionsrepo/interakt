@@ -51,6 +51,7 @@ import {
     ChevronLeft,
     Check,
     X,
+    Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -63,6 +64,7 @@ import {
 import type {
     DocumentColumnDescriptor,
     DocumentSummary,
+    EmbeddingPreview,
 } from '../../_lib/api-client';
 
 // ============================================================================
@@ -537,6 +539,79 @@ function BrowseDocuments({ searchIndexId }: { searchIndexId: string }) {
     );
 }
 
+/**
+ * Why a field contributed nothing, in words — the three causes have three
+ * different fixes, so they must not read the same.
+ */
+const EXCLUSION_HINTS: Record<string, string> = {
+    missing: 'No value on this document — check the ingest data or the field mapping',
+    empty: 'A value exists but is blank, e.g. an empty list',
+    'unsupported-type': 'Objects and lists of objects cannot be embedded — this field will never contribute',
+};
+
+/**
+ * Show exactly the text this document's vector was built from.
+ *
+ * The stored vector is stripped from every read and a bad one is
+ * indistinguishable from a good one, so the text is the only visible evidence of
+ * why a document does or does not match semantically. Excluded fields are listed
+ * rather than hidden: a vector-source field contributing nothing — a json blob,
+ * an empty array — is exactly the kind of thing that quietly ruins a result set.
+ */
+function EmbeddingPreviewPanel({ preview }: { preview: EmbeddingPreview }) {
+    const included = preview.parts.filter(part => part.included);
+    const excluded = preview.parts.filter(part => !part.included);
+
+    return (
+        <div className="space-y-3 rounded-md border p-4">
+            <div className="flex flex-wrap items-center gap-2">
+                <Sparkles className="h-4 w-4 text-violet-500" />
+                <span className="text-sm font-medium">Embedded text</span>
+                <Badge variant="secondary" className="font-normal">
+                    {preview.totalChars.toLocaleString()} chars
+                </Badge>
+                <Badge variant="secondary" className="font-normal">
+                    {included.length} of {preview.parts.length} fields
+                </Badge>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+                This exact string was sent to the embedding model. Fields appear in
+                boost order — earlier text carries more weight.
+            </p>
+
+            <ScrollArea className="h-56 rounded-md border bg-muted/30">
+                <pre className="whitespace-pre-wrap break-words p-4 text-xs">
+                    {preview.text || '(empty — this document has no vector)'}
+                </pre>
+            </ScrollArea>
+
+            {excluded.length > 0 && (
+                <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                        Contributing nothing
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                        {excluded.map(part => (
+                            <Badge
+                                key={part.fieldName}
+                                variant="outline"
+                                className="font-normal text-xs"
+                                title={EXCLUSION_HINTS[part.excludedBecause ?? 'missing']}
+                            >
+                                {part.label}
+                                <span className="ml-1 text-muted-foreground">
+                                    {part.excludedBecause}
+                                </span>
+                            </Badge>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
     const [inputValue, setInputValue] = useState('');
     // Only set once the user submits, so we don't fetch on every keystroke
@@ -633,6 +708,10 @@ function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
                                 {JSON.stringify(data.document, null, 2)}
                             </pre>
                         </ScrollArea>
+
+                        {data.embeddingPreview && (
+                            <EmbeddingPreviewPanel preview={data.embeddingPreview} />
+                        )}
                     </div>
                 )}
 

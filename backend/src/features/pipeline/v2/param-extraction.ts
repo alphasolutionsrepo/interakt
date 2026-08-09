@@ -382,8 +382,17 @@ Required: ${requiredFields}
    The query field should contain the **descriptive terms** that define what the user is looking for.
    KEEP in the query: product type, descriptive qualifiers (e.g., "left-handed", "wireless", "leather", "organic", "waterproof").
    MOVE to filters: structured attributes that match a filter field (e.g., gender, brand, price range, size, color when a color filter exists).
-   Example: "men's left-handed leather golf gloves under $100" → query: "left-handed leather golf gloves", filters: gender=Men + maxPrice≤100.
-   When in doubt, keep the term in the query — an overly narrow query returns zero results, while a slightly broad query can still be filtered.`;
+   Example: "men's left-handed leather golf gloves under $100" → query: "left-handed leather golf gloves", filters: gender=Men + minPrice≤100.
+   When in doubt, keep the term in the query — an overly narrow query returns zero results, while a slightly broad query can still be filtered.
+9. IMPORTANT — paired range fields (e.g. minPrice/maxPrice):
+   A pair like minPrice/maxPrice describes ONE item's range across its variants — they are not
+   two separate prices to choose between. minPrice is the cheapest variant, maxPrice the dearest.
+   "under $X" / "below $X" / "cheaper than $X" → filter the LOWER bound: minPrice ≤ X.
+     The user wants something they can buy for under $X, so it is enough that one variant qualifies.
+     Filtering maxPrice ≤ X demands that EVERY variant is under $X and almost always returns nothing.
+   "over $X" / "above $X" → filter the UPPER bound: maxPrice ≥ X.
+   "between $X and $Y" → minPrice ≤ Y and maxPrice ≥ X.
+   If only one of the pair is offered as a filter field, use that one rather than skipping the filter.`;
 
   if (fieldConstraints) {
     prompt += `\n\n## Filter field constraints\nWhen building filters, you MUST use one of the exact valid values listed below. Pick the value that best matches the user's intent.\n${fieldConstraints}`;

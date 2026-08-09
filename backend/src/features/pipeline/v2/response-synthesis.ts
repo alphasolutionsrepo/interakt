@@ -393,7 +393,7 @@ async function synthesizeFromResults(
   const persona = input.personaConfig;
 
   // Build what-was-done summary
-  const actionSummary = input.actionResults
+  const actionSummaryLines = input.actionResults
     .map((a) => {
       let status: string;
       if (!a.result.success) {
@@ -404,9 +404,27 @@ async function synthesizeFromResults(
       } else {
         status = `${a.result.resultCount ?? 0} results`;
       }
-      return `- ${a.toolSlug}: ${a.intent} → ${status}`;
+      const relaxed = a.relaxation
+        ? ` — NOTE: no results matched ${a.relaxation.droppedFilters.join(', ')}, `
+          + `so ${a.relaxation.droppedAll ? 'all filters were' : 'that constraint was'} `
+          + 'dropped and these results DO NOT satisfy it'
+        : '';
+      return `- ${a.toolSlug}: ${a.intent} → ${status}${relaxed}`;
     })
     .join('\n');
+
+  // Relaxation must reach the model as an instruction, not a footnote: returning
+  // full-price items for "under $60" without saying so is a wrong answer, and the
+  // user reads it as a broken filter rather than an empty result set.
+  //
+  // Appended to actionSummary rather than passed as its own variable so it reaches
+  // both prompt paths — the DB-backed template renders a fixed set of variables and
+  // would silently drop a new one.
+  const actionSummary = input.actionResults.some((a) => a.relaxation)
+    ? `${actionSummaryLines}\n\nIMPORTANT — some constraints could not be met. Say so `
+      + 'plainly and early in your answer: state which constraint returned nothing, and '
+      + 'make clear the items shown do not satisfy it. Do not present them as if they matched.'
+    : actionSummaryLines;
 
   // Build result data (truncated to avoid token bloat)
   const resultData = input.actionResults

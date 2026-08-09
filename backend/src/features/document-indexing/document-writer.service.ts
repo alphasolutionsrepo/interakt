@@ -50,9 +50,13 @@ import { generateEmbeddings } from '@/features/ai-service';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { transformDocument } from './document-transformer.service';
 import {
+    buildEmbeddingPreview,
+    getEmbeddingText,
+    type EmbeddingPreview,
+} from './embedding-text';
+import {
     EMBEDDING_FIELD_NAME,
     getEmbeddingConfig,
-    getEmbeddingText,
     updateIndexStats,
     type EmbeddingConfig,
 } from './document-indexer.service';
@@ -116,6 +120,8 @@ export interface DocumentReadResult {
     found: boolean;
     documentId: string;
     document?: Record<string, unknown>;
+    /** The text this document's vector was built from. Absent on lexical indexes. */
+    embeddingPreview?: EmbeddingPreview;
 }
 
 export interface DeleteByFilterOutcome {
@@ -254,6 +260,11 @@ function withoutEmbedding(source: Record<string, unknown>): Record<string, unkno
 
 /**
  * Fetch a single document from the provider index by id.
+ *
+ * The embedding preview travels with the document because the stored vector is
+ * opaque — it is stripped from every read, and a wrong one looks identical to a
+ * right one. Showing the text it was built from is the only way to see why a
+ * document does or does not match semantically.
  */
 export async function getDocument(
     searchIndexId: string,
@@ -262,11 +273,36 @@ export async function getDocument(
     const index = await resolveIndex(searchIndexId);
     const result = await index.provider.getDocumentById(index.name, documentId);
 
+    const document = result.source ? withoutEmbedding(result.source) : undefined;
+
     return {
         found: result.found,
         documentId,
-        document: result.source ? withoutEmbedding(result.source) : undefined,
+        document,
+        embeddingPreview: document
+            ? await buildDocumentEmbeddingPreview(index, document)
+            : undefined,
     };
+}
+
+/**
+ * Build the embedding preview for an already-fetched document.
+ *
+ * Returns undefined when the index does not embed at all — a lexical index has
+ * no vector to explain, and showing an empty preview would imply otherwise.
+ */
+async function buildDocumentEmbeddingPreview(
+    index: ResolvedIndex,
+    document: Record<string, unknown>
+): Promise<EmbeddingPreview | undefined> {
+    if (!index.embeddingConfig.enabled) {
+        return undefined;
+    }
+    const vectorSourceFields = await fieldsRepository.getVectorSourceFields(index.id);
+    if (vectorSourceFields.length === 0) {
+        return undefined;
+    }
+    return buildEmbeddingPreview(document, vectorSourceFields);
 }
 
 /**

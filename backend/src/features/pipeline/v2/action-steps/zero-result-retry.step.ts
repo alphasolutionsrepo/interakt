@@ -150,12 +150,26 @@ export class ZeroResultRetryStep implements ActionStep {
       ? `Retry succeeded at ${lastSuccessful!.step}: ${summaryParts.join('; ')}`
       : `0 results after ${retryLog.length} relaxation attempt(s): ${summaryParts.join('; ')}`;
 
+    // Work out what the user asked for that we could not honour. Comparing the
+    // final filter set against the original is more reliable than tracking each
+    // relaxation branch, and covers the semantic fallback that drops them all.
+    const finalFilters = (finalParams.filters ?? []) as Array<{ field: string; value: unknown }>;
+    const finalKeys = new Set(finalFilters.map((f) => `${f.field}=${f.value}`));
+    const droppedFilters = originalFilters
+      .map((f) => `${f.field}=${f.value}`)
+      .filter((key) => !finalKeys.has(key));
+
+    const relaxation = droppedFilters.length > 0
+      ? { droppedFilters, droppedAll: finalFilters.length === 0 }
+      : undefined;
+
     return {
       success: true,
       context: {
         ...ctx,
         toolResult,
         finalParams,
+        ...(relaxation && { relaxation }),
       },
       summary,
       durationMs,
@@ -164,6 +178,9 @@ export class ZeroResultRetryStep implements ActionStep {
         'alpha.v2.step.original_filters': JSON.stringify(originalFilters.map((f) => `${f.field}=${f.value}`)),
         'alpha.v2.step.retry_attempts': retryLog.length,
         'alpha.v2.step.retry_succeeded': succeeded,
+        ...(relaxation && {
+          'alpha.v2.step.dropped_filters': JSON.stringify(relaxation.droppedFilters),
+        }),
         'alpha.v2.step.retry_log': JSON.stringify(retryLog),
         ...(finalParams.query !== originalQuery && { 'alpha.v2.step.final_query': String(finalParams.query) }),
         ...(finalParams.filters !== params.filters && {

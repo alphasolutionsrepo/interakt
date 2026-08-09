@@ -73,6 +73,22 @@ export interface ActionStepContext {
   toolResult: ToolExecutionResultV2 | null;
   /** Final parameters used (may differ from validatedParams after retry relaxation) */
   finalParams: Record<string, unknown> | null;
+  /**
+   * Constraints the retry step had to abandon to get any results at all.
+   *
+   * Set only when relaxation actually changed the request. Without this the
+   * pipeline answers a question the user did not ask — dropping "under $60" and
+   * returning full-price items reads as a broken filter, not a narrowed search.
+   */
+  relaxation?: FilterRelaxation;
+}
+
+/** What a zero-result retry gave up in order to return something. */
+export interface FilterRelaxation {
+  /** Human-readable `field=value` pairs that were dropped. */
+  droppedFilters: string[];
+  /** True when every filter was abandoned and the values folded into the query. */
+  droppedAll: boolean;
 }
 
 // ============================================================================

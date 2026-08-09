@@ -844,9 +844,29 @@ export interface BatchListItem {
 // INCREMENTAL DOCUMENT UPDATES
 // ============================================================================
 
+/** One vector-source field's contribution to the embedding text. */
+export interface EmbeddingTextPart {
+    fieldName: string;
+    label: string;
+    /** The rendered `Label: value` line, or '' when excluded. */
+    text: string;
+    included: boolean;
+    /** Present only when `included` is false. */
+    excludedBecause?: 'missing' | 'empty' | 'unsupported-type';
+}
+
+/** The text a document's vector was built from, with a per-field breakdown. */
+export interface EmbeddingPreview {
+    text: string;
+    totalChars: number;
+    parts: EmbeddingTextPart[];
+}
+
 export interface GetDocumentResponse {
     documentId: string;
     document: Record<string, unknown>;
+    /** Absent when the index does not embed. */
+    embeddingPreview?: EmbeddingPreview;
 }
 
 /** One operation in a bulk incremental write. */

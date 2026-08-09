@@ -102,11 +102,18 @@ export const aiSummaryConfigSchema = z.object({
   maxTokens: z.number().int().min(50).max(4000).optional(),
 });
 
+export const queryUnderstandingConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  minWords: z.number().int().min(1).max(20).default(3),
+  customInstructions: z.string().max(5000).optional(),
+});
+
 export const aiConfigSchema = z.object({
   enabled: z.boolean().default(DEFAULT_AI_CONFIG.enabled),
   providerId: z.string().uuid().nullable().default(null),
   modelId: z.number().int().positive().nullable().default(null),
   summary: aiSummaryConfigSchema.default(DEFAULT_AI_CONFIG.summary),
+  queryUnderstanding: queryUnderstandingConfigSchema.optional(),
 });
 
 // ============================================================================

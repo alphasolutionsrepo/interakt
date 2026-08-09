@@ -74,6 +74,26 @@ export async function create(data: NewPromptTemplate) {
   return row;
 }
 
+/**
+ * Overwrite a seeded system-default template's content in place.
+ *
+ * Used only by seedSystemDefaults to bring an untouched v1 seed row back in line
+ * with the code-defined default. User-authored versions are separate rows and are
+ * never rewritten — see the guard in seedSystemDefaults.
+ */
+export async function updateContent(
+  id: string,
+  data: { label?: string | null; content: string; metadata: NewPromptTemplate['metadata'] },
+) {
+  const [row] = await db
+    .update(promptTemplates)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(promptTemplates.id, id))
+    .returning();
+  logger.info('Prompt template content updated', { id: row.id, step: row.step });
+  return row;
+}
+
 export async function updateStatus(id: string, status: 'draft' | 'active' | 'archived') {
   const [row] = await db
     .update(promptTemplates)
