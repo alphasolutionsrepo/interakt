@@ -280,10 +280,9 @@ export async function interpretQuery(
             return passthrough(query, startedAt);
         }
 
-        // Key on the index too: the same phrase means different things against
-        // different field sets.
-        const cacheKey = `${searchIndexId}:${query.trim().toLowerCase()}`;
-
+        // Key on the index + experience/model: the same phrase can be interpreted differently
+        // depending on provider/model and per-experience instructions.
+        const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${query.trim().toLowerCase()}`;
         const result = await cache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
             const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
 
