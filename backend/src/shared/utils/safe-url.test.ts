@@ -32,6 +32,22 @@ describe('safeUrl — schemes that must be blocked', () => {
     it('rejects leading whitespace used to disguise a scheme', () => {
         expect(safeUrl('  javascript:alert(1)')).toBeNull();
     });
+
+    it('rejects a backslash masquerading as a same-origin path', () => {
+        // Browsers normalise "\\" to "/", so "/\evil.com/x.jpg" resolves
+        // cross-origin even though it starts with a single slash. Checking the raw
+        // string let this straight past the protocol-relative guard.
+        expect(safeUrl('/\\evil.com/x.jpg')).toBeNull();
+        expect(safeUrl('\\\\evil.com/x.jpg')).toBeNull();
+        expect(safeUrl('/\\/evil.com/x.jpg')).toBeNull();
+    });
+
+    it('rejects a scheme split by control characters', () => {
+        // Browsers strip tab/newline/CR from URLs before resolving them.
+        expect(safeUrl('java\nscript:alert(1)')).toBeNull();
+        expect(safeUrl('java\tscript:alert(1)')).toBeNull();
+        expect(safeUrl('java\rscript:alert(1)')).toBeNull();
+    });
 });
 
 describe('safeUrl — values that must keep working', () => {

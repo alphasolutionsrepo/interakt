@@ -51,21 +51,34 @@ export function safeUrl(
         return null;
     }
 
+    // Normalise the way a browser will before deciding anything.
+    //
+    // Browsers strip tab/newline/carriage return anywhere in a URL and treat a
+    // backslash as a forward slash. Checking the raw string instead let both
+    // smuggle a value past the guards below: "/\evil.com/x.jpg" looked like a
+    // same-origin path here, but resolves cross-origin once rendered, and
+    // "java\nscript:" hid a blocked scheme from the protocol check.
+    const normalized = trimmed.replace(/[\t\n\r]/g, '').replace(/\\/g, '/');
+
+    if (normalized.length === 0) {
+        return null;
+    }
+
     // Protocol-relative: rejected before the relative check below would accept it.
-    if (trimmed.startsWith('//')) {
+    if (normalized.startsWith('//')) {
         return null;
     }
 
     // Same-origin absolute path.
-    if (trimmed.startsWith('/')) {
-        return trimmed;
+    if (normalized.startsWith('/')) {
+        return normalized;
     }
 
     try {
         // No base URL on purpose: a bare relative reference like "images/x.jpg"
         // throws here and falls through to null, which is the safe answer. It also
         // keeps this usable during server rendering, where there is no origin.
-        const parsed = new URL(trimmed);
+        const parsed = new URL(normalized);
         return allow.includes(parsed.protocol) ? parsed.href : null;
     } catch {
         return null;
