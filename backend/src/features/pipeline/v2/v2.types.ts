@@ -183,6 +183,12 @@ export interface TurnContext {
   businessDomain: string | null;
   providerId: string | null;
   modelId: number | null;
+  /**
+   * Rendered description of the fields behind this turn's tools, measured from real
+   * documents. Null when no data source is attached or no schema has been discovered, in
+   * which case the planner falls back to tool descriptions alone.
+   */
+  dataContext: string | null;
 
 }
 
@@ -243,6 +249,46 @@ export interface TurnPlannerInput {
   availableTools: ToolSummary[];
   personaInstructions: string;
   businessDomain: string | null;
+  /**
+   * Rendered field facts for the data behind this turn's tools — measured from real
+   * documents, not declared. Null when nothing has been discovered, in which case the
+   * planner works from tool descriptions alone as it always did.
+   */
+  dataContext?: string | null;
+  /**
+   * Whether personaInstructions is included in the planning prompt.
+   * Controlled by ExecutionPolicy.includePersonaInPlanning; defaults to false,
+   * which is the historical behavior (the field was threaded here and ignored).
+   */
+  includePersona?: boolean;
+  /**
+   * Outcomes of earlier planning rounds *within this turn*, oldest first.
+   * Present only when re-planning. Without this the planner would repeat the
+   * strategy that just failed.
+   */
+  previousRounds?: PlanningRoundSummary[];
+}
+
+/**
+ * What a previous planning round tried and what came of it. Fed back into the
+ * planner so a re-plan is informed rather than a blind retry.
+ */
+export interface PlanningRoundSummary {
+  /** 1-based round index. */
+  round: number;
+  /** Tools attempted, with the query used and what came back. */
+  attempts: Array<{
+    toolSlug: string;
+    intent: string;
+    query: string | null;
+    success: boolean;
+    resultCount: number;
+    error?: string;
+  }>;
+  /** Assessment verdict for the round (see planning-assessment.ts). */
+  verdict: string;
+  /** One-line explanation of why the round was judged unusable. */
+  reason: string;
 }
 
 export interface TurnPlan {
@@ -272,6 +318,11 @@ export interface ExecutionLoopInput {
   config: {
     executionBatchSize: number;
     maxRetriesPerAction: number;
+    /**
+     * Correlates every tool execution in this turn for analytics, and links the
+     * analytics rows to the turn's trace.
+     */
+    turnRequestId: string;
   };
   emit: (event: PipelineStreamEvent) => void;
 }
@@ -293,10 +344,23 @@ export interface ActionResult {
   durationMs: number;
   /**
    * Constraints abandoned by zero-result retry, if any. Surfaced to synthesis so
-   * the answer can say what it could not honour instead of silently returning
+   * the answer can say what it could not honor instead of silently returning
    * results that do not match the request.
    */
   relaxation?: { droppedFilters: string[]; droppedAll: boolean };
+
+  /**
+   * True when a tool relaxed something it cannot express as a dropped filter.
+   *
+   * `relaxation` above covers the filter case and names what went; this covers the rest —
+   * the knowledge base widening its relevance cutoff when a strict pass finds nothing, for
+   * instance, which is invisible to a parameter diff and has no filter to name.
+   *
+   * Either one means the same thing to the reader of the answer: these results are looser
+   * than what was asked for, and saying so is the difference between a narrowed search and
+   * a broken filter.
+   */
+  constraintsRelaxed?: boolean;
 }
 
 export interface ToolExecutionResultV2 {

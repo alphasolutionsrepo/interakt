@@ -28,6 +28,7 @@ export type {
 } from '@/db/schema';
 
 import type { PipelineConfig } from '@/features/pipeline/pipeline.types';
+import type { ExecutionPolicy } from './execution-policy';
 import type {
   PersonaConfig,
   GuardrailConfig,
@@ -46,7 +47,10 @@ export interface AIExperienceWithTools {
   slug: string;
   description: string | null;
   icon: string | null;
+  /** Preset selector for the execution policy (deterministic → Governed, agentic → Autonomous). */
   pipelineMode: string;
+  /** Per-experience overrides on the preset. Null = use the preset as-is. */
+  executionPolicy: Partial<ExecutionPolicy> | null;
   pipelineConfig: PipelineConfig | null;
   agenticConfig: AgenticConfig | null;
   personaConfig: PersonaConfig;

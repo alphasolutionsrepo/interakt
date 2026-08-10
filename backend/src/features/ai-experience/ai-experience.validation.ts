@@ -91,6 +91,15 @@ export const guardrailConfigSchema = z.object({
       message: z.string().min(1).max(500),
     }),
   }),
+  /**
+   * Compliance lock — configured rules run whether or not a side is switched on.
+   *
+   * Must be listed here or Zod strips it on the first save, which is exactly how the
+   * discovery metadata on data sources used to be destroyed. Optional rather than
+   * defaulted: absent means unlocked, and writing `false` into every experience that never
+   * asked for a lock adds noise to the stored config.
+   */
+  enforced: z.boolean().optional(),
 });
 
 // ============================================================================
@@ -198,6 +207,33 @@ export const pipelineConfigSchema = z.object({
 });
 
 // ============================================================================
+// EXECUTION POLICY SCHEMA
+// ============================================================================
+
+/**
+ * Per-experience overrides on the preset selected by `pipelineMode`.
+ *
+ * Every field is optional: a partial policy is a delta on the preset, so an
+ * experience can raise its tool ceiling without restating the rest. This is the
+ * surface that replaced the two-engine split — see execution-policy.ts.
+ */
+export const executionPolicySchema = z.object({
+  /** 1 = plan once (governed). Higher permits bounded re-planning. */
+  maxPlanningRounds: z.number().int().min(1).max(10).optional(),
+  maxToolCallsPerTurn: z.number().int().min(1).max(50).optional(),
+  /** null = every tool bound to the experience. */
+  allowedTools: z.array(z.string().min(1).max(120)).nullish().transform(v => v ?? undefined),
+  includePersonaInPlanning: z.boolean().optional(),
+  maxTurnDurationMs: z.number().int().min(5_000).max(300_000).optional(),
+  /** How much of the index schema the planner is told about. Cost against plan quality. */
+  maxPlannerFieldsPerSource: z.number().int().min(0).max(200).optional(),
+  maxPlannerValuesPerField: z.number().int().min(0).max(50).optional(),
+}).refine(
+  (p) => !p.allowedTools || p.allowedTools.length > 0,
+  { message: 'allowedTools must name at least one tool, or be omitted to allow all', path: ['allowedTools'] },
+);
+
+// ============================================================================
 // CREATE AI EXPERIENCE
 // ============================================================================
 
@@ -219,6 +255,9 @@ export const createAIExperienceSchema = z.object({
 
   pipelineMode: z.enum(PIPELINE_MODES).default('deterministic'),
   pipelineConfig: pipelineConfigSchema.optional(),
+
+  /** Overrides on the preset chosen by pipelineMode. Omit to use the preset. */
+  executionPolicy: executionPolicySchema.optional(),
 
   personaConfig: personaConfigSchema,
 
@@ -251,6 +290,9 @@ export const updateAIExperienceSchema = z.object({
 
   pipelineMode: z.enum(PIPELINE_MODES).optional(),
   pipelineConfig: pipelineConfigSchema.optional(),
+
+  /** Null clears the overrides and reverts to the preset. */
+  executionPolicy: executionPolicySchema.nullable().optional(),
 
   personaConfig: personaConfigSchema.optional(),
 

@@ -75,6 +75,30 @@ export async function extractParameters(
   const cfg = { ...DEFAULT_CONFIG, ...config };
 
   try {
+    // 0. Tools that take no parameters need no extraction call.
+    //
+    // Schema-inspection tools declare `{ type: 'object', properties: {}, required: [] }`.
+    // Feeding that to a strict-mode response_format asks the provider for an object
+    // with no permitted keys, which comes back empty or rejected — so a perfectly
+    // healthy tool failed with "Parameter extraction failed". Returning early is
+    // both the fix and a saved LLM call on every zero-parameter tool.
+    const propertyCount = Object.keys(
+      (input.toolInputSchema as { properties?: Record<string, unknown> })?.properties ?? {},
+    ).length;
+
+    if (propertyCount === 0) {
+      const durationMs = Date.now() - startTime;
+      logger.debug('Tool takes no parameters — skipping extraction call', {
+        toolSlug: input.action.toolSlug,
+      });
+      return {
+        success: true,
+        data: { parameters: {} },
+        summary: `No parameters to extract for ${input.action.toolSlug}`,
+        durationMs,
+      };
+    }
+
     // 1. Build the response format from the tool's input schema
     const responseFormat = buildResponseFormat(input.action.toolSlug, input.toolInputSchema);
 

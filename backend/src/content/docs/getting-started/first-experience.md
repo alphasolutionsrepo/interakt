@@ -75,7 +75,7 @@ You'll see a panel where you can paste your sample data and Interakt will guess 
 For each field, the right column has a gear icon — click it to open a sidebar where you set:
 
 - **Searchable** — does keyword search look at this field's content? Turn on for things like *title*, *description*. Turn off for IDs and prices.
-- **Facetable** — can your users filter results by this field's values? Turn on for *category*, *brand*, *colour*, *size* — anything you'd want a filter chip for.
+- **Facetable** — can your users filter results by this field's values? Turn on for *category*, *brand*, *color*, *size* — anything you'd want a filter chip for.
 - **Include in Response** — is the field returned in search results? Usually yes.
 - **Boost value** — how much extra weight matches in this field get for ranking. Title fields are often boosted to ~2; description left at 1.
 
@@ -131,7 +131,7 @@ Click **Create**. You land on the experience detail page.
 
 On the experience detail page, expand the **Search Widget** card.
 
-- Adjust theme, colours, and layout. Watch the preview update.
+- Adjust theme, colors, and layout. Watch the preview update.
 - Pick **Modal** (a button that opens a search overlay) or **Inline** (embedded in a specific page section).
 - Click **Copy** to copy the embed snippet — a single `<script>` tag plus a `<div>`.
 - Paste it into the HTML of your site where you want the search box.
@@ -150,7 +150,7 @@ Fill in:
 
 - **Name** and **slug**.
 - **Description** — describe what this chat is for, in plain words. Interakt uses this in the next step to draft the system instructions.
-- **Pipeline mode** — **Agentic** for free-form conversational ("the AI decides what to do"), **Deterministic** for predictable, fixed-flow chatbots ("always search, then answer"). Agentic is the right default for most assistants.
+The wizard no longer asks you to pick a pipeline mode. New experiences start on the **Standard** turn budget — one planning round, up to three tool calls — which you can change later under **Edit → Advanced → Turn budget**. See [Turn budget and limits](../concepts/pipeline-modes).
 
 Click **Next**.
 

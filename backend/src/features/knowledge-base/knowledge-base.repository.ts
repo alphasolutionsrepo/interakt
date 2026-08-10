@@ -135,14 +135,58 @@ export async function searchChunks(
 }
 
 /**
- * Keyword fallback search over knowledge chunks.
- * Used when the query vector is unavailable or as a complement to semantic search.
+ * Words too common to discriminate between chunks. Matching on these returns most of the
+ * corpus ranked by nothing, which is worse than returning less.
+ */
+const KEYWORD_STOP_WORDS = new Set([
+  'a', 'about', 'all', 'an', 'and', 'any', 'are', 'as', 'at', 'be', 'been', 'but', 'by',
+  'can', 'do', 'does', 'doing', 'for', 'from', 'get', 'has', 'have', 'how', 'i', 'if', 'in',
+  'into', 'is', 'it', 'its', 'me', 'my', 'no', 'not', 'of', 'on', 'or', 'our', 'out', 'so',
+  'some', 'that', 'the', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'to', 'up',
+  'use', 'want', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'why', 'will', 'with',
+  'would', 'you', 'your',
+]);
+
+/** Significant search terms from a natural-language question, longest first. */
+export function keywordTermsFrom(query: string, max = 6): string[] {
+  const seen = new Set<string>();
+  return query
+    .toLowerCase()
+    .split(/[^a-z0-9-]+/i)
+    .filter((w) => w.length > 2 && !KEYWORD_STOP_WORDS.has(w) && !seen.has(w) && seen.add(w))
+    .sort((a, b) => b.length - a.length)
+    .slice(0, max);
+}
+
+/**
+ * Keyword search over knowledge chunks, ranked by how many query terms a chunk contains.
+ *
+ * This used to be `ILIKE '%<the entire query>%'`, which meant it could only ever fire when a
+ * user typed a literal substring of a chunk. Against a question — "how do I stop my assistant
+ * answering off-topic questions?" — it matched nothing, every time. So the "hybrid" search was
+ * semantic-only in practice, and a question that scored just outside the vector cutoff
+ * returned zero results even when the exact words were sitting in the corpus.
+ *
+ * Ranking by term-hit count keeps the failure mode sane: partial matches surface in a sensible
+ * order rather than all-or-nothing.
  */
 export async function keywordSearchChunks(
   dataSourceId: string,
   query: string,
   limit = 10,
 ): Promise<Array<KnowledgeChunk & { documentName: string }>> {
+  const terms = keywordTermsFrom(query);
+  if (terms.length === 0) return [];
+
+  const matches = terms.map((t) => sql`(${knowledgeChunks.content} ILIKE ${'%' + t + '%'})`);
+  const anyMatch = sql.join(matches, sql` OR `);
+  // One point per distinct term present, so a chunk covering more of the question ranks above
+  // one that happens to repeat a single word.
+  const hitScore = sql.join(
+    terms.map((t) => sql`(CASE WHEN ${knowledgeChunks.content} ILIKE ${'%' + t + '%'} THEN 1 ELSE 0 END)`),
+    sql` + `,
+  );
+
   const rows = await db
     .select({
       id: knowledgeChunks.id,
@@ -160,10 +204,10 @@ export async function keywordSearchChunks(
       and(
         eq(knowledgeChunks.dataSourceId, dataSourceId),
         eq(knowledgeDocuments.status, 'ready'),
-        sql`${knowledgeChunks.content} ILIKE ${'%' + query + '%'}`,
+        sql`(${anyMatch})`,
       ),
     )
-    .orderBy(asc(knowledgeChunks.chunkIndex))
+    .orderBy(sql`(${hitScore}) DESC`, asc(knowledgeChunks.chunkIndex))
     .limit(limit);
 
   return rows as Array<KnowledgeChunk & { documentName: string }>;

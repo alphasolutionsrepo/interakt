@@ -190,6 +190,34 @@
       "when": 1785965959153,
       "tag": "0026_drop_orphan_ingest_token",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1785965959154,
+      "tag": "0027_talented_vector",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1785965959155,
+      "tag": "0028_backfill_execution_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1785965959156,
+      "tag": "0029_salvage_pipeline_config_timeout",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1785965959157,
+      "tag": "0030_move_guardrail_lock_to_guardrail_config",
+      "breakpoints": true
     }
   ]
 }

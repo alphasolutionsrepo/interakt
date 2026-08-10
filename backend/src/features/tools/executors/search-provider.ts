@@ -26,6 +26,13 @@ import { createLogger } from '@/shared/logger/logger';
 import type { ToolExecutionResult } from '../tools.executor';
 import type { FilterClause, SortClause } from '@/features/search/search.types';
 import { parseSortInput } from './sort-clause.util';
+import { translateFilters, translateSort } from './external-query';
+import {
+  mergeDefaultFilters,
+  mergeDefaultSort,
+  describeAppliedConfig,
+  annotateResult,
+} from './filter-defaults';
 import type {
   DataSourceSchema,
   DataSourceField,
@@ -59,6 +66,7 @@ interface SearchToolConfig {
   dataSourceId: string;
   maxResults?: number;
   defaultFilters?: Array<{ field: string; operator: string; value: unknown }>;
+  defaultSort?: Array<{ field: string; direction: 'asc' | 'desc' }>;
 }
 
 // ============================================================================
@@ -196,15 +204,15 @@ async function executeManagedSearch(
   const query = input.query ?? '';
   const maxResults = input.maxResults ?? toolConfig.maxResults ?? 10;
 
-  const filters = buildFilterClauses(input.filters);
-  const sort = buildSortClauses(input.sort);
+  const merged = mergeDefaultFilters(toolConfig.defaultFilters, buildFilterClauses(input.filters));
+  const sorting = mergeDefaultSort(toolConfig.defaultSort, buildSortClauses(input.sort));
 
   const globalConfig = await getGlobalSearchConfig();
   const response = await searchService.searchById(source.searchIndexId, {
     query,
     pageSize: maxResults,
-    filters: filters.length > 0 ? filters : undefined,
-    sort: sort.length > 0 ? sort : undefined,
+    filters: merged.filters.length > 0 ? merged.filters : undefined,
+    sort: sorting.sort.length > 0 ? sorting.sort : undefined,
   }, {
     hybridConfig: globalConfig.hybridDefaults,
     timeoutMs: globalConfig.timeout.timeoutMs,
@@ -230,6 +238,7 @@ async function executeManagedSearch(
           })),
         })),
       } : {}),
+      ...describeAppliedConfig(merged.appliedDefaults, sorting),
     },
   };
 }
@@ -254,10 +263,12 @@ async function executeExternalSearch(
   let vectorFieldName: string | undefined;
   let vectorDimensions: number | undefined;
   let searchType: string | undefined;
+  let schemaFields: DataSourceField[] | undefined;
   try {
     const ds = await dataSourceService.getDataSourceById(source.dataSourceId);
     if (ds?.schema) {
       const schema = ds.schema as DataSourceSchema;
+      schemaFields = schema.fields;
       // Only request retrievable, non-vector fields — respects index management settings
       const retrievable = schema.fields.filter(f => f.type !== 'vector' && f.isRetrievable !== false);
       const searchable = retrievable
@@ -301,9 +312,15 @@ async function executeExternalSearch(
     }
   }
 
+  const merged = mergeDefaultFilters(toolConfig.defaultFilters, buildFilterClauses(input.filters));
+  const sorting = mergeDefaultSort(toolConfig.defaultSort, buildSortClauses(input.sort));
+  const translatedFilters = translateFilters(source.provider, merged.filters, schemaFields);
+  const translatedSort = translateSort(source.provider, sorting.sort, schemaFields);
+
+  let result: Omit<ToolExecutionResult, 'durationMs'>;
   switch (source.provider) {
     case 'azure-ai-search':
-      return callAzureAISearch(
+      result = await callAzureAISearch(
         { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey },
         {
           query,
@@ -312,6 +329,8 @@ async function executeExternalSearch(
           highlightFields,
           selectFields,
           semanticConfigName,
+          filter: translatedFilters.odata,
+          orderBy: translatedSort.odataOrderBy,
           vectorQuery: queryEmbedding && vectorFieldName ? {
             vector: queryEmbedding,
             fields: vectorFieldName,
@@ -319,9 +338,10 @@ async function executeExternalSearch(
           } : undefined,
         },
       );
+      break;
 
     case 'elasticsearch':
-      return callElasticsearchSearch(
+      result = await callElasticsearchSearch(
         { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey, authType: source.authType },
         {
           query,
@@ -330,6 +350,8 @@ async function executeExternalSearch(
           highlightFields,
           searchFields: highlightFields,
           selectFields,
+          filterClauses: translatedFilters.esClauses,
+          sort: translatedSort.esSort,
           vectorQuery: queryEmbedding && vectorFieldName ? {
             vector: queryEmbedding,
             fields: vectorFieldName,
@@ -337,6 +359,7 @@ async function executeExternalSearch(
           } : undefined,
         },
       );
+      break;
 
     default:
       return {
@@ -344,6 +367,15 @@ async function executeExternalSearch(
         error: `Executor for provider '${source.provider}' is not yet implemented`,
       };
   }
+
+  if (translatedFilters.unapplied.length > 0 || translatedSort.unapplied.length > 0) {
+    logger.warn('External search could not apply part of the request', {
+      unappliedFilters: translatedFilters.unapplied.map(u => `${u.field}: ${u.reason}`),
+      unappliedSort: translatedSort.unapplied.map(u => `${u.field}: ${u.reason}`),
+    });
+  }
+
+  return annotateResult(result, merged.appliedDefaults, sorting, translatedFilters.unapplied, translatedSort.unapplied);
 }
 
 // ============================================================================

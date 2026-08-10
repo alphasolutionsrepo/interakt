@@ -334,15 +334,39 @@ async function buildSystemPrompt(input: TurnPlannerInput, experienceId?: string)
     .map((t) => `- **${t.slug}**: ${t.description}`)
     .join('\n');
 
+  const personaBlock = buildPersonaBlock(input);
+  const dataContextBlock = input.dataContext ?? '';
+
   // Try DB-backed template first
   try {
     const { resolveTemplate, renderTemplate } = await import('@/features/prompt-templates');
     const template = await resolveTemplate('turn_planner', experienceId);
     if (template) {
-      return renderTemplate(template.content, {
+      const rendered = renderTemplate(template.content, {
         toolList,
         businessDomain: input.businessDomain ?? '',
+        // Both are self-contained blocks (heading included, empty string when
+        // not applicable), so a template that places them renders identically
+        // to the inline fallback that appends them.
+        personaInstructions: personaBlock,
+        toolWorkflow: buildToolWorkflow(input.availableTools, dataContextBlock !== ''),
+        dataContext: dataContextBlock,
       });
+      // A template that already places {{personaInstructions}} itself owns the
+      // placement; otherwise append, so enabling the policy flag works with the
+      // stock template and with custom ones that predate the variable.
+      const withWorkflow = template.content.includes('toolWorkflow')
+        ? rendered
+        : rendered + buildToolWorkflow(input.availableTools, dataContextBlock !== '');
+      const withPersona = template.content.includes('personaInstructions')
+        ? withWorkflow
+        : withWorkflow + personaBlock;
+      // A custom template written before this variable existed still gets the field facts
+      // appended — otherwise upgrading the platform would silently withhold them from
+      // exactly the experiences that were customized because planning needed help.
+      return template.content.includes('dataContext') || dataContextBlock === ''
+        ? withPersona
+        : `${withPersona}\n\n${dataContextBlock}`;
     }
   } catch {
     // Template system not available (no DB, not seeded) — fall through to inline
@@ -375,14 +399,124 @@ ${toolList}
 7. Confidence: 0.9+ for clear requests, 0.7-0.89 for likely correct, below 0.7 for unclear.
 8. When the user says "yes", "show me those", or similar confirmations referencing previous
    results or suggestions, use the SAME parameters/filters from the previous turn — do not change them.
-9. For filter hints, use common attribute names (e.g., category: "jackets", color: "red").
-   The backend will resolve exact valid field names and values automatically — you do not need to know the schema.`;
+9. For filter hints, prefer the fields and values described under "The data you can query"
+   below, when it is present. Where a field lists its observed values, use one of them
+   exactly. Where a field is reported as empty in most documents, do not rely on it.
+   Put topical or descriptive wording in a text search rather than a filter.
+   If no field information is given, use common attribute names (e.g., category: "jackets")
+   and the backend will resolve them where it can.`;
 
   if (input.businessDomain) {
     prompt += `\n\n## Business domain\n${input.businessDomain}`;
   }
 
-  return prompt;
+  if (dataContextBlock) {
+    prompt += `\n\n${dataContextBlock}`;
+  }
+
+  return prompt + buildToolWorkflow(input.availableTools, dataContextBlock !== '') + buildPersonaBlock(input);
+}
+
+/**
+ * Operation-aware guidance on how to sequence the available tools.
+ *
+ * Ported from the retired agentic loop, which was the only path that had it —
+ * the planner previously received a flat tool list with no advice on ordering.
+ * Two fixes applied while porting:
+ *
+ *  - The original keyed *every* branch on `operation`, so an experience whose
+ *    tools are all standalone (http / mcp / ai_call, which have no operation)
+ *    matched no branch at all and silently received no guidance. Standalone
+ *    tools now get their own line.
+ *  - Guidance is scoped to what actually exists, so an experience without an
+ *    enumerate tool is never told to discover filter values it cannot reach.
+ *
+ * This is a stopgap shaped like the data: the durable version derives sequencing
+ * from the data source's field profile and provider capabilities rather than
+ * from operation names.
+ */
+function buildToolWorkflow(tools: ToolSummary[], knowsTheSchema: boolean): string {
+  if (tools.length === 0) return '';
+
+  const byOperation = (op: string) => tools.find((t) => t.operation === op);
+  const inspect = byOperation('inspect');
+  const enumerate = byOperation('enumerate');
+  const search = tools.find((t) => t.operation === 'search' || t.operation === 'query');
+  const lookup = byOperation('lookup');
+  const standalone = tools.filter((t) => !t.operation);
+
+  const lines: string[] = ['## Sequencing your tools'];
+
+  // The discovery preamble — inspect, then enumerate, then search — was written when the
+  // planner was told nothing about the index. It is the wrong advice once the prompt already
+  // carries field capabilities and observed values: every turn opened with an enumerate that
+  // returned nothing useful, spending an LLM call and a query to learn what it had just been
+  // told. Observed live, repeatedly.
+  if (knowsTheSchema && search) {
+    lines.push(
+      `Start with \`${search.slug}\`, using terms extracted from the user's intent rather than`
+      + ' their raw sentence. The field list above already gives you each field\'s capabilities'
+      + ' and the values seen in the data, so you do not need a discovery step to find them.',
+    );
+    if (enumerate) {
+      lines.push(
+        `Use \`${enumerate.slug}\` only when the value you need is genuinely not in that list —`
+        + ' for example the user names something no listed value resembles, or the field was'
+        + ' shown as too varied to enumerate. Never invent a filter value.',
+      );
+    }
+    if (inspect) {
+      lines.push(`Use \`${inspect.slug}\` only if you need a field that was not listed above.`);
+    }
+  } else if (inspect || enumerate) {
+    lines.push('For a new topic, prefer this order:');
+    let step = 1;
+    if (inspect) {
+      lines.push(`${step++}. \`${inspect.slug}\` — learn the available fields and filter options.`);
+    }
+    if (enumerate) {
+      lines.push(`${step++}. \`${enumerate.slug}\` — get the valid values for a field before filtering on it. Never invent a filter value.`);
+    }
+    if (search) {
+      lines.push(`${step++}. \`${search.slug}\` — search with terms extracted from the user's intent, not their raw sentence.`);
+    }
+  } else if (search) {
+    lines.push(`Use \`${search.slug}\` with terms extracted from the user's intent, not their raw sentence.`);
+  }
+
+  if (lookup) {
+    lines.push(`Use \`${lookup.slug}\` only when you already have a specific record id.`);
+  }
+  if (standalone.length > 0) {
+    lines.push(
+      `These tools act directly and are not part of a discovery sequence: ${standalone.map((t) => `\`${t.slug}\``).join(', ')}.`,
+    );
+  }
+
+  lines.push('Never fabricate information a tool could provide — call the tool instead.');
+
+  return `\n\n${lines.join('\n')}`;
+}
+
+/**
+ * Persona instructions reach planning only when the policy opts in.
+ *
+ * The field has always been threaded into TurnPlannerInput and then dropped, so
+ * an operator writing "always search before answering" saw it obeyed in the
+ * agentic path and silently ignored here. Keeping it behind a flag makes that a
+ * deliberate per-experience choice instead of an accident, and leaves default
+ * behavior unchanged.
+ */
+function buildPersonaBlock(input: TurnPlannerInput): string {
+  if (!input.includePersona) return '';
+  const instructions = input.personaInstructions?.trim();
+  if (!instructions) return '';
+  return (
+    '\n\n## Assistant instructions\n' +
+    'These govern how this assistant behaves. Respect any constraints they place on ' +
+    'which tools to use and when.\n' +
+    instructions
+  );
 }
 
 function buildUserPrompt(input: TurnPlannerInput): string {
@@ -436,6 +570,50 @@ function buildUserPrompt(input: TurnPlannerInput): string {
   if (input.episodicMemories.length > 0) {
     const memLines = input.episodicMemories.map((m) => `- ${m}`).join('\n');
     parts.push(`## Relevant user history\n${memLines}`);
+  }
+
+  // Earlier rounds in THIS turn — only present when re-planning. Placed last
+  // before the user message so it is the most recent context the model reads.
+  if (input.previousRounds?.length) {
+    const roundLines = input.previousRounds
+      .map((r) => {
+        const attempts = r.attempts
+          .map((a) => {
+            const bits = [a.toolSlug, `intent: "${a.intent}"`];
+            if (a.query) bits.push(`query: "${a.query}"`);
+            bits.push(a.success ? `${a.resultCount} results` : `failed${a.error ? `: ${a.error}` : ''}`);
+            return bits.join(' → ');
+          })
+          .join(', ');
+        return `- Attempt ${r.round}: ${attempts || 'nothing executed'} (${r.reason})`;
+      })
+      .join('\n');
+
+    // Tools that errored are called out separately and emphatically. Observed
+    // behavior: told only "do not repeat an attempt above", the model re-planned
+    // the *same* failing tool and burned a second round on it. A tool that
+    // errored will error again — it is unavailable, not merely unproductive.
+    const brokenTools = [
+      ...new Set(
+        input.previousRounds
+          .flatMap((r) => r.attempts)
+          .filter((a) => !a.success)
+          .map((a) => a.toolSlug),
+      ),
+    ];
+
+    let guidance =
+      'These did not produce a usable answer. Plan something DIFFERENT — a different tool, ' +
+      'a broader or reworded keyphrase, or fewer filters. Never repeat an attempt listed above.';
+
+    if (brokenTools.length > 0) {
+      guidance +=
+        `\n\nThese tools returned an ERROR and are unavailable for the rest of this turn — ` +
+        `do not call them again under any circumstances: ${brokenTools.map((t) => `\`${t}\``).join(', ')}. ` +
+        'Achieve the goal with the remaining tools, or explain that you cannot.';
+    }
+
+    parts.push(`## Attempts already made this turn\n${roundLines}\n\n${guidance}`);
   }
 
   // The actual user message

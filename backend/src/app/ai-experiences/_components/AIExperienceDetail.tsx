@@ -1,27 +1,31 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   ChevronRight, Edit2, Power, PowerOff, Trash2, Key,
-  RefreshCw, Copy, Check, CircleCheck, CircleDashed,
-  Wrench, Bot, Shield, Thermometer,
+  RefreshCw, Copy, Check, CircleCheck, CircleDashed, Bot, Shield, Thermometer,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+
+import { useAIExperience } from '../_lib/hooks/useAIExperiences';
+
+import { ChatTestPanel } from './ChatTestPanel';
+import { ChatWidgetCard } from './ChatWidgetCard';
+import { ExperienceBadges } from './ExperienceBadges';
+import { PipelineStepsCard } from './PipelineStepsCard';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { ChatWidgetCard } from './ChatWidgetCard';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
-import { PipelineModeChip } from './PipelineModeChip';
-import { ToolAssignmentPanel } from './ToolAssignmentPanel';
-import { McpAttachmentPanel } from './McpAttachmentPanel';
-import { ChatTestPanel } from './ChatTestPanel';
-import { PipelineStepsCard } from './PipelineStepsCard';
-import { useAIExperience } from '../_lib/hooks/useAIExperiences';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
+
+
+
+
 
 // ============================================================================
 // COPY BUTTON
@@ -131,7 +135,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
             {experience.isActive && <div className="absolute -right-0.5 -bottom-0.5 size-4 rounded-full bg-emerald-500 ring-2 ring-background" />}
           </div>
         }
-        badge={<PipelineModeChip mode={experience.pipelineMode} />}
+        badge={<ExperienceBadges mode={experience.pipelineMode} executionPolicy={experience.executionPolicy} guardrailConfig={experience.guardrailConfig} />}
         actions={
           <>
             <Button variant="outline" size="sm" className="rounded-xl" onClick={handleRegenerateToken} disabled={isRegeneratingToken}>
@@ -167,7 +171,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
             },
             {
               label: 'Pipeline',
-              value: <PipelineModeChip mode={experience.pipelineMode} />,
+              value: <ExperienceBadges mode={experience.pipelineMode} executionPolicy={experience.executionPolicy} guardrailConfig={experience.guardrailConfig} />,
             },
             {
               label: 'Status',
@@ -205,35 +209,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
         personaConfig={persona}
         sessionConfig={session}
         guardrailConfig={experience.guardrailConfig as Record<string, unknown> | null}
-        onUpdate={async (payload) => { await updateExperience(payload); }}
-        isUpdating={isUpdating}
       />
-
-      {/* Tool Assignments */}
-      <CollapsibleCard
-        icon={<Wrench className="size-4 text-orange-500" />}
-        title={`Assigned Tools (${experience.tools.length})`}
-        description="Tools available to this experience. Enable/disable per tool, or override the AI description."
-      >
-        <ToolAssignmentPanel
-          experienceId={id}
-          assignments={experience.tools}
-          onAssign={handleAssignTool}
-          onUpdateAssignment={handleUpdateToolAssignment}
-          onRemove={handleRemoveTool}
-          isAssigning={isAssigningTool}
-          isRemovingTool={isRemovingTool}
-        />
-      </CollapsibleCard>
-
-      {/* MCP Connection Attachments */}
-      <CollapsibleCard
-        icon={<Bot className="size-4 text-indigo-500" />}
-        title="MCP Connections"
-        description="Attach Model Context Protocol servers to bring their tools into this experience. Tools are discovered live and merged with regular tools."
-      >
-        <McpAttachmentPanel experienceId={id} />
-      </CollapsibleCard>
 
       {/* AI Configuration + Access Control — two collapsible cards side by side. */}
       <div className="grid md:grid-cols-2 gap-6">

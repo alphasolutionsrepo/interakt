@@ -48,6 +48,23 @@ export interface AIExperienceToolAssignment {
   };
 }
 
+/**
+ * Per-experience overrides on the preset selected by `pipelineMode`.
+ * Every field is optional — a partial policy is a delta on the preset, so the UI
+ * only sends the axes the operator actually changed.
+ */
+export interface ExecutionPolicyOverrides {
+  maxPlanningRounds?: number;
+  maxToolCallsPerTurn?: number;
+  allowedTools?: string[];
+  guardrails?: 'required' | 'configured';
+  includePersonaInPlanning?: boolean;
+  maxTurnDurationMs?: number;
+  /** Fields per data source described to the planner. 0 turns the schema block off. */
+  maxPlannerFieldsPerSource?: number;
+  maxPlannerValuesPerField?: number;
+}
+
 export interface AIExperienceWithTools {
   id: string;
   name: string;
@@ -55,6 +72,7 @@ export interface AIExperienceWithTools {
   description: string | null;
   icon: string | null;
   pipelineMode: PipelineMode;
+  executionPolicy: ExecutionPolicyOverrides | null;
   pipelineConfig: Record<string, unknown> | null;
   personaConfig: Record<string, unknown>;
   guardrailConfig: Record<string, unknown> | null;
@@ -86,6 +104,7 @@ export interface CreateAIExperiencePayload {
   description?: string;
   icon?: string;
   pipelineMode?: PipelineMode;
+  executionPolicy?: ExecutionPolicyOverrides;
   pipelineConfig?: Record<string, unknown>;
   personaConfig: Record<string, unknown>;
   guardrailConfig?: Record<string, unknown>;
@@ -102,6 +121,7 @@ export interface UpdateAIExperiencePayload {
   description?: string;
   icon?: string;
   pipelineMode?: PipelineMode;
+  executionPolicy?: ExecutionPolicyOverrides | null;
   pipelineConfig?: Record<string, unknown>;
   personaConfig?: Record<string, unknown>;
   guardrailConfig?: Record<string, unknown> | null;

@@ -27,7 +27,7 @@ function humanizeOpName(name: string): string {
   const labels: Record<string, string> = {
     'chat.ai_experience.turn': 'AI Experience Turn',
     'chat.search_experience.turn': 'Search Experience Turn',
-    'chat.deterministic.turn': 'Deterministic Turn',
+    'chat.deterministic.turn': 'Chat Turn',
     'ai.chat': 'AI Chat',
     'ai.stream_chat': 'AI Chat (Stream)',
     'ai.generate_text': 'AI Text Generation',

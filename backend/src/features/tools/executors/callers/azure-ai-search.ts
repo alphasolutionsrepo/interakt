@@ -96,6 +96,8 @@ interface AzureSearchInput {
   highlightFields?: string;
   /** OData filter expression (e.g. "category eq 'Electronics'") */
   filter?: string;
+  /** OData $orderby expression (e.g. "publishDate desc"). Only sortable fields. */
+  orderBy?: string;
   /** Fields to return via $select — reduces payload from Azure */
   selectFields?: string[];
   /** Semantic configuration name for semantic ranking */
@@ -126,6 +128,10 @@ export async function callAzureAISearch(
 
   if (input.filter) {
     body.filter = input.filter;
+  }
+
+  if (input.orderBy) {
+    body.orderby = input.orderBy;
   }
 
   if (input.selectFields?.length) {

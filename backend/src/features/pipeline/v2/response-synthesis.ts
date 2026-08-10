@@ -404,10 +404,20 @@ async function synthesizeFromResults(
       } else {
         status = `${a.result.resultCount ?? 0} results`;
       }
+      // Relaxation has to reach the answer, not just the trace. When a request is widened to
+      // find anything at all, the results no longer match what the user asked for, and an
+      // answer presenting them as if they did is the silent-narrowing failure in reverse.
+      //
+      // Name the dropped constraints when we have them. `constraintsRelaxed` is the weaker
+      // signal — a tool relaxed something with no filter to name, such as a relevance cutoff
+      // — and still has to be said, just without the specifics.
       const relaxed = a.relaxation
         ? ` — NOTE: no results matched ${a.relaxation.droppedFilters.join(', ')}, `
           + `so ${a.relaxation.droppedAll ? 'all filters were' : 'that constraint was'} `
           + 'dropped and these results DO NOT satisfy it'
+        : a.constraintsRelaxed
+        ? ' — NOTE: nothing matched the request closely enough, so the search was widened;'
+          + ' these results may not answer it directly and you must say so'
         : '';
       return `- ${a.toolSlug}: ${a.intent} → ${status}${relaxed}`;
     })
@@ -420,7 +430,7 @@ async function synthesizeFromResults(
   // Appended to actionSummary rather than passed as its own variable so it reaches
   // both prompt paths — the DB-backed template renders a fixed set of variables and
   // would silently drop a new one.
-  const actionSummary = input.actionResults.some((a) => a.relaxation)
+  const actionSummary = input.actionResults.some((a) => a.relaxation || a.constraintsRelaxed)
     ? `${actionSummaryLines}\n\nIMPORTANT — some constraints could not be met. Say so `
       + 'plainly and early in your answer: state which constraint returned nothing, and '
       + 'make clear the items shown do not satisfy it. Do not present them as if they matched.'

@@ -27,6 +27,7 @@ import { relations } from 'drizzle-orm';
 import { pipelineModeEnum } from './enums.schema';
 import { tools } from './tools.schema';
 import type { PipelineConfig } from '@/features/pipeline/pipeline.types';
+import type { ExecutionPolicy } from '@/features/ai-experience/execution-policy';
 
 // ============================================================================
 // TYPE DEFINITIONS FOR JSON COLUMNS
@@ -71,6 +72,20 @@ export type ResponsePreset =
 export interface GuardrailConfig {
   inputGuardrail: GuardrailStepConfig;
   outputGuardrail: GuardrailStepConfig;
+  /**
+   * Lock: configured rules run whether or not a side is switched on.
+   *
+   * This began as `ExecutionPolicy.guardrails: 'required'`, which put a compliance
+   * assertion inside a budget object — everything else on that policy meters tokens or
+   * time, and this meters nothing. It also made the claim unreadable from the place it
+   * applies: the guardrail switch said "off" while the stage ran, and nothing on that
+   * screen could explain why.
+   *
+   * It lives here because it is a statement about the guardrails themselves, and because
+   * the need underneath it is one person guaranteeing something another person cannot
+   * quietly undo. Undefined means false — an experience is unlocked unless it says so.
+   */
+  enforced?: boolean;
 }
 
 export interface GuardrailStepConfig {
@@ -181,13 +196,31 @@ export const aiExperiences = pgTable('ai_experiences', {
   // THE BRAIN: Pipeline configuration
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** Pipeline mode — determines the default step composition */
+  /**
+   * Preset selector for the execution policy.
+   *
+   * There is one chat engine; this column chooses how much autonomy it gets.
+   * `deterministic` → Governed preset, `agentic` → Autonomous preset. The values
+   * are retained for API compatibility; user-facing labels are Governed and
+   * Autonomous. See features/ai-experience/execution-policy.ts.
+   */
   pipelineMode: pipelineModeEnum('pipeline_mode').notNull().default('deterministic'),
+
+  /**
+   * Per-experience overrides on the preset chosen by `pipelineMode`.
+   *
+   * Null means "use the preset as-is". A partial object is a delta on the
+   * preset, so an experience can be autonomous-but-capped without restating
+   * every field. This is what replaces the old two-engine split: the axes that
+   * actually matter (planning rounds, tool ceiling, tool allowlist, guardrail
+   * enforcement) are configurable instead of bundled into two names.
+   */
+  executionPolicy: json('execution_policy').$type<Partial<ExecutionPolicy>>(),
 
   /** Full pipeline step configuration (mode, steps, settings) */
   pipelineConfig: json('pipeline_config').$type<PipelineConfig>(),
 
-  /** Agentic loop runtime settings (maxIterations, enablePlanning) */
+  /** @deprecated Superseded by executionPolicy.maxPlanningRounds. Retained for migration. */
   agenticConfig: json('agentic_config').$type<AgenticConfig>(),
 
   // ═══════════════════════════════════════════════════════════════════════════

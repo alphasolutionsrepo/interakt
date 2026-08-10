@@ -10,7 +10,7 @@ The concept page on [Prompt templates](../concepts/prompts) covers what each tem
 
 ## Before you start
 
-- You've seen a behavioural issue in [Analytics → Conversations / Traces](../concepts/analytics) or in a Chat Playground.
+- You've seen a behavioral issue in [Analytics → Conversations / Traces](../concepts/analytics) or in a Chat Playground.
 - You know which pipeline step the issue is in.
 
 ## 1. Identify which template to edit
@@ -24,9 +24,9 @@ Open the trace for a problematic conversation in **Analytics → Traces**. Each 
 | The AI has the right data but writes a bad answer | **Response Synthesis** |
 | The AI doesn't cite sources or misformats responses | **Response Synthesis** |
 | Greetings get a long pipeline run instead of a quick hi | **Response Synthesis Lightweight** |
-| Agentic chat keeps looping unnecessarily | **Turn Planner (Agentic)** or **Agentic Loop** |
+| Chat keeps calling tools unnecessarily | **Turn Planner** |
 
-If the chat experience is in **Deterministic mode**, focus on the deterministic-mode templates. If **Agentic**, focus on the agentic-mode ones. Switching modes uses a different set of templates entirely.
+All chat experiences use the same five templates — there is no longer a separate set per mode. The retired `agentic_loop` step no longer resolves a template at all; its guidance belongs on **Turn Planner**.
 
 ## 2. Open the template
 
@@ -61,7 +61,7 @@ Common small changes:
 Common bigger changes (do these carefully):
 
 - Reordering sections.
-- Adding new examples to demonstrate desired behaviour.
+- Adding new examples to demonstrate desired behavior.
 - Removing language that the AI is over-following.
 
 Avoid:
@@ -108,7 +108,7 @@ Smaller models follow long prompts worse. A nuanced prompt that works on `gpt-4o
 ## Common gotchas
 
 - **Promoting before testing.** Always run a few test messages in the Chat Playground before promoting.
-- **Forgetting that prompts apply system-wide.** A change to "Response Synthesis" affects every chat experience using the deterministic mode. There's no per-experience pinning yet.
+- **Forgetting that a system default applies everywhere.** Editing the active "Response Synthesis" template affects every experience that has not overridden it. To change one experience only, assign an override from its **Edit → Advanced → Prompts** section.
 - **Removing required variables.** If `{{search_results}}` is no longer in the prompt, the AI has no idea what tools returned. Don't strip variables you don't understand.
 - **Adding instructions that should live on the chat experience.** "Always be friendly" works in the experience's system instructions and is easier to manage there. Only change templates for things that need to be in the pipeline's wiring.
 - **Tuning while the user is talking to it.** Promote → test → if bad, rollback. Don't sit on a broken prompt template hoping you'll get it right "soon."

@@ -1,15 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, ChevronDown, Loader2, Save, Bot, Plus, X, Eye } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+
+import type { PipelineMode, ExecutionPolicyOverrides } from '../_lib/api-client';
+import { useAIExperience } from '../_lib/hooks/useAIExperiences';
+
+import { AdvancedGroup, EditAdvanced, EditSection, EditSectionNav } from './EditSection';
+import { ExecutionPolicyEditor } from './ExecutionPolicyEditor';
+import { GuardrailsSection } from './GuardrailsSection';
+import { McpAttachmentPanel } from './McpAttachmentPanel';
+import { ResponsePresetsEditor } from './pipeline/ResponsePresetsEditor';
+import { ExperienceBadges } from './ExperienceBadges';
+import { PromptOverridePanel } from './PromptOverridePanel';
+import { ToolAssignmentPanel } from './ToolAssignmentPanel';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -17,11 +29,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { PipelineModeChip, PIPELINE_MODE_CONFIG } from './PipelineModeChip';
-import { useAIExperience } from '../_lib/hooks/useAIExperiences';
-import type { PipelineMode } from '../_lib/api-client';
 
 interface AIExperienceEditProps {
   id: string;
@@ -32,16 +42,26 @@ interface AIExperienceEditProps {
 export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }: AIExperienceEditProps) {
   const listHref = listPath ?? basePath;
   const router = useRouter();
-  const { experience, isLoading, updateExperience, isUpdating } = useAIExperience(id);
+  const {
+    experience, isLoading, updateExperience, isUpdating, refetch,
+    assignTool, updateToolAssignment, removeTool, isAssigningTool, isRemovingTool,
+  } = useAIExperience(id);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [pipelineMode, setPipelineMode] = useState<PipelineMode>('deterministic');
+  const [executionPolicy, setExecutionPolicy] = useState<ExecutionPolicyOverrides | null>(null);
   const [persona, setPersona] = useState('');
   const [tone, setTone] = useState<'professional' | 'friendly' | 'casual' | 'enthusiastic' | 'concise'>('professional');
   const [providerId, setProviderId] = useState<string | null>(null);
   const [modelId, setModelId] = useState<number | null>(null);
   const [maxContextMessages, setMaxContextMessages] = useState(20);
+  const [sessionTtlMinutes, setSessionTtlMinutes] = useState(1440);
+  const [summaryThreshold, setSummaryThreshold] = useState(30);
+  const [enableConversationSummary, setEnableConversationSummary] = useState(false);
+  const [enableUserContext, setEnableUserContext] = useState(false);
+  const [enabledPresets, setEnabledPresets] = useState<string[]>(['rich_text']);
+  const [defaultPreset, setDefaultPreset] = useState('rich_text');
   const [allowedOrigins, setAllowedOrigins] = useState<string[]>([]);
   const [originInput, setOriginInput] = useState('');
   const [rateLimitCPM, setRateLimitCPM] = useState(60);
@@ -97,11 +117,32 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
     }
   }
 
+  /*
+    Hydrate the form once per experience, not on every refetch.
+
+    This effect used to depend on `experience`, which is a React Query result whose identity
+    changes on every refetch. Several sections on this page save immediately — guardrails, tools,
+    prompts — and each of those invalidates the query, so an unrelated toggle silently replaced
+    every unsaved field in the form with whatever the server last stored.
+
+    Two ways that hurt. Edits in progress vanished with no message. And worse, the reverse: a
+    field the operator had cleared came back from the server mid-edit and was then written out by
+    Save, so the form appeared to add settings nobody touched. That is what it looked like from
+    the outside — Save quietly enabling a response preset — and it is why this is keyed on the id
+    rather than the object.
+
+    Refetches still update everything the panels read straight from `experience`; only the
+    form-owned fields are pinned, and only until you navigate to a different experience.
+  */
+  const hydratedFor = useRef<string | null>(null);
+
   useEffect(() => {
-    if (experience) {
+    if (experience && hydratedFor.current !== experience.id) {
+      hydratedFor.current = experience.id;
       setName(experience.name);
       setDescription(experience.description ?? '');
       setPipelineMode(experience.pipelineMode as PipelineMode);
+      setExecutionPolicy(experience.executionPolicy ?? null);
       const persona_ = experience.personaConfig as Record<string, unknown> | null;
       setPersona((persona_?.systemInstructions as string) ?? '');
       setTone(((persona_?.tone as string) ?? 'professional') as typeof tone);
@@ -109,6 +150,13 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
       setModelId(experience.modelId ?? null);
       const sc = experience.sessionConfig as Record<string, unknown> | null;
       setMaxContextMessages((sc?.maxContextMessages as number) ?? 20);
+      setSessionTtlMinutes((sc?.sessionTtlMinutes as number) ?? 1440);
+      setSummaryThreshold((sc?.summaryThreshold as number) ?? 30);
+      setEnableConversationSummary((sc?.enableConversationSummary as boolean) ?? false);
+      setEnableUserContext((sc?.enableUserContext as boolean) ?? false);
+      const formats = (persona_?.responseFormats ?? {}) as Record<string, unknown>;
+      setEnabledPresets((formats.enabledPresets as string[]) ?? ['rich_text']);
+      setDefaultPreset((formats.defaultPreset as string) ?? 'rich_text');
       const ac = experience.accessConfig as Record<string, unknown> | null;
       setAllowedOrigins((ac?.allowedOrigins as string[]) ?? []);
       const rl = (ac?.rateLimits as { chatPerMinute?: number; requestsPerDay?: number | null }) ?? {};
@@ -141,12 +189,29 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
         name,
         description: description.trim() || undefined,
         pipelineMode,
+        executionPolicy,
         personaConfig: {
           ...(experience!.personaConfig as Record<string, unknown>),
           systemInstructions: persona || 'You are a helpful AI assistant.',
           tone,
+          responseFormats: {
+            ...((experience!.personaConfig as Record<string, unknown>)?.responseFormats as Record<string, unknown> ?? {}),
+            enabledPresets,
+            defaultPreset,
+          },
         },
-        sessionConfig: { maxContextMessages },
+        // Spread the existing object: the service replaces sessionConfig wholesale, so
+        // sending only the fields this form knows about silently destroyed the rest. Every
+        // one of them is now edited here, but the spread stays as the guard against the same
+        // bug returning the next time a field is added to the config.
+        sessionConfig: {
+          ...(experience!.sessionConfig as Record<string, unknown>),
+          maxContextMessages,
+          sessionTtlMinutes,
+          summaryThreshold,
+          enableConversationSummary,
+          enableUserContext,
+        },
         accessConfig: {
           allowedOrigins,
           rateLimits: {
@@ -259,7 +324,7 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
             <Bot className="size-6 text-indigo-500" />
           </div>
         }
-        badge={<PipelineModeChip mode={pipelineMode} />}
+        badge={<ExperienceBadges mode={pipelineMode} executionPolicy={executionPolicy} guardrailConfig={experience.guardrailConfig as Record<string, unknown> | null} />}
         actions={
           <Button className="rounded-xl" onClick={handleSave} disabled={isUpdating}>
             {isUpdating ? <><Loader2 className="size-4 mr-2 animate-spin" />Saving…</> : <><Save className="size-4 mr-2" />Save Changes</>}
@@ -268,12 +333,30 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
       />
 
       <div className="space-y-6 max-w-3xl">
-        {/* Basic Info */}
-        <Card className="border-border/60 shadow-sm rounded-2xl">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Basic Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/*
+          Four decisions, then everything that ships with an answer already in it.
+
+          The page had ten numbered stages covering roughly thirty-five controls, of which
+          someone setting up an experience changes about five. Regrouping the headings would
+          have made that tidier without making it shorter, so the split is by whether a
+          setting needs a decision at all: what it is, what it can do, what it must not do,
+          and how it thinks. Guardrails moved above the turn budget because what an assistant
+          must not do is a first-order question and a token ceiling is not.
+        */}
+        <EditSectionNav
+          sections={[
+            { step: 1, title: 'Identity' },
+            { step: 2, title: 'Capabilities' },
+            { step: 3, title: 'Guardrails' },
+            { step: 4, title: 'Intelligence' },
+          ]}
+        />
+
+        <EditSection
+          step={1}
+          title="Identity"
+          description="What this experience is called."
+        >
             <div className="space-y-1.5">
               <Label>Name <span className="text-destructive">*</span></Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} className={`rounded-xl ${errors.name ? 'border-destructive' : ''}`} />
@@ -284,38 +367,50 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
               <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="rounded-xl resize-none" />
             </div>
 
-            {/* Pipeline Mode */}
-            <div className="space-y-2">
-              <Label>Pipeline Mode</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {Object.entries(PIPELINE_MODE_CONFIG).map(([mode, cfg]) => {
-                  const Icon = cfg.icon;
-                  const selected = pipelineMode === mode;
-                  return (
-                    <button key={mode} type="button" onClick={() => setPipelineMode(mode as PipelineMode)}
-                      className={`flex items-start gap-3.5 rounded-xl border p-4 text-left transition-all ${selected ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border/60 bg-card hover:border-border hover:bg-muted/30'}`}>
-                      <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${cfg.iconBg}`}>
-                        <Icon className={`size-5 ${cfg.iconClass}`} />
-                      </div>
-                      <div>
-                        <p className={`font-semibold text-sm ${selected ? 'text-primary' : ''}`}>{cfg.label}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{cfg.description}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </EditSection>
 
         {/* AI Config */}
-        <Card className="border-border/60 shadow-sm rounded-2xl">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">AI Configuration</CardTitle>
-            <CardDescription>Provider, model, and persona settings.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <EditSection
+          step={2}
+          title="Capabilities"
+          description="What this experience can do. Tools are what the planner may call; MCP servers contribute their tools live."
+          savesImmediately
+        >
+          <ToolAssignmentPanel
+            experienceId={id}
+            assignments={experience.tools}
+            onAssign={async (payload) => { await assignTool(payload); await refetch(); }}
+            onUpdateAssignment={async (toolId, data) => { await updateToolAssignment({ toolId, data }); }}
+            onRemove={async (toolId) => { await removeTool(toolId); await refetch(); }}
+            isAssigning={isAssigningTool}
+            isRemovingTool={isRemovingTool}
+          />
+          <div className="pt-2 border-t border-border/50">
+            <McpAttachmentPanel experienceId={id} />
+          </div>
+        </EditSection>
+
+        {/*
+          Guardrails come before the model and the persona. What an assistant must not do is
+          the decision a reviewer asks about; which model writes the prose is not.
+        */}
+        <EditSection
+          step={3}
+          title="Guardrails"
+          description="What is checked before a message reaches the model, and before a reply reaches the user. Changes here save immediately — they do not wait for Save below."
+          savesImmediately
+        >
+          <GuardrailsSection
+            guardrailConfig={experience.guardrailConfig as Record<string, unknown> | null}
+            onUpdate={async (payload) => { await updateExperience(payload); }}
+          />
+        </EditSection>
+
+        <EditSection
+          step={4}
+          title="Intelligence"
+          description="Which model answers, and the voice it answers in."
+        >
             {/* Provider / Model */}
             <div className="space-y-2">
               <div>
@@ -421,21 +516,134 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
               </Select>
             </div>
 
-            {/* Context Messages */}
-            <div className="space-y-1.5">
-              <Label>Context Messages</Label>
-              <Input type="number" min={1} max={50} value={maxContextMessages} onChange={(e) => setMaxContextMessages(Number(e.target.value))} className="rounded-xl" />
-              <p className="text-xs text-muted-foreground">Max chat history turns sent to the model (1–50).</p>
-            </div>
-          </CardContent>
-        </Card>
+          </EditSection>
 
-        {/* Access Control */}
-        <Card className="border-border/60 shadow-sm rounded-2xl">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Access Control</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <EditAdvanced>
+          {/*
+            The preset picker lives inside the editor. It used to sit above it as a pair of
+            cards, which read as the whole decision and left the limits below looking like
+            unrelated advanced settings — so selecting "Governed" appeared to govern nothing.
+          */}
+          <AdvancedGroup
+            title="Turn budget"
+            description="How much a single turn may spend before it gives up."
+          >
+            <ExecutionPolicyEditor
+              mode={pipelineMode}
+              onModeChange={setPipelineMode}
+              value={executionPolicy}
+              onChange={setExecutionPolicy}
+            />
+          </AdvancedGroup>
+
+        {/* Conversation — what the model remembers of the session, and for how long. */}
+        <AdvancedGroup
+          title="Conversation"
+          description="How much of the session the model sees, and how long a session lives."
+        >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Context messages</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={maxContextMessages}
+                  onChange={(e) => setMaxContextMessages(Number(e.target.value))}
+                  className="rounded-xl"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Chat history turns sent to the model (1–50).
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Session lifetime</Label>
+                <Input
+                  type="number"
+                  min={5}
+                  max={20160}
+                  value={sessionTtlMinutes}
+                  onChange={(e) => setSessionTtlMinutes(Number(e.target.value))}
+                  className="rounded-xl"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Minutes of inactivity before a session expires.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 p-3.5">
+              <div>
+                <Label className="text-sm">Summarize long conversations</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Once a session passes the threshold, older turns are replaced by a summary
+                  so the context window holds.
+                </p>
+              </div>
+              <Switch
+                checked={enableConversationSummary}
+                onCheckedChange={setEnableConversationSummary}
+              />
+            </div>
+
+            {enableConversationSummary && (
+              <div className="space-y-1.5">
+                <Label>Summary threshold</Label>
+                <Input
+                  type="number"
+                  min={5}
+                  max={200}
+                  value={summaryThreshold}
+                  onChange={(e) => setSummaryThreshold(Number(e.target.value))}
+                  className="rounded-xl"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Messages before summarising begins.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 p-3.5">
+              <div>
+                <Label className="text-sm">Remember users across sessions</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Retrieves what earlier sessions learned about the same user. Requires a user
+                  id on the session.
+                </p>
+              </div>
+              <Switch checked={enableUserContext} onCheckedChange={setEnableUserContext} />
+            </div>
+          </AdvancedGroup>
+
+        {/* Response formatting — part of the form, because personaConfig has one writer. */}
+        <AdvancedGroup
+          title="Response format"
+          description="Which UI presets the pipeline may choose from when it answers."
+        >
+            <ResponsePresetsEditor
+              enabledPresets={enabledPresets}
+              defaultPreset={defaultPreset}
+              editable
+              onChange={(next) => {
+                setEnabledPresets(next.enabledPresets);
+                setDefaultPreset(next.defaultPreset);
+              }}
+            />
+          </AdvancedGroup>
+
+        <AdvancedGroup
+          title="Prompts"
+          description="Which prompt template each pipeline step uses. The turn planner decides which tools to call, so this is where planning behavior is tuned beyond the budget above."
+          savesImmediately
+        >
+          <PromptOverridePanel experienceId={id} />
+        </AdvancedGroup>
+
+        <AdvancedGroup
+          title="Access"
+          description="Who may call this experience, and how often."
+        >
             <div className="space-y-2">
               <Label>Allowed Origins</Label>
               <div className="flex gap-2">
@@ -471,18 +679,16 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
                 <Input type="number" min={1} value={rateLimitRPD} onChange={(e) => setRateLimitRPD(e.target.value)} placeholder="Unlimited" className="rounded-xl" />
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </AdvancedGroup>
 
         {/* Widget Appearance lives on the experience detail page
             (WidgetAppearanceCard), next to the Embed Code card. */}
 
         {/* Settings */}
-        <Card className="border-border/60 shadow-sm rounded-2xl">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Settings</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <AdvancedGroup
+          title="Telemetry"
+          description="What a turn records in traces."
+        >
             <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl">
               <div>
                 <Label className="text-sm font-medium">Telemetry</Label>
@@ -498,8 +704,8 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
                 <option value="full">Full (includes messages)</option>
               </select>
             </div>
-          </CardContent>
-        </Card>
+          </AdvancedGroup>
+        </EditAdvanced>
 
         {/* Footer */}
         <div className="flex items-center justify-between">

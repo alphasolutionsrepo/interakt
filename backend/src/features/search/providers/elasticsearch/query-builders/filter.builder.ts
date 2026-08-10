@@ -168,9 +168,15 @@ function buildBooleanFilter(
 // ============================================================================
 
 /**
- * Build query for specific operator
+ * Build query for specific operator.
+ *
+ * Pure — no SearchContext, no field validation. Exported so callers that have field
+ * metadata from somewhere other than a managed index (external data sources, whose
+ * schema comes from provider discovery) can reuse these operator semantics instead of
+ * reimplementing them. Such callers are responsible for resolving `field` to something
+ * queryable and for handling the SearchError thrown on an unsupported operator.
  */
-function buildOperatorQuery(
+export function buildOperatorQuery(
     field: string,
     operator: FilterOperator,
     value: unknown,

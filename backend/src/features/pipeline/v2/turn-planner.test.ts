@@ -532,3 +532,56 @@ describe('D1: Turn Planner', () => {
     });
   });
 });
+
+// ============================================================================
+// TOOL SEQUENCING ADAPTS TO WHAT THE PLANNER KNOWS
+// ============================================================================
+
+describe('tool sequencing guidance', () => {
+  const withEnumerate: ToolSummary[] = [
+    ...makeTools(),
+    { slug: 'product-values', name: 'Field Values', description: 'Valid values for a field', operation: 'enumerate', executorType: 'data_source' },
+    { slug: 'product-inspect', name: 'Inspect', description: 'Field schema', operation: 'inspect', executorType: 'data_source' },
+  ];
+
+  it('sends the planner discovery-first when it has no field information', async () => {
+    // Correct advice for a blind planner: it cannot filter without learning valid values.
+    const prompt = await _buildSystemPrompt(makeInput({ availableTools: withEnumerate }));
+
+    expect(prompt).toContain('For a new topic, prefer this order');
+    expect(prompt).toContain('get the valid values for a field before filtering');
+  });
+
+  it('sends the planner straight to search once it has been given the values', async () => {
+    // Observed live: every turn opened with an enumerate that returned nothing useful,
+    // spending an LLM call and a query to learn what the prompt had just told it. The
+    // discovery preamble is the wrong advice once field values are in the prompt.
+    const prompt = await _buildSystemPrompt(
+      makeInput({
+        availableTools: withEnumerate,
+        dataContext: '## The data you can query\n- gender (keyword, filterable)\n  values: Men, Women',
+      }),
+    );
+
+    expect(prompt).toContain('Start with `product-search`');
+    expect(prompt).not.toContain('For a new topic, prefer this order');
+  });
+
+  it('keeps enumerate available for a value the list does not cover', async () => {
+    // Narrowed, not removed: a user can name something no listed value resembles, and a
+    // field can be reported as too varied to enumerate.
+    const prompt = await _buildSystemPrompt(
+      makeInput({ availableTools: withEnumerate, dataContext: '## The data you can query\n- brand' }),
+    );
+
+    expect(prompt).toContain('only when the value you need is genuinely not in that list');
+    expect(prompt).toContain('Never invent a filter value');
+  });
+
+  it('is unchanged for a tool set with no discovery operations', async () => {
+    const prompt = await _buildSystemPrompt(makeInput({ dataContext: '## The data you can query\n- brand' }));
+
+    expect(prompt).toContain('Start with `product-search`');
+    expect(prompt).not.toContain('product-values');
+  });
+});

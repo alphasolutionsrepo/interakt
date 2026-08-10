@@ -264,3 +264,84 @@ describe('updateHealthSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+// ============================================================================
+// SCHEMA ROUND-TRIP
+// ============================================================================
+
+/**
+ * Zod strips unknown keys, and updateDataSourceSchema validates the stored field schema.
+ * So any DataSourceField property missing from the validator is silently deleted the first
+ * time a client saves a schema — an operator editing a field description would destroy the
+ * provider types, sub-field mappings and profiles that filtering and sorting depend on,
+ * leaving both quietly wrong until the next health check.
+ *
+ * These assert survival property by property, so adding one to the type without adding it
+ * to the validator fails here rather than in production.
+ */
+describe('data source schema round-trip', () => {
+  const discoveredField = {
+    name: 'material',
+    displayName: 'material',
+    type: 'text',
+    isSearchable: true,
+    isFacetable: false,
+    isFilterable: true,
+    isRetrievable: true,
+    isSortable: true,
+    description: 'fabric composition, not a category',
+    providerType: 'text',
+    filterField: 'material.keyword',
+    profile: {
+      sampleSize: 50,
+      nullRate: 0.02,
+      distinctInSample: 9,
+      sampleValues: ['100% cotton', '100% wool'],
+      profiledAt: '2026-08-05T00:00:00.000Z',
+    },
+  };
+
+  it('preserves every discovered field property', () => {
+    const result = updateDataSourceSchema.safeParse({
+      schema: { fields: [discoveredField], lastDiscoveredAt: '2026-08-05T00:00:00.000Z' },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.schema?.fields[0]).toEqual(discoveredField);
+  });
+
+  it('preserves discovered provider capabilities', () => {
+    const capabilities = {
+      semanticConfigName: 'default',
+      vectorField: { name: 'content_embedding', dimensions: 1536 },
+    };
+    const result = updateDataSourceSchema.safeParse({ schema: { fields: [], capabilities } });
+
+    expect(result.success && result.data.schema?.capabilities).toEqual(capabilities);
+  });
+
+  it('accepts a configured profile sample size on create', () => {
+    // Without this key in the create schema the option is stripped, leaving a config
+    // setting that only appears to be configurable.
+    const input = validExternalIndexInput();
+    (input.config as Record<string, unknown>).profileSampleSize = 200;
+    const result = createDataSourceSchema.safeParse(input);
+
+    expect(result.success).toBe(true);
+    expect(result.success && (result.data.config as Record<string, unknown>).profileSampleSize).toBe(200);
+  });
+
+  it('accepts zero sample size so profiling can be disabled', () => {
+    const input = validExternalIndexInput();
+    (input.config as Record<string, unknown>).profileSampleSize = 0;
+
+    expect(createDataSourceSchema.safeParse(input).success).toBe(true);
+  });
+
+  it('rejects a sample size beyond what a health check can afford', () => {
+    const input = validExternalIndexInput();
+    (input.config as Record<string, unknown>).profileSampleSize = 100_000;
+
+    expect(createDataSourceSchema.safeParse(input).success).toBe(false);
+  });
+});

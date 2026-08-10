@@ -109,6 +109,13 @@ interface ElasticsearchSearchInput {
   selectFields?: string[];
   /** Exact-match term filter (used by lookup-by-id). */
   termFilter?: { field: string; value: string };
+  /**
+   * Translated filter clauses, ANDed into the query (see external-query.ts). Passed into
+   * the request body verbatim — this caller does not interpret query DSL.
+   */
+  filterClauses?: unknown[];
+  /** Sort array, e.g. [{ publishDate: { order: 'desc' } }]. */
+  sort?: Array<Record<string, { order: 'asc' | 'desc' }>>;
   /** Vector query for hybrid (lexical + kNN) search. */
   vectorQuery?: ElasticsearchVectorQuery;
 }
@@ -152,9 +159,17 @@ export async function callElasticsearchSearch(
     matchClause = { simple_query_string: { query } };
   }
 
-  // Apply an exact-match filter (lookup-by-id) when requested.
-  const queryClause = input.termFilter
-    ? { bool: { must: matchClause, filter: [{ term: { [input.termFilter.field]: input.termFilter.value } }] } }
+  // Collect filter clauses: the lookup-by-id term filter and any translated filters.
+  const filterClauses: unknown[] = [];
+  if (input.termFilter) {
+    filterClauses.push({ term: { [input.termFilter.field]: input.termFilter.value } });
+  }
+  if (input.filterClauses?.length) {
+    filterClauses.push(...input.filterClauses);
+  }
+
+  const queryClause = filterClauses.length > 0
+    ? { bool: { must: matchClause, filter: filterClauses } }
     : matchClause;
 
   const body: Record<string, unknown> = {
@@ -162,6 +177,10 @@ export async function callElasticsearchSearch(
     track_total_hits: true,
     query: queryClause,
   };
+
+  if (input.sort?.length) {
+    body.sort = input.sort;
+  }
 
   if (input.selectFields?.length) {
     body._source = input.selectFields;

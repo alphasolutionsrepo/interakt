@@ -30,7 +30,7 @@ export interface SystemDefaultTemplate {
 
 const TURN_PLANNER_TEMPLATE: SystemDefaultTemplate = {
   step: 'turn_planner',
-  label: 'System default — turn planner v1',
+  label: 'System default — turn planner',
   content: `You are a turn planner for an AI assistant.
 
 ## Your job
@@ -58,18 +58,29 @@ what actions to take using the available tools.
 7. Confidence: 0.9+ for clear requests, 0.7-0.89 for likely correct, below 0.7 for unclear.
 8. When the user says "yes", "show me those", or similar confirmations referencing previous
    results or suggestions, use the SAME parameters/filters from the previous turn — do not change them.
-9. For filter hints, use common attribute names (e.g., category: "jackets", color: "red").
-   The backend will resolve exact valid field names and values automatically — you do not need to know the schema.
+9. For filter hints, prefer the fields and values described under "The data you can query"
+   below, when it is present. Where a field lists its observed values, use one of them
+   exactly — an exact-match filter on a near-miss returns nothing. Where a field is reported
+   as empty in most documents, do not rely on it. Put topical or descriptive wording in a
+   text search rather than a filter.
+   If no field information is given, use common attribute names (e.g., category: "jackets")
+   and the backend will resolve them where it can.
 <!-- /section:rules -->
 
 {{#if businessDomain}}
 ## Business domain
 {{businessDomain}}
-{{/if}}`,
+{{/if}}
+{{dataContext}}
+{{toolWorkflow}}
+{{personaInstructions}}`,
   metadata: {
     variables: [
       { name: 'toolList', description: 'Formatted list of available tools with slugs and descriptions', source: 'pipeline_context' },
       { name: 'businessDomain', description: 'Business domain context from experience config (optional)', source: 'experience_config' },
+      { name: 'toolWorkflow', description: 'Sequencing guidance derived from the operations the assigned tools actually support', source: 'pipeline_context' },
+      { name: 'personaInstructions', description: "The experience's persona instructions. Empty unless executionPolicy.includePersonaInPlanning is on.", source: 'experience_config' },
+      { name: 'dataContext', description: 'Field facts for the data behind this turn\'s tools — capabilities, observed values and how often each field is empty, measured from a document sample at discovery. Empty when no schema has been discovered.', source: 'pipeline_context' },
     ],
     sections: [
       { id: 'rules', label: 'Planning Rules', startMarker: '<!-- section:rules -->', endMarker: '<!-- /section:rules -->', editable: true },
@@ -83,7 +94,7 @@ what actions to take using the available tools.
 
 const PARAM_EXTRACTION_TEMPLATE: SystemDefaultTemplate = {
   step: 'param_extraction',
-  label: 'System default — param extraction v1',
+  label: 'System default — param extraction',
   content: `Extract parameters for the tool "{{toolSlug}}".
 
 ## Tool parameters
@@ -142,7 +153,7 @@ When building filters, you MUST use one of the exact valid values listed below. 
 
 const RESPONSE_SYNTHESIS_TEMPLATE: SystemDefaultTemplate = {
   step: 'response_synthesis',
-  label: 'System default — response synthesis v1',
+  label: 'System default — response synthesis',
   content: `{{personaInstructions}}
 
 ## What was done
@@ -190,7 +201,7 @@ These actions were planned but not yet executed. Mention them as suggestions:
 
 const RESPONSE_SYNTHESIS_DIRECT_TEMPLATE: SystemDefaultTemplate = {
   step: 'response_synthesis_direct',
-  label: 'System default — direct response synthesis v1',
+  label: 'System default — direct response synthesis',
   content: `{{personaInstructions}}
 
 Tone: {{tone}}
@@ -218,7 +229,7 @@ The user's intent is unclear. Ask them this clarification question in your voice
 
 const RESPONSE_SYNTHESIS_LIGHTWEIGHT_TEMPLATE: SystemDefaultTemplate = {
   step: 'response_synthesis_lightweight',
-  label: 'System default — lightweight synthesis v1',
+  label: 'System default — lightweight synthesis',
   content: `{{personaInstructions}}
 
 Tone: {{tone}}

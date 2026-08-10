@@ -23,7 +23,8 @@ Sidebar → **Experiences** → **New Experience** → **AI Experience**.
 | **Name** | Display name. *"Fashion Assistant"*. |
 | **Slug** | URL path. Auto-generated. **Can't be changed later.** |
 | **Description** | **Write this carefully.** Interakt uses it to draft the AI's system instructions in step 3. Describe what the chat is for, like a brief — *"Helps shoppers find fashion items, suggests outfits, answers product questions. Friendly, expert, never pushy."*. |
-| **Pipeline mode** | **Agentic** for free-form conversational. **Deterministic** for predictable, structured chats. See [Pipeline modes](../concepts/pipeline-modes). |
+
+The wizard does not ask for a pipeline mode. New experiences start on the **Standard** turn budget, changeable later under **Edit → Advanced → Turn budget** — see [Turn budget and limits](../concepts/pipeline-modes).
 
 Click **Next**.
 
@@ -103,7 +104,7 @@ Expand the **Chat Widget** card on the detail page.
 2. Set **welcome message**, **welcome description**, **input placeholder**, and a few **suggested questions** (one-line questions users can click instead of typing).
 3. Choose **launcher** style — Floating (default, a button in the corner) or Tab (a fixed sidebar tab).
 4. Pick **placement** for the floating launcher.
-5. Adjust colours, font, border radius to match your brand.
+5. Adjust colors, font, border radius to match your brand.
 6. (Optional) Add your logo URL.
 7. Click **Save** to persist.
 8. Click **Copy** to grab the embed snippet.
@@ -142,7 +143,7 @@ The detail page's **Access Token** card has a working curl example.
 
 ## Where to go next
 
-- [Pipeline modes](../concepts/pipeline-modes) — when to switch between Agentic and Deterministic.
+- [Turn budget and limits](../concepts/pipeline-modes) — how much a turn may spend, and when to raise it.
 - [Tools](../concepts/tools) — what each tool does and how to override descriptions.
 - [Add tools to your chat](add-tools-to-your-chat) — custom HTTP and AI-responder tools.
 - [MCP Connections](../concepts/mcp-connections) — attach a Model Context Protocol server and bring its whole tool catalog into a chat.

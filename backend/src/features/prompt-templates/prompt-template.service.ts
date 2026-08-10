@@ -160,64 +160,109 @@ export async function removeExperienceOverride(experienceId: string, step: Promp
 // ============================================================================
 
 /**
- * Seed system default prompt templates from the code-defined defaults.
+ * Seed and upgrade system default prompt templates from the code-defined defaults.
+ * Idempotent, and called at application startup.
  *
- * Creates missing rows, and re-syncs untouched seed rows whose content has since
- * changed in code. Called at application startup.
+ * Upgrades matter because shipped defaults change: when the turn planner gained
+ * `{{toolWorkflow}}` and `{{personaInstructions}}`, an install that had already
+ * seeded v1 would previously have kept it forever, because this function only
+ * ever inserted missing rows. The behavior still worked (the planner appends
+ * those blocks when a template omits them) but the operator could not reposition
+ * them and the editor did not list the new variables.
  *
- * The re-sync matters: this used to be insert-only, which meant editing a default
- * in code had no effect on any existing installation — the stale row kept winning
- * at resolve time, silently, forever. A prompt fix that cannot reach a running
- * system is not a fix.
+ * Upgrades follow the immutable-version model rather than editing in place: a new
+ * version is created as a child of the current default and promoted, so the
+ * previous version survives and `rollbackSystemDefault` can restore it.
  *
- * Only a pristine seed row is rewritten — `version: 1` with no `parentId`. A
- * user-authored version that was promoted to system default has a parent or a
- * higher version, and is left alone; overwriting someone's deliberate prompt with
- * a platform default would be far worse than a stale default.
+ * A default the operator promoted themselves is never touched. Seeded rows carry
+ * no `createdBy`; versions created through `createVersion` do. That distinction
+ * is what separates "a shipped default nobody has an opinion about" from "a
+ * deliberate choice", and only the former is superseded automatically.
  */
 export async function seedSystemDefaults() {
   let created = 0;
-  let updated = 0;
+  let upgraded = 0;
   let skipped = 0;
+  const operatorOwned: string[] = [];
 
   for (const def of SYSTEM_DEFAULT_TEMPLATES) {
     const existing = await repo.getSystemDefault(def.step);
 
-    if (existing) {
-      const isPristineSeed = existing.version === 1 && !existing.parentId;
-
-      if (isPristineSeed && existing.content !== def.content) {
-        await repo.updateContent(existing.id, {
-          label: def.label,
-          content: def.content,
-          metadata: def.metadata,
-        });
-        updated++;
-      } else {
-        skipped++;
-      }
+    if (!existing) {
+      await repo.create({
+        step: def.step as any,
+        version: 1,
+        parentId: null,
+        label: def.label,
+        content: def.content,
+        metadata: def.metadata,
+        status: 'active',
+        isSystemDefault: true,
+      });
+      created++;
       continue;
     }
 
-    await repo.create({
+    // Already current. A label-only difference is corrected in place rather than by
+    // versioning: the label is not part of the versioned artifact, and a row whose label
+    // disagrees with its own version number misleads anyone choosing between templates.
+    if (existing.content === def.content) {
+      if (existing.label !== def.label && !existing.createdBy) {
+        await repo.updateLabel(existing.id, def.label);
+        invalidateTemplateCacheForStep(def.step);
+        logger.info('Refreshed system default prompt template label', {
+          step: def.step,
+          version: existing.version,
+          label: def.label,
+        });
+      }
+      skipped++;
+      continue;
+    }
+
+    // The operator promoted this version deliberately — leave it alone and let
+    // the upgrade preflight tell them a newer shipped default exists.
+    if (existing.createdBy) {
+      operatorOwned.push(def.step);
+      skipped++;
+      continue;
+    }
+
+    const next = await repo.create({
       step: def.step as any,
-      version: 1,
-      parentId: null,
+      version: existing.version + 1,
+      parentId: existing.id,
       label: def.label,
       content: def.content,
       metadata: def.metadata,
       status: 'active',
-      isSystemDefault: true,
+      isSystemDefault: false,
     });
-    created++;
+    await repo.setSystemDefault(next.id, def.step);
+    invalidateTemplateCacheForStep(def.step);
+
+    logger.info('Upgraded system default prompt template', {
+      step: def.step,
+      fromVersion: existing.version,
+      toVersion: next.version,
+      previousVersionId: existing.id,
+    });
+    upgraded++;
   }
 
-  if (created > 0 || updated > 0) {
-    // Resolved templates are cached; a rewritten row would otherwise keep
-    // serving its old content for the life of the process.
+  if (created > 0 || upgraded > 0) {
+    // Resolved templates are cached; a promoted new version would otherwise keep serving the
+    // superseded content for the life of the process.
     invalidateTemplateCache();
-    logger.info('Seeded prompt templates', { created, updated, skipped });
+    logger.info('Seeded prompt templates', { created, upgraded, skipped });
   } else {
-    logger.debug('All prompt templates already seeded', { skipped });
+    logger.debug('All prompt templates already current', { skipped });
+  }
+
+  if (operatorOwned.length > 0) {
+    logger.warn(
+      'A newer shipped default exists for prompt steps whose system default was promoted manually — left unchanged',
+      { steps: operatorOwned },
+    );
   }
 }
