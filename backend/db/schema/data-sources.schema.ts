@@ -53,7 +53,15 @@ export interface ExternalSearchIndexConfig {
     url: string;
     authType: 'api_key' | 'basic' | 'bearer' | 'none';
     credentials: {
-      /** Reference to secrets vault: {{secret:my_es_key}} */
+      /**
+       * Name of a secret in the vault — e.g. `my_es_key`.
+       *
+       * The bare name, not a `{{secret:my_es_key}}` template: this is looked up directly by
+       * `resolveSecret(name)`. The braces form is used for interpolation inside HTTP tool
+       * configs, and documenting it here produced a 403 with a message blaming the key.
+       *
+       * Empty when `authType` is `none`.
+       */
       secretRef: string;
     };
     indexName: string;
@@ -63,10 +71,26 @@ export interface ExternalSearchIndexConfig {
     maxResults: number;
     includeHighlights: boolean;
   };
+  /**
+   * Reserved — **not yet scheduled**.
+   *
+   * Nothing reads these. Health checks run when someone asks for one: the refresh control on
+   * the data-source page, or automatically the first time a source has no schema at all.
+   * There is no periodic runner, so an interval configured here has no effect.
+   *
+   * Kept rather than removed because a scheduler is wanted and the shape is right, but it is
+   * documented as inert so it is not mistaken for a working setting — a stored value that
+   * silently does nothing is how `pipelineConfig` and the old guardrail axis misled operators.
+   */
   healthCheck: {
     enabled: boolean;
     intervalMs: number;
   };
+  /**
+   * How many documents to sample when profiling fields at discovery. Omitted means the
+   * default; 0 disables profiling for indexes where an extra read is unwelcome.
+   */
+  profileSampleSize?: number;
 }
 
 /**
@@ -114,6 +138,31 @@ export type DataSourceConfig =
   | DatabaseDataSourceConfig;
 
 /**
+ * What a field actually contains, measured from a sample of documents.
+ *
+ * A field list gives names and types. It cannot say that `article_type` is empty on most
+ * documents, that `type` holds a file format rather than a subject, or that `author` values
+ * are inconsistently cased — and those are the facts that decide whether filtering on a
+ * field will work. Every one of them previously had to be found by reading documents by
+ * hand, per index.
+ *
+ * Deliberately reports only what was observed. There is no extrapolation to index-wide
+ * totals: `distinctInSample` is exactly that, so nothing downstream can mistake a
+ * 50-document reading for a cardinality guarantee.
+ */
+export interface DataSourceFieldProfile {
+  /** Documents examined. */
+  sampleSize: number;
+  /** Fraction of sampled documents where the field was absent, null, or empty (0–1). */
+  nullRate: number;
+  /** Distinct non-empty values seen in the sample. Never an index-wide estimate. */
+  distinctInSample: number;
+  /** Capped, deduped, length-capped example values. Absent for free-text fields. */
+  sampleValues?: string[];
+  profiledAt: string;
+}
+
+/**
  * Normalized field schema — shared across all data source types.
  * Stored as JSON array in the schema column.
  */
@@ -127,7 +176,33 @@ export interface DataSourceField {
   isFilterable: boolean;
   /** Whether the field can be returned in search results. Defaults to true when not set (for backwards compat with existing schemas). */
   isRetrievable?: boolean;
+  /**
+   * Whether the provider permits ordering by this field. Azure declares it per field and
+   * rejects the whole request when an unsortable field is used, so an unknown value
+   * (older schemas) must be treated as "don't risk it" rather than "allowed".
+   */
+  isSortable?: boolean;
   description?: string;
+  /**
+   * The provider's own type string, verbatim — e.g. `keyword`, `Edm.String`,
+   * `Collection(Edm.String)`.
+   *
+   * `type` above is a normalized, lossy label for UI and prompts: Elasticsearch `text`
+   * and `keyword` both collapse to `text`, and Azure `Collection(Edm.String)` loses its
+   * array-ness. Filter translation cannot use a lossy type — a `term` query against the
+   * wrong one matches nothing, and comparing an Azure collection without a lambda is a
+   * 400. Absent on schemas discovered before this field existed; re-run a health check
+   * to populate it.
+   */
+  providerType?: string;
+  /**
+   * The field name to use in filter and sort expressions when it differs from `name`.
+   * Elasticsearch `text` fields are not exact-matchable, but usually carry a `keyword`
+   * sub-field (`title.keyword`) that is. Absent means filter on `name` directly.
+   */
+  filterField?: string;
+  /** What the field actually contains, measured at discovery. Absent when unprofiled. */
+  profile?: DataSourceFieldProfile;
 }
 
 /** Capabilities discovered from the provider index (semantic config, vector fields, etc.) */

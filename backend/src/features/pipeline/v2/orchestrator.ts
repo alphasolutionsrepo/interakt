@@ -20,6 +20,9 @@ import { planTurn } from './turn-planner';
 import { executeLoop } from './execution-loop';
 import { synthesizeResponse } from './response-synthesis';
 import { persistTurn } from './persistence';
+import { assessRound, mergeRounds } from './planning-assessment';
+import type { RoundAssessment } from './planning-assessment';
+import { GOVERNED_POLICY, describePolicy, type ExecutionPolicy } from '@/features/ai-experience/execution-policy';
 import type {
   ContextAssemblyInput,
   TurnContext,
@@ -27,6 +30,7 @@ import type {
   TurnLogEntry,
   ExecutionLoopResult,
   SynthesisResult,
+  PlanningRoundSummary,
 } from './v2.types';
 import type { PipelineStreamEvent, TokenUsage } from '../pipeline.types';
 import type { ContextAssemblyDeps } from './context-assembly';
@@ -79,12 +83,22 @@ export interface V2PipelineConfig {
   maxRetriesPerAction: number;
   /** Wall-clock ceiling for the entire turn (default: 60s). Matches V1. */
   maxTotalDurationMs: number;
+  /**
+   * How much autonomy this turn gets. Resolved from the experience's
+   * pipelineMode preset plus any per-experience overrides.
+   *
+   * This is what replaced the old two-engine split: a governed run is
+   * maxPlanningRounds 1, an autonomous run permits bounded re-planning, and both
+   * execute through this one pipeline.
+   */
+  policy: ExecutionPolicy;
 }
 
 const DEFAULT_CONFIG: V2PipelineConfig = {
   executionBatchSize: 3,
   maxRetriesPerAction: 1,
   maxTotalDurationMs: 60_000,
+  policy: GOVERNED_POLICY,
 };
 
 const PIPELINE_TIMEOUT = Symbol('v2-pipeline-timeout');
@@ -137,6 +151,11 @@ export async function runV2Pipeline(
   const experienceId = input.experience.id;
   const usage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
+  // Correlates every tool execution in this turn for analytics. Generated here
+  // rather than per-execution so a turn's tool calls can be grouped, including
+  // the extra executions a re-plan or a filter relaxation produces.
+  const turnRequestId = crypto.randomUUID();
+
   // Wall-clock ceiling. If we cross it, abandon waiting on whatever's in flight
   // and return a graceful timeout response. Losing work continues in the
   // background but is no longer awaited — matches V1 semantics (orchestrator.ts).
@@ -168,6 +187,10 @@ export async function runV2Pipeline(
   // ── S2: Context Assembly ───────────────────────────────────────────────
   onEvent({ type: 'step_start', stepId: 'context-assembly', stepType: 'episodic_memory', stepName: 'Loading context' });
 
+  // Bound before context assembly, which reads the planner prompt budget from it. The
+  // planning-round comments below describe the rest of what it governs.
+  const policy = cfg.policy;
+
   const ctxResult = await withSpan(
     {
       name: 'pipeline.v2.context_assembly',
@@ -187,6 +210,12 @@ export async function runV2Pipeline(
           experience: input.experience,
         },
         trackedDeps.contextAssembly,
+        {
+          dataContextLimits: {
+            maxFieldsPerSource: policy.maxPlannerFieldsPerSource,
+            maxValuesPerField: policy.maxPlannerValuesPerField,
+          },
+        },
       );
       span.setAttribute('alpha.v2.context_assembly.success', result.success);
       span.setAttribute('alpha.v2.context_assembly.summary', result.summary);
@@ -206,8 +235,32 @@ export async function runV2Pipeline(
 
   const turnContext: TurnContext = ctxResult.data;
 
+  // ── D1/D2: bounded plan → execute → assess rounds ─────────────────────
+  //
+  // A governed policy runs exactly one round, which is the historical
+  // behavior. Anything higher permits re-planning when a round produces
+  // nothing usable — bounded by maxPlanningRounds and maxToolCallsPerTurn, and
+  // every round recorded on the span so autonomy stays auditable.
+  const roundResults: ExecutionLoopResult[] = [];
+  const roundSummaries: PlanningRoundSummary[] = [];
+  let plan: TurnPlan | null = null;
+  let planFailed = false;
+  let toolCallsUsed = 0;
+  let round = 0;
+  // Kept outside the loop so the turn can report why it stopped where it did.
+  let lastAssessment: RoundAssessment | null = null;
+
+  while (round < policy.maxPlanningRounds) {
+    round++;
+    const isReplan = round > 1;
+
   // ── D1: Turn Planner ──────────────────────────────────────────────────
-  onEvent({ type: 'step_start', stepId: 'turn-planner', stepType: 'tool_selection', stepName: 'Planning actions' });
+  onEvent({
+    type: 'step_start',
+    stepId: isReplan ? `turn-planner-${round}` : 'turn-planner',
+    stepType: 'tool_selection',
+    stepName: isReplan ? `Re-planning (attempt ${round})` : 'Planning actions',
+  });
 
   const planResult = await withSpan(
     {
@@ -220,6 +273,8 @@ export async function runV2Pipeline(
         'alpha.v2.planner.context_mode': turnContext.turnLog.length > 0 ? 'turn_log' : 'conversation_history',
         'alpha.v2.planner.turn_log_entries': turnContext.turnLog.length,
         'alpha.v2.planner.conversation_history_messages': turnContext.conversationHistory.length,
+        'alpha.v2.planner.round': round,
+        'alpha.v2.planner.is_replan': isReplan,
       },
     },
     async (span) => {
@@ -236,6 +291,9 @@ export async function runV2Pipeline(
           availableTools: turnContext.availableTools,
           personaInstructions: turnContext.personaInstructions,
           businessDomain: turnContext.businessDomain,
+          dataContext: turnContext.dataContext,
+          includePersona: policy.includePersonaInPlanning,
+          previousRounds: roundSummaries.length > 0 ? roundSummaries : undefined,
         },
         trackedDeps.turnPlanner,
         {
@@ -266,10 +324,21 @@ export async function runV2Pipeline(
     },
   );
 
-  onEvent({ type: 'step_complete', stepId: 'turn-planner', stepType: 'tool_selection', durationMs: planResult.durationMs, status: planResult.success ? 'ok' : 'error' });
+  onEvent({
+    type: 'step_complete',
+    stepId: isReplan ? `turn-planner-${round}` : 'turn-planner',
+    stepType: 'tool_selection',
+    durationMs: planResult.durationMs,
+    status: planResult.success ? 'ok' : 'error',
+  });
 
   if (!planResult.success || !planResult.data) {
-    // Planning failed — synthesize an error response
+    // Planning failed. On a re-plan we still have the earlier round's results,
+    // so fall through to synthesis rather than discarding usable work.
+    if (isReplan) {
+      planFailed = true;
+      break;
+    }
     const errorText = "I'm having trouble understanding your request right now. Could you try again?";
     parentSpan.setAttribute('alpha.v2.outcome', 'plan_failed');
     onEvent({ type: 'content', text: errorText });
@@ -293,17 +362,24 @@ export async function runV2Pipeline(
     return { sessionId: turnContext.sessionId, responseText: errorText, usage };
   }
 
-  const plan: TurnPlan = planResult.data;
+  plan = planResult.data;
 
-  // ── D2: Execution Loop (skip if directResponse or clarification) ──────
-  let executionResult: ExecutionLoopResult = {
-    executedActions: [],
-    remainingActions: [],
-    aborted: false,
-    summary: 'No actions to execute',
-  };
+  // Nothing to execute — a direct answer or a clarification question ends the
+  // turn regardless of remaining budget.
+  if (plan.directResponse || plan.needsClarification || plan.actions.length === 0) {
+    break;
+  }
 
-  if (!plan.directResponse && !plan.needsClarification && plan.actions.length > 0) {
+  // Enforce the turn's tool ceiling across rounds, not just within one.
+  const remainingCalls = policy.maxToolCallsPerTurn - toolCallsUsed;
+  if (remainingCalls <= 0) {
+    logger.info('Tool call budget exhausted', { experienceId, round, toolCallsUsed });
+    parentSpan.setAttribute('alpha.v2.tool_budget_exhausted', true);
+    break;
+  }
+  const roundBatchSize = Math.min(cfg.executionBatchSize, remainingCalls);
+
+  {
     onEvent({ type: 'step_start', stepId: 'execution-loop', stepType: 'tool_execution', stepName: 'Executing actions' });
 
     const execResult = await withSpan(
@@ -334,11 +410,14 @@ export async function runV2Pipeline(
 
         const result = await executeLoop(
           {
-            plan,
+            plan: plan as TurnPlan,
             turnContext,
             config: {
-              executionBatchSize: cfg.executionBatchSize,
+              // Narrowed by the turn's remaining tool budget so re-planning can
+              // never exceed maxToolCallsPerTurn in aggregate.
+              executionBatchSize: roundBatchSize,
               maxRetriesPerAction: cfg.maxRetriesPerAction,
+              turnRequestId,
             },
             emit: wrappedEmit,
           },
@@ -370,9 +449,103 @@ export async function runV2Pipeline(
 
     onEvent({ type: 'step_complete', stepId: 'execution-loop', stepType: 'tool_execution', durationMs: execResult.durationMs, status: execResult.success ? 'ok' : 'error' });
 
-    if (execResult.data) {
-      executionResult = execResult.data;
-    }
+    const roundResult: ExecutionLoopResult = execResult.data ?? {
+      executedActions: [],
+      remainingActions: plan.actions,
+      aborted: true,
+      summary: 'Execution failed',
+    };
+    roundResults.push(roundResult);
+    toolCallsUsed += roundResult.executedActions.length;
+
+    // ── Assess: is there anything to answer from? ───────────────────────
+    const roundsRemaining = policy.maxPlanningRounds - round;
+    const assessment = assessRound(roundResult, roundsRemaining);
+    lastAssessment = assessment;
+
+    parentSpan.addEvent('planning.round', {
+      'alpha.v2.round': round,
+      'alpha.v2.round.verdict': assessment.verdict,
+      'alpha.v2.round.reason': assessment.reason,
+      'alpha.v2.round.result_count': assessment.resultCount,
+      'alpha.v2.round.should_replan': assessment.shouldReplan,
+      'alpha.v2.round.tool_calls_used': toolCallsUsed,
+    });
+
+    if (!assessment.shouldReplan) break;
+
+    // Record what this round tried so the next plan is informed rather than a
+    // blind retry, then loop.
+    roundSummaries.push({
+      round,
+      verdict: assessment.verdict,
+      reason: assessment.reason,
+      attempts: roundResult.executedActions.map((a) => ({
+        toolSlug: a.toolSlug,
+        intent: a.intent,
+        query: typeof a.parameters?.query === 'string' ? a.parameters.query : null,
+        success: a.result.success,
+        resultCount: a.result.resultCount ?? 0,
+        ...(a.result.error ? { error: a.result.error } : {}),
+      })),
+    });
+
+    logger.info('Re-planning after unusable round', {
+      experienceId,
+      round,
+      verdict: assessment.verdict,
+      roundsRemaining,
+    });
+  }
+
+  } // end planning round loop
+
+  // Synthesis sees every round, so a response can say a narrower query was
+  // already tried and came back empty.
+  const executionResult: ExecutionLoopResult = mergeRounds(roundResults);
+
+  parentSpan.setAttribute('alpha.v2.turn_request_id', turnRequestId);
+  parentSpan.setAttribute('alpha.v2.planning_rounds_used', round);
+  parentSpan.setAttribute('alpha.v2.policy.max_planning_rounds', policy.maxPlanningRounds);
+  parentSpan.setAttribute('alpha.v2.policy.max_tool_calls', policy.maxToolCallsPerTurn);
+  parentSpan.setAttribute('alpha.v2.tool_calls_used', toolCallsUsed);
+  if (planFailed) parentSpan.setAttribute('alpha.v2.replan_failed', true);
+
+  // The full policy on every turn, so a trace answers "what was this run allowed to do?"
+  // without cross-referencing experience config that may since have changed.
+  // Guardrail enforcement is deliberately absent here: it moved to GuardrailConfig.enforced
+  // and is recorded by the guardrail spans in chat-pipeline, next to the stages it governs.
+  parentSpan.setAttribute('alpha.v2.policy.preset', describePolicy(policy));
+  parentSpan.setAttribute('alpha.v2.policy.persona_in_planning', policy.includePersonaInPlanning);
+
+  // On a turn that went well the presets are meant to be indistinguishable — same process,
+  // same result. The difference shows up on a turn that did not: a governed run stops with
+  // an unusable round where an autonomous one would have re-planned. Recording that makes
+  // the constraint visible as a decision rather than as an unexplained poor answer.
+  const stoppedShort =
+    lastAssessment != null &&
+    !lastAssessment.shouldReplan &&
+    lastAssessment.verdict !== 'usable' &&
+    lastAssessment.verdict !== 'nothing_executed' &&
+    round >= policy.maxPlanningRounds;
+
+  if (stoppedShort) {
+    parentSpan.setAttribute('alpha.v2.policy.replan_withheld', true);
+    parentSpan.addEvent('policy.replan_withheld', {
+      'alpha.v2.round.verdict': lastAssessment!.verdict,
+      'alpha.v2.round.reason': lastAssessment!.reason,
+      'alpha.v2.policy.max_planning_rounds': policy.maxPlanningRounds,
+    });
+    logger.info('Policy withheld a re-plan', {
+      experienceId,
+      verdict: lastAssessment!.verdict,
+      maxPlanningRounds: policy.maxPlanningRounds,
+    });
+  }
+
+  // A first-round planning failure returns early above, so a plan exists here.
+  if (!plan) {
+    throw new Error('Planning loop exited without a plan — unreachable');
   }
 
   // ── D3: Response Synthesis ────────────────────────────────────────────
@@ -692,6 +865,15 @@ export function createProductionV2Deps(
             session: { id: newSession.id, summary: null, facts: null, pipelineState: null, userContext: null, messageCount: 0, status: 'active' },
             messages: [],
           };
+        },
+      },
+      dataSchemaLoader: {
+        async loadFieldSchema(dataSourceId) {
+          const dataSourceService = await import('@/features/data-source/data-source.service');
+          const ds = await dataSourceService.getDataSourceById(dataSourceId);
+          const schema = ds?.schema as { fields?: unknown[] } | null | undefined;
+          if (!ds || !schema?.fields?.length) return null;
+          return { name: ds.name, fields: schema.fields as never };
         },
       },
       episodicMemoryLoader: {

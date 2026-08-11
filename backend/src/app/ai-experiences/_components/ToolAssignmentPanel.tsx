@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import {
   Plus,
   Trash2,
@@ -10,11 +9,14 @@ import {
   Search,
   Loader2,
 } from 'lucide-react';
+import { useState } from 'react';
+
+import type { AIExperienceToolAssignment, AssignToolPayload, UpdateToolAssignmentPayload } from '../_lib/api-client';
+
+import { ToolTypeChip } from '@/app/tools/_components/ToolTypeChip';
+import { useAllActiveTools } from '@/app/tools/_lib/hooks/useTools';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -22,10 +24,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { ToolTypeChip } from '@/app/tools/_components/ToolTypeChip';
-import { useAllActiveTools } from '@/app/tools/_lib/hooks/useTools';
-import type { AIExperienceToolAssignment, AssignToolPayload, UpdateToolAssignmentPayload } from '../_lib/api-client';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+
 
 // ============================================================================
 // TOOL PICKER DIALOG

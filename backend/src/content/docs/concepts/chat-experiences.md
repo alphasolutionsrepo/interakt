@@ -20,7 +20,7 @@ The create flow is a four-step wizard.
 | **Name** | Display name. |
 | **Slug** | URL path. **Locked after creation.** |
 | **Description** | Plain-language description of what this chat is for. **Interakt uses this to draft the AI's system instructions in step 3 — write it like a brief.** |
-| **Pipeline mode** | Agentic or Deterministic. See [Pipeline modes](pipeline-modes). The two cards explain the trade-off; pick Agentic unless you have a specific reason. |
+| **Turn budget** | Standard or Thorough — how much a turn may spend before giving up. New experiences start on Standard. See [Turn budget and limits](pipeline-modes). |
 
 ### Step 2 — Capabilities
 
@@ -72,26 +72,24 @@ Header has:
 
 A working chat panel embedded right in the admin. Type messages, get streaming responses, see the tool calls, latencies, and token usage in a debug sidebar. **Use this constantly while you're tuning** — change instructions, save, test the same question in the playground, see whether it improved.
 
-### Pipeline Steps card
+### How a turn runs
 
-Visualises the AI pipeline for this experience. For [Deterministic mode](pipeline-modes), four steps:
+A read-only walkthrough of the pipeline every experience uses. It is a description, not a
+form — the settings behind it live on the Edit page.
 
-1. **Turn Planner** *(Planning)* — decides whether this turn needs tools.
-2. **Parameter Extraction** *(Planning)* — extracts structured params for tool calls.
-3. **Tool Execution** *(Execution)* — runs tools in configured order.
-4. **Response Synthesis** *(Synthesis)* — writes the answer from tool results.
+1. **Input guardrail** — blocklist, greeting detection, topic gate. Skipped if nothing is configured and the rules are not locked.
+2. **Context assembly** — session history, and what the planner is told about your data.
+3. **Turn planner** — decides which tools to call, and why.
+4. **Execution loop** — extracts each action's arguments, runs it, and re-plans only if the [turn budget](pipeline-modes) allows.
+5. **Response synthesis** — writes the answer from what the tools returned.
+6. **Output guardrail** — checks the reply before the user sees it.
 
-For [Agentic mode](pipeline-modes), three steps:
+The prompt template used at each step lives in [Prompt templates](prompts).
 
-1. **Turn Planner (Agentic)** *(Planning)* — plans which tools to call.
-2. **Agentic Loop** *(Execution)* — iteratively calls tools and synthesises.
-3. **Response Synthesis** *(Synthesis)* — writes the final answer.
+### Guardrails
 
-Each step shows its phase tag, a description, and any configurable options (max iterations, timeouts, synthesis style). The prompt template used for each step lives in [Prompt templates](prompts).
-
-### Guardrails card
-
-[See Guardrails](guardrails). The card has two main toggles — **Input guardrails** and **Output guardrails** — each with topic gating and a blocklist.
+Configured on the Edit page, section 3. [See Guardrails](guardrails) — a lock, then **Incoming
+messages** and **Outgoing replies**, each with topic gating and a blocklist.
 
 ### Assigned Tools card
 
@@ -127,7 +125,7 @@ Delete button.
 
 Same fields as the wizard, reorganised:
 
-- **Basic information** — name, description, pipeline mode.
+- **Identity** — name, description.
 - **AI personality** — system instructions, tone, prompt preview.
 - **AI provider & model** — provider/model selection.
 - **Session management** — max context messages.
@@ -140,7 +138,7 @@ Save with the button at the top.
 
 Two chat experiences over the same data can feel completely different based on:
 
-- **Pipeline mode** — agentic feels conversational; deterministic feels structured.
+- **Turn budget** — Thorough retries when an attempt comes back empty, and costs more for it.
 - **System instructions** — "be playful and use emojis" vs "be formal and never speculate".
 - **Tone** — small but real shift in voice.
 - **Assigned tools** — what it can do.
@@ -171,7 +169,7 @@ The drop-in widget handles all this. If you're building a custom frontend, see [
 
 ## Where to go next
 
-- [Pipeline modes](pipeline-modes) — agentic vs deterministic in detail.
+- [Turn budget and limits](pipeline-modes) — what a turn may spend, in detail.
 - [Tools](tools) — the capabilities you give the chat.
 - [Prompt templates](prompts) — the wording of each pipeline step.
 - [Guardrails](guardrails) — keeping the chat on-topic and safe.

@@ -32,7 +32,7 @@ Configuration:
 - **Response fields** — which fields are returned by the tools.
 - **Include highlights** — whether to highlight matching terms.
 
-You don't usually edit these by hand — the tool generator does it for you. But you can override behaviour here if the auto-generated tools aren't quite right.
+You don't usually edit these by hand — the tool generator does it for you. But you can override behavior here if the auto-generated tools aren't quite right.
 
 ### External search index
 Points at a search engine that's *not* hosted by Interakt — your existing Elasticsearch cluster or an Azure AI Search service.
@@ -127,7 +127,8 @@ You **cannot change the type** of a data source after creation. If you need to s
 
 ## Common gotchas
 
-- **The Health check is a real check.** If a data source goes unhealthy, the tools using it will fail. Click into the source and use the re-check button to confirm the issue is real, then fix it at the source (e.g. credentials, network).
+- **The Health check is a real check, and it only runs when you ask.** If a data source goes unhealthy, the tools using it will fail. Click into the source and use the re-check button to confirm the issue is real, then fix it at the source (e.g. credentials, network). There is no periodic re-check yet — the interval stored in an external source's config is reserved and has no effect — so a source that breaks after its last check will show as healthy until someone re-runs it.
+- **A health check re-reads the schema.** Field types, capabilities and profiles are rebuilt from the index. Descriptions you have written are carried across, but a field that has been removed from the index disappears along with its description.
 - **Internal data sources are tied to their search index.** Deleting the search index removes the data source and its tools. Don't delete an index that has tools wired into a live experience.
 - **File stores re-embed when you change the embedding model.** It's not automatic — you have to re-ingest the files.
 - **Database tools need careful query design.** A bad query template can lock up the DB or leak data. Treat database tools as production code; review them.

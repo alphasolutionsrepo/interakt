@@ -19,14 +19,14 @@ The six groups correspond to the steps in the chat pipeline:
 
 | Step | When it runs | What its prompt does |
 |---|---|---|
-| **Turn Planner (Deterministic)** | First step of every deterministic turn. | Decides whether this turn needs tools or can just respond. |
+| **Turn Planner** | First step of every turn. | Decides whether this turn needs tools, which ones, and why. |
 | **Param Extraction** | After Turn Planner, if tools are needed. | Extracts structured parameters (search query, filters, IDs). |
 | **Response Synthesis** | After tools have run. | Writes the answer from tool results. |
 | **Response Synthesis Direct** | When no tools are called. | Handles direct clarifications. |
 | **Response Synthesis Lightweight** | For greetings, off-topic messages. | Quick, short responses without invoking the full pipeline. |
-| **Turn Planner (Agentic)** + **Agentic Loop** | In agentic mode. | Decides what to do iteratively. |
+| ~~Turn Planner (Agentic)~~ + ~~Agentic Loop~~ | **Retired.** | The separate agentic engine is gone; one pipeline serves every experience. An override on `agentic_loop` never resolves. |
 
-You don't have to know what each step does in detail to use Interakt — the defaults work. You only come here when you want to tune behaviour.
+You don't have to know what each step does in detail to use Interakt — the defaults work. You only come here when you want to tune behavior.
 
 ### Toolbar
 - **Search input** — search by template name or content.
@@ -42,7 +42,7 @@ You don't have to know what each step does in detail to use Interakt — the def
 
 The header shows:
 - Template name and version.
-- Step badge (colour-coded — Planning, Execution, Synthesis, Safety…).
+- Step badge (color-coded — Planning, Execution, Synthesis, Safety…).
 - Status badge — Active / Draft / Archived.
 - "System Default" badge if this is the shipped one.
 
@@ -63,7 +63,7 @@ Every `{{variable}}` the prompt uses, with its description and source:
 - **tool_schema** — descriptions and shapes of the tools available to this turn.
 - **action_results** — results from tools called earlier in the same turn.
 
-This tells you what data the prompt has access to. If you want to add new behaviour, you usually work with the variables already provided rather than asking for new ones.
+This tells you what data the prompt has access to. If you want to add new behavior, you usually work with the variables already provided rather than asking for new ones.
 
 ### Editable sections card *(right column, collapsible)*
 The named sections of the template that can be overridden by individual chat experiences. Each section has an ID, a label, and an "Editable" indicator. This is how per-experience tuning works without forking the whole template.
@@ -120,7 +120,7 @@ Per-experience pinning isn't exposed in the UI yet — every experience uses the
 
 ## Editable sections (advanced)
 
-Some shipped templates have **editable sections** marked with `<!-- section:name -->` blocks. These are designed to be overridden by individual chat experiences without forking the whole template. The infrastructure exists but the per-experience override UI is not yet exposed — for now, sections are documentation of *intended* customisation points; you customise them by creating new versions of the whole template.
+Some shipped templates have **editable sections** marked with `<!-- section:name -->` blocks. These are designed to be overridden by individual chat experiences without forking the whole template. The infrastructure exists but the per-experience override UI is not yet exposed — for now, sections are documentation of *intended* customization points; you customize them by creating new versions of the whole template.
 
 ## Common gotchas
 

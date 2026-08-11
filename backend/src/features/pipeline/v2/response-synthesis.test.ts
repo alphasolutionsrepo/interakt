@@ -424,3 +424,61 @@ describe('D3: Response Synthesis', () => {
     });
   });
 });
+
+// ============================================================================
+// RELAXED CONSTRAINTS
+// ============================================================================
+
+describe('relaxed constraints reach the answer', () => {
+  it('names the dropped filters when the retry step reports them', async () => {
+    // Found by running a real turn: asked for "mens cotton sweaters under $100", the retry
+    // step dropped both the price and material filters to get any results, and the answer
+    // presented what came back as though it matched — silent narrowing in reverse.
+    const chat = vi.fn().mockResolvedValue(makeChatResult('Here is the closest match.'));
+
+    await synthesizeResponse(
+      makeInput({
+        actionResults: [
+          makeActionResult('catalog-search', {
+            relaxation: { droppedFilters: ['maxPrice=100', 'material=cotton'], droppedAll: false },
+          }),
+        ],
+      }),
+      { chat } as SynthesisDeps,
+      vi.fn(),
+    );
+
+    const systemPrompt = JSON.stringify(chat.mock.calls[0]);
+    expect(systemPrompt).toContain('maxPrice=100');
+    expect(systemPrompt).toContain('DO NOT satisfy it');
+    expect(systemPrompt).toContain('Say so');
+  });
+
+  it('still discloses a relaxation that has no filter to name', async () => {
+    // The knowledge base widens its relevance cutoff rather than dropping a filter, so there
+    // is nothing for `relaxation` to list. It must still be said — "these results are looser
+    // than you asked for" is the part that matters to the reader, not the mechanism.
+    const chat = vi.fn().mockResolvedValue(makeChatResult('Here is the closest match.'));
+
+    await synthesizeResponse(
+      makeInput({
+        actionResults: [makeActionResult('docs-search', { constraintsRelaxed: true })],
+      }),
+      { chat } as SynthesisDeps,
+      vi.fn(),
+    );
+
+    const systemPrompt = JSON.stringify(chat.mock.calls[0]);
+    expect(systemPrompt).toContain('the search was widened');
+    expect(systemPrompt).toContain('Say so');
+  });
+
+  it('says nothing about relaxation on an ordinary result', async () => {
+    const chat = vi.fn().mockResolvedValue(makeChatResult('Here you go.'));
+
+    await synthesizeResponse(makeInput(), { chat } as SynthesisDeps, vi.fn());
+
+    const systemPrompt = JSON.stringify(chat.mock.calls[0]);
+    expect(systemPrompt).not.toContain('filters were dropped');
+  });
+});

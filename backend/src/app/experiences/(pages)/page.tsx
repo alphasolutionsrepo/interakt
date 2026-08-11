@@ -22,7 +22,7 @@ import {
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { PipelineModeChip } from '@/app/ai-experiences/_components/PipelineModeChip';
+import { ExperienceBadges } from '@/app/ai-experiences/_components/ExperienceBadges';
 import { useUnifiedExperiences, type UnifiedExperience } from '../_hooks/useUnifiedExperiences';
 
 type ViewMode = 'cards' | 'table';
@@ -182,7 +182,14 @@ function ExperienceCard({ experience, onView, onEdit, onDelete }: {
             </Badge>
           )}
 
-          {isAI && <PipelineModeChip mode={experience.pipelineMode} />}
+          {isAI && (
+            <ExperienceBadges
+              variant="notable"
+              mode={experience.pipelineMode}
+              executionPolicy={experience.executionPolicy}
+              guardrailConfig={experience.guardrailConfig}
+            />
+          )}
           {isAI && experience.tools.length > 0 && (
             <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               {experience.tools.length} tools
@@ -263,7 +270,12 @@ function DataTableView({ items, onView, onEdit, onDelete }: {
                   <td className="px-5 py-4">
                     {isAI ? (
                       <div className="flex items-center gap-2">
-                        <PipelineModeChip mode={exp.pipelineMode} />
+                        <ExperienceBadges
+                          variant="notable"
+                          mode={exp.pipelineMode}
+                          executionPolicy={exp.executionPolicy}
+                          guardrailConfig={exp.guardrailConfig}
+                        />
                         <span className="text-xs text-muted-foreground">{exp.tools.length} tools</span>
                       </div>
                     ) : (

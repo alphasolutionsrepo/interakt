@@ -29,6 +29,8 @@ import type {
 } from './v2.types';
 import type { ResultMemoryStore } from '../pipeline.types';
 import type { ToolParameterSchema } from '@/features/ai-service/ai-service.types';
+import type { DataSourceField } from '@/db/schema/data-sources.schema';
+import { buildDataContext, type DataContextSource, type DataContextLimits } from './data-context';
 
 const logger = createLogger('v2:context-assembly');
 
@@ -89,9 +91,20 @@ export interface EpisodicMemoryLoader {
 /**
  * All dependencies for Context Assembly, injected by the orchestrator.
  */
+/**
+ * Loads the discovered field schema for a data source, so the planner can be told what the
+ * index actually contains. Injected rather than imported so the assembler stays testable
+ * and a schema-loading failure has one place to be handled.
+ */
+export interface DataSchemaLoader {
+  loadFieldSchema(dataSourceId: string): Promise<{ name: string; fields: DataSourceField[] } | null>;
+}
+
 export interface ContextAssemblyDeps {
   sessionLoader: SessionLoader;
   episodicMemoryLoader: EpisodicMemoryLoader;
+  /** Optional: without it the planner falls back to tool descriptions alone. */
+  dataSchemaLoader?: DataSchemaLoader;
 }
 
 // ============================================================================
@@ -105,6 +118,12 @@ export interface ContextAssemblyConfig {
   maxEpisodicMemories: number;
   /** Session TTL in minutes for new sessions (default: 1440 = 24h) */
   sessionTtlMinutes: number;
+  /**
+   * Caps on how much of each data source's schema is described to the planner. Supplied by
+   * the orchestrator from the turn's ExecutionPolicy, so an operator prices the trade
+   * between prompt cost and plan quality per experience.
+   */
+  dataContextLimits?: DataContextLimits;
 }
 
 const DEFAULT_CONFIG: ContextAssemblyConfig = {
@@ -207,6 +226,7 @@ export async function assembleContext(
       // Experience config for downstream
       personaInstructions: input.experience.personaConfig.systemInstructions,
       businessDomain: input.experience.personaConfig.businessDomains?.join(', ') ?? null,
+      dataContext: await loadDataContext(toolDefinitions, deps.dataSchemaLoader, cfg.dataContextLimits),
       providerId: input.experience.providerId,
       modelId: input.experience.modelId,
 
@@ -578,4 +598,58 @@ export function createProductionEpisodicMemoryLoader(): EpisodicMemoryLoader {
       return memories.map((m: any) => m.content as string);
     },
   };
+}
+
+// ============================================================================
+// DATA CONTEXT
+// ============================================================================
+
+/**
+ * Build the planner's view of the queryable data, grouped by data source.
+ *
+ * Grouped by source rather than by tool because several tools usually read the same index —
+ * search, inspect and enumerate over one catalog — and repeating the field list once per
+ * tool would triple the prompt for no added information.
+ *
+ * Best-effort throughout: this enriches planning, and a failure to load a schema must not
+ * fail the turn. Losing it costs plan quality, not the answer.
+ */
+async function loadDataContext(
+  toolDefinitions: ToolDefinitionV2[],
+  loader: DataSchemaLoader | undefined,
+  limits: DataContextLimits | undefined,
+): Promise<string | null> {
+  if (!loader) return null;
+  // A zero field budget means the operator opted out; skip the schema reads entirely rather
+  // than loading them and discarding the result.
+  if (limits?.maxFieldsPerSource === 0) return null;
+
+  const slugsBySource = new Map<string, string[]>();
+  for (const tool of toolDefinitions) {
+    if (!tool.dataSourceId) continue;
+    const slugs = slugsBySource.get(tool.dataSourceId) ?? [];
+    slugs.push(tool.slug);
+    slugsBySource.set(tool.dataSourceId, slugs);
+  }
+  if (slugsBySource.size === 0) return null;
+
+  const sources: DataContextSource[] = [];
+  await Promise.all(
+    [...slugsBySource.entries()].map(async ([dataSourceId, toolSlugs]) => {
+      try {
+        const loaded = await loader.loadFieldSchema(dataSourceId);
+        if (loaded && loaded.fields.length > 0) {
+          sources.push({ toolSlugs, sourceName: loaded.name, fields: loaded.fields });
+        }
+      } catch (error) {
+        logger.warn('Could not load field schema for planner context', {
+          dataSourceId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }),
+  );
+
+  const rendered = buildDataContext(sources, limits);
+  return rendered.length > 0 ? rendered : null;
 }

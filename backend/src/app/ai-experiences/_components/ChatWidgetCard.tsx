@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
 import {
   Code2,
   Copy,
@@ -13,25 +12,8 @@ import {
   MessageSquare,
   Palette,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { useEffect, useMemo, useState } from 'react';
 
-import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
-import {
-  buildEmbedSnippet,
-  type EmbedBrandingConfig,
-  type Widget,
-} from '@/features/embed/build-snippet';
 import type {
   AccessConfigPatch,
   EmbedConfig,
@@ -40,6 +22,26 @@ import type {
   Theme,
 } from './embed-config-types';
 import { readAccessConfig, mergeEmbedConfig } from './embed-config-types';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import {
+  buildEmbedSnippet,
+  type EmbedBrandingConfig,
+  type Widget,
+} from '@/features/embed/build-snippet';
+import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+
 
 interface ChatWidgetCardProps {
   accessToken: string;

@@ -51,16 +51,15 @@ export async function register() {
     );
     initializeSearchProviders();
 
-    // Register pipeline step handlers
-    const { registerAllStepHandlers } = await import(
-      '@/features/pipeline/steps'
-    );
-    registerAllStepHandlers();
-
     // Run seeding (AI provider catalog + prompt templates).
     // Respects ENABLE_AUTO_SEEDING env var.
     const { runStartupSeeding } = await import('@/shared/seeders');
     await runStartupSeeding();
+
+    // Report configuration retired by the chat-pipeline consolidation. Logs only —
+    // never mutates data, never blocks startup.
+    const { runUpgradePreflight } = await import('@/shared/setup/upgrade-preflight');
+    await runUpgradePreflight();
 
     // Seed the admin user from setup/setup.config.yaml if no admin exists yet.
     // This is what makes `npm run dev` self-bootstrapping.

@@ -10,8 +10,9 @@ import type {
 import type { ExternalSearchIndexConfig, DataSourceField, DataSourceSchema, DataSourceCapabilities } from '@/db/schema/data-sources.schema';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { resolveSecret } from '@/features/secrets/secrets.service';
-import { inferFieldRole } from '@/shared/utils/field-roles';
+import { profileFields, resolveSampleSize } from './field-profiler';
 import * as toolsService from '@/features/tools/tools.service';
+import { inferFieldRole } from '@/shared/utils/field-roles';
 
 const logger = createLogger('data-source-service');
 
@@ -152,17 +153,62 @@ export async function performHealthCheck(id: string): Promise<HealthCheckResult>
     };
   }
 
-  // Persist health result + discovered schema
+  // Persist health result + discovered schema.
+  //
+  // The discovered schema is merged over the stored one rather than replacing it. Discovery
+  // reads the index, and the index cannot know what an operator wrote about a field — so a
+  // wholesale write silently destroyed every field description on every health check. That
+  // is a quiet failure of the worst kind: the save succeeds, the text is gone, and the only
+  // symptom is a description box that empties itself.
   await repository.updateDataSource(id, {
     status: result.status,
     lastHealthMessage: result.message,
     lastHealthCheckAt: new Date(),
     ...(result.documentCount !== undefined && { documentCount: result.documentCount }),
     ...(result.storageSizeBytes !== undefined && { storageSizeBytes: result.storageSizeBytes }),
-    ...(result.schema && { schema: result.schema as any }),
+    ...(result.schema && {
+      schema: mergeOperatorFieldEdits(ds.schema as DataSourceSchema | null, result.schema) as never,
+    }),
   });
 
   return result;
+}
+
+/**
+ * Carry operator-authored field metadata across a schema rediscovery.
+ *
+ * Everything discovery produces is derived from the index and is safe to overwrite — types,
+ * capabilities, profiles. `description` is the exception: it exists only because a person
+ * typed it, it is rendered into the planning prompt, and nothing can regenerate it. It is
+ * matched by field name, which is the only stable identity a field has across two reads.
+ *
+ * A field that disappeared from the index does not come back: its description goes with it,
+ * because advertising a field the index no longer has is how the planner ends up filtering
+ * on something that cannot match.
+ */
+export function mergeOperatorFieldEdits(
+  stored: DataSourceSchema | null | undefined,
+  discovered: DataSourceSchema,
+): DataSourceSchema {
+  const previous = stored?.fields;
+  if (!previous?.length || !discovered.fields?.length) return discovered;
+
+  const descriptions = new Map(
+    previous
+      .filter((f) => typeof f.description === 'string' && f.description.trim() !== '')
+      .map((f) => [f.name, f.description as string]),
+  );
+  if (descriptions.size === 0) return discovered;
+
+  return {
+    ...discovered,
+    fields: discovered.fields.map((field) => {
+      // A description rediscovery somehow supplied wins — it is fresher by definition.
+      if (field.description) return field;
+      const carried = descriptions.get(field.name);
+      return carried ? { ...field, description: carried } : field;
+    }),
+  };
 }
 
 /**
@@ -361,7 +407,11 @@ async function probeExternalConnection(
     if (response.ok || response.status === 401 || response.status === 403 || response.status === 404) {
       return {
         status: 'healthy',
-        message: `${config.provider} at ${baseUrl} is reachable (HTTP ${response.status})`,
+        // The probe is unauthenticated, so 401/403/404 mean "a server answered" — not a
+        // problem. Printing the raw code alongside a successful discovery produced messages
+        // like "is reachable (HTTP 403) — 200 docs — 36 fields discovered", which reads as a
+        // failure that somehow worked.
+        message: `${config.provider} at ${baseUrl} is reachable`,
         checkedAt: now,
       };
     }
@@ -516,6 +566,37 @@ interface DiscoveredSchema {
 async function discoverExternalSchema(
   config: ExternalSearchIndexConfig,
 ): Promise<DiscoveredSchema> {
+  const discovered = await discoverExternalFields(config);
+  if (discovered.fields.length === 0) return discovered;
+
+  // Profiling is a second read against the index, so it is strictly best-effort: a field
+  // list with no profile is still useful, and a sampling failure must not turn a healthy
+  // schema discovery into a failed one.
+  const sampleSize = resolveSampleSize(config.profileSampleSize);
+  if (sampleSize === 0) return discovered;
+
+  try {
+    const documents = await fetchDocumentSample(config, sampleSize);
+    if (documents.length === 0) {
+      logger.warn('Field profiling skipped — no documents sampled', { provider: config.provider });
+      return discovered;
+    }
+    return {
+      ...discovered,
+      fields: profileFields(discovered.fields, documents, new Date().toISOString()),
+    };
+  } catch (err) {
+    logger.warn('Field profiling failed (non-fatal)', {
+      provider: config.provider,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    });
+    return discovered;
+  }
+}
+
+async function discoverExternalFields(
+  config: ExternalSearchIndexConfig,
+): Promise<DiscoveredSchema> {
   switch (config.provider) {
     case 'elasticsearch':
       return { fields: await discoverElasticsearchSchema(config) };
@@ -523,6 +604,106 @@ async function discoverExternalSchema(
       return discoverAzureAISearchSchema(config);
     default:
       return { fields: [] };
+  }
+}
+
+// ============================================================================
+// DOCUMENT SAMPLING (for field profiling)
+// ============================================================================
+
+/**
+ * Fetch a sample of documents for profiling.
+ *
+ * Unsorted and unfiltered on purpose — any ordering would bias the sample toward whatever
+ * the sort field favours, and a null rate measured on a biased sample is worse than no
+ * null rate at all.
+ */
+async function fetchDocumentSample(
+  config: ExternalSearchIndexConfig,
+  sampleSize: number,
+): Promise<Record<string, unknown>[]> {
+  switch (config.provider) {
+    case 'elasticsearch':
+      return sampleElasticsearchDocuments(config, sampleSize);
+    case 'azure_ai_search':
+      return sampleAzureAISearchDocuments(config, sampleSize);
+    default:
+      return [];
+  }
+}
+
+async function sampleElasticsearchDocuments(
+  config: ExternalSearchIndexConfig,
+  sampleSize: number,
+): Promise<Record<string, unknown>[]> {
+  const baseUrl = config.connection.url.replace(/\/$/, '');
+  const indexName = config.connection.indexName;
+  if (!indexName) return [];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const headers = await buildAuthHeaders(config);
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${baseUrl}/${indexName}/_search`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers,
+      body: JSON.stringify({ size: sampleSize, query: { match_all: {} }, track_total_hits: false }),
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json() as {
+      hits?: { hits?: Array<{ _source?: Record<string, unknown> }> };
+    };
+    return (data.hits?.hits ?? [])
+      .map((hit) => hit._source)
+      .filter((source): source is Record<string, unknown> => !!source);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function sampleAzureAISearchDocuments(
+  config: ExternalSearchIndexConfig,
+  sampleSize: number,
+): Promise<Record<string, unknown>[]> {
+  const baseUrl = config.connection.url.replace(/\/$/, '');
+  const indexName = config.connection.indexName;
+  if (!indexName) return [];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const headers = await buildAuthHeaders(config);
+    headers['Content-Type'] = 'application/json';
+
+    const url = `${baseUrl}/indexes/${indexName}/docs/search?api-version=2024-07-01`;
+    const response = await fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers,
+      // Azure caps `top` at 1000 per page; the profiler never asks for that many.
+      body: JSON.stringify({ search: '*', top: sampleSize, count: false }),
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json() as { value?: Record<string, unknown>[] };
+    // Strip Azure's response annotations so the profiler sees document fields only.
+    return (data.value ?? []).map((doc) => {
+      const clean: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(doc)) {
+        if (!key.startsWith('@search.')) clean[key] = value;
+      }
+      return clean;
+    });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -589,19 +770,37 @@ function parseElasticsearchProperties(
       // Nested object — recurse
       fields.push(...parseElasticsearchProperties(mapping.properties, fullName));
     } else {
+      // A `text` field can't be term-matched, but usually carries a `keyword` sub-field
+      // that can. Record it so filters target something exact-matchable instead of
+      // being dropped or silently matching nothing.
+      const keywordSubfield = findKeywordSubfield(mapping.fields);
       fields.push({
         name: fullName,
         displayName: name,
         type: mapESType(mapping.type),
+        providerType: mapping.type,
+        ...(keywordSubfield ? { filterField: `${fullName}.${keywordSubfield}` } : {}),
         role: inferFieldRole(name) ?? null,
         isSearchable: mapping.type === 'text' || mapping.type === 'search_as_you_type',
         isFacetable: mapping.type === 'keyword' || mapping.type === 'integer' || mapping.type === 'long',
-        isFilterable: mapping.type !== 'text',
+        isFilterable: mapping.type !== 'text' || !!keywordSubfield,
+        // Elasticsearch permits sorting any non-analyzed field; `text` is sortable only
+        // through a keyword sub-field.
+        isSortable: mapping.type !== 'text' || !!keywordSubfield,
       });
     }
   }
 
   return fields;
+}
+
+/** Name of the first `keyword` sub-field in an ES multi-field mapping, if any. */
+function findKeywordSubfield(subfields?: Record<string, ESFieldMapping>): string | undefined {
+  if (!subfields) return undefined;
+  for (const [name, mapping] of Object.entries(subfields)) {
+    if (mapping.type === 'keyword') return name;
+  }
+  return undefined;
 }
 
 function mapESType(esType?: string): string {
@@ -706,11 +905,15 @@ async function discoverAzureAISearchSchema(
         name: f.name,
         displayName: f.name,
         type: mapAzureType(f.type),
+        providerType: f.type,
         role: inferFieldRole(f.name) ?? null,
         isSearchable: f.searchable ?? false,
         isFacetable: f.facetable ?? false,
         isFilterable: f.filterable ?? false,
         isRetrievable: f.retrievable !== false,
+        // Azure rejects the entire request when asked to order by an unsortable field,
+        // so this has to be carried through rather than assumed.
+        isSortable: f.sortable ?? false,
       }));
 
     return {

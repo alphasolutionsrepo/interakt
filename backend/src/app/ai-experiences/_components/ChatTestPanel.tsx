@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
 import { Bot, ChevronDown, ChevronUp, ImageIcon, Loader2, MessageSquare, Send, Sparkles, Trash2, Wrench } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { useRef, useState } from 'react';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 
 // ============================================================================
 // TYPES

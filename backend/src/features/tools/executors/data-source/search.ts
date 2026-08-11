@@ -13,6 +13,13 @@ import { trackSearch } from '@/features/analytics';
 import { callAzureAISearch } from '../callers/azure-ai-search';
 import { callElasticsearchSearch } from '../callers/elasticsearch';
 import { executeFileStoreSearch } from './file-store';
+import { translateFilters, translateSort, type UnappliedClause } from '../external-query';
+import {
+  mergeDefaultFilters,
+  mergeDefaultSort,
+  describeAppliedConfig,
+  annotateResult,
+} from '../filter-defaults';
 import {
   resolveDataSource,
   buildFilterClauses,
@@ -21,6 +28,7 @@ import {
   type ResolvedManagedSource,
   type ResolvedExternalSource,
   type DataSourceSchema,
+  type DataSourceField,
   type OperationResult,
 } from './shared';
 
@@ -91,14 +99,14 @@ async function executeManagedSearch(
   const query = input.query ?? '';
   const maxResults = config.maxResults ?? 10;
 
-  const filters = buildFilterClauses(input.filters);
-  const sort = buildSortClauses(input.sort);
+  const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
+  const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
   const response = await searchService.searchById(source.searchIndexId, {
     query,
     pageSize: maxResults,
-    filters: filters.length > 0 ? filters : undefined,
-    sort: sort.length > 0 ? sort : undefined,
+    filters: merged.filters.length > 0 ? merged.filters : undefined,
+    sort: sorting.sort.length > 0 ? sorting.sort : undefined,
   });
 
   return {
@@ -121,6 +129,7 @@ async function executeManagedSearch(
           })),
         })),
       } : {}),
+      ...describeAppliedConfig(merged.appliedDefaults, sorting),
     },
   };
 }
@@ -138,38 +147,64 @@ async function executeExternalSearch(
   const maxResults = Number(config.maxResults ?? 10);
   const startTime = Date.now();
 
-  // Get searchable fields for highlighting (when enabled)
+  // The discovered schema drives both highlighting and filter/sort translation, so it is
+  // fetched once here. A missing schema is not fatal: translation falls back to
+  // best-effort (see external-query.ts) rather than dropping what was requested.
+  let schemaFields: DataSourceField[] | undefined;
+  try {
+    const ds = await dataSourceService.getDataSourceById(source.dataSourceId);
+    if (ds?.schema) {
+      schemaFields = (ds.schema as DataSourceSchema).fields;
+    }
+  } catch {
+    // Non-critical — proceed without schema-derived highlights or field validation.
+  }
+
   let highlightFields: string | undefined;
-  if (config.includeHighlights !== false) {
-    try {
-      const ds = await dataSourceService.getDataSourceById(source.dataSourceId);
-      if (ds?.schema) {
-        const schema = ds.schema as DataSourceSchema;
-        const searchable = schema.fields
-          .filter(f => f.isSearchable && f.type !== 'vector')
-          .map(f => f.name);
-        if (searchable.length > 0) {
-          highlightFields = searchable.join(',');
-        }
-      }
-    } catch {
-      // Non-critical — proceed without highlights
+  if (config.includeHighlights !== false && schemaFields?.length) {
+    const searchable = schemaFields
+      .filter(f => f.isSearchable && f.type !== 'vector')
+      .map(f => f.name);
+    if (searchable.length > 0) {
+      highlightFields = searchable.join(',');
     }
   }
+
+  const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
+  const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
+  const translatedFilters = translateFilters(source.provider, merged.filters, schemaFields);
+  const translatedSort = translateSort(source.provider, sorting.sort, schemaFields);
 
   let result: OperationResult;
   switch (source.provider) {
     case 'azure-ai-search':
       result = await callAzureAISearch(
         { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey },
-        { query, maxResults, includeHighlights: !!highlightFields, highlightFields, selectFields: config.responseFields },
+        {
+          query,
+          maxResults,
+          includeHighlights: !!highlightFields,
+          highlightFields,
+          selectFields: config.responseFields,
+          filter: translatedFilters.odata,
+          orderBy: translatedSort.odataOrderBy,
+        },
       );
       break;
 
     case 'elasticsearch':
       result = await callElasticsearchSearch(
         { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey, authType: source.authType },
-        { query, maxResults, includeHighlights: !!highlightFields, highlightFields, searchFields: highlightFields, selectFields: config.responseFields },
+        {
+          query,
+          maxResults,
+          includeHighlights: !!highlightFields,
+          highlightFields,
+          searchFields: highlightFields,
+          selectFields: config.responseFields,
+          filterClauses: translatedFilters.esClauses,
+          sort: translatedSort.esSort,
+        },
       );
       break;
 
@@ -179,6 +214,11 @@ async function executeExternalSearch(
         error: `Executor for provider '${source.provider}' is not yet implemented`,
       };
   }
+
+  // Report what configuration and translation did to the request. A filter that was
+  // requested but not applied has to reach the caller, or a wrong answer looks correct.
+  logUnapplied(translatedFilters.unapplied, translatedSort.unapplied);
+  result = annotateResult(result, merged.appliedDefaults, sorting, translatedFilters.unapplied, translatedSort.unapplied);
 
   // Fire-and-forget analytics tracking for external searches
   const durationMs = Date.now() - startTime;
@@ -207,6 +247,18 @@ async function executeExternalSearch(
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+/**
+ * Log anything the provider could not express. The result payload carries this to the
+ * model; the log is for the operator debugging why a filter had no effect.
+ */
+function logUnapplied(unappliedFilters: UnappliedClause[], unappliedSort: UnappliedClause[]): void {
+  if (unappliedFilters.length === 0 && unappliedSort.length === 0) return;
+  logger.warn('External search could not apply part of the request', {
+    unappliedFilters: unappliedFilters.map(u => `${u.field}: ${u.reason}`),
+    unappliedSort: unappliedSort.map(u => `${u.field}: ${u.reason}`),
+  });
+}
 
 /**
  * Project (filter) a result object to only the specified fields.

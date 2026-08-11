@@ -9,18 +9,42 @@ sidebar_position: 23
 Guardrails are configured per chat experience. Both **input** (the user's message, before the model sees it) and **output** (the model's response, before the user sees it) can be guarded.
 
 ## Where to find this screen
-Sidebar → **Experiences** → AI experience detail → **Guardrails** card.
+Sidebar → **Experiences** → your experience → **Edit** → **3. Guardrails**.
 
 (There is no separate global Guardrails section — each chat experience has its own.)
 
+Changes here save as you make them. They do not wait for the **Save Changes** button at the
+bottom of the page.
+
 ## What the screen does
 
-The Guardrails card has two main sections — **Input guardrails** and **Output guardrails** — with the same shape. Each has a master enable toggle. When enabled, you configure:
+Three parts: a **lock**, then **Incoming messages** and **Outgoing replies**, which have the
+same shape. Each side has an enable toggle. When enabled, you configure:
 
 - **Topic gating** — keep the chat on-domain.
 - **Blocklist** — phrases or keywords that should never appear.
 
 A small flow diagram visualises how an incoming message moves through the gates.
+
+## Lock these rules on
+
+The switch at the top of the section — **Lock these rules on** — makes the configured rules run
+on every turn whether or not a side below is switched on.
+
+Use it when the checks are a requirement rather than a preference. It is the only setting in
+Interakt that can promise a reviewer *"these checks cannot be turned off on this experience"*.
+
+When it is on, each side with rules configured shows an **Enforced** badge and its toggle is
+disabled — there is no off position to click, because switching it off would not switch
+anything off. To genuinely disable a side, turn the lock off first.
+
+A locked side with **no rules** is not enforced, because rules that do not exist cannot run.
+The screen flags that case rather than letting it pass as protection.
+
+This used to be part of the pipeline mode: the *Governed* preset forced guardrails on. That put
+a compliance decision inside a performance setting, and left the guardrail toggle reading "off"
+while the rules ran. The lock is independent of the [turn budget](pipeline-modes) now, so any
+combination works.
 
 ## Topic gating
 
@@ -30,7 +54,7 @@ Stops the chat from being used for off-topic conversations. Useful when your cha
 - **Domain filter enabled** — toggle.
 - **Allowed domains** — keywords describing what's on-topic. *"fashion, ecommerce, shipping, returns"*. Free-text, comma-separated.
 - **Friendly message** — what the chatbot says when the user goes off-topic. *"I can only help with fashion shopping. Can I help you find something else?"*
-- **Threshold** — a number between 0 and 1 controlling how strict the match is. Higher = stricter (more rejections); lower = more lenient.
+- **Match threshold** — how close a message must be to your domain terms to count as on-topic. Higher is stricter (more rejections); lower is more lenient. The default of `0.30` is a reasonable starting point — tune it from real behavior rather than guessing. Every turn records the similarity it measured, under **Analytics → Traces**, so you can see how close your near-misses actually were.
 - **Generate Domain Terms** button — uses AI to expand your keywords into 20–30 semantically related terms. *"fashion"* expands to *"clothing, apparel, garments, accessories, style, outfits…"*. The expanded list is what's actually used at match time — your keywords are the seed.
 
 ### Status indicators
@@ -78,7 +102,7 @@ A typical configuration:
 
 ## How they fit into the pipeline
 
-The pipeline diagram in the Guardrails card shows the flow:
+The flow diagram in the Guardrails section shows the order:
 
 1. **Blocklist** — runs first; cheap exact-match.
 2. **Greeting detect** — special-cases greetings ("hi", "thanks") so they don't get rejected by topic gating.
@@ -106,8 +130,8 @@ The built-in Help Assistant (the one in the ? icon → Ask tab) has guardrails *
 
 - **Topic gate too narrow.** "Only allow product questions" blocks "do you have any sales going on?" Make sure your allowed-domains list is broad enough, or generate the expanded terms to catch related vocabulary.
 - **Forgetting to regenerate after changing keywords.** Stale status means the chat is still using the old expansion. Click **Generate Domain Terms** after edits.
-- **Threshold too strict.** Set the threshold at the default and only adjust based on real behaviour. Cranking to 0.95 blocks half of genuine queries.
-- **No friendly message set.** Defaults to a generic "I can't help with that" — customise it. Users are much more forgiving of a polite redirect.
+- **Threshold too strict.** Set the threshold at the default and only adjust based on real behavior. Cranking to 0.95 blocks half of genuine queries.
+- **No friendly message set.** Defaults to a generic "I can't help with that" — customize it. Users are much more forgiving of a polite redirect.
 - **Forgetting output guardrails.** All your filtering is on input — the model can still output bad things on its own. Mirror critical filters on the output side.
 
 ## Where to go next

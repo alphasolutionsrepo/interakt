@@ -1,23 +1,7 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Bot,
-  GitBranch,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -31,13 +15,35 @@ import {
   Sparkles,
   RotateCcw,
  Cpu, Wrench } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCallback, useRef, useState } from 'react';
+
+import type { PipelineMode } from '../../_lib/api-client';
+import { useCreateAIExperience, useAIExperienceSlugAvailability } from '../../_lib/hooks/useAIExperiences';
+
+import { mcpConnectionsApi } from '@/app/mcp-connections/_lib/api-client';
+import { useMcpConnections } from '@/app/mcp-connections/_lib/hooks/useMcpConnections';
 import { ToolTypeChip } from '@/app/tools/_components/ToolTypeChip';
 import { useAllActiveTools } from '@/app/tools/_lib/hooks/useTools';
-import { useCreateAIExperience, useAIExperienceSlugAvailability } from '../../_lib/hooks/useAIExperiences';
-import type { PipelineMode } from '../../_lib/api-client';
-import { useMcpConnections } from '@/app/mcp-connections/_lib/hooks/useMcpConnections';
-import { mcpConnectionsApi } from '@/app/mcp-connections/_lib/api-client';
-import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { GOVERNED_POLICY } from '@/features/ai-experience/execution-policy';
+
+
+
+
+
 
 // ============================================================================
 // TYPES
@@ -78,7 +84,7 @@ const TONE_OPTIONS: { value: Tone; label: string; description: string }[] = [
 ];
 
 const STEPS = [
-  { label: 'Basics', description: 'Name & mode' },
+  { label: 'Basics', description: 'Name & description' },
   { label: 'Tools', description: 'Assign capabilities' },
   { label: 'AI Config', description: 'Model & instructions' },
   { label: 'Access', description: 'Rate limits & CORS' },
@@ -278,30 +284,24 @@ function Step1({ data, onChange, errors }: {
         <p className="text-xs text-muted-foreground">Describe what this experience does — this helps generate better AI instructions.</p>
       </div>
 
-      {/* Pipeline Mode */}
-      <div className="space-y-2">
-        <Label>Pipeline Mode <span className="text-destructive">*</span></Label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {([
-            { mode: 'agentic' as PipelineMode, icon: Bot, iconBg: 'bg-violet-500/10', iconClass: 'text-violet-500', label: 'Agentic', desc: 'AI decides which tools to use and when, based on the conversation.' },
-            { mode: 'deterministic' as PipelineMode, icon: GitBranch, iconBg: 'bg-blue-500/10', iconClass: 'text-blue-500', label: 'Deterministic', desc: 'Fixed tool execution order. Predictable, fast, and reliable.' },
-          ] as const).map(({ mode, icon: Icon, iconBg, iconClass, label, desc }) => {
-            const selected = data.pipelineMode === mode;
-            return (
-              <button key={mode} type="button" onClick={() => onChange({ pipelineMode: mode })}
-                className={`flex items-start gap-3.5 rounded-xl border p-4 text-left transition-all ${selected ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border/60 bg-card hover:border-border hover:bg-muted/30'}`}>
-                <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
-                  <Icon className={`size-5 ${iconClass}`} />
-                </div>
-                <div>
-                  <p className={`font-semibold text-sm ${selected ? 'text-primary' : ''}`}>{label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{desc}</p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/*
+        No preset fork here.
+
+        This asked for one before the things it bounds exist: every axis it sets is a ceiling on
+        tool calls and guardrails, and tools are chosen on the next step while guardrails are
+        configured after creation. So it demanded an uninformed answer to a reversible question,
+        and gave it the weight of a required field on the first screen.
+
+        New experiences start on the Standard budget — the conservative default — and the
+        choice moves to Advanced, where it sits with the limits it presets.
+      */}
+      <p className="rounded-xl border border-border/60 bg-muted/20 px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
+        <span className="font-medium text-foreground">Starts on the Standard budget.</span> One
+        planning round per turn and up to {GOVERNED_POLICY.maxToolCallsPerTurn} tool calls. You
+        can change it, and every individual limit, later under{' '}
+        <em>Advanced &rarr; Turn budget</em>. Guardrails are configured after creation, in{' '}
+        <em>Guardrails</em>.
+      </p>
     </div>
   );
 }
@@ -767,7 +767,10 @@ export function CreateWizard({ basePath = '/ai-experiences' }: { basePath?: stri
     name: '',
     slug: '',
     description: '',
-    pipelineMode: 'agentic',
+    // Standard is the conservative preset: one planning round and a tighter tool budget.
+    // Defaulting to 'agentic' quietly recommended the freer, more expensive one — an artifact
+    // of the retired agentic engine having been the incumbent, not a recommendation.
+    pipelineMode: 'deterministic',
     aiConfig: { providerId: null, modelId: null, maxContextMessages: 20 },
     tone: 'professional',
     allowedOrigins: [],

@@ -47,21 +47,80 @@ export async function listAll() {
     .orderBy(desc(promptTemplates.createdAt));
 }
 
-export async function getVersionHistory(id: string) {
-  // Walk the parent chain to build version history
-  const versions: Array<typeof promptTemplates.$inferSelect> = [];
-  let currentId: string | null = id;
+/** The minimum a row needs for lineage assembly — kept structural so the logic is testable. */
+export interface LineageNode {
+  id: string;
+  parentId: string | null;
+  version: number;
+}
 
-  while (currentId) {
-    const row = await db.query.promptTemplates.findFirst({
-      where: eq(promptTemplates.id, currentId),
-    });
-    if (!row) break;
-    versions.push(row);
-    currentId = row.parentId;
+/**
+ * Every version in the same lineage as `id`, newest first.
+ *
+ * Version history used to be built by walking *up* the parent chain from whichever version you
+ * opened, which meant the history depended on where you stood: from v4 you saw all four, but
+ * from v3 you saw three and v4 did not exist. Parent pointers run child→parent, so an ancestor
+ * can never reach its descendants that way — and an old version is exactly where you stand when
+ * you want to move forward, which is the case that hid the option.
+ *
+ * So it climbs to the root, then collects everything below it. Children are walked rather than
+ * assuming one line, because two versions can share a parent when one is created from a
+ * rolled-back state. Rows for the same step that belong to a different lineage are excluded:
+ * they are separate templates, not versions of this one.
+ */
+export function collectLineage<T extends LineageNode>(rows: T[], id: string): T[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const start = byId.get(id);
+  if (!start) return [];
+
+  // Climb to the root. `seen` guards a parent cycle, which the schema does not prevent and
+  // which would otherwise hang the request rather than return a short history.
+  let root = start;
+  const seen = new Set<string>([root.id]);
+  while (root.parentId) {
+    const parent = byId.get(root.parentId);
+    if (!parent || seen.has(parent.id)) break;
+    seen.add(parent.id);
+    root = parent;
   }
 
-  return versions;
+  const childrenOf = new Map<string, T[]>();
+  for (const row of rows) {
+    if (!row.parentId) continue;
+    const list = childrenOf.get(row.parentId);
+    if (list) list.push(row);
+    else childrenOf.set(row.parentId, [row]);
+  }
+
+  const lineage: T[] = [];
+  const collected = new Set<string>();
+  const frontier = [root];
+  while (frontier.length > 0) {
+    const row = frontier.pop()!;
+    if (collected.has(row.id)) continue;
+    collected.add(row.id);
+    lineage.push(row);
+    frontier.push(...(childrenOf.get(row.id) ?? []));
+  }
+
+  return lineage.sort((a, b) => b.version - a.version);
+}
+
+export async function getVersionHistory(id: string) {
+  const target = await db.query.promptTemplates.findFirst({
+    where: eq(promptTemplates.id, id),
+  });
+  if (!target) return [];
+
+  // Every version of a step lives in this table, so one read covers the whole lineage and the
+  // walk happens in memory. The alternative — a query per ancestor and per child — was a
+  // round trip per version to reassemble something already fetchable in one.
+  const siblings = await db
+    .select()
+    .from(promptTemplates)
+    .where(eq(promptTemplates.step, target.step));
+
+  return collectLineage(siblings, id);
 }
 
 // ============================================================================
@@ -102,6 +161,22 @@ export async function updateStatus(id: string, status: 'draft' | 'active' | 'arc
   const [row] = await db
     .update(promptTemplates)
     .set({ status, updatedAt: new Date() })
+    .where(eq(promptTemplates.id, id))
+    .returning();
+  return row;
+}
+
+/**
+ * Rename a template without versioning it.
+ *
+ * The label is not part of the versioned artifact — only `content` is — so correcting one
+ * must not mint a version. Used by the seeder when a shipped default's label changes but
+ * its content has not.
+ */
+export async function updateLabel(id: string, label: string) {
+  const [row] = await db
+    .update(promptTemplates)
+    .set({ label, updatedAt: new Date() })
     .where(eq(promptTemplates.id, id))
     .returning();
   return row;

@@ -376,3 +376,47 @@ describe('D2a: Parameter Extraction', () => {
     });
   });
 });
+
+// ============================================================================
+// ZERO-PARAMETER TOOLS
+//
+// Schema-inspection tools declare an empty property set. Feeding that to a
+// strict-mode response_format asks the provider for an object with no permitted
+// keys, which returns empty content — so a healthy tool reported "Parameter
+// extraction failed" and burned a planning round. These pin the short-circuit.
+// ============================================================================
+
+describe('tools with no parameters', () => {
+  const EMPTY_SCHEMA: ToolParameterSchema = { type: 'object', properties: {}, required: [] };
+
+  it('returns empty parameters without calling the AI', async () => {
+    const deps = makeDeps({ shouldNotBeUsed: true });
+    const result = await extractParameters(
+      makeInput({ toolInputSchema: EMPTY_SCHEMA, action: { toolSlug: 'catalog-schema', intent: 'inspect schema', hints: {}, dependsOnPrevious: false } }),
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.parameters).toEqual({});
+    // The saved LLM call is the point — one per zero-parameter tool invocation.
+    expect(deps.chat).not.toHaveBeenCalled();
+  });
+
+  it('treats a missing properties key the same as an empty one', async () => {
+    const deps = makeDeps({ shouldNotBeUsed: true });
+    const result = await extractParameters(
+      makeInput({ toolInputSchema: { type: 'object' } as ToolParameterSchema }),
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.parameters).toEqual({});
+    expect(deps.chat).not.toHaveBeenCalled();
+  });
+
+  it('still calls the AI when the tool has at least one property', async () => {
+    const deps = makeDeps({ query: 'red shoes' });
+    await extractParameters(makeInput(), deps);
+    expect(deps.chat).toHaveBeenCalledOnce();
+  });
+});

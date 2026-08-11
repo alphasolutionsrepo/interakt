@@ -2,110 +2,94 @@
 sidebar_position: 12
 ---
 
-# Pipeline modes
+# Turn budget and limits
 
-When you create an AI/chat experience, you pick a **pipeline mode** — *Deterministic* or *Agentic*. This is the single most consequential decision in the wizard. It controls how the chat thinks: how predictable, how flexible, how easy to debug, how expensive to run.
+Every chat experience runs the same pipeline. What differs between experiences is how much a
+single turn is allowed to spend before it gives up.
+
+> **Changed recently.** Interakt used to ship two chat engines — a *Deterministic* pipeline and
+> a separate *Agentic* one — and picking between them was the first question the creation
+> wizard asked. There is one engine now. The old choice survives as a pair of budget presets,
+> and everything it used to imply about guardrails moved to [Guardrails](guardrails).
 
 ## Where to find it
-Sidebar → **Experiences** → AI experience detail page → **Pipeline Steps** card (read-only) or **Edit → Basic information** (to change it).
 
-The pipeline mode chip on the experience's detail header shows which one is in use.
+Sidebar → **Experiences** → your experience → **Edit** → **Advanced** → **Turn budget**.
 
-## The two modes in plain English
+It is under Advanced deliberately: the defaults are sensible, and most experiences never need
+it changed. New experiences start on **Standard**.
 
-### Deterministic — the structured pipeline
+## What a turn spends
 
-The chat follows a fixed sequence of steps every turn. The AI is used at specific points where language understanding is needed, but the *orchestration* — what runs, in what order, with what guardrails — is pre-defined.
+A turn spends one model call to plan, one per action to work out that action's arguments, and
+one to write the answer. The panel states the worst case for the limits you have set:
 
-The four steps:
+| Preset | Planning rounds | Tool calls | Worst-case model calls |
+|---|---|---|---|
+| **Standard** | 1 | 3 | 5 |
+| **Thorough** | 3 | 8 | 12 |
 
-1. **Turn Planner.** Looks at the user's message and decides: does this turn need tools, or can the AI just respond directly?
-2. **Parameter Extraction.** If a tool is needed, the AI extracts the structured parameters (search query, filters, IDs).
-3. **Tool Execution.** Tools run in a configured order. Returns data.
-4. **Response Synthesis.** The AI writes the answer from the tool results.
+Most turns use far fewer — a typical question resolves in a single tool call. The ceiling
+exists so a bad prompt or a confused planner cannot run up an unbounded bill.
 
-Each step has its own [prompt template](prompts), each step's input and output are logged separately in [Conversations](analytics), and the order doesn't change between turns.
+Token cost depends on your model and how much your tools return, so the panel does not guess
+at it. **Analytics → Overview** reports what was actually spent.
 
-### Agentic — the AI decides
+## The two presets
 
-The AI is in charge. It sees the user's message and the list of tools available, and it decides what to do — call one tool, call several, skip tools entirely and respond directly.
+**Standard** answers from a single attempt. If the search comes back empty, it says so and
+tells you what it could not match, rather than trying again.
 
-The three steps:
+**Thorough** re-plans when an attempt returns nothing usable — up to two further attempts. Each
+one is recorded in the trace.
 
-1. **Turn Planner (Agentic).** Plans which tools to use.
-2. **Agentic Loop.** Iteratively calls tools, reads results, decides whether to call more.
-3. **Response Synthesis.** Writes the final answer.
+The honest summary is that they behave identically on most turns. They diverge only when the
+first attempt fails: Thorough tries again, and pays for it. On a question with no good answer
+in the index, expect roughly three times the tokens for the same conclusion. Choose Thorough
+when your data is messy or your users ask vague questions, and Standard otherwise.
 
-The loop can iterate multiple times if the AI thinks more tool calls would help. There's a max-iterations cap so it doesn't run forever.
+## The individual limits
 
-## Side-by-side
+Selecting a preset fills these in; changing any one of them marks the experience **Custom**.
+An override is a delta — the limits you leave alone keep tracking the preset.
 
-|  | **Deterministic** | **Agentic** |
-|---|---|---|
-| Who decides what runs | The pipeline | The AI |
-| Predictability | High — every turn does the same things | Low — same question can take different paths |
-| Debuggability | Each step logged separately, easy to trace | All decisions inside one model call, harder to debug |
-| Latency | Often faster (small AI calls, no loop) | Slower (multiple iterations, larger context) |
-| Cost (cloud models) | Cheaper per turn | More expensive (more iterations) |
-| Best for | Customer-facing chat at scale, regulated/compliance-sensitive UIs, when you need consistent output shape | Internal tools, prototypes, open-ended Q&A, when you don't know in advance what users will ask |
+| Limit | What it does |
+|---|---|
+| **Planning rounds** | How many times the planner may run. 1 means the plan cannot be revised. |
+| **Tool calls per turn** | Hard ceiling across every attempt, not per attempt. |
+| **Turn timeout** | Seconds before the turn gives up. |
+| **Persona instructions when planning** | Off by default. Persona text governs voice, and is used when writing the answer rather than when choosing tools. Turn it on if your instructions also say *which* tools to use and when. |
 
-## When to choose deterministic
+Under **Prompt size** there are two more, and they are the ones that cost on every turn whether
+or not anything goes wrong:
 
-- **You know what users ask.** "Find a product", "check an order status", "look up a policy" — three or four recurring intents.
-- **You need consistent output.** Every answer should follow the same structure (e.g. product cards, then summary, then citation).
-- **Compliance or audit matters.** Each step's prompt is fixed and versioned. You can show a regulator exactly what the chat does.
-- **Cost is a concern at scale.** Deterministic uses fewer / smaller AI calls.
-- **You want each step to be tunable independently.** Edit the prompt for parameter extraction without touching response synthesis.
+| Limit | What it does |
+|---|---|
+| **Schema fields shown to the planner** | How many fields per data source are described in the planning prompt, ranked by usefulness. Raise it when the planner misses fields it needed; lower it to spend less. |
+| **Example values per field** | Real values observed in your index, so a filter matches instead of near-missing. |
 
-## When to choose agentic
+## What this does *not* control
 
-- **You don't know in advance** what users will ask. An internal knowledge-base assistant gets every kind of question.
-- **The task naturally requires multiple steps.** "Find the cheapest red shoes that ship to my zip code by Friday" might need a search, a filter, a check, and a fallback — the AI can chain those itself.
-- **You want flexibility over structure.** You're okay with the chat sometimes responding directly, sometimes calling one tool, sometimes calling three.
-- **You're prototyping.** Agentic is faster to get something working. Move to deterministic when you've seen what real users ask.
+Guardrails. They used to be tied to the mode — the governed preset forced them on — which meant
+a compliance decision was buried in a budget setting, and the guardrail switch could read "off"
+while the rules ran.
 
-## Switching modes
+Enforcement now lives with the rules, in [Guardrails](guardrails) → **Lock these rules on**. It
+is independent of the budget, so any combination is available: a Thorough experience can be
+locked, and a Standard one need not be.
 
-You can change the mode after creation. Open the experience → **Edit** → **Basic information** → toggle pipeline mode → **Save Changes**.
+## Common mistakes
 
-There's no migration to do. The pipeline switches over for the next conversation. Existing conversations finish in the old mode.
+- **Raising the tool ceiling to fix a bad answer.** If the planner is choosing the wrong tool,
+  more calls will not help. Look at [Prompts](prompts) and your tool descriptions instead.
+- **Setting planning rounds high.** Each round is a full plan-and-execute pass. Beyond three
+  you are usually paying to confirm an answer you already had.
+- **Setting the schema field budget to 0 without meaning to.** That stops the planner being told
+  anything about your data, and it will fall back to guessing field names.
 
-> **Heads up — the prompt templates are different per mode.** Deterministic uses Turn Planner, Param Extraction, Response Synthesis prompts. Agentic uses Turn Planner (Agentic), Agentic Loop, Response Synthesis prompts. Switching modes means switching which templates apply. If you customised one, you may need to re-customise the other set.
+## Related
 
-## Configurable options per step
-
-### Deterministic — Turn Planner
-Read-only in the UI. The prompt template controls behaviour. To tune, edit the template in [Prompt templates](prompts).
-
-### Deterministic — Parameter Extraction
-- **Extraction mode** (Strict / Lenient) — how literally the AI interprets ambiguous parameters.
-
-### Deterministic — Tool Execution
-- **Tool order** — drag-to-reorder. Affects which tool runs first.
-- **Timeout per tool** — kills a slow tool call.
-
-### Deterministic — Response Synthesis
-- **Synthesis style** (Concise / Detailed / Natural).
-- **Include tool reasoning** — show or hide the "I searched for X and found Y" trace in the response.
-
-### Agentic — Agentic Loop
-- **Max iterations** — how many times the loop can call tools (default 5). Higher = more chances to get a complex answer right, but slower.
-- **Confidence threshold** — how confident the AI must be in its answer before exiting the loop.
-
-## Watching the pipeline run
-
-The **Chat Playground** card on the experience detail page shows tool calls and timings in real time as you test. For the full record across all users and all turns, go to **Analytics → Conversations / Traces**. The trace view shows each step as a row in a timeline — what its input was, how long it took, whether it succeeded — so you can see exactly where a bad turn went sideways.
-
-## Common gotchas
-
-- **Switching modes mid-tuning.** If you've spent time tuning prompts for one mode, switching mode means re-tuning the other set of templates. Pick deliberately.
-- **Setting max-iterations too high.** Agentic with max-iterations = 20 can loop expensively if the AI keeps "trying one more search." 3–5 is usually enough.
-- **Expecting deterministic to handle novel intents.** If the Turn Planner prompt doesn't anticipate an intent, the chat falls back awkwardly. Add the intent to the prompt template.
-- **Expecting agentic to be cheap.** Each loop iteration is a full AI call. Five iterations = five times the cost of one.
-
-## Where to go next
-
-- [Chat experiences](chat-experiences) — the rest of the AI experience configuration.
-- [Prompt templates](prompts) — the wording of each pipeline step.
-- [Tools](tools) — the things the pipeline can call.
-- [Analytics → Conversations / Traces](analytics) — see the pipeline running.
+- [Guardrails](guardrails) — what the assistant is not allowed to do, and how to lock it.
+- [Prompts](prompts) — how the planner decides, which is a bigger lever than any limit here.
+- [Chat experiences](chat-experiences) — everything else on the experience.
+- [Analytics](analytics) — what turns actually cost.

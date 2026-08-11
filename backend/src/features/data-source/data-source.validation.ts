@@ -44,19 +44,35 @@ const externalSearchIndexConfigSchema = z.object({
     url: z.string().url(),
     authType: z.enum(['api_key', 'basic', 'bearer', 'none']),
     credentials: z.object({
-      secretRef: z.string().min(1),
-    }),
+      /**
+       * Name of a secret in the vault — the bare name, not a `{{secret:...}}` template.
+       *
+       * Optional, because `authType: 'none'` is a real configuration: a self-hosted
+       * Elasticsearch with security disabled is one of the commonest deployments there is, and
+       * requiring a secret for it meant inventing a placeholder to get past validation.
+       */
+      secretRef: z.string().default(''),
+    }).default({ secretRef: '' }),
     indexName: z.string().min(1).max(255),
-  }),
+  }).refine(
+    (c) => c.authType === 'none' || (c.credentials?.secretRef ?? '').length > 0,
+    { message: 'A secret name is required unless authType is "none"', path: ['credentials', 'secretRef'] },
+  ),
   searchDefaults: z.object({
     searchType: z.enum(['lexical', 'semantic', 'hybrid', 'auto']),
     maxResults: z.number().int().min(1).max(1000).default(10),
     includeHighlights: z.boolean().default(true),
   }),
+  // Reserved — no periodic runner consumes these yet; health checks are on demand. See the
+  // note on ExternalSearchIndexConfig.healthCheck.
   healthCheck: z.object({
     enabled: z.boolean().default(true),
     intervalMs: z.number().int().min(5000).max(3_600_000).default(60_000),
   }),
+  // Documents sampled when profiling fields at discovery. 0 disables profiling; omitted
+  // means the default. Without this key here the create schema would strip it, leaving a
+  // config option that only appears to be configurable.
+  profileSampleSize: z.number().int().min(0).max(500).optional(),
 });
 
 const fileStoreConfigSchema = z.object({
@@ -98,6 +114,23 @@ const databaseConfigSchema = z.object({
 // FIELD SCHEMA
 // ============================================================================
 
+const dataSourceFieldProfileSchema = z.object({
+  sampleSize: z.number().int().min(0),
+  nullRate: z.number().min(0).max(1),
+  distinctInSample: z.number().int().min(0),
+  sampleValues: z.array(z.string()).optional(),
+  profiledAt: z.string(),
+});
+
+/**
+ * Every property of DataSourceField has to appear here.
+ *
+ * Zod strips unknown keys, and this schema validates the `schema` field on data-source
+ * update — so anything missing is silently deleted the first time a client saves. That is
+ * how discovery-derived metadata gets destroyed by an unrelated edit: an operator changes a
+ * field description and the provider types, sub-field mappings and profiles vanish with it,
+ * leaving filters and sort quietly wrong until the next health check.
+ */
 const dataSourceFieldSchema = z.object({
   name: z.string().min(1).max(255),
   displayName: z.string().min(1).max(255),
@@ -106,12 +139,26 @@ const dataSourceFieldSchema = z.object({
   isSearchable: z.boolean().default(false),
   isFacetable: z.boolean().default(false),
   isFilterable: z.boolean().default(false),
+  isRetrievable: z.boolean().optional(),
+  isSortable: z.boolean().optional(),
   description: z.string().max(500).optional(),
+  providerType: z.string().optional(),
+  filterField: z.string().optional(),
+  profile: dataSourceFieldProfileSchema.optional(),
+});
+
+const dataSourceCapabilitiesSchema = z.object({
+  semanticConfigName: z.string().optional(),
+  vectorField: z.object({
+    name: z.string(),
+    dimensions: z.number().int(),
+  }).optional(),
 });
 
 const dataSourceSchemaSchema = z.object({
   fields: z.array(dataSourceFieldSchema),
   lastDiscoveredAt: z.string().optional(),
+  capabilities: dataSourceCapabilitiesSchema.optional(),
 });
 
 // ============================================================================

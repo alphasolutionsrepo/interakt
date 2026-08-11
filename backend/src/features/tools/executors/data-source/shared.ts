@@ -84,11 +84,18 @@ export async function resolveDataSource(dataSourceId: string): Promise<ResolvedS
       throw new Error(`Data source "${ds.name}" has incomplete connection config`);
     }
 
+    // An unauthenticated source has nothing to resolve. Demanding a secret here made a
+    // security-disabled Elasticsearch — a normal self-hosted deployment — impossible to query
+    // without inventing a placeholder secret to satisfy validation.
     let apiKey = '';
-    if (conn.credentials?.secretRef) {
+    if (conn.authType !== 'none' && conn.credentials?.secretRef) {
       const resolved = await resolveSecret(conn.credentials.secretRef);
       if (!resolved) {
-        throw new Error(`Failed to resolve secret "${conn.credentials.secretRef}" for data source "${ds.name}"`);
+        throw new Error(
+          `Failed to resolve secret "${conn.credentials.secretRef}" for data source "${ds.name}". ` +
+            'Check that a secret with exactly that name exists in the vault — this is the bare ' +
+            'name, not a {{secret:...}} template.',
+        );
       }
       apiKey = resolved;
     }
@@ -142,7 +149,20 @@ export function buildSortClauses(
 // FIELD FORMATTER
 // ============================================================================
 
+/**
+ * Shape a field for the model, including what profiling measured about its contents.
+ *
+ * The profile is the difference between "there is a field called `article_type`" and
+ * "`article_type` is empty on 90% of documents and its values are inconsistently cased" —
+ * the second is what stops a planner filtering on a field that cannot answer the question.
+ *
+ * `emptyInMostDocuments` rather than a raw rate: a threshold the model can act on beats a
+ * decimal it has to interpret, and it costs fewer tokens. The rate is kept alongside for
+ * operators reading the tool output directly.
+ */
 export function formatDataSourceField(field: DataSourceField) {
+  const profile = field.profile;
+
   return {
     name: field.name,
     displayName: field.displayName,
@@ -150,8 +170,16 @@ export function formatDataSourceField(field: DataSourceField) {
     isSearchable: field.isSearchable,
     isFilterable: field.isFilterable,
     isFacetable: field.isFacetable,
+    isSortable: field.isSortable,
     role: field.role ?? undefined,
     description: field.description ?? undefined,
+    ...(profile
+      ? {
+          nullRate: Math.round(profile.nullRate * 100) / 100,
+          ...(profile.nullRate >= 0.5 ? { emptyInMostDocuments: true } : {}),
+          ...(profile.sampleValues?.length ? { exampleValues: profile.sampleValues } : {}),
+        }
+      : {}),
   };
 }
 

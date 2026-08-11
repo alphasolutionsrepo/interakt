@@ -22,9 +22,30 @@ const logger = createLogger('seed-registry');
  * Calculate SHA-256 checksum of data
  * Includes template metadata AND all fields for complete change detection
  */
+/**
+ * Stable JSON for hashing: object keys sorted at every depth, arrays left in order.
+ *
+ * Written by hand because `JSON.stringify(data, Object.keys(data).sort())` does not do this.
+ * The second argument is a *replacer*, and an array replacer is a property allow-list applied
+ * at every nesting level — so hashing `{docs: [{slug, content}], embeddingModelId}` allow-listed
+ * only `docs` and `embeddingModelId`, and every element serialized as `{}`.
+ *
+ * The consequence was that content changes were invisible to every checksum in the system.
+ * Rewriting all 52 documentation pages produced a byte-identical checksum, the docs seeder
+ * reported "unchanged", and the Help Assistant kept answering from the superseded text. Only a
+ * change in the *number* of documents could trigger a re-ingest.
+ */
+function stableStringify(value: unknown): string {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    const entries = Object.keys(value as Record<string, unknown>)
+        .sort()
+        .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`);
+    return `{${entries.join(',')}}`;
+}
+
 export function calculateChecksum(data: unknown): string {
-    const jsonString = JSON.stringify(data, Object.keys(data as object).sort());
-    return crypto.createHash('sha256').update(jsonString).digest('hex');
+    return crypto.createHash('sha256').update(stableStringify(data)).digest('hex');
 }
 
 // ============================================================================

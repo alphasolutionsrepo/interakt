@@ -11,11 +11,18 @@ sidebar_position: 8
 - An [AI/chat experience](create-a-chat-experience) created.
 - A clear idea of what's on-topic for this chat.
 
-## 1. Open the guardrails card
+## 1. Open the guardrails section
 
-Sidebar → **Experiences** → open your AI experience → expand the **Guardrails** card.
+Sidebar → **Experiences** → open your AI experience → **Edit** → **3. Guardrails**.
 
-You'll see two sections — **Input guardrails** and **Output guardrails** — each with its own enable toggle.
+You'll see a lock — **Lock these rules on** — followed by two sections, **Incoming messages**
+and **Outgoing replies**, each with its own enable toggle.
+
+Everything in this section saves as you change it. There is no need to press **Save Changes** at
+the bottom of the page.
+
+If a side shows an **Enforced** badge and a disabled toggle, the lock is on: the rules run
+regardless. Turn the lock off first if you genuinely want to disable that side.
 
 ## 2. Configure input guardrails
 
@@ -103,7 +110,7 @@ If you're building an internal documentation chatbot (an "ask anything about our
 
 - **Threshold too strict.** Default 0.6 is a starting point — most chats should sit between 0.5 and 0.7. Cranking to 0.9 blocks half of legitimate queries.
 - **Generated terms list is stale.** If you change keywords without clicking Generate, the chat uses the old expansion. The status badge says "Stale" — fix by clicking Generate.
-- **No friendly message set.** Defaults to a generic "I can't help with that." Always customise.
+- **No friendly message set.** Defaults to a generic "I can't help with that." Always customize.
 - **Forgetting output guardrails.** Input clean doesn't mean output clean — the AI can hallucinate things you don't want said. Mirror critical filters on output.
 - **Blocklist for things topic-gate should catch.** "weather" doesn't need to be blocklisted in a fashion chat — topic-gating already rejects it. Use blocklist for *exact phrases* that need exact-match precision.
 

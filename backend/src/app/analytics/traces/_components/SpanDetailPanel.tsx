@@ -110,7 +110,9 @@ export function humanizeOpName(name: string): string {
   const labels: Record<string, string> = {
     'chat.ai_experience.turn': 'AI Experience Turn',
     'chat.search_experience.turn': 'Search Experience Turn',
-    'chat.deterministic.turn': 'Deterministic Pipeline Turn',
+    // Span name kept for continuity with existing traces; the label follows the current
+    // vocabulary. 'deterministic' is the stored pipelineMode, shown as the Standard budget.
+    'chat.deterministic.turn': 'Chat Pipeline Turn',
     'ai.chat': 'AI Chat',
     'ai.stream_chat': 'AI Chat (Streaming)',
     'ai.generate_text': 'AI Text Generation',

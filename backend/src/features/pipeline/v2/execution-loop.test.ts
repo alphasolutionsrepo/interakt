@@ -90,6 +90,7 @@ function makeTurnContext(overrides: Partial<TurnContext> = {}): TurnContext {
     businessDomain: null,
     providerId: null,
     modelId: null,
+    dataContext: null,
     ...overrides,
   };
 }
@@ -132,7 +133,7 @@ function makeInput(
   return {
     plan,
     turnContext: turnContext ?? makeTurnContext(),
-    config: { executionBatchSize: 3, maxRetriesPerAction: 1 },
+    config: { executionBatchSize: 3, maxRetriesPerAction: 1, turnRequestId: 'test-turn-req' },
     emit: vi.fn(),
     ...overrides,
   };
@@ -247,7 +248,7 @@ describe('D2: Execution Loop', () => {
         makeAction('product-search', { intent: 'action 4' }),
       ]);
       const input = makeInput(plan, undefined, {
-        config: { executionBatchSize: 2, maxRetriesPerAction: 1 },
+        config: { executionBatchSize: 2, maxRetriesPerAction: 1, turnRequestId: 'test-turn-req' },
       });
 
       const result = await executeLoop(input, makeDeps());

@@ -74,7 +74,7 @@ export function Step3_AiSettings({ data, onChange, errors }: Step3Props) {
         ) : (
           <p className="text-xs text-muted-foreground">
             Describes to the AI when and how to call this tool. Be specific — this directly influences
-            tool selection in agentic mode (10–2,000 characters).
+            tool selection when the assistant plans a turn (10–2,000 characters).
           </p>
         )}
       </div>

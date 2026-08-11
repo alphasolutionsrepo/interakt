@@ -32,6 +32,7 @@ import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { toast } from 'sonner';
 import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../_components/DataSourceTypeChip';
 import { HealthStatusChip } from '../../_components/HealthStatusChip';
+import { SchemaFieldsEditor } from '../../_components/SchemaFieldsEditor';
 import { useDataSource } from '../../_lib/hooks/useDataSources';
 import { useHealthCheck } from '../../_lib/hooks/useHealthCheck';
 import { toolsApi } from '@/app/tools/_lib/api-client';
@@ -99,62 +100,6 @@ function ConfigDisplay({ type, config }: { type: string; config: Record<string, 
 // ============================================================================
 // SCHEMA DISPLAY
 // ============================================================================
-
-function SchemaDisplay({ schema }: { schema: Record<string, unknown> | null }) {
-  if (!schema) {
-    return (
-      <p className="text-sm text-muted-foreground py-4">
-        No field schema configured. Schema will be auto-discovered when connected.
-      </p>
-    );
-  }
-
-  const fields = (schema.fields as Array<Record<string, unknown>>) || [];
-  if (fields.length === 0) {
-    return <p className="text-sm text-muted-foreground py-4">No fields defined.</p>;
-  }
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-border/50">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border/50 bg-muted/30">
-            {['Field', 'Type', 'Role', 'Searchable', 'Filterable', 'Retrievable'].map((h) => (
-              <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold tracking-widest text-muted-foreground uppercase">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border/50">
-          {fields.map((f, i) => (
-            <tr key={i}>
-              <td className="px-4 py-2.5">
-                <div>
-                  <p className="font-medium font-mono text-xs">{f.name as string}</p>
-                  {f.displayName && f.displayName !== f.name && (
-                    <p className="text-xs text-muted-foreground">{f.displayName as string}</p>
-                  )}
-                </div>
-              </td>
-              <td className="px-4 py-2.5">
-                <Badge variant="outline" className="rounded text-[10px] font-mono">{f.type as string}</Badge>
-              </td>
-              <td className="px-4 py-2.5">
-                {f.role ? (
-                  <Badge className="bg-primary/10 text-primary border-primary/20 rounded text-[10px]">{f.role as string}</Badge>
-                ) : (
-                  <span className="text-muted-foreground text-xs">-</span>
-                )}
-              </td>
-              <td className="px-4 py-2.5 text-xs">{f.isSearchable ? '✓' : '-'}</td>
-              <td className="px-4 py-2.5 text-xs">{f.isFilterable ? '✓' : '-'}</td>
-              <td className="px-4 py-2.5 text-xs">{f.isRetrievable !== false ? '✓' : '-'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 // ============================================================================
 // PAGE
@@ -382,7 +327,15 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
         </button>
         {schemaOpen && (
           <CardContent>
-            <SchemaDisplay schema={dataSource.schema} />
+            <SchemaFieldsEditor
+              schema={dataSource.schema}
+              isSaving={isUpdating}
+              onSave={async (fields) => {
+                await updateDataSource({
+                  schema: { ...(dataSource.schema as Record<string, unknown>), fields },
+                });
+              }}
+            />
           </CardContent>
         )}
       </Card>

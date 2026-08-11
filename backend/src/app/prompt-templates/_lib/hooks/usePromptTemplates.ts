@@ -3,7 +3,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { promptTemplatesApi, ApiError } from '../api-client';
-import type { ListTemplatesParams, CreateVersionPayload, RollbackPayload } from '../api-client';
+import type {
+  ListTemplatesParams,
+  CreateVersionPayload,
+  RollbackPayload,
+  SetExperienceOverridePayload,
+  PromptTemplateStep,
+} from '../api-client';
 
 // ============================================================================
 // QUERY KEYS
@@ -115,5 +121,76 @@ export function usePromptTemplate(id: string | undefined) {
 
     rollback: rollbackMutation.mutateAsync,
     isRollingBack: rollbackMutation.isPending,
+  };
+}
+
+// ============================================================================
+// PER-EXPERIENCE OVERRIDES HOOK
+// ============================================================================
+
+export const experienceOverrideKeys = {
+  all: ['experience-prompt-overrides'] as const,
+  forExperience: (experienceId: string) => [...experienceOverrideKeys.all, experienceId] as const,
+};
+
+/**
+ * Read and change which template an experience uses for each pipeline step.
+ *
+ * The override API has existed since prompt templates shipped, with nothing in the UI
+ * calling it — assigning an override meant a hand-written SQL statement, which is not
+ * something an operator can be asked to do.
+ *
+ * Mutations invalidate the template caches as well as the overrides: the resolver caches
+ * per (step, experienceId), so a stale list would keep showing the previous assignment
+ * after a successful save.
+ */
+export function useExperienceOverrides(experienceId: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: experienceOverrideKeys.forExperience(experienceId),
+    queryFn: () => promptTemplatesApi.getExperienceOverrides(experienceId),
+    enabled: !!experienceId,
+  });
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: experienceOverrideKeys.forExperience(experienceId) });
+    queryClient.invalidateQueries({ queryKey: promptTemplateKeys.lists() });
+  }
+
+  const setOverrideMutation = useMutation({
+    mutationFn: (data: SetExperienceOverridePayload) =>
+      promptTemplatesApi.setExperienceOverride(experienceId, data),
+    onSuccess: () => {
+      invalidate();
+      toast.success('Prompt override assigned');
+    },
+    onError: (error: ApiError) => {
+      toast.error(error.message || 'Failed to assign override');
+    },
+  });
+
+  const removeOverrideMutation = useMutation({
+    mutationFn: (step: PromptTemplateStep) =>
+      promptTemplatesApi.removeExperienceOverride(experienceId, step),
+    onSuccess: () => {
+      invalidate();
+      toast.success('Reverted to the system default');
+    },
+    onError: (error: ApiError) => {
+      toast.error(error.message || 'Failed to remove override');
+    },
+  });
+
+  return {
+    overrides: query.data ?? [],
+    isLoading: query.isLoading,
+    isError: query.isError,
+
+    setOverride: setOverrideMutation.mutateAsync,
+    isSettingOverride: setOverrideMutation.isPending,
+
+    removeOverride: removeOverrideMutation.mutateAsync,
+    isRemovingOverride: removeOverrideMutation.isPending,
   };
 }

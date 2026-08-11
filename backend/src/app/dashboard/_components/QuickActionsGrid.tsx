@@ -174,7 +174,7 @@ export function QuickActionsGrid({ counts }: QuickActionsGridProps) {
     {
       title: 'AI Experiences',
       description:
-        'Create conversational AI experiences with tool use, guardrails, and deterministic pipelines.',
+        'Create conversational AI experiences with tool use, guardrails, and governed execution policies.',
       icon: Bot,
       href: '/experiences?type=ai',
       count: counts.aiExperiences.active,

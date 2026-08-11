@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
 import {
   Plus,
   Trash2,
@@ -15,11 +13,23 @@ import {
   CircleCheck,
   ExternalLink,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
+import Link from 'next/link';
+import { useState } from 'react';
+
+import { McpStatusChip } from '@/app/mcp-connections/_components/McpStatusChip';
+import type { McpConnection, AttachmentDTO } from '@/app/mcp-connections/_lib/api-client';
+import {
+  useExperienceMcpAttachments,
+  useMcpConnections,
+} from '@/app/mcp-connections/_lib/hooks/useMcpConnections';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from '@/components/ui/collapsible';
 import {
   Dialog,
   DialogContent,
@@ -27,17 +37,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from '@/components/ui/collapsible';
-import {
-  useExperienceMcpAttachments,
-  useMcpConnections,
-} from '@/app/mcp-connections/_lib/hooks/useMcpConnections';
-import { McpStatusChip } from '@/app/mcp-connections/_components/McpStatusChip';
-import type { McpConnection, AttachmentDTO } from '@/app/mcp-connections/_lib/api-client';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 
 interface McpAttachmentPanelProps {
   experienceId: string;

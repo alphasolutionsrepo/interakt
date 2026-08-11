@@ -29,6 +29,7 @@ import type {
 import { EMPTY_PARAMETER_CONTEXT } from './parameter-context.types';
 import type { ChatFn } from './turn-planner';
 import { buildStepChain, getToolTypeKey, runActionStepChain } from './action-steps';
+import { withToolAnalytics } from './tool-analytics';
 import type { ActionStepContext, ActionStepChainConfig } from './action-steps';
 
 const logger = createLogger('v2:execution-loop');
@@ -69,6 +70,15 @@ export async function executeLoop(
   const startTime = Date.now();
   const { plan, turnContext, config, emit } = input;
   const { executionBatchSize, maxRetriesPerAction } = config;
+
+  // Record every tool execution for analytics. Wrapping the executor rather than
+  // calling the tracker from a step means ZeroResultRetryStep's re-executions are
+  // captured too — they are real tool calls, and a reliability view that omitted
+  // them would understate both volume and latency.
+  const trackedDeps: ExecutionLoopDeps = {
+    ...deps,
+    executeTool: withToolAnalytics(deps.executeTool, turnContext, config.turnRequestId),
+  };
 
   const executedActions: ActionResult[] = [];
   const actionsToExecute = plan.actions.slice(0, executionBatchSize);
@@ -148,22 +158,37 @@ export async function executeLoop(
       const chainResult = await runActionStepChain(
         chain,
         initialCtx,
-        { chat: deps.chat, executeTool: deps.executeTool, emit, config: chainConfig },
+        { chat: trackedDeps.chat, executeTool: trackedDeps.executeTool, emit, config: chainConfig },
         turnContext.experienceId,
       );
 
       const { finalContext } = chainResult;
 
-      // Build ActionResult from final context
+      // Build ActionResult from final context.
+      //
+      // `finalParams` is what actually ran; it differs from the requested params
+      // only when ZeroResultRetryStep widened the request to salvage results.
+      const requestedParams = finalContext.validatedParams ?? finalContext.extractedParams ?? {};
+      const usedParams = finalContext.finalParams ?? requestedParams;
+      // Filter relaxation is reported by the retry step itself as `finalContext.relaxation`,
+      // which names the constraints it abandoned. A tool can also relax something with no
+      // filter to name — the knowledge base widening its relevance cutoff when a strict pass
+      // finds nothing — and that is invisible both to the retry step and to a parameter diff.
+      // Carry the tool's own report so the answer does not present a loose match as a direct hit.
+      const toolReportedRelaxation =
+        (finalContext.toolResult?.data as { constraintsRelaxed?: boolean } | null | undefined)
+          ?.constraintsRelaxed === true;
+
       const actionResult: ActionResult = {
         toolSlug: action.toolSlug,
         toolId,
         toolName: turnContext.toolSlugToName[action.toolSlug] ?? action.toolSlug,
         intent: action.intent,
-        parameters: finalContext.finalParams ?? finalContext.validatedParams ?? finalContext.extractedParams ?? {},
+        parameters: usedParams,
         result: finalContext.toolResult ?? { success: false, data: null, error: 'No tool result' },
         durationMs: Date.now() - actionStart,
         ...(finalContext.relaxation && { relaxation: finalContext.relaxation }),
+        ...(toolReportedRelaxation ? { constraintsRelaxed: true } : {}),
       };
 
       executedActions.push(actionResult);
