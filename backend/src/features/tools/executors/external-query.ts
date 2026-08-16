@@ -9,7 +9,7 @@
  * `filters` or `sort`, so a planned filter was accepted, reported as a success, and had
  * no effect on the results.
  *
- * Operator semantics are NOT reimplemented here — Azure delegates to buildAzureFilter and
+ * Operator semantics are NOT reimplemented here — Azure delegates to buildAzureFilterParts and
  * Elasticsearch to buildOperatorQuery, the same builders the standalone search path uses.
  * What this module owns is the part those builders can't know about: resolving a field
  * against a *discovered* schema, and deciding what to do when the provider cannot express
@@ -20,7 +20,7 @@
  */
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
-import { buildAzureFilter } from '@/features/search/providers/azure-ai-search/query-builders/filter.builder';
+import { buildAzureFilterParts } from '@/features/search/providers/azure-ai-search/query-builders/filter.builder';
 import {
   buildOperatorQuery,
   type ESQuery,
@@ -165,22 +165,21 @@ function translateAzureFilters(
 
   if (usable.length === 0) return { unapplied };
 
-  const odata = buildAzureFilter(usable, fieldTypes);
+  // The parts form rather than buildAzureFilter: this executor reports what it
+  // couldn't apply and continues, where the strict wrapper throws. It also
+  // reports *partial* drops — previously only the all-dropped case was noticed,
+  // so a filter set that lost one clause silently returned a wider result set.
+  const { odata, dropped } = buildAzureFilterParts(usable, fieldTypes);
 
-  // buildAzureFilter drops clauses it cannot express (unknown operator, empty `in` list)
-  // and returns undefined when nothing survives. Report that rather than losing it.
-  if (!odata) {
-    for (const filter of usable) {
-      unapplied.push({
-        field: filter.field,
-        operator: filter.operator,
-        reason: 'operator cannot be expressed as an OData filter',
-      });
-    }
-    return { unapplied };
+  for (const clause of dropped) {
+    unapplied.push({
+      field: clause.field,
+      operator: clause.operator,
+      reason: clause.reason,
+    });
   }
 
-  return { odata, unapplied };
+  return odata ? { odata, unapplied } : { unapplied };
 }
 
 function translateAzureSort(sort: SortClause[], lookup: FieldLookup): TranslatedSort {

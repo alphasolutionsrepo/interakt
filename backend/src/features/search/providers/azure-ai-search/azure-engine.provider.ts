@@ -22,7 +22,7 @@ import {
 import { registerProviderClass } from '../search-engine-provider.factory';
 import { buildAzureFilter } from './query-builders/filter.builder';
 import type { ProviderCapabilities } from '../provider-capabilities';
-import type { FilterClause, SearchContext } from '../../search.types';
+import { SearchError, type FilterClause, type SearchContext } from '../../search.types';
 
 import type {
     SearchEngineProvider,
@@ -962,10 +962,17 @@ export class AzureEngineProvider implements SearchEngineProvider {
      */
     buildFilterExpression(filters: FilterClause[], context: SearchContext): unknown {
         // No filters would match every document — refuse rather than let a caller
-        // accidentally purge an entire index.
+        // accidentally purge an entire index. buildAzureFilter throws before this
+        // point if any clause was unexpressible, so the filter can't have been
+        // silently weakened on the way here.
         const filter = buildAzureFilter(filters, context.allFields);
         if (!filter) {
-            throw new Error('At least one filter clause is required');
+            // SearchError rather than Error so the API layer answers 400 with this
+            // message instead of an opaque 500.
+            throw new SearchError(
+                'At least one filter clause is required',
+                'INVALID_FILTER',
+            );
         }
         return filter;
     }
