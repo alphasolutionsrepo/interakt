@@ -134,8 +134,9 @@ export function storyToDocument(story) {
 }
 ```
 
-<!-- AUTHOR NOTE: replace `title`, `intro`, `body` with the real field
-     names from the Storyblok content type used in the running demo. -->
+> **Use your own field names.** `title`, `intro` and `body` above are placeholders for whatever
+> your Storyblok content type actually defines. Check a story in the Content Delivery API and map
+> the fields you have.
 
 ### 2.2 One-time backfill
 
@@ -190,8 +191,17 @@ async function ingest(documents) {
       body: JSON.stringify({ documents }),
     }
   );
+  // 30 requests/minute on this endpoint. A large space will hit that, so honour
+  // Retry-After rather than failing the backfill two thirds of the way through.
+  if (res.status === 429) {
+    const wait = Number(res.headers.get("Retry-After") ?? 60);
+    console.log(`Rate limited, waiting ${wait}s`);
+    await new Promise((r) => setTimeout(r, wait * 1000));
+    return ingest(documents);
+  }
   if (!res.ok) throw new Error(`Interakt ${res.status}: ${await res.text()}`);
-  return res.json(); // { success: true, data: { indexed, failed } }
+  // { success: true, data: { batchId, summary: { total, indexed, failed }, ... } }
+  return res.json();
 }
 
 async function main() {
@@ -200,13 +210,15 @@ async function main() {
 
   const documents = stories.map(storyToDocument);
 
-  // Ingest in batches to keep payloads reasonable.
-  const BATCH = 100;
+  // Ingest in batches. Larger batches mean fewer requests, and the rate limit
+  // counts requests rather than documents — 500 is comfortably inside the 10,000
+  // document and 10 MB per-request caps for typical stories.
+  const BATCH = 500;
   let indexed = 0, failed = 0;
   for (let i = 0; i < documents.length; i += BATCH) {
     const result = await ingest(documents.slice(i, i + BATCH));
-    indexed += result.data?.indexed ?? 0;
-    failed  += result.data?.failed  ?? 0;
+    indexed += result.data?.summary?.indexed ?? 0;
+    failed  += result.data?.summary?.failed  ?? 0;
   }
   console.log(`Done. indexed=${indexed} failed=${failed}`);
 }
@@ -255,7 +267,9 @@ function verifySignature(rawBody, signature) {
   if (!SB_SECRET) return true; // no secret configured
   // NOTE: Storyblok sends the signature in the `webhook-signature` header.
   const expected = crypto
-    .createHmac("sha1", SB_SECRET)   // <-- AUTHOR NOTE: confirm sha1 vs sha256
+    // Storyblok signs webhooks with SHA-1. Confirm against their current webhook
+    // documentation before relying on this — a mismatch rejects every delivery.
+    .createHmac("sha1", SB_SECRET)
     .update(rawBody)
     .digest("hex");
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature || ""));
@@ -319,15 +333,26 @@ When an editor unpublishes or deletes a story, remove the matching document. Int
 
 The ingestion key needs the `delete` operation for this; if you only granted `write` in step 1.2, add it (or create a second key) before wiring this up.
 
+Use the **bulk** endpoint rather than `DELETE /documents/:id`. Webhooks get replayed, and a bulk
+`delete` succeeds whether or not the document is still there, whereas the single-document `DELETE`
+returns `404` for one that has already gone — which would turn a harmless retry into a failing
+handler.
+
 ```js
-// Deleting is idempotent: removing a document that isn't there still
+// A bulk delete is idempotent: removing a document that isn't there still
 // reports success, so a replayed webhook is harmless.
 async function removeDocument(documentId) {
   const res = await fetch(
-    `${INTERAKT_URL}/api/search-indexes/${INDEX_ID}/documents/${documentId}`,
+    `${INTERAKT_URL}/api/search-indexes/${INDEX_ID}/documents/bulk`,
     {
-      method: "DELETE",
-      headers: { "Authorization": `Bearer ${INGEST_KEY}` },
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${INGEST_KEY}`,
+      },
+      body: JSON.stringify({
+        operations: [{ action: "delete", documentId }],
+      }),
     }
   );
   if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
@@ -340,9 +365,10 @@ await removeDocument(payload.story_id_uuid);
 
 The id you delete by must be the id you indexed with — the story's `uuid`, set in `storyToDocument()`. Note that a deleted story can no longer be fetched from the Content Delivery API, so the uuid has to come from the webhook payload itself.
 
-<!-- AUTHOR NOTE: confirm the exact payload field carrying the story UUID
-     against a real Storyblok webhook (the payload comment above lists
-     story_id, which is the numeric id, not the uuid). -->
+> **Check which field carries the UUID.** Storyblok's webhook payload includes `story_id`, which is
+> the *numeric* id — not the `uuid` used as the document id here. Log a real delete webhook once and
+> confirm which field you need before wiring this up; deleting by the wrong id silently removes
+> nothing.
 
 
 **If you'd rather keep the content and hide it**, the alternative is a status field — add `status: "published"` in `storyToDocument()`, write `status: "unpublished"` on those events, and configure the Search Experience to only return documents where `status = "published"`. That preserves history at the cost of carrying unpublished content in the index. Prefer a real delete unless you specifically need that.
@@ -379,9 +405,9 @@ The snippet you paste into your page looks roughly like this:
 ></script>
 ```
 
-<!-- AUTHOR NOTE: paste the EXACT snippet returned by /embed-snippet here —
-     the script URL and data-* attribute names should match the real widget,
-     not this placeholder. Add the chat widget snippet alongside it. -->
+> **Copy the snippet from your own install.** The markup above is illustrative — script URL and
+> `data-*` attribute names come from your deployment. Use the snippet shown in the experience's
+> **Embed** section, or returned by the embed-snippet endpoint above, rather than retyping this one.
 
 ### Where to put it in a Storyblok-powered site
 
