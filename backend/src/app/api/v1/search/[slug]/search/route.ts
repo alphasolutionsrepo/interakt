@@ -15,7 +15,13 @@ import { createLogger } from '@/shared/logger/logger';
 import { auth } from '@/features/auth/auth.api.handlers';
 import { flushTelemetry } from '@/features/telemetry';
 import * as searchService from '@/features/search/search.service';
-import type { SearchRequest, SearchResponse, FacetResult, FacetType } from '@/features/search/search.types';
+import type {
+  SearchRequest,
+  SearchResponse,
+  FacetResult,
+  FacetType,
+  SearchErrorCode,
+} from '@/features/search/search.types';
 import { SearchError } from '@/features/search/search.types';
 import * as repository from '@/features/search-experience/search-experience.repository';
 import { publicSearchRequestSchema } from '@/features/search-experience/search-experience.schemas';
@@ -439,10 +445,22 @@ function handleSearchError(error: unknown, slug: string): NextResponse {
   }
 
   if (error instanceof SearchError) {
-    const statusMap: Record<string, number> = {
+    // Typed as Record<SearchErrorCode, …> on purpose: this is the customer-facing
+    // route, and an unmapped code falls through to 500 — so a bad filter, facet or
+    // field name read as "search is down" rather than "your request was invalid".
+    // The exhaustive type means adding a code to the union without deciding its
+    // status here is a compile error instead of a silent 500 in production.
+    const statusMap: Record<SearchErrorCode, number> = {
       INDEX_NOT_FOUND: 404,
       INDEX_NOT_READY: 503,
       INVALID_QUERY: 400,
+      INVALID_FILTER: 400,
+      INVALID_FACET: 400,
+      INVALID_SORT: 400,
+      FIELD_NOT_FOUND: 400,
+      FIELD_NOT_SEARCHABLE: 400,
+      FIELD_NOT_FACETABLE: 400,
+      EMBEDDING_FAILED: 503,
       PROVIDER_ERROR: 503,
       TIMEOUT: 504,
     };
