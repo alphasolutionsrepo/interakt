@@ -8,43 +8,117 @@
  *
  * For Collection fields (e.g., Collection(Edm.String)), Azure requires lambda
  * expressions: `tags/any(t: t eq 'value')` instead of `tags eq 'value'`.
+ *
+ * ## Dropped clauses must never be silent
+ *
+ * A clause this builder cannot express used to be discarded, leaving the
+ * remaining clauses to run on their own. That is safe-looking and badly wrong: a
+ * filter set is a conjunction, so removing a term **widens** it. On a delete
+ * path it is destructive — `locale eq 'en' AND uniqueId nin [...]` collapsed to
+ * `locale eq 'en'`, turning "delete everything except what I just wrote" into
+ * "delete everything", and it emptied a production index exactly that way.
+ *
+ * So translation and policy are separated:
+ *
+ *   - `buildAzureFilterParts` translates and **reports** what it could not
+ *     express. Nothing is lost, nothing throws.
+ *   - `buildAzureFilter` is the strict wrapper and **throws** if anything was
+ *     dropped. Search and delete paths use this, so an unsupported clause is a
+ *     loud 400 rather than a quietly different result set.
+ *
+ * Callers that legitimately want to continue without a clause (the LLM tool
+ * executor, which surfaces them as "unapplied") use the parts form and report
+ * every entry.
  */
 
 import 'server-only';
 
-import type { FilterClause, FieldConfig } from '../../../search.types';
+import { SearchError, type FilterClause, type FieldConfig } from '../../../search.types';
 
 /** Field type lookup — maps field name to its type (e.g., 'array', 'text', 'keyword') */
 export type FieldTypeLookup = Map<string, FieldConfig> | Map<string, { fieldType: string }>;
 
+/** A clause that could not be expressed as OData, and why. */
+export type DroppedClause = {
+    field: string;
+    operator: FilterClause['operator'];
+    reason: string;
+};
+
+export type AzureFilterParts = {
+    /** Undefined when no clause survived. */
+    odata?: string;
+    dropped: DroppedClause[];
+};
+
 /**
- * Build an OData $filter string from search filters.
+ * Translate filters to OData, reporting anything that could not be expressed.
+ *
+ * Never throws — the caller decides whether a dropped clause is acceptable.
+ */
+export function buildAzureFilterParts(
+    filters: FilterClause[],
+    fieldTypes?: FieldTypeLookup,
+): AzureFilterParts {
+    if (!filters || filters.length === 0) return { dropped: [] };
+
+    const clauses: string[] = [];
+    const dropped: DroppedClause[] = [];
+
+    for (const filter of filters) {
+        const result = buildFilterClause(filter, fieldTypes);
+        if (typeof result === 'string') {
+            clauses.push(result);
+        } else {
+            dropped.push({ field: filter.field, operator: filter.operator, reason: result.reason });
+        }
+    }
+
+    return { odata: clauses.length > 0 ? clauses.join(' and ') : undefined, dropped };
+}
+
+/**
+ * Build an OData $filter string, refusing to weaken the filter set.
  *
  * @param filters - Array of filter clauses
  * @param fieldTypes - Optional field type lookup for Collection-aware filtering.
  *   When provided, array-typed fields use lambda expressions (any/all).
+ * @throws SearchError if any clause cannot be expressed as OData.
  */
 export function buildAzureFilter(
     filters: FilterClause[],
     fieldTypes?: FieldTypeLookup,
 ): string | undefined {
-    if (!filters || filters.length === 0) return undefined;
+    const { odata, dropped } = buildAzureFilterParts(filters, fieldTypes);
 
-    const clauses = filters
-        .map(filter => buildFilterClause(filter, fieldTypes))
-        .filter(Boolean);
+    if (dropped.length > 0) {
+        const detail = dropped.map(d => `${d.field} ${d.operator} (${d.reason})`).join('; ');
+        throw new SearchError(
+            `Filter cannot be expressed for Azure AI Search: ${detail}`,
+            'INVALID_FILTER',
+            { dropped },
+        );
+    }
 
-    if (clauses.length === 0) return undefined;
-    return clauses.join(' and ');
+    return odata;
 }
 
-function buildFilterClause(filter: FilterClause, fieldTypes?: FieldTypeLookup): string | null {
+/** Why a clause was dropped. Distinguishable from a built clause by not being a string. */
+type ClauseDrop = { reason: string };
+
+const drop = (reason: string): ClauseDrop => ({ reason });
+
+function buildFilterClause(
+    filter: FilterClause,
+    fieldTypes?: FieldTypeLookup,
+): string | ClauseDrop {
     const { field, operator, value } = filter;
 
-    if (value === undefined || value === null) return null;
+    if (value === undefined || value === null) return drop('value is null or undefined');
 
     const fieldType = getFieldType(field, fieldTypes);
     const isCollection = fieldType === 'array';
+    const notCoercible = `value is not coercible to field type "${fieldType ?? 'unknown'}"`;
 
     switch (operator) {
         case 'eq': {
@@ -53,7 +127,7 @@ function buildFilterClause(filter: FilterClause, fieldTypes?: FieldTypeLookup): 
                 return `${field}/any(t: t eq ${formatCollectionElement(value)})`;
             }
             const operand = formatOperand(value, fieldType);
-            return operand === null ? null : `${field} eq ${operand}`;
+            return operand === null ? drop(notCoercible) : `${field} eq ${operand}`;
         }
 
         case 'neq': {
@@ -62,41 +136,58 @@ function buildFilterClause(filter: FilterClause, fieldTypes?: FieldTypeLookup): 
                 return `${field}/all(t: t ne ${formatCollectionElement(value)})`;
             }
             const operand = formatOperand(value, fieldType);
-            return operand === null ? null : `${field} ne ${operand}`;
+            return operand === null ? drop(notCoercible) : `${field} ne ${operand}`;
         }
 
         case 'gt': {
             const operand = formatOperand(value, fieldType);
-            return operand === null ? null : `${field} gt ${operand}`;
+            return operand === null ? drop(notCoercible) : `${field} gt ${operand}`;
         }
 
         case 'gte': {
             const operand = formatOperand(value, fieldType);
-            return operand === null ? null : `${field} ge ${operand}`;
+            return operand === null ? drop(notCoercible) : `${field} ge ${operand}`;
         }
 
         case 'lt': {
             const operand = formatOperand(value, fieldType);
-            return operand === null ? null : `${field} lt ${operand}`;
+            return operand === null ? drop(notCoercible) : `${field} lt ${operand}`;
         }
 
         case 'lte': {
             const operand = formatOperand(value, fieldType);
-            return operand === null ? null : `${field} le ${operand}`;
+            return operand === null ? drop(notCoercible) : `${field} le ${operand}`;
         }
 
         case 'in': {
-            if (!Array.isArray(value) || value.length === 0) return null;
+            if (!Array.isArray(value) || value.length === 0) {
+                return drop('IN requires a non-empty array');
+            }
             if (isCollection) {
                 // Any item in the collection matches any of the given values
                 const conditions = value.map(v => `t eq ${formatCollectionElement(v)}`);
                 return `${field}/any(t: ${conditions.join(' or ')})`;
             }
-            const conditions = value
-                .map(v => formatOperand(v, fieldType))
-                .filter((o): o is string => o !== null)
-                .map(o => `${field} eq ${o}`);
-            return conditions.length > 0 ? `(${conditions.join(' or ')})` : null;
+            const operands = coerceAll(value, fieldType);
+            if (!Array.isArray(operands)) return operands;
+            return `(${operands.map(o => `${field} eq ${o}`).join(' or ')})`;
+        }
+
+        // The inverse of `in`, and the inversion is the whole operator: `in` is a
+        // disjunction of `eq` (any/or), `nin` a conjunction of `ne` (all/and).
+        // Getting that backwards yields a filter that quietly matches too much.
+        case 'nin': {
+            if (!Array.isArray(value) || value.length === 0) {
+                return drop('NIN requires a non-empty array');
+            }
+            if (isCollection) {
+                // No item in the collection matches any of the given values
+                const conditions = value.map(v => `t ne ${formatCollectionElement(v)}`);
+                return `${field}/all(t: ${conditions.join(' and ')})`;
+            }
+            const operands = coerceAll(value, fieldType);
+            if (!Array.isArray(operands)) return operands;
+            return `(${operands.map(o => `${field} ne ${o}`).join(' and ')})`;
         }
 
         case 'exists':
@@ -120,11 +211,11 @@ function buildFilterClause(filter: FilterClause, fieldTypes?: FieldTypeLookup): 
             push('gt', range.gt);
             push('le', range.lte);
             push('lt', range.lt);
-            return parts.length > 0 ? parts.join(' and ') : null;
+            return parts.length > 0 ? parts.join(' and ') : drop('range has no usable bounds');
         }
 
         default:
-            return null;
+            return drop(`operator "${operator}" is not supported by Azure AI Search`);
     }
 }
 
@@ -140,6 +231,42 @@ function getFieldType(field: string, fieldTypes?: FieldTypeLookup): string | und
  * "1275" (quote it), while a number field receives "1100" (emit a bare literal).
  * Returns null when the value can't be coerced to the field's type (clause skipped).
  */
+/**
+ * Coerce every element of an `in`/`nin` list, or report the ones that could not be.
+ *
+ * Emitting the operands that happened to coerce is not a safe fallback. For `nin`
+ * a missing element drops an exclusion and **widens** the filter — the same
+ * failure this module exists to prevent, one level further down, and invisible to
+ * the strict wrapper because the clause itself builds fine. For `in` it narrows
+ * instead. Either direction answers a question the caller did not ask, so the
+ * whole clause is refused and the offending values are named.
+ *
+ * @returns the operands, or a ClauseDrop when any element failed to coerce
+ */
+function coerceAll(values: unknown[], fieldType?: string): string[] | ClauseDrop {
+    const operands: string[] = [];
+    const failed: unknown[] = [];
+
+    for (const v of values) {
+        const operand = formatOperand(v, fieldType);
+        if (operand === null) {
+            failed.push(v);
+        } else {
+            operands.push(operand);
+        }
+    }
+
+    if (failed.length > 0) {
+        const named = failed.map(v => JSON.stringify(v)).join(', ');
+        return drop(
+            `${failed.length} of ${values.length} values not coercible to field type `
+            + `"${fieldType ?? 'unknown'}": ${named}`,
+        );
+    }
+
+    return operands;
+}
+
 function formatOperand(value: unknown, fieldType?: string): string | null {
     switch (fieldType) {
         case 'number': {
