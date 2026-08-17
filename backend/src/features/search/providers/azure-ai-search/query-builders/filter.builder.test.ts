@@ -129,11 +129,17 @@ describe('partial coercion inside in/nin', () => {
     // to coerce used to be filtered out of the list, so the clause built fine and
     // the strict wrapper had nothing to catch. For `nin` that removes an
     // exclusion and widens the filter.
-    const mixed = [10, 'unknown', 30];
+    //
+    // All-string arrays on purpose. filterValueSchema accepts z.array(z.string())
+    // without regard to the field's declared type, so a UI-built filter list sends
+    // strings for a numeric field and one junk or blank entry is enough. A mixed
+    // array like [10, 'unknown', 30] is rejected by that schema, so it cannot
+    // reach the builder through any validated path and would test nothing real.
+    const partlyJunk = ['10', 'unknown', '30'];
 
     it('refuses a nin whose list has an uncoercible value, rather than excluding fewer', () => {
         const { odata, dropped } = buildAzureFilterParts(
-            [{ field: 'price', operator: 'nin', value: mixed } as FilterClause],
+            [{ field: 'price', operator: 'nin', value: partlyJunk } as FilterClause],
             scalars,
         );
         expect(odata).toBeUndefined();
@@ -143,15 +149,15 @@ describe('partial coercion inside in/nin', () => {
 
     it('never emits a nin that silently excludes only the coercible values', () => {
         const { odata } = buildAzureFilterParts(
-            [{ field: 'price', operator: 'nin', value: mixed } as FilterClause],
+            [{ field: 'price', operator: 'nin', value: partlyJunk } as FilterClause],
             scalars,
         );
         expect(odata ?? '').not.toContain('price ne 10');
     });
 
-    it('refuses a mixed in list too, which would otherwise narrow silently', () => {
+    it('refuses an in list with a junk value too, which would otherwise narrow silently', () => {
         const { odata, dropped } = buildAzureFilterParts(
-            [{ field: 'price', operator: 'in', value: mixed } as FilterClause],
+            [{ field: 'price', operator: 'in', value: partlyJunk } as FilterClause],
             scalars,
         );
         expect(odata).toBeUndefined();
@@ -160,13 +166,13 @@ describe('partial coercion inside in/nin', () => {
 
     it('throws from the strict wrapper, so a delete path cannot proceed', () => {
         expect(() =>
-            buildAzureFilter([{ field: 'price', operator: 'nin', value: mixed } as FilterClause], scalars),
+            buildAzureFilter([{ field: 'price', operator: 'nin', value: partlyJunk } as FilterClause], scalars),
         ).toThrow(SearchError);
     });
 
     it('names how many values failed and which', () => {
         const { dropped } = buildAzureFilterParts(
-            [{ field: 'price', operator: 'nin', value: [1, 'a', 'b'] } as FilterClause],
+            [{ field: 'price', operator: 'nin', value: ['1', 'a', 'b'] } as FilterClause],
             scalars,
         );
         expect(dropped[0].reason).toContain('2 of 3');
@@ -176,15 +182,26 @@ describe('partial coercion inside in/nin', () => {
 
     it('still builds when every value coerces', () => {
         const odata = buildAzureFilter(
-            [{ field: 'price', operator: 'nin', value: [10, '30'] } as FilterClause],
+            [{ field: 'price', operator: 'nin', value: ['10', '30'] } as FilterClause],
             scalars,
         );
         expect(odata).toBe('(price ne 10 and price ne 30)');
     });
 
+    it('refuses a boolean nin with a junk value', () => {
+        // The reviewer's second reachable case: ['true','unknown'] on a boolean
+        // field used to emit `inStock ne true` alone.
+        const { odata, dropped } = buildAzureFilterParts(
+            [{ field: 'inStock', operator: 'nin', value: ['true', 'unknown'] } as FilterClause],
+            types({ inStock: 'boolean' }),
+        );
+        expect(odata).toBeUndefined();
+        expect(dropped[0].reason).toContain('"unknown"');
+    });
+
     it('leaves collection fields alone — their elements always coerce', () => {
         const odata = buildAzureFilter(
-            [{ field: 'keywords', operator: 'nin', value: ['a', 10] } as FilterClause],
+            [{ field: 'keywords', operator: 'nin', value: ['a', '10'] } as FilterClause],
             collections,
         );
         expect(odata).toBe("keywords/all(t: t ne 'a' and t ne '10')");
