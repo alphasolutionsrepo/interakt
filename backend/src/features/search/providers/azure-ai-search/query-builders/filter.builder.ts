@@ -168,11 +168,9 @@ function buildFilterClause(
                 const conditions = value.map(v => `t eq ${formatCollectionElement(v)}`);
                 return `${field}/any(t: ${conditions.join(' or ')})`;
             }
-            const conditions = value
-                .map(v => formatOperand(v, fieldType))
-                .filter((o): o is string => o !== null)
-                .map(o => `${field} eq ${o}`);
-            return conditions.length > 0 ? `(${conditions.join(' or ')})` : drop(notCoercible);
+            const operands = coerceAll(value, fieldType);
+            if (!Array.isArray(operands)) return operands;
+            return `(${operands.map(o => `${field} eq ${o}`).join(' or ')})`;
         }
 
         // The inverse of `in`, and the inversion is the whole operator: `in` is a
@@ -187,11 +185,9 @@ function buildFilterClause(
                 const conditions = value.map(v => `t ne ${formatCollectionElement(v)}`);
                 return `${field}/all(t: ${conditions.join(' and ')})`;
             }
-            const conditions = value
-                .map(v => formatOperand(v, fieldType))
-                .filter((o): o is string => o !== null)
-                .map(o => `${field} ne ${o}`);
-            return conditions.length > 0 ? `(${conditions.join(' and ')})` : drop(notCoercible);
+            const operands = coerceAll(value, fieldType);
+            if (!Array.isArray(operands)) return operands;
+            return `(${operands.map(o => `${field} ne ${o}`).join(' and ')})`;
         }
 
         case 'exists':
@@ -235,6 +231,42 @@ function getFieldType(field: string, fieldTypes?: FieldTypeLookup): string | und
  * "1275" (quote it), while a number field receives "1100" (emit a bare literal).
  * Returns null when the value can't be coerced to the field's type (clause skipped).
  */
+/**
+ * Coerce every element of an `in`/`nin` list, or report the ones that could not be.
+ *
+ * Emitting the operands that happened to coerce is not a safe fallback. For `nin`
+ * a missing element drops an exclusion and **widens** the filter — the same
+ * failure this module exists to prevent, one level further down, and invisible to
+ * the strict wrapper because the clause itself builds fine. For `in` it narrows
+ * instead. Either direction answers a question the caller did not ask, so the
+ * whole clause is refused and the offending values are named.
+ *
+ * @returns the operands, or a ClauseDrop when any element failed to coerce
+ */
+function coerceAll(values: unknown[], fieldType?: string): string[] | ClauseDrop {
+    const operands: string[] = [];
+    const failed: unknown[] = [];
+
+    for (const v of values) {
+        const operand = formatOperand(v, fieldType);
+        if (operand === null) {
+            failed.push(v);
+        } else {
+            operands.push(operand);
+        }
+    }
+
+    if (failed.length > 0) {
+        const named = failed.map(v => JSON.stringify(v)).join(', ');
+        return drop(
+            `${failed.length} of ${values.length} values not coercible to field type `
+            + `"${fieldType ?? 'unknown'}": ${named}`,
+        );
+    }
+
+    return operands;
+}
+
 function formatOperand(value: unknown, fieldType?: string): string | null {
     switch (fieldType) {
         case 'number': {
