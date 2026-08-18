@@ -64,7 +64,7 @@ In the Interakt admin console, create a new **Search Index** for your Storyblok 
 
 ### 1.2 Create an ingestion key
 
-Writing documents uses an **ingestion key**, which is a different credential from the access tokens your widgets use. On the index page, open the **Ingestion Keys** card and create one, granting it the `write` operation (add `delete` too if you plan to remove documents — see [Part 4](#part-4--handle-unpublishes-and-deletes)).
+Writing documents uses an **ingestion key**, which is a different credential from the access tokens your widgets use. On the index page, open the **Ingestion Keys** card and create one, granting it the `write` operation (add `delete` too if you plan to remove documents — see [Handling unpublish & delete](#handling-unpublish--delete)).
 
 The key is shown **once, at creation time**, and only a hash of it is stored — so copy it straight into your server's environment. If you lose it, revoke that key and create another.
 

@@ -96,7 +96,7 @@ Can your users filter results by this field's values?
 
 When a field is facetable, search responses include a count of how many results have each value (the "facets" you see as filter chips in real search UIs: *Brands: Nike (24) / Adidas (18) / Puma (5)*).
 
-Facetable fields can also have **filter value mappings** configured — see [Filter value mappings](#filter-value-mappings) below.
+Facetable fields can also have **filter value mappings** configured — see [Filter value mappings](#section-3--filter-value-mappings-only-for-facetable-fields) below.
 
 **Changing this requires a [rebuild](rebuilding-an-index).**
 
