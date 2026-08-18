@@ -52,9 +52,15 @@ curl -X POST "$INTERAKT_URL/api/search-indexes/$INDEX_ID/documents" \
   -d '{"documents": [{"id": "PROD-001", "name": "Pacific runner sneaker"}]}'
 ```
 
-The same header works on every document endpoint — see [Loading data](../guides/bulk-load-data) for the full list.
+The same header works on every document endpoint — see the
+[Ingestion API reference](../guides/ingestion-api-reference) for the full list.
 
 Reading is always allowed for an index the key is scoped to, so a sync can verify its own writes without extra permissions.
+
+**Sending the header at all commits you to it.** If an `Authorization` header is present but the key
+is bad, the request fails with `401` rather than falling back to your logged-in session. That is what
+stops a broken deploy from appearing to work simply because you happened to be signed in while
+testing it.
 
 ## What happens when a key isn't allowed
 
@@ -64,6 +70,29 @@ Reading is always allowed for an index the key is scoped to, so a sync can verif
 | `403` | Valid key, but not permitted here — wrong index, or missing the operation |
 
 The messages are deliberately vague. These endpoints are internet-facing, and a precise error ("no such index") would let someone map your setup by guessing.
+
+## Scope and lifetime
+
+Two options beyond the defaults, both set at creation:
+
+- **More than one index.** A key is scoped to the index it was created on. Pass
+  `additionalSearchIndexIds` when creating it via the API to grant others — useful when one sync
+  feeds several indexes and you would otherwise juggle a key per index.
+- **An expiry date.** `expiresAt` makes a key stop working on its own. An expired key behaves
+  exactly like a revoked one (`401`). Worth setting for a contractor integration or a one-off
+  migration, so the credential does not outlive the work.
+
+Keys are also how **rate limiting** is counted: each key gets its own budget, so one noisy
+integration cannot exhaust another's. The limits are per endpoint and documented in the
+[API reference](../guides/ingestion-api-reference#rate-limits).
+
+## Managing keys over the API
+
+Keys can be created, listed and revoked programmatically, but **only with an admin session** — an
+ingestion key cannot create another ingestion key. That restriction is the point: a leaked key
+cannot be used to widen its own access or mint a replacement.
+
+See [Ingestion API reference → Ingestion keys](../guides/ingestion-api-reference#ingestion-keys).
 
 ## Rotating and revoking
 
@@ -94,5 +123,6 @@ Every upload records which key made it. The batch history on the index shows upl
 
 ## Where to go next
 
-- [Loading data into an index](../guides/bulk-load-data) — the endpoints these keys unlock
+- [Ingestion API reference](../guides/ingestion-api-reference) — every endpoint these keys unlock
+- [Loading data into an index](../guides/bulk-load-data) — the task-oriented guide
 - [Access tokens](access-tokens) — the read-only, public counterpart

@@ -124,6 +124,25 @@ curl -X POST "$INTERAKT_URL/api/search-indexes/$INDEX_ID/documents" \
   -d '{"documents": [ ... ]}'
 ```
 
+That returns a `batchId` you can poll while the load runs:
+
+```jsonc
+{
+  "success": true,
+  "data": {
+    "batchId": "9f1c…",
+    "summary": { "total": 412, "indexed": 412, "failed": 0 },
+    "embeddingStats": { "enabled": true, "generated": 412, "failed": 0, "skipped": 0 },
+    "durationMs": 8412
+  }
+}
+```
+
+**These endpoints are rate limited** — 30 requests/minute for this one — and a backfill loop will
+hit that ceiling without pacing. See the
+[Ingestion API reference](./ingestion-api-reference#rate-limits) for the limits, the response
+headers and how to back off.
+
 A **search experience access token will not work here** and returns `401`. Access tokens are public by design — they ship inside the embed snippet — so they are read-only. Writes need a secret credential. See [Ingestion keys](../concepts/ingestion-keys) for the full comparison.
 
 Unauthenticated requests are rejected on every one of these endpoints.
@@ -145,6 +164,10 @@ If your index generates `uniqueId` values (mapping mode = **Generated**), increm
 | `DELETE` | `/documents/:documentId` | Remove it. `404` if it doesn't exist. |
 | `POST` | `/documents/bulk` | Apply a mixed batch of the three write actions. |
 | `POST` | `/documents/delete-by-filter` | Delete everything matching a filter. |
+
+Full request and response shapes, status codes and rate limits for every one of these — plus the
+batch-status and ingestion-key endpoints — are in the
+[Ingestion API reference](./ingestion-api-reference).
 
 The index must already exist. These routes never create or rebuild it — that's deliberate, because rebuilding an index to satisfy a single-document write would discard everything else in it. If the index hasn't been provisioned yet you get a `409` telling you to run a full upload first. Use `POST /documents` (the bulk load above) for that.
 
@@ -244,20 +267,28 @@ curl -X POST /api/search-indexes/$INDEX/documents/bulk \
 
 Operations are independent. A failure in one is reported against its own position and doesn't stop the others, so the response is `207 Multi-Status` when some succeeded and some didn't:
 
-```json
+```jsonc
 {
-  "success": false,
-  "summary": {
-    "total": 3,
-    "succeeded": 2,
-    "failed": 1,
-    "counts": { "upload": 1, "merge": 1, "delete": 0 }
-  },
-  "errors": [
-    { "operationIndex": 2, "documentId": "PROD-003", "error": "..." }
-  ]
+  "success": true,          // the request was handled...
+  "data": {
+    "success": false,       // ...but not every operation in it worked
+    "message": "2 of 3 operations succeeded",
+    "summary": {
+      "total": 3,
+      "succeeded": 2,
+      "failed": 1,
+      "counts": { "upload": 1, "merge": 1, "delete": 0 }
+    },
+    "errors": [
+      { "operationIndex": 2, "documentId": "PROD-003", "error": "..." }
+    ],
+    "durationMs": 214
+  }
 }
 ```
+
+Check `data.summary.failed` rather than the outer `success` — the envelope reports whether the
+request was processed, not whether every operation inside it succeeded.
 
 Same limits as a full upload: at most 10,000 operations and 10 MB per request.
 
@@ -291,18 +322,23 @@ A dry run answers both *how many* and *which*:
 
 ```jsonc
 {
-  "matched": 412,
-  "deleted": 0,
-  "dryRun": true,
-  // First 25 of the matches, so you can check the filter caught the right things
-  "sample": [
-    { "id": "PROD-003", "fields": { "name": "Court classic", "status": "discontinued" } },
-    { "id": "PROD-014", "fields": { "name": "Ridge sandal",  "status": "discontinued" } }
-  ],
-  "columns": [
-    { "field": "uniqueId", "label": "ID" },
-    { "field": "name", "label": "Name" }
-  ]
+  "success": true,
+  "data": {
+    "matched": 412,
+    "deleted": 0,
+    "dryRun": true,
+    // First 25 of the matches, so you can check the filter caught the right things
+    "sample": [
+      { "id": "PROD-003", "fields": { "name": "Court classic", "status": "discontinued" } },
+      { "id": "PROD-014", "fields": { "name": "Ridge sandal",  "status": "discontinued" } }
+    ],
+    "columns": [
+      { "field": "uniqueId", "label": "ID",   "type": "id" },
+      { "field": "name",     "label": "Name", "type": "text" }
+    ],
+    "message": "412 documents match this filter",
+    "durationMs": 63
+  }
 }
 ```
 
@@ -311,7 +347,7 @@ A dry run answers both *how many* and *which*:
 curl -X POST /api/search-indexes/$INDEX/documents/delete-by-filter \
   -H 'Content-Type: application/json' \
   -d '{"filters": [{"field": "status", "operator": "eq", "value": "discontinued"}]}'
-# → { "matched": 412, "deleted": 412, "dryRun": false, "sample": [] }
+# → { "success": true, "data": { "matched": 412, "deleted": 412, "dryRun": false, "sample": [] } }
 ```
 
 Always run it with `dryRun: true` first and read the sample. There is no undo — restoring deleted documents means re-uploading them.
@@ -338,7 +374,7 @@ Adding and updating individual documents is API-only — the UI covers browsing,
 
 - **Single doc** — the **Documents** screen on the index, or `DELETE /documents/:documentId`.
 - **Many docs by condition** — the Delete-by-filter section of that screen, or `POST /documents/delete-by-filter`.
-- **All docs (keep index)** — currently requires Reindex with empty data, or recreate-index from the error recovery.
+- **All docs (keep index)** — `POST /documents/delete-by-filter` with a filter that matches everything, e.g. `{"field": "uniqueId", "operator": "exists"}`. Dry-run it first.
 - **Whole index** — Delete button on the index detail page. No recovery.
 
 ## Common gotchas
@@ -352,6 +388,7 @@ Adding and updating individual documents is API-only — the UI covers browsing,
 
 ## Where to go next
 
+- [Ingestion API reference](./ingestion-api-reference) — every endpoint, in full.
 - [Index fields](../concepts/index-fields) — verifying your fields look right before big uploads.
 - [Rebuilding an index](../concepts/rebuilding-an-index) — when changes need to apply to existing data.
 - [Create a search experience](create-a-search-experience) — putting the loaded index in front of users.

@@ -113,7 +113,7 @@ Workaround: if the server supports a long-lived personal access token via header
 
 - **"Repository not found" / "tool returned error"** — the MCP server itself returned an error. Interakt forwards it. Check the server's docs (e.g. DeepWiki only knows repos it has indexed — others 404).
 - **Catalog looks stale.** Hit **Sync**. Cache only refreshes on explicit sync.
-- **Tool not called by the AI.** The system instructions need to *invite* tool use, especially when the chat is grounded in your data sources. See [Tools — Description matters](tools#description-matters-the-most-important-field).
+- **Tool not called by the AI.** The system instructions need to *invite* tool use, especially when the chat is grounded in your data sources. See [Tools — Description matters](tools#description-matters--the-most-important-field).
 - **CORS / allowed origins.** MCP calls happen server-to-server (from Interakt to the MCP host), not browser-to-MCP. CORS doesn't apply.
 - **Connection healthy, but no tools listed.** The server returned an empty `tools/list`. Either the server has no tools yet, or auth limited what's visible. Check the **Test** result.
 

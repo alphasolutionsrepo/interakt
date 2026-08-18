@@ -79,7 +79,7 @@ Click **Create Tool**. The wizard:
 3. **Fill in configuration** — type-specific, as above.
 4. **Define the input schema** — what parameters does the AI need to provide when calling? JSON Schema format. Required fields are marked.
 5. **Define the output schema** (optional) — validates the response from the tool.
-6. **Write the AI description** — see [Description matters](#description-matters) below.
+6. **Write the AI description** — see [Description matters](#description-matters--the-most-important-field) below.
 
 For data-source tools, all of this is auto-generated when you click **Create Tools** on the data source's detail page. Use the Edit screen to refine.
 
