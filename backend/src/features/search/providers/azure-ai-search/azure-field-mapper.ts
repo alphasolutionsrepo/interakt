@@ -23,23 +23,46 @@ export class AzureFieldMapper implements FieldMapper {
      *
      * Azure fields have: name, type, searchable, filterable, sortable, facetable, key
      * This returns the field properties (without the name — caller adds it).
+     *
+     * ## filterable vs facetable
+     *
+     * Azure treats these as independent capabilities, so a field you filter on but
+     * never facet — an identifier such as `uniqueId` or `storyId` — needs
+     * `filterable` without `facetable`. That is what `providerFieldSettings.isFilterable`
+     * expresses; before it was honoured, the only way to filter a field was to
+     * declare it a facet, and identifiers therefore could not be filtered at all.
+     * Deletes addressed by id silently matched nothing as a result.
+     *
+     * `isFacetable` still implies `filterable`, and must keep doing so: every
+     * existing index was built under that rule, so `locale`, `category` and
+     * `keywords` are filterable today *because* they are facets. Requiring the new
+     * flag instead would strip those on the next reindex and break site search.
+     * The flag therefore only ever adds capability — no input makes a field less
+     * filterable than it is now.
      */
     mapFieldType(field: {
         fieldType: string;
         isAutocomplete?: boolean;
         isFacetable?: boolean;
         customAnalyzer?: string | null;
+        providerFieldSettings?: Record<string, unknown>;
     }): Record<string, unknown> | null {
         const edmType = FIELD_TYPE_TO_EDM[field.fieldType];
         if (!edmType) {
             return null; // Unknown type — skip
         }
 
+        const isFacetable = field.isFacetable === true;
+        const wantsFilterable = field.providerFieldSettings?.isFilterable === true || isFacetable;
+        // The EDM type has the final say either way: Azure rejects filterable on
+        // types that cannot support it, whatever the field config asks for.
+        const supportsFiltering = FILTERABLE_EDM_TYPES.has(edmType);
+
         const result: Record<string, unknown> = {
             type: edmType,
             searchable: SEARCHABLE_EDM_TYPES.has(edmType),
-            filterable: field.isFacetable === true && FILTERABLE_EDM_TYPES.has(edmType),
-            facetable: field.isFacetable === true && FILTERABLE_EDM_TYPES.has(edmType),
+            filterable: wantsFilterable && supportsFiltering,
+            facetable: isFacetable && supportsFiltering,
             sortable: false,
             retrievable: true, // Ensure all mapped fields are retrievable for $select
         };

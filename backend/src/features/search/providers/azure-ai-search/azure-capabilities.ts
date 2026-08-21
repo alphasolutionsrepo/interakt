@@ -108,6 +108,17 @@ export const AZURE_AI_SEARCH_CAPABILITIES: ProviderCapabilities = {
     // Per-field settings shown in the field mapping UI
     fieldSettingsSchema: [
         {
+            key: 'isFilterable',
+            label: 'Enable Filtering',
+            description:
+                'Allow filtering on this field. Facetable fields are already filterable — '
+                + 'enable this for fields you filter but never facet, such as identifiers '
+                + 'used to target documents for deletion.',
+            type: 'boolean',
+            defaultValue: false,
+            requiresReindex: true,
+        },
+        {
             key: 'isSortable',
             label: 'Enable Sorting',
             description: 'Allow sorting by this field in search results.',
