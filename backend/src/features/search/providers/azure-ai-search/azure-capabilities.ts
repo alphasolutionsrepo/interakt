@@ -111,9 +111,10 @@ export const AZURE_AI_SEARCH_CAPABILITIES: ProviderCapabilities = {
             key: 'isFilterable',
             label: 'Enable Filtering',
             description:
-                'Allow filtering on this field. Facetable fields are already filterable — '
-                + 'enable this for fields you filter but never facet, such as identifiers '
-                + 'used to target documents for deletion.',
+                'Allow filtering on this field. Facetable fields are already filterable, and '
+                + 'turning this off will not remove filtering from one — enable it for fields '
+                + 'you filter but never facet, such as identifiers used to target documents '
+                + 'for deletion.',
             type: 'boolean',
             defaultValue: false,
             requiresReindex: true,

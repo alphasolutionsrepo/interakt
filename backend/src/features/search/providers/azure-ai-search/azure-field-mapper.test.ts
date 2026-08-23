@@ -78,6 +78,19 @@ describe('backward compatibility', () => {
         expect(result).toMatchObject({ filterable: true });
     });
 
+    it('ignores an explicit false when the field is facetable', () => {
+        // The flag only ever adds capability, never subtracts. Honouring false here
+        // would strip filtering from every facet-derived filter — locale, category,
+        // keywords — on the next reindex.
+        const result = map({
+            fieldType: 'keyword',
+            isFacetable: true,
+            providerFieldSettings: { isFilterable: false },
+        });
+
+        expect(result).toMatchObject({ filterable: true, facetable: true });
+    });
+
     it('is not filterable or facetable when neither flag is set', () => {
         const result = map({ fieldType: 'keyword' });
 
