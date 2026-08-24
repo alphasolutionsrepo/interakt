@@ -889,7 +889,6 @@ export const FIELDS_REQUIRING_REINDEX = [
     'language',
     'synonyms',
     'stopWords',
-    'analyzerConfig',
 ] as const;
 
 /**
@@ -903,6 +902,17 @@ export const FIELD_SETTINGS_REQUIRING_REINDEX = [
 ] as const;
 
 export type FieldRequiringReindex = typeof FIELDS_REQUIRING_REINDEX[number];
+
+/**
+ * Index-level fields that require reindex when changed, scoped to what the
+ * given search provider actually consumes. Language and stop words only
+ * affect Elasticsearch's analyzer chain today — Azure AI Search ignores them
+ * and only reads synonyms — so flagging them as reindex-worthy on Azure would
+ * be a false positive.
+ */
+export function getReindexFieldsForProvider(searchProvider: string): readonly FieldRequiringReindex[] {
+    return searchProvider === 'elasticsearch' ? FIELDS_REQUIRING_REINDEX : ['synonyms'];
+}
 
 /**
  * Check if updating a field requires reindexing

@@ -476,6 +476,37 @@ export default function SearchIndexDetailPage() {
         </Card>
       )}
 
+      {/* Reindex Needed Banner */}
+      {syncStatus?.requiresReindex && (
+        <Card className="border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 shadow-sm rounded-2xl">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/15">
+                <RefreshCw className="size-5 text-blue-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm text-blue-900 dark:text-blue-200">
+                  Reindex needed
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
+                  Text analysis or field mapping settings changed since the last reindex. Reindex to apply them to the provider index.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl border-blue-500/30 text-blue-700 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-950/50 shrink-0"
+                onClick={() => setReindexDialogOpen(true)}
+                disabled={isReindexing || searchIndex.status === 'indexing' || searchIndex.status === 'creating'}
+              >
+                <RotateCcw className={`h-3.5 w-3.5 mr-2 ${isReindexing ? 'animate-spin' : ''}`} />
+                {isReindexing ? 'Reindexing...' : 'Reindex Now'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="border-border/60 shadow-sm rounded-2xl">
