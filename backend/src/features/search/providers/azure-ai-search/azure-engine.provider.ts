@@ -803,6 +803,9 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 fieldType: field.fieldType,
                 isFacetable: field.isFacetable,
                 customAnalyzer: field.providerFieldSettings?.customAnalyzer as string | null | undefined,
+                // Carries isFilterable, which decides `filterable` independently of
+                // faceting. Without this the mapper can only infer it from isFacetable.
+                providerFieldSettings: field.providerFieldSettings,
             });
             if (mapped) {
                 // Sortable: use explicit provider setting if present,
