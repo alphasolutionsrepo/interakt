@@ -60,7 +60,7 @@ import {
   SEARCH_TYPE_INFO,
   ES_LANGUAGES,
   REFRESH_INTERVALS,
-  FIELDS_REQUIRING_REINDEX,
+  getReindexFieldsForProvider,
   requiresAIConfiguration,
   type UpdateSearchIndexDTO,
   type IndexingStrategy,
@@ -278,14 +278,11 @@ export default function EditSearchIndexPage() {
   const stopWords = watch('stopWords') || [];
 
   // Check if any dirty fields require reindexing, or if the index already has
-  // a persisted reindex-needed flag from a previous save. Language and stop
-  // words only affect Elasticsearch's analyzer chain — Azure ignores them and
-  // only reads synonyms — so they shouldn't trip "reindex needed" there.
+  // a persisted reindex-needed flag from a previous save. Which fields count is
+  // provider-dependent — see getReindexFieldsForProvider().
   const requiresReindex = useMemo(() => {
     const dirtyFieldNames = Object.keys(dirtyFields);
-    const reindexFields = searchIndex?.searchProvider === 'elasticsearch'
-      ? FIELDS_REQUIRING_REINDEX
-      : ['synonyms'];
+    const reindexFields = getReindexFieldsForProvider(searchIndex?.searchProvider);
     const dirtyRequiresReindex = dirtyFieldNames.some(field =>
       (reindexFields as readonly string[]).includes(field)
     );

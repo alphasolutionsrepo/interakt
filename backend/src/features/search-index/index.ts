@@ -185,6 +185,7 @@ export {
     ES_LANGUAGES,
     REFRESH_INTERVALS,
     FIELDS_REQUIRING_REINDEX,
+    getReindexFieldsForProvider,
     fieldRequiresReindex,
     updatesRequireReindex,
 } from './search-index.types';

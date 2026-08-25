@@ -910,7 +910,7 @@ export type FieldRequiringReindex = typeof FIELDS_REQUIRING_REINDEX[number];
  * and only reads synonyms — so flagging them as reindex-worthy on Azure would
  * be a false positive.
  */
-export function getReindexFieldsForProvider(searchProvider: string): readonly FieldRequiringReindex[] {
+export function getReindexFieldsForProvider(searchProvider: string | undefined): readonly FieldRequiringReindex[] {
     return searchProvider === 'elasticsearch' ? FIELDS_REQUIRING_REINDEX : ['synonyms'];
 }
 
