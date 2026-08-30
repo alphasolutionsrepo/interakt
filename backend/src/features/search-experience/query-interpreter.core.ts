@@ -8,6 +8,12 @@
  *   "show only items from the men T-shirt below $110"
  *     → query "t-shirt", filters gender=Men, minPrice<=110
  *
+ *   "pants with more than 80% cotton"
+ *     → query "pants", filters: none (material is a text field enumerating whole
+ *       composition sentences like "97% cotton, 3% elastane", not a numeric percentage
+ *       — there is no field to bind ">80%" to, so the comparison stays in the query text
+ *       rather than becoming a false `material` filter snapped to the nearest value)
+ *
  * Without this, a search box can only ever match those words as text — "$110" is
  * a token to match, not a number to compare — so a price or gender phrase silently
  * does nothing.
@@ -122,7 +128,15 @@ ${describeFields(constraints)}
    - "between $X and $Y" → minPrice <= Y and maxPrice >= X.
    - If only one of the pair is filterable, use that one rather than skipping the filter.
 6. If the phrase carries no structured constraint at all, return it as the query with
-   an empty filters array. Do not force a filter that was not asked for.`;
+   an empty filters array. Do not force a filter that was not asked for.
+7. Comparison language ("more than", "at least", "over", "under", "at most", "below")
+   states a numeric threshold. Only turn it into a gt/gte/lt/lte filter on a field
+   that is genuinely numeric. Never snap it onto a text field's valid-value list by
+   picking the closest-sounding entry — e.g. "more than 80% cotton" against a
+   material field whose values are whole composition sentences ("97% cotton, 3%
+   elastane") is not the same claim as "material is 100% cotton", and forcing that
+   match changes what the shopper asked for. When no field can express the
+   threshold, leave that part of the phrase in the query instead.`;
 
     if (customInstructions) {
         prompt += `\n\n## Additional instructions\n${customInstructions}`;

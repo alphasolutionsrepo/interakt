@@ -305,17 +305,14 @@ export class ElasticsearchEngineProvider implements SearchEngineProvider {
         if (synonymRules.length > 0) {
             const synonymAnalyzer = { type: 'custom', tokenizer: 'standard', filter: ['lowercase', 'interakt_synonyms'] };
             const existing = (indexSettings.analysis as Record<string, unknown> | undefined) ?? {};
-            indexSettings.analysis = {
-                ...existing,
-                filter: {
-                    ...(existing.filter as Record<string, unknown> | undefined),
-                    interakt_synonyms: { type: 'synonym_graph', synonyms: synonymRules, lenient: true },
-                },
-                analyzer: {
-                    ...(existing.analyzer as Record<string, unknown> | undefined),
-                    interakt_synonym_search: synonymAnalyzer,
-                    default_search: synonymAnalyzer,
-                },
+            const analyzers: Record<string, unknown> = {
+                ...(existing.analyzer as Record<string, unknown> | undefined),
+                interakt_synonym_search: synonymAnalyzer,
+                default_search: synonymAnalyzer,
+            };
+            const filters: Record<string, unknown> = {
+                ...(existing.filter as Record<string, unknown> | undefined),
+                interakt_synonyms: { type: 'synonym_graph', synonyms: synonymRules, lenient: true },
             };
 
             // Attach to searchable text fields, skipping autocomplete fields (which keep
@@ -326,10 +323,40 @@ export class ElasticsearchEngineProvider implements SearchEngineProvider {
             for (const f of context.fields) {
                 if (!f.isSearchable || autocompleteNames.has(f.fieldName)) continue;
                 const prop = properties[f.fieldName] as Record<string, unknown> | undefined;
-                if (prop && prop.type === 'text' && prop.search_analyzer === undefined) {
+                if (!prop || prop.type !== 'text' || prop.search_analyzer !== undefined) continue;
+
+                // A field indexed with an ES language analyzer (e.g. "english") stems its
+                // tokens at write time. Searching it with the plain synonym analyzer above
+                // (no stemmer) would then compare stemmed index tokens against unstemmed
+                // query tokens and silently under-match — "jackets" never finding documents
+                // that were indexed down to the stemmed "jacket". Give each such field a
+                // synonym analyzer that stems the same way, so index- and search-time
+                // tokens agree. `language` reuses the field's own `customAnalyzer` value —
+                // ES's `stop`/`stemmer` filters accept the same language names as its
+                // built-in language analyzers (see ES_LANGUAGES), so no translation needed.
+                const rawAnalyzer = f.providerFieldSettings?.customAnalyzer as string | null | undefined;
+                const language =
+                    rawAnalyzer && rawAnalyzer !== 'standard' && rawAnalyzer !== 'autocomplete'
+                        ? rawAnalyzer
+                        : undefined;
+                if (language) {
+                    const analyzerName = `interakt_synonym_search_${language}`;
+                    if (!analyzers[analyzerName]) {
+                        analyzers[analyzerName] = {
+                            type: 'custom',
+                            tokenizer: 'standard',
+                            filter: ['lowercase', 'interakt_synonyms', `${language}_stop`, `${language}_stemmer`],
+                        };
+                        filters[`${language}_stop`] = { type: 'stop', stopwords: `_${language}_` };
+                        filters[`${language}_stemmer`] = { type: 'stemmer', language };
+                    }
+                    prop.search_analyzer = analyzerName;
+                } else {
                     prop.search_analyzer = 'interakt_synonym_search';
                 }
             }
+
+            indexSettings.analysis = { ...existing, filter: filters, analyzer: analyzers };
         }
 
         // Extract ES-specific settings from providerSettings
