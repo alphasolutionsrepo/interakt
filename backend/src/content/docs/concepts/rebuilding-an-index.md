@@ -56,13 +56,15 @@ After changes that require a rebuild, the floating save bar has a **Reindex Now*
 
 ## What happens during a rebuild
 
+- The index is recreated from your current configuration, including its text-analysis settings (language, stop words, synonyms).
 - Every document is re-read from internal storage.
-- Run through the current text-analysis pipeline (language, stop words, synonyms).
 - Re-mapped through your current field mappings.
 - **Fields that are no longer in your configuration are dropped** — this is what actually purges a [field you deleted](index-fields#removing-a-field). Values for it survive in the search engine until this point.
 - Written back to the search index.
 
 Once the rebuild succeeds the "Reindex needed" flag clears.
+
+Recreating the index is why a rebuild is the only way to change analysis: stemming and stop words are baked into the index mapping when it's created, and no search engine lets you change that in place. An index created before language analysis was applied needs one rebuild before searches like "jackets" start matching "jacket" — see [Language](synonyms-and-stop-words#language).
 
 For Semantic / Hybrid indexes, the embeddings are *not* regenerated — only the lexical side is reprocessed. This is fast.
 

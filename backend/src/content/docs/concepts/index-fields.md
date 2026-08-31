@@ -84,7 +84,7 @@ Does keyword search look at this field's content?
 - **On** for things like `title`, `description`, `brand`, `body` — anything users would type words from.
 - **Off** for things like internal IDs, image URLs, prices.
 
-Searchable fields are run through the index's text analysis (stemming, stop words, lowercasing) so a search for *"running shoes"* matches *"runner shoe"*.
+Searchable fields are run through the index's text analysis (lowercasing, stop words, stemming) so a search for *"jackets"* matches *"jacket"*, and *"the running shoes"* matches *"run shoe"*. Stemming reduces words to a root form, so it handles plurals and verb endings — it is not a thesaurus, and *"runner"* does not reduce to *"run"*. For relationships stemming can't see, use [synonyms](synonyms-and-stop-words).
 
 **Changing this requires a [rebuild](rebuilding-an-index).**
 

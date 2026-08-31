@@ -38,7 +38,15 @@ import {
 import { createLogger } from '@/shared/logger/logger';
 import { ElasticsearchFieldMapper } from './elasticsearch-field-mapper';
 import { ELASTICSEARCH_CAPABILITIES } from './elasticsearch-capabilities';
-import { AUTOCOMPLETE_ANALYZER_SETTINGS } from './elasticsearch.constants';
+import {
+    AUTOCOMPLETE_ANALYZER_SETTINGS,
+    getLanguageAnalysis,
+    INTERAKT_STOP_FILTER,
+    INTERAKT_STEMMER_FILTER,
+    INTERAKT_SYNONYM_FILTER,
+    INTERAKT_TEXT_ANALYZER,
+    INTERAKT_TEXT_SEARCH_ANALYZER,
+} from './elasticsearch.constants';
 import { registerProviderClass } from '../search-engine-provider.factory';
 import { buildFilterQuery } from './query-builders/filter.builder';
 import type { ProviderCapabilities } from '../provider-capabilities';
@@ -254,6 +262,7 @@ export class ElasticsearchEngineProvider implements SearchEngineProvider {
      *
      * Handles:
      * - Field type mapping (text, keyword, integer, etc.)
+     * - Text analysis: language stemmer, stop words, synonyms
      * - Autocomplete analyzer configuration (edge_ngram)
      * - Vector/embedding field (dense_vector)
      * - Index-level settings (shards, replicas, refresh interval)
@@ -292,45 +301,87 @@ export class ElasticsearchEngineProvider implements SearchEngineProvider {
             Object.assign(indexSettings, AUTOCOMPLETE_ANALYZER_SETTINGS);
         }
 
-        // Apply synonyms as a search-time analyzer. We define a dedicated synonym
-        // search analyzer and attach it as `search_analyzer` to searchable text fields,
-        // so equivalent terms expand at query time. Synonyms only apply to analyzed
-        // `text` fields — `keyword` fields (exact-match facets) are intentionally left
-        // alone. Autocomplete fields keep their own analyzer and are not touched, so
-        // type-ahead behavior is unchanged. We also register `default_search` as a
-        // fallback for any text field that has no explicit search analyzer.
-        // Existing analysis is spread into fresh objects so the shared autocomplete
-        // constant is never mutated.
-        const synonymRules = (context.synonyms ?? []).filter(r => typeof r === 'string' && r.trim());
-        if (synonymRules.length > 0) {
-            const synonymAnalyzer = { type: 'custom', tokenizer: 'standard', filter: ['lowercase', 'interakt_synonyms'] };
-            const existing = (indexSettings.analysis as Record<string, unknown> | undefined) ?? {};
-            indexSettings.analysis = {
-                ...existing,
-                filter: {
-                    ...(existing.filter as Record<string, unknown> | undefined),
-                    interakt_synonyms: { type: 'synonym_graph', synonyms: synonymRules, lenient: true },
-                },
-                analyzer: {
-                    ...(existing.analyzer as Record<string, unknown> | undefined),
-                    interakt_synonym_search: synonymAnalyzer,
-                    default_search: synonymAnalyzer,
-                },
-            };
+        // Build the text analysis pair from the index's language, stop words and
+        // synonyms. `interakt_text` runs at index time, `interakt_text_search` at
+        // search time; they share the same tokenizer and the same stop/stemmer
+        // filters, and the search analyzer additionally expands synonyms.
+        //
+        // The symmetry is the point. Stemming only helps if both sides do it: an
+        // index holding the token `jacket` is unreachable from a query analyzed to
+        // `jackets`. That is exactly what the previous synonym-only search analyzer
+        // would have caused once stemming was introduced.
+        //
+        // The pair is always defined — even for language 'standard', where it
+        // degrades to lowercase-only — so mapFieldTypeToES can reference the names
+        // unconditionally. Existing analysis is spread into fresh objects so the
+        // shared autocomplete constant is never mutated.
+        const { stopwords: builtInStopWords, stemmer } = getLanguageAnalysis(context.language);
+        const customStopWords = (context.stopWords ?? [])
+            .filter((w): w is string => typeof w === 'string')
+            .map(w => w.trim())
+            .filter(w => w.length > 0);
+        const synonymRules = (context.synonyms ?? [])
+            .filter((r): r is string => typeof r === 'string')
+            .map(r => r.trim())
+            .filter(r => r.length > 0);
 
-            // Attach to searchable text fields, skipping autocomplete fields (which keep
-            // their own search_analyzer) and keyword fields (not analyzed).
-            const autocompleteNames = new Set(
-                context.fields.filter(f => f.providerFieldSettings?.isAutocomplete === true).map(f => f.fieldName)
-            );
-            for (const f of context.fields) {
-                if (!f.isSearchable || autocompleteNames.has(f.fieldName)) continue;
-                const prop = properties[f.fieldName] as Record<string, unknown> | undefined;
-                if (prop && prop.type === 'text' && prop.search_analyzer === undefined) {
-                    prop.search_analyzer = 'interakt_synonym_search';
-                }
-            }
+        const analysisFilters: Record<string, unknown> = {};
+
+        // A single stop filter carrying the language's predefined list plus any
+        // custom words — ES accepts `_english_` and literal words in one array.
+        const stopWordList = [
+            ...(builtInStopWords ? [builtInStopWords] : []),
+            ...customStopWords,
+        ];
+        if (stopWordList.length > 0) {
+            analysisFilters[INTERAKT_STOP_FILTER] = { type: 'stop', stopwords: stopWordList };
         }
+        if (stemmer) {
+            analysisFilters[INTERAKT_STEMMER_FILTER] = { type: 'stemmer', language: stemmer };
+        }
+        if (synonymRules.length > 0) {
+            analysisFilters[INTERAKT_SYNONYM_FILTER] = {
+                type: 'synonym_graph',
+                synonyms: synonymRules,
+                lenient: true,
+            };
+        }
+
+        // Synonyms expand before stop/stemming so rules stay writable in natural
+        // form ("bags => handbags") while both sides still end up stemmed.
+        const languageFilters = [
+            ...(analysisFilters[INTERAKT_STOP_FILTER] ? [INTERAKT_STOP_FILTER] : []),
+            ...(analysisFilters[INTERAKT_STEMMER_FILTER] ? [INTERAKT_STEMMER_FILTER] : []),
+        ];
+        const existingAnalysis = (indexSettings.analysis as Record<string, unknown> | undefined) ?? {};
+        indexSettings.analysis = {
+            ...existingAnalysis,
+            ...(Object.keys(analysisFilters).length > 0
+                ? {
+                    filter: {
+                        ...(existingAnalysis.filter as Record<string, unknown> | undefined),
+                        ...analysisFilters,
+                    },
+                }
+                : {}),
+            analyzer: {
+                ...(existingAnalysis.analyzer as Record<string, unknown> | undefined),
+                [INTERAKT_TEXT_ANALYZER]: {
+                    type: 'custom',
+                    tokenizer: 'standard',
+                    filter: ['lowercase', ...languageFilters],
+                },
+                [INTERAKT_TEXT_SEARCH_ANALYZER]: {
+                    type: 'custom',
+                    tokenizer: 'standard',
+                    filter: [
+                        'lowercase',
+                        ...(analysisFilters[INTERAKT_SYNONYM_FILTER] ? [INTERAKT_SYNONYM_FILTER] : []),
+                        ...languageFilters,
+                    ],
+                },
+            },
+        };
 
         // Extract ES-specific settings from providerSettings
         const ps = context.providerSettings;
