@@ -28,10 +28,7 @@ import type {
   ChatStreamEvent,
   DocumentReference,
 } from '@/features/search-experience/search-experience.types';
-import { buildSummarySystemPrompt } from '@/features/chat/prompt-builder';
-import {
-  truncateText,
-} from '@/features/chat/chat.utils';
+import { buildSummarySystemPrompt, formatFieldsForContext } from '@/features/chat/prompt-builder';
 
 const logger = createLogger('search-experience-ai');
 
@@ -219,8 +216,8 @@ function buildSummaryUserPrompt(
   const resultsText = results
     .map((r, i) => {
       const title = r.fields.title || r.fields.name || `Item ${i + 1}`;
-      const content = r.fields.content || r.fields.description || r.fields.body || '';
-      return `[${i + 1}] ${title}\n${truncateText(String(content), 500)}`;
+      const details = formatFieldsForContext(r.fields);
+      return `[${i + 1}] ${title}${details ? `\n${details}` : ''}`;
     })
     .join('\n\n---\n\n');
 

@@ -17,7 +17,7 @@ import * as aiService from '@/features/ai-service/ai-service.service';
 import type { ChatMessage } from '@/features/ai-service/ai-service.types';
 import * as repository from '@/features/search-experience/search-experience.repository';
 import { summarizeAPIRequestSchema } from '@/features/search-experience/search-experience.schemas';
-import { buildSummarySystemPrompt } from '@/features/chat/prompt-builder';
+import { buildSummarySystemPrompt, formatFieldsForContext } from '@/features/chat/prompt-builder';
 
 const logger = createLogger('summarize-api-slug');
 
@@ -213,42 +213,3 @@ function buildSummaryUserPromptLocal(
   return prompt;
 }
 
-/**
- * Format all fields from a result into a readable context string.
- * Uses all fields that were marked as includeInResponse in the data template.
- */
-function formatFieldsForContext(fields: Record<string, unknown>): string {
-  const parts: string[] = [];
-
-  for (const [key, value] of Object.entries(fields)) {
-    // Skip internal/meta fields
-    if (key.startsWith('_')) continue;
-    if (value === null || value === undefined || value === '') continue;
-
-    // Format the value
-    let formattedValue: string;
-    if (Array.isArray(value)) {
-      formattedValue = value.join(', ');
-    } else if (typeof value === 'object') {
-      formattedValue = JSON.stringify(value);
-    } else {
-      formattedValue = String(value);
-    }
-
-    // Truncate very long values
-    if (formattedValue.length > 500) {
-      formattedValue = formattedValue.substring(0, 500) + '...';
-    }
-
-    // Use readable field name (convert camelCase/snake_case to Title Case)
-    const readableKey = key
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/_/g, ' ')
-      .replace(/^\w/, (c) => c.toUpperCase())
-      .trim();
-
-    parts.push(`${readableKey}: ${formattedValue}`);
-  }
-
-  return parts.join('\n');
-}

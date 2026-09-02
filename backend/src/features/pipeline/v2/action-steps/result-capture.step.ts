@@ -30,7 +30,16 @@ export class ResultCaptureStep implements ActionStep {
     }
 
     const data = ctx.toolResult.data;
-    const rawItems = Array.isArray(data) ? data : (data as Record<string, unknown>)?.results ?? [];
+    // A lookup/"find record" tool returns a single `{ id, document }` object,
+    // not an array or a `.results` list. Without this, a correct, specific
+    // lookup is silently dropped from result memory — the next turn has no
+    // durable reference to "which item" and has to re-resolve it by fuzzy
+    // name search, which is why losing track of the item looks intermittent
+    // rather than a hard failure.
+    const rawItems = Array.isArray(data)
+      ? data
+      : (data as Record<string, unknown>)?.results ??
+        (data && typeof data === 'object' && 'id' in data ? [data] : []);
     const items = Array.isArray(rawItems) ? rawItems : [];
     const resultCount = ctx.toolResult.resultCount ?? items.length;
 
