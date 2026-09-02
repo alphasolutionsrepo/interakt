@@ -60,7 +60,7 @@ import {
   SEARCH_TYPE_INFO,
   ES_LANGUAGES,
   REFRESH_INTERVALS,
-  FIELDS_REQUIRING_REINDEX,
+  getReindexFieldsForProvider,
   requiresAIConfiguration,
   type UpdateSearchIndexDTO,
   type IndexingStrategy,
@@ -277,13 +277,17 @@ export default function EditSearchIndexPage() {
   const synonyms = watch('synonyms') || [];
   const stopWords = watch('stopWords') || [];
 
-  // Check if any dirty fields require reindexing
+  // Check if any dirty fields require reindexing, or if the index already has
+  // a persisted reindex-needed flag from a previous save. Which fields count is
+  // provider-dependent — see getReindexFieldsForProvider().
   const requiresReindex = useMemo(() => {
     const dirtyFieldNames = Object.keys(dirtyFields);
-    return dirtyFieldNames.some(field =>
-      FIELDS_REQUIRING_REINDEX.includes(field as typeof FIELDS_REQUIRING_REINDEX[number])
+    const reindexFields = getReindexFieldsForProvider(searchIndex?.searchProvider);
+    const dirtyRequiresReindex = dirtyFieldNames.some(field =>
+      (reindexFields as readonly string[]).includes(field)
     );
-  }, [dirtyFields]);
+    return dirtyRequiresReindex || !!searchIndex?.requiresReindex;
+  }, [dirtyFields, searchIndex?.requiresReindex, searchIndex?.searchProvider]);
 
   // Populate form when data loads
   useEffect(() => {
@@ -667,44 +671,46 @@ export default function EditSearchIndexPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/60 shadow-sm rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 font-semibold">
-                  <Languages className="h-4 w-4 text-blue-500" />
-                  Language Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    Language
-                    {dirtyFields.language && (
-                      <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 rounded-md">
-                        modified
-                      </Badge>
-                    )}
-                  </Label>
-                  <Select
-                    value={language}
-                    onValueChange={(value) => setValue('language', value, { shouldDirty: true })}
-                  >
-                    <SelectTrigger className="rounded-lg">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl max-h-64">
-                      {ES_LANGUAGES.map((lang) => (
-                        <SelectItem key={lang.value} value={lang.value} className="rounded-lg">
-                          {lang.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Determines stemming, stop words, and text analysis for this language
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            {isElasticsearch && (
+              <Card className="border-border/60 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 font-semibold">
+                    <Languages className="h-4 w-4 text-blue-500" />
+                    Language Settings
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      Language
+                      {dirtyFields.language && (
+                        <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 rounded-md">
+                          modified
+                        </Badge>
+                      )}
+                    </Label>
+                    <Select
+                      value={language}
+                      onValueChange={(value) => setValue('language', value, { shouldDirty: true })}
+                    >
+                      <SelectTrigger className="rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl max-h-64">
+                        {ES_LANGUAGES.map((lang) => (
+                          <SelectItem key={lang.value} value={lang.value} className="rounded-lg">
+                            {lang.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Determines stemming, stop words, and text analysis for this language
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <Card className="border-border/60 shadow-sm rounded-2xl">
               <CardHeader className="pb-3">
@@ -769,68 +775,70 @@ export default function EditSearchIndexPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/60 shadow-sm rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 font-semibold">
-                  <X className="h-4 w-4 text-red-500" />
-                  Custom Stop Words
-                  {dirtyFields.stopWords && (
-                    <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 rounded-md">
-                      modified
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription>
-                  Words to ignore during search (comma-separated)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="e.g., the, a, an"
-                    value={newStopWord}
-                    onChange={(e) => setNewStopWord(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddStopWord();
-                      }
-                    }}
-                    className="rounded-lg"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleAddStopWord}
-                    disabled={!newStopWord.trim()}
-                    className="rounded-lg"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {stopWords.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {stopWords.map((word, i) => (
-                      <Badge key={i} variant="outline" className="pl-3 pr-1.5 py-1.5 rounded-lg">
-                        <span className="text-xs font-medium">{word}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveStopWord(i)}
-                          className="ml-2 hover:bg-destructive/20 rounded p-0.5 transition-colors"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+            {isElasticsearch && (
+              <Card className="border-border/60 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 font-semibold">
+                    <X className="h-4 w-4 text-red-500" />
+                    Custom Stop Words
+                    {dirtyFields.stopWords && (
+                      <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 rounded-md">
+                        modified
                       </Badge>
-                    ))}
+                    )}
+                  </CardTitle>
+                  <CardDescription>
+                    Words to ignore during search (comma-separated)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="e.g., the, a, an"
+                      value={newStopWord}
+                      onChange={(e) => setNewStopWord(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddStopWord();
+                        }
+                      }}
+                      className="rounded-lg"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAddStopWord}
+                      disabled={!newStopWord.trim()}
+                      className="rounded-lg"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
                   </div>
-                )}
-                {stopWords.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4 bg-muted/30 rounded-xl">
-                    No custom stop words configured
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                  {stopWords.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {stopWords.map((word, i) => (
+                        <Badge key={i} variant="outline" className="pl-3 pr-1.5 py-1.5 rounded-lg">
+                          <span className="text-xs font-medium">{word}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveStopWord(i)}
+                            className="ml-2 hover:bg-destructive/20 rounded p-0.5 transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {stopWords.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4 bg-muted/30 rounded-xl">
+                      No custom stop words configured
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Provider Settings Tab */}

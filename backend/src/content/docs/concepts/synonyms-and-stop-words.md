@@ -66,6 +66,8 @@ That's why searching *"the running shoes"* and *"running shoes"* give the same r
 
 Most of the time you leave the defaults alone. But sometimes you want to **add** to the list — and very occasionally, **remove** from it.
 
+**This setting currently applies to Elasticsearch indexes only.** Azure AI Search indexes fall back to Azure's default analyser and ignore custom stop words entirely — the Custom Stop Words card is hidden when editing an Azure-backed index.
+
 ### When you'd customise stop words
 
 - **Domain-specific filler.** A legal document corpus might want to ignore "whereas", "hereby", "thereof".
@@ -87,34 +89,46 @@ Most of the time you leave the defaults alone. But sometimes you want to **add**
 
 ## Language
 
-The **Language** dropdown on the same tab controls which built-in analyser the index uses. English gets English stop words, English stemming (so "running" → "run"), English-aware tokenisation. French gets French equivalents, and so on.
+The **Language** dropdown on the same tab controls the stemming and stop-word rules the index uses. English gets English stop words and English stemming, so "running" and "run" match each other — and, the one you notice first, "jackets" finds documents that say "jacket". French gets French equivalents, and so on.
+
+Two limits worth knowing:
+
+- **A few languages have stop words but no stemmer** in core Elasticsearch — Thai, Persian, Serbian, and the CJK languages. Those indexes still get lowercasing and stop-word removal; they just don't stem. Polish needs a plugin and gets neither. Picking **Standard** deliberately turns off both.
+- **This setting currently applies to Elasticsearch indexes only.** Azure AI Search indexes fall back to Azure's default analyser, which does not stem.
 
 If your content is multilingual, you have a couple of options:
 
 - **One index per language**, each set to its language. Highest quality, more management.
 - **One index in a multilingual mode** if your search provider supports it (Elasticsearch's `cjk` analyser, Azure Cognitive Search's language detectors). Simpler, slightly lower quality.
 
-Changing the language requires a [rebuild](rebuilding-an-index).
+Changing the language requires a [rebuild](rebuilding-an-index). So does picking up stemming for the first time: an index built before language analysis was applied needs one reindex before "jackets" starts matching "jacket".
+
+### Advanced analyser configuration
+
+The index record carries an `analyzerConfig` field (custom tokenizer, token filters, character filters). **It is not implemented** — nothing reads it, and setting it has no effect. Use the Language, Synonyms and Stop Words settings above, or a per-field analyser override, instead.
 
 ## How synonyms, stop words, and language work together
 
 When a document is indexed:
 
 1. Text is broken into tokens.
-2. Stop words are dropped.
-3. Each remaining token is stemmed using the language's rules.
-4. Synonyms are expanded.
+2. Tokens are lowercased.
+3. Stop words are dropped.
+4. Each remaining token is stemmed using the language's rules.
 5. The result is what gets indexed.
 
 When a user searches:
 
 1. The query is broken into tokens.
-2. Stop words are dropped.
-3. Each remaining token is stemmed.
-4. Synonyms are expanded (or rewritten, for `=>`).
-5. The result is what gets matched against the index.
+2. Tokens are lowercased.
+3. Synonyms are expanded (or rewritten, for `=>`).
+4. Stop words are dropped.
+5. Each remaining token is stemmed.
+6. The result is what gets matched against the index.
 
-Because indexing and searching both go through the same pipeline, anything you change about the pipeline (language, stop words, synonyms) requires existing documents to be re-processed before the change is visible in results.
+Synonyms are expanded on the query side only, and they expand *before* stemming — that's why you write rules in natural form (`bags => handbags`, not `bag => handbag`). Everything after that point is identical on both sides, which is what makes the two halves line up: a document stemmed to `jacket` is found by a query for "jackets", which stems to `jacket` too.
+
+Because indexing and searching go through the same stop-word and stemming steps, anything you change about them (language, stop words, synonyms) requires existing documents to be re-processed before the change is visible in results.
 
 ## Where to go next
 

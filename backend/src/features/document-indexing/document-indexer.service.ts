@@ -29,7 +29,7 @@ import * as fieldsService from '@/features/search-index/search-index-fields.serv
 import * as fieldsRepository from '@/features/search-index/search-index-fields.repository';
 import { generateEmbeddings } from '@/features/ai-service';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
-import { getProviderSettings, getProviderFieldSettings } from '@/features/search-index/provider-settings.utils';
+import { buildIndexSettingsContext } from '@/features/search-index/provider-settings.utils';
 import { getEmbeddingText } from './embedding-text';
 
 const logger = createLogger('document-indexer');
@@ -398,7 +398,18 @@ async function ensureIndex(
     fields: SearchIndexField[],
     embeddingConfig?: EmbeddingConfig,
     searchProviderType?: SearchProviderType,
-    indexRecord?: { providerSettings?: Record<string, unknown> | null; numberOfShards?: number; numberOfReplicas?: number; refreshInterval?: string }
+    indexRecord?: {
+        providerSettings?: Record<string, unknown> | null;
+        numberOfShards?: number;
+        numberOfReplicas?: number;
+        refreshInterval?: string;
+        // Text analysis — an index created here must get the same analyzers as one
+        // created by an explicit reindex, or search behaves differently depending
+        // on how the index happened to come into existence.
+        language?: string | null;
+        synonyms?: unknown;
+        stopWords?: unknown;
+    }
 ): Promise<{ success: boolean; error?: string; warning?: string }> {
     const provider = getSearchEngineProvider(searchProviderType);
     const exists = await provider.indexExists(indexName);
@@ -489,23 +500,16 @@ async function ensureIndex(
         });
     }
 
-    // Resolve provider settings from the index record (backward-compat aware)
-    const providerSettings = indexRecord
-        ? getProviderSettings(indexRecord as Parameters<typeof getProviderSettings>[0])
-        : {};
-
-    // Let the provider build its own native index settings
-    const indexConfig = provider.buildIndexSettings({
-        fields: fields.map(f => ({
-            fieldName: f.fieldName,
-            fieldType: f.fieldType,
-            isSearchable: f.isSearchable,
-            isFacetable: f.isFacetable,
-            providerFieldSettings: getProviderFieldSettings(f),
-        })),
-        providerSettings,
-        embeddingConfig: embeddingBuildConfig,
-    });
+    // Let the provider build its own native index settings. Same helper the
+    // reindex and recreate-empty paths use, so all three produce identical
+    // mappings and text analysis for the same index record.
+    const indexConfig = provider.buildIndexSettings(
+        buildIndexSettingsContext(
+            (indexRecord ?? {}) as Parameters<typeof buildIndexSettingsContext>[0],
+            fields,
+            embeddingBuildConfig
+        )
+    );
 
     return await provider.createIndex(indexName, indexConfig);
 }

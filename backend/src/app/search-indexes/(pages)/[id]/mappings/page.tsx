@@ -242,6 +242,12 @@ export default function FieldMappingsPage() {
     // Track if reindex is needed (saved changes that require ES mapping update)
     const [reindexNeeded, setReindexNeeded] = useState(false);
 
+    // Hydrate from the persisted flag whenever the index record loads/refetches,
+    // so a user reopening this page sees reindex-required state from a prior session
+    useEffect(() => {
+        if (searchIndex) setReindexNeeded(searchIndex.requiresReindex);
+    }, [searchIndex?.requiresReindex]);
+
     // Reindex dialog state
     const [reindexDialogOpen, setReindexDialogOpen] = useState(false);
 

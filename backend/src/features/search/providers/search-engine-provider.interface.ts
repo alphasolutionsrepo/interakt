@@ -85,6 +85,17 @@ export interface IndexSettingsBuildContext {
      * maps these into its native mechanism (Azure synonym map, ES synonym filter).
      */
     synonyms?: string[];
+    /**
+     * Index language for text analysis (see ES_LANGUAGES / AZURE_LANGUAGES).
+     * Drives stemming and the built-in stop word list, so a search for
+     * "jackets" matches a document containing "jacket". Defaults to 'english'.
+     */
+    language?: string;
+    /**
+     * Custom stop words, added on top of the language's built-in list.
+     * Words so common in this corpus that matching them carries no signal.
+     */
+    stopWords?: string[];
 }
 
 /**

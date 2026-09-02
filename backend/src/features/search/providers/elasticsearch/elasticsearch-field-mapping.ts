@@ -9,6 +9,7 @@
  */
 
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
+import { INTERAKT_TEXT_ANALYZER, INTERAKT_TEXT_SEARCH_ANALYZER } from './elasticsearch.constants';
 
 /**
  * Map our field types to Elasticsearch types
@@ -31,8 +32,18 @@ export function mapFieldTypeToES(field: SearchIndexField): Record<string, unknow
                 mapping.analyzer = 'autocomplete';
                 mapping.search_analyzer = 'autocomplete_search';
             } else if (customAnalyzer) {
-                // Apply custom analyzer if specified
+                // Apply custom analyzer if specified. No search_analyzer, so ES
+                // uses the same analyzer on both sides — an explicit per-field
+                // override wins over the index's language analysis.
                 mapping.analyzer = customAnalyzer;
+            } else {
+                // Default: the analyzer pair built from the index's language and
+                // stop words. Without this the field falls back to ES `standard`,
+                // which does not stem — a search for "jackets" would then miss a
+                // document containing "jacket". buildIndexSettings always defines
+                // both analyzers, so these names are safe to reference here.
+                mapping.analyzer = INTERAKT_TEXT_ANALYZER;
+                mapping.search_analyzer = INTERAKT_TEXT_SEARCH_ANALYZER;
             }
 
             // Add keyword subfield for faceting/sorting if field is facetable

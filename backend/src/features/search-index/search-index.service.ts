@@ -40,11 +40,11 @@ import type {
  ChangeAIConfigDTO } from './search-index.validation';
 import type { SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
-import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType } from '@/shared/constants/search-index.constants';
+import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
 import { getSearchEngineProvider, type SearchProviderType } from '@/features/search/providers';
 import { selectedSearchProvider } from '@/config/search-provider.config';
-import { getProviderSettings, getProviderFieldSettings } from './provider-settings.utils';
+import { buildIndexSettingsContext } from './provider-settings.utils';
 
 const logger = createLogger('search-index-service');
 
@@ -427,9 +427,25 @@ export async function updateSearchIndex(
         // Update in database
         await repository.updateSearchIndex(id, updateData);
 
-        // Analyzer-affecting settings (synonyms, stop words, analyzer config) can't be
-        // changed in place on the provider index — they take effect on the next reindex.
-        // The stored config is the source of truth; reindexing rebuilds the index from it.
+        // Analyzer-affecting settings (language, synonyms, stop words, analyzer config)
+        // can't be changed in place on the provider index — they take effect on the next
+        // reindex. The stored config is the source of truth; reindexing rebuilds the
+        // index from it. Flag that so the UI's "reindex needed" badge — which reads the
+        // persisted flag, not the edit form's dirty state — reflects reality for anyone
+        // who opens the index later.
+        const reindexFields = getReindexFieldsForProvider(existing.searchProvider);
+        const changedReindexFields = reindexFields.filter(field => {
+            if (updateData[field] === undefined) return false;
+            return JSON.stringify(updateData[field]) !== JSON.stringify(existing[field]);
+        });
+
+        if (changedReindexFields.length > 0) {
+            await repository.incrementMappingVersion(id);
+            logger.info('Text analysis settings changed — index requires reindex', {
+                indexId: id,
+                changedFields: changedReindexFields,
+            });
+        }
 
         // Clear caches
         await clearIndexCache(id, existing.name);
@@ -1018,19 +1034,9 @@ export async function triggerReindex(
         }
 
         // Let the provider build its own native index settings
-        const indexConfig = provider.buildIndexSettings({
-            fields: fields.map(f => ({
-                fieldName: f.fieldName,
-                fieldType: f.fieldType,
-                isSearchable: f.isSearchable,
-                isFacetable: f.isFacetable,
-                isAutocomplete: f.isAutocomplete,
-                providerFieldSettings: getProviderFieldSettings(f),
-            })),
-            providerSettings: getProviderSettings(searchIndex),
-            embeddingConfig,
-            synonyms: Array.isArray(searchIndex.synonyms) ? (searchIndex.synonyms as string[]) : [],
-        });
+        const indexConfig = provider.buildIndexSettings(
+            buildIndexSettingsContext(searchIndex, fields, embeddingConfig)
+        );
 
         logger.info('Built index settings via provider', {
             indexName,
@@ -1207,19 +1213,9 @@ export async function recreateEmptyIndex(
         }
 
         // Build provider-native index settings from DB definitions
-        const indexConfig = provider.buildIndexSettings({
-            fields: fields.map(f => ({
-                fieldName: f.fieldName,
-                fieldType: f.fieldType,
-                isSearchable: f.isSearchable,
-                isFacetable: f.isFacetable,
-                isAutocomplete: f.isAutocomplete,
-                providerFieldSettings: getProviderFieldSettings(f),
-            })),
-            providerSettings: getProviderSettings(searchIndex),
-            embeddingConfig,
-            synonyms: Array.isArray(searchIndex.synonyms) ? (searchIndex.synonyms as string[]) : [],
-        });
+        const indexConfig = provider.buildIndexSettings(
+            buildIndexSettingsContext(searchIndex, fields, embeddingConfig)
+        );
 
         // Create the index
         const createResult = await provider.createIndex(indexName, indexConfig);
@@ -1232,6 +1228,10 @@ export async function recreateEmptyIndex(
             documentCount: 0,
         });
         await repository.updateSearchIndexStatus(searchIndexId, 'ready');
+
+        // The index was just rebuilt from the current DB mappings and text
+        // analysis settings, so it's structurally in sync even though empty.
+        await repository.markMappingSynced(searchIndexId);
 
         // Clear caches so UI gets fresh data
         await clearIndexCache(searchIndexId, indexName);
