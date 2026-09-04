@@ -192,6 +192,52 @@ export function buildSummarySystemPrompt(options: BuildSummaryPromptOptions): st
   return parts.join('\n\n');
 }
 
+/**
+ * Format all fields from a result into a readable context string, for
+ * inclusion in a summary prompt.
+ *
+ * Iterates every field rather than a fixed allowlist — a summarizer that only
+ * ever sees `title`/`content`-shaped fields can't say anything about a result
+ * whose relevant data lives under a different key (e.g. a product's
+ * `material`), and will (correctly, per its own "don't claim what isn't in
+ * the data" instructions) claim that attribute doesn't exist.
+ */
+export function formatFieldsForContext(fields: Record<string, unknown>): string {
+  const parts: string[] = [];
+
+  for (const [key, value] of Object.entries(fields)) {
+    // Skip internal/meta fields
+    if (key.startsWith('_')) continue;
+    if (value === null || value === undefined || value === '') continue;
+
+    // Format the value
+    let formattedValue: string;
+    if (Array.isArray(value)) {
+      formattedValue = value.join(', ');
+    } else if (typeof value === 'object') {
+      formattedValue = JSON.stringify(value);
+    } else {
+      formattedValue = String(value);
+    }
+
+    // Truncate very long values
+    if (formattedValue.length > 500) {
+      formattedValue = formattedValue.substring(0, 500) + '...';
+    }
+
+    // Use readable field name (convert camelCase/snake_case to Title Case)
+    const readableKey = key
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/_/g, ' ')
+      .replace(/^\w/, (c) => c.toUpperCase())
+      .trim();
+
+    parts.push(`${readableKey}: ${formattedValue}`);
+  }
+
+  return parts.join('\n');
+}
+
 // ============================================================================
 // EXPORTS FOR TESTING/INSPECTION
 // ============================================================================
