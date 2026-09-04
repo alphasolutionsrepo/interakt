@@ -986,6 +986,6 @@ export async function isSlugAvailable(slug: string, excludeId?: string) {
   return repository.isSlugAvailable(slug, excludeId);
 }
 
-// Exported for tests only — the provider type maps are pure and worth pinning
-// directly, since their output is persisted onto the data source record.
-export { mapESType as _mapESType, mapAzureType as _mapAzureType };
+// Exported for tests only — mapESType is pure and worth pinning directly,
+// since its output is persisted onto the data source record.
+export { mapESType as _mapESType };

@@ -26,7 +26,11 @@ vi.mock('@/shared/logger/logger', () => {
 
 import { _mapESType } from './data-source.service';
 import { _DataSourceSearchProvider } from '@/features/pipeline/v2/parameter-context.provider';
-import type { FieldConstraint } from '@/features/pipeline/v2/parameter-context.types';
+import { validateFilters } from '@/features/pipeline/v2/param-validation';
+import type {
+  FieldConstraint,
+  ParameterContext,
+} from '@/features/pipeline/v2/parameter-context.types';
 
 const normalize = (t: string): FieldConstraint['fieldType'] =>
   // normalizeFieldType is private; TS access modifiers are compile-time only.
@@ -93,19 +97,44 @@ describe('numeric field type normalization', () => {
     });
   });
 
-  describe('consequence: a numeric field is not mistaken for a filter vocabulary', () => {
-    // Mirrors the predicate the provider uses to choose fields for facet
-    // enumeration: isFilterable && isFacetable && normalized type === 'text'.
-    const wouldEnumerate = (esType: string): boolean =>
-      normalize(_mapESType(esType)) === 'text';
-
-    it.each(ES_NUMERIC_TYPES)('does not enumerate facet values for an %s field', (esType) => {
-      expect(wouldEnumerate(esType)).toBe(false);
+  describe('consequence: the filter survives instead of being dropped', () => {
+    // Exercises the real check #42 added: validateFilters drops gt/gte/lt/lte
+    // against any field whose constraint type is not number or date.
+    const contextFor = (esType: string): ParameterContext => ({
+      fieldConstraints: {
+        popularity: {
+          fieldName: 'popularity',
+          fieldType: normalize(_mapESType(esType)),
+          isFilterable: true,
+          isFacetable: false,
+          validValues: [],
+        },
+      },
+      enriched: true,
+      summary: '',
+      durationMs: 0,
     });
 
-    it('still enumerates a real text field', () => {
-      expect(wouldEnumerate('keyword')).toBe(true);
-      expect(wouldEnumerate('text')).toBe(true);
+    it.each(ES_NUMERIC_TYPES)('keeps "popularity >= 100" on an %s field', (esType) => {
+      const result = validateFilters(
+        [{ field: 'popularity', operator: 'gte', value: 100 }],
+        contextFor(esType),
+      );
+
+      expect(result.droppedFilters).toEqual([]);
+      expect(result.filters).toEqual([
+        { field: 'popularity', operator: 'gte', value: 100 },
+      ]);
+    });
+
+    it('still drops a range filter on a genuinely textual field', () => {
+      const result = validateFilters(
+        [{ field: 'popularity', operator: 'gte', value: 100 }],
+        contextFor('keyword'),
+      );
+
+      expect(result.filters).toEqual([]);
+      expect(result.droppedFilters).toHaveLength(1);
     });
   });
 });
