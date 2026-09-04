@@ -298,12 +298,25 @@ class DataSourceSearchProvider implements ParameterContextProvider {
       case 'edm.int32':
       case 'edm.int64':
       case 'edm.double':
+      // Spellings `mapESType` passes through untouched, so they can reach here
+      // verbatim from a persisted schema. Missing one means the field is read as
+      // free text: enumerated as a filter vocabulary, and its filters then
+      // dropped for not matching one of the enumerated values.
+      case 'short':
+      case 'byte':
+      case 'half_float':
+      case 'scaled_float':
+      case 'unsigned_long':
+      case 'token_count':
+      case 'decimal':
         return 'number';
       case 'boolean':
       case 'edm.boolean':
         return 'boolean';
       case 'date':
       case 'datetime':
+      case 'date_nanos':
+      case 'timestamp':
       case 'edm.datetimeoffset':
         return 'date';
       default:

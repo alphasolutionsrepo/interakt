@@ -813,6 +813,8 @@ function mapESType(esType?: string): string {
     case 'long':
     case 'short':
     case 'byte':
+    case 'unsigned_long':
+    case 'token_count':
       return 'number';
     case 'float':
     case 'double':
@@ -983,3 +985,7 @@ function mapAzureType(azureType: string): string {
 export async function isSlugAvailable(slug: string, excludeId?: string) {
   return repository.isSlugAvailable(slug, excludeId);
 }
+
+// Exported for tests only — the provider type maps are pure and worth pinning
+// directly, since their output is persisted onto the data source record.
+export { mapESType as _mapESType, mapAzureType as _mapAzureType };
