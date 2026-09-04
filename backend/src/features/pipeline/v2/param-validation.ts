@@ -385,17 +385,25 @@ function levenshteinDistance(a: string, b: string): number {
 
 import type { ParameterContext, FilterValidationResult } from './parameter-context.types';
 
+const RANGE_OPERATORS = new Set(['gt', 'gte', 'lt', 'lte']);
+const RANGE_CAPABLE_FIELD_TYPES = new Set(['number', 'date']);
+
 /**
  * Validate and correct extracted filter parameters using the enriched
  * parameter context (field constraints with known valid values).
  *
  * Checks for each filter:
  * 1. Is the field isFilterable? → if not, drop it
- * 2. Is it a text field with known valid values (isFacetable)?
+ * 2. Is it a range operator (gt/gte/lt/lte) against a non-numeric/date field?
+ *    → drop it. A relational comparison against a `text`/`boolean` field isn't
+ *      meaningful — e.g. "material >= 80" against a free-text composition
+ *      sentence like "80% cotton, 18% polyester" answers nothing, and
+ *      Elasticsearch range queries on analyzed text fields fail or misbehave.
+ * 3. Is it a text field with known valid values (isFacetable)?
  *    → verify the value exists in valid values (case-insensitive + substring match)
  *    → if no match, drop the filter and record the reason
- * 3. Is it a numeric/boolean field? → pass through (type coercion handled by validateParameters)
- * 4. Is it filterable but NOT facetable? → pass through (can't verify, search provider handles it)
+ * 4. Is it a numeric/boolean field? → pass through (type coercion handled by validateParameters)
+ * 5. Is it filterable but NOT facetable? → pass through (can't verify, search provider handles it)
  */
 export function validateFilters(
   filters: Array<{ field: string; operator: string; value: unknown }>,
@@ -439,7 +447,18 @@ export function validateFilters(
       continue;
     }
 
-    // Check 2: For text fields with known valid values, verify the value
+    // Check 2: Range operators only make sense on numeric/date fields
+    if (RANGE_OPERATORS.has(filter.operator) && !RANGE_CAPABLE_FIELD_TYPES.has(constraint.fieldType)) {
+      droppedFilters.push({
+        field: filter.field,
+        reason: `Range operator "${filter.operator}" is not supported on field type "${constraint.fieldType}"`,
+        originalValue: filter.value,
+      });
+      hasCorrections = true;
+      continue;
+    }
+
+    // Check 3: For text fields with known valid values, verify the value
     if (constraint.fieldType === 'text' && constraint.validValues.length > 0) {
       const filterValue = String(filter.value);
       const matchedValue = matchFilterValue(filterValue, constraint.validValues);

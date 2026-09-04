@@ -11,11 +11,13 @@ vi.mock('@/shared/logger/logger', () => ({
 
 import {
   validateParameters,
+  validateFilters,
   _fuzzyMatchEnum,
   _levenshteinDistance,
 } from './param-validation';
 import type { ParamValidationInput } from './v2.types';
 import type { ToolParameterSchema } from '@/features/ai-service/ai-service.types';
+import type { FieldConstraint, ParameterContext } from './parameter-context.types';
 
 // ============================================================================
 // FIXTURES
@@ -37,6 +39,26 @@ function makeInput(
   schema: ToolParameterSchema = SEARCH_SCHEMA,
 ): ParamValidationInput {
   return { parameters: params, inputSchema: schema };
+}
+
+function makeConstraint(overrides: Partial<FieldConstraint>): FieldConstraint {
+  return {
+    fieldName: 'field',
+    fieldType: 'text',
+    isFilterable: true,
+    isFacetable: false,
+    validValues: [],
+    ...overrides,
+  };
+}
+
+function makeContext(fieldConstraints: Record<string, FieldConstraint>): ParameterContext {
+  return {
+    fieldConstraints,
+    enriched: true,
+    summary: 'test context',
+    durationMs: 0,
+  };
 }
 
 // ============================================================================
@@ -304,6 +326,98 @@ describe('D2b: Parameter Validation', () => {
     it('includes summary with error fields', () => {
       const result = validateParameters(makeInput({}));
       expect(result.summary).toContain('query');
+    });
+  });
+
+  describe('validateFilters — range operators vs field type', () => {
+    it('drops a gte filter against a text field (e.g. "material >= 80")', () => {
+      const context = makeContext({
+        material: makeConstraint({
+          fieldName: 'material',
+          fieldType: 'text',
+          isFacetable: true,
+          validValues: ['80% cotton, 18% polyester, 2% elastane', '97% cotton, 3% elastane'],
+        }),
+      });
+
+      const result = validateFilters(
+        [{ field: 'material', operator: 'gte', value: '80' }],
+        context,
+      );
+
+      expect(result.filters).toHaveLength(0);
+      expect(result.droppedFilters).toHaveLength(1);
+      expect(result.droppedFilters[0]).toMatchObject({
+        field: 'material',
+        originalValue: '80',
+      });
+      expect(result.droppedFilters[0].reason).toContain('gte');
+      expect(result.droppedFilters[0].reason).toContain('text');
+      expect(result.hasCorrections).toBe(true);
+    });
+
+    it.each(['gt', 'gte', 'lt', 'lte'])('drops a %s filter against a boolean field', (operator) => {
+      const context = makeContext({
+        inStock: makeConstraint({ fieldName: 'inStock', fieldType: 'boolean' }),
+      });
+
+      const result = validateFilters(
+        [{ field: 'inStock', operator, value: true }],
+        context,
+      );
+
+      expect(result.filters).toHaveLength(0);
+      expect(result.droppedFilters).toHaveLength(1);
+    });
+
+    it('keeps a gte filter against a number field', () => {
+      const context = makeContext({
+        minPrice: makeConstraint({ fieldName: 'minPrice', fieldType: 'number' }),
+      });
+
+      const result = validateFilters(
+        [{ field: 'minPrice', operator: 'gte', value: 50 }],
+        context,
+      );
+
+      expect(result.filters).toEqual([{ field: 'minPrice', operator: 'gte', value: 50 }]);
+      expect(result.droppedFilters).toHaveLength(0);
+      expect(result.hasCorrections).toBe(false);
+    });
+
+    it('keeps a lte filter against a date field', () => {
+      const context = makeContext({
+        createdAt: makeConstraint({ fieldName: 'createdAt', fieldType: 'date' }),
+      });
+
+      const result = validateFilters(
+        [{ field: 'createdAt', operator: 'lte', value: '2026-01-01' }],
+        context,
+      );
+
+      expect(result.filters).toEqual([
+        { field: 'createdAt', operator: 'lte', value: '2026-01-01' },
+      ]);
+      expect(result.droppedFilters).toHaveLength(0);
+    });
+
+    it('still canonicalizes eq filter values against a text field (unaffected by the new check)', () => {
+      const context = makeContext({
+        category: makeConstraint({
+          fieldName: 'category',
+          fieldType: 'text',
+          isFacetable: true,
+          validValues: ['Jeans', 'Trousers'],
+        }),
+      });
+
+      const result = validateFilters(
+        [{ field: 'category', operator: 'eq', value: 'jeans' }],
+        context,
+      );
+
+      expect(result.filters).toEqual([{ field: 'category', operator: 'eq', value: 'Jeans' }]);
+      expect(result.hasCorrections).toBe(true);
     });
   });
 });

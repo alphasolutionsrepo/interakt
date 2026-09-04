@@ -193,16 +193,16 @@ export function buildOperatorQuery(
             return buildNeqQuery(keywordField, value);
 
         case 'gt':
-            return buildRangeQuery(field, { gt: value as number | string });
+            return buildRangeQuery(keywordField, { gt: value as number | string });
 
         case 'gte':
-            return buildRangeQuery(field, { gte: value as number | string });
+            return buildRangeQuery(keywordField, { gte: value as number | string });
 
         case 'lt':
-            return buildRangeQuery(field, { lt: value as number | string });
+            return buildRangeQuery(keywordField, { lt: value as number | string });
 
         case 'lte':
-            return buildRangeQuery(field, { lte: value as number | string });
+            return buildRangeQuery(keywordField, { lte: value as number | string });
 
         case 'in':
             return buildInQuery(keywordField, value);
