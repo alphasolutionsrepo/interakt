@@ -247,7 +247,11 @@ export const createSearchIndexFieldSchema = z.object({
 
     // Search behavior
     isRequired: z.boolean().default(false),
-    isSearchable: z.boolean().default(true),
+    // Left optional on purpose: the default depends on the field type (only
+    // text-like types are full-text searchable), so it lives in the service's
+    // defaultIsSearchableForType. A constant default here would override it and
+    // store numeric fields as searchable — which Azure rejects at query time.
+    isSearchable: z.boolean().optional(),
     isFacetable: z.boolean().default(false),
     includeInResponse: z.boolean().default(true),
     boostValue: z.number().min(0.1).max(100).default(1.0),

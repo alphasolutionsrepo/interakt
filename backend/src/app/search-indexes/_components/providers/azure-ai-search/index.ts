@@ -7,6 +7,9 @@
  * Import this module to ensure Azure provider UI is available.
  */
 
+// Imported from the constants module directly — the provider's index.ts barrel pulls
+// in the server-only engine provider, which cannot be bundled into a client component.
+import { isAzureSearchableFieldType } from '@/features/search/providers/azure-ai-search/azure-constants';
 import { registerProviderUI } from '../provider-registry';
 import { AzureSettingsForm } from './AzureSettingsForm';
 import { AzureSettingsDisplay } from './AzureSettingsDisplay';
@@ -22,6 +25,7 @@ registerProviderUI({
     FieldSettings: AzureFieldSettings,
     settingsSchema: azureSettingsSchema,
     defaultSettings: AZURE_DEFAULT_SETTINGS,
+    supportsSearchableFieldType: isAzureSearchableFieldType,
 });
 
 export { AzureSettingsForm } from './AzureSettingsForm';

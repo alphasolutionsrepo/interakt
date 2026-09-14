@@ -1140,6 +1140,7 @@ export default function FieldMappingsPage() {
                 onOpenChange={setAddFieldDialogOpen}
                 searchIndexId={indexId}
                 existingFields={fields ?? []}
+                searchProvider={searchIndex?.searchProvider}
                 onCreated={() => {
                     refetchFields();
                     refetchSummary();

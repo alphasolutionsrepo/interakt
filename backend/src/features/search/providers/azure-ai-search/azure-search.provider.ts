@@ -48,6 +48,23 @@ function isOrderByError(error: unknown): boolean {
     );
 }
 
+/**
+ * Detect Azure failures caused by a non-searchable field appearing in the highlight
+ * or searchFields list — e.g. "Field 'priceAmount' is not marked as 'searchable'".
+ *
+ * buildAzureSearchOptions already filters these out by field type, so this only
+ * fires for indexes whose Azure schema disagrees with the app's field config in
+ * some other way. Highlights are cosmetic, so drop them rather than fail the search.
+ */
+function isNotSearchableFieldError(error: unknown): boolean {
+    const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    return (
+        message.includes("not marked as 'searchable'") ||
+        message.includes('not a searchable field') ||
+        (message.includes('searchable') && message.includes('highlight'))
+    );
+}
+
 // ============================================================================
 // AZURE AI SEARCH PROVIDER
 // ============================================================================
@@ -133,23 +150,67 @@ export class AzureSearchProvider implements SearchProvider {
             };
         };
 
-        try {
-            try {
-                return await runSearch(searchOptions);
-            } catch (error) {
-                // A bad $orderby (malformed expression or a non-sortable field, often
-                // from AI-generated sort arguments) should not fail the whole search.
-                // Drop the sort and retry once so results degrade to relevance ranking.
-                if (searchOptions.orderBy?.length && isOrderByError(error)) {
-                    logger.warn('Azure search orderBy rejected — retrying without sort', {
-                        indexName: context.indexName,
-                        orderBy: searchOptions.orderBy,
-                        error: error instanceof Error ? error.message : String(error),
-                    });
-                    return await runSearch({ ...searchOptions, orderBy: undefined });
+        // Azure reports one validation error per response, so a query with two
+        // independent problems (say a non-sortable orderBy and a schema mismatch in
+        // searchFields) surfaces them one at a time. Degrade whichever the current
+        // error names and retry, until the search succeeds or the error is one we
+        // cannot degrade. Each degradation clears its own trigger condition, so this
+        // settles after at most one pass per branch; the cap guards future branches.
+        const maxAttempts = 3;
+
+        const runSearchWithFallbacks = async (): Promise<ProviderSearchResponse> => {
+            let options = searchOptions;
+
+            for (let attempt = 1; ; attempt++) {
+                try {
+                    return await runSearch(options);
+                } catch (error) {
+                    if (attempt >= maxAttempts) throw error;
+
+                    // A bad $orderby (malformed expression or a non-sortable field, often
+                    // from AI-generated sort arguments) should not fail the whole search.
+                    // Drop the sort so results degrade to relevance ranking.
+                    if (options.orderBy?.length && isOrderByError(error)) {
+                        logger.warn('Azure search orderBy rejected — retrying without sort', {
+                            indexName: context.indexName,
+                            orderBy: options.orderBy,
+                            error: error instanceof Error ? error.message : String(error),
+                        });
+                        options = { ...options, orderBy: undefined };
+                        continue;
+                    }
+
+                    // A field the index does not consider searchable reached the highlight
+                    // or searchFields list. Retry without either rather than returning
+                    // nothing — highlights are cosmetic, and Azure searches all searchable
+                    // fields when searchFields is omitted.
+                    if (
+                        (options.highlightFields || options.searchFields?.length)
+                        && isNotSearchableFieldError(error)
+                    ) {
+                        logger.warn('Azure search rejected a non-searchable field — retrying without highlight/searchFields', {
+                            indexName: context.indexName,
+                            highlightFields: options.highlightFields,
+                            searchFields: options.searchFields,
+                            error: error instanceof Error ? error.message : String(error),
+                        });
+                        options = {
+                            ...options,
+                            highlightFields: undefined,
+                            highlightPreTag: undefined,
+                            highlightPostTag: undefined,
+                            searchFields: undefined,
+                        };
+                        continue;
+                    }
+
+                    throw error;
                 }
-                throw error;
             }
+        };
+
+        try {
+            return await runSearchWithFallbacks();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             logger.error('Azure search failed', {
@@ -229,8 +290,10 @@ export class AzureSearchProvider implements SearchProvider {
 
             // Suggester not configured on this index — expected for indexes created before
             // the suggester was added. Fall back gracefully to search-based autocomplete.
-            if (message.includes('suggester') || message.includes('No suggester')) {
-                logger.warn('Azure suggest API unavailable (no suggester configured), falling back to search-based autocomplete', { indexName });
+            // Also falls back when a field in the list is not searchable in the index —
+            // autocompleteViaSearch retries without the field-scoped options.
+            if (message.includes('suggester') || message.includes('No suggester') || isNotSearchableFieldError(error)) {
+                logger.warn('Azure suggest API unavailable, falling back to search-based autocomplete', { indexName, error: message });
                 return this.autocompleteViaSearch(indexName, query, fields, options);
             }
 
@@ -252,16 +315,23 @@ export class AzureSearchProvider implements SearchProvider {
         const preTag = options?.highlightPreTag ?? '<mark>';
         const postTag = options?.highlightPostTag ?? '</mark>';
 
-        try {
-            const client = getSearchClient(indexName);
+        const client = getSearchClient(indexName);
 
+        // The caller's field list comes from the type-agnostic isSearchable flag, so it
+        // may name a field Azure cannot full-text search. withFullText=false drops the
+        // field-scoped options and lets Azure use its own searchable fields instead.
+        const runAutocomplete = async (withFullText: boolean): Promise<AutocompleteResult> => {
             const response = await client.search(query, {
-                searchFields: fields,
                 select: ['id', ...fields],
                 top: maxSuggestions,
-                highlightFields: fields.join(','),
-                highlightPreTag: preTag,
-                highlightPostTag: postTag,
+                ...(withFullText
+                    ? {
+                        searchFields: fields,
+                        highlightFields: fields.join(','),
+                        highlightPreTag: preTag,
+                        highlightPostTag: postTag,
+                    }
+                    : {}),
             });
 
             const hits: AutocompleteResult['hits'] = [];
@@ -280,6 +350,22 @@ export class AzureSearchProvider implements SearchProvider {
             }
 
             return { hits };
+        };
+
+        try {
+            try {
+                return await runAutocomplete(true);
+            } catch (error) {
+                if (isNotSearchableFieldError(error)) {
+                    logger.warn('Azure autocomplete rejected a non-searchable field — retrying without highlight/searchFields', {
+                        indexName,
+                        fields,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                    return await runAutocomplete(false);
+                }
+                throw error;
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Search-based autocomplete failed';
             logger.error('Azure search-based autocomplete failed', { indexName, error: message });

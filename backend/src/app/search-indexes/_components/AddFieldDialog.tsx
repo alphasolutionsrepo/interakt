@@ -38,6 +38,7 @@ import { Plus, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SearchIndexField } from '@/features/search-index';
 import { searchIndexFieldsApi } from '../_lib/api-client';
+import { getProviderUI } from './providers';
 import { FIELD_TYPES, FIELD_TYPE_INFO, type FieldType } from '@/shared/constants/field-types';
 import {
     MAPPING_MODE_INFO,
@@ -59,6 +60,8 @@ interface AddFieldDialogProps {
     searchIndexId: string;
     existingFields: SearchIndexField[];
     onCreated: (field: SearchIndexField) => void;
+    /** Index's search provider — decides which types can be marked searchable. */
+    searchProvider?: string;
 }
 
 function deriveDisplayName(fieldName: string): string {
@@ -78,6 +81,7 @@ export function AddFieldDialog({
     searchIndexId,
     existingFields,
     onCreated,
+    searchProvider,
 }: AddFieldDialogProps) {
     // Identity
     const [fieldName, setFieldName] = useState('');
@@ -106,6 +110,14 @@ export function AddFieldDialog({
 
     // Autocomplete is text-only (matches the edit panel and the Zod schema's refine).
     const isAutocompleteCompatible = fieldType === 'text';
+
+    // Some providers cannot full-text search every type — Azure rejects any query
+    // naming a non-string field, so such a field must never be created searchable.
+    // The type select can change after the box is ticked, so gate the effective
+    // value on compatibility rather than trying to reset state on every change.
+    const isSearchableCompatible =
+        getProviderUI(searchProvider || 'elasticsearch')?.supportsSearchableFieldType?.(fieldType) ?? true;
+    const effectiveIsSearchable = isSearchable && isSearchableCompatible;
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -225,7 +237,7 @@ export function AddFieldDialog({
                 fieldName,
                 fieldType,
                 displayName: displayName || null,
-                isSearchable,
+                isSearchable: effectiveIsSearchable,
                 isFacetable,
                 includeInResponse,
                 boostValue,
@@ -250,7 +262,7 @@ export function AddFieldDialog({
     }, [
         canSubmit, mode, fieldName, fieldType, displayName, sourceField, staticValue,
         sourceArrayPath, extractField, aggregation, sourceFromField, generator,
-        isSearchable, isFacetable, includeInResponse, isVectorSource, isRequired,
+        effectiveIsSearchable, isFacetable, includeInResponse, isVectorSource, isRequired,
         isAutocomplete, isAutocompleteCompatible, boostValue,
         searchIndexId, onCreated, onOpenChange, reset,
     ]);
@@ -459,8 +471,17 @@ export function AddFieldDialog({
                         <Label className="text-sm font-medium">Attributes</Label>
                         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                             <label className="flex items-center gap-2 text-sm">
-                                <Checkbox checked={isSearchable} onCheckedChange={(c) => setIsSearchable(c === true)} />
+                                <Checkbox
+                                    checked={effectiveIsSearchable}
+                                    onCheckedChange={(c) => setIsSearchable(c === true)}
+                                    disabled={!isSearchableCompatible}
+                                />
                                 Searchable
+                                {!isSearchableCompatible && (
+                                    <span className="text-muted-foreground text-xs">
+                                        (not supported for {fieldType})
+                                    </span>
+                                )}
                             </label>
                             <label className="flex items-center gap-2 text-sm">
                                 <Checkbox checked={isFacetable} onCheckedChange={(c) => setIsFacetable(c === true)} />

@@ -251,6 +251,13 @@ export function FieldConfigSheet({
         field.fieldType.toLowerCase()
     );
     const isAutocompleteCompatible = field.fieldType === 'text';
+    // Providers that cannot full-text search this field type reject any query that
+    // includes it. The toggle stays visible in that case and blocks only the switch
+    // ON — a field already stored as searchable must remain switchable OFF, since
+    // that is the repair for an index that is currently failing every search.
+    const isSearchableCompatible =
+        providerUI?.supportsSearchableFieldType?.(field.fieldType) ?? true;
+    const searchableNeedsRepair = !isSearchableCompatible && localSearchable;
     const filterValueMappings = field.filterValueMappings ?? {};
     const mappingsCount = Object.keys(filterValueMappings).length;
 
@@ -716,8 +723,12 @@ export function FieldConfigSheet({
                                                 reindex
                                             </Badge>
                                         </Label>
-                                        <p className="text-xs text-slate-500">
-                                            Include in full-text search
+                                        <p className={`text-xs ${searchableNeedsRepair ? 'text-amber-600' : 'text-slate-500'}`}>
+                                            {isSearchableCompatible
+                                                ? 'Include in full-text search'
+                                                : searchableNeedsRepair
+                                                    ? `${providerUI?.label ?? 'This provider'} cannot full-text search ${field.fieldType} fields — turn this off to stop searches failing`
+                                                    : `${providerUI?.label ?? 'This provider'} cannot full-text search ${field.fieldType} fields`}
                                         </p>
                                     </div>
                                     <Switch
@@ -726,7 +737,9 @@ export function FieldConfigSheet({
                                             setLocalSearchable(checked);
                                             handleAttributeToggle('isSearchable', checked);
                                         }}
-                                        disabled={readOnly}
+                                        // Incompatible and already on stays switchable, so the
+                                        // invalid state can be cleared; only switching ON is blocked.
+                                        disabled={readOnly || (!isSearchableCompatible && !localSearchable)}
                                     />
                                 </div>
 

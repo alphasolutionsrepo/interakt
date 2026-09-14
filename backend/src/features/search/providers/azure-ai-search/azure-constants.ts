@@ -42,6 +42,20 @@ export const SEARCHABLE_EDM_TYPES = new Set([
 ]);
 
 /**
+ * Whether Azure can mark a field of this app field type as searchable.
+ *
+ * The app's own `isSearchable` flag is type-agnostic (it defaults to true for
+ * every field), while Azure only accepts full-text operations — searchFields,
+ * highlight — on string types. Anything building an Azure query from the app
+ * flag must narrow with this predicate first, or Azure rejects the whole
+ * request: "Field 'x' is not marked as 'searchable'".
+ */
+export function isAzureSearchableFieldType(fieldType: string): boolean {
+    const edmType = FIELD_TYPE_TO_EDM[fieldType];
+    return edmType !== undefined && SEARCHABLE_EDM_TYPES.has(edmType);
+}
+
+/**
  * Field types that should default to sortable in Azure.
  * Numeric, date, and boolean types are naturally sortable.
  * Text/string types are excluded (sorting on analyzed text is rarely useful).
