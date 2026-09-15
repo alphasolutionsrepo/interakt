@@ -57,4 +57,12 @@ export interface ProviderUIRegistration {
     settingsSchema: z.ZodSchema;
     /** Default values for provider settings */
     defaultSettings: Record<string, unknown>;
+
+    /**
+     * Whether this provider can full-text search a field of the given type.
+     * Omitted means every type is allowed, which is the historic behaviour.
+     * The field config UI uses this to disable the Searchable toggle on types
+     * the provider would reject at query time (e.g. Azure and numeric fields).
+     */
+    supportsSearchableFieldType?: (fieldType: string) => boolean;
 }

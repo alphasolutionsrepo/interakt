@@ -19,6 +19,7 @@ export {
     FIELD_TYPE_TO_EDM,
     AZURE_LANGUAGES,
     AZURE_INDEX_DEFAULTS,
+    isAzureSearchableFieldType,
 } from './azure-constants';
 export {
     getIndexClient,

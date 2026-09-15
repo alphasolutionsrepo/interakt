@@ -42,6 +42,17 @@ const logger = createLogger('search-index-fields-service');
 // ============================================================================
 
 /**
+ * Whether a newly created field of this type should default to searchable.
+ *
+ * Only text-like types are full-text searchable. Defaulting a numeric, date or
+ * boolean field to searchable used to produce queries the search engine rejects
+ * outright — Azure refuses a non-string field in searchFields or highlight.
+ */
+export function defaultIsSearchableForType(fieldType: string): boolean {
+    return ['text', 'keyword'].includes(fieldType);
+}
+
+/**
  * Get the effective mapping config for a field
  * Handles legacy transformConfig format
  */
@@ -243,7 +254,7 @@ export async function createField(
             originalTemplateFieldId: null,
             isSystemField: input.isSystemField ?? false,
             isRequired: input.isRequired ?? false,
-            isSearchable: input.isSearchable ?? true,
+            isSearchable: input.isSearchable ?? defaultIsSearchableForType(input.fieldType),
             isFacetable: input.isFacetable ?? false,
             includeInResponse: input.includeInResponse ?? true,
             boostValue: input.boostValue ?? 1.0,
@@ -514,7 +525,7 @@ export async function createFieldsFromJson(
             originalTemplateFieldId: null,
             isSystemField: false,
             isRequired: false,
-            isSearchable: ['text', 'keyword'].includes(f.fieldType),
+            isSearchable: defaultIsSearchableForType(f.fieldType),
             isFacetable: ['keyword', 'number', 'boolean'].includes(f.fieldType),
             includeInResponse: true,
             boostValue: 1.0,
@@ -584,7 +595,7 @@ export async function createFieldsFromReview(
             originalTemplateFieldId: null,
             isSystemField: false,
             isRequired: false,
-            isSearchable: ['text', 'keyword'].includes(f.fieldType),
+            isSearchable: defaultIsSearchableForType(f.fieldType),
             isFacetable: ['keyword', 'number', 'boolean'].includes(f.fieldType),
             includeInResponse: true,
             boostValue: 1.0,

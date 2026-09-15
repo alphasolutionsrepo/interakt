@@ -20,6 +20,7 @@ import 'server-only';
 import type {
     ProviderSearchRequest,
 } from '../../../search.types';
+import { isAzureSearchableFieldType } from '../azure-constants';
 import { buildAzureFilter } from './filter.builder';
 
 /**
@@ -69,11 +70,19 @@ export function buildAzureSearchOptions(providerRequest: ProviderSearchRequest):
         includeTotalCount: true,
     };
 
+    // Fields the app calls searchable that Azure can actually search.
+    // The app's isSearchable flag is type-agnostic and defaults to true, while the
+    // index itself only marks string types searchable (see azure-field-mapper).
+    // Passing a numeric/date/boolean field to searchFields or highlight makes Azure
+    // reject the entire request, so narrow once and reuse for both.
+    const azureSearchableFields = context.searchableFields
+        .filter(f => isAzureSearchableFieldType(f.fieldType));
+
     // Search fields (from context — which fields to search across)
     // Note: Azure AI Search does NOT support field^boost syntax in searchFields.
     // Field boosting in Azure is handled via scoring profiles at the index level.
-    if (context.searchableFields.length > 0) {
-        options.searchFields = context.searchableFields.map(f => f.fieldName);
+    if (azureSearchableFields.length > 0) {
+        options.searchFields = azureSearchableFields.map(f => f.fieldName);
     }
 
     // Select fields (what to return in results)
@@ -108,9 +117,15 @@ export function buildAzureSearchOptions(providerRequest: ProviderSearchRequest):
         options.facets = facetFields.map(f => `${f},count:100`);
     }
 
-    // Highlighting (from request or context searchable fields)
+    // Highlighting (from request or context searchable fields).
+    // An explicitly requested list gets the same narrowing — it can name fields that
+    // are not searchable at all, and Azure would reject those just the same.
     const highlightFields = request.highlight?.fields
-        ?? context.searchableFields.map(f => f.fieldName);
+        ? request.highlight.fields.filter(name => {
+            const field = context.allFields.get(name);
+            return field !== undefined && isAzureSearchableFieldType(field.fieldType);
+        })
+        : azureSearchableFields.map(f => f.fieldName);
     if (highlightFields.length > 0) {
         options.highlightFields = highlightFields.join(',');
         options.highlightPreTag = request.highlight?.preTag ?? '<mark>';
