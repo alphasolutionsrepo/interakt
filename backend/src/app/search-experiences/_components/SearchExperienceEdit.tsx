@@ -47,6 +47,7 @@ import {
   ChevronUp,
   ChevronDown,
   Blend,
+  Wand2,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
@@ -56,6 +57,7 @@ import {
   MULTI_INDEX_STRATEGY_INFO,
   RESULT_MERGE_STRATEGY_INFO,
   DISPLAY_FIELD_ROLE_INFO,
+  DEFAULT_QUERY_UNDERSTANDING_CONFIG,
   type MultiIndexStrategy,
   type ResultMergeStrategy,
   type UpdateSearchExperienceDTO,
@@ -507,6 +509,12 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
         maxTokens?: number;
         customInstructions?: string;
       };
+      /** Optional: experiences created before this feature have no stored value. */
+      queryUnderstanding?: {
+        enabled: boolean;
+        minWords: number;
+        customInstructions?: string;
+      };
       chat: {
         enabled: boolean;
         webSearchEnabled?: boolean;
@@ -551,6 +559,14 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
         };
       }
 
+      // Query understanding post-dates most stored experiences, so the key is often
+      // absent. Backfill before initialData is built — the dirty check compares
+      // formData against initialFormData, so both sides must start identical.
+      const parsedAIConfig = JSON.parse(JSON.stringify(experience.aiConfig)) as typeof formData.aiConfig;
+      if (!parsedAIConfig.queryUnderstanding) {
+        parsedAIConfig.queryUnderstanding = { ...DEFAULT_QUERY_UNDERSTANDING_CONFIG };
+      }
+
       const initialData = {
         name: experience.name,
         slug: experience.slug,
@@ -558,7 +574,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
         isActive: experience.isActive,
         telemetryDetailLevel: experience.telemetryDetailLevel ?? 'off',
         searchConfig: parsedSearchConfig,
-        aiConfig: JSON.parse(JSON.stringify(experience.aiConfig)) as typeof formData.aiConfig,
+        aiConfig: parsedAIConfig,
         toolsConfig: JSON.parse(JSON.stringify(experience.toolsConfig)) as typeof formData.toolsConfig,
         allowedOrigins: [...(experience.allowedOrigins || [])],
         displayConfig: experience.displayConfig ? JSON.parse(JSON.stringify(experience.displayConfig)) as SearchExperienceDisplayConfig : null,
@@ -650,6 +666,30 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
           ? {
               ...prev,
               aiConfig: { ...prev.aiConfig, summary: { ...prev.aiConfig.summary, [field]: value } },
+            }
+          : null
+      );
+    },
+    []
+  );
+
+  const updateQueryUnderstandingConfig = useCallback(
+    <K extends keyof NonNullable<NonNullable<typeof formData>['aiConfig']['queryUnderstanding']>>(
+      field: K,
+      value: NonNullable<NonNullable<typeof formData>['aiConfig']['queryUnderstanding']>[K]
+    ) => {
+      setFormData((prev) =>
+        prev
+          ? {
+              ...prev,
+              aiConfig: {
+                ...prev.aiConfig,
+                queryUnderstanding: {
+                  ...DEFAULT_QUERY_UNDERSTANDING_CONFIG,
+                  ...prev.aiConfig.queryUnderstanding,
+                  [field]: value,
+                },
+              },
             }
           : null
       );
@@ -1470,6 +1510,83 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
                         </CollapsibleContent>
                       </div>
                     </Collapsible>
+                  </CardContent>
+                )}
+              </Card>
+
+              <Card className="border-border/60 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2 font-semibold">
+                      <Wand2 className="h-4 w-4 text-amber-500" />
+                      Query Understanding
+                    </CardTitle>
+                    <Switch
+                      checked={formData.aiConfig.queryUnderstanding?.enabled ?? false}
+                      onCheckedChange={(checked) => updateQueryUnderstandingConfig('enabled', checked)}
+                    />
+                  </div>
+                  <CardDescription>
+                    Turn phrases like &quot;under $200&quot; or a product code into real filters
+                    before searching. Adds an LLM call to every search, so it is off by default.
+                  </CardDescription>
+                </CardHeader>
+                {formData.aiConfig.queryUnderstanding?.enabled && (
+                  <CardContent className="space-y-6">
+                    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/15">
+                          <Layers className="size-4 text-amber-500" />
+                        </div>
+                        <div>
+                          <Label className="text-sm font-semibold">Interpretation Threshold</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Shorter queries skip interpretation entirely
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2 max-w-[16rem]">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Minimum Words
+                          </Label>
+                          <span className="text-xs text-muted-foreground/60">per query</span>
+                        </div>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={formData.aiConfig.queryUnderstanding?.minWords ?? 3}
+                          onChange={(e) =>
+                            updateQueryUnderstandingConfig('minWords', parseInt(e.target.value) || 3)
+                          }
+                          className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        A one- or two-word lookup has no filters to find and should not pay for an
+                        LLM round trip.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Custom Instructions (Optional)</Label>
+                      <Textarea
+                        value={formData.aiConfig.queryUnderstanding?.customInstructions || ''}
+                        onChange={(e) =>
+                          updateQueryUnderstandingConfig('customInstructions', e.target.value || undefined)
+                        }
+                        placeholder={'e.g. Product codes, SKUs and item numbers map to the "sku" field using the eq operator.'}
+                        rows={4}
+                        className="rounded-lg border-border/50 bg-background focus:bg-background"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Added to the core interpreter instructions, which are written around product
+                        attributes. Use this to describe fields it would not otherwise recognise,
+                        such as identifiers or domain-specific codes.
+                      </p>
+                    </div>
                   </CardContent>
                 )}
               </Card>

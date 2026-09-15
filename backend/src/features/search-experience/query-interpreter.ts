@@ -23,7 +23,8 @@
 
 import 'server-only';
 
-import { CacheManager } from '@/shared/cache/cache-manager';
+import { createHash } from 'node:crypto';
+
 import { createLogger } from '@/shared/logger/logger';
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
@@ -31,7 +32,11 @@ import * as searchService from '@/features/search/search.service';
 import { validateFilters } from '@/features/pipeline/v2/param-validation';
 import type { FieldConstraint } from '@/features/pipeline/v2/parameter-context.types';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
-import type { SearchExperienceQueryUnderstandingConfig } from '@/db/schema/search-experience.schema';
+import type {
+    SearchExperienceAIConfig,
+    SearchExperienceQueryUnderstandingConfig,
+} from '@/db/schema/search-experience.schema';
+import { constraintCache, interpretationCache } from './query-interpreter.cache';
 import {
     INTERPRETER_SCHEMA,
     buildInterpreterPrompt,
@@ -42,18 +47,6 @@ import {
 } from './query-interpreter.core';
 
 const logger = createLogger('query-interpreter');
-
-/** Interpretations are per (index, query) and cheap to recompute; 10 minutes is plenty. */
-const cache = new CacheManager('query-interpreter', {
-    defaultTTL: 10 * 60 * 1000,
-    maxSize: 1000,
-});
-
-/** Field constraints change only when the index configuration does. */
-const constraintCache = new CacheManager('query-interpreter-fields', {
-    defaultTTL: 5 * 60 * 1000,
-    maxSize: 100,
-});
 
 /** How many distinct values to offer the model per text field. */
 const MAX_FACET_VALUES = 40;
@@ -182,10 +175,21 @@ async function loadFieldConstraints(
     return constraints;
 }
 
-/** Drop cached field constraints for an index after its configuration changes. */
-export async function invalidateQueryInterpreterCache(searchIndexId: string): Promise<void> {
-    await constraintCache.delete(searchIndexId);
+/**
+ * Short, stable digest of a value that feeds the interpreter prompt, for use in the
+ * cache key. Instructions can run to 5000 characters, so they are hashed rather than
+ * embedded — this only has to distinguish versions, not resist attack.
+ */
+function fingerprint(value: string | undefined): string {
+    if (!value) return 'none';
+    return createHash('sha1').update(value).digest('hex').slice(0, 12);
 }
+
+/**
+ * Drop everything cached for an index after its configuration changes.
+ * Re-exported from the cache module so callers have one obvious place to reach for.
+ */
+export { invalidateQueryInterpreterCache } from './query-interpreter.cache';
 
 /**
  * Interpret a request's query and fold the result into its filters.
@@ -202,27 +206,31 @@ export async function applyQueryInterpretation(options: {
     query: string;
     clientFilters: Array<{ field: string; operator: string; value: unknown }> | undefined;
     searchIndexId: string | undefined;
-    config?: SearchExperienceQueryUnderstandingConfig;
-    providerId?: string | null;
-    modelId?: number | null;
+    /**
+     * The experience's whole AI config, not just the nested queryUnderstanding
+     * block: interpretation is an AI feature, so the global switch has to gate it
+     * the way it gates summaries. Taking the parent object means a caller cannot
+     * hand over the nested flag while omitting the global one.
+     */
+    aiConfig?: SearchExperienceAIConfig;
     experienceId?: string;
 }): Promise<{
     query: string;
     filters: Array<{ field: string; operator: string; value: unknown }> | undefined;
     interpretation?: QueryInterpretation;
 }> {
-    const { query, clientFilters, searchIndexId } = options;
+    const { query, clientFilters, searchIndexId, aiConfig } = options;
 
-    if (!searchIndexId || !options.config?.enabled) {
+    if (!searchIndexId || !aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled) {
         return { query, filters: clientFilters };
     }
 
     const interpretation = await interpretQuery({
         query,
         searchIndexId,
-        config: options.config,
-        providerId: options.providerId,
-        modelId: options.modelId,
+        config: aiConfig.queryUnderstanding,
+        providerId: aiConfig.providerId,
+        modelId: aiConfig.modelId,
         experienceId: options.experienceId,
     });
 
@@ -281,9 +289,11 @@ export async function interpretQuery(
         }
 
         // Key on the index + experience/model: the same phrase can be interpreted differently
-        // depending on provider/model and per-experience instructions.
-        const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${query.trim().toLowerCase()}`;
-        const result = await cache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
+        // depending on provider/model and per-experience instructions. The instructions are
+        // fingerprinted rather than assumed constant per experience — an admin can edit them,
+        // and without this the old interpretation would be served for the rest of the TTL.
+        const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim().toLowerCase()}`;
+        const result = await interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
             const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
 
             const completion = await aiService.chat(

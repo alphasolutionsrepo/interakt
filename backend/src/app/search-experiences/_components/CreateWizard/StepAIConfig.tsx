@@ -27,6 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Brain,
   Sparkles,
+  Wand2,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { CustomInstructionsGenerator } from './CustomInstructionsGenerator';
@@ -107,6 +108,20 @@ export function StepAIConfig({
       updateField('aiConfig', {
         ...aiConfig,
         summary: { ...aiConfig.summary, [field]: value },
+      });
+    },
+    [aiConfig, updateField]
+  );
+
+  // Update query understanding config
+  const updateQueryUnderstandingConfig = useCallback(
+    <K extends keyof WizardFormData['aiConfig']['queryUnderstanding']>(
+      field: K,
+      value: WizardFormData['aiConfig']['queryUnderstanding'][K]
+    ) => {
+      updateField('aiConfig', {
+        ...aiConfig,
+        queryUnderstanding: { ...aiConfig.queryUnderstanding, [field]: value },
       });
     },
     [aiConfig, updateField]
@@ -304,6 +319,70 @@ export function StepAIConfig({
                   />
                   <p className="text-xs text-muted-foreground">
                     These instructions are added to the core summary behavior. Use to customize tone or focus areas.
+                  </p>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Query Understanding */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Wand2 className="h-4 w-4" />
+                    Query Understanding
+                  </CardTitle>
+                  <CardDescription>
+                    Turn phrases like &quot;under $200&quot; or a product code into real filters
+                    before searching. Adds an LLM call to every search, so it is off by default.
+                  </CardDescription>
+                </div>
+                <Switch
+                  checked={aiConfig.queryUnderstanding.enabled}
+                  onCheckedChange={(checked) => updateQueryUnderstandingConfig('enabled', checked)}
+                />
+              </div>
+            </CardHeader>
+            {aiConfig.queryUnderstanding.enabled && (
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="queryUnderstandingMinWords">Minimum Words</Label>
+                  <Input
+                    id="queryUnderstandingMinWords"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={aiConfig.queryUnderstanding.minWords}
+                    onChange={(e) =>
+                      updateQueryUnderstandingConfig('minWords', parseInt(e.target.value) || 3)
+                    }
+                    className="max-w-[12rem]"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shorter queries skip interpretation — a one-word lookup has no filters to find
+                    and should not pay for an LLM round trip.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="queryUnderstandingCustomInstructions">
+                    Custom Instructions (Optional)
+                  </Label>
+                  <Textarea
+                    id="queryUnderstandingCustomInstructions"
+                    value={aiConfig.queryUnderstanding.customInstructions || ''}
+                    onChange={(e) =>
+                      updateQueryUnderstandingConfig('customInstructions', e.target.value || undefined)
+                    }
+                    placeholder={'e.g. Product codes, SKUs and item numbers map to the "sku" field using the eq operator.'}
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Added to the core interpreter instructions, which are written around product
+                    attributes. Use this to describe fields it would not otherwise recognise, such
+                    as identifiers or domain-specific codes.
                   </p>
                 </div>
               </CardContent>

@@ -186,9 +186,7 @@ async function buildSearchRequest(
     query: publicRequest.query,
     clientFilters: publicRequest.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
     searchIndexId: indexes[0]?.searchIndex?.id,
-    config: experience.aiConfig?.queryUnderstanding,
-    providerId: experience.aiConfig?.providerId,
-    modelId: experience.aiConfig?.modelId,
+    aiConfig: experience.aiConfig,
     experienceId: experience.id,
   });
 

@@ -366,6 +366,14 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
                     : 'Disabled'}
                 </p>
               </div>
+              <div className="p-3 bg-muted/30 rounded-xl">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Query Understanding</p>
+                <p className="text-sm font-semibold mt-1">
+                  {aiConfig.queryUnderstanding?.enabled
+                    ? `Enabled · min ${aiConfig.queryUnderstanding.minWords} words`
+                    : 'Disabled'}
+                </p>
+              </div>
             </div>
           )}
         </CollapsibleCard>

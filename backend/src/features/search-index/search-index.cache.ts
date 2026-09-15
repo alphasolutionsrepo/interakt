@@ -14,6 +14,11 @@ import 'server-only';
 
 import { CacheManager } from '@/shared/cache/cache-manager';
 import { cacheConfig } from '@/config/cache.config';
+// The query interpreter caches field constraints derived from this index, and
+// interpretations built on top of them, so they go stale for the same reasons.
+// Its cache module is a leaf on purpose — the interpreter itself imports
+// search-index.service, so only this direction avoids a cycle.
+import { invalidateQueryInterpreterCache } from '@/features/search-experience/query-interpreter.cache';
 
 // Cache TTL - use config or default to 5 minutes
 export const SEARCH_INDEX_CACHE_TTL = cacheConfig.features?.searchIndexes ?? 300;
@@ -37,6 +42,7 @@ export async function clearIndexCache(id: string, name: string): Promise<void> {
     await Promise.all([
         cache.delete(`index:${id}`),
         cache.delete(`index:name:${name}`),
+        invalidateQueryInterpreterCache(id),
     ]);
 }
 
@@ -46,5 +52,8 @@ export async function clearIndexCache(id: string, name: string): Promise<void> {
  * Prefer clearIndexCache() — the by-name entry survives this call.
  */
 export async function clearIndexCacheById(id: string): Promise<void> {
-    await cache.delete(`index:${id}`);
+    await Promise.all([
+        cache.delete(`index:${id}`),
+        invalidateQueryInterpreterCache(id),
+    ]);
 }
