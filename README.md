@@ -39,8 +39,8 @@ Underneath is a curated stack: a search engine, an AI provider, a chat pipeline,
 <table>
   <tr>
     <td width="34%" align="center" valign="top"><a href="https://www.youtube.com/watch?v=oxcFsP9UGiY"><img src="https://img.youtube.com/vi/oxcFsP9UGiY/maxresdefault.jpg" alt="Interakt backend setup: from git clone to localhost:3000" width="100%"></a><br><sub><b>Backend setup</b><br>From <code>git clone</code> to localhost:3000</sub></td>
-    <td width="33%" align="center" valign="top"><a href="https://www.youtube.com/watch?v=F6NcsVIett0"><img src="https://img.youtube.com/vi/F6NcsVIett0/maxresdefault.jpg" alt="Interakt and Medusa: ecommerce with AI search and a sales assistant" width="100%"></a><br><sub><b>AI search and a sales assistant</b><br>Interakt on a Medusa storefront</sub></td>
-    <td width="33%" align="center" valign="top"><a href="https://www.youtube.com/watch?v=HefUDrwq_Sw"><img src="https://img.youtube.com/vi/HefUDrwq_Sw/maxresdefault.jpg" alt="Interakt and Medusa: how tight integration makes it easy to manage" width="100%"></a><br><sub><b>Managing the integration</b><br>The admin side of the Medusa setup</sub></td>
+    <td width="33%" align="center" valign="top"><a href="https://www.youtube.com/watch?v=F6NcsVIett0"><img src="https://img.youtube.com/vi/F6NcsVIett0/maxresdefault.jpg?v=2" alt="Interakt and Medusa: ecommerce with AI search and a sales assistant" width="100%"></a><br><sub><b>AI search and a sales assistant</b><br>Interakt on a Medusa storefront</sub></td>
+    <td width="33%" align="center" valign="top"><a href="https://www.youtube.com/watch?v=HefUDrwq_Sw"><img src="https://img.youtube.com/vi/HefUDrwq_Sw/maxresdefault.jpg?v=2" alt="Interakt and Medusa: how tight integration makes it easy to manage" width="100%"></a><br><sub><b>Managing the integration</b><br>The admin side of the Medusa setup</sub></td>
   </tr>
 </table>
 
