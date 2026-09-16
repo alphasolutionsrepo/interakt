@@ -3,31 +3,103 @@
 Thanks for your interest in contributing! This guide covers how to get set up,
 the conventions we follow, and what we expect on a pull request.
 
-## Getting started
-
-See the [README](README.md) for full local setup. The short version:
-
-```bash
-# Backend (admin + APIs) — http://localhost:3000
-cd backend
-cp .env.example .env                                   # fill in the generated secrets
-cp setup/setup.config.example.yaml setup/setup.config.yaml
-npm install
-npm run infra:up                                       # local Postgres + Elasticsearch
-npm run dev                                            # auto-migrates, seeds, creates admin
-```
-
-The demo site (a reference integration) lives in `demo-site/` and runs on port 3001.
+## Local development
 
 **Prerequisites:** Node.js 24 (see [`.nvmrc`](.nvmrc)) and Docker + Docker Compose.
+
+### Backend (admin dashboard + APIs)
+
+```bash
+cd backend
+
+# Runtime config — fill in the three openssl-generated secrets at the top of the file
+cp .env.example .env
+
+# Admin user — change at least the password
+cp setup/setup.config.example.yaml setup/setup.config.yaml
+
+npm install
+npm run infra:up      # local Postgres (pgvector), pgAdmin and Elasticsearch in Docker
+npm run dev           # dev server on http://localhost:3000
+```
+
+On first `npm run dev` the server automatically:
+
+1. Applies Drizzle migrations to both databases (main + analytics).
+2. Seeds the AI provider catalog and prompt templates.
+3. Creates the admin user from `setup/setup.config.yaml`.
+
+Sign in at http://localhost:3000 with the admin email and password from your YAML.
+
+| Script | What it does |
+|---|---|
+| `npm run dev` | Start dev server (auto-migrates + auto-seeds + auto-creates admin) |
+| `npm run infra:up` | Start the local Docker stack (Postgres + pgAdmin + Elasticsearch) |
+| `npm run infra:down` | Stop containers, keep volumes |
+| `npm run infra:reset` | Stop and wipe volumes (fresh DB on next boot) |
+| `npm run lint` / `lint:fix` / `lint:strict` | Lint |
+| `npm run format` | Prettier |
+| `npm run type-check` | TypeScript no-emit check |
+| `npm run test` / `test:watch` / `test:coverage` | Vitest |
+
+**Bring your own Postgres / Elasticsearch.** If you already have services running, skip
+`npm run infra:up` and point `POSTGRES_URL`, `ANALYTICS_POSTGRES_URL` and `ELASTICSEARCH_URL`
+in `.env` at your endpoints. `npm run dev` still handles migrations and seeding.
+
+### Initial setup in the admin UI
+
+Go to **Platform → Initial Setup** (or open http://localhost:3000/setup directly) and:
+
+1. **Configure an AI provider** — Ollama for local/free, OpenAI for cloud. This is required:
+   until a provider is configured and set as the system default, the in-app docs and help
+   assistant are unavailable, because the docs are indexed with the default provider's
+   embedding model.
+2. **Load the Fashion Catalog demo data** — sample content plus ready-made Search and AI
+   experiences with access tokens, which is exactly what the demo site needs.
+
+Then open http://localhost:3000/docs and spend ten minutes on
+[What is Interakt](http://localhost:3000/docs/getting-started/what-is-interakt) and
+[Architecture](http://localhost:3000/docs/getting-started/architecture) before clicking around
+the admin. The **?** icon on any admin screen opens the docs page for what you're looking at,
+plus an **Ask** tab backed by Interakt's own assistant running over the docs.
+
+### Demo site (reference integration)
+
+```bash
+cd demo-site
+npm install
+npm run dev           # http://localhost:3001, talks to the backend on :3000 by default
+```
+
+Each demo route is a separate experience and needs its own access token, issued in the admin
+UI (loading the Fashion Catalog above is the fastest way to get them). Open a route, click the
+gear icon, paste the backend URL and the matching token, and save. Settings persist in
+localStorage, one per route.
+
+| Route | Token type |
+|---|---|
+| `/search-interface`, `/experience/smart-search`, `/experience/guided-search` | Search Experience |
+| `/chat` | AI Experience |
+| `/dropin-demo` | Search and/or AI Experience |
+
+### Widgets and docs site
+
+- `backend/widgets/` is its own npm package (Preact, built with Vite). `npm run build` there
+  emits `dist/widgets.js` and copies it into `backend/public/embed/v1/`. See its
+  [README](backend/widgets/README.md).
+- `docs-site/` is the Docusaurus shell behind [docs.interakt.app](https://docs.interakt.app).
+  The content lives in `backend/src/content/docs/` and is copied in by CI — edit it there.
 
 ## Repo layout
 
 ```
 interakt/
-├── backend/      # Next.js admin dashboard + REST APIs (Drizzle, Postgres + Elasticsearch/Azure AI Search)
-│   └── widgets/  # Embeddable drop-in search/chat widgets (Lit) — its own package
-└── demo-site/    # Example consumer app built against the Interakt APIs
+├── backend/               # Next.js admin dashboard + REST APIs (Drizzle, Postgres + Elasticsearch/Azure AI Search)
+│   ├── widgets/           # Embeddable drop-in search/chat widgets (Preact) — its own package
+│   ├── docker/            # Production Dockerfile + local docker-compose stack
+│   └── src/content/docs/  # Documentation source (served in-app at /docs, published to docs.interakt.app)
+├── demo-site/             # Example consumer app built against the Interakt APIs
+└── docs-site/             # Docusaurus + Redocusaurus shell for docs.interakt.app
 ```
 
 The backend uses a **feature-sliced architecture** under `backend/src/features/`. Each

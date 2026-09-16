@@ -1,0 +1,67 @@
+name: Bug report
+description: Something is broken or behaves differently from the docs
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. **Security issues must not be reported here** — follow [SECURITY.md](https://github.com/alphasolutionsrepo/interakt/blob/main/SECURITY.md) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Admin UI
+        - Search
+        - AI chat / pipeline
+        - Widgets
+        - Public API / ingestion
+        - Data sources / indexing
+        - Docs
+        - Other
+  - type: dropdown
+    id: search-provider
+    attributes:
+      label: Search provider
+      options:
+        - Elasticsearch
+        - Azure AI Search
+        - Not relevant
+  - type: dropdown
+    id: ai-provider
+    attributes:
+      label: AI provider
+      options:
+        - OpenAI
+        - Ollama
+        - Other / not relevant
+  - type: input
+    id: version
+    attributes:
+      label: Interakt version or commit
+      placeholder: "e.g. main @ 4cf3260"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Server logs, browser console output, or screenshots. Redact secrets and personal data.
+      render: shell
