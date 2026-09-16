@@ -1,0 +1,31 @@
+# Line-ending normalization.
+#
+# Git stores text with LF and checks it out with LF on every platform, so a
+# clone on Windows gets the same bytes as one on macOS or Linux.
+#
+# Without this, Git for Windows' default (core.autocrlf=true) rewrites text
+# files to CRLF on checkout. That breaks any script executed inside a Linux
+# container: docker/init-db/01-init.sh is marked executable, so Postgres execs
+# it, and the shebang line becomes "#!/bin/bash\r" — an interpreter that does
+# not exist. Initialization aborts, the interakt databases are never created,
+# and the healthcheck (pg_isready -d interakt) leaves the container unhealthy.
+
+* text=auto eol=lf
+
+# Scripts run by Linux containers are always LF, regardless of detection.
+*.sh text eol=lf
+
+# Windows-native scripts are always CRLF, should any be added.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files — never inspected or converted.
+*.jpg  binary
+*.jpeg binary
+*.png  binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf  binary
