@@ -53,6 +53,24 @@ export function defaultIsSearchableForType(fieldType: string): boolean {
 }
 
 /**
+ * Record that an index's schema changed: bump the mapping version and drop every
+ * cache derived from the old definition.
+ *
+ * Every field mutation goes through this rather than calling
+ * incrementMappingVersion directly. Bumping the version alone leaves the cached
+ * index definition — and the query interpreter's field constraints and the
+ * interpretations built from them — serving the old schema until their TTLs
+ * expire, so a field the admin just made filterable stays invisible for minutes.
+ *
+ * incrementMappingVersion returns the updated row, so the name needed for the
+ * by-name cache key comes back without a second read.
+ */
+async function markSchemaChanged(searchIndexId: string): Promise<void> {
+    const updated = await searchIndexRepository.incrementMappingVersion(searchIndexId, true);
+    await clearIndexCache(updated.id, updated.name);
+}
+
+/**
  * Get the effective mapping config for a field
  * Handles legacy transformConfig format
  */
@@ -270,7 +288,7 @@ export async function createField(
         });
 
         // Mark index as requiring reindex since schema changed
-        await searchIndexRepository.incrementMappingVersion(searchIndexId, true);
+        await markSchemaChanged(searchIndexId);
 
         logger.info('Created custom field', {
             fieldId: created.id,
@@ -542,7 +560,7 @@ export async function createFieldsFromJson(
         const created = await repository.createFields(newFields);
 
         // Mark index as requiring reindex
-        await searchIndexRepository.incrementMappingVersion(searchIndexId, true);
+        await markSchemaChanged(searchIndexId);
 
         logger.info('Created fields from JSON', {
             searchIndexId,
@@ -610,7 +628,7 @@ export async function createFieldsFromReview(
         }));
 
         const created = await repository.createFields(newFields);
-        await searchIndexRepository.incrementMappingVersion(searchIndexId, true);
+        await markSchemaChanged(searchIndexId);
 
         logger.info('Created fields from review', {
             searchIndexId,
@@ -710,15 +728,10 @@ export async function deleteField(
 
         await repository.deleteField(fieldId);
 
-        // Mark index as requiring reindex
-        await searchIndexRepository.incrementMappingVersion(field.searchIndexId, true);
-
-        // Drop the cached index definition, or reads keep serving the deleted
-        // field — including the search context built from it.
-        const index = await searchIndexRepository.getSearchIndexById(searchIndexId);
-        if (index) {
-            await clearIndexCache(index.id, index.name);
-        }
+        // Requires a reindex, and drops the cached index definition — reads would
+        // otherwise keep serving the deleted field, including the search context
+        // built from it.
+        await markSchemaChanged(field.searchIndexId);
 
         logger.info('Deleted field', {
             fieldId,
@@ -936,7 +949,7 @@ export async function updateField(
             input.mappingConfig !== undefined;
 
         if (requiresReindex) {
-            await searchIndexRepository.incrementMappingVersion(existing.searchIndexId, true);
+            await markSchemaChanged(existing.searchIndexId);
         }
 
         logger.info('Updated search index field', {
@@ -989,7 +1002,7 @@ export async function updateFieldMapping(
         );
 
         // Mark index as requiring reindex
-        await searchIndexRepository.incrementMappingVersion(existing.searchIndexId, true);
+        await markSchemaChanged(existing.searchIndexId);
 
         logger.info('Updated field mapping', {
             fieldId,
@@ -1022,7 +1035,7 @@ export async function updateFieldMappingConfig(
         const updated = await repository.updateFieldMappingConfig(fieldId, mappingConfig);
 
         // Mark index as requiring reindex
-        await searchIndexRepository.incrementMappingVersion(existing.searchIndexId, true);
+        await markSchemaChanged(existing.searchIndexId);
 
         logger.info('Updated field mapping config', {
             fieldId,
@@ -1079,7 +1092,7 @@ export async function bulkUpdateMappings(
         const updated = await repository.bulkUpdateMappings(searchIndexId, mappingsForRepo);
 
         // Mark index as requiring reindex
-        await searchIndexRepository.incrementMappingVersion(searchIndexId, true);
+        await markSchemaChanged(searchIndexId);
 
         logger.info('Bulk updated field mappings', {
             searchIndexId,
@@ -1106,7 +1119,7 @@ export async function updateAdditionalDataConfig(
         const updated = await repository.updateAdditionalDataConfig(searchIndexId, collectFields);
 
         if (updated) {
-            await searchIndexRepository.incrementMappingVersion(searchIndexId, true);
+            await markSchemaChanged(searchIndexId);
 
             logger.info('Updated additionalData config', {
                 searchIndexId,
@@ -1133,7 +1146,7 @@ export async function clearAllMappings(
         const clearedCount = await repository.clearAllMappings(searchIndexId);
 
         // Mark index as requiring reindex
-        await searchIndexRepository.incrementMappingVersion(searchIndexId, true);
+        await markSchemaChanged(searchIndexId);
 
         logger.info('Cleared all field mappings', {
             searchIndexId,

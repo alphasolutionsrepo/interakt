@@ -95,13 +95,51 @@ export class CacheManager {
 
   /**
    * Delete value from cache
+   *
+   * Also drops any in-flight factory for the key. A getOrSet that started before
+   * this call is working from data this delete just invalidated, so its result
+   * must not be written back — see the ownership check in getOrSet.
    */
   async delete(key: string): Promise<void> {
     this.cache.delete(key);
+    this.pending.delete(key);
 
     if (cacheConfig.logging.logOperations) {
       logger.debug('Cache deleted', { feature: this.feature, key });
     }
+  }
+
+  /**
+   * Delete every entry whose key starts with the given prefix.
+   *
+   * For caches whose keys are compound — "<indexId>:<experienceId>:…" — this drops
+   * one owner's entries without clearing everyone else's. Pending in-flight
+   * factories are dropped too, so a request that started before the invalidation
+   * cannot repopulate the cache with stale data.
+   *
+   * @returns how many cached entries were removed
+   */
+  async deleteByPrefix(prefix: string): Promise<number> {
+    let deleted = 0;
+
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+        deleted++;
+      }
+    }
+
+    for (const key of this.pending.keys()) {
+      if (key.startsWith(prefix)) {
+        this.pending.delete(key);
+      }
+    }
+
+    if (deleted > 0 && cacheConfig.logging.logOperations) {
+      logger.debug('Cache prefix deleted', { feature: this.feature, prefix, deleted });
+    }
+
+    return deleted;
   }
 
   /**
@@ -137,15 +175,32 @@ export class CacheManager {
       return existingPromise;
     }
 
-    // ✅ Create new promise and track it
-    const promise = (async () => {
+    // ✅ Create new promise and track it.
+    const promise: Promise<T> = (async () => {
+      // Yield before touching anything, so that by the time the body runs this
+      // binding is assigned and the pending slot below is populated. A factory
+      // that throws *synchronously* would otherwise reach the finally clause
+      // while `promise` is still in its temporal dead zone — masking the real
+      // error with a ReferenceError and stranding the slot, which poisons the
+      // key for every later caller.
+      await Promise.resolve();
+
       try {
         const value = await factory();
-        this.set(key, value, ttl);
+        // Only write back if this call still owns the pending slot. An
+        // invalidation (delete / deleteByPrefix / clear) removes it, and that is
+        // the signal that the value being produced is already stale — caching it
+        // would undo the invalidation for the rest of the TTL.
+        if (this.pending.get(key) === promise) {
+          this.set(key, value, ttl);
+        }
         return value;
       } finally {
-        // ✅ Remove from pending when done
-        this.pending.delete(key);
+        // ✅ Remove from pending when done — unless an invalidation already
+        // replaced the slot with a newer call's promise.
+        if (this.pending.get(key) === promise) {
+          this.pending.delete(key);
+        }
       }
     })();
 

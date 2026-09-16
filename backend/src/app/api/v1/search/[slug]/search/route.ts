@@ -208,9 +208,7 @@ async function buildSearchRequest(
     query: input.query,
     clientFilters: input.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
     searchIndexId: primarySearchIndexId,
-    config: experience.aiConfig?.queryUnderstanding,
-    providerId: experience.aiConfig?.providerId,
-    modelId: experience.aiConfig?.modelId,
+    aiConfig: experience.aiConfig,
     experienceId: experience.id,
   });
 

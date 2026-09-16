@@ -10,6 +10,7 @@ import { z } from 'zod';
 import {
   DEFAULT_SEARCH_CONFIG,
   DEFAULT_AI_CONFIG,
+  DEFAULT_QUERY_UNDERSTANDING_CONFIG,
   DEFAULT_TOOLS_CONFIG,
   DEFAULT_AUTOCOMPLETE_CONFIG,
 } from './search-experience.types';
@@ -101,6 +102,11 @@ export const wizardStep3Schema = z.object({
       maxResultsForContext: z.number().int().min(1).max(50),
       customInstructions: z.string().max(5000).optional(),
       maxTokens: z.number().int().min(50).max(4000).optional(),
+    }),
+    queryUnderstanding: z.object({
+      enabled: z.boolean(),
+      minWords: z.number().int().min(1).max(20),
+      customInstructions: z.string().max(5000).optional(),
     }),
   }),
   toolsConfig: z.object({
@@ -198,6 +204,11 @@ export interface WizardFormData {
       customInstructions?: string;
       maxTokens?: number;
     };
+    queryUnderstanding: {
+      enabled: boolean;
+      minWords: number;
+      customInstructions?: string;
+    };
   };
   toolsConfig: {
     enabled: string[];
@@ -244,6 +255,7 @@ export const WIZARD_DEFAULT_VALUES: WizardFormData = {
       maxResultsForContext: DEFAULT_AI_CONFIG.summary.maxResultsForContext,
       maxTokens: DEFAULT_AI_CONFIG.summary.maxTokens,
     },
+    queryUnderstanding: { ...DEFAULT_QUERY_UNDERSTANDING_CONFIG },
   },
   toolsConfig: { ...DEFAULT_TOOLS_CONFIG },
   // Display config is optional - will be populated in Step 4
