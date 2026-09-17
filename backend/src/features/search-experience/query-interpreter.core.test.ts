@@ -86,6 +86,33 @@ describe('buildInterpreterPrompt', () => {
         expect(prompt).toContain('maxPrice >= X');
     });
 
+    it('teaches the match-all sentinel for a filter-only interpretation', () => {
+        // The query and the filters are ANDed. A leftover word like "price" has
+        // to be found in the document's text too, which excludes the very product
+        // the identifier filter just selected — measured as 0 lexical hits.
+        const prompt = buildInterpreterPrompt(CONSTRAINTS);
+
+        expect(prompt).toContain('query "*", filters [sku eq "08011-M"]');
+        expect(prompt).not.toContain('query "price"');
+    });
+
+    it('tells the model to filter on exact identifiers', () => {
+        // Without this the model reads rule 3's "not in the listed values" as
+        // covering fields that have no listed values at all — which is every
+        // high-cardinality identifier — and leaves the code in the query text,
+        // where a keyword field can never match it.
+        const prompt = buildInterpreterPrompt(CONSTRAINTS);
+
+        expect(prompt).toContain('Exact identifiers');
+        expect(prompt).toContain('sku eq "08011-M"');
+    });
+
+    it('scopes the unknown-value rule to fields that list values', () => {
+        const prompt = buildInterpreterPrompt(CONSTRAINTS);
+
+        expect(prompt).toContain('only to fields that have valid values listed');
+    });
+
     it('appends custom instructions when configured', () => {
         const prompt = buildInterpreterPrompt(CONSTRAINTS, 'Prefer in-stock items.');
 
@@ -117,6 +144,30 @@ describe('parseInterpretation', () => {
                 { field: 'minPrice', operator: 'lte', value: 110 },
             ],
         });
+    });
+
+    it('falls back to match-all when the query is empty but filters were extracted', () => {
+        // Restoring the original sentence here would AND its words back in and
+        // exclude the document the filter selected.
+        const result = parseInterpretation(
+            JSON.stringify({ query: '', filters: [{ field: 'sku', operator: 'eq', value: '08011-M' }] }),
+            "What's the price of SKU 08011-M?",
+        );
+
+        expect(result).toEqual({
+            query: '*',
+            filters: [{ field: 'sku', operator: 'eq', value: '08011-M' }],
+        });
+    });
+
+    it('falls back to the original phrase when nothing was extracted at all', () => {
+        // With no filters to narrow on, match-all would return the whole index.
+        const result = parseInterpretation(
+            JSON.stringify({ query: '   ', filters: [] }),
+            'waterproof jackets',
+        );
+
+        expect(result).toEqual({ query: 'waterproof jackets', filters: [] });
     });
 
     it('coerces numeric strings, including currency symbols', () => {

@@ -18,7 +18,7 @@ import {
 import { useSettings } from '@/contexts/settings-context';
 import { useSearch } from '@/hooks/use-search';
 import { useAutocomplete } from '@/hooks/use-autocomplete';
-import { useAISummary } from '@/hooks/use-ai-summary';
+import { useAISummary, MIN_RESULTS_FOR_SUMMARY } from '@/hooks/use-ai-summary';
 import { DynamicResultCard } from '../../search-interface/components/DynamicResultCard';
 import { SettingsModal } from '../../search-interface/components/SettingsModal';
 
@@ -361,9 +361,17 @@ function ResultsStep({
 
   // Generate AI summary on first render with results
   useEffect(() => {
-    if (query && results.length >= 3 && query !== lastQueryRef.current) {
+    if (query && results.length >= MIN_RESULTS_FOR_SUMMARY && query !== lastQueryRef.current) {
       lastQueryRef.current = query;
       aiSummary.generate(query, results);
+    }
+
+    // Nothing left to summarise. This page is facet-driven, so results change
+    // while the query stays put — without this the previous summary would keep
+    // describing results the filters have since removed.
+    if (!query || results.length < MIN_RESULTS_FOR_SUMMARY) {
+      aiSummary.reset();
+      lastQueryRef.current = '';
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, results]);

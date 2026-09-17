@@ -25,7 +25,7 @@ import {
 import { useSettings } from '@/contexts/settings-context';
 import { useSearch } from '@/hooks/use-search';
 import { useAutocomplete } from '@/hooks/use-autocomplete';
-import { useAISummary } from '@/hooks/use-ai-summary';
+import { useAISummary, MIN_RESULTS_FOR_SUMMARY } from '@/hooks/use-ai-summary';
 import { DynamicResultCard } from '../../search-interface/components/DynamicResultCard';
 import { SettingsModal } from '../../search-interface/components/SettingsModal';
 
@@ -351,12 +351,21 @@ export default function AISearchPage() {
   useEffect(() => {
     if (
       searchState.query &&
-      searchState.results.length >= 3 &&
+      searchState.results.length >= MIN_RESULTS_FOR_SUMMARY &&
       !searchState.isLoading &&
       searchState.query !== lastSummaryQuery.current
     ) {
       lastSummaryQuery.current = searchState.query;
       aiSummary.generate(searchState.query, searchState.results);
+    }
+
+    // A settled search with too few results has nothing to summarise. This is
+    // the facet-narrowing case: the query is unchanged so generate() is never
+    // reached, and the previous summary would otherwise keep describing results
+    // that are no longer on screen.
+    if (!searchState.isLoading && searchState.results.length < MIN_RESULTS_FOR_SUMMARY) {
+      aiSummary.reset();
+      lastSummaryQuery.current = '';
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchState.query, searchState.results, searchState.isLoading]);

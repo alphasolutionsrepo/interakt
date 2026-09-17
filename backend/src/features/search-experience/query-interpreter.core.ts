@@ -45,6 +45,16 @@ export const INTERPRETER_OPERATORS = [
     'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains',
 ] as const;
 
+/**
+ * Match-all sentinel for a query whose every term became a filter.
+ *
+ * Both providers understand it: the Elasticsearch builder short-circuits '' and
+ * '*' to match_all, and Azure passes it through as searchText. An empty string
+ * cannot be used instead — parseInterpretation has to distinguish "the model
+ * returned nothing" from "there is deliberately nothing left to match".
+ */
+export const MATCH_ALL_QUERY = '*';
+
 // ============================================================================
 // GATING
 // ============================================================================
@@ -115,10 +125,29 @@ ${describeFields(constraints)}
 2. **filters** — move structured attributes to filters: gender, brand, category,
    colour, size, price, rating. Only ever use a field listed above, and for a field
    with valid values listed, use one of those values exactly.
-3. If a value the user asked for is not in the listed values, leave it in the query
-   instead of inventing a filter.
-4. Use numbers for numeric fields — 110, not "$110" and not "110".
-5. **Paired range fields (e.g. minPrice/maxPrice)** describe ONE item's range across
+3. This applies **only to fields that have valid values listed**. If a value the user
+   asked for is not among a listed field's values, leave it in the query instead of
+   inventing a filter. A field shown with no values is not enumerable — that is not a
+   reason to skip filtering it; see rule 4.
+4. **Exact identifiers** — SKUs, product, part, model and item numbers, and similar
+   codes are filters, not search terms. Such a field is high-cardinality (every
+   document has its own value), so its values cannot be listed for you above. Match
+   the code to the field whose name says what it is — sku, partNumber, itemNumber,
+   id — and emit an eq filter with the value exactly as the user wrote it, keeping
+   case, digits and hyphens.
+   - "What's the price of SKU 08011-M?" → query "*", filters [sku eq "08011-M"]
+   - Leaving the code in the query text instead usually returns nothing useful: these
+     fields match a value exactly, not a sentence that happens to contain it.
+   - Only do this when the phrase really carries an identifier. An ordinary product
+     name or descriptive word is not a code.
+5. **When every meaningful term became a filter, the query is "\*"** — never an empty
+   string, and never a leftover word like "price" or "cost". The query and the filters
+   are ANDed, so a leftover word must also be found in the document's text: asking for
+   "price" excludes the very product the identifier just selected, because product text
+   rarely contains the word "price". "\*" means match everything and let the filters
+   decide.
+6. Use numbers for numeric fields — 110, not "$110" and not "110".
+7. **Paired range fields (e.g. minPrice/maxPrice)** describe ONE item's range across
    its variants — they are not two prices to choose between. minPrice is the cheapest
    variant, maxPrice the dearest.
    - "under $X" / "below $X" / "cheaper than $X" → minPrice <= X.
@@ -127,9 +156,9 @@ ${describeFields(constraints)}
    - "over $X" / "above $X" → maxPrice >= X.
    - "between $X and $Y" → minPrice <= Y and maxPrice >= X.
    - If only one of the pair is filterable, use that one rather than skipping the filter.
-6. If the phrase carries no structured constraint at all, return it as the query with
+8. If the phrase carries no structured constraint at all, return it as the query with
    an empty filters array. Do not force a filter that was not asked for.
-7. Comparison language ("more than", "at least", "over", "under", "at most", "below")
+9. Comparison language ("more than", "at least", "over", "under", "at most", "below")
    states a numeric threshold. Only turn it into a gt/gte/lt/lte filter on a field
    that is genuinely numeric. Never snap it onto a text field's valid-value list by
    picking the closest-sounding entry — e.g. "more than 80% cotton" against a
@@ -202,11 +231,6 @@ export function parseInterpretation(
 
     const raw = parsed as { query?: unknown; filters?: unknown };
 
-    // An empty query would match everything; the original is a safer floor.
-    const query = typeof raw.query === 'string' && raw.query.trim().length > 0
-        ? raw.query.trim()
-        : originalQuery;
-
     const filters: InterpretedFilter[] = Array.isArray(raw.filters)
         ? raw.filters.flatMap(entry => {
             if (!entry || typeof entry !== 'object') return [];
@@ -217,6 +241,18 @@ export function parseInterpretation(
             return [{ field: f.field, operator: f.operator, value: coerceValue(f.value) }];
         })
         : [];
+
+    // What an empty query should fall back to depends on whether anything was
+    // extracted. With filters, the phrase has been fully converted and MATCH_ALL
+    // lets them decide — restoring the original sentence would AND its words back
+    // in and exclude the very document the filters selected. With no filters
+    // there is nothing to narrow on, so match-all would return the whole index;
+    // the original phrase is the safer floor.
+    const query = typeof raw.query === 'string' && raw.query.trim().length > 0
+        ? raw.query.trim()
+        : filters.length > 0
+            ? MATCH_ALL_QUERY
+            : originalQuery;
 
     return { query, filters };
 }

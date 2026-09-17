@@ -5,6 +5,17 @@ import { useSettings } from '@/contexts/settings-context';
 import { createApiClient } from '@/lib/api/client';
 import type { SearchResult } from '@/lib/api/types';
 
+/**
+ * Fewest results worth summarising.
+ *
+ * One is deliberate. A query understood well enough to return a single exact
+ * match — "what's the price of SKU 08011-M?" resolving to one product — is the
+ * best case for a summary, not a case to suppress. The old floor of three
+ * predated query understanding and hid the answer precisely when it was most
+ * certain.
+ */
+export const MIN_RESULTS_FOR_SUMMARY = 1;
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -51,8 +62,27 @@ export function useAISummary(): UseAISummaryReturn {
   // =========================================================================
 
   const generate = useCallback((query: string, results: SearchResult[]) => {
-    if (!isConfigured || results.length < 3) {
-      return; // Only show summary for 3+ results
+    if (!isConfigured || results.length < MIN_RESULTS_FOR_SUMMARY) {
+      // Clear whatever the last query produced. Bailing out silently used to
+      // leave the previous summary on screen above the new results, where it
+      // reads as an answer to the new query — a stale "I couldn't find the
+      // price" sitting directly above the product card that states the price.
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      setState((prev) =>
+        prev.summary || prev.isStreaming || prev.error
+          ? {
+              summary: '',
+              followUpQueries: [],
+              isStreaming: false,
+              isComplete: false,
+              isCollapsed: false,
+              error: null,
+            }
+          : prev, // Already clear — returning prev avoids a pointless re-render.
+      );
+      return;
     }
 
     // Abort previous request
@@ -145,18 +175,24 @@ export function useAISummary(): UseAISummaryReturn {
   // RESET
   // =========================================================================
 
+  // Idempotent: returns the previous state when there is nothing to clear, so
+  // effects can call this on any render without forcing a pointless re-render.
   const reset = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    setState({
-      summary: '',
-      followUpQueries: [],
-      isStreaming: false,
-      isComplete: false,
-      isCollapsed: false,
-      error: null,
-    });
+    setState((prev) =>
+      prev.summary || prev.isStreaming || prev.error
+        ? {
+            summary: '',
+            followUpQueries: [],
+            isStreaming: false,
+            isComplete: false,
+            isCollapsed: false,
+            error: null,
+          }
+        : prev,
+    );
   }, []);
 
   // =========================================================================

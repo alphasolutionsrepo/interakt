@@ -257,3 +257,75 @@ describe('invalidateQueryInterpreterCache', () => {
         expect(aiService.chat).toHaveBeenCalledTimes(3);
     });
 });
+
+describe('filters dropped by validation', () => {
+    it('does not leave a match-all query when every filter was invalid', async () => {
+        // The model invented a field. parseInterpretation sees a syntactically
+        // valid filter and picks "*", then validateFilters drops the field as
+        // unknown — leaving match-all with nothing to narrow it, i.e. the entire
+        // index returned for a specific question.
+        vi.mocked(aiService.chat).mockResolvedValue({
+            message: {
+                content: JSON.stringify({
+                    query: '',
+                    filters: [{ field: 'inventedSku', operator: 'eq', value: '08011-M' }],
+                }),
+            },
+        } as unknown as Awaited<ReturnType<typeof aiService.chat>>);
+
+        const result = await applyQueryInterpretation({
+            query: QUERY,
+            clientFilters: undefined,
+            searchIndexId: freshIndexId(),
+            aiConfig: aiConfig(),
+            experienceId: 'exp-1',
+        });
+
+        expect(result.query).toBe(QUERY);
+        expect(result.filters).toBeUndefined();
+    });
+
+    it('does not leave a match-all query when the model returns one with no filters', async () => {
+        // Distinct from the dropped-filter path: here the model emits the sentinel
+        // itself while extracting nothing. Match-all with nothing to narrow it is
+        // never the right search.
+        vi.mocked(aiService.chat).mockResolvedValue({
+            message: { content: JSON.stringify({ query: '*', filters: [] }) },
+        } as unknown as Awaited<ReturnType<typeof aiService.chat>>);
+
+        const result = await applyQueryInterpretation({
+            query: QUERY,
+            clientFilters: undefined,
+            searchIndexId: freshIndexId(),
+            aiConfig: aiConfig(),
+            experienceId: 'exp-1',
+        });
+
+        expect(result.query).toBe(QUERY);
+    });
+
+    it('keeps match-all when at least one filter survives validation', async () => {
+        vi.mocked(aiService.chat).mockResolvedValue({
+            message: {
+                content: JSON.stringify({
+                    query: '',
+                    filters: [
+                        { field: 'inventedSku', operator: 'eq', value: 'nope' },
+                        { field: 'price', operator: 'lte', value: 200 },
+                    ],
+                }),
+            },
+        } as unknown as Awaited<ReturnType<typeof aiService.chat>>);
+
+        const result = await applyQueryInterpretation({
+            query: QUERY,
+            clientFilters: undefined,
+            searchIndexId: freshIndexId(),
+            aiConfig: aiConfig(),
+            experienceId: 'exp-1',
+        });
+
+        expect(result.query).toBe('*');
+        expect(result.filters).toEqual([{ field: 'price', operator: 'lte', value: 200 }]);
+    });
+});

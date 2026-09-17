@@ -39,6 +39,7 @@ import type {
 import { constraintCache, interpretationCache } from './query-interpreter.cache';
 import {
     INTERPRETER_SCHEMA,
+    MATCH_ALL_QUERY,
     buildInterpreterPrompt,
     parseInterpretation,
     shouldInterpret,
@@ -176,9 +177,9 @@ async function loadFieldConstraints(
 }
 
 /**
- * Short, stable digest of a value that feeds the interpreter prompt, for use in the
- * cache key. Instructions can run to 5000 characters, so they are hashed rather than
- * embedded — this only has to distinguish versions, not resist attack.
+ * Short, stable digest of the interpreter prompt, for use in the cache key. The
+ * prompt runs to thousands of characters, so it is hashed rather than embedded —
+ * this only has to distinguish versions, not resist attack.
  */
 function fingerprint(value: string | undefined): string {
     if (!value) return 'none';
@@ -288,14 +289,17 @@ export async function interpretQuery(
             return passthrough(query, startedAt);
         }
 
-        // Key on the index + experience/model: the same phrase can be interpreted differently
-        // depending on provider/model and per-experience instructions. The instructions are
-        // fingerprinted rather than assumed constant per experience — an admin can edit them,
-        // and without this the old interpretation would be served for the rest of the TTL.
-        const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim().toLowerCase()}`;
-        const result = await interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
-            const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
+        const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
 
+        // Key on the index + experience/model, plus a fingerprint of the whole system
+        // prompt. Anything that changes how a phrase is interpreted lives in that
+        // prompt — the shared rules, the admin's custom instructions, and the field
+        // constraints with their enumerated values — so fingerprinting it means a
+        // cached interpretation can never outlive the reasoning that produced it.
+        // Keying on the experience alone would serve the old answer for the rest of
+        // the TTL after any of those changed.
+        const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(systemPrompt)}:${query.trim().toLowerCase()}`;
+        const result = await interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
             const completion = await aiService.chat(
                 [
                     { role: 'system', content: systemPrompt },
@@ -344,9 +348,19 @@ export async function interpretQuery(
             // fields and canonicalises text values against the index's real ones.
             const validation = validateFilters(parsed.filters, toParameterContext(constraints));
 
+            // Match-all is only safe while a filter still narrows the search. The
+            // parser picks it from syntactically valid filters, but validation runs
+            // afterwards and can drop every one of them — an invented field name is
+            // enough. Left alone, a specific question would then return the entire
+            // index. Fall back to the phrase, which is what no interpretation at all
+            // would have searched for.
+            const effectiveQuery = parsed.query === MATCH_ALL_QUERY && validation.filters.length === 0
+                ? query
+                : parsed.query;
+
             return {
                 originalQuery: query,
-                effectiveQuery: parsed.query,
+                effectiveQuery,
                 appliedFilters: validation.filters,
                 droppedFilters: validation.droppedFilters.map(d => ({
                     field: d.field,

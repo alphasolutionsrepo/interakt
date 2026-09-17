@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, ChevronUp, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
-import { useAISummary } from '@/hooks/use-ai-summary';
+import { useAISummary, MIN_RESULTS_FOR_SUMMARY } from '@/hooks/use-ai-summary';
 import type { SearchResult } from '@/lib/api/types';
 
 // ============================================================================
@@ -35,14 +35,14 @@ export function StreamingAISummary({ query, results, isSearchLoading, onFollowUp
 
   const lastQueryRef = useRef<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const hasEnoughResults = results.length >= 3;
+  const hasEnoughResults = results.length >= MIN_RESULTS_FOR_SUMMARY;
   const hasMountedRef = useRef(false);
 
   // Generate summary when query changes (not on filter changes)
   useEffect(() => {
     // Only auto-generate when:
     // 1. We have a query
-    // 2. We have enough results (3+)
+    // 2. We have enough results
     // 3. Search is not loading
     // 4. Query has changed since last generation
     if (query && hasEnoughResults && !isSearchLoading && query !== lastQueryRef.current) {
@@ -60,9 +60,12 @@ export function StreamingAISummary({ query, results, isSearchLoading, onFollowUp
       }
     }
 
-    // Only reset when there's no query AND we're not loading
-    // Don't reset during loading because results will come
-    if (!query && !isSearchLoading) {
+    // Clear when there is nothing left to summarise: no query, or a settled
+    // search with too few results. The second case is what a facet narrowing a
+    // hit down to zero looks like — the query never changes, so generate() is
+    // never reached, and without this the previous summary stays on screen
+    // describing results that are no longer there.
+    if (!isSearchLoading && (!query || !hasEnoughResults)) {
       reset();
       lastQueryRef.current = '';
     }
