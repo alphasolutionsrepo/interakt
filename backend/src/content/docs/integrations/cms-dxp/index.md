@@ -8,6 +8,9 @@ an Interakt **Search Index**, so site search and chat always reflect what editor
 - [Hygraph](./hygraph/how-to-integrate-interakt-with-hygraph) — two indexes covering a commerce and
   editorial catalogue, a signed publish/unpublish/delete webhook, a custom search page, the chat
   widget, and a re-feed button built with the Hygraph App Framework.
+- [Sanity](./sanity/how-to-integrate-interakt-with-sanity) — a GROQ-powered webhook that ships the
+  projected document in its payload, so the handler needs no refetch, plus a reconciling backfill,
+  a custom search page and the drop-in widgets.
 
 > **More platforms coming soon.** The shape is transferable: decide a flat document shape with a
 > shared field vocabulary, backfill it, keep it current from the platform's own publish events, and
