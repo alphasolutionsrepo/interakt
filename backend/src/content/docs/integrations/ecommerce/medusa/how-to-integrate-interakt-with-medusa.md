@@ -23,7 +23,7 @@ This guide documents a working [Medusa](https://medusa.js) v2 store integrated w
                │  product.created / .updated / .deleted
                │  subscriber → workflow
                │  POST /api/search-indexes/{id}/documents, /documents/bulk
-               │  header: X-Api-Key  (server-only ingestion key)
+               │  header: Authorization: Bearer ik_…  (server-only ingestion key)
                ▼
    ┌──────────────────────┐
    │       Interakt       │
@@ -43,7 +43,7 @@ The Medusa admin also has a manual **"Push all to Interakt"** button (Part 2.3) 
 
 Medusa owns the product catalog. Interakt owns search and chat. Two separate credentials do two separate jobs:
 
-- An **ingestion key** (`X-Api-Key` — Interakt calls this the per-index key, `sk_…`/`ik_…`-style) is server-only and lets the Medusa **backend** write documents into the index. This has to exist in Interakt *before* the backend can push anything.
+- An **ingestion key** (`ik_…`, sent as `Authorization: Bearer`) is server-only and lets the Medusa **backend** write documents into the index. This has to exist in Interakt *before* the backend can push anything. Ingestion endpoints send no CORS headers — they are server-to-server by design.
 - Two **access tokens** (`X-Access-Token`, one per experience) let the **storefront** read from a Search Experience and an AI/Chat Experience. These are safe to ship to the browser — they can only search/chat, not write.
 
 ---
@@ -66,11 +66,11 @@ Nothing on the Medusa side can push a single product until these exist. Do this 
 
 In the Interakt admin console: **Capabilities → Search Indexes → New**. Pick lexical, semantic, or hybrid depending on whether you want pure keyword matching or AI-assisted matching (hybrid is the common choice for a fashion catalog with free-text queries like "warm jacket for winter"). Note the index's **ID** (a UUID) — this becomes `SEARCH_INDEX_ID` on the Medusa side.
 
-You don't need to upload anything by hand here. Once Medusa's env vars are set (Part 2), the reindex script or the admin "Push all to Interakt" button provisions the index with real data. See [Search indexes](../../concepts/search-indexes) and [Creating a search index](../../guides/create-a-search-index).
+You don't need to upload anything by hand here. Once Medusa's env vars are set (Part 2), the reindex script or the admin "Push all to Interakt" button provisions the index with real data. See [Search indexes](../../../concepts/search-indexes) and [Creating a search index](../../../guides/create-a-search-index).
 
 ### 1.2 Get the ingestion key
 
-On the index's detail page, copy its **ingestion key** (`X-Api-Key`). This is the credential the Medusa **backend** authenticates with — it needs write (and ideally delete) access, since the subscribers below both create and remove documents as products change. Treat it as a secret: it only ever lives in the backend's `.env`, never in the storefront or the browser.
+On the index's detail page, copy its **ingestion key** (`ik_…`). This is the credential the Medusa **backend** authenticates with, sent as `Authorization: Bearer ik_…` — grant it both `write` and `delete`, since the subscribers below create and remove documents as products change. There is no read scope; a write-only key uploads fine and then 403s on any reconcile step. Treat it as a secret: it only ever lives in the backend's `.env`, never in the storefront or the browser.
 
 ### 1.3 Create a Search Experience and an AI (Chat) Experience
 
@@ -79,7 +79,7 @@ Both point at the index from 1.1:
 - A **Search Experience** (`Capabilities → Search Experiences → New`) — powers the storefront's search page. Copy its **access token**.
 - An **AI Experience** (`Capabilities → AI Experiences → New`, also labeled "Chat Experience" in the UI) — powers the chat assistant. Configure its system instructions/persona here (this is also where the [action-marker instructions](#42-chat-actions-a-custom-protocol) described in Part 4 get added to the prompt). Copy its **access token**.
 
-See [Access tokens](../../concepts/access-tokens), [Search experiences](../../concepts/search-indexes), and [Chat/AI experiences](../../concepts/chat-experiences) for what each screen configures. Data-source **tools** (search/lookup/inspect/enumerate) are auto-generated for the AI Experience from the index in 1.1 — see [Data sources](../../concepts/data-sources) and [Tools](../../concepts/tools) if you want to see what's actually happening under the hood.
+See [Access tokens](../../../concepts/access-tokens), [Search experiences](../../../concepts/search-indexes), and [Chat/AI experiences](../../../concepts/chat-experiences) for what each screen configures. Data-source **tools** (search/lookup/inspect/enumerate) are auto-generated for the AI Experience from the index in 1.1 — see [Data sources](../../../concepts/data-sources) and [Tools](../../../concepts/tools) if you want to see what's actually happening under the hood.
 
 ---
 
@@ -112,7 +112,7 @@ Set these in `apps/backend/.env` (see `.env.template` for the canonical list):
 |---|---|
 | `SEARCH_INDEX_URL` | Interakt base URL. |
 | `SEARCH_INDEX_ID` | The index UUID from step 1.1. |
-| `SEARCH_INDEX_API_KEY` | The ingestion key from step 1.2. |
+| `SEARCH_INDEX_API_KEY` | The ingestion key from step 1.2, sent as `Authorization: Bearer`. |
 | `SEARCH_INDEX_CURRENCY` | Currency code used when flattening variant prices (default `usd`). |
 
 Internally, `SearchIndexClientService` sends `authorization: Bearer <apiKey>` against `${baseUrl}/api/search-indexes/${indexId}`:
@@ -138,7 +138,7 @@ variants[]  // sku, barcode, size, color, colorHex, fit, sizeSystem,
             // price, originalPrice, isDefaultVariant, stockQuantity, inStock
 ```
 
-This is the schema Interakt auto-detects fields against on first upload — if you add a custom product field in Medusa that should be searchable or filterable, add it here too. See [Loading data into an index](../../guides/bulk-load-data) for how Interakt maps these fields, and [Configuring synonyms](../../guides/configure-synonyms) if you want e.g. "jumper" to match "sweater".
+This is the schema Interakt auto-detects fields against on first upload — if you add a custom product field in Medusa that should be searchable or filterable, add it here too. See [Loading data into an index](../../../guides/bulk-load-data) for how Interakt maps these fields, and [Configuring synonyms](../../../guides/configure-synonyms) if you want e.g. "jumper" to match "sweater".
 
 ### 2.3 Three ways data reaches Interakt
 
@@ -182,7 +182,7 @@ Facets are deliberately **not** sent on the request — leaving them off gets In
 
 `apps/storefront/src/app/api/search-summary/route.ts` proxies a server-sent-events stream to `POST /api/v1/summarize` (same `x-access-token` header, `accept: text/event-stream`), so the results page can show a one- or two-sentence AI-written summary of what the query matched above the raw hit list, streamed in as it's generated rather than waiting for the full response.
 
-See [Calling the search API](../../guides/call-the-search-api) for the full request/response reference, and [Creating a search experience](../../guides/create-a-search-experience) for what an access token can and can't do.
+See [Calling the search API](../../../guides/call-the-search-api) for the full request/response reference, and [Creating a search experience](../../../guides/create-a-search-experience) for what an access token can and can't do.
 
 ---
 
@@ -190,7 +190,7 @@ See [Calling the search API](../../guides/call-the-search-api) for the full requ
 
 ### 4.1 Chat request and streaming
 
-`apps/storefront/src/app/api/chat/route.ts` proxies to `POST ${INTERAKT_API_URL}/api/v1/ai-experiences/chat` with header `x-access-token: <INTERAKT_CHAT_TOKEN>` and body `{ message, sessionId? }`, streaming the SSE response straight through. The chat panel (`apps/storefront/src/modules/chat/components/chat-panel/index.tsx`) posts to this local route (never to Interakt directly — the token stays server-side), and parses `data: {...}` frames as they arrive: `step_start`, `tool_call`, `content`, `done`, `error`. The `sessionId` returned on `done` is carried into the next request so multi-turn context (e.g. "add it to the cart" referring to a product shown two turns earlier) keeps working; the conversation is also persisted to `sessionStorage` per route so a page navigation doesn't lose it. See [Calling the chat API](../../guides/call-the-chat-api) and [Chat/AI experiences](../../concepts/chat-experiences) for the underlying contract.
+`apps/storefront/src/app/api/chat/route.ts` proxies to `POST ${INTERAKT_API_URL}/api/v1/ai-experiences/chat` with header `x-access-token: <INTERAKT_CHAT_TOKEN>` and body `{ message, sessionId? }`, streaming the SSE response straight through. The chat panel (`apps/storefront/src/modules/chat/components/chat-panel/index.tsx`) posts to this local route (never to Interakt directly — the token stays server-side), and parses `data: {...}` frames as they arrive: `step_start`, `tool_call`, `content`, `done`, `error`. The `sessionId` returned on `done` is carried into the next request so multi-turn context (e.g. "add it to the cart" referring to a product shown two turns earlier) keeps working; the conversation is also persisted to `sessionStorage` per route so a page navigation doesn't lose it. See [Calling the chat API](../../../guides/call-the-chat-api) and [Chat/AI experiences](../../../concepts/chat-experiences) for the underlying contract.
 
 The chat widget is mounted once, globally, in `apps/storefront/src/app/layout.tsx` — the root layout calls `isChatEnabled()` (true whenever `INTERAKT_CHAT_TOKEN` is set) and, if enabled, fetches `getChatWidgetConfig()` and renders `<ChatWidget>`. Mounting it in the root layout (rather than per-page) is what lets the conversation survive client-side navigation between pages.
 
@@ -217,7 +217,7 @@ This is entirely storefront-side convention, not an Interakt feature — if the 
 
 ## Troubleshooting
 
-- **Push fails with 401/403.** `SEARCH_INDEX_API_KEY` is missing, wrong, or lacks write/delete scope — regenerate the ingestion key from the index settings (step 1.2).
+- **Push fails with 401/403.** `SEARCH_INDEX_API_KEY` is missing, wrong, or lacks the `write`/`delete` operation — check it is sent as `Authorization: Bearer ik_…` (`X-Api-Key` is not read at all) and that the index UUID matches the key's scope, since a key aimed at the wrong index returns the same 403 as a missing scope. Regenerate from the index settings (step 1.2) if needed.
 - **Search returns "not configured".** `INTERAKT_SEARCH_TOKEN` (or `INTERAKT_CHAT_TOKEN` for chat) isn't set in the storefront's `.env.local`, or the token belongs to an inactive/deleted experience.
 - **Products don't update after an edit.** Check the backend logs for the subscribers — they log and swallow errors rather than throwing, so a bad Interakt response fails silently. If the index has drifted, `yarn reindex` (or the admin "Push all to Interakt" button) forces a clean resync.
 - **Chat replies but never acts (won't add to cart, won't navigate).** The AI Experience's system instructions have likely stopped emitting the fenced <code>&#96;&#96;&#96;action</code> block — check the persona's instructions in the Interakt admin console still contain the action-marker examples described in 4.2.
@@ -227,8 +227,8 @@ This is entirely storefront-side convention, not an Interakt feature — if the 
 
 ## What's next
 
-- [Configure synonyms](../../guides/configure-synonyms) — e.g. make "jumper" and "sweater" match each other in your catalog.
-- [Add tools to your chat](../../guides/add-tools-to-your-chat) — extend the assistant beyond the auto-generated catalog tools.
-- [Elasticsearch tuning](../../guides/elasticsearch-tuning) — if you're running a large catalog and want to tune ranking.
+- [Configure synonyms](../../../guides/configure-synonyms) — e.g. make "jumper" and "sweater" match each other in your catalog.
+- [Add tools to your chat](../../../guides/add-tools-to-your-chat) — extend the assistant beyond the auto-generated catalog tools.
+- [Elasticsearch tuning](../../../guides/elasticsearch-tuning) — if you're running a large catalog and want to tune ranking.
 
 ---
