@@ -392,22 +392,43 @@ curl "https://admin.interakt.app/api/v1/embed-snippet?containerId=interakt-searc
 
 The response includes the ready-to-use `html`, the `scriptUrl`, the `containerId`, and the applied config (theme, primary color, launcher style, placement).
 
-The snippet you paste into your page looks roughly like this:
+The snippet is a script tag plus an `init()` call. The bundle registers
+`window.SearchDropinUI` and `window.ChatDropinUI`, each with `init(config)` and
+`destroy(containerId)`:
 
 ```html
 <!-- Search widget -->
 <div id="interakt-search"></div>
-<script
-  src="https://admin.interakt.app/<!-- widget script path -->"
-  data-interakt-token="YOUR_SEARCH_ACCESS_TOKEN"
-  data-container="interakt-search"
-  async
-></script>
+<script src="https://admin.interakt.app/embed/v1/widgets.js"></script>
+<script>
+  window.SearchDropinUI.init({
+    containerId: "interakt-search",
+    accessToken: "YOUR_SEARCH_ACCESS_TOKEN",
+    mode: "modal",
+  });
+</script>
+
+<!-- Chat widget: same bundle, different global -->
+<div id="interakt-chat"></div>
+<script>
+  window.ChatDropinUI.init({
+    containerId: "interakt-chat",
+    accessToken: "YOUR_CHAT_ACCESS_TOKEN",
+    launcher: "floating",
+  });
+</script>
 ```
 
-> **Copy the snippet from your own install.** The markup above is illustrative — script URL and
-> `data-*` attribute names come from your deployment. Use the snippet shown in the experience's
-> **Embed** section, or returned by the embed-snippet endpoint above, rather than retyping this one.
+Only `containerId` and `accessToken` are required; `apiBaseUrl` defaults to the origin of the
+script tag.
+
+> **Copy the snippet from your own install.** Use the snippet shown in the experience's **Embed**
+> section, or returned by the embed-snippet endpoint above, rather than retyping this one — it
+> comes back with your deployment's script URL and applied config already filled in.
+
+> **Mounting from a component framework?** A `load` listener attached after the script has already
+> loaded never fires, which leaves the widget hanging forever. Check for `window.SearchDropinUI`
+> before adding a handler, and share one load promise if you mount both widgets.
 
 ### Where to put it in a Storyblok-powered site
 
