@@ -336,9 +336,8 @@ const res = await fetch(`${baseUrl}/api/search-indexes/${indexId}/documents`, {
 })
 ```
 
-Note the path has **no `/v1` segment**, and auth is `Authorization: Bearer` — `X-Api-Key` is not read
-at all. The middleware accepts only Bearer precisely so a public widget token can never be mistaken
-for an ingestion key.
+Note the path has **no `/v1` segment**, and auth is `Authorization: Bearer`. Only Bearer is accepted,
+so a public widget token can never be mistaken for an ingestion key.
 
 Limits: **10,000 documents and 10 MB per request**, 30 uploads/min per key. Batch at 500 and honour
 `Retry-After` on a 429.
@@ -682,8 +681,8 @@ function bundleReady(globalName: 'SearchDropinUI' | 'ChatDropinUI'): boolean {
 Don't cache a rejected load promise either — a transient network failure would otherwise disable both
 widgets until a full page reload. See `src/components/interakt/DropinWidget.tsx` in the example.
 
-Add your site's origin to the **allowed origins** on both experiences, or every browser call comes
-back 403.
+If you restrict **allowed origins** on an experience, include your site's — an allow-list that omits
+it returns 403. Leaving the list empty allows any origin.
 
 See [Embed widgets](../../../concepts/embed-widgets) and
 [Calling the chat API](../../../guides/call-the-chat-api).
@@ -722,9 +721,9 @@ See [Embed widgets](../../../concepts/embed-widgets) and
   Create a Viewer token.
 - **The sync deleted everything.** Same cause as above, plus a reconcile with no zero-document guard.
   Add the guard, then re-run the backfill to restore.
-- **Ingest returns 401/403.** Check the header is `Authorization: Bearer ik_…`, not `X-Api-Key`, and
-  the path has no `/v1`. A valid key pointed at the wrong index UUID gives the same 403 as a missing
-  operation scope.
+- **Ingest returns 401/403.** The header must be `Authorization: Bearer ik_…` and the path must have
+  no `/v1` segment. A valid key pointed at the wrong index UUID gives the same 403 as a missing
+  operation scope, so check the UUID before regenerating the key.
 - **Reconciliation 403s after a successful upload.** The ingestion key lacks `delete`. The upload
   already succeeded — grant the scope and re-run.
 - **Signature verification fails on every delivery.** You parsed the body before verifying. Use
@@ -747,20 +746,6 @@ See [Embed widgets](../../../concepts/embed-widgets) and
   `window.ChatDropinUI` before adding a `load` handler.
 - **Webhook works in production but not locally.** Sanity's cloud can't reach `localhost`. Run a
   tunnel and set `allowedDevOrigins` to its bare hostname.
-
----
-
-## Notes on the Interakt API
-
-The shipped backend differs from some published integration material. This guide targets what the
-code actually serves:
-
-| | Sometimes documented as | Actual |
-|---|---|---|
-| Ingest path | `/api/v1/search-indexes/{id}/documents` | `/api/search-indexes/{id}/documents` |
-| Ingest auth | `X-Api-Key` | `Authorization: Bearer ik_…` |
-| Search path | `/api/v1/search-experiences/{slug}/search` | `POST /api/v1/search` |
-| Widgets | `<script data-token data-container>` | `window.SearchDropinUI.init({…})` |
 
 ---
 

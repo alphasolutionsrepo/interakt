@@ -134,10 +134,11 @@ Two ways to deal with that:
       "fieldType": "keyword",
       "isSystemField": true,
       "isRequired": true,
-      // `reference` points uniqueId at our own value. Leave it on its default
-      // (mode "default", generator "uuid") and every re-ingest mints a new id,
-      // duplicating the entire corpus on the second run.
-      "mapping": { "mode": "reference", "sourceField": null, "transform": "none", "sourceFromField": "uniqueId" },
+      // `sourceField` is a path into your document payload, so this reads the
+      // document's own `uniqueId`. Setting it is what stops the shipped default
+      // (a uuid generator with no source) minting a fresh id on every run and
+      // duplicating the whole corpus on the second ingest.
+      "mapping": { "mode": "default", "sourceField": "uniqueId", "transform": "none" },
       "attributes": { "isSearchable": false, "isFacetable": false, "includeInResponse": true, "boostValue": 0.1, "isVectorSource": false }
     },
     {
@@ -168,7 +169,7 @@ See [Index fields](../../../concepts/index-fields).
 
 ### 2.4 Ingestion keys
 
-Each index gets its own key, scoped per operation: `write`, `delete`, `drop-index`. There is **no read scope** — a write-only key uploads fine and then 403s when you try to reconcile. Grant `write` **and** `delete` so stale documents can be removed.
+Each index gets its own key, scoped per operation: `write` and `delete`. There is **no read scope** — a write-only key uploads fine and then 403s when you try to reconcile. Grant `write` **and** `delete` so stale documents can be removed.
 
 A valid key aimed at the wrong index and a key missing an operation both return the same 403 message, so if a key looks broken, check the index UUID before regenerating it.
 
@@ -284,7 +285,7 @@ const res = await fetch(`${baseUrl}/api/search-indexes/${indexId}/documents`, {
 });
 ```
 
-Note the path has **no `/v1` segment**, and auth is `Authorization: Bearer` — `X-Api-Key` is not read at all. The middleware accepts only Bearer precisely so a public widget token can never be mistaken for an ingestion key.
+Note the path has **no `/v1` segment**, and auth is `Authorization: Bearer`. Only Bearer is accepted, so a public widget token can never be mistaken for an ingestion key.
 
 Limits: **10,000 documents and 10 MB per request**, 30 uploads/min per key. Batch at 500 and honour `Retry-After` on a 429.
 
@@ -512,7 +513,7 @@ Have the button and your CLI backfill call the **same** function, so a Studio-tr
 
 ## Verify
 
-1. **Backfill:** run it twice. The second run must leave document counts unchanged — if they double, `uniqueId` isn't mapped by `reference` and is being generated per run.
+1. **Backfill:** run it twice. The second run must leave document counts unchanged — if they double, `uniqueId` has no `sourceField` and is being generated per run.
 2. **Search smoke test:**
    ```bash
    curl -X POST "https://admin.interakt.app/api/v1/search" \
@@ -528,8 +529,9 @@ Have the button and your CLI backfill call the **same** function, so a Studio-tr
 
 ## Troubleshooting
 
-- **Ingest returns 401/403.** Check the header is `Authorization: Bearer ik_…`, not `X-Api-Key`, and the path has no `/v1`. A valid key pointed at the wrong index UUID gives the same 403 as a missing operation scope.
-- **Documents double on every run.** `uniqueId` is on its default mapping (`mode: default`, `generator: uuid`), minting a new id each time. Map it by `reference` to your own value.
+- **Ingest returns 401/403.** The header must be `Authorization: Bearer ik_…` and the path must have no `/v1` segment. A valid key pointed at the wrong index UUID gives the same 403 as a missing operation scope, so check the UUID before regenerating the key.
+- **Documents double on every run.** `uniqueId` is on its shipped default — `mode: default` with a uuid generator and no source — so it mints a new id each time. Give it `"sourceField": "uniqueId"`.
+- **Ingest fails with `Required field "uniqueId" references unmapped field "uniqueId"`.** The field is on `mode: "reference"` pointing at itself. That mode copies the *source path* from a **different** already-mapped field, so self-reference leaves nothing to borrow. Use `mode: "default"` with a `sourceField` instead.
 - **Index creation fails on a mapping property.** A field name contains a dot, almost certainly from a nested object being walked into `author.name`. Flatten the payload.
 - **Body indexes as `[object Object]`.** Rich text was sent as the AST. Select `.text` and normalise the literal `\n` sequences.
 - **A field is missing from the mapping.** Inference reads only `sample[0]`. Put a field-complete record first, or import a mapping file.

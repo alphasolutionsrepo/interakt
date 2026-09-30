@@ -217,7 +217,7 @@ This is entirely storefront-side convention, not an Interakt feature — if the 
 
 ## Troubleshooting
 
-- **Push fails with 401/403.** `SEARCH_INDEX_API_KEY` is missing, wrong, or lacks the `write`/`delete` operation — check it is sent as `Authorization: Bearer ik_…` (`X-Api-Key` is not read at all) and that the index UUID matches the key's scope, since a key aimed at the wrong index returns the same 403 as a missing scope. Regenerate from the index settings (step 1.2) if needed.
+- **Push fails with 401/403.** `SEARCH_INDEX_API_KEY` is missing, wrong, or lacks the `write`/`delete` operation — check it is sent as `Authorization: Bearer ik_…` and that the index UUID matches the key's scope, since a key aimed at the wrong index returns the same 403 as a missing scope. Regenerate from the index settings (step 1.2) if needed.
 - **Search returns "not configured".** `INTERAKT_SEARCH_TOKEN` (or `INTERAKT_CHAT_TOKEN` for chat) isn't set in the storefront's `.env.local`, or the token belongs to an inactive/deleted experience.
 - **Products don't update after an edit.** Check the backend logs for the subscribers — they log and swallow errors rather than throwing, so a bad Interakt response fails silently. If the index has drifted, `yarn reindex` (or the admin "Push all to Interakt" button) forces a clean resync.
 - **Chat replies but never acts (won't add to cart, won't navigate).** The AI Experience's system instructions have likely stopped emitting the fenced <code>&#96;&#96;&#96;action</code> block — check the persona's instructions in the Interakt admin console still contain the action-marker examples described in 4.2.
