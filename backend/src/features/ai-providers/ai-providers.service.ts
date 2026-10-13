@@ -1029,7 +1029,8 @@ async function testGenericConnection(provider: AIProvider): Promise<ConnectionTe
  * Discover models from Ollama
  */
 export async function discoverOllamaModels(
-  providerId: string
+  providerId: string,
+  options: { timeoutMs?: number } = {}
 ): Promise<OllamaDiscoveryResult> {
   try {
     const provider = await repository.getProviderById(providerId);
@@ -1044,7 +1045,7 @@ export async function discoverOllamaModels(
     // Fetch models from Ollama API
     const response = await fetch(`${provider.baseUrl}/api/tags`, {
       method: 'GET',
-      signal: AbortSignal.timeout(30000), // 30 second timeout
+      signal: AbortSignal.timeout(options.timeoutMs ?? 30000),
     });
 
     if (!response.ok) {
@@ -1054,9 +1055,10 @@ export async function discoverOllamaModels(
     const data = (await response.json()) as OllamaTagsResponse;
     const discoveredModels = data.models || [];
 
-    // Get existing models
+    // Get existing models. Ollama reports "name:latest" for a model pulled as "name".
     const existingModels = await repository.listModelsByProvider(providerId);
-    const existingModelKeys = new Set(existingModels.map((m) => m.modelKey));
+    const sameModel = (key: string) => key.replace(/:latest$/, '');
+    const existingByKey = new Map(existingModels.map((m) => [sameModel(m.modelKey), m]));
 
     let modelsAdded = 0;
     let modelsUpdated = 0;
@@ -1068,16 +1070,14 @@ export async function discoverOllamaModels(
         const modelKey = ollamaModel.name;
         const modelType = inferModelType(ollamaModel);
 
-        if (existingModelKeys.has(modelKey)) {
+        const existing = existingByKey.get(sameModel(modelKey));
+        if (existing) {
           // Update existing model
-          const existing = existingModels.find((m) => m.modelKey === modelKey);
-          if (existing) {
-            await repository.updateModel(existing.id, {
-              isAvailable: true,
-              isDiscovered: true,
-            });
-            modelsUpdated++;
-          }
+          await repository.updateModel(existing.id, {
+            isAvailable: true,
+            isDiscovered: true,
+          });
+          modelsUpdated++;
         } else {
           // Create new model
           await repository.createModel({
@@ -1103,10 +1103,12 @@ export async function discoverOllamaModels(
       }
     }
 
-    // Mark models that are no longer available
-    const discoveredKeys = new Set(discoveredModels.map((m) => m.name));
+    // What Ollama has installed is the truth: hide every model it doesn't report,
+    // including the seeded catalog entries never pulled on this machine. Pulling one
+    // later and discovering again makes it available.
+    const discoveredKeys = new Set(discoveredModels.map((m) => sameModel(m.name)));
     const modelsToMarkUnavailable = existingModels.filter(
-      (m) => m.isDiscovered && !discoveredKeys.has(m.modelKey)
+      (m) => m.isAvailable && !discoveredKeys.has(sameModel(m.modelKey))
     );
 
     for (const model of modelsToMarkUnavailable) {
@@ -1172,11 +1174,20 @@ function inferEmbeddingDimensions(model: OllamaModelInfo): number | null {
 }
 
 /**
- * Format model key to display name
+ * Format an Ollama model key as a display name in the style of the seeded catalog:
+ * "gemma3:12b" → "Gemma 3 12B", "qwen2.5:14b" → "Qwen 2.5 14B",
+ * "nomic-embed-text:latest" → "Nomic Embed Text".
  */
-function formatModelDisplayName(modelKey: string): string {
+export function formatModelDisplayName(modelKey: string): string {
   return modelKey
+    .replace(/:latest$/, '')
     .split(/[-_:]/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .filter(Boolean)
+    .map((word) => {
+      if (/^\d+(\.\d+)?[bm]$/i.test(word)) return word.toUpperCase(); // parameter size
+      const versioned = /^([a-z]+)(\d[\d.]*)$/i.exec(word); // family + version
+      const [name, version] = versioned ? [versioned[1], versioned[2]] : [word, ''];
+      return name.charAt(0).toUpperCase() + name.slice(1) + (version ? ` ${version}` : '');
+    })
     .join(' ');
 }
