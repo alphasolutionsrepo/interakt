@@ -181,7 +181,7 @@ export function createSummaryStream(
 /**
  * Build user prompt for summary generation
  */
-function buildSummaryUserPrompt(
+export function buildSummaryUserPrompt(
   query: string,
   results: Array<{ id: string; index: { id: string; name: string }; fields: Record<string, unknown> }>,
   totalResults?: number,
@@ -189,8 +189,13 @@ function buildSummaryUserPrompt(
 ): string {
   const resultsText = results
     .map((r, i) => {
-      const title = r.fields.title || r.fields.name || `Item ${i + 1}`;
-      const details = formatFieldsForContext(r.fields);
+      const titleKey = r.fields.title ? 'title' : r.fields.name ? 'name' : null;
+      const title = (titleKey && r.fields[titleKey]) || `Item ${i + 1}`;
+      // The title is already on the [n] line and the id means nothing to the model:
+      // every token here is read before the first word appears
+      const details = formatFieldsForContext(
+        Object.fromEntries(Object.entries(r.fields).filter(([key]) => key !== titleKey && key !== 'id'))
+      );
       return `[${i + 1}] ${title}${details ? `\n${details}` : ''}`;
     })
     .join('\n\n---\n\n');
