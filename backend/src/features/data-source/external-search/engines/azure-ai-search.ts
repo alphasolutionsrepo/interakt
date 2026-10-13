@@ -1,6 +1,7 @@
-// src/features/tools/executors/callers/azure-ai-search.ts
+// src/features/data-source/external-search/engines/azure-ai-search.ts
 
-import type { ToolExecutionResult } from '../../tools.executor';
+/** Outcome of one engine call: data on success, a readable error otherwise. */
+type OperationResult = { success: boolean; data?: unknown; error?: string };
 
 // Azure AI Search REST API version
 const AZURE_API_VERSION = '2024-07-01';
@@ -9,77 +10,6 @@ interface AzureConfig {
   endpoint: string;
   indexName: string;
   apiKey: string;
-}
-
-// ============================================================================
-// FACET / ENUMERATE
-// ============================================================================
-
-interface AzureEnumerateInput {
-  field: string;
-  maxValues: number;
-}
-
-interface AzureFacetDocument {
-  '@search.facets'?: Record<string, Array<{ count: number; value: unknown }>>;
-}
-
-export async function callAzureAISearchEnumerate(
-  config: AzureConfig,
-  input: AzureEnumerateInput,
-): Promise<Omit<ToolExecutionResult, 'durationMs'>> {
-  const endpoint = config.endpoint.replace(/\/$/, '');
-  const url = `${endpoint}/indexes/${config.indexName}/docs/search?api-version=${AZURE_API_VERSION}`;
-
-  const body: Record<string, unknown> = {
-    search: '*',
-    top: 0,
-    count: false,
-    facets: [`${input.field},count:${input.maxValues},sort:count`],
-  };
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': config.apiKey,
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    return {
-      success: false,
-      error: `Network error connecting to Azure AI Search: ${(err as Error).message}`,
-    };
-  }
-
-  if (!response.ok) {
-    let detail = '';
-    try {
-      const errorBody = await response.json() as { error?: { message?: string } };
-      detail = errorBody?.error?.message ?? '';
-    } catch {
-      detail = await response.text().catch(() => '');
-    }
-    return {
-      success: false,
-      error: `Azure AI Search returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
-    };
-  }
-
-  const json = await response.json() as AzureFacetDocument;
-  const buckets = json['@search.facets']?.[input.field] ?? [];
-
-  return {
-    success: true,
-    data: {
-      field: input.field,
-      values: buckets.map(b => ({ value: b.value, count: b.count })),
-      totalDistinctValues: buckets.length,
-    },
-  };
 }
 
 interface AzureVectorQuery {
@@ -119,7 +49,7 @@ interface AzureSearchDocument {
 export async function callAzureAISearch(
   config: AzureConfig,
   input: AzureSearchInput,
-): Promise<Omit<ToolExecutionResult, 'durationMs'>> {
+): Promise<OperationResult> {
   const endpoint = config.endpoint.replace(/\/$/, '');
   const url = `${endpoint}/indexes/${config.indexName}/docs/search?api-version=${AZURE_API_VERSION}`;
 
@@ -231,7 +161,7 @@ export async function callAzureAISearch(
             facets: input.facets.map((f) => ({
               field: f.field,
               buckets: (json['@search.facets']?.[f.field] ?? []).map((b) => ({
-                key: String(b.value),
+                key: typeof b.value === 'number' ? b.value : String(b.value),
                 count: b.count ?? 0,
               })),
             })),

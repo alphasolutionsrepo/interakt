@@ -166,15 +166,16 @@ export function SummaryPanel({ experienceId, slug, trace = false }: SummaryPanel
             const data = line.slice(6);
             if (data === '[DONE]') continue;
 
+            let parsed: { type?: string; text?: string; error?: string };
             try {
-              const parsed = JSON.parse(data);
-              if (parsed.type === 'content') {
-                setSummary((prev) => prev + parsed.content);
-              } else if (parsed.type === 'error') {
-                throw new Error(parsed.error);
-              }
+              parsed = JSON.parse(data);
             } catch {
-              // Ignore parse errors for partial JSON
+              continue; // partial JSON
+            }
+            if (parsed.type === 'content') {
+              setSummary((prev) => prev + (parsed.text ?? ''));
+            } else if (parsed.type === 'error') {
+              throw new Error(parsed.error || 'Failed to generate summary');
             }
           }
         }

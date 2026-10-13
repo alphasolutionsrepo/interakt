@@ -5,20 +5,21 @@
  *
  * Generate AI-powered summaries from search results.
  * Supports both access token auth (X-Access-Token) and session auth (for playground).
+ * The summary itself is the public summarize stream (createSummaryStream); this route
+ * only adds session auth and the playground's trace switch.
  *
  * POST /api/v1/search/:slug/summarize
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
+import { ZodError } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
-import { auth } from '@/features/auth/auth.api.handlers';
+import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { runWithTelemetryLevel } from '@/features/telemetry';
-import * as aiService from '@/features/ai-service/ai-service.service';
-import type { ChatMessage } from '@/features/ai-service/ai-service.types';
+import { createSummaryStream } from '@/features/chat/summary-stream';
 import * as repository from '@/features/search-experience/search-experience.repository';
 import { summarizeAPIRequestSchema } from '@/features/search-experience/search-experience.schemas';
-import { buildSummarySystemPrompt, formatFieldsForContext } from '@/features/chat/prompt-builder';
+import type { SummarizeAPIRequest } from '@/features/search-experience/search-experience.types';
 
 const logger = createLogger('summarize-api-slug');
 
@@ -63,116 +64,24 @@ export async function POST(
       );
     }
 
-    // 3. Check authentication
-    const accessToken = request.headers.get('Authorization')?.replace('Bearer ', '') ||
-                        request.headers.get('X-Access-Token');
-
-    let isAuthenticated = false;
-    // Admin (session) summaries are not traced unless the request asks for it (then in full).
-    let isAdmin = false;
-
-    if (accessToken && accessToken === experience.accessToken) {
-      isAuthenticated = true;
-    }
-
-    if (!isAuthenticated) {
-      const session = await auth();
-      if (session?.user) {
-        isAuthenticated = true;
-        isAdmin = true;
-      }
-    }
-
-    if (!isAuthenticated) {
+    // 3. Authenticate: the experience's access token, or an admin session. Admin
+    //    summaries are not traced unless the request asks for it (then in full).
+    const caller = await authenticateTokenOrSession(request, experience.accessToken);
+    if (!caller) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
         { status: 401 }
       );
     }
+    const isAdmin = caller === 'admin';
 
     // 4. Parse and validate request
     const body = await request.json();
     const validated = summarizeAPIRequestSchema.parse(body);
     const trace = (body as { trace?: unknown })?.trace === true;
 
-    // 5. Build prompts
-    const summaryConfig = experience.aiConfig.summary;
-    const systemPrompt = buildSummarySystemPrompt({ experience });
-
-    // Limit results to maxResultsForContext to control token usage
-    const maxResults = summaryConfig.maxResultsForContext ?? 10;
-    const limitedResults = validated.results.slice(0, maxResults) as Array<{ id: string; index: { id: string; name: string }; fields: Record<string, unknown> }>;
-
-    const userPrompt = buildSummaryUserPromptLocal(
-      validated.query,
-      limitedResults,
-      validated.totalResults,
-      validated.instruction
-    );
-
-    const messages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ];
-
-    // 6. Create streaming response. start() runs during construction, so building the
-    //    stream inside runWithoutTracing keeps the whole generation untraced.
-    const encoder = new TextEncoder();
-    const createStream = () => new ReadableStream({
-      async start(controller) {
-        try {
-          const generator = aiService.streamChat(messages, {
-            providerId: experience.aiConfig.providerId ?? undefined,
-            modelId: experience.aiConfig.modelId ?? undefined,
-            maxTokens: summaryConfig.maxTokens ?? 500,
-            temperature: 0.3,
-            feature: 'search_experience_summary',
-          });
-
-          for await (const chunk of generator) {
-            if (chunk.content) {
-              const event = { type: 'content', content: chunk.content };
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-            }
-
-            if (chunk.done && chunk.usage) {
-              const doneEvent = {
-                type: 'done',
-                usage: {
-                  promptTokens: chunk.usage.inputTokens,
-                  completionTokens: chunk.usage.outputTokens,
-                  totalTokens: chunk.usage.totalTokens,
-                },
-                messageId: uuidv4(),
-              };
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(doneEvent)}\n\n`));
-            }
-          }
-
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-          controller.close();
-
-          logger.info('Summary generated via slug', {
-            slug,
-            query: validated.query.substring(0, 50),
-            resultCount: limitedResults.length,
-            totalProvided: validated.results.length,
-          });
-        } catch (error) {
-          logger.error('Summary generation failed', {
-            slug,
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
-
-          const errorEvent = {
-            type: 'error',
-            error: error instanceof Error ? error.message : 'Failed to generate summary',
-          };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
-          controller.close();
-        }
-      },
-    });
+    // 5. Same summary stream as the public summarize API
+    const createStream = () => createSummaryStream(experience, validated as SummarizeAPIRequest);
 
     const stream = isAdmin
       ? runWithTelemetryLevel(trace ? 'full' : 'off', createStream)
@@ -186,6 +95,13 @@ export async function POST(
       },
     });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request', code: 'VALIDATION_ERROR' },
+        { status: 400 }
+      );
+    }
+
     logger.error('Summarize error', {
       slug,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -197,29 +113,3 @@ export async function POST(
     );
   }
 }
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-function buildSummaryUserPromptLocal(
-  query: string,
-  results: Array<{ id: string; index: { id: string; name: string }; fields: Record<string, unknown> }>,
-  _totalResults?: number,
-  instruction?: string
-): string {
-  // Build context from ALL fields marked as includeInResponse (already filtered by search service)
-  const knowledgeContext = results
-    .map((r) => formatFieldsForContext(r.fields))
-    .filter(Boolean)
-    .join('\n\n---\n\n');
-
-  let prompt = `<context>\n${knowledgeContext}\n</context>\n\nUser question: ${query}`;
-
-  if (instruction) {
-    prompt += `\n\n${instruction}`;
-  }
-
-  return prompt;
-}
-

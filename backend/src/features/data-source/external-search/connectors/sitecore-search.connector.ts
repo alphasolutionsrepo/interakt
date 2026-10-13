@@ -114,10 +114,12 @@ export const sitecoreSearchConnector: ExternalSearchConnector = {
     request: ExternalSearchRequest,
     _fields?: DataSourceField[],
   ): Promise<ExternalSearchResult> {
+    // Sitecore rejects limit 0 ("under minimum allowed value 1"), which a facet-only
+    // request (enumerate, facet values) asks for: fetch one item and drop it.
     const call = await callSitecore(connection, {
       query: request.query,
       offset: request.offset,
-      limit: request.limit,
+      limit: Math.max(request.limit, 1),
       filters: request.filters,
       facets: request.facets,
       sort: request.sort,
@@ -125,7 +127,13 @@ export const sitecoreSearchConnector: ExternalSearchConnector = {
     });
 
     const mapped = mapSitecoreResponse(call.json, connection.indexName, request.offset);
-    return { ...mapped, took: call.took, unappliedFilters: call.unapplied, unappliedSort: [] };
+    return {
+      ...mapped,
+      hits: mapped.hits.slice(0, request.limit),
+      took: call.took,
+      unappliedFilters: call.unapplied,
+      unappliedSort: [],
+    };
   },
 };
 

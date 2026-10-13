@@ -1,4 +1,4 @@
-// src/features/tools/executors/callers/search-request-body.test.ts
+// src/features/data-source/external-search/engines/search-request-body.test.ts
 
 /**
  * Asserts that filters and sort reach the provider request body.
@@ -85,21 +85,17 @@ describe('callElasticsearchSearch', () => {
     expect(sentBody().sort).toEqual([{ published: { order: 'desc' } }]);
   });
 
-  it('keeps the lookup term filter alongside translated filters', async () => {
-    // lookup-by-id shares this caller; its term filter predates the filter support and
-    // must not be displaced by it.
+  it('sends paging and terms facets on the aggregatable field', async () => {
     await callElasticsearchSearch(ES, {
-      query: '',
-      maxResults: 1,
-      termFilter: { field: 'sku', value: 'ABC-1' },
-      filterClauses: [{ term: { 'brand.keyword': 'Vesper' } }],
+      query: 'jacket',
+      maxResults: 10,
+      offset: 20,
+      facets: [{ field: 'brand', path: 'brand.keyword', size: 5 }],
     });
 
-    const query = sentBody().query as { bool: { filter: unknown[] } };
-    expect(query.bool.filter).toEqual([
-      { term: { sku: 'ABC-1' } },
-      { term: { 'brand.keyword': 'Vesper' } },
-    ]);
+    const body = sentBody();
+    expect(body.from).toBe(20);
+    expect(body.aggs).toEqual({ facet_brand: { terms: { field: 'brand.keyword', size: 5 } } });
   });
 
   it('leaves the query unwrapped when there is nothing to filter', async () => {

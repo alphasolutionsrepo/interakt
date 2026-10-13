@@ -1,4 +1,4 @@
-// src/features/tools/executors/external-query.ts
+// src/features/data-source/external-search/external-query.ts
 
 /**
  * Filter and sort translation for external data-source providers.

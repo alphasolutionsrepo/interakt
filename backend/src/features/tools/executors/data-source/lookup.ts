@@ -9,8 +9,7 @@
 
 import * as searchService from '@/features/search/search.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
-import { callAzureAISearch } from '../callers/azure-ai-search';
-import { callElasticsearchSearch } from '../callers/elasticsearch';
+import { getConnector } from '@/features/data-source/external-search/external-search.service';
 import { executeFileStoreLookup } from './file-store';
 import {
   resolveDataSource,
@@ -168,45 +167,40 @@ async function lookupFromExternalSource(
   idField: string,
   documentId: string,
 ): Promise<OperationResult> {
-  switch (source.provider) {
-    case 'azure-ai-search': {
-      const result = await callAzureAISearch(
-        { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey },
-        {
-          query: '*',
-          maxResults: 1,
-          filter: `${idField} eq '${documentId}'`,
-        },
-      );
-      if (!result.success) return result;
-      const data = result.data as { results: Array<{ id: string; score: number; data: unknown }> };
-      if (!data.results?.length) {
-        return { success: false, error: `Document with ${idField}="${documentId}" not found` };
-      }
-      return { success: true, data: { id: data.results[0].id, document: data.results[0].data } };
+  const connector = getConnector(source.provider);
+  if (!connector) {
+    return { success: false, error: `Lookup for provider '${source.provider}' is not yet implemented` };
+  }
+
+  const ds = await dataSourceService.getDataSourceById(source.dataSourceId);
+  const fields = (ds?.schema as DataSourceSchema | null)?.fields;
+
+  try {
+    const result = await connector.search(
+      source,
+      { query: '*', offset: 0, limit: 1, filters: [{ field: idField, operator: 'eq', value: documentId }] },
+      fields,
+    );
+    // An id filter the engine could not apply would return an arbitrary document,
+    // so only trust a hit when the filter was applied.
+    const hit = result.unappliedFilters.length === 0 ? result.hits[0] : undefined;
+    if (hit) return { success: true, data: { id: hit.id, document: hit.source } };
+
+    // Fallback, as for managed indexes: the "id" is often a name or title the planner
+    // took from an earlier answer, so return the top search match for it.
+    const searched = await connector.search(source, { query: documentId, offset: 0, limit: 1 }, fields);
+    const top = searched.hits[0];
+    if (top) {
+      logger.info('External lookup id did not match — returning top search match', {
+        dataSourceId: source.dataSourceId,
+        query: documentId,
+        matchedId: top.id,
+      });
+      return { success: true, data: { id: top.id, document: top.source, matchedBy: 'search_fallback' } };
     }
 
-    case 'elasticsearch': {
-      const result = await callElasticsearchSearch(
-        { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey, authType: source.authType },
-        {
-          query: '*',
-          maxResults: 1,
-          termFilter: { field: idField, value: documentId },
-        },
-      );
-      if (!result.success) return result;
-      const data = result.data as { results: Array<{ id: string; score: number; data: unknown }> };
-      if (!data.results?.length) {
-        return { success: false, error: `Document with ${idField}="${documentId}" not found` };
-      }
-      return { success: true, data: { id: data.results[0].id, document: data.results[0].data } };
-    }
-
-    default:
-      return {
-        success: false,
-        error: `Lookup for provider '${source.provider}' is not yet implemented`,
-      };
+    return { success: false, error: `Document with ${idField}="${documentId}" not found` };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

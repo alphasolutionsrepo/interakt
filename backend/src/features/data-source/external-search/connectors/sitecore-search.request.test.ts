@@ -1,9 +1,9 @@
 // src/features/data-source/external-search/connectors/sitecore-search.request.test.ts
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import type { ExternalConnection } from '../external-search.types';
-import { inferSitecoreFields } from './sitecore-search.connector';
+import { inferSitecoreFields, sitecoreSearchConnector } from './sitecore-search.connector';
 import {
   sitecoreSettings,
   translateFilter,
@@ -245,5 +245,26 @@ describe('inferSitecoreFields', () => {
     expect(byName.id).toMatchObject({ isSearchable: false });
     expect(byName.breadcrumbs).toMatchObject({ providerType: 'array', isSearchable: false });
     expect(byName.id).toMatchObject({ isFilterable: true });
+  });
+});
+
+describe('sitecoreSearchConnector', () => {
+  it('asks for at least one item (Sitecore rejects limit 0) and returns none for a facet-only request', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({
+        widgets: [{ rfk_id: 'rfk_global_search', total_item: 9, content: [{ id: 'a' }], facet: [{ name: 'type', value: [{ text: 'x', count: 9 }] }] }],
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await sitecoreSearchConnector.search(connection(), { query: '*', offset: 0, limit: 0, facets: [{ field: 'type' }] });
+      const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+      expect(sent.widget.items[0].search.limit).toBe(1);
+      expect(result.hits).toEqual([]);
+      expect(result.facets).toEqual([{ field: 'type', buckets: [{ key: 'x', count: 9 }] }]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

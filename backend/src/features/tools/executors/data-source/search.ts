@@ -12,7 +12,7 @@ import * as dataSourceService from '@/features/data-source/data-source.service';
 import { trackSearch } from '@/features/analytics';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
 import { executeFileStoreSearch } from './file-store';
-import type { UnappliedClause } from '../external-query';
+import type { UnappliedClause } from '@/features/data-source/external-search/external-query';
 import {
   mergeDefaultFilters,
   mergeDefaultSort,

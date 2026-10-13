@@ -1,4 +1,4 @@
-// src/features/tools/executors/callers/elasticsearch.ts
+// src/features/data-source/external-search/engines/elasticsearch.ts
 
 /**
  * Elasticsearch caller for external data-source executors.
@@ -13,9 +13,9 @@
  * bearer → "Bearer <key>", basic → "Basic <key>" (pre-encoded), none → no header.
  */
 
-import type { ToolExecutionResult } from '../../tools.executor';
 
-type OperationResult = Omit<ToolExecutionResult, 'durationMs'>;
+/** Outcome of one engine call: data on success, a readable error otherwise. */
+type OperationResult = { success: boolean; data?: unknown; error?: string };
 
 export interface ElasticsearchConfig {
   endpoint: string;
@@ -107,8 +107,6 @@ interface ElasticsearchSearchInput {
   highlightFields?: string;
   /** Fields to return via _source filtering. */
   selectFields?: string[];
-  /** Exact-match term filter (used by lookup-by-id). */
-  termFilter?: { field: string; value: string };
   /**
    * Translated filter clauses, ANDed into the query (see external-query.ts). Passed into
    * the request body verbatim — this caller does not interpret query DSL.
@@ -165,9 +163,6 @@ export async function callElasticsearchSearch(
 
   // Collect filter clauses: the lookup-by-id term filter and any translated filters.
   const filterClauses: unknown[] = [];
-  if (input.termFilter) {
-    filterClauses.push({ term: { [input.termFilter.field]: input.termFilter.value } });
-  }
   if (input.filterClauses?.length) {
     filterClauses.push(...input.filterClauses);
   }
@@ -243,7 +238,7 @@ export async function callElasticsearchSearch(
             facets: input.facets.map((f) => ({
               field: f.field,
               buckets: (json.aggregations?.[`facet_${f.field}`]?.buckets ?? []).map((b) => ({
-                key: String(b.key),
+                key: typeof b.key === 'number' ? b.key : String(b.key),
                 count: b.doc_count ?? 0,
               })),
             })),
@@ -253,40 +248,3 @@ export async function callElasticsearchSearch(
   };
 }
 
-// ============================================================================
-// ENUMERATE (terms aggregation)
-// ============================================================================
-
-interface ElasticsearchEnumerateInput {
-  field: string;
-  maxValues: number;
-}
-
-export async function callElasticsearchEnumerate(
-  config: ElasticsearchConfig,
-  input: ElasticsearchEnumerateInput,
-): Promise<OperationResult> {
-  const body: Record<string, unknown> = {
-    size: 0,
-    query: { match_all: {} },
-    aggs: {
-      facet: {
-        terms: { field: input.field, size: input.maxValues },
-      },
-    },
-  };
-
-  const res = await esSearchRequest(config, body);
-  if (res.error || !res.json) return res.error ?? { success: false, error: 'Elasticsearch returned no response' };
-
-  const buckets = res.json.aggregations?.facet?.buckets ?? [];
-
-  return {
-    success: true,
-    data: {
-      field: input.field,
-      values: buckets.map(b => ({ value: b.key, count: b.doc_count ?? 0 })),
-      totalDistinctValues: buckets.length,
-    },
-  };
-}

@@ -1,4 +1,4 @@
-// src/features/tools/executors/external-query.test.ts
+// src/features/data-source/external-search/external-query.test.ts
 
 import { describe, it, expect } from 'vitest';
 

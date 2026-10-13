@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodError, z } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
-import { auth } from '@/features/auth/auth.api.handlers';
+import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { flushTelemetry, runWithTelemetryLevel } from '@/features/telemetry';
 import type { FacetResult, SearchErrorCode } from '@/features/search/search.types';
 import { SearchError } from '@/features/search/search.types';
@@ -68,20 +68,14 @@ export async function POST(
     // 2. Authenticate: the experience's access token (real traffic) or an admin
     //    session (playground). Admin searches are recorded as 'admin_test', which
     //    analytics leaves out by default, and are not traced unless asked for.
-    const accessToken = request.headers.get('Authorization')?.replace('Bearer ', '') ||
-                        request.headers.get('X-Access-Token');
-
-    let isAdmin = false;
-    if (!accessToken || accessToken !== experience.accessToken) {
-      const session = await auth();
-      if (!session?.user) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
-          { status: 401 }
-        );
-      }
-      isAdmin = true;
+    const caller = await authenticateTokenOrSession(request, experience.accessToken);
+    if (!caller) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
+        { status: 401 }
+      );
     }
+    const isAdmin = caller === 'admin';
 
     // 3. Parse and validate request body
     const body = await request.json();

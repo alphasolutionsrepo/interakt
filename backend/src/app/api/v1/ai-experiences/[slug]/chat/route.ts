@@ -16,7 +16,7 @@
 //   data: {"type":"error","message":"..."}
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/features/auth/auth.api.handlers';
+import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { getAIExperienceBySlug } from '@/features/ai-experience/ai-experience.service';
 import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
 import { runChatPipeline } from '@/features/pipeline/chat-pipeline';
@@ -57,32 +57,12 @@ export async function POST(
   }
 
   // ── Authenticate ───────────────────────────────────────────────────────────
-  let isAuthenticated = false;
-  let analyticsSource: 'api' | 'admin_test' = 'api';
-
-  // 1. Bearer access token (for external/demo-site clients)
-  const authHeader = request.headers.get('Authorization') ?? '';
-  const bearerToken = authHeader.startsWith('Bearer ')
-    ? authHeader.slice(7).trim()
-    : (request.headers.get('X-Access-Token') ?? '').trim();
-
-  if (bearerToken && bearerToken === experience.accessToken) {
-    isAuthenticated = true;
-    analyticsSource = 'api';
-  }
-
-  // 2. Dashboard session (for admin test panel)
-  if (!isAuthenticated) {
-    const session = await auth();
-    if (session?.user) {
-      isAuthenticated = true;
-      analyticsSource = 'admin_test';
-    }
-  }
-
-  if (!isAuthenticated) {
+  // Access token (external/demo-site clients) or dashboard session (admin test panel)
+  const caller = await authenticateTokenOrSession(request, experience.accessToken);
+  if (!caller) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const analyticsSource: 'api' | 'admin_test' = caller === 'admin' ? 'admin_test' : 'api';
 
   // ── Stream pipeline ────────────────────────────────────────────────────────
   const encoder = new TextEncoder();

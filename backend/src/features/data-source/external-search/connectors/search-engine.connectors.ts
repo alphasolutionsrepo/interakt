@@ -3,15 +3,14 @@
 /**
  * Elasticsearch and Azure AI Search connectors
  *
- * Thin adapters over the REST callers and filter translation that chat's external
- * search already used (tools/executors/callers, tools/executors/external-query),
- * so both entry points send the same request to the engine.
+ * Thin adapters over the engine REST callers (../engines) and filter translation
+ * (../external-query).
  */
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
-import { callAzureAISearch } from '@/features/tools/executors/callers/azure-ai-search';
-import { callElasticsearchSearch } from '@/features/tools/executors/callers/elasticsearch';
-import { translateFilters, translateSort } from '@/features/tools/executors/external-query';
+import { callAzureAISearch } from '../engines/azure-ai-search';
+import { callElasticsearchSearch } from '../engines/elasticsearch';
+import { translateFilters, translateSort } from '../external-query';
 import type {
   ExternalConnection,
   ExternalFacet,

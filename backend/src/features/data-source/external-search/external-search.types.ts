@@ -12,7 +12,7 @@
 
 import type { FilterClause, SortClause } from '@/features/search/search.types';
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
-import type { UnappliedClause } from '@/features/tools/executors/external-query';
+import type { UnappliedClause } from './external-query';
 
 /** Connection details resolved from a data source (credentials already decrypted). */
 export interface ExternalConnection {
@@ -56,7 +56,8 @@ export interface ExternalSearchHit {
 
 export interface ExternalFacet {
   field: string;
-  buckets: Array<{ key: string; count: number }>;
+  /** Keys keep the engine's type: numeric values stay numbers, so they can be used as filter values */
+  buckets: Array<{ key: string | number; count: number }>;
 }
 
 /** A requested clause the engine could not express, with the reason. */
