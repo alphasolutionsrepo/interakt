@@ -102,7 +102,7 @@ export async function runChatPipeline(input: ChatPipelineInput): Promise<ChatPip
         [ATTR.EXPERIENCE_TYPE]: 'ai',
         [ATTR.PIPELINE_TYPE]: mode,
         [ATTR.CHAT_USER_MESSAGE]: input.message,
-        'alpha.analytics.source': input.analyticsSource ?? 'api',
+        [ATTR.ANALYTICS_SOURCE]: input.analyticsSource ?? 'api',
       },
     },
     () => withAnalyticsSource(input.analyticsSource ?? 'api', () => _runChatPipeline(input)),

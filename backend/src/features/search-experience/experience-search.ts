@@ -19,6 +19,7 @@ import type { FacetResult, FacetType, SearchRequest, SearchResponse } from '@/fe
 import { SearchError } from '@/features/search/search.types';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { createLogger } from '@/shared/logger/logger';
+import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
 import { externalFacetableFields, searchExternalSourceForExperience } from './external-source-search';
 import { applyQueryInterpretation, type QueryInterpretation } from './query-interpreter';
 import type {
@@ -82,54 +83,76 @@ export async function executeExperienceSearch(
   publicRequest: PublicSearchRequest,
   options: ExperienceSearchOptions
 ): Promise<ExperienceSearchResult> {
-  const indexes = resolveIndexesToSearch(experience, publicRequest.indexId);
-  const external = resolveExternalSourcesToSearch(experience, publicRequest.indexId);
-  if (indexes.length === 0 && external.length === 0) {
-    throw new NoSourcesError();
-  }
+  // One trace per experience search: the engine searches nest under it, so the
+  // Traces page shows a search the way it shows a chat turn.
+  return withSpan(
+    {
+      name: 'search_experience.search',
+      experienceId: experience.id,
+      attributes: {
+        [ATTR.EXPERIENCE_ID]: experience.id,
+        [ATTR.EXPERIENCE_TYPE]: 'search',
+        [ATTR.EXPERIENCE_SLUG]: experience.slug,
+        [ATTR.ANALYTICS_SOURCE]: options.source,
+        // What the visitor typed is content: recorded only at 'full'.
+        ...(shouldLogContent(experience.id) && { [ATTR.SEARCH_QUERY]: publicRequest.query }),
+      },
+    },
+    async (span) => {
+      const indexes = resolveIndexesToSearch(experience, publicRequest.indexId);
+      const external = resolveExternalSourcesToSearch(experience, publicRequest.indexId);
+      if (indexes.length === 0 && external.length === 0) {
+        throw new NoSourcesError();
+      }
 
-  const externalFields = await loadExternalFields(external);
-  const { request, interpretation } = await buildSearchRequest(
-    publicRequest,
-    experience,
-    indexes,
-    externalFields,
-    options
+      const externalFields = await loadExternalFields(external);
+      const { request, interpretation } = await buildSearchRequest(
+        publicRequest,
+        experience,
+        indexes,
+        externalFields,
+        options
+      );
+
+      const hitOrigins = new Map<string, HitOrigin>();
+      const results = await executeMultiIndexSearch(
+        indexes,
+        external,
+        externalFields,
+        request,
+        experience,
+        options,
+        hitOrigins
+      );
+
+      // Label facets ("Content Type" rather than "contentType") from the field config,
+      // once here rather than making every client humanize field names.
+      span.setAttribute(ATTR.SEARCH_SOURCE_COUNT, indexes.length + external.length);
+      span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, results.total.value);
+      span.setAttribute(ATTR.SEARCH_RETURNED, results.hits.length);
+
+      const facetLabels = await collectFacetLabels(indexes, externalFields);
+      results.facets = results.facets?.map((f) => ({ ...f, label: facetLabels.get(f.field) ?? undefined }));
+
+      return {
+        results,
+        sourcesSearched: [
+          ...indexes.map((idx) => ({
+            id: idx.searchIndex.id,
+            name: idx.searchIndex.name,
+            displayName: idx.searchIndex.displayName,
+          })),
+          ...external.map((src) => ({
+            id: src.dataSource.id,
+            name: src.dataSource.name,
+            displayName: src.dataSource.name,
+          })),
+        ],
+        hitOrigins,
+        interpretation,
+      };
+    }
   );
-
-  const hitOrigins = new Map<string, HitOrigin>();
-  const results = await executeMultiIndexSearch(
-    indexes,
-    external,
-    externalFields,
-    request,
-    experience,
-    options,
-    hitOrigins
-  );
-
-  // Label facets ("Content Type" rather than "contentType") from the field config,
-  // once here rather than making every client humanize field names.
-  const facetLabels = await collectFacetLabels(indexes, externalFields);
-  results.facets = results.facets?.map((f) => ({ ...f, label: facetLabels.get(f.field) ?? undefined }));
-
-  return {
-    results,
-    sourcesSearched: [
-      ...indexes.map((idx) => ({
-        id: idx.searchIndex.id,
-        name: idx.searchIndex.name,
-        displayName: idx.searchIndex.displayName,
-      })),
-      ...external.map((src) => ({
-        id: src.dataSource.id,
-        name: src.dataSource.name,
-        displayName: src.dataSource.name,
-      })),
-    ],
-    hitOrigins,
-    interpretation,
-  };
 }
 
 // ============================================================================

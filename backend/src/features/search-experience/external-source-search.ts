@@ -12,6 +12,7 @@ import 'server-only';
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { trackSearch } from '@/features/analytics';
+import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
 import { searchExternalSource } from '@/features/data-source/external-search/external-search.service';
 import type { FilterClause, SearchRequest, SearchResponse } from '@/features/search/search.types';
 import { SearchError } from '@/features/search/search.types';
@@ -85,15 +86,38 @@ export async function searchExternalSourceForExperience(
     });
 
   try {
-    const { result } = await searchExternalSource(source.dataSourceId, {
-      query: request.query,
-      offset: (page - 1) * pageSize,
-      limit: pageSize,
-      filters: request.filters,
-      sort: request.sort,
-      facets: facets?.length ? facets : undefined,
-      selectFields: request.includeFields,
-    });
+    // External engines have no search.execute span of their own: record one here,
+    // nested under the experience's search trace.
+    const { result } = await withSpan(
+      {
+        name: 'search.external',
+        experienceId: experience.id,
+        attributes: {
+          [ATTR.EXPERIENCE_ID]: experience.id,
+          [ATTR.EXPERIENCE_SLUG]: experience.slug,
+          [ATTR.DATA_SOURCE_ID]: source.dataSourceId,
+          [ATTR.DATA_SOURCE_NAME]: source.dataSource.name,
+          ...(source.dataSource.provider && { [ATTR.SEARCH_PROVIDER]: source.dataSource.provider }),
+          [ATTR.SEARCH_HAS_FILTERS]: !!request.filters?.length,
+          ...(shouldLogContent(experience.id) && { [ATTR.SEARCH_QUERY]: request.query }),
+        },
+      },
+      async (span) => {
+        const searched = await searchExternalSource(source.dataSourceId, {
+          query: request.query,
+          offset: (page - 1) * pageSize,
+          limit: pageSize,
+          filters: request.filters,
+          sort: request.sort,
+          facets: facets?.length ? facets : undefined,
+          selectFields: request.includeFields,
+        });
+        span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, searched.result.total);
+        span.setAttribute(ATTR.SEARCH_RETURNED, searched.result.hits.length);
+        span.setAttribute(ATTR.SEARCH_ES_TOOK_MS, searched.result.took);
+        return searched;
+      }
+    );
 
     if (result.unappliedFilters.length > 0 || result.unappliedSort.length > 0) {
       logger.warn('External index could not apply part of the request', {

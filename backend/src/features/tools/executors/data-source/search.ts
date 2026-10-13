@@ -101,12 +101,18 @@ async function executeManagedSearch(
   const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
-  const response = await searchService.searchById(source.searchIndexId, {
-    query,
-    pageSize: maxResults,
-    filters: merged.filters.length > 0 ? merged.filters : undefined,
-    sort: sorting.sort.length > 0 ? sorting.sort : undefined,
-  });
+  // A tool search, not a visitor's: recorded as ai_tool so chat traffic doesn't
+  // count towards search analytics (popular queries, zero results).
+  const response = await searchService.searchById(
+    source.searchIndexId,
+    {
+      query,
+      pageSize: maxResults,
+      filters: merged.filters.length > 0 ? merged.filters : undefined,
+      sort: sorting.sort.length > 0 ? sorting.sort : undefined,
+    },
+    { triggerType: 'ai_tool' },
+  );
 
   return {
     success: true,
@@ -231,7 +237,8 @@ async function executeExternalSearch(
     requestId: crypto.randomUUID(),
     triggerType: 'ai_tool',
     searchType: 'lexical',
-    indexIds: [],
+    // An external index is identified by its data source, as in search experiences.
+    indexIds: [source.dataSourceId],
     experienceId: ctx?.experienceId,
     experienceSlug: ctx?.experienceSlug,
     queryText: query,
@@ -240,7 +247,7 @@ async function executeExternalSearch(
     durationMs,
     success: result.success,
     errorMessage: result.success ? undefined : result.error,
-  });
+  }, ctx?.experienceId);
 
   return result;
 }

@@ -175,10 +175,14 @@ export async function getRecentSpans(
       );
     }
     if (options?.rootOnly) {
-      // Filter to conversation-level spans by operation name prefix.
+      // Filter to request-level spans by operation name prefix: chat turns and
+      // search experience requests (searches, summaries).
       // More reliable than parentSpanId IS NULL because chat spans may be children
       // of HTTP instrumentation spans (e.g. "POST /api/v1/ai-experiences/.../chat").
-      conditions.push(like(otelSpans.operationName, 'chat.%'));
+      conditions.push(or(
+        like(otelSpans.operationName, 'chat.%'),
+        like(otelSpans.operationName, 'search_experience.%'),
+      )!);
     }
 
     const where = and(...conditions);
@@ -203,7 +207,8 @@ export async function getRecentSpans(
           pipelineType: otelSpans.pipelineType,
           requestId: otelSpans.requestId,
           sessionId: otelSpans.sessionId,
-          userMessage: sql<string | null>`${otelSpans.attributes}->>'alpha.chat.user_message'`,
+          // A chat turn's message, or a search request's query (both recorded only at 'full')
+          userMessage: sql<string | null>`coalesce(${otelSpans.attributes}->>'alpha.chat.user_message', ${otelSpans.attributes}->>'alpha.search.query')`,
           experienceSlug: sql<string | null>`${otelSpans.attributes}->>'alpha.experience.slug'`,
         })
         .from(otelSpans)

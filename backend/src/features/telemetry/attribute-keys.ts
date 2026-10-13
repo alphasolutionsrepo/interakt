@@ -17,6 +17,7 @@ export const ATTR = {
   EXPERIENCE_ID: 'alpha.experience.id',
   EXPERIENCE_TYPE: 'alpha.experience.type', // 'search' | 'ai'
   EXPERIENCE_SLUG: 'alpha.experience.slug',
+  ANALYTICS_SOURCE: 'alpha.analytics.source', // 'api' | 'playground' | 'admin_test'
 
   // === Pipeline ===
   PIPELINE_TYPE: 'alpha.pipeline.type', // 'agentic' | 'deterministic' | 'ai_experience'
@@ -49,6 +50,9 @@ export const ATTR = {
   SEARCH_HAS_FILTERS: 'alpha.search.has_filters',
   SEARCH_TRIGGER: 'alpha.search.trigger_type', // 'user' | 'ai_tool' | 'ai_rag'
   SEARCH_ES_TOOK_MS: 'alpha.search.es_took_ms',
+  SEARCH_SOURCE_COUNT: 'alpha.search.source_count', // indexes + external indexes searched
+  DATA_SOURCE_ID: 'alpha.data_source.id',
+  DATA_SOURCE_NAME: 'alpha.data_source.name',
 
   // === Tool Execution ===
   TOOL_ID: 'alpha.tool.id',

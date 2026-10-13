@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createLogger } from '@/shared/logger/logger';
 import * as aiService from '@/features/ai-service/ai-service.service';
 import type { ChatMessage } from '@/features/ai-service/ai-service.types';
-import { flushTelemetry } from '@/features/telemetry';
+import { ATTR, flushTelemetry, shouldLogContent, withSpan } from '@/features/telemetry';
 import type {
   SearchExperienceWithIndexes,
   ChatStreamEvent,
@@ -67,91 +67,110 @@ export function createSummaryStream(
   // Create streaming response
   const encoder = new TextEncoder();
   return new ReadableStream({
-    async start(controller) {
-      try {
-        const maxTokens = summaryConfig.maxTokens ?? 500;
-        logger.info('Starting summary generation', {
-          experienceId: experience.id,
-          providerId: experience.aiConfig.providerId,
-          modelId: experience.aiConfig.modelId,
-          configuredMaxTokens: summaryConfig.maxTokens,
-          effectiveMaxTokens: maxTokens,
-        });
+    // One trace per summary (search_experience.summary), with the model call nested
+    // in it, so summaries show on the Traces page next to searches and chat turns.
+    start: (controller) => withSpan(
+      {
+        name: 'search_experience.summary',
+        experienceId: experience.id,
+        attributes: {
+          [ATTR.EXPERIENCE_ID]: experience.id,
+          [ATTR.EXPERIENCE_TYPE]: 'search',
+          [ATTR.EXPERIENCE_SLUG]: experience.slug,
+          [ATTR.SEARCH_RETURNED]: resultsForPrompt.length,
+          ...(shouldLogContent(experience.id) && { [ATTR.SEARCH_QUERY]: validated.query }),
+        },
+      },
+      () => streamSummary(controller),
+    ),
+  });
 
-        const generator = aiService.streamChat(messages, {
-          providerId: experience.aiConfig.providerId ?? undefined,
-          modelId: experience.aiConfig.modelId ?? undefined,
-          maxTokens,
-          temperature: 0.3, // Lower temperature for summaries
-          feature: 'search_experience_summary',
-        });
+  async function streamSummary(controller: ReadableStreamDefaultController<Uint8Array>) {
+    try {
+      const maxTokens = summaryConfig.maxTokens ?? 500;
+      logger.info('Starting summary generation', {
+        experienceId: experience.id,
+        providerId: experience.aiConfig.providerId,
+        modelId: experience.aiConfig.modelId,
+        configuredMaxTokens: summaryConfig.maxTokens,
+        effectiveMaxTokens: maxTokens,
+      });
 
-        const sources: DocumentReference[] = resultsForPrompt.map((r) => ({
-          id: r.id,
-          indexId: r.index.id,
-          indexName: r.index.name,
-          title: (r.fields.title ?? r.fields.name) as string | undefined,
-        }));
+      const generator = aiService.streamChat(messages, {
+        providerId: experience.aiConfig.providerId ?? undefined,
+        modelId: experience.aiConfig.modelId ?? undefined,
+        maxTokens,
+        temperature: 0.3, // Lower temperature for summaries
+        feature: 'search_experience_summary',
+        // Links the model call to the experience and applies its trace level
+        experienceId: experience.id,
+      });
 
-        // Send sources event first
-        const sourcesEvent: ChatStreamEvent = {
-          type: 'sources',
-          sources,
-        };
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(sourcesEvent)}\n\n`));
+      const sources: DocumentReference[] = resultsForPrompt.map((r) => ({
+        id: r.id,
+        indexId: r.index.id,
+        indexName: r.index.name,
+        title: (r.fields.title ?? r.fields.name) as string | undefined,
+      }));
 
-        let totalContent = '';
+      // Send sources event first
+      const sourcesEvent: ChatStreamEvent = {
+        type: 'sources',
+        sources,
+      };
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(sourcesEvent)}\n\n`));
 
-        for await (const chunk of generator) {
-          if (chunk.content) {
-            totalContent += chunk.content;
-            const contentEvent: ChatStreamEvent = {
-              type: 'content',
-              text: chunk.content,
-            };
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentEvent)}\n\n`));
-          }
+      let totalContent = '';
 
-          if (chunk.done && chunk.usage) {
-            const doneEvent: ChatStreamEvent = {
-              type: 'done',
-              usage: {
-                promptTokens: chunk.usage.inputTokens,
-                completionTokens: chunk.usage.outputTokens,
-                totalTokens: chunk.usage.totalTokens,
-              },
-              messageId: uuidv4(),
-            };
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(doneEvent)}\n\n`));
-          }
+      for await (const chunk of generator) {
+        if (chunk.content) {
+          totalContent += chunk.content;
+          const contentEvent: ChatStreamEvent = {
+            type: 'content',
+            text: chunk.content,
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentEvent)}\n\n`));
         }
 
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-        await flushTelemetry();
-        controller.close();
-
-        logger.info('Summary generated', {
-          experienceId: experience.id,
-          query: validated.query.substring(0, 50),
-          resultCount: validated.results.length,
-        });
-      } catch (error) {
-        logger.error('Summary generation failed', {
-          experienceId: experience.id,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-
-        const errorEvent: ChatStreamEvent = {
-          type: 'error',
-          error: error instanceof Error ? error.message : 'Failed to generate summary',
-          code: 'AI_ERROR',
-        };
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
-        await flushTelemetry();
-        controller.close();
+        if (chunk.done && chunk.usage) {
+          const doneEvent: ChatStreamEvent = {
+            type: 'done',
+            usage: {
+              promptTokens: chunk.usage.inputTokens,
+              completionTokens: chunk.usage.outputTokens,
+              totalTokens: chunk.usage.totalTokens,
+            },
+            messageId: uuidv4(),
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(doneEvent)}\n\n`));
+        }
       }
-    },
-  });
+
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+      await flushTelemetry();
+      controller.close();
+
+      logger.info('Summary generated', {
+        experienceId: experience.id,
+        query: validated.query.substring(0, 50),
+        resultCount: validated.results.length,
+      });
+    } catch (error) {
+      logger.error('Summary generation failed', {
+        experienceId: experience.id,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      const errorEvent: ChatStreamEvent = {
+        type: 'error',
+        error: error instanceof Error ? error.message : 'Failed to generate summary',
+        code: 'AI_ERROR',
+      };
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+      await flushTelemetry();
+      controller.close();
+    }
+  }
 }
 
 // ============================================================================

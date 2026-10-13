@@ -17,6 +17,7 @@ import { withSpan, shouldLogContent, ATTR } from '@/features/telemetry';
 export function traceSearch<T>(
   options: {
     experienceId?: string;
+    experienceSlug?: string;
     query: string;
     searchType: string;
     indexName?: string;
@@ -30,6 +31,8 @@ export function traceSearch<T>(
       kind: SpanKind.INTERNAL,
       experienceId: options.experienceId,
       attributes: {
+        ...(options.experienceId && { [ATTR.EXPERIENCE_ID]: options.experienceId }),
+        ...(options.experienceSlug && { [ATTR.EXPERIENCE_SLUG]: options.experienceSlug }),
         // The query is what the user typed: content, so only recorded at 'full'.
         ...(shouldLogContent(options.experienceId) && { [ATTR.SEARCH_QUERY]: options.query }),
         [ATTR.SEARCH_TYPE]: options.searchType,

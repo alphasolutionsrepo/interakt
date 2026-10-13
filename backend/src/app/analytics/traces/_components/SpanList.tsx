@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Bot, AlertCircle, Wrench } from 'lucide-react';
 import { getDurationColor } from '@/features/analytics/analytics-thresholds';
 import type { SpanListItem } from '../_lib/api-client';
+import { humanizeOpName } from './SpanDetailPanel';
 
 interface SpanListProps {
   spans: SpanListItem[];
@@ -37,8 +38,8 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
     return (
       <div className="flex h-48 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
         <Bot className="size-8 opacity-30" />
-        <p>No conversations yet.</p>
-        <p className="text-xs">Start a chat in an AI Experience to see it here.</p>
+        <p>No traces yet.</p>
+        <p className="text-xs">Chat with an AI Experience or search a Search Experience to see it here.</p>
       </div>
     );
   }
@@ -80,7 +81,7 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
                 )}>
                   {message
                     ? (message.length > 72 ? message.slice(0, 72) + '…' : message)
-                    : <span className="italic text-muted-foreground">No message recorded</span>
+                    : <span className="italic text-muted-foreground">{humanizeOpName(span.operationName)} · no message recorded</span>
                   }
                 </p>
 

@@ -131,7 +131,7 @@ async function lookupFromManagedIndex(
   // find tool. Run a search and return the top match so a name never dead-ends
   // with "not found".
   try {
-    const response = await searchService.searchById(searchIndexId, { query: documentId, pageSize: 1 });
+    const response = await searchService.searchById(searchIndexId, { query: documentId, pageSize: 1 }, { triggerType: 'ai_tool' });
     const top = response.hits[0];
     if (top) {
       logger.info('Lookup id was not a document key — returning top search match', {

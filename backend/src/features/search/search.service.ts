@@ -178,6 +178,10 @@ export async function search(
 ): Promise<SearchResponse> {
     const startTime = Date.now();
     const requestId = crypto.randomUUID();
+    // The experience this search runs for: passed explicitly (search experiences) or
+    // set by the chat pipeline. It decides the trace level and tags analytics.
+    const experienceId = options?.experienceId ?? experienceContextStore.getStore()?.experienceId;
+    const experienceSlug = options?.experienceSlug ?? experienceContextStore.getStore()?.experienceSlug;
     let searchIndex: SearchIndexComplete | null = null;
     let searchType: SearchType = 'lexical';
     let embeddingDurationMs: number | undefined;
@@ -198,7 +202,8 @@ export async function search(
         // 5–8. Execute search within OTel span
         const response = await traceSearch(
             {
-                experienceId: options?.experienceId,
+                experienceId,
+                experienceSlug,
                 query: validatedRequest.query,
                 searchType,
                 indexName: context.indexName,
@@ -273,8 +278,8 @@ export async function search(
             aiRequestId: options?.aiRequestId,
             searchType,
             indexIds: [searchIndex.id],
-            experienceId: options?.experienceId ?? experienceContextStore.getStore()?.experienceId,
-            experienceSlug: options?.experienceSlug ?? experienceContextStore.getStore()?.experienceSlug,
+            experienceId,
+            experienceSlug,
             queryText: validatedRequest.query,
             hasFilters: validatedRequest.filters && validatedRequest.filters.length > 0,
             filterFields: extractFilterFields(validatedRequest.filters),
@@ -288,7 +293,7 @@ export async function search(
             esTookMs: response.took,
             embeddingDurationMs,
             success: true,
-        });
+        }, experienceId);
 
         return response;
     } catch (error) {
@@ -310,8 +315,8 @@ export async function search(
             aiRequestId: options?.aiRequestId,
             searchType,
             indexIds: searchIndex ? [searchIndex.id] : [],
-            experienceId: options?.experienceId ?? experienceContextStore.getStore()?.experienceId,
-            experienceSlug: options?.experienceSlug ?? experienceContextStore.getStore()?.experienceSlug,
+            experienceId,
+            experienceSlug,
             queryText: request.query ?? '',
             hasFilters: request.filters && request.filters.length > 0,
             filterCount: countFilters(request.filters),
@@ -323,7 +328,7 @@ export async function search(
             success: false,
             errorCode: error instanceof SearchError ? error.code : 'UNKNOWN_ERROR',
             errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        });
+        }, experienceId);
 
         if (error instanceof SearchError) {
             throw error;
