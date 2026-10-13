@@ -51,10 +51,10 @@ import {
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
 import { useSearchExperience, useSlugAvailability } from '../_lib/hooks';
 import { useAvailableDisplayFields } from '../_lib/hooks/useAvailableDisplayFields';
 import { ExperienceSourcesCard } from './ExperienceSources';
+import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 import {
   MULTI_INDEX_STRATEGY_INFO,
   RESULT_MERGE_STRATEGY_INFO,
@@ -573,19 +573,6 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
     { enabled: !!formData && formData.slug !== experience?.slug && formData.slug.length >= 3 }
   );
 
-  // Fetch AI providers
-  const { data: providersData } = useQuery({
-    queryKey: ['ai-providers'],
-    queryFn: async () => {
-      const response = await fetch('/api/ai-service/providers');
-      const data = await response.json();
-      return data.data || data;
-    },
-    enabled: !!formData,
-  });
-
-  const providers = providersData?.providers || [];
-  const selectedProvider = providers.find((p: { id: string }) => p.id === formData?.aiConfig.providerId);
   // Update helpers
   const updateField = useCallback(<K extends keyof NonNullable<typeof formData>>(
     field: K,
@@ -1367,6 +1354,29 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
 
           {formData.aiConfig.enabled && (
             <>
+              <Card className="border-border/60 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 font-semibold">
+                    <Brain className="h-4 w-4 text-violet-500" />
+                    AI Provider &amp; Model
+                  </CardTitle>
+                  <CardDescription>
+                    The model that writes summaries. Select a specific provider and model, or leave as system default.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ProviderModelSelect
+                    providerId={formData.aiConfig.providerId}
+                    modelId={formData.aiConfig.modelId}
+                    onChange={(v) =>
+                      setFormData((prev) =>
+                        prev ? { ...prev, aiConfig: { ...prev.aiConfig, providerId: v.providerId, modelId: v.modelId } } : null
+                      )
+                    }
+                  />
+                </CardContent>
+              </Card>
+
               <Card className="border-border/60 shadow-sm rounded-2xl">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">

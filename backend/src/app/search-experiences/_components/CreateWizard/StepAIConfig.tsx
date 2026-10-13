@@ -17,19 +17,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
   Brain,
   Sparkles,
   Wand2,
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 import { CustomInstructionsGenerator } from './CustomInstructionsGenerator';
 import {
   type WizardFormData,
@@ -43,18 +35,6 @@ interface StepAIConfigProps {
   formData: WizardFormData;
   errors: Record<string, string>;
   updateField: <K extends keyof WizardFormData>(field: K, value: WizardFormData[K]) => void;
-}
-
-interface AIProvider {
-  id: string;
-  key: string;
-  name: string;
-  models: Array<{
-    id: number;
-    key: string;
-    name: string;
-    type: string;
-  }>;
 }
 
 // ============================================================================
@@ -74,20 +54,6 @@ export function StepAIConfig({
   // Get index IDs from formData for the generator
   const indexIds = formData.indexes.map((idx) => idx.searchIndexId);
   const dataSourceIds = formData.externalSources.map((src) => src.dataSourceId);
-
-  // Fetch AI providers
-  const { data: providersData, isLoading: isLoadingProviders } = useQuery({
-    queryKey: ['ai-providers'],
-    queryFn: async () => {
-      const response = await fetch('/api/ai-service/providers');
-      const data = await response.json();
-      return data.data || data;
-    },
-  });
-
-  const providers: AIProvider[] = providersData?.providers || [];
-  const selectedProvider = providers.find((p) => p.id === aiConfig.providerId);
-  const chatModels = selectedProvider?.models.filter((m) => m.type === 'chat') || [];
 
   // Update AI config
   const updateAIConfig = useCallback(
@@ -128,21 +94,6 @@ export function StepAIConfig({
     [aiConfig, updateField]
   );
 
-  // Handle provider change
-  const handleProviderChange = useCallback(
-    (providerId: string) => {
-      const provider = providers.find((p) => p.id === providerId);
-      const defaultModel = provider?.models.find((m) => m.type === 'chat');
-
-      updateField('aiConfig', {
-        ...aiConfig,
-        providerId: providerId || null,
-        modelId: defaultModel?.id ?? null,
-      });
-    },
-    [providers, aiConfig, updateField]
-  );
-
   return (
     <div className="space-y-6">
       {/* AI Master Toggle */}
@@ -181,61 +132,15 @@ export function StepAIConfig({
                 AI Provider
               </CardTitle>
               <CardDescription>
-                Select the AI provider and model. Leave empty to use system defaults.
+                The model that writes summaries. Select a specific provider and model, or leave as system default.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {isLoadingProviders ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Provider</Label>
-                    <Select
-                      value={aiConfig.providerId || 'default'}
-                      onValueChange={(value) => handleProviderChange(value === 'default' ? '' : value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="System default" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="default">System Default</SelectItem>
-                        {providers.map((provider) => (
-                          <SelectItem key={provider.id} value={provider.id}>
-                            {provider.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Model</Label>
-                    <Select
-                      value={aiConfig.modelId?.toString() || 'default'}
-                      onValueChange={(value) =>
-                        updateAIConfig('modelId', value === 'default' ? null : parseInt(value))
-                      }
-                      disabled={!selectedProvider}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="default">Default</SelectItem>
-                        {chatModels.map((model) => (
-                          <SelectItem key={model.id} value={model.id.toString()}>
-                            {model.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
+            <CardContent>
+              <ProviderModelSelect
+                providerId={aiConfig.providerId}
+                modelId={aiConfig.modelId}
+                onChange={(v) => updateField('aiConfig', { ...aiConfig, providerId: v.providerId, modelId: v.modelId })}
+              />
             </CardContent>
           </Card>
 
