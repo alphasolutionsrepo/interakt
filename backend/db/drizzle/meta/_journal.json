@@ -218,6 +218,13 @@
       "when": 1785965959157,
       "tag": "0030_move_guardrail_lock_to_guardrail_config",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791850387153,
+      "tag": "0031_search_experience_external_sources",
+      "breakpoints": true
     }
   ]
 }

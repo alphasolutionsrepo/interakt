@@ -10,10 +10,9 @@
 import * as searchService from '@/features/search/search.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { trackSearch } from '@/features/analytics';
-import { callAzureAISearch } from '../callers/azure-ai-search';
-import { callElasticsearchSearch } from '../callers/elasticsearch';
+import { getConnector } from '@/features/data-source/external-search/external-search.service';
 import { executeFileStoreSearch } from './file-store';
-import { translateFilters, translateSort, type UnappliedClause } from '../external-query';
+import type { UnappliedClause } from '../external-query';
 import {
   mergeDefaultFilters,
   mergeDefaultSort,
@@ -172,53 +171,55 @@ async function executeExternalSearch(
 
   const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
-  const translatedFilters = translateFilters(source.provider, merged.filters, schemaFields);
-  const translatedSort = translateSort(source.provider, sorting.sort, schemaFields);
+
+  const connector = getConnector(source.provider);
+  if (!connector) {
+    return {
+      success: false,
+      error: `Executor for provider '${source.provider}' is not yet implemented`,
+    };
+  }
 
   let result: OperationResult;
-  switch (source.provider) {
-    case 'azure-ai-search':
-      result = await callAzureAISearch(
-        { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey },
-        {
-          query,
-          maxResults,
-          includeHighlights: !!highlightFields,
-          highlightFields,
-          selectFields: config.responseFields,
-          filter: translatedFilters.odata,
-          orderBy: translatedSort.odataOrderBy,
-        },
-      );
-      break;
-
-    case 'elasticsearch':
-      result = await callElasticsearchSearch(
-        { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey, authType: source.authType },
-        {
-          query,
-          maxResults,
-          includeHighlights: !!highlightFields,
-          highlightFields,
-          searchFields: highlightFields,
-          selectFields: config.responseFields,
-          filterClauses: translatedFilters.esClauses,
-          sort: translatedSort.esSort,
-        },
-      );
-      break;
-
-    default:
-      return {
-        success: false,
-        error: `Executor for provider '${source.provider}' is not yet implemented`,
-      };
+  let unappliedFilters: UnappliedClause[] = [];
+  let unappliedSort: UnappliedClause[] = [];
+  try {
+    const searched = await connector.search(
+      source,
+      {
+        query,
+        offset: 0,
+        limit: maxResults,
+        filters: merged.filters,
+        sort: sorting.sort,
+        selectFields: config.responseFields,
+        highlightFields: highlightFields?.split(','),
+      },
+      schemaFields,
+    );
+    unappliedFilters = searched.unappliedFilters;
+    unappliedSort = searched.unappliedSort;
+    result = {
+      success: true,
+      data: {
+        results: searched.hits.map((hit) => ({
+          id: hit.id,
+          score: hit.score,
+          data: hit.source,
+          ...(hit.highlights ? { highlights: hit.highlights } : {}),
+        })),
+        totalCount: searched.total,
+        took: searched.took,
+      },
+    };
+  } catch (error) {
+    result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 
   // Report what configuration and translation did to the request. A filter that was
   // requested but not applied has to reach the caller, or a wrong answer looks correct.
-  logUnapplied(translatedFilters.unapplied, translatedSort.unapplied);
-  result = annotateResult(result, merged.appliedDefaults, sorting, translatedFilters.unapplied, translatedSort.unapplied);
+  logUnapplied(unappliedFilters, unappliedSort);
+  result = annotateResult(result, merged.appliedDefaults, sorting, unappliedFilters, unappliedSort);
 
   // Fire-and-forget analytics tracking for external searches
   const durationMs = Date.now() - startTime;
@@ -229,7 +230,7 @@ async function executeExternalSearch(
   trackSearch({
     requestId: crypto.randomUUID(),
     triggerType: 'ai_tool',
-    searchType: 'hybrid',
+    searchType: 'lexical',
     indexIds: [],
     experienceId: ctx?.experienceId,
     experienceSlug: ctx?.experienceSlug,

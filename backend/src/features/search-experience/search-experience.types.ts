@@ -10,6 +10,7 @@
 import type {
   SearchExperience as DBSearchExperience,
   SearchExperienceIndex as DBSearchExperienceIndex,
+  SearchExperienceExternalSource as DBSearchExperienceExternalSource,
   SearchExperienceSearchConfig,
   SearchExperienceAIConfig,
   SearchExperienceToolsConfig,
@@ -61,6 +62,35 @@ export interface SearchExperienceWithIndexes extends SearchExperience {
       isActive: boolean;
     };
   }>;
+  /**
+   * External indexes (data sources of type `search_index_external`) this experience
+   * also searches. Optional so objects built before this existed stay valid; the
+   * repository always sets it.
+   */
+  externalSources?: SearchExperienceExternalSourceWithDetails[];
+}
+
+/**
+ * An external index attached to a search experience, with its data source details.
+ */
+export type SearchExperienceExternalSourceWithDetails = DBSearchExperienceExternalSource & {
+  dataSource: {
+    id: string;
+    name: string;
+    description: string | null;
+    isActive: boolean;
+    /** Engine behind the external index, e.g. 'sitecore_search' */
+    provider: string | null;
+  };
+};
+
+/**
+ * Input for attaching an external index to a search experience
+ */
+export interface AddSearchExperienceExternalSourceInput {
+  dataSourceId: string;
+  weight?: number;
+  sortOrder?: number;
 }
 
 /**

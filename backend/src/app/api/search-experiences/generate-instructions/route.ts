@@ -20,9 +20,13 @@ const logger = createLogger('api-generate-instructions');
 const generateInstructionsSchema = z.object({
   experienceName: z.string().min(1, 'Experience name is required'),
   experienceDescription: z.string().optional(),
-  indexIds: z.array(z.string().uuid()).min(1, 'At least one index is required'),
+  indexIds: z.array(z.string().uuid()).default([]),
+  dataSourceIds: z.array(z.string().uuid()).default([]),
   additionalContext: z.string().max(2000).optional(),
   type: z.enum(['summary']),
+}).refine((v) => v.indexIds.length + v.dataSourceIds.length > 0, {
+  message: 'At least one index is required',
+  path: ['indexIds'],
 });
 
 // ============================================================================
@@ -59,6 +63,7 @@ export async function POST(request: NextRequest) {
       experienceName: input.experienceName,
       experienceDescription: input.experienceDescription,
       indexIds: input.indexIds,
+      dataSourceIds: input.dataSourceIds,
       additionalContext: input.additionalContext,
       type: input.type,
     });

@@ -73,6 +73,7 @@ export function StepAIConfig({
 
   // Get index IDs from formData for the generator
   const indexIds = formData.indexes.map((idx) => idx.searchIndexId);
+  const dataSourceIds = formData.externalSources.map((src) => src.dataSourceId);
 
   // Fetch AI providers
   const { data: providersData, isLoading: isLoadingProviders } = useQuery({
@@ -303,7 +304,7 @@ export function StepAIConfig({
                       variant="outline"
                       size="sm"
                       onClick={() => setShowSummaryGenerator(true)}
-                      disabled={indexIds.length === 0}
+                      disabled={indexIds.length + dataSourceIds.length === 0}
                       className="gap-1.5 h-7 text-xs"
                     >
                       <Sparkles className="h-3 w-3" />
@@ -396,6 +397,7 @@ export function StepAIConfig({
             experienceName={formData.name}
             experienceDescription={formData.description}
             indexIds={indexIds}
+            dataSourceIds={dataSourceIds}
             type="summary"
             currentInstructions={aiConfig.summary.customInstructions}
             onApply={(instructions) => updateSummaryConfig('customInstructions', instructions)}

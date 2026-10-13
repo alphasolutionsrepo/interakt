@@ -108,6 +108,8 @@ export function SearchPlayground({ hideHeader = false }: { hideHeader?: boolean 
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const { context, isLoading: isLoadingContext } = useSearchContext(playgroundState.selectedIndex);
     const { isSearching, searchResult, searchError, executeSearch, clearResults } = useSearch();
+    // Playground searches are untraced unless the admin turns this on
+    const [trace, setTrace] = useState(false);
 
     const hasActiveIndex = useMemo(() => indexes.some(i => i.isActive), [indexes]);
     const isPendingAutoSelection = !isLoadingIndexes && !playgroundState.selectedIndex && hasActiveIndex;
@@ -127,7 +129,7 @@ export function SearchPlayground({ hideHeader = false }: { hideHeader?: boolean 
 
     const handleSearch = async () => {
         if (!playgroundState.selectedIndex || !playgroundState.query.trim()) return;
-        await executeSearch(playgroundState.selectedIndex, playgroundState.buildRequest());
+        await executeSearch(playgroundState.selectedIndex, playgroundState.buildRequest(), { trace });
     };
 
     const handleFacetSelect = (field: string, value: string | number) => {
@@ -333,6 +335,21 @@ export function SearchPlayground({ hideHeader = false }: { hideHeader?: boolean 
                                 />
                                 <Label htmlFor="dbg-sp" className="text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
                                     Debug
+                                </Label>
+                            </div>
+
+                            <div
+                                className="flex items-center gap-1.5"
+                                title="Playground searches are not traced. Turn on to record a full trace of each search (Telemetry → Traces)."
+                            >
+                                <Switch
+                                    id="trace-sp"
+                                    checked={trace}
+                                    onCheckedChange={setTrace}
+                                    className="scale-75 origin-left"
+                                />
+                                <Label htmlFor="trace-sp" className="text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
+                                    Trace
                                 </Label>
                             </div>
 

@@ -162,6 +162,7 @@ export function CreateWizard({ basePath = '/search-experiences', listPath }: { b
           slug: formData.slug,
           description: formData.description,
           indexes: formData.indexes,
+          externalSources: formData.externalSources,
         };
         break;
       case 2:
@@ -274,6 +275,7 @@ export function CreateWizard({ basePath = '/search-experiences', listPath }: { b
       allowedOrigins: formData.allowedOrigins,
       displayConfig: formData.displayConfig,
       indexes: formData.indexes,
+      externalSources: formData.externalSources,
     };
 
     setIsSubmitting(true);

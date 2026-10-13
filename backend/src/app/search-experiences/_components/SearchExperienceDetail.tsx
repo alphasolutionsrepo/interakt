@@ -13,6 +13,7 @@ import {
   Trash2,
   Compass,
   Database,
+  Globe,
   Brain,
   Key,
   Copy,
@@ -274,7 +275,9 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Indexes</p>
-                <p className="text-3xl font-bold tracking-tight">{experience.indexes.length}</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {experience.indexes.length + (experience.externalSources?.length ?? 0)}
+                </p>
               </div>
               <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 shadow-sm">
                 <Layers className="size-6 text-blue-500" />
@@ -382,14 +385,14 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
       <CollapsibleCard
         icon={<Database className="h-4 w-4 text-emerald-500" />}
         title="Connected Indexes"
-        description="Search indexes linked to this experience."
+        description="Search indexes and external indexes linked to this experience."
         headerExtras={
           <Badge variant="outline" className="rounded-lg text-xs font-mono shrink-0">
-            {experience.indexes.length}
+            {experience.indexes.length + (experience.externalSources?.length ?? 0)}
           </Badge>
         }
       >
-        {experience.indexes.length === 0 ? (
+        {experience.indexes.length === 0 && !experience.externalSources?.length ? (
           <p className="text-sm text-muted-foreground text-center py-4">No indexes connected</p>
         ) : (
           <div className="space-y-3">
@@ -423,6 +426,26 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
                   )}
                 </div>
               </div>
+            ))}
+            {experience.externalSources?.map((src) => (
+              <Link
+                key={src.id}
+                href={`/data-sources/${src.dataSourceId}`}
+                className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50 hover:bg-muted/50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-background border border-border/50 shadow-sm">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{src.dataSource.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{src.dataSource.provider ?? 'external'}</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="rounded-lg px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                  External index
+                </Badge>
+              </Link>
             ))}
           </div>
         )}

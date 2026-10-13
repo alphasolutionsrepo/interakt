@@ -79,3 +79,34 @@ describe('mergeOperatorFieldEdits', () => {
     expect(merged.fields.map((f) => f.description)).toEqual(['kept', undefined, undefined]);
   });
 });
+
+describe('mergeOperatorFieldEdits — schema inferred from a sample', () => {
+  const stored = schema([
+    { name: 'name', displayName: 'Page title', type: 'text', role: 'title', isSearchable: true, isFacetable: false, isFilterable: false },
+    { name: 'keywords', displayName: 'Keywords', type: 'text', role: null, isSearchable: false, isFacetable: false, isFilterable: false },
+    { name: 'rare', displayName: 'Rare', type: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+  ]);
+  const rediscovered: DataSourceSchema = {
+    discoveredFrom: 'sample',
+    fields: [
+      { name: 'name', displayName: 'Name', type: 'text', role: 'title', isSearchable: true, isFacetable: false, isFilterable: false, profile: { sampleSize: 25, nullRate: 0, distinctInSample: 25 } },
+      { name: 'keywords', displayName: 'Keywords', type: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+      { name: 'added', displayName: 'Added', type: 'number', role: null, isSearchable: false, isFacetable: false, isFilterable: false },
+    ] as DataSourceSchema['fields'],
+  };
+  const merged = mergeOperatorFieldEdits(stored, rediscovered);
+  const byName = Object.fromEntries(merged.fields.map((f) => [f.name, f]));
+
+  it('keeps what the operator curated', () => {
+    expect(byName.keywords.isFacetable).toBe(false);
+    expect(byName.name.displayName).toBe('Page title');
+  });
+
+  it('refreshes what was measured', () => {
+    expect(byName.name.profile?.sampleSize).toBe(25);
+  });
+
+  it('keeps fields this sample missed and adds new ones', () => {
+    expect(merged.fields.map((f) => f.name)).toEqual(['name', 'keywords', 'rare', 'added']);
+  });
+});

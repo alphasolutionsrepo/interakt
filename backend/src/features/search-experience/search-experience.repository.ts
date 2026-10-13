@@ -13,7 +13,9 @@ import { db } from '@/db/index';
 import {
   searchExperiences,
   searchExperienceIndexes,
+  searchExperienceExternalSources,
   searchIndex,
+  dataSources,
 } from '@/db/schema';
 import type {
   SearchExperience,
@@ -25,6 +27,8 @@ import type {
   SearchExperienceWithIndexes,
   SearchExperienceSummary,
   AddSearchExperienceIndexInput,
+  AddSearchExperienceExternalSourceInput,
+  SearchExperienceExternalSourceWithDetails,
   UpdateSearchExperienceIndexInput,
 } from './search-experience.types';
 import { createLogger } from '@/shared/logger/logger';
@@ -65,7 +69,8 @@ export async function createSearchExperience(
  */
 export async function createSearchExperienceWithIndexes(
   experienceData: Omit<NewSearchExperience, 'id' | 'accessToken' | 'createdAt' | 'updatedAt'>,
-  indexesData: AddSearchExperienceIndexInput[]
+  indexesData: AddSearchExperienceIndexInput[],
+  externalSourcesData: AddSearchExperienceExternalSourceInput[] = []
 ): Promise<SearchExperienceWithIndexes> {
   try {
     return await db.transaction(async (tx) => {
@@ -85,10 +90,22 @@ export async function createSearchExperienceWithIndexes(
         aiDescription: idx.aiDescription,
       }));
 
-      const createdIndexes = await tx
-        .insert(searchExperienceIndexes)
-        .values(indexRecords)
-        .returning();
+      // An experience may use only external indexes, so there can be no index rows.
+      const createdIndexes = indexRecords.length > 0
+        ? await tx.insert(searchExperienceIndexes).values(indexRecords).returning()
+        : [];
+
+      if (externalSourcesData.length > 0) {
+        await tx.insert(searchExperienceExternalSources).values(
+          externalSourcesData.map((src, i) => ({
+            searchExperienceId: experience.id,
+            dataSourceId: src.dataSourceId,
+            weight: src.weight ?? 1.0,
+            sortOrder: src.sortOrder ?? i,
+          }))
+        );
+      }
+      const externalSources = await getExternalSources(experience.id, tx);
 
       // Fetch the full index details
       const indexesWithDetails = await Promise.all(
@@ -117,17 +134,64 @@ export async function createSearchExperienceWithIndexes(
         id: experience.id,
         name: experience.name,
         indexCount: createdIndexes.length,
+        externalSourceCount: externalSources.length,
       });
 
       return {
         ...experience,
         indexes: indexesWithDetails,
+        externalSources,
       };
     });
   } catch (error) {
     logger.error('Failed to create search experience with indexes', error as Error);
     throw error;
   }
+}
+
+/**
+ * External indexes attached to an experience, with their data source details.
+ */
+async function getExternalSources(
+  experienceId: string,
+  executor: Pick<typeof db, 'select'> = db
+): Promise<SearchExperienceExternalSourceWithDetails[]> {
+  const rows = await executor
+    .select({
+      id: searchExperienceExternalSources.id,
+      searchExperienceId: searchExperienceExternalSources.searchExperienceId,
+      dataSourceId: searchExperienceExternalSources.dataSourceId,
+      weight: searchExperienceExternalSources.weight,
+      sortOrder: searchExperienceExternalSources.sortOrder,
+      createdAt: searchExperienceExternalSources.createdAt,
+      dataSource: {
+        id: dataSources.id,
+        name: dataSources.name,
+        description: dataSources.description,
+        isActive: dataSources.isActive,
+        config: dataSources.config,
+      },
+    })
+    .from(searchExperienceExternalSources)
+    .innerJoin(dataSources, eq(searchExperienceExternalSources.dataSourceId, dataSources.id))
+    .where(eq(searchExperienceExternalSources.searchExperienceId, experienceId))
+    .orderBy(asc(searchExperienceExternalSources.sortOrder));
+
+  return rows.map(({ dataSource: { config, ...ds }, ...row }) => ({
+    ...row,
+    dataSource: { ...ds, provider: ((config ?? {}) as { provider?: string }).provider ?? null },
+  }));
+}
+
+/**
+ * Check that a data source exists and is an external index.
+ */
+export async function externalIndexExists(id: string): Promise<boolean> {
+  const [row] = await db
+    .select({ type: dataSources.type })
+    .from(dataSources)
+    .where(eq(dataSources.id, id));
+  return row?.type === 'search_index_external';
 }
 
 // ============================================================================
@@ -199,6 +263,7 @@ export async function getSearchExperienceWithIndexes(
     return {
       ...experience,
       indexes,
+      externalSources: await getExternalSources(experience.id),
     };
   } catch (error) {
     logger.error('Failed to get search experience with indexes', error as Error);
@@ -270,6 +335,7 @@ export async function getSearchExperienceByAccessToken(
     return {
       ...experience,
       indexes,
+      externalSources: await getExternalSources(experience.id),
     };
   } catch (error) {
     logger.error('Failed to get search experience by access token', error as Error);
@@ -340,9 +406,12 @@ export async function listSearchExperiences(options: {
         createdAt: searchExperiences.createdAt,
         updatedAt: searchExperiences.updatedAt,
         indexCount: sql<number>`(
-          SELECT COUNT(*)::int
-          FROM "search_experience_indexes" sei
-          WHERE sei."search_experience_id" = "search_experiences"."id"
+          (SELECT COUNT(*)::int
+           FROM "search_experience_indexes" sei
+           WHERE sei."search_experience_id" = "search_experiences"."id")
+          + (SELECT COUNT(*)::int
+             FROM "search_experience_external_sources" sees
+             WHERE sees."search_experience_id" = "search_experiences"."id")
         )`,
       })
       .from(searchExperiences)
@@ -641,6 +710,63 @@ export async function searchIndexExists(id: string): Promise<boolean> {
     return result.count > 0;
   } catch (error) {
     logger.error('Failed to check search index existence', error as Error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// SEARCH EXPERIENCE EXTERNAL SOURCES
+// ============================================================================
+
+/**
+ * Attach an external index to a search experience
+ */
+export async function addSearchExperienceExternalSource(
+  searchExperienceId: string,
+  input: AddSearchExperienceExternalSourceInput
+): Promise<void> {
+  try {
+    await db.insert(searchExperienceExternalSources).values({
+      searchExperienceId,
+      dataSourceId: input.dataSourceId,
+      weight: input.weight ?? 1.0,
+      sortOrder: input.sortOrder ?? 0,
+    });
+    logger.info('Added external index to search experience', {
+      searchExperienceId,
+      dataSourceId: input.dataSourceId,
+    });
+  } catch (error) {
+    logger.error('Failed to add external index to search experience', error as Error);
+    throw error;
+  }
+}
+
+/**
+ * Detach an external index from a search experience
+ */
+export async function removeSearchExperienceExternalSource(
+  searchExperienceId: string,
+  dataSourceId: string
+): Promise<boolean> {
+  try {
+    const result = await db
+      .delete(searchExperienceExternalSources)
+      .where(
+        and(
+          eq(searchExperienceExternalSources.searchExperienceId, searchExperienceId),
+          eq(searchExperienceExternalSources.dataSourceId, dataSourceId)
+        )
+      )
+      .returning({ id: searchExperienceExternalSources.id });
+
+    const deleted = result.length > 0;
+    if (deleted) {
+      logger.info('Removed external index from search experience', { searchExperienceId, dataSourceId });
+    }
+    return deleted;
+  } catch (error) {
+    logger.error('Failed to remove external index from search experience', error as Error);
     throw error;
   }
 }

@@ -13,6 +13,8 @@ import { resolveSecret } from '@/features/secrets/secrets.service';
 import { profileFields, resolveSampleSize } from './field-profiler';
 import * as toolsService from '@/features/tools/tools.service';
 import { inferFieldRole } from '@/shared/utils/field-roles';
+import { resolveExternalConnection } from './external-search/external-connection';
+import { sampleSitecore, inferSitecoreFields } from './external-search/connectors/sitecore-search.connector';
 
 const logger = createLogger('data-source-service');
 
@@ -193,6 +195,8 @@ export function mergeOperatorFieldEdits(
   const previous = stored?.fields;
   if (!previous?.length || !discovered.fields?.length) return discovered;
 
+  if (discovered.discoveredFrom === 'sample') return mergeSampledSchema(previous, discovered);
+
   const descriptions = new Map(
     previous
       .filter((f) => typeof f.description === 'string' && f.description.trim() !== '')
@@ -209,6 +213,32 @@ export function mergeOperatorFieldEdits(
       return carried ? { ...field, description: carried } : field;
     }),
   };
+}
+
+/**
+ * Merge a rediscovery that was inferred from sampled results.
+ *
+ * Inference is a guess (is this prose? is that a facet?), so for a field the operator
+ * already has, their curation wins: label, role, description and every capability flag.
+ * Only what was measured — type and profile — is refreshed. A field missing from this
+ * sample is kept, since a sample can simply not contain it; new fields are added.
+ */
+function mergeSampledSchema(previous: DataSourceField[], discovered: DataSourceSchema): DataSourceSchema {
+  const fresh = new Map(discovered.fields.map((f) => [f.name, f]));
+  const known = new Set(previous.map((f) => f.name));
+
+  const fields = previous.map((curated) => {
+    const measured = fresh.get(curated.name);
+    if (!measured) return curated;
+    return {
+      ...curated,
+      type: measured.type,
+      ...(measured.providerType && { providerType: measured.providerType }),
+      ...(measured.profile && { profile: measured.profile }),
+    };
+  });
+
+  return { ...discovered, fields: [...fields, ...discovered.fields.filter((f) => !known.has(f.name))] };
 }
 
 /**
@@ -319,8 +349,11 @@ async function checkExternalIndexHealth(
     return { status: 'error', message: 'No connection URL configured', checkedAt: now };
   }
 
-  // Step 1: Connectivity check
-  const connectivityResult = await probeExternalConnection(config, now);
+  // Step 1: Connectivity check. Sitecore's discover endpoint only answers a real
+  // query, so it is probed with one instead of a bare HEAD/GET.
+  const connectivityResult = config.provider === 'sitecore_search'
+    ? await probeSitecore(config, now)
+    : await probeExternalConnection(config, now);
   if (connectivityResult.status !== 'healthy') {
     return connectivityResult;
   }
@@ -352,6 +385,7 @@ async function checkExternalIndexHealth(
         fields: discovered.fields,
         lastDiscoveredAt: now,
         capabilities: discovered.capabilities,
+        ...(discovered.discoveredFrom && { discoveredFrom: discovered.discoveredFrom }),
       };
       schemaNote = ` — ${discovered.fields.length} fields discovered`;
       logger.info('Schema discovery succeeded', { provider: config.provider, fieldCount: discovered.fields.length });
@@ -433,6 +467,25 @@ async function probeExternalConnection(
   }
 }
 
+/** Run a one-item Sitecore query: proves the endpoint, widget and key together. */
+async function probeSitecore(config: ExternalSearchIndexConfig, now: string): Promise<HealthCheckResult> {
+  try {
+    const connection = await resolveExternalConnection('Sitecore Search', config);
+    await sampleSitecore(connection, 1);
+    return {
+      status: 'healthy',
+      message: `Sitecore Search widget '${config.connection.indexName}' is reachable`,
+      checkedAt: now,
+    };
+  } catch (err) {
+    return {
+      status: 'error',
+      message: `Cannot query Sitecore Search: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      checkedAt: now,
+    };
+  }
+}
+
 // ============================================================================
 // SHARED HELPERS
 // ============================================================================
@@ -478,6 +531,10 @@ interface IndexStats {
 
 async function fetchExternalIndexStats(config: ExternalSearchIndexConfig): Promise<IndexStats | null> {
   switch (config.provider) {
+    case 'sitecore_search': {
+      const sample = await sampleSitecore(await resolveExternalConnection('Sitecore Search', config), 1);
+      return { documentCount: sample.total, storageSizeBytes: 0 };
+    }
     case 'elasticsearch':
       return fetchElasticsearchStats(config);
     case 'azure_ai_search':
@@ -561,6 +618,7 @@ async function fetchAzureAISearchStats(config: ExternalSearchIndexConfig): Promi
 interface DiscoveredSchema {
   fields: DataSourceField[];
   capabilities?: DataSourceCapabilities;
+  discoveredFrom?: DataSourceSchema['discoveredFrom'];
 }
 
 async function discoverExternalSchema(
@@ -602,6 +660,10 @@ async function discoverExternalFields(
       return { fields: await discoverElasticsearchSchema(config) };
     case 'azure_ai_search':
       return discoverAzureAISearchSchema(config);
+    case 'sitecore_search': {
+      const connection = await resolveExternalConnection('Sitecore Search', config);
+      return { fields: inferSitecoreFields(await sampleSitecore(connection, 25)), discoveredFrom: 'sample' };
+    }
     default:
       return { fields: [] };
   }
@@ -627,6 +689,10 @@ async function fetchDocumentSample(
       return sampleElasticsearchDocuments(config, sampleSize);
     case 'azure_ai_search':
       return sampleAzureAISearchDocuments(config, sampleSize);
+    case 'sitecore_search': {
+      const connection = await resolveExternalConnection('Sitecore Search', config);
+      return (await sampleSitecore(connection, sampleSize)).items;
+    }
     default:
       return [];
   }

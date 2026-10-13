@@ -14,6 +14,8 @@
  * - 'full': Spans record everything including message content
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import { createLogger } from '@/shared/logger/logger';
 import type { TelemetryConfig, TelemetryDetailLevel } from './telemetry.types';
 
@@ -115,6 +117,10 @@ export function getTelemetryDetailLevel(experienceId?: string): TelemetryDetailL
   const config = getTelemetryConfig();
   if (!config.enabled) return 'off';
 
+  // A request-level setting (admin playgrounds) overrides the experience's
+  const requestLevel = requestLevelStore.getStore();
+  if (requestLevel) return requestLevel;
+
   // No experience context → default to metadata-only
   if (!experienceId) return 'metadata';
 
@@ -132,6 +138,36 @@ export function getTelemetryDetailLevel(experienceId?: string): TelemetryDetailL
  */
 export function shouldLogContent(experienceId?: string): boolean {
   return getTelemetryDetailLevel(experienceId) === 'full';
+}
+
+// ============================================================================
+// REQUEST-SCOPED LEVEL
+// ============================================================================
+
+// globalThis so Next.js module re-evaluation doesn't split the store.
+const REQUEST_LEVEL_KEY = '__telemetryRequestLevel__';
+const requestLevelStore: AsyncLocalStorage<TelemetryDetailLevel> =
+  ((globalThis as Record<string, unknown>)[REQUEST_LEVEL_KEY] as AsyncLocalStorage<TelemetryDetailLevel>)
+  ?? ((globalThis as Record<string, unknown>)[REQUEST_LEVEL_KEY] = new AsyncLocalStorage<TelemetryDetailLevel>());
+
+/**
+ * Run `fn` at a fixed telemetry level, whatever the experience's own setting.
+ * Admin requests (playgrounds) use this: 'off' by default so testing doesn't fill
+ * traces meant for real traffic, or 'full' when the admin asks for a trace.
+ * The master switch (ENABLE_OTEL) still wins.
+ */
+export function runWithTelemetryLevel<T>(level: TelemetryDetailLevel, fn: () => T): T {
+  return requestLevelStore.run(level, fn);
+}
+
+/** Run `fn` with tracing off for everything it does. */
+export function runWithoutTracing<T>(fn: () => T): T {
+  return runWithTelemetryLevel('off', fn);
+}
+
+/** Whether the current request runs with tracing forced off. */
+export function isTracingSuppressed(): boolean {
+  return requestLevelStore.getStore() === 'off';
 }
 
 // ============================================================================
@@ -167,24 +203,25 @@ export async function loadTelemetryOverridesFromDB(): Promise<void> {
     const { db } = await import('@/db/index');
     const { searchExperiences } = await import('@/db/schema/search-experience.schema');
     const { aiExperiences } = await import('@/db/schema/ai-experience.schema');
-    const { ne } = await import('drizzle-orm');
-
     const config = getTelemetryConfig();
 
-    // Load search experience overrides (any non-'off' value)
+    // Load every search experience's level, 'off' included. An experience with no
+    // override falls back to 'metadata', so skipping 'off' rows meant an experience
+    // switched off was traced again after every restart (and new ones, which default
+    // to 'off', were traced from the start).
     const searchRows = await db
       .select({
         id: searchExperiences.id,
         telemetryDetailLevel: searchExperiences.telemetryDetailLevel,
       })
-      .from(searchExperiences)
-      .where(ne(searchExperiences.telemetryDetailLevel, 'off'));
+      .from(searchExperiences);
 
     for (const row of searchRows) {
       config.experienceOverrides.set(row.id, row.telemetryDetailLevel as TelemetryDetailLevel);
     }
 
-    // Load AI experience overrides (telemetryDetailLevel is inside observability_config JSON)
+    // Load AI experience levels (inside observability_config JSON), 'off' included.
+    // Experiences that never set one keep the default.
     const { sql } = await import('drizzle-orm');
     const aiRows = await db
       .select({
@@ -192,7 +229,7 @@ export async function loadTelemetryOverridesFromDB(): Promise<void> {
         telemetryDetailLevel: sql<string>`observability_config->>'telemetryDetailLevel'`,
       })
       .from(aiExperiences)
-      .where(sql`observability_config->>'telemetryDetailLevel' != 'off'`);
+      .where(sql`observability_config->>'telemetryDetailLevel' is not null`);
 
     for (const row of aiRows) {
       if (row.telemetryDetailLevel) {

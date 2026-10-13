@@ -17,6 +17,7 @@ import {
   createSearchExperienceSchema,
   updateSearchExperienceSchema,
   addIndexSchema,
+  searchExperienceExternalSourceInputSchema,
   updateIndexSchema,
   type CreateSearchExperienceDTO,
   type UpdateSearchExperienceDTO,
@@ -110,6 +111,14 @@ export async function createSearchExperience(
     }
   }
 
+  // Validate all external sources are external index data sources
+  for (const src of validated.externalSources) {
+    const exists = await repository.externalIndexExists(src.dataSourceId);
+    if (!exists) {
+      throw new ValidationError(`External index data source not found: ${src.dataSourceId}`);
+    }
+  }
+
   // Validate defaultSearchType is compatible with index capabilities
   if (validated.searchConfig?.defaultSearchType && validated.searchConfig.defaultSearchType !== 'auto') {
     const searchIndexService = await import('@/features/search-index/search-index.service');
@@ -200,8 +209,16 @@ export async function createSearchExperience(
       displayConfig: validated.displayConfig as SearchExperienceDisplayConfig | undefined,
       createdBy,
     },
-    indexInputs
+    indexInputs,
+    validated.externalSources.map((src) => ({
+      dataSourceId: src.dataSourceId as string,
+      weight: src.weight,
+      sortOrder: src.sortOrder,
+    }))
   );
+
+  // Register the new experience's telemetry level so it applies from the first request.
+  setExperienceTelemetryOverride(experience.id, experience.telemetryDetailLevel);
 
   logger.info('Created search experience', {
     id: experience.id,
@@ -566,6 +583,83 @@ export async function addIndex(
 }
 
 /**
+ * Attach an external index (data source of type search_index_external)
+ */
+export async function addExternalSource(
+  searchExperienceId: string,
+  input: { dataSourceId: string; weight?: number; sortOrder?: number },
+  userId: string
+): Promise<SearchExperienceWithIndexes> {
+  const validated = searchExperienceExternalSourceInputSchema.parse(input);
+  const dataSourceId = validated.dataSourceId as string;
+
+  const experience = await repository.getSearchExperienceWithIndexes(searchExperienceId);
+  if (!experience) {
+    throw new NotFoundError('Search experience', searchExperienceId);
+  }
+
+  if (!(await repository.externalIndexExists(dataSourceId))) {
+    throw new ValidationError(`External index data source not found: ${dataSourceId}`);
+  }
+
+  if (experience.externalSources?.some((src) => src.dataSourceId === dataSourceId)) {
+    throw new ValidationError('This external index is already added to the search experience');
+  }
+
+  await repository.addSearchExperienceExternalSource(searchExperienceId, {
+    dataSourceId,
+    weight: validated.weight,
+    sortOrder: validated.sortOrder ?? experience.externalSources?.length ?? 0,
+  });
+  await repository.updateSearchExperience(searchExperienceId, { updatedBy: userId });
+  await cache.invalidateExperience(searchExperienceId, experience.accessToken);
+
+  logger.info('Added external index to search experience', { searchExperienceId, dataSourceId, userId });
+
+  const updated = await repository.getSearchExperienceWithIndexes(searchExperienceId);
+  if (!updated) {
+    throw new NotFoundError('Search experience', searchExperienceId);
+  }
+  cache.set(updated);
+  return updated;
+}
+
+/**
+ * Detach an external index
+ */
+export async function removeExternalSource(
+  searchExperienceId: string,
+  dataSourceId: string,
+  userId: string
+): Promise<SearchExperienceWithIndexes> {
+  const experience = await repository.getSearchExperienceWithIndexes(searchExperienceId);
+  if (!experience) {
+    throw new NotFoundError('Search experience', searchExperienceId);
+  }
+
+  if (experience.indexes.length + (experience.externalSources?.length ?? 0) <= 1) {
+    throw new ValidationError('Cannot remove the last index from a search experience');
+  }
+
+  const removed = await repository.removeSearchExperienceExternalSource(searchExperienceId, dataSourceId);
+  if (!removed) {
+    throw new NotFoundError('Search experience external index', dataSourceId);
+  }
+
+  await repository.updateSearchExperience(searchExperienceId, { updatedBy: userId });
+  await cache.invalidateExperience(searchExperienceId, experience.accessToken);
+
+  logger.info('Removed external index from search experience', { searchExperienceId, dataSourceId, userId });
+
+  const updated = await repository.getSearchExperienceWithIndexes(searchExperienceId);
+  if (!updated) {
+    throw new NotFoundError('Search experience', searchExperienceId);
+  }
+  cache.set(updated);
+  return updated;
+}
+
+/**
  * Update an index in a search experience
  */
 export async function updateIndex(
@@ -631,8 +725,8 @@ export async function removeIndex(
     throw new NotFoundError('Search experience', searchExperienceId);
   }
 
-  // Ensure at least one index remains
-  if (experience.indexes.length <= 1) {
+  // Ensure at least one source (index or external index) remains
+  if (experience.indexes.length + (experience.externalSources?.length ?? 0) <= 1) {
     throw new ValidationError('Cannot remove the last index from a search experience');
   }
 
@@ -698,6 +792,8 @@ export interface GenerateCustomInstructionsInput {
   experienceName: string;
   experienceDescription?: string;
   indexIds: string[];
+  /** External indexes (data sources of type search_index_external) */
+  dataSourceIds?: string[];
   additionalContext?: string;
   type: 'summary';
 }
@@ -709,6 +805,7 @@ export async function generateCustomInstructions(
   input: GenerateCustomInstructionsInput,
 ): Promise<string> {
   const { experienceName, experienceDescription, indexIds, additionalContext, type } = input;
+  const dataSourceIds = input.dataSourceIds ?? [];
 
   logger.info('Generating custom instructions', { experienceName, indexCount: indexIds.length, type });
 
@@ -724,7 +821,12 @@ export async function generateCustomInstructions(
   );
   const validIndexes = indexInfos.filter((idx) => idx !== null);
 
-  if (validIndexes.length === 0) {
+  // External indexes describe their fields in the data source schema
+  const dataSourceService = await import('@/features/data-source/data-source.service');
+  const externalInfos = (await Promise.all(dataSourceIds.map((id) => dataSourceService.getDataSourceById(id))))
+    .filter((ds) => ds?.type === 'search_index_external');
+
+  if (validIndexes.length === 0 && externalInfos.length === 0) {
     throw new Error('No valid indexes found for generating instructions');
   }
 
@@ -740,7 +842,14 @@ export async function generateCustomInstructions(
       .join('\n');
 
     return `### Index: ${index.name}\nFields:\n${fieldsInfo}`;
-  }).join('\n\n');
+  }).concat(externalInfos.map((ds) => {
+    const fields = ((ds!.schema as { fields?: Array<{ name: string; displayName?: string; type: string; isRetrievable?: boolean }> } | null)?.fields ?? [])
+      .filter((f) => f.isRetrievable !== false)
+      .slice(0, 20)
+      .map((f) => `- **${f.displayName || f.name}** (${f.name}): ${f.type}`)
+      .join('\n');
+    return `### Index: ${ds!.name}\nFields:\n${fields}`;
+  })).join('\n\n');
 
   prompt = prompt.replace(/\{\{#each indexes\}\}[\s\S]*?\{\{\/each\}\}/g, indexInfoSection);
 

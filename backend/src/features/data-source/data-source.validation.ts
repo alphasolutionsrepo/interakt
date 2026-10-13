@@ -39,7 +39,7 @@ const searchIndexConfigSchema = z.object({
 });
 
 const externalSearchIndexConfigSchema = z.object({
-  provider: z.enum(['elasticsearch', 'azure_ai_search']),
+  provider: z.enum(['elasticsearch', 'azure_ai_search', 'sitecore_search']),
   connection: z.object({
     url: z.string().url(),
     authType: z.enum(['api_key', 'basic', 'bearer', 'none']),
@@ -73,6 +73,8 @@ const externalSearchIndexConfigSchema = z.object({
   // means the default. Without this key here the create schema would strip it, leaving a
   // config option that only appears to be configurable.
   profileSampleSize: z.number().int().min(0).max(500).optional(),
+  // Connector-specific settings (e.g. Sitecore entity and fixed filters).
+  providerSettings: z.record(z.unknown()).optional(),
 });
 
 const fileStoreConfigSchema = z.object({
@@ -159,6 +161,7 @@ const dataSourceSchemaSchema = z.object({
   fields: z.array(dataSourceFieldSchema),
   lastDiscoveredAt: z.string().optional(),
   capabilities: dataSourceCapabilitiesSchema.optional(),
+  discoveredFrom: z.enum(['mapping', 'sample']).optional(),
 });
 
 // ============================================================================
@@ -204,6 +207,21 @@ export type CreateDataSourceDTO = z.infer<typeof createDataSourceSchema>;
 // ============================================================================
 // UPDATE DATA SOURCE
 // ============================================================================
+
+/**
+ * Config schema for a data source type, so an update is held to the same shape as
+ * a create. Undefined for types whose config is not validated yet.
+ */
+export function configSchemaForType(type: string): z.ZodTypeAny | undefined {
+  switch (type) {
+    case 'search_index':
+      return searchIndexConfigSchema;
+    case 'search_index_external':
+      return externalSearchIndexConfigSchema;
+    default:
+      return undefined;
+  }
+}
 
 export const updateDataSourceSchema = z.object({
   name: z.string().min(1).max(255).optional(),

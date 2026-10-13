@@ -42,6 +42,8 @@ export interface CustomInstructionsGeneratorProps {
   experienceDescription?: string;
   /** Selected index IDs */
   indexIds: string[];
+  /** Selected external index (data source) IDs */
+  dataSourceIds?: string[];
   /** Type of instructions: 'chat' or 'summary' */
   type: 'chat' | 'summary';
   /** Current instructions value */
@@ -67,6 +69,7 @@ export function CustomInstructionsGenerator({
   experienceName,
   experienceDescription,
   indexIds,
+  dataSourceIds = [],
   type,
   currentInstructions,
   onApply,
@@ -94,6 +97,7 @@ export function CustomInstructionsGenerator({
           experienceName,
           experienceDescription,
           indexIds,
+          dataSourceIds,
           additionalContext: additionalContext.trim() || undefined,
           type,
         }),
@@ -265,7 +269,7 @@ export function CustomInstructionsGenerator({
               </Button>
               <Button
                 onClick={handleGenerate}
-                disabled={generateMutation.isPending || indexIds.length === 0}
+                disabled={generateMutation.isPending || indexIds.length + dataSourceIds.length === 0}
                 className="gap-2"
               >
                 {generateMutation.isPending ? (

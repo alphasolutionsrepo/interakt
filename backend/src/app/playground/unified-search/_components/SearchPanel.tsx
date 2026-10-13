@@ -69,6 +69,8 @@ interface SearchPanelProps {
   experienceId: string;
   slug: string;
   accessToken?: string;
+  /** Record a full trace of each search (admin requests are untraced by default) */
+  trace?: boolean;
 }
 
 interface SearchResult {
@@ -130,7 +132,7 @@ function PanelSection({
 // COMPONENT
 // ============================================================================
 
-export function SearchPanel({ experienceId, slug, accessToken }: SearchPanelProps) {
+export function SearchPanel({ experienceId, slug, accessToken, trace = false }: SearchPanelProps) {
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState<string>('auto');
   const [pageSize, setPageSize] = useState(10);
@@ -169,19 +171,21 @@ export function SearchPanel({ experienceId, slug, accessToken }: SearchPanelProp
           ? { highlight: { preTag: '<mark>', postTag: '</mark>', fragmentSize: 200, numberOfFragments: 3 } }
           : {}),
         ...(enableDebug ? { explain: true } : {}),
+        // The route reads includeHighlights; the highlight object above is display-only.
+        ...(enableHighlight ? { includeHighlights: true } : {}),
+        ...(trace ? { trace: true } : {}),
       } as Record<string, unknown>;
     },
-    [query, searchType, pageSize, filters, sorts, facets, enableHighlight, enableDebug]
+    [query, searchType, pageSize, filters, sorts, facets, enableHighlight, enableDebug, trace]
   );
 
   const searchMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
+      // Sent with the admin session, not the experience's access token, so the server
+      // treats it as a test: not counted as real traffic, not traced unless asked.
       const response = await fetch(`/api/v1/search/${slug}/search`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const json = await response.json();

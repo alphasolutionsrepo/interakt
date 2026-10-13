@@ -51,8 +51,10 @@ import {
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useSearchExperience, useSlugAvailability } from '../_lib/hooks';
+import { useAvailableDisplayFields } from '../_lib/hooks/useAvailableDisplayFields';
+import { ExperienceSourcesCard } from './ExperienceSources';
 import {
   MULTI_INDEX_STRATEGY_INFO,
   RESULT_MERGE_STRATEGY_INFO,
@@ -65,18 +67,6 @@ import {
  SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
 import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-interface IndexField {
-  id: number;
-  fieldName: string;
-  displayName: string | null;
-  fieldType: string;
-  includeInResponse: boolean;
-}
 
 // ============================================================================
 // ICON MAP FOR DISPLAY FIELD ROLES
@@ -144,46 +134,18 @@ interface DisplayConfigTabProps {
         displayName: string;
       };
     }>;
+    externalSources?: Array<{ dataSourceId: string }>;
   };
   displayConfig: SearchExperienceDisplayConfig | null;
   onDisplayConfigChange: (config: SearchExperienceDisplayConfig | null) => void;
 }
 
 function DisplayConfigTab({ experience, displayConfig, onDisplayConfigChange }: DisplayConfigTabProps) {
-  // Fetch fields for all attached indexes
-  const indexFieldQueries = useQueries({
-    queries: experience.indexes.map((idx) => ({
-      queryKey: ['search-index-fields', idx.searchIndexId],
-      queryFn: async () => {
-        const response = await fetch(`/api/search-indexes/${idx.searchIndexId}/fields`);
-        if (!response.ok) throw new Error('Failed to fetch fields');
-        const data = await response.json();
-        return { indexId: idx.searchIndexId, fields: data.data || data.fields || [] };
-      },
-      enabled: !!idx.searchIndexId,
-    })),
-  });
-
-  const isLoadingFields = indexFieldQueries.some((q) => q.isLoading);
-
-  // Merge fields from all indexes (only includeInResponse fields)
-  const availableFields = useMemo(() => {
-    const fieldMap = new Map<string, IndexField>();
-
-    indexFieldQueries.forEach((query) => {
-      if (query.data?.fields) {
-        query.data.fields
-          .filter((f: IndexField) => f.includeInResponse)
-          .forEach((f: IndexField) => {
-            if (!fieldMap.has(f.fieldName)) {
-              fieldMap.set(f.fieldName, f);
-            }
-          });
-      }
-    });
-
-    return Array.from(fieldMap.values());
-  }, [indexFieldQueries]);
+  // Fields from all attached indexes and external indexes
+  const { availableFields, isLoading: isLoadingFields } = useAvailableDisplayFields(
+    experience.indexes.map((idx) => idx.searchIndexId),
+    (experience.externalSources ?? []).map((src) => src.dataSourceId)
+  );
 
   // Current display fields
   const displayFields = displayConfig?.displayFields || [];
@@ -1009,6 +971,8 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
               </div>
             </CardContent>
           </Card>
+
+          <ExperienceSourcesCard experienceId={id} />
         </TabsContent>
 
         {/* Search Tab */}
@@ -1655,6 +1619,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
             experienceName={formData?.name || experience.name}
             experienceDescription={formData?.description || experience.description || undefined}
             indexIds={experience.indexes.map((idx) => idx.searchIndexId)}
+            dataSourceIds={(experience.externalSources ?? []).map((src) => src.dataSourceId)}
             type="summary"
             currentInstructions={formData?.aiConfig.summary.customInstructions}
             onApply={(instructions) => updateSummaryConfig('customInstructions', instructions)}

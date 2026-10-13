@@ -116,6 +116,10 @@ interface ElasticsearchSearchInput {
   filterClauses?: unknown[];
   /** Sort array, e.g. [{ publishDate: { order: 'desc' } }]. */
   sort?: Array<Record<string, { order: 'asc' | 'desc' }>>;
+  /** Number of hits to skip (paging). */
+  offset?: number;
+  /** Terms facets: `field` names the facet, `path` is the aggregatable field (e.g. title.keyword). */
+  facets?: Array<{ field: string; path: string; size: number }>;
   /** Vector query for hybrid (lexical + kNN) search. */
   vectorQuery?: ElasticsearchVectorQuery;
 }
@@ -182,6 +186,16 @@ export async function callElasticsearchSearch(
     body.sort = input.sort;
   }
 
+  if (input.offset) {
+    body.from = input.offset;
+  }
+
+  if (input.facets?.length) {
+    body.aggs = Object.fromEntries(
+      input.facets.map((f) => [`facet_${f.field}`, { terms: { field: f.path, size: f.size } }]),
+    );
+  }
+
   if (input.selectFields?.length) {
     body._source = input.selectFields;
   }
@@ -224,6 +238,17 @@ export async function callElasticsearchSearch(
       })),
       totalCount,
       took: json.took ?? 0,
+      ...(input.facets?.length
+        ? {
+            facets: input.facets.map((f) => ({
+              field: f.field,
+              buckets: (json.aggregations?.[`facet_${f.field}`]?.buckets ?? []).map((b) => ({
+                key: String(b.key),
+                count: b.doc_count ?? 0,
+              })),
+            })),
+          }
+        : {}),
     },
   };
 }

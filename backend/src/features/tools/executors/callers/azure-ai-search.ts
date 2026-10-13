@@ -102,6 +102,10 @@ interface AzureSearchInput {
   selectFields?: string[];
   /** Semantic configuration name for semantic ranking */
   semanticConfigName?: string;
+  /** Number of documents to skip (paging). */
+  offset?: number;
+  /** Terms facets to compute. */
+  facets?: Array<{ field: string; size: number }>;
   /** Vector query for hybrid search */
   vectorQuery?: AzureVectorQuery;
 }
@@ -132,6 +136,14 @@ export async function callAzureAISearch(
 
   if (input.orderBy) {
     body.orderby = input.orderBy;
+  }
+
+  if (input.offset) {
+    body.skip = input.offset;
+  }
+
+  if (input.facets?.length) {
+    body.facets = input.facets.map((f) => `${f.field},count:${f.size}`);
   }
 
   if (input.selectFields?.length) {
@@ -195,6 +207,7 @@ export async function callAzureAISearch(
 
   const json = await response.json() as {
     '@odata.count'?: number;
+    '@search.facets'?: Record<string, Array<{ value: unknown; count?: number }>>;
     value: AzureSearchDocument[];
   };
 
@@ -213,6 +226,17 @@ export async function callAzureAISearch(
       }),
       totalCount: json['@odata.count'] ?? docs.length,
       took: 0, // Azure does not expose server-side execution time
+      ...(input.facets?.length
+        ? {
+            facets: input.facets.map((f) => ({
+              field: f.field,
+              buckets: (json['@search.facets']?.[f.field] ?? []).map((b) => ({
+                key: String(b.value),
+                count: b.count ?? 0,
+              })),
+            })),
+          }
+        : {}),
     },
   };
 }

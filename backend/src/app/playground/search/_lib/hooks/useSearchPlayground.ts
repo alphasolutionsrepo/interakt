@@ -218,7 +218,8 @@ export function useSearch() {
 
     const executeSearch = useCallback(async (
         indexId: string,
-        request: SearchRequest
+        request: SearchRequest,
+        options?: { trace?: boolean }
     ): Promise<SearchResponse | null> => {
         setIsSearching(true);
         setSearchError(null);
@@ -229,7 +230,8 @@ export function useSearch() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(request),
+                // Playground searches are untraced unless `trace` asks for a full trace
+                body: JSON.stringify({ ...request, ...(options?.trace ? { trace: true } : {}) }),
             });
 
             const data = await response.json();

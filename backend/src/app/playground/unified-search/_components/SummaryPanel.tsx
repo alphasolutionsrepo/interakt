@@ -40,7 +40,8 @@ import { Markdown } from '@/shared/ui/custom/markdown';
 interface SummaryPanelProps {
   experienceId: string;
   slug: string;
-  accessToken?: string;
+  /** Record a full trace of each request (admin requests are untraced by default) */
+  trace?: boolean;
 }
 
 interface SearchResult {
@@ -61,7 +62,7 @@ interface SearchResponse {
 // COMPONENT
 // ============================================================================
 
-export function SummaryPanel({ experienceId, slug, accessToken }: SummaryPanelProps) {
+export function SummaryPanel({ experienceId, slug, trace = false }: SummaryPanelProps) {
   // State
   const [query, setQuery] = useState('');
   const [instruction, setInstruction] = useState('');
@@ -73,15 +74,14 @@ export function SummaryPanel({ experienceId, slug, accessToken }: SummaryPanelPr
   // Search mutation
   const searchMutation = useMutation({
     mutationFn: async () => {
+      // Admin session, not the experience token: a test, untraced unless asked.
       const response = await fetch(`/api/v1/search/${slug}/search`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query,
           pageSize: 10,
+          ...(trace ? { trace: true } : {}),
         }),
       });
 
@@ -117,6 +117,7 @@ export function SummaryPanel({ experienceId, slug, accessToken }: SummaryPanelPr
       })),
       totalResults: searchResults.pagination.totalResults,
       instruction: instruction || undefined,
+      ...(trace ? { trace: true } : {}),
     };
 
     // Reset state
@@ -132,7 +133,6 @@ export function SummaryPanel({ experienceId, slug, accessToken }: SummaryPanelPr
         headers: {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
-          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
         },
         body: JSON.stringify(requestBody),
         signal: abortControllerRef.current.signal,
@@ -189,7 +189,7 @@ export function SummaryPanel({ experienceId, slug, accessToken }: SummaryPanelPr
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [searchResults, instruction, slug, accessToken]);
+  }, [searchResults, instruction, slug, trace]);
 
   // Stop streaming
   const handleStopStreaming = useCallback(() => {

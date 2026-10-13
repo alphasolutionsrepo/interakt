@@ -21,6 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Search,
   Sparkles,
@@ -103,6 +105,8 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
   // State
   const [selectedExperienceId, setSelectedExperienceId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PlaygroundTab>('search');
+  // Playground requests are untraced unless the admin turns this on
+  const [trace, setTrace] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
 
@@ -183,6 +187,52 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
 
   // Get current feature
   const currentFeature = FEATURES.find((f) => f.id === activeTab);
+
+  // Experience picker and trace toggle. Rendered in the header, or in a slim bar
+  // when the header is hidden (e.g. inside the Search playground's tab), so the
+  // experience can always be chosen.
+  const experienceSelect = experiencesData?.length ? (
+    <Select value={selectedExperienceId || ''} onValueChange={setSelectedExperienceId}>
+      <SelectTrigger className="w-72 h-9">
+        <SelectValue placeholder="Select a search experience" />
+      </SelectTrigger>
+      <SelectContent>
+        {experiencesData.map((exp) => (
+          <SelectItem key={exp.id} value={exp.id}>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+              <span>{exp.name}</span>
+              {exp.aiEnabled && (
+                <Badge variant="secondary" className="text-[10px] px-1 py-0">AI</Badge>
+              )}
+              {exp.indexCount > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                  {exp.indexCount} source{exp.indexCount !== 1 ? 's' : ''}
+                </Badge>
+              )}
+            </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  ) : null;
+
+  const traceToggle = (
+    <div
+      className="flex items-center gap-2"
+      title="Playground requests are not traced. Turn on to record a full trace of each request (Telemetry → Traces)."
+    >
+      <Switch id="playground-trace" checked={trace} onCheckedChange={setTrace} />
+      <Label htmlFor="playground-trace" className="text-sm text-muted-foreground cursor-pointer">Trace</Label>
+    </div>
+  );
+
+  const slimToolbar = hideHeader ? (
+    <div className="shrink-0 border-b bg-background px-6 py-3 lg:px-8 flex items-center justify-end gap-4">
+      {traceToggle}
+      {experienceSelect}
+    </div>
+  ) : null;
 
   // Error state
   if (experiencesError) {
@@ -326,26 +376,8 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
 
               {/* Experience Selector */}
               <div className="flex items-center gap-3">
-                <Select value={selectedExperienceId} onValueChange={setSelectedExperienceId}>
-                  <SelectTrigger className="w-64 h-9">
-                    <SelectValue placeholder="Select experience" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {experiencesData.map((exp) => (
-                      <SelectItem key={exp.id} value={exp.id}>
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-3.5 w-3.5 text-purple-500" />
-                          <span>{exp.name}</span>
-                          {exp.indexCount > 0 && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                              {exp.indexCount} index{exp.indexCount !== 1 ? 'es' : ''}
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {traceToggle}
+                {experienceSelect}
 
                 {/* Access Token Button */}
                 {selectedExperience?.accessToken && (
@@ -368,6 +400,8 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
           </div>
         </header>
 
+        {slimToolbar}
+
         {/* Panel Content */}
         <main className="flex-1 min-h-0 overflow-hidden">
           {activeTab === 'search' && (
@@ -375,13 +409,14 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
               experienceId={selectedExperienceId}
               slug={selectedOption.slug}
               accessToken={selectedExperience?.accessToken}
+              trace={trace}
             />
           )}
           {activeTab === 'summary' && (
             <SummaryPanel
               experienceId={selectedExperienceId}
               slug={selectedOption.slug}
-              accessToken={selectedExperience?.accessToken}
+              trace={trace}
             />
           )}
         </main>
@@ -409,31 +444,15 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
             </div>
 
             {/* Experience Selector */}
-            <Select value={selectedExperienceId || ''} onValueChange={setSelectedExperienceId}>
-              <SelectTrigger className="w-72 h-9">
-                <SelectValue placeholder="Select a search experience" />
-              </SelectTrigger>
-              <SelectContent>
-                {experiencesData.map((exp) => (
-                  <SelectItem key={exp.id} value={exp.id}>
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-3.5 w-3.5 text-purple-500" />
-                      <span>{exp.name}</span>
-                      <div className="flex items-center gap-1 ml-2">
-                        {exp.aiEnabled && (
-                          <Badge variant="secondary" className="text-[10px] px-1 py-0">
-                            AI
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-3">
+              {traceToggle}
+              {experienceSelect}
+            </div>
           </div>
         </div>
       </header>
+
+      {slimToolbar}
 
       {/* Selection Cards */}
       <main className="flex-1 overflow-auto">

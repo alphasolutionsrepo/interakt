@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { createLogger } from '@/shared/logger/logger';
 import { auth } from '@/features/auth/auth.api.handlers';
+import { runWithTelemetryLevel } from '@/features/telemetry';
 import * as aiService from '@/features/ai-service/ai-service.service';
 import type { ChatMessage } from '@/features/ai-service/ai-service.types';
 import * as repository from '@/features/search-experience/search-experience.repository';
@@ -67,6 +68,8 @@ export async function POST(
                         request.headers.get('X-Access-Token');
 
     let isAuthenticated = false;
+    // Admin (session) summaries are not traced unless the request asks for it (then in full).
+    let isAdmin = false;
 
     if (accessToken && accessToken === experience.accessToken) {
       isAuthenticated = true;
@@ -76,6 +79,7 @@ export async function POST(
       const session = await auth();
       if (session?.user) {
         isAuthenticated = true;
+        isAdmin = true;
       }
     }
 
@@ -89,6 +93,7 @@ export async function POST(
     // 4. Parse and validate request
     const body = await request.json();
     const validated = summarizeAPIRequestSchema.parse(body);
+    const trace = (body as { trace?: unknown })?.trace === true;
 
     // 5. Build prompts
     const summaryConfig = experience.aiConfig.summary;
@@ -110,9 +115,10 @@ export async function POST(
       { role: 'user', content: userPrompt },
     ];
 
-    // 6. Create streaming response
+    // 6. Create streaming response. start() runs during construction, so building the
+    //    stream inside runWithoutTracing keeps the whole generation untraced.
     const encoder = new TextEncoder();
-    const stream = new ReadableStream({
+    const createStream = () => new ReadableStream({
       async start(controller) {
         try {
           const generator = aiService.streamChat(messages, {
@@ -167,6 +173,10 @@ export async function POST(
         }
       },
     });
+
+    const stream = isAdmin
+      ? runWithTelemetryLevel(trace ? 'full' : 'off', createStream)
+      : createStream();
 
     return new Response(stream, {
       headers: {

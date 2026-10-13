@@ -2,6 +2,7 @@
 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -75,7 +76,32 @@ function SearchIndexConfig({ value, onChange, errors }: Omit<Step2Props, 'dataSo
 // EXTERNAL SEARCH INDEX CONFIG
 // ============================================================================
 
+/** Copy that changes with the engine: Sitecore's "URL" and "index" mean different things. */
+const PROVIDER_COPY: Record<string, { url: string; urlPlaceholder: string; index: string; indexPlaceholder: string; auth: string[] }> = {
+  elasticsearch: {
+    url: 'Connection URL', urlPlaceholder: 'https://your-cluster.example.com',
+    index: 'Index Name', indexPlaceholder: 'products', auth: ['api_key', 'basic', 'bearer', 'none'],
+  },
+  azure_ai_search: {
+    url: 'Connection URL', urlPlaceholder: 'https://your-service.search.windows.net',
+    index: 'Index Name', indexPlaceholder: 'products', auth: ['api_key', 'basic', 'bearer', 'none'],
+  },
+  sitecore_search: {
+    url: 'Discover endpoint', urlPlaceholder: 'https://discover.sitecorecloud.io/discover/v2/<domain id>',
+    index: 'Widget ID (rfk_id)', indexPlaceholder: 'rfk_global_search', auth: ['api_key', 'bearer', 'none'],
+  },
+};
+
 function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props, 'dataSourceType'>) {
+  const connection = (value.connection as Record<string, unknown>) || {};
+  const provider = (connection.provider as string) || '';
+  const copy = PROVIDER_COPY[provider] ?? PROVIDER_COPY.elasticsearch;
+  const providerSettings = (connection.providerSettings as Record<string, unknown>) || {};
+  const updateProviderSettings = (patch: Record<string, unknown>) => onChange({
+    ...value,
+    connection: { ...connection, providerSettings: { ...providerSettings, ...patch } },
+  });
+
   return (
     <div className="space-y-6">
       <div className="space-y-1.5">
@@ -96,6 +122,7 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
             {[
               { value: 'elasticsearch', label: 'Elasticsearch' },
               { value: 'azure_ai_search', label: 'Azure AI Search' },
+              { value: 'sitecore_search', label: 'Sitecore Search' },
             ].map((p) => (
               <SelectItem key={p.value} value={p.value} className="rounded-lg">
                 {p.label}
@@ -108,7 +135,7 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
 
       <div className="space-y-1.5">
         <Label>
-          Connection URL <span className="text-destructive">*</span>
+          {copy.url} <span className="text-destructive">*</span>
         </Label>
         <Input
           value={((value.connection as Record<string, unknown>)?.url as string) || ''}
@@ -116,7 +143,7 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
             ...value,
             connection: { ...(value.connection as Record<string, unknown> || {}), url: e.target.value },
           })}
-          placeholder="https://your-cluster.example.com"
+          placeholder={copy.urlPlaceholder}
           className={`rounded-xl ${errors.url ? 'border-destructive' : ''}`}
         />
         {errors.url && <p className="text-xs text-destructive">{errors.url}</p>}
@@ -124,7 +151,7 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
 
       <div className="space-y-1.5">
         <Label>
-          Index Name <span className="text-destructive">*</span>
+          {copy.index} <span className="text-destructive">*</span>
         </Label>
         <Input
           value={((value.connection as Record<string, unknown>)?.indexName as string) || ''}
@@ -132,11 +159,39 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
             ...value,
             connection: { ...(value.connection as Record<string, unknown> || {}), indexName: e.target.value },
           })}
-          placeholder="products"
+          placeholder={copy.indexPlaceholder}
           className={`rounded-xl font-mono ${errors.indexName ? 'border-destructive' : ''}`}
         />
         {errors.indexName && <p className="text-xs text-destructive">{errors.indexName}</p>}
       </div>
+
+      {provider === 'sitecore_search' && (
+        <>
+          <div className="space-y-1.5">
+            <Label>Entity</Label>
+            <Input
+              value={(providerSettings.entity as string) ?? 'content'}
+              onChange={(e) => updateProviderSettings({ entity: e.target.value })}
+              placeholder="content"
+              className="rounded-xl font-mono"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Fixed filters</Label>
+            <Textarea
+              value={(providerSettings.fixedFiltersText as string) ?? ''}
+              onChange={(e) => updateProviderSettings({ fixedFiltersText: e.target.value })}
+              placeholder={'environment = prod\nsite = www'}
+              rows={3}
+              className="rounded-xl font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              One <code>attribute = value</code> per line, applied to every search — the same filters your site
+              sends with each request.
+            </p>
+          </div>
+        </>
+      )}
 
       <div className="space-y-1.5">
         <Label>Auth Type</Label>
@@ -151,7 +206,7 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="rounded-xl">
-            {['api_key', 'basic', 'bearer', 'none'].map((t) => (
+            {copy.auth.map((t) => (
               <SelectItem key={t} value={t} className="rounded-lg capitalize">{t.replace('_', ' ')}</SelectItem>
             ))}
           </SelectContent>

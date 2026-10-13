@@ -190,3 +190,31 @@ export const searchExperienceIndexesApi = {
     await handleResponse<void>(response);
   },
 };
+
+// ============================================================================
+// Search Experience External Sources API
+// ============================================================================
+
+export const searchExperienceExternalSourcesApi = {
+  /**
+   * Attach an external index (data source of type search_index_external)
+   */
+  add: async (experienceId: string, dataSourceId: string): Promise<void> => {
+    const response = await fetch(`/api/search-experiences/${experienceId}/external-sources`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataSourceId }),
+    });
+    await handleResponse<void>(response);
+  },
+
+  /**
+   * Detach an external index
+   */
+  remove: async (experienceId: string, dataSourceId: string): Promise<void> => {
+    const response = await fetch(`/api/search-experiences/${experienceId}/external-sources/${dataSourceId}`, {
+      method: 'DELETE',
+    });
+    await handleResponse<void>(response);
+  },
+};

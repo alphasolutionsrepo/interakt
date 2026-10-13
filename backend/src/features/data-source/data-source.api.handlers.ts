@@ -8,6 +8,7 @@ import * as service from './data-source.service';
 import {
   createDataSourceSchema,
   updateDataSourceSchema,
+  configSchemaForType,
   listDataSourcesQuerySchema,
   updateHealthSchema,
 } from './data-source.validation';
@@ -116,7 +117,21 @@ export async function handleUpdateDataSource(
       return apiResponse.validationError(validation.error);
     }
 
-    const updated = await service.updateDataSource(id, validation.data, userId);
+    // The update schema accepts any object as config; hold it to the type's own schema
+    // so an edit can't store a config the executors can't read.
+    let input = validation.data;
+    if (input.config) {
+      const existing = await service.getDataSourceById(id);
+      if (!existing) return apiResponse.notFound(`Data source with ID "${id}" not found`);
+      const configSchema = configSchemaForType(existing.type);
+      if (configSchema) {
+        const parsed = configSchema.safeParse(input.config);
+        if (!parsed.success) return apiResponse.validationError(parsed.error);
+        input = { ...input, config: parsed.data as Record<string, unknown> };
+      }
+    }
+
+    const updated = await service.updateDataSource(id, input, userId);
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;

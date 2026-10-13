@@ -9,7 +9,7 @@
  */
 
 import { SpanKind, type Span } from '@opentelemetry/api';
-import { withSpan , ATTR } from '@/features/telemetry';
+import { withSpan, shouldLogContent, ATTR } from '@/features/telemetry';
 
 /**
  * Wrap a search execution in a span.
@@ -30,7 +30,8 @@ export function traceSearch<T>(
       kind: SpanKind.INTERNAL,
       experienceId: options.experienceId,
       attributes: {
-        [ATTR.SEARCH_QUERY]: options.query,
+        // The query is what the user typed: content, so only recorded at 'full'.
+        ...(shouldLogContent(options.experienceId) && { [ATTR.SEARCH_QUERY]: options.query }),
         [ATTR.SEARCH_TYPE]: options.searchType,
         ...(options.indexName && { [ATTR.SEARCH_INDEX_NAME]: options.indexName }),
         ...(options.triggerType && { [ATTR.SEARCH_TRIGGER]: options.triggerType }),
