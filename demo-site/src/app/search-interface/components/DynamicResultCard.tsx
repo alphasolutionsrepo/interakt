@@ -94,7 +94,7 @@ function HighlightedText({ html, className }: { html: string; className?: string
   );
 }
 
-function getItemLink(
+export function getItemLink(
   result: SearchResult,
   displayConfig: DisplayConfig | null | undefined
 ): { href: string; isExternal: boolean } {
@@ -129,6 +129,16 @@ function getItemLink(
     href: `/search-interface/item/${encodeURIComponent(result.id)}`,
     isExternal: false,
   };
+}
+
+/** Display title of a result: the configured title field, then common names. */
+export function getItemTitle(result: SearchResult, displayConfig: DisplayConfig | null | undefined): string {
+  const titleField = getFieldsByRole(displayConfig).title?.fieldName;
+  for (const name of [titleField, 'title', 'name'].filter(Boolean) as string[]) {
+    const value = getFieldValue(result.source, name);
+    if (value) return String(value);
+  }
+  return result.id;
 }
 
 // ============================================================================

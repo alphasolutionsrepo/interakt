@@ -19,6 +19,7 @@ import { useSettings } from '@/contexts/settings-context';
 import { useSearch } from '@/hooks/use-search';
 import { useAutocomplete } from '@/hooks/use-autocomplete';
 import { useAISummary } from '@/hooks/use-ai-summary';
+import { AISummaryContent } from '@/components/ai-summary-content';
 import { DynamicResultCard } from '../../search-interface/components/DynamicResultCard';
 import { SettingsModal } from '../../search-interface/components/SettingsModal';
 
@@ -363,7 +364,7 @@ function ResultsStep({
   useEffect(() => {
     if (query && results.length >= 3 && query !== lastQueryRef.current) {
       lastQueryRef.current = query;
-      aiSummary.generate(query, results);
+      aiSummary.generate(query, results, pagination?.totalItems);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, results]);
@@ -408,10 +409,13 @@ function ResultsStep({
             </div>
           </div>
           <div className="text-sm text-foreground/80 leading-relaxed pl-12">
-            {aiSummary.summary}
-            {aiSummary.isStreaming && (
-              <span className="inline-block w-0.5 h-4 bg-foreground ml-0.5 animate-pulse align-middle" />
-            )}
+            <AISummaryContent
+              summary={aiSummary.summary}
+              isStreaming={aiSummary.isStreaming}
+              isComplete={aiSummary.isComplete}
+              results={results}
+              displayConfig={displayConfig}
+            />
           </div>
           {aiSummary.isComplete && aiSummary.followUpQueries.length > 0 && (
             <div className="pl-12 mt-3 flex flex-wrap gap-2">

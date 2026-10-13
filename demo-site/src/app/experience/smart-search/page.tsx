@@ -27,6 +27,7 @@ import { useSettings } from '@/contexts/settings-context';
 import { useSearch } from '@/hooks/use-search';
 import { useAutocomplete } from '@/hooks/use-autocomplete';
 import { useAISummary } from '@/hooks/use-ai-summary';
+import { AISummaryContent } from '@/components/ai-summary-content';
 import { DynamicResultCard } from '../../search-interface/components/DynamicResultCard';
 import { SettingsModal } from '../../search-interface/components/SettingsModal';
 import { useSessionMemory, type SuggestedFilter } from './use-session-memory';
@@ -323,7 +324,7 @@ export default function SmartSearchPage() {
       searchState.query !== lastSummaryQuery.current
     ) {
       lastSummaryQuery.current = searchState.query;
-      aiSummary.generate(searchState.query, searchState.results);
+      aiSummary.generate(searchState.query, searchState.results, searchState.pagination?.totalItems);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchState.query, searchState.results, searchState.isLoading]);
@@ -654,12 +655,13 @@ export default function SmartSearchPage() {
                     <div className="h-3.5 bg-muted rounded-full w-3/5 animate-pulse" />
                   </div>
                 ) : (
-                  <>
-                    {aiSummary.summary}
-                    {aiSummary.isStreaming && (
-                      <span className="inline-block w-0.5 h-4 bg-foreground ml-0.5 animate-pulse align-middle" />
-                    )}
-                  </>
+                  <AISummaryContent
+                    summary={aiSummary.summary}
+                    isStreaming={aiSummary.isStreaming}
+                    isComplete={aiSummary.isComplete}
+                    results={searchState.results}
+                    displayConfig={searchState.displayConfig}
+                  />
                 )}
               </div>
               {aiSummary.isComplete && aiSummary.followUpQueries.length > 0 && (

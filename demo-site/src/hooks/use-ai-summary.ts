@@ -19,7 +19,7 @@ export interface UseAISummaryState {
 }
 
 export interface UseAISummaryActions {
-  generate: (query: string, results: SearchResult[]) => void;
+  generate: (query: string, results: SearchResult[], totalResults?: number) => void;
   abort: () => void;
   reset: () => void;
   toggleCollapsed: () => void;
@@ -50,7 +50,7 @@ export function useAISummary(): UseAISummaryReturn {
   // GENERATE
   // =========================================================================
 
-  const generate = useCallback((query: string, results: SearchResult[]) => {
+  const generate = useCallback((query: string, results: SearchResult[], totalResults?: number) => {
     if (!isConfigured || results.length < 3) {
       return; // Only show summary for 3+ results
     }
@@ -83,7 +83,7 @@ export function useAISummary(): UseAISummaryReturn {
       {
         query,
         results: summarizeResults,
-        totalResults: results.length,
+        totalResults: totalResults || results.length,
         instruction: 'After your summary, on a new line write FOLLOW_UP: followed by exactly 3 short follow-up search queries separated by |',
       },
       (content) => {
