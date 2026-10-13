@@ -51,6 +51,7 @@ export const ATTR = {
   SEARCH_TRIGGER: 'alpha.search.trigger_type', // 'user' | 'ai_tool' | 'ai_rag'
   SEARCH_ES_TOOK_MS: 'alpha.search.es_took_ms',
   SEARCH_SOURCE_COUNT: 'alpha.search.source_count', // indexes + external indexes searched
+  SEARCH_FAILED_SOURCES: 'alpha.search.failed_sources', // sources that failed while others answered
   DATA_SOURCE_ID: 'alpha.data_source.id',
   DATA_SOURCE_NAME: 'alpha.data_source.name',
 

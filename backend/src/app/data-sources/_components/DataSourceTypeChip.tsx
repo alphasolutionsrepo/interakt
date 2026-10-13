@@ -19,7 +19,7 @@ export const DS_TYPE_CONFIG = {
     badgeClass: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20',
     iconClass: 'text-teal-500',
     iconBg: 'bg-teal-500/10',
-    description: 'External search engine (Elasticsearch or Azure AI Search).',
+    description: 'External search engine (Elasticsearch, Azure AI Search or Sitecore Search).',
   },
   file_store: {
     label: 'File Store',

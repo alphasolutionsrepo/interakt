@@ -87,7 +87,7 @@ export async function POST(
       includeHighlights: validated.includeHighlights,
     });
     // Admin searches: untraced, or traced in full when the admin asks for it.
-    const { results, hitOrigins, interpretation } = isAdmin
+    const { results, hitOrigins, failedSources, interpretation } = isAdmin
       ? await runWithTelemetryLevel(validated.trace ? 'full' : 'off', run)
       : await run();
 
@@ -124,6 +124,8 @@ export async function POST(
         totalMs: Date.now() - startTime,
         searchMs: results.took,
       },
+      // A source failed while others answered
+      ...(failedSources.length > 0 && { partial: true }),
     };
 
     logger.info('Search completed via slug', {

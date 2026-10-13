@@ -109,6 +109,9 @@ const searchResponseSchema = z
       searchExperienceId: z.string().uuid(),
       indexesSearched: z.array(z.object({ id: z.string().uuid(), name: z.string(), displayName: z.string() })),
       displayConfig: z.record(z.unknown()).optional(),
+      partial: z.boolean().optional().openapi({
+        description: 'Present and true when one of the experience\'s sources failed while others answered: the results are incomplete.',
+      }),
     }),
   })
   .openapi('SearchResponse');

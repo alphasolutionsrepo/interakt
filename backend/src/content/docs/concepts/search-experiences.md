@@ -4,7 +4,7 @@ sidebar_position: 8
 
 # Search experiences
 
-A **search experience** is the user-facing thing your visitors interact with — a search box with filters, autocomplete, and result cards. It wraps one or more search indexes, sets the access token, decides how results are formatted, and (optionally) layers AI summaries on top.
+A **search experience** is the user-facing thing your visitors interact with — a search box with filters, autocomplete, and result cards. It wraps one or more search indexes — Interakt's own, or [external indexes](data-sources#external-search-index) such as an existing Elasticsearch, Azure AI Search or Sitecore Search — sets the access token, decides how results are formatted, and (optionally) layers AI summaries on top.
 
 ## Where to find these screens
 Sidebar → **Experiences** → filter to Search, or create from the **New Experience** button.
@@ -20,7 +20,7 @@ The create flow is a four-step wizard.
 | **Name** | Display name shown in the admin and (sometimes) to end-users in the widget. |
 | **Slug** | URL path your users hit (e.g. `product-search` → `/api/v1/search-experiences/product-search/search`). Lowercase, hyphens. **Can't be changed after creation** — pick deliberately. |
 | **Description** | Optional, internal. |
-| **Index selection** | Pick one or more indexes. The first one defaults to **Primary**; additions default to **Secondary**. Roles can be changed; primary index gets the most weight in ranking. |
+| **Index selection** | Pick one or more indexes. The first one defaults to **Primary**; additions default to **Secondary**. Roles can be changed; primary index gets the most weight in ranking. External indexes defined under **Data Sources** are listed too, so an experience can search an engine you already run. |
 
 ### Step 2 — Search settings
 
@@ -62,7 +62,7 @@ If on, you can layer AI summaries on top of the search results:
 
 - **AI provider / model** — defaults to system default. Override if this experience needs a specific one.
 - **Enable summary** — generate a 1–3 paragraph summary of the top results.
-- **Max results for summary** — how many top results the AI sees when generating. Default 5.
+- **Max results for summary** — how many top results the AI sees when generating. Default 10.
 - **Summary length** — Short / Medium / Long.
 - **Summary tone** — Professional / Casual / Technical / Friendly.
 - **Custom instructions** — free-text additional instructions for the AI ("emphasise price differences", "always include a disclaimer about availability"). The "Generate with AI" button drafts these for you from your index schema.
@@ -145,12 +145,25 @@ You attach a `products` index and a `support-articles` index to the same search 
 
 This is good for sites where the same search box serves multiple kinds of answers.
 
+## External indexes
+
+An external index is searched live: Interakt sends the query to the engine and works with what comes back. The AI summary, facets, analytics and traces work the same as for Interakt's own indexes.
+
+When an experience has several sources (any mix of Interakt and external indexes):
+
+- **Ranking** — results are interleaved by rank (Reciprocal Rank Fusion), since scores from different engines can't be compared. A source's **weight** scales its share of the top results.
+- **Sorting** — an explicit sort (e.g. price ascending) orders the merged list by that field; results without the field come last.
+- **Paging** — exact up to 100 results deep; beyond that, each source pages on its own and the order is approximate.
+- **A failing source** doesn't fail the search. The others still answer, the response carries `partial: true`, and the error shows in the logs and in **Analytics → Traces**.
+- **Query understanding** reads Interakt index fields only. In a mixed experience, the filters it infers apply to Interakt indexes; external indexes get the query as typed. In an experience with only external indexes it doesn't run.
+
 ## Common gotchas
 
 - **The slug is in the URL — don't change it after going live.** Your frontend and widget snippet hard-code it. Renaming breaks all callers.
 - **Tokens aren't shown again after regeneration.** Copy immediately.
 - **CORS errors when the dev origin isn't whitelisted.** Add `http://localhost:3000` (or wherever your dev site runs) during development.
 - **Multiple indexes with very different sizes don't blend well.** RRF works best when both indexes return roughly comparable counts. If one has 10k docs and the other has 50, the small one is invisible. Consider separate experiences.
+- **Facet values from different engines are combined as is.** "Degree" and "degree" from two sources show up as two values.
 - **AI summaries cost money** (or, on local models, time). Disable them on experiences with high traffic if your provider bills per token.
 
 ## Where to go next

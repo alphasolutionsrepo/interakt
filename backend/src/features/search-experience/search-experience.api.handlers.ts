@@ -62,7 +62,7 @@ export async function handlePublicSearch(request: NextRequest): Promise<NextResp
     const validated = publicSearchRequestSchema.parse(body) as PublicSearchRequest;
 
     // 3–6. Search every source the experience uses and merge the results
-    const { results, sourcesSearched } = await executeExperienceSearch(experience, validated, { source: 'api' });
+    const { results, sourcesSearched, failedSources } = await executeExperienceSearch(experience, validated, { source: 'api' });
 
     // 7. Build response
     const response: PublicSearchResponse = {
@@ -75,6 +75,8 @@ export async function handlePublicSearch(request: NextRequest): Promise<NextResp
       indexesSearched: sourcesSearched,
       // Include display configuration for frontend rendering
       displayConfig: experience.displayConfig ?? undefined,
+      // A source failed while others answered
+      ...(failedSources.length > 0 && { partial: true }),
     };
 
     logger.info('Public search completed', {

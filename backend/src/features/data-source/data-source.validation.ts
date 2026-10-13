@@ -38,6 +38,21 @@ const searchIndexConfigSchema = z.object({
   searchIndexId: z.string().uuid(),
 });
 
+/**
+ * A filter every query to a Sitecore source carries. Only operators Sitecore can
+ * express: a fixed filter it couldn't apply would fail every search, not just one.
+ */
+const fixedFilterSchema: z.ZodTypeAny = z.lazy(() =>
+  z.object({
+    field: z.string(),
+    operator: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'nin', 'range', 'and', 'or', 'not'], {
+      errorMap: () => ({ message: 'Sitecore fixed filters support eq, neq, gt, gte, lt, lte, in, nin, range, and, or, not' }),
+    }),
+    value: z.unknown().optional(),
+    filters: z.array(fixedFilterSchema).optional(),
+  }),
+);
+
 const externalSearchIndexConfigSchema = z.object({
   provider: z.enum(['elasticsearch', 'azure_ai_search', 'sitecore_search']),
   connection: z.object({
@@ -74,7 +89,7 @@ const externalSearchIndexConfigSchema = z.object({
   // config option that only appears to be configurable.
   profileSampleSize: z.number().int().min(0).max(500).optional(),
   // Connector-specific settings (e.g. Sitecore entity and fixed filters).
-  providerSettings: z.record(z.unknown()).optional(),
+  providerSettings: z.object({ fixedFilters: z.array(fixedFilterSchema).optional() }).passthrough().optional(),
 });
 
 const fileStoreConfigSchema = z.object({

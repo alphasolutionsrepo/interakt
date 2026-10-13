@@ -128,6 +128,7 @@ export function createSummaryStream(
           const contentEvent: ChatStreamEvent = {
             type: 'content',
             text: chunk.content,
+            content: chunk.content,
           };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentEvent)}\n\n`));
         }

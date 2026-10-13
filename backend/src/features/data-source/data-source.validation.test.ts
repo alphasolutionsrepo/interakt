@@ -128,6 +128,33 @@ describe('createDataSourceSchema', () => {
       const result = createDataSourceSchema.safeParse(input);
       expect(result.success).toBe(false);
     });
+
+    it('accepts Sitecore fixed filters it can apply, nested included', () => {
+      const input = validExternalIndexInput();
+      Object.assign(input.config, {
+        provider: 'sitecore_search',
+        providerSettings: {
+          entity: 'content',
+          fixedFilters: [
+            { field: 'site', operator: 'eq', value: 'www' },
+            { field: '', operator: 'or', filters: [{ field: 'type', operator: 'in', value: ['a', 'b'] }] },
+          ],
+        },
+      });
+      const result = createDataSourceSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      // Settings beyond fixed filters are kept
+      expect((result.data?.config as { providerSettings?: { entity?: string } }).providerSettings?.entity).toBe('content');
+    });
+
+    it('rejects a fixed filter Sitecore cannot apply', () => {
+      const input = validExternalIndexInput();
+      Object.assign(input.config, {
+        provider: 'sitecore_search',
+        providerSettings: { fixedFilters: [{ field: 'name', operator: 'contains', value: 'x' }] },
+      });
+      expect(createDataSourceSchema.safeParse(input).success).toBe(false);
+    });
   });
 
   describe('file_store type', () => {

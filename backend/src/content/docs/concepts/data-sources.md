@@ -35,14 +35,29 @@ Configuration:
 You don't usually edit these by hand — the tool generator does it for you. But you can override behavior here if the auto-generated tools aren't quite right.
 
 ### External search index
-Points at a search engine that's *not* hosted by Interakt — your existing Elasticsearch cluster or an Azure AI Search service.
+Points at a search engine that's *not* hosted by Interakt — your existing Elasticsearch cluster, an Azure AI Search service, or Sitecore Search.
 
 Configuration:
-- **Provider** — Elasticsearch or Azure AI Search.
-- **Connection** — URL, index name, auth type and credentials.
+- **Provider** — Elasticsearch, Azure AI Search or Sitecore Search.
+- **Connection** — URL, index name, auth type and credentials (the API key lives in the [Secrets vault](secrets); you enter the secret's name).
 - **Search defaults** — search type (lexical / vector / hybrid), max results.
 
-Use this when you already have a search backbone and you don't want to copy data into Interakt. Interakt acts as the orchestration layer; the data and the search engine stay where they are.
+Use this when you already have a search backbone and you don't want to copy data into Interakt. Interakt acts as the orchestration layer; the data and the search engine stay where they are. An external index can back chat tools and [search experiences](search-experiences) alike.
+
+**Fields.** Click **Refresh health** after creating the source: Interakt checks the connection and discovers the fields from the engine (for Sitecore, from a sample of results). Review them in the schema editor — mark internal attributes as not retrievable so they never reach visitors or the AI.
+
+**Timeouts.** Each request to an external engine is cut off after 10 seconds.
+
+#### Sitecore Search
+- **URL** — your domain's discover endpoint, e.g. `https://discover.sitecorecloud.io/discover/v2/<domain id>`.
+- **Index name** — the widget ID (`rfk_id`) configured in Sitecore, e.g. `rfk_global_search`.
+- **Auth** — the API key from Sitecore's Developer Resources, stored as a secret.
+- **Fixed filters** — `attribute = value` lines added to every query, e.g. `environment = prod`. Values are sent as text. Filters set through the API may also use `neq`, `gt`/`gte`/`lt`/`lte`, `in`, `nin`, `range`, `and`, `or` and `not`.
+
+Sitecore ranks results itself; Interakt searches it as is. Current limits:
+- No `contains`, `prefix`, `exists` or `missing` filters. A search that asks for one runs without it, and the response lists it as not applied.
+- No highlights and no autocomplete. Relevance scores are derived from rank.
+- Fields are discovered from a sample of results, so attributes missing from the sample need adding by hand.
 
 ### File store
 A bucket or folder of files (markdown, PDFs, plain text). Interakt extracts the text, chunks it, embeds it, and stores the chunks in its own knowledge base.

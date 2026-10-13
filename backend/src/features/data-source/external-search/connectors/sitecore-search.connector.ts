@@ -20,14 +20,13 @@ import type {
   ExternalSearchRequest,
   ExternalSearchResult,
 } from '../external-search.types';
+import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
 import {
   buildSitecoreRequest,
   mapSitecoreResponse,
   sitecoreSettings,
   type SitecoreRequestInput,
 } from './sitecore-search.request';
-
-const REQUEST_TIMEOUT_MS = 10_000;
 
 // ============================================================================
 // HTTP
@@ -64,28 +63,26 @@ async function callSitecore(
   }
 
   const start = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+  // One timeout for the whole exchange, reading the body included
   let response: Response;
+  let text: string;
   try {
     response = await fetch(settings.endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(EXTERNAL_REQUEST_TIMEOUT_MS),
     });
+    text = await response.text();
   } catch (error) {
     throw new Error(
-      controller.signal.aborted
+      (error as Error).name === 'TimeoutError'
         ? 'Sitecore Search request timed out'
         : `Network error connecting to Sitecore Search: ${(error as Error).message}`,
     );
-  } finally {
-    clearTimeout(timer);
   }
 
-  const text = await response.text();
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       throw new Error('Sitecore Search rejected the request — check the API key');

@@ -14,6 +14,12 @@ import type { FilterClause, SortClause } from '@/features/search/search.types';
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import type { UnappliedClause } from './external-query';
 
+/**
+ * Upper bound for one request to an external engine, body included. Public search
+ * waits on every source, so one slow engine must not hang the whole request.
+ */
+export const EXTERNAL_REQUEST_TIMEOUT_MS = 10_000;
+
 /** Connection details resolved from a data source (credentials already decrypted). */
 export interface ExternalConnection {
   /** Connector key, e.g. 'elasticsearch', 'azure-ai-search', 'sitecore-search' */

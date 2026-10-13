@@ -176,14 +176,24 @@ async function lookupFromExternalSource(
   const fields = (ds?.schema as DataSourceSchema | null)?.fields;
 
   try {
-    const result = await connector.search(
-      source,
-      { query: '*', offset: 0, limit: 1, filters: [{ field: idField, operator: 'eq', value: documentId }] },
-      fields,
-    );
+    // The id filter can fail outright, e.g. an engine where the id attribute isn't
+    // filterable. The search fallback below still finds the document then.
+    const result = await connector
+      .search(
+        source,
+        { query: '*', offset: 0, limit: 1, filters: [{ field: idField, operator: 'eq', value: documentId }] },
+        fields,
+      )
+      .catch((error: unknown) => {
+        logger.info('External lookup by id failed — falling back to search', {
+          dataSourceId: source.dataSourceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      });
     // An id filter the engine could not apply would return an arbitrary document,
     // so only trust a hit when the filter was applied.
-    const hit = result.unappliedFilters.length === 0 ? result.hits[0] : undefined;
+    const hit = result && result.unappliedFilters.length === 0 ? result.hits[0] : undefined;
     if (hit) return { success: true, data: { id: hit.id, document: hit.source } };
 
     // Fallback, as for managed indexes: the "id" is often a name or title the planner

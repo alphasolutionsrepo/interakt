@@ -13,6 +13,7 @@
  * bearer → "Bearer <key>", basic → "Basic <key>" (pre-encoded), none → no header.
  */
 
+import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
 
 /** Outcome of one engine call: data on success, a readable error otherwise. */
 type OperationResult = { success: boolean; data?: unknown; error?: string };
@@ -63,6 +64,8 @@ async function esSearchRequest(
       method: 'POST',
       headers: buildHeaders(config),
       body: JSON.stringify(body),
+      // Covers reading the body too: the signal aborts the response stream.
+      signal: AbortSignal.timeout(EXTERNAL_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
     return {

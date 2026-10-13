@@ -17,6 +17,7 @@ vi.mock('@/features/data-source/external-search/external-search.service', () => 
 }));
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
+import { searchExternalSource } from '@/features/data-source/external-search/external-search.service';
 import { searchExternalSourceForExperience } from './external-source-search';
 import type { SearchExperienceExternalSourceWithDetails, SearchExperienceWithIndexes } from './search-experience.types';
 
@@ -37,5 +38,14 @@ describe('searchExternalSourceForExperience', () => {
   it('returns everything when the schema hides nothing', async () => {
     const response = await searchExternalSourceForExperience(SOURCE, [field('name')], { query: 'x' }, EXPERIENCE);
     expect(Object.keys(response.hits[0].source)).toEqual(['id', 'name', 'site', 'environment']);
+  });
+
+  it('keeps the engine error out of what public callers see', async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(
+      new Error('Sitecore Search returned HTTP 500: {"internal":"stack trace"}'),
+    );
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x' }, EXPERIENCE)).rejects.toThrow(
+      /^An external search source is unavailable$/,
+    );
   });
 });

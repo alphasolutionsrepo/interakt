@@ -159,6 +159,13 @@ export async function searchExternalSourceForExperience(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     track({ total: 0, returned: 0, error: message });
-    throw new SearchError(`External index "${source.dataSource.name}" failed: ${message}`, 'PROVIDER_ERROR');
+    // The engine's message (status, response body) is for admins: logs, analytics and
+    // the trace have it. Public callers get a generic error.
+    logger.error('External index search failed', {
+      experienceId: experience.id,
+      dataSourceId: source.dataSourceId,
+      error: message,
+    });
+    throw new SearchError('An external search source is unavailable', 'PROVIDER_ERROR');
   }
 }

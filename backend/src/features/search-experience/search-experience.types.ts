@@ -175,6 +175,8 @@ export interface PublicSearchResponse {
   }>;
   /** Display configuration for frontend rendering */
   displayConfig?: SearchExperienceDisplayConfig;
+  /** True when a source failed while others answered: the results are incomplete */
+  partial?: boolean;
 }
 
 // ============================================================================
@@ -420,7 +422,8 @@ export type ChatStreamEvent =
   | { type: 'tool_result'; id: string; name: string; result: unknown }
   | { type: 'search_results'; results: StreamSearchResult[] }
   | { type: 'response_start' }
-  | { type: 'content'; text: string }
+  /** `content` repeats `text`: /search/:slug/summarize sent it under that name, and clients may still read it */
+  | { type: 'content'; text: string; content?: string }
   | { type: 'preset'; preset: string; content: unknown }
   | { type: 'sources'; sources: DocumentReference[] }
   | { type: 'done'; usage: TokenUsage; messageId: string }

@@ -1,5 +1,7 @@
 // src/features/data-source/external-search/engines/azure-ai-search.ts
 
+import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
+
 /** Outcome of one engine call: data on success, a readable error otherwise. */
 type OperationResult = { success: boolean; data?: unknown; error?: string };
 
@@ -113,6 +115,8 @@ export async function callAzureAISearch(
         'api-key': config.apiKey,
       },
       body: JSON.stringify(body),
+      // Covers reading the body too: the signal aborts the response stream.
+      signal: AbortSignal.timeout(EXTERNAL_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
     return {

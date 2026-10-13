@@ -15,8 +15,8 @@ import 'server-only';
 import type { DataSourceField, DataSourceSchema } from '@/db/schema/data-sources.schema';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import * as searchService from '@/features/search/search.service';
-import type { FacetResult, FacetType, SearchRequest, SearchResponse } from '@/features/search/search.types';
-import { SearchError } from '@/features/search/search.types';
+import type { FacetResult, FacetType, SearchHit, SearchRequest, SearchResponse, SortClause } from '@/features/search/search.types';
+import { SEARCH_DEFAULTS, SearchError } from '@/features/search/search.types';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { createLogger } from '@/shared/logger/logger';
 import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
@@ -56,6 +56,8 @@ export interface ExperienceSearchResult {
   sourcesSearched: Array<{ id: string; name: string; displayName: string }>;
   /** Source of each hit, keyed by hit id */
   hitOrigins: Map<string, HitOrigin>;
+  /** Sources that failed while others answered: the results are partial */
+  failedSources: HitOrigin[];
   /** What query understanding did, when it ran */
   interpretation?: QueryInterpretation;
 }
@@ -114,15 +116,23 @@ export async function executeExperienceSearch(
         options
       );
 
+      // Query understanding infers filters from the managed index's fields; an external
+      // engine gets what the visitor sent instead.
+      const externalRequest: SearchRequest = interpretation?.interpreted
+        ? { ...request, query: publicRequest.query, filters: publicRequest.filters as SearchRequest['filters'] }
+        : request;
+
       const hitOrigins = new Map<string, HitOrigin>();
+      const failedSources: HitOrigin[] = [];
       const results = await executeMultiIndexSearch(
         indexes,
         external,
         externalFields,
-        request,
+        { managed: request, external: externalRequest },
         experience,
         options,
-        hitOrigins
+        hitOrigins,
+        failedSources
       );
 
       // Label facets ("Content Type" rather than "contentType") from the field config,
@@ -130,6 +140,7 @@ export async function executeExperienceSearch(
       span.setAttribute(ATTR.SEARCH_SOURCE_COUNT, indexes.length + external.length);
       span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, results.total.value);
       span.setAttribute(ATTR.SEARCH_RETURNED, results.hits.length);
+      if (failedSources.length > 0) span.setAttribute(ATTR.SEARCH_FAILED_SOURCES, failedSources.length);
 
       const facetLabels = await collectFacetLabels(indexes, externalFields);
       results.facets = results.facets?.map((f) => ({ ...f, label: facetLabels.get(f.field) ?? undefined }));
@@ -149,6 +160,7 @@ export async function executeExperienceSearch(
           })),
         ],
         hitOrigins,
+        failedSources,
         interpretation,
       };
     }
@@ -366,16 +378,17 @@ async function getDefaultFacets(
 }
 
 /**
- * Execute search across multiple indexes
+ * Search every source of the experience and merge the results.
  */
 async function executeMultiIndexSearch(
   indexes: Array<SearchExperienceIndex & { searchIndex: { id: string; name: string; displayName: string } }>,
   externalSources: SearchExperienceExternalSourceWithDetails[],
   externalFields: Map<string, DataSourceField[]>,
-  request: SearchRequest,
+  requests: { managed: SearchRequest; external: SearchRequest },
   experience: SearchExperienceWithIndexes,
   options: ExperienceSearchOptions,
-  hitOrigins: Map<string, HitOrigin>
+  hitOrigins: Map<string, HitOrigin>,
+  failedSources: HitOrigin[]
 ): Promise<SearchResponse> {
   const hybridConfig = experience.searchConfig?.hybridConfig;
   const searchOptions = {
@@ -401,57 +414,80 @@ async function executeMultiIndexSearch(
     return result;
   };
 
-  const searches: Array<{ id: string; run: () => Promise<SearchResponse> }> = [
-    ...indexes.map((idx) => ({
-      id: idx.searchIndexId,
-      run: () =>
-        searchService
-          .searchById(idx.searchIndexId, request, searchOptions)
-          .then(tag({ id: idx.searchIndexId, name: idx.searchIndex.name, kind: 'index' as const })),
-    })),
-    ...externalSources.map((src) => ({
-      id: src.dataSourceId,
-      run: () =>
-        searchExternalSourceForExperience(
-          src,
-          externalFields.get(src.dataSourceId) ?? [],
-          request,
-          experience,
-          options.source
-        ).then(tag({ id: src.dataSourceId, name: src.dataSource.name, kind: 'external' as const })),
-    })),
+  const sources: SourceSearch[] = [
+    ...indexes.map((idx) => {
+      const origin = { id: idx.searchIndexId, name: idx.searchIndex.name, kind: 'index' as const };
+      return {
+        origin,
+        weight: idx.weight ?? 1,
+        run: (req: SearchRequest) => searchService.searchById(idx.searchIndexId, req, searchOptions).then(tag(origin)),
+        request: requests.managed,
+      };
+    }),
+    ...externalSources.map((src) => {
+      const origin = { id: src.dataSourceId, name: src.dataSource.name, kind: 'external' as const };
+      return {
+        origin,
+        weight: src.weight ?? 1,
+        run: (req: SearchRequest) =>
+          searchExternalSourceForExperience(
+            src,
+            externalFields.get(src.dataSourceId) ?? [],
+            req,
+            experience,
+            options.source
+          ).then(tag(origin)),
+        request: requests.external,
+      };
+    }),
   ];
 
   // Single source search
-  if (searches.length === 1) {
-    return searches[0].run();
+  if (sources.length === 1) {
+    return sources[0].run(sources[0].request);
   }
 
-  // Multi-source search with result merging
-  const searchPromises = searches.map((search) =>
-    search
-      .run()
-      .then((result) => ({ indexId: search.id, result, error: null }))
-      .catch((error) => ({ indexId: search.id, result: null, error }))
+  // Several sources: each returns its top page × pageSize, the merge ranks them together
+  // and keeps the requested page. Past the per-request cap, each source pages on its own
+  // and the merge is approximate.
+  const page = requests.managed.page ?? 1;
+  const pageSize = requests.managed.pageSize ?? 20;
+  const window = page * pageSize;
+  const exact = window <= SEARCH_DEFAULTS.maxPageSize;
+  const sourceRequest = (req: SearchRequest): SearchRequest => (exact ? { ...req, page: 1, pageSize: window } : req);
+
+  const outcomes = await Promise.all(
+    sources.map((source) =>
+      source
+        .run(sourceRequest(source.request))
+        .then((result) => ({ source, result, error: null as unknown }))
+        .catch((error: unknown) => ({ source, result: null, error }))
+    )
   );
 
-  const searchResults = await Promise.all(searchPromises);
+  return mergeSearchResults(outcomes, requests.managed, experience, { exact, failedSources });
+}
 
-  // Merge results based on strategy
-  return mergeSearchResults(searchResults, request, experience);
+/** One source of an experience search, and how much its ranking counts. */
+interface SourceSearch {
+  origin: HitOrigin;
+  weight: number;
+  request: SearchRequest;
+  run: (req: SearchRequest) => Promise<SearchResponse>;
 }
 
 /**
- * Merge search results from multiple indexes
+ * Merge search results from multiple sources
  */
 function mergeSearchResults(
-  results: Array<{ indexId: string; result: SearchResponse | null; error: unknown }>,
+  results: Array<{ source: SourceSearch; result: SearchResponse | null; error: unknown }>,
   request: SearchRequest,
-  experience: SearchExperienceWithIndexes
+  experience: SearchExperienceWithIndexes,
+  merge: { exact: boolean; failedSources: HitOrigin[] }
 ): SearchResponse {
   // Filter successful results
   const successfulResults = results.filter((r) => r.result !== null) as Array<{
-    indexId: string;
+    source: SourceSearch;
     result: SearchResponse;
   }>;
 
@@ -464,20 +500,26 @@ function mergeSearchResults(
     throw new SearchError('All index searches failed', 'PROVIDER_ERROR');
   }
 
-  // Log any partial failures
+  // Report partial failures: the response says results are partial, logs say which source
   const failedResults = results.filter((r) => r.error);
   if (failedResults.length > 0) {
+    merge.failedSources.push(...failedResults.map((r) => r.source.origin));
     logger.warn('Some index searches failed', {
       experienceId: experience.id,
-      failedIndexes: failedResults.map((r) => r.indexId),
+      failedIndexes: failedResults.map((r) => r.source.origin.id),
     });
   }
 
-  // Merge hits using RRF (Reciprocal Rank Fusion) by default
-  const mergedHits = mergeHitsWithRRF(
-    successfulResults.map((r) => r.result.hits),
-    request.pageSize ?? 20
+  const pageSize = request.pageSize ?? 20;
+  const page = request.page ?? 1;
+
+  const ranked = rankHits(
+    successfulResults.map((r) => ({ key: r.source.origin.id, weight: r.source.weight, hits: r.result.hits })),
+    request.sort
   );
+  const mergedHits = merge.exact
+    ? ranked.slice((page - 1) * pageSize, page * pageSize)
+    : ranked.slice(0, pageSize);
 
   // Merge facets
   const mergedFacets = mergeFacets(successfulResults.map((r) => r.result.facets ?? []));
@@ -487,8 +529,6 @@ function mergeSearchResults(
   const maxTook = Math.max(...successfulResults.map((r) => r.result.took));
   const maxScore = Math.max(...successfulResults.map((r) => r.result.maxScore ?? 0));
 
-  const pageSize = request.pageSize ?? 20;
-  const page = request.page ?? 1;
   const totalPages = Math.ceil(totalValue / pageSize);
 
   return {
@@ -512,50 +552,60 @@ function mergeSearchResults(
 }
 
 /**
- * Merge hits from multiple result sets using Reciprocal Rank Fusion
+ * Rank hits from several sources into one list.
+ *
+ * Relevance uses weighted Reciprocal Rank Fusion: a hit at rank r in a source of
+ * weight w scores w / (k + r). Scores from different engines aren't comparable, ranks
+ * are. An explicit sort orders by field value instead, relevance breaking ties.
+ * Hits are told apart per source: the same id in two engines is two documents.
  */
-function mergeHitsWithRRF(
-  hitSets: Array<Array<{ id: string; score: number; source: Record<string, unknown>; highlights?: Record<string, string[]> }>>,
-  limit: number,
+export function rankHits(
+  sets: Array<{ key: string; weight: number; hits: SearchHit[] }>,
+  sort?: SortClause[],
   k: number = 60 // RRF constant
-): Array<{ id: string; score: number; source: Record<string, unknown>; highlights?: Record<string, string[]> }> {
-  const scoreMap = new Map<
-    string,
-    {
-      hit: { id: string; score: number; source: Record<string, unknown>; highlights?: Record<string, string[]> };
-      rrfScore: number;
+): SearchHit[] {
+  const ranked = sets.flatMap(({ key, weight, hits }) =>
+    hits.map((hit, rank) => ({ key: `${key}\u0000${hit.id}`, hit, rrf: weight / (k + rank + 1) }))
+  );
+
+  const byField = (sort ?? []).filter((c) => c.field !== '_score');
+  ranked.sort((a, b) => {
+    for (const clause of byField) {
+      const av = fieldValue(a.hit.source, clause.field);
+      const bv = fieldValue(b.hit.source, clause.field);
+      // Missing values sort last in either direction
+      if (isMissing(av) !== isMissing(bv)) return isMissing(av) ? 1 : -1;
+      if (isMissing(av)) continue;
+      const order = compareValues(av, bv);
+      if (order !== 0) return clause.direction === 'desc' ? -order : order;
     }
-  >();
+    return b.rrf - a.rrf;
+  });
 
-  // Calculate RRF scores
-  for (const hits of hitSets) {
-    hits.forEach((hit, rank) => {
-      const rrfContribution = 1 / (k + rank + 1);
+  // A source can't return the same hit twice, but keep the first if one ever does
+  const seen = new Set<string>();
+  return ranked
+    .filter(({ key }) => (seen.has(key) ? false : (seen.add(key), true)))
+    .map(({ hit, rrf }) => ({ ...hit, score: rrf }));
+}
 
-      const existing = scoreMap.get(hit.id);
-      if (existing) {
-        existing.rrfScore += rrfContribution;
-        // Keep the hit with higher original score for source data
-        if (hit.score > existing.hit.score) {
-          existing.hit = hit;
-        }
-      } else {
-        scoreMap.set(hit.id, {
-          hit,
-          rrfScore: rrfContribution,
-        });
-      }
-    });
+function fieldValue(source: Record<string, unknown>, path: string): unknown {
+  let value: unknown = source;
+  for (const part of path.split('.')) {
+    if (value === null || typeof value !== 'object') return undefined;
+    value = (value as Record<string, unknown>)[part];
   }
+  return Array.isArray(value) ? value[0] : value;
+}
 
-  // Sort by RRF score and take top N
-  return Array.from(scoreMap.values())
-    .sort((a, b) => b.rrfScore - a.rrfScore)
-    .slice(0, limit)
-    .map(({ hit, rrfScore }) => ({
-      ...hit,
-      score: rrfScore, // Use RRF score as the final score
-    }));
+function isMissing(value: unknown): boolean {
+  return value === undefined || value === null || value === '';
+}
+
+/** Order two present field values: numbers numerically, anything else as text. */
+function compareValues(a: unknown, b: unknown): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true });
 }
 
 /**
