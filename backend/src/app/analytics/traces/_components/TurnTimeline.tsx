@@ -39,6 +39,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import type { SpanListItem, SpanDetail } from '../_lib/api-client';
 import { useTraceSpans } from '../_lib/hooks/useTraces';
+import { SearchRequestBody } from './SearchRequestDetail';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Copy utility
@@ -1547,7 +1548,9 @@ function TurnHeader({
         <div className="flex-1 min-w-0">
           {/* User message */}
           <div className="flex items-start gap-2">
-            <MessageSquare className="mt-0.5 size-4 shrink-0 text-blue-500" />
+            {rootSpan.operationName.startsWith('search_experience.')
+              ? <Search className="mt-0.5 size-4 shrink-0 text-blue-500" />
+              : <MessageSquare className="mt-0.5 size-4 shrink-0 text-blue-500" />}
             <p className="text-sm font-semibold leading-snug">
               {rootSpan.userMessage?.trim() || <span className="italic text-muted-foreground">No message recorded</span>}
             </p>
@@ -2019,6 +2022,9 @@ export function TurnTimeline({ rootSpan, onClose }: TurnTimelineProps) {
         <Skeleton key={i} className={`h-12 w-[${w}%]`} />
       ))}
     </div>
+  ) : rootSpan.operationName.startsWith('search_experience.') ? (
+    // Search and summary requests don't run the chat pipeline: show their own steps
+    <SearchRequestBody rootSpan={rootSpan} spans={spans} />
   ) : (
     <TurnTimelineBody spans={spans} />
   );

@@ -15,9 +15,6 @@ import {
   Database,
   Globe,
   Brain,
-  Key,
-  Copy,
-  Check,
   RefreshCw,
   Layers,
   Clock,
@@ -31,6 +28,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useSearchExperience } from '../_lib/hooks';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+import { AccessTokenRow } from '@/shared/ui/custom/AccessTokenRow';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { SearchWidgetCard } from './SearchWidgetCard';
@@ -46,27 +44,6 @@ import {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function CopyButton({ text, label }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    toast.success(label ? `${label} copied` : 'Copied to clipboard');
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <Button variant="ghost" size="sm" onClick={handleCopy} className="h-7 px-2">
-      {copied ? (
-        <Check className="h-3.5 w-3.5 text-green-600" />
-      ) : (
-        <Copy className="h-3.5 w-3.5" />
-      )}
-    </Button>
-  );
-}
 
 // ============================================================================
 // SKELETON COMPONENT
@@ -242,6 +219,10 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
         }
         actions={
           <>
+            <Button variant="outline" size="sm" className="rounded-xl" onClick={handleRegenerateToken} disabled={isRegeneratingToken}>
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRegeneratingToken ? 'animate-spin' : ''}`} />
+              Regenerate Token
+            </Button>
             <Button
               variant={experience.isActive ? 'outline' : 'default'}
               className={`rounded-xl ${experience.isActive ? '' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
@@ -480,29 +461,11 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
           <div className="h-px flex-1 bg-border/60" />
         </div>
 
-        {/* Access Token — keep as a full card here since it has the Regenerate action */}
-        <CollapsibleCard
-          icon={<Key className="h-4 w-4 text-amber-500" />}
-          title="Access Token"
-          description={<>Use this token in the <code className="text-xs bg-muted px-1.5 py-0.5 rounded-md font-mono">X-Access-Token</code> header.</>}
-          headerExtras={
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              onClick={handleRegenerateToken}
-              disabled={isRegeneratingToken}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 mr-2 ${isRegeneratingToken ? 'animate-spin' : ''}`} />
-              Regenerate
-            </Button>
-          }
-        >
-          <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl font-mono text-sm border border-border/50">
-            <code className="flex-1 text-foreground/80 truncate">{experience.accessToken}</code>
-            <CopyButton text={experience.accessToken} label="Access token" />
-          </div>
-        </CollapsibleCard>
+        {/* Access Token — same compact row as AI experiences; Regenerate is in the header */}
+        <AccessTokenRow
+          token={experience.accessToken}
+          hint={<>send as <code className="font-mono">X-Access-Token</code></>}
+        />
 
         {/* Search Widget — UI-only drop-in configurator */}
         <SearchWidgetCard

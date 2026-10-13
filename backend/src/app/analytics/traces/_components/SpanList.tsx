@@ -33,6 +33,13 @@ function durationColor(ms: number): string {
   return getDurationColor(ms);
 }
 
+/** What a request-level trace is, shown in the row's subline. */
+const TRACE_KINDS: Record<string, string> = {
+  'chat.ai_experience.turn': 'Chat',
+  'search_experience.search': 'Search',
+  'search_experience.summary': 'AI summary',
+};
+
 export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps) {
   if (spans.length === 0) {
     return (
@@ -52,6 +59,7 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
           const isSelected = span.id === selectedSpanId;
           const message = span.userMessage?.trim();
           const experience = span.experienceSlug ?? span.experienceType ?? null;
+          const kind = TRACE_KINDS[span.operationName];
 
           return (
             <button
@@ -91,6 +99,12 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
                     <>
                       <Wrench className="size-3 shrink-0" />
                       <span className="truncate font-mono">{experience}</span>
+                      <span className="text-muted-foreground/40">·</span>
+                    </>
+                  )}
+                  {kind && (
+                    <>
+                      <span>{kind}</span>
                       <span className="text-muted-foreground/40">·</span>
                     </>
                   )}

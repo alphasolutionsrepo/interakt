@@ -2,8 +2,8 @@
 
 import { format } from 'date-fns';
 import {
-  ChevronRight, Edit2, Power, PowerOff, Trash2, Key,
-  RefreshCw, Copy, Check, CircleCheck, CircleDashed, Bot, Shield, Thermometer,
+  ChevronRight, Edit2, Power, PowerOff, Trash2,
+  RefreshCw, CircleCheck, CircleDashed, Bot, Shield, Thermometer,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -20,30 +20,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+import { AccessTokenRow } from '@/shared/ui/custom/AccessTokenRow';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 
 
 
-
-// ============================================================================
-// COPY BUTTON
-// ============================================================================
-
-function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  async function handleCopy() {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-  return (
-    <Button variant="ghost" size="icon" className="size-8 rounded-lg shrink-0" onClick={handleCopy} title={label}>
-      {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-    </Button>
-  );
-}
 
 // ============================================================================
 // AI EXPERIENCE DETAIL
@@ -292,14 +275,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
         </div>
 
         {/* Access Token */}
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border/60 bg-muted/30">
-          <Key className="size-4 text-amber-500 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <span className="text-sm font-medium">Access Token</span>
-            <span className="text-xs text-muted-foreground ml-2">••••••••{experience.accessToken.slice(-8)}</span>
-          </div>
-          <CopyButton text={experience.accessToken} label="Copy access token" />
-        </div>
+        <AccessTokenRow token={experience.accessToken} />
 
         {/* Chat Widget — one collapsible card with snippet + content + styling */}
         <ChatWidgetCard

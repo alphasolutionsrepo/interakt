@@ -1119,8 +1119,72 @@ a {
   font-size: 13px;
   color: var(--ik-fg);
   line-height: 1.55;
-  white-space: pre-wrap;
   word-wrap: break-word;
+}
+.ik-summary-body p {
+  margin: 0 0 6px;
+}
+.ik-summary-body ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+.ik-summary-body li {
+  margin: 2px 0;
+}
+.ik-summary-body strong {
+  font-weight: 600;
+}
+/* Citation chip: the number of the result a claim comes from */
+.ik-cite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 2px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: 1px;
+  color: var(--ik-primary);
+  background: color-mix(in srgb, var(--ik-primary) 12%, var(--ik-bg));
+  text-decoration: none;
+}
+a.ik-cite:hover {
+  background: color-mix(in srgb, var(--ik-primary) 22%, var(--ik-bg));
+}
+/* Cited pages, listed under the overview */
+.ik-summary-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ik-summary-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 260px;
+  padding: 3px 8px 3px 4px;
+  border: 1px solid var(--ik-border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--ik-fg);
+  background: var(--ik-bg);
+  text-decoration: none;
+}
+a.ik-summary-source:hover {
+  border-color: var(--ik-primary);
+}
+.ik-summary-source .ik-cite {
+  margin-left: 0;
+}
+.ik-summary-source-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ik-summary-body--loading {
   color: var(--ik-muted);
