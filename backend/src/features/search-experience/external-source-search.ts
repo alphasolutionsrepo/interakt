@@ -85,6 +85,13 @@ export async function searchExternalSourceForExperience(
       errorMessage: outcome.error,
     });
 
+  // Only fields the data source marks retrievable leave the source (the counterpart
+  // of includeInResponse on a managed index). Internal attributes — environment
+  // flags, source ids — would otherwise reach the widget and the AI summary.
+  // A caller's includeFields can narrow the response, never widen it past this.
+  const hidden = new Set(fields.filter((f) => f.isRetrievable === false).map((f) => f.name));
+  const selectFields = request.includeFields?.filter((name) => !hidden.has(name));
+
   try {
     // External engines have no search.execute span of their own: record one here,
     // nested under the experience's search trace.
@@ -110,7 +117,8 @@ export async function searchExternalSourceForExperience(
           filters: request.filters,
           sort: request.sort,
           facets: facets?.length ? facets : undefined,
-          selectFields: request.includeFields,
+          // Asking only for hidden fields gets the default fields, as with no includeFields
+          selectFields: selectFields?.length ? selectFields : undefined,
         });
         span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, searched.result.total);
         span.setAttribute(ATTR.SEARCH_RETURNED, searched.result.hits.length);
@@ -130,11 +138,7 @@ export async function searchExternalSourceForExperience(
     const totalPages = Math.ceil(result.total / pageSize);
     track({ total: result.total, returned: result.hits.length, took: result.took, topScore: result.hits[0]?.score });
 
-    // Only fields the data source marks retrievable leave the source (the counterpart
-    // of includeInResponse on a managed index). Internal attributes — environment
-    // flags, source ids — would otherwise reach the widget and the AI summary.
-    const hidden = new Set(fields.filter((f) => f.isRetrievable === false).map((f) => f.name));
-    const hits = hidden.size === 0 || request.includeFields?.length
+    const hits = hidden.size === 0
       ? result.hits
       : result.hits.map((hit) => ({
           ...hit,

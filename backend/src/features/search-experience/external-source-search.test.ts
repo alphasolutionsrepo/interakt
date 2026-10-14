@@ -40,6 +40,23 @@ describe('searchExternalSourceForExperience', () => {
     expect(Object.keys(response.hits[0].source)).toEqual(['id', 'name', 'site', 'environment']);
   });
 
+  it('never returns hidden fields, even when the caller asks for them', async () => {
+    const fields = [field('id'), field('name'), field('site', false), field('environment', false)];
+    const response = await searchExternalSourceForExperience(
+      SOURCE, fields, { query: 'x', includeFields: ['name', 'environment'] }, EXPERIENCE,
+    );
+    // The engine is asked only for the allowed field, and the hidden one is stripped anyway
+    expect(vi.mocked(searchExternalSource)).toHaveBeenLastCalledWith('ds', expect.objectContaining({ selectFields: ['name'] }));
+    expect(response.hits[0].source).not.toHaveProperty('environment');
+    expect(response.hits[0].source).not.toHaveProperty('site');
+  });
+
+  it('asks for the default fields when the caller requests only hidden ones', async () => {
+    const fields = [field('name'), field('environment', false)];
+    await searchExternalSourceForExperience(SOURCE, fields, { query: 'x', includeFields: ['environment'] }, EXPERIENCE);
+    expect(vi.mocked(searchExternalSource)).toHaveBeenLastCalledWith('ds', expect.objectContaining({ selectFields: undefined }));
+  });
+
   it('keeps the engine error out of what public callers see', async () => {
     vi.mocked(searchExternalSource).mockRejectedValueOnce(
       new Error('Sitecore Search returned HTTP 500: {"internal":"stack trace"}'),
