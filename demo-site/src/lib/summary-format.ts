@@ -108,6 +108,17 @@ export function parseSummary(text: string): SummaryBlock[] {
   return blocks;
 }
 
+/**
+ * The result a list item's lead label points at: when the item opens with a bold label
+ * ("**For veterans:** … [2]"), the label links to the item's first citation.
+ */
+export function labelCitation(runs: InlineRun[]): number | null {
+  const first = runs.find((r) => r.kind !== 'text' || r.text.trim() !== '');
+  if (first?.kind !== 'bold') return null;
+  const cite = runs.find((r) => r.kind === 'cite');
+  return cite?.kind === 'cite' ? cite.n : null;
+}
+
 /** Citation numbers in order of first appearance, without duplicates. */
 export function citedNumbers(blocks: SummaryBlock[]): number[] {
   const seen: number[] = [];

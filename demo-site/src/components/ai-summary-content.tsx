@@ -6,7 +6,7 @@
  * the summary completes. Shared by every search experience that shows one.
  */
 
-import { parseSummary, citedNumbers, type InlineRun } from '@/lib/summary-format';
+import { parseSummary, citedNumbers, labelCitation, type InlineRun } from '@/lib/summary-format';
 import type { SearchResult, DisplayConfig } from '@/lib/api/types';
 import { getItemLink, getItemTitle } from '@/app/search-interface/components/DynamicResultCard';
 
@@ -37,12 +37,24 @@ function Citation({ n, sources }: { n: number; sources: SummarySource[] }) {
   );
 }
 
-function Runs({ runs, sources }: { runs: InlineRun[]; sources: SummarySource[] }) {
+function Runs({ runs, sources, labelLink }: { runs: InlineRun[]; sources: SummarySource[]; labelLink?: number | null }) {
+  // A list item's lead bold label links to the page it cites, like its citation chip
+  const labelSource = labelLink ? sources[labelLink - 1] : undefined;
+  const labelIndex = labelSource ? runs.findIndex((r) => r.kind === 'bold') : -1;
   return (
     <>
       {runs.map((r, i) =>
         r.kind === 'cite' ? (
           <Citation key={i} n={r.n} sources={sources} />
+        ) : r.kind === 'bold' && i === labelIndex && labelSource ? (
+          <a
+            key={i}
+            href={labelSource.href}
+            {...linkProps(labelSource)}
+            className="font-semibold text-foreground underline decoration-primary/30 underline-offset-2 transition-colors hover:text-primary hover:decoration-primary"
+          >
+            {r.text}
+          </a>
         ) : r.kind === 'bold' ? (
           <strong key={i} className="font-semibold text-foreground">{r.text}</strong>
         ) : (
@@ -86,7 +98,7 @@ export function AISummaryContent({ summary, isStreaming, isComplete, results, di
             <ul key={i} className="list-disc space-y-1.5 pl-5 marker:text-muted-foreground">
               {block.items.map((item, j) => (
                 <li key={j}>
-                  <Runs runs={item} sources={sources} />
+                  <Runs runs={item} sources={sources} labelLink={labelCitation(item)} />
                 </li>
               ))}
             </ul>

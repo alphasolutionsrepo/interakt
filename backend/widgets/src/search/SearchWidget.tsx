@@ -22,7 +22,7 @@ import {
   ApiError,
 } from '../shared/api-client';
 import widgetCss from '../styles/widget.css?raw';
-import { parseSummary, citedNumbers, type InlineRun } from './summary-format';
+import { parseSummary, citedNumbers, labelCitation, type InlineRun } from './summary-format';
 
 interface InitializedWidget {
   destroy: () => void;
@@ -866,12 +866,19 @@ function Citation({ n, sources }: { n: number; sources: SummarySource[] }) {
   );
 }
 
-function Runs({ runs, sources }: { runs: InlineRun[]; sources: SummarySource[] }) {
+function Runs({ runs, sources, labelLink }: { runs: InlineRun[]; sources: SummarySource[]; labelLink?: number | null }) {
+  // A list item's lead bold label links to the page it cites, like its citation chip
+  const labelUrl = labelLink ? sources[labelLink - 1]?.url : undefined;
+  const labelIndex = labelUrl ? runs.findIndex((r) => r.kind === 'bold') : -1;
   return (
     <>
       {runs.map((r, i) =>
         r.kind === 'cite' ? (
           <Citation key={i} n={r.n} sources={sources} />
+        ) : r.kind === 'bold' && i === labelIndex ? (
+          <a key={i} class="ik-summary-label" href={labelUrl} target="_blank" rel="noopener noreferrer">
+            <strong>{r.text}</strong>
+          </a>
         ) : r.kind === 'bold' ? (
           <strong key={i}>{r.text}</strong>
         ) : (
@@ -905,7 +912,7 @@ function AiSummary({ text, streaming, sources }: { text: string; streaming: bool
                 <ul key={i}>
                   {b.items.map((item, j) => (
                     <li key={j}>
-                      <Runs runs={item} sources={sources} />
+                      <Runs runs={item} sources={sources} labelLink={labelCitation(item)} />
                     </li>
                   ))}
                 </ul>

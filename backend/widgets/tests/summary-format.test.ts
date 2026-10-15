@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { parseInline, parseSummary, citedNumbers } from '../src/search/summary-format';
+import { parseInline, parseSummary, citedNumbers, labelCitation } from '../src/search/summary-format';
 
 describe('parseInline', () => {
   it('splits bold and citations, in any citation style', () => {
@@ -50,5 +50,16 @@ describe('parseSummary', () => {
 
   it('treats headings as plain lines', () => {
     expect(parseSummary('## Overview\nText')[0]).toEqual({ kind: 'paragraph', runs: [{ kind: 'text', text: 'Overview Text' }] });
+  });
+});
+
+describe('labelCitation', () => {
+  it('links a lead bold label to the first citation in the item', () => {
+    expect(labelCitation(parseInline('**For veterans:** Dedicated awards [2][4].'))).toBe(2);
+  });
+
+  it('is null without a lead label or without a citation', () => {
+    expect(labelCitation(parseInline('Awards for veterans **only** [2].'))).toBeNull();
+    expect(labelCitation(parseInline('**For veterans:** Dedicated awards.'))).toBeNull();
   });
 });
