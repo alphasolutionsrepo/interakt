@@ -66,7 +66,7 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
   const [originInput, setOriginInput] = useState('');
   const [rateLimitCPM, setRateLimitCPM] = useState(60);
   const [rateLimitRPD, setRateLimitRPD] = useState<string>('');
-  const [telemetryDetailLevel, setTelemetryDetailLevel] = useState<'off' | 'metadata' | 'full'>('off');
+  const [telemetryDetailLevel, setTelemetryDetailLevel] = useState<'off' | 'metadata' | 'full'>('metadata');
   // Widget appearance (embedConfig) is edited inline on the experience detail
   // page in `WidgetAppearanceCard`, alongside the embed-code snippet. Keeping
   // it out of this form avoids two editors for the same data.
@@ -120,7 +120,7 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
       setRateLimitCPM(rl?.chatPerMinute ?? 60);
       setRateLimitRPD(rl?.requestsPerDay ? String(rl.requestsPerDay) : '');
       const oc = experience.observabilityConfig as Record<string, unknown> | null;
-      setTelemetryDetailLevel(((oc?.telemetryDetailLevel as string) ?? 'off') as 'off' | 'metadata' | 'full');
+      setTelemetryDetailLevel(((oc?.telemetryDetailLevel as string) ?? 'metadata') as 'off' | 'metadata' | 'full');
     }
   }, [experience]);
 

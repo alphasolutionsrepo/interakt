@@ -166,7 +166,7 @@ export const accessConfigSchema = z.object({
 // ============================================================================
 
 export const observabilityConfigSchema = z.object({
-  telemetryDetailLevel: z.enum(TELEMETRY_LEVELS).default('off'),
+  telemetryDetailLevel: z.enum(TELEMETRY_LEVELS).default('metadata'),
   enableConversationLogging: z.boolean().default(true),
   conversationRetentionDays: z.number().int().min(1).max(365).default(90),
 });
