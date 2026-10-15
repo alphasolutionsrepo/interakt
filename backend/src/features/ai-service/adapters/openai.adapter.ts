@@ -35,6 +35,12 @@ const logger = createLogger('openai-adapter');
 // STRICT MODE HELPERS
 // ============================================================================
 
+/** The model's configured reasoning effort, when one is set. */
+function reasoningEffortOf(config: AdapterConfig): { reasoning_effort?: string } {
+    const effort = config.capabilities?.reasoningEffort;
+    return typeof effort === 'string' && effort ? { reasoning_effort: effort } : {};
+}
+
 /**
  * Convert a tool parameter schema to OpenAI strict mode format.
  * Strict mode requires:
@@ -190,6 +196,7 @@ interface OpenAIChatRequest {
     tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
     /** Response format for structured outputs */
     response_format?: OpenAIResponseFormat;
+    reasoning_effort?: string;
 }
 
 interface OpenAIChatResponse {
@@ -363,6 +370,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
             ...(request.responseFormat && {
                 response_format: convertResponseFormatToOpenAI(request.responseFormat),
             }),
+            ...reasoningEffortOf(config),
         };
 
         const response = await this.makeRequest<OpenAIChatResponse>(
@@ -436,6 +444,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
             ...(request.responseFormat && {
                 response_format: convertResponseFormatToOpenAI(request.responseFormat),
             }),
+            ...reasoningEffortOf(config),
         };
 
         logger.debug('Streaming chat request', {

@@ -274,6 +274,7 @@ export function ManageModelsDialog({
         outputCostPerMillionTokens?: number | null;
         usesCompletionTokens?: boolean;
         noTemperature?: boolean;
+        reasoningEffort?: 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high';
     }) => {
         setIsSubmitting(true);
         try {
@@ -284,6 +285,9 @@ export function ManageModelsDialog({
             }
             if (data.noTemperature) {
                 capabilities.noTemperature = true;
+            }
+            if (data.reasoningEffort && data.reasoningEffort !== 'default') {
+                capabilities.reasoningEffort = data.reasoningEffort;
             }
 
             if (editingModel) {

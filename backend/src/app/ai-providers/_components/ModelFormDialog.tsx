@@ -87,6 +87,7 @@ const modelFormSchema = z.object({
     // Capabilities (flattened for form, will be restructured on submit)
     usesCompletionTokens: z.boolean().default(false),
     noTemperature: z.boolean().default(false),
+    reasoningEffort: z.enum(['default', 'none', 'minimal', 'low', 'medium', 'high']).default('default'),
 }).refine(
     (data) => {
         // Dimensions required for embedding models
@@ -152,6 +153,7 @@ export function ModelFormDialog({
             outputCostPerMillionTokens: undefined,
             usesCompletionTokens: false,
             noTemperature: false,
+            reasoningEffort: 'default',
         },
     });
 
@@ -175,6 +177,7 @@ export function ModelFormDialog({
                     outputCostPerMillionTokens: model.outputCostPerMillionTokens || undefined,
                     usesCompletionTokens: capabilities.usesCompletionTokens === true,
                     noTemperature: capabilities.noTemperature === true,
+                    reasoningEffort: (capabilities.reasoningEffort as ModelFormData['reasoningEffort']) ?? 'default',
                 });
             } else {
                 reset({
@@ -188,6 +191,7 @@ export function ModelFormDialog({
                     outputCostPerMillionTokens: undefined,
                     usesCompletionTokens: false,
                     noTemperature: false,
+                    reasoningEffort: 'default',
                 });
             }
         }
@@ -415,9 +419,9 @@ export function ModelFormDialog({
                     {(modelType === 'chat' || modelType === 'text') && (
                         <div className="space-y-3 rounded-lg border p-3 bg-blue-50/50 dark:bg-blue-950/40">
                             <div>
-                                <Label className="text-sm font-medium">OpenAI Model Options</Label>
+                                <Label className="text-sm font-medium">Model Options</Label>
                                 <p className="text-xs text-slate-500">
-                                    Configure OpenAI-specific model behavior
+                                    How Interakt calls this model
                                 </p>
                             </div>
 
@@ -451,6 +455,33 @@ export function ModelFormDialog({
                                     checked={watch('noTemperature')}
                                     onCheckedChange={(checked) => setValue('noTemperature', checked)}
                                 />
+                            </div>
+
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <Label htmlFor="reasoningEffort" className="text-sm">
+                                        Reasoning
+                                    </Label>
+                                    <p className="text-xs text-slate-500">
+                                        For thinking models. &quot;Off&quot; answers directly; pick it when replies come back empty
+                                    </p>
+                                </div>
+                                <Select
+                                    value={watch('reasoningEffort')}
+                                    onValueChange={(value) => setValue('reasoningEffort', value as ModelFormData['reasoningEffort'])}
+                                >
+                                    <SelectTrigger id="reasoningEffort" className="w-36">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="default">Model default</SelectItem>
+                                        <SelectItem value="none">Off</SelectItem>
+                                        <SelectItem value="minimal">Minimal</SelectItem>
+                                        <SelectItem value="low">Low</SelectItem>
+                                        <SelectItem value="medium">Medium</SelectItem>
+                                        <SelectItem value="high">High</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
                     )}
