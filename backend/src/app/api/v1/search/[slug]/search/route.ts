@@ -104,7 +104,7 @@ export async function POST(
         },
       }),
       results: results.hits.map((hit) => {
-        const origin = hitOrigins.get(hit.id);
+        const origin = hitOrigins.get(hit);
         return {
           id: hit.id,
           index: { id: origin?.id ?? '', name: origin?.name ?? '' },
