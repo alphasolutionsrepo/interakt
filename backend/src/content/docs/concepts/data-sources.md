@@ -55,7 +55,7 @@ Use this when you already have a search backbone and you don't want to copy data
 - **Fixed filters** — `attribute = value` lines added to every query, e.g. `environment = prod`. Values are sent as text. Filters set through the API may also use `neq`, `gt`/`gte`/`lt`/`lte`, `in`, `nin`, `range`, `and`, `or` and `not`.
 
 Sitecore ranks results itself; Interakt searches it as is. Current limits:
-- No `contains`, `prefix`, `exists` or `missing` filters. A search that asks for one runs without it, and the response lists it as not applied.
+- No `contains`, `prefix`, `exists` or `missing` filters. A search experience refuses such a filter rather than return unfiltered results: with Sitecore as its only source the request fails with `400 INVALID_FILTER`; next to other sources, Sitecore sits that search out and the response is marked `partial`. AI tools search without the filter and tell the assistant which one was not applied.
 - No highlights and no autocomplete. Relevance scores are derived from rank.
 - Fields are discovered from a sample of results, so attributes missing from the sample need adding by hand.
 

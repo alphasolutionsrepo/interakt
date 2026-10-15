@@ -101,4 +101,19 @@ describe('mergeSearchResults', () => {
     ]);
   });
 
+  it('drops a source that refused the request and marks the result partial', () => {
+    const hitOrigins = new WeakMap<SearchHit, HitOrigin>();
+    const failedSources: HitOrigin[] = [];
+    const merged = mergeSearchResults(
+      [
+        { source: { origin: catalog, weight: 1 }, result: response([]), error: null },
+        { source: { origin: external, weight: 1 }, result: null, error: new Error('INVALID_FILTER') },
+      ],
+      { query: 'jeans', page: 1, pageSize: 20, filters: [{ field: 'title', operator: 'eq', value: 'zzz' }] },
+      { id: 'exp-1' },
+      { exact: true, failedSources, hitOrigins }
+    );
+    expect(merged.hits).toEqual([]);
+    expect(failedSources).toEqual([external]);
+  });
 });
