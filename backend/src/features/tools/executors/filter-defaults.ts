@@ -19,7 +19,7 @@
  *   nothing in the result or the trace could explain the missing documents.
  */
 
-import type { UnappliedClause } from './external-query';
+import type { UnappliedClause } from '@/features/data-source/external-search/external-query';
 
 import type { FilterClause, SortClause } from '@/features/search/search.types';
 

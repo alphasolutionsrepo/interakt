@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { searchIndex } from './search-index.schema';
+import { dataSources } from './data-sources.schema';
 
 // ============================================================================
 // TYPE DEFINITIONS FOR JSON COLUMNS
@@ -125,6 +126,12 @@ export interface SearchExperienceAISummaryConfig {
   customInstructions?: string;
   /** Max tokens for summary response */
   maxTokens?: number;
+  /**
+   * Characters of each result's long text fields (page body, excerpts) the summary
+   * reads, chosen by relevance to the query: the opening plus matching passages.
+   * Unset: each field is cut at 500 characters.
+   */
+  contextCharsPerResult?: number;
 }
 
 /**
@@ -343,11 +350,59 @@ export const searchExperienceIndexes = pgTable('search_experience_indexes', {
 }));
 
 // ============================================================================
+// SEARCH EXPERIENCE EXTERNAL SOURCES (JUNCTION TABLE)
+// ============================================================================
+
+/**
+ * External indexes (data sources of type `search_index_external`) searched by an
+ * experience. Kept apart from search_experience_indexes so every consumer of
+ * managed indexes keeps its non-null `searchIndexId`; an experience can use
+ * managed indexes, external indexes, or both.
+ */
+export const searchExperienceExternalSources = pgTable('search_experience_external_sources', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  /** Reference to the search experience */
+  searchExperienceId: uuid('search_experience_id')
+    .notNull()
+    .references(() => searchExperiences.id, { onDelete: 'cascade' }),
+
+  /** Reference to the external index data source */
+  dataSourceId: uuid('data_source_id')
+    .notNull()
+    .references(() => dataSources.id, { onDelete: 'cascade' }),
+
+  /** Weight for result scoring (1.0 = normal) */
+  weight: real('weight').default(1.0).notNull(),
+
+  /** Display/priority order */
+  sortOrder: integer('sort_order').default(0).notNull(),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  experienceIdx: index('se_external_sources_experience_idx').on(table.searchExperienceId),
+  dataSourceIdx: index('se_external_sources_data_source_idx').on(table.dataSourceId),
+  uniqueCombo: unique('se_external_sources_unique').on(table.searchExperienceId, table.dataSourceId),
+}));
+
+// ============================================================================
 // RELATIONS
 // ============================================================================
 
 export const searchExperiencesRelations = relations(searchExperiences, ({ many }) => ({
   indexes: many(searchExperienceIndexes),
+  externalSources: many(searchExperienceExternalSources),
+}));
+
+export const searchExperienceExternalSourcesRelations = relations(searchExperienceExternalSources, ({ one }) => ({
+  searchExperience: one(searchExperiences, {
+    fields: [searchExperienceExternalSources.searchExperienceId],
+    references: [searchExperiences.id],
+  }),
+  dataSource: one(dataSources, {
+    fields: [searchExperienceExternalSources.dataSourceId],
+    references: [dataSources.id],
+  }),
 }));
 
 export const searchExperienceIndexesRelations = relations(searchExperienceIndexes, ({ one }) => ({
@@ -370,3 +425,6 @@ export type NewSearchExperience = typeof searchExperiences.$inferInsert;
 
 export type SearchExperienceIndex = typeof searchExperienceIndexes.$inferSelect;
 export type NewSearchExperienceIndex = typeof searchExperienceIndexes.$inferInsert;
+
+export type SearchExperienceExternalSource = typeof searchExperienceExternalSources.$inferSelect;
+export type NewSearchExperienceExternalSource = typeof searchExperienceExternalSources.$inferInsert;

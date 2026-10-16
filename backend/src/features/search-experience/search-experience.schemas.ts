@@ -100,6 +100,7 @@ export const aiSummaryConfigSchema = z.object({
   maxResultsForContext: z.number().int().min(1).max(50).default(DEFAULT_AI_CONFIG.summary.maxResultsForContext),
   customInstructions: z.string().max(5000).optional(),
   maxTokens: z.number().int().min(50).max(4000).optional(),
+  contextCharsPerResult: z.number().int().min(200).max(8000).optional(),
 });
 
 export const queryUnderstandingConfigSchema = z.object({
@@ -186,6 +187,15 @@ export const searchExperienceIndexInputSchema = z.object({
   aiDescription: z.string().max(1000).optional(),
 });
 
+/**
+ * External index (data source of type search_index_external) attached to an experience
+ */
+export const searchExperienceExternalSourceInputSchema = z.object({
+  dataSourceId: uuidSchema,
+  weight: z.number().min(0.1).max(10).default(1.0),
+  sortOrder: z.number().int().min(0).default(0),
+});
+
 // ============================================================================
 // CREATE/UPDATE SCHEMAS
 // ============================================================================
@@ -200,8 +210,12 @@ export const createSearchExperienceSchema = z.object({
   allowedOrigins: z.array(z.string().url()).default([]),
   rateLimitConfig: rateLimitConfigSchema.optional(),
   displayConfig: displayConfigSchema.optional(),
-  indexes: z.array(searchExperienceIndexInputSchema).min(1, 'At least one index is required'),
-});
+  indexes: z.array(searchExperienceIndexInputSchema).default([]),
+  externalSources: z.array(searchExperienceExternalSourceInputSchema).default([]),
+}).refine(
+  (v) => v.indexes.length + v.externalSources.length > 0,
+  { message: 'At least one index or external index is required', path: ['indexes'] },
+);
 
 export const updateSearchExperienceSchema = z.object({
   name: z.string().min(1).max(255).optional(),

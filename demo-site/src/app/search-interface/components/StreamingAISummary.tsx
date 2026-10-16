@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, ChevronUp, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { useAISummary } from '@/hooks/use-ai-summary';
-import type { SearchResult } from '@/lib/api/types';
+import { AISummaryContent } from '@/components/ai-summary-content';
+import type { SearchResult, DisplayConfig } from '@/lib/api/types';
 
 // ============================================================================
 // TYPES
@@ -12,6 +13,9 @@ import type { SearchResult } from '@/lib/api/types';
 interface StreamingAISummaryProps {
   query: string;
   results: SearchResult[];
+  /** Total matches for the query, not just the results shown */
+  totalResults?: number;
+  displayConfig?: DisplayConfig | null;
   isSearchLoading: boolean;
   onFollowUpClick?: (query: string) => void;
 }
@@ -20,7 +24,7 @@ interface StreamingAISummaryProps {
 // COMPONENT
 // ============================================================================
 
-export function StreamingAISummary({ query, results, isSearchLoading, onFollowUpClick }: StreamingAISummaryProps) {
+export function StreamingAISummary({ query, results, totalResults, displayConfig, isSearchLoading, onFollowUpClick }: StreamingAISummaryProps) {
   const {
     summary,
     followUpQueries,
@@ -51,10 +55,10 @@ export function StreamingAISummary({ query, results, isSearchLoading, onFollowUp
       // On first mount, generate immediately. On subsequent changes, debounce.
       if (!hasMountedRef.current) {
         hasMountedRef.current = true;
-        generate(query, results);
+        generate(query, results, totalResults);
       } else {
         const timer = setTimeout(() => {
-          generate(query, results);
+          generate(query, results, totalResults);
         }, 300);
         return () => clearTimeout(timer);
       }
@@ -73,7 +77,7 @@ export function StreamingAISummary({ query, results, isSearchLoading, onFollowUp
   const handleRegenerate = () => {
     if (query && hasEnoughResults && !isStreaming) {
       setIsRefreshing(true);
-      generate(query, results);
+      generate(query, results, totalResults);
       // Reset animation after 1 second
       setTimeout(() => setIsRefreshing(false), 1000);
     }
@@ -164,12 +168,14 @@ export function StreamingAISummary({ query, results, isSearchLoading, onFollowUp
                   <div className="h-4 bg-muted rounded-full w-4/6 animate-pulse" />
                 </div>
               ) : (
-                <div className="text-[15px] text-foreground/80 leading-relaxed">
-                  {summary}
-                  {isStreaming && (
-                    <span className="inline-block w-0.5 h-5 bg-foreground ml-1 animate-pulse align-middle" />
-                  )}
-                </div>
+                <AISummaryContent
+                  summary={summary}
+                  isStreaming={isStreaming}
+                  isComplete={isComplete}
+                  results={results}
+                  displayConfig={displayConfig}
+                  className="text-[15px] text-foreground/80"
+                />
               )}
             </div>
           )}

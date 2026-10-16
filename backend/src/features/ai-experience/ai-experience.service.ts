@@ -119,6 +119,10 @@ export async function createAIExperience(input: CreateAIExperienceDTO, userId: s
   );
 
   await clearListCache();
+  // Register a chosen telemetry level so it applies from the first turn, not the next restart.
+  if (input.observabilityConfig?.telemetryDetailLevel !== undefined) {
+    setExperienceTelemetryOverride(created.id, input.observabilityConfig.telemetryDetailLevel);
+  }
   logger.info('Created AI experience', { experienceId: created.id, slug: created.slug, userId });
 
   // Return with full tool data

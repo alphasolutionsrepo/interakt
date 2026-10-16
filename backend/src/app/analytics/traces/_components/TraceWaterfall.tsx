@@ -33,6 +33,9 @@ function humanizeOpName(name: string): string {
     'ai.generate_text': 'AI Text Generation',
     'ai.generate_embeddings': 'AI Embeddings',
     'search.execute': 'Search',
+    'search.external': 'External Index Search',
+    'search_experience.search': 'Search Experience Search',
+    'search_experience.summary': 'Search Experience Summary',
     'tool.execute': 'Tool Execution',
   };
   if (name in labels) return labels[name];

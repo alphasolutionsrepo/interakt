@@ -10,6 +10,7 @@
 import type {
   SearchExperience as DBSearchExperience,
   SearchExperienceIndex as DBSearchExperienceIndex,
+  SearchExperienceExternalSource as DBSearchExperienceExternalSource,
   SearchExperienceSearchConfig,
   SearchExperienceAIConfig,
   SearchExperienceToolsConfig,
@@ -61,6 +62,35 @@ export interface SearchExperienceWithIndexes extends SearchExperience {
       isActive: boolean;
     };
   }>;
+  /**
+   * External indexes (data sources of type `search_index_external`) this experience
+   * also searches. Optional so objects built before this existed stay valid; the
+   * repository always sets it.
+   */
+  externalSources?: SearchExperienceExternalSourceWithDetails[];
+}
+
+/**
+ * An external index attached to a search experience, with its data source details.
+ */
+export type SearchExperienceExternalSourceWithDetails = DBSearchExperienceExternalSource & {
+  dataSource: {
+    id: string;
+    name: string;
+    description: string | null;
+    isActive: boolean;
+    /** Engine behind the external index, e.g. 'sitecore_search' */
+    provider: string | null;
+  };
+};
+
+/**
+ * Input for attaching an external index to a search experience
+ */
+export interface AddSearchExperienceExternalSourceInput {
+  dataSourceId: string;
+  weight?: number;
+  sortOrder?: number;
 }
 
 /**
@@ -145,6 +175,8 @@ export interface PublicSearchResponse {
   }>;
   /** Display configuration for frontend rendering */
   displayConfig?: SearchExperienceDisplayConfig;
+  /** True when a source failed while others answered: the results are incomplete */
+  partial?: boolean;
 }
 
 // ============================================================================
@@ -390,7 +422,8 @@ export type ChatStreamEvent =
   | { type: 'tool_result'; id: string; name: string; result: unknown }
   | { type: 'search_results'; results: StreamSearchResult[] }
   | { type: 'response_start' }
-  | { type: 'content'; text: string }
+  /** `content` repeats `text`: /search/:slug/summarize sent it under that name, and clients may still read it */
+  | { type: 'content'; text: string; content?: string }
   | { type: 'preset'; preset: string; content: unknown }
   | { type: 'sources'; sources: DocumentReference[] }
   | { type: 'done'; usage: TokenUsage; messageId: string }

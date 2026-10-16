@@ -6,7 +6,7 @@
  */
 
 import * as dataSourceService from '@/features/data-source/data-source.service';
-import { resolveSecret } from '@/features/secrets/secrets.service';
+import { resolveExternalConnection } from '@/features/data-source/external-search/external-search.service';
 import { createLogger } from '@/shared/logger/logger';
 import type { ToolExecutionResult } from '../../tools.executor';
 import type { FilterClause, SortClause } from '@/features/search/search.types';
@@ -41,6 +41,8 @@ export interface ResolvedExternalSource {
   apiKey: string;
   /** How the credential is presented (api_key / basic / bearer / none). */
   authType: 'api_key' | 'basic' | 'bearer' | 'none';
+  /** Connector-specific settings (e.g. Sitecore entity and fixed filters). */
+  providerSettings: Record<string, unknown>;
   dataSourceId: string;
 }
 
@@ -77,43 +79,8 @@ export async function resolveDataSource(dataSourceId: string): Promise<ResolvedS
   }
 
   if (ds.type === 'search_index_external') {
-    const config = ds.config as ExternalSearchIndexConfig;
-    const conn = config.connection;
-
-    if (!conn?.url || !conn?.indexName) {
-      throw new Error(`Data source "${ds.name}" has incomplete connection config`);
-    }
-
-    // An unauthenticated source has nothing to resolve. Demanding a secret here made a
-    // security-disabled Elasticsearch — a normal self-hosted deployment — impossible to query
-    // without inventing a placeholder secret to satisfy validation.
-    let apiKey = '';
-    if (conn.authType !== 'none' && conn.credentials?.secretRef) {
-      const resolved = await resolveSecret(conn.credentials.secretRef);
-      if (!resolved) {
-        throw new Error(
-          `Failed to resolve secret "${conn.credentials.secretRef}" for data source "${ds.name}". ` +
-            'Check that a secret with exactly that name exists in the vault — this is the bare ' +
-            'name, not a {{secret:...}} template.',
-        );
-      }
-      apiKey = resolved;
-    }
-
-    const providerMap: Record<string, string> = {
-      azure_ai_search: 'azure-ai-search',
-      elasticsearch: 'elasticsearch',
-    };
-
-    return {
-      kind: 'external',
-      provider: providerMap[config.provider] ?? config.provider,
-      endpoint: conn.url,
-      indexName: conn.indexName,
-      apiKey,
-      authType: conn.authType,
-      dataSourceId: ds.id,
-    };
+    const connection = await resolveExternalConnection(ds.name, ds.config as ExternalSearchIndexConfig);
+    return { kind: 'external', ...connection, dataSourceId: ds.id };
   }
 
   if (ds.type === 'file_store') {

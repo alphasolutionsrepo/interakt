@@ -120,7 +120,7 @@ export default function TracesPage() {
         <Card className={showDetail ? 'flex w-full flex-col overflow-hidden lg:w-[38%]' : 'flex w-full flex-col overflow-hidden'}>
           <div className="flex items-center border-b px-4 py-2.5">
             <span className="text-sm font-medium text-muted-foreground">
-              {total} conversation{total !== 1 ? 's' : ''}
+              {total} trace{total !== 1 ? 's' : ''}
             </span>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">

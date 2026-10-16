@@ -18,6 +18,7 @@ import {
   updateSearchExperienceSchema,
   listSearchExperiencesQuerySchema,
   addIndexSchema,
+  searchExperienceExternalSourceInputSchema,
   updateIndexSchema,
 } from './search-experience.schemas';
 
@@ -433,6 +434,69 @@ export async function handleRemoveIndex(
     }
 
     logger.error('Failed to remove index from search experience', err);
+    return apiResponse.error(err);
+  }
+}
+
+// ============================================================================
+// EXTERNAL SOURCES
+// ============================================================================
+
+/**
+ * POST /api/search-experiences/:id/external-sources
+ */
+export async function handleAddExternalSource(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return apiResponse.unauthorized('You must be logged in');
+    }
+
+    const params = await context.params;
+    const validation = searchExperienceExternalSourceInputSchema.safeParse(await request.json());
+    if (!validation.success) {
+      return apiResponse.validationError(validation.error);
+    }
+
+    const experience = await service.addExternalSource(
+      params.id,
+      { ...validation.data, dataSourceId: validation.data.dataSourceId as string },
+      userId
+    );
+    return apiResponse.success(experience, 201);
+  } catch (error) {
+    const err = error as Error;
+    if (err instanceof service.NotFoundError) return apiResponse.notFound(err.message);
+    if (err instanceof service.ValidationError) return apiResponse.badRequest(err.message);
+    logger.error('Failed to add external index to search experience', err);
+    return apiResponse.error(err);
+  }
+}
+
+/**
+ * DELETE /api/search-experiences/:id/external-sources/:dataSourceId
+ */
+export async function handleRemoveExternalSource(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string; dataSourceId: string }> }
+) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return apiResponse.unauthorized('You must be logged in');
+    }
+
+    const params = await context.params;
+    const experience = await service.removeExternalSource(params.id, params.dataSourceId, userId);
+    return apiResponse.success(experience);
+  } catch (error) {
+    const err = error as Error;
+    if (err instanceof service.NotFoundError) return apiResponse.notFound(err.message);
+    if (err instanceof service.ValidationError) return apiResponse.badRequest(err.message);
+    logger.error('Failed to remove external index from search experience', err);
     return apiResponse.error(err);
   }
 }

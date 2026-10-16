@@ -23,7 +23,7 @@ import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import { user } from '@/db/schema/users.schema';
 import { createAIExperience, getAIExperienceBySlug, deleteAIExperience } from '@/features/ai-experience/ai-experience.service';
 import { getModelByProviderAndKey } from '@/features/ai-providers/ai-providers.repository';
-import { createModel, getProviderByKey, updateProvider, updateSystemDefaults } from '@/features/ai-providers/ai-providers.service';
+import { createModel, formatModelDisplayName, getProviderByKey, updateModel, updateProvider, updateSystemDefaults } from '@/features/ai-providers/ai-providers.service';
 import {
   createDataSource,
   getDataSourceBySlug,
@@ -311,13 +311,18 @@ async function ensureModel(
   dimensions?: number,
 ) {
   const existing = await getModelByProviderAndKey(providerId, modelKey);
-  if (existing) return existing;
+  if (existing) {
+    // Discovery hides catalog models Ollama didn't report; the admin picked this one
+    // (and the page checked it's pulled), so make it selectable again.
+    if (!existing.isAvailable) await updateModel(existing.id, { isAvailable: true });
+    return existing;
+  }
 
   logger.info('Registering missing model in catalog', { providerKey, modelKey, modelType });
   const created = await createModel({
     providerId,
     modelKey,
-    displayName: modelKey,
+    displayName: formatModelDisplayName(modelKey),
     description: `Registered by demo setup for ${providerKey}.`,
     modelType,
     dimensions: modelType === 'embedding' ? (dimensions ?? null) : null,

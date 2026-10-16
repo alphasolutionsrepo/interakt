@@ -10,7 +10,8 @@
 import { createLogger } from '@/shared/logger/logger';
 import { db } from '@/db/index';
 import { aiProviders, aiProviderModels, systemDefaults } from '@/db/schema/ai-providers.schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { discoverOllamaModels } from '@/features/ai-providers/ai-providers.service';
 import * as registryService from '../seed-registry.service';
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import {
@@ -74,6 +75,11 @@ export async function seedAIProviders(options: SeedOptions = {}): Promise<SeedOp
         try {
             const itemResult = await seedSingleProvider(seedProvider, { force, dryRun });
             result.items.push(itemResult);
+
+            // A new Ollama catalog lists models the machine may not have: keep only what's installed
+            if (itemResult.status === 'created' && seedProvider.providerKey === 'ollama' && itemResult.entityId && !dryRun) {
+                await syncOllamaCatalog(String(itemResult.entityId));
+            }
 
             switch (itemResult.status) {
                 case 'created':
@@ -281,32 +287,18 @@ async function seedSystemDefaults(
         where: eq(aiProviders.providerKey, SYSTEM_DEFAULTS_SEED.defaultChatProviderKey),
     });
 
-    // Get model IDs
+    // Get model IDs: the seeded default when available, else an available model of the
+    // same kind (Ollama's catalog is trimmed to what's installed on first boot)
     const textModel = textProvider
-        ? await db.query.aiProviderModels.findFirst({
-            where: and(
-                eq(aiProviderModels.providerId, textProvider.id),
-                eq(aiProviderModels.modelKey, SYSTEM_DEFAULTS_SEED.defaultTextModelKey)
-            ),
-        })
+        ? await resolveDefaultModel(textProvider.id, SYSTEM_DEFAULTS_SEED.defaultTextModelKey, ['text', 'chat'])
         : null;
 
     const embeddingModel = embeddingProvider
-        ? await db.query.aiProviderModels.findFirst({
-            where: and(
-                eq(aiProviderModels.providerId, embeddingProvider.id),
-                eq(aiProviderModels.modelKey, SYSTEM_DEFAULTS_SEED.defaultEmbeddingModelKey)
-            ),
-        })
+        ? await resolveDefaultModel(embeddingProvider.id, SYSTEM_DEFAULTS_SEED.defaultEmbeddingModelKey, ['embedding'])
         : null;
 
     const chatModel = chatProvider
-        ? await db.query.aiProviderModels.findFirst({
-            where: and(
-                eq(aiProviderModels.providerId, chatProvider.id),
-                eq(aiProviderModels.modelKey, SYSTEM_DEFAULTS_SEED.defaultChatModelKey)
-            ),
-        })
+        ? await resolveDefaultModel(chatProvider.id, SYSTEM_DEFAULTS_SEED.defaultChatModelKey, ['chat'])
         : null;
 
     if (existingDefaults) {
@@ -360,6 +352,58 @@ async function seedSystemDefaults(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Trim a freshly seeded Ollama catalog to the models actually installed. Best effort:
+ * when Ollama isn't reachable the full starter catalog stays, and Discover models on
+ * the AI Providers page trims it later.
+ */
+async function syncOllamaCatalog(providerId: string): Promise<void> {
+    try {
+        const result = await discoverOllamaModels(providerId, { timeoutMs: 3000 });
+        logger.info('Synced Ollama catalog with installed models', {
+            installed: result.modelsFound,
+            hidden: result.modelsRemoved,
+        });
+    } catch (error) {
+        logger.info('Ollama not reachable at first start — keeping the starter catalog', {
+            reason: (error as Error).message,
+        });
+    }
+}
+
+/** A provider model as far as choosing a default is concerned. */
+export interface DefaultCandidate {
+    id: number;
+    modelKey: string;
+    modelType: string;
+    isAvailable: boolean;
+    sortOrder: number;
+}
+
+/**
+ * The seeded default when it's available; otherwise the first available model of an
+ * accepted type; otherwise the seeded default anyway (setup points defaults elsewhere).
+ */
+export function chooseDefaultModel<T extends DefaultCandidate>(
+    models: T[],
+    preferredKey: string,
+    types: string[],
+): T | null {
+    const preferred = models.find((m) => m.modelKey === preferredKey) ?? null;
+    if (preferred?.isAvailable) return preferred;
+    const fallback = models
+        .filter((m) => m.isAvailable && types.includes(m.modelType))
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)[0];
+    return fallback ?? preferred;
+}
+
+async function resolveDefaultModel(providerId: string, preferredKey: string, types: string[]) {
+    const models = await db.query.aiProviderModels.findMany({
+        where: eq(aiProviderModels.providerId, providerId),
+    });
+    return chooseDefaultModel(models as unknown as Array<DefaultCandidate & { id: number }>, preferredKey, types);
+}
 
 /**
  * Create a provider with its models from seed data

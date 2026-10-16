@@ -48,7 +48,7 @@ export interface SearchIndexDataSourceConfig {
  * Config for type: search_index_external (connect to existing)
  */
 export interface ExternalSearchIndexConfig {
-  provider: 'elasticsearch' | 'azure_ai_search';
+  provider: 'elasticsearch' | 'azure_ai_search' | 'sitecore_search';
   connection: {
     url: string;
     authType: 'api_key' | 'basic' | 'bearer' | 'none';
@@ -91,6 +91,12 @@ export interface ExternalSearchIndexConfig {
    * default; 0 disables profiling for indexes where an extra read is unwelcome.
    */
   profileSampleSize?: number;
+  /**
+   * Connector-specific settings the shared connection fields don't cover.
+   * Sitecore Search: `entity` (default 'content'), `fixedFilters` (FilterClause[]
+   * ANDed into every request, e.g. environment = prod), `pageUri`, `locale`.
+   */
+  providerSettings?: Record<string, unknown>;
 }
 
 /**
@@ -222,6 +228,13 @@ export interface DataSourceSchema {
   lastDiscoveredAt?: string;
   /** Provider-specific capabilities discovered from the index */
   capabilities?: DataSourceCapabilities;
+  /**
+   * Where the fields came from. 'mapping' (the default) is the engine's own schema,
+   * authoritative for types and capabilities. 'sample' means they were inferred from
+   * a sample of results (engines with no schema API, e.g. Sitecore Search), so what an
+   * operator curated outranks a later rediscovery.
+   */
+  discoveredFrom?: 'mapping' | 'sample';
 }
 
 // ============================================================================

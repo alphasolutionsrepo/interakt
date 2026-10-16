@@ -22,6 +22,7 @@ import {
   ApiError,
 } from '../shared/api-client';
 import widgetCss from '../styles/widget.css?raw';
+import { parseSummary, citedNumbers, labelCitation, type InlineRun } from './summary-format';
 
 interface InitializedWidget {
   destroy: () => void;
@@ -89,6 +90,8 @@ function SearchApp({ config, apiBaseUrl }: SearchAppProps) {
   const errorMsg = useSignal<string | null>(null);
   /** The search experience's admin-configured display config, returned with each search response. */
   const displayConfig = useSignal<DisplayConfig | null>(null);
+  /** The results the current summary was given, in prompt order: citation [n] is entry n-1. */
+  const summarySources = useSignal<SummarySource[]>([]);
   /** All facets returned by the search — only the first `terms` facet is rendered as category chips. */
   const facets = useSignal<Facet[]>([]);
   /**
@@ -225,12 +228,18 @@ function SearchApp({ config, apiBaseUrl }: SearchAppProps) {
     summaryAbortRef.current = ac;
     summary.value = '';
     summaryStreaming.value = true;
+    const sent = hits.slice(0, 10);
+    summarySources.value = sent.map((h) => {
+      const r = renderResultFields(h, displayConfig.value);
+      return { title: r.titleText, url: r.url };
+    });
 
     try {
       const payload = {
         query: q,
-        totalResults: hits.length,
-        results: hits.slice(0, 10).map((h) => ({
+        // The real total, so the overview can say how much there is to look at
+        totalResults: total.value || hits.length,
+        results: sent.map((h) => ({
           id: h.id,
           index: { id: 'default', name: 'default' },
           fields: h.source ?? {},
@@ -397,7 +406,7 @@ function SearchApp({ config, apiBaseUrl }: SearchAppProps) {
         )}
 
         {(summary.value || summaryStreaming.value) && (
-          <AiSummary text={summary.value} streaming={summaryStreaming.value} />
+          <AiSummary text={summary.value} streaming={summaryStreaming.value} sources={summarySources.value} />
         )}
 
         <ResultsList
@@ -608,6 +617,8 @@ interface RenderedResult {
   rating: number | undefined;
   /** Short badge text (e.g., "CLEARANCE", "NEW"), only present if configured + populated. */
   badge: string | undefined;
+  /** Plain title (no highlight markup), e.g. for citation tooltips. */
+  titleText: string;
 }
 
 /** Fallback heuristics used when the experience doesn't ship a displayConfig. */
@@ -680,6 +691,7 @@ export function renderResultFields(
     price,
     rating: ratingClean,
     badge,
+    titleText,
   };
 }
 
@@ -836,8 +848,52 @@ function humanize(field: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
 }
 
-function AiSummary({ text, streaming }: { text: string; streaming: boolean }) {
+interface SummarySource {
+  title: string;
+  url?: string;
+}
+
+/** A citation marker: a numbered chip linking to the cited result. */
+function Citation({ n, sources }: { n: number; sources: SummarySource[] }) {
+  const src = sources[n - 1];
+  if (!src) return null; // the model cited a result it wasn't given: drop it
+  return src.url ? (
+    <a class="ik-cite" href={src.url} target="_blank" rel="noopener noreferrer" title={src.title}>
+      {n}
+    </a>
+  ) : (
+    <span class="ik-cite" title={src.title}>{n}</span>
+  );
+}
+
+function Runs({ runs, sources, labelLink }: { runs: InlineRun[]; sources: SummarySource[]; labelLink?: number | null }) {
+  // A list item's lead bold label links to the page it cites, like its citation chip
+  const labelUrl = labelLink ? sources[labelLink - 1]?.url : undefined;
+  const labelIndex = labelUrl ? runs.findIndex((r) => r.kind === 'bold') : -1;
+  return (
+    <>
+      {runs.map((r, i) =>
+        r.kind === 'cite' ? (
+          <Citation key={i} n={r.n} sources={sources} />
+        ) : r.kind === 'bold' && i === labelIndex ? (
+          <a key={i} class="ik-summary-label" href={labelUrl} target="_blank" rel="noopener noreferrer">
+            <strong>{r.text}</strong>
+          </a>
+        ) : r.kind === 'bold' ? (
+          <strong key={i}>{r.text}</strong>
+        ) : (
+          <span key={i}>{r.text}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+function AiSummary({ text, streaming, sources }: { text: string; streaming: boolean; sources: SummarySource[] }) {
   const isEmpty = !text && streaming;
+  const blocks = isEmpty ? [] : parseSummary(text);
+  const cited = citedNumbers(blocks).filter((n) => sources[n - 1]);
+
   return (
     <div class="ik-summary">
       <div class="ik-summary-header">
@@ -845,9 +901,43 @@ function AiSummary({ text, streaming }: { text: string; streaming: boolean }) {
         <span>AI summary</span>
       </div>
       <div class={`ik-summary-body${isEmpty ? ' ik-summary-body--loading' : ''}`}>
-        {isEmpty ? 'Summarizing results…' : text}
+        {isEmpty
+          ? 'Summarizing results…'
+          : blocks.map((b, i) =>
+              b.kind === 'paragraph' ? (
+                <p key={i}>
+                  <Runs runs={b.runs} sources={sources} labelLink={labelCitation(b.runs)} />
+                </p>
+              ) : (
+                <ul key={i}>
+                  {b.items.map((item, j) => (
+                    <li key={j}>
+                      <Runs runs={item} sources={sources} labelLink={labelCitation(item)} />
+                    </li>
+                  ))}
+                </ul>
+              ),
+            )}
         {streaming && !isEmpty && <span class="ik-summary-caret" aria-hidden="true" />}
       </div>
+      {!streaming && cited.length > 0 && (
+        <div class="ik-summary-sources">
+          {cited.map((n) => {
+            const src = sources[n - 1];
+            return src.url ? (
+              <a key={n} class="ik-summary-source" href={src.url} target="_blank" rel="noopener noreferrer">
+                <span class="ik-cite">{n}</span>
+                <span class="ik-summary-source-title">{src.title}</span>
+              </a>
+            ) : (
+              <span key={n} class="ik-summary-source">
+                <span class="ik-cite">{n}</span>
+                <span class="ik-summary-source-title">{src.title}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

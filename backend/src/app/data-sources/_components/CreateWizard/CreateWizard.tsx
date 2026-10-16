@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ChevronLeft, Loader2, Check } from 'lucide-react';
 import { useMinDelayAction } from '@/shared/hooks';
 import { Step1_BasicInfo } from './Step1_BasicInfo';
+import { externalFormToConfig } from '../../_lib/external-config';
 import { Step2_Config } from './Step2_Config';
 import { DataSourceTypeChip } from '../DataSourceTypeChip';
 import { useCreateDataSource } from '../../_lib/hooks/useDataSources';
@@ -134,25 +135,7 @@ export function CreateWizard() {
     // Build the config payload based on type
     let config = data.config;
     if (data.type === 'search_index_external') {
-      const conn = (data.config.connection as Record<string, unknown>) || {};
-      config = {
-        provider: conn.provider,
-        connection: {
-          url: conn.url,
-          authType: conn.authType || 'api_key',
-          credentials: conn.credentials || { secretRef: '' },
-          indexName: conn.indexName,
-        },
-        searchDefaults: {
-          searchType: 'auto',
-          maxResults: 10,
-          includeHighlights: true,
-        },
-        healthCheck: {
-          enabled: true,
-          intervalMs: 60000,
-        },
-      };
+      config = externalFormToConfig(data.config);
     }
 
     try {

@@ -162,6 +162,10 @@ components:
             displayConfig:
               type: object
               additionalProperties: {}
+            partial:
+              type: boolean
+              description: "Present and true when one of the experience's sources failed while
+                others answered: the results are incomplete."
           required:
             - results
             - total

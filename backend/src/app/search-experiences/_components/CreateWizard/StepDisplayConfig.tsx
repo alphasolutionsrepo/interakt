@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -40,7 +40,7 @@ import {
   Layout,
   Link2,
 } from 'lucide-react';
-import { useQueries } from '@tanstack/react-query';
+import { useAvailableDisplayFields, type DisplayFieldOption } from '../../_lib/hooks/useAvailableDisplayFields';
 import {
   DISPLAY_FIELD_ROLE_INFO,
   type DisplayFieldRole,
@@ -57,13 +57,7 @@ interface StepDisplayConfigProps {
   updateField: <K extends keyof WizardFormData>(field: K, value: WizardFormData[K]) => void;
 }
 
-interface IndexField {
-  id: number;
-  fieldName: string;
-  displayName: string | null;
-  fieldType: string;
-  includeInResponse: boolean;
-}
+type IndexField = DisplayFieldOption;
 
 // ============================================================================
 // ICON MAP
@@ -89,42 +83,13 @@ export function StepDisplayConfig({
   errors,
   updateField,
 }: StepDisplayConfigProps) {
-  const { displayConfig, indexes } = formData;
+  const { displayConfig, indexes, externalSources } = formData;
 
-  // Fetch fields for all selected indexes
-  const indexFieldQueries = useQueries({
-    queries: indexes.map((idx) => ({
-      queryKey: ['search-index-fields', idx.searchIndexId],
-      queryFn: async () => {
-        const response = await fetch(`/api/search-indexes/${idx.searchIndexId}/fields`);
-        if (!response.ok) throw new Error('Failed to fetch fields');
-        const data = await response.json();
-        return { indexId: idx.searchIndexId, fields: data.data || data.fields || [] };
-      },
-      enabled: !!idx.searchIndexId,
-    })),
-  });
-
-  const isLoading = indexFieldQueries.some((q) => q.isLoading);
-
-  // Merge fields from all indexes (only includeInResponse fields)
-  const availableFields = useMemo(() => {
-    const fieldMap = new Map<string, IndexField>();
-
-    indexFieldQueries.forEach((query) => {
-      if (query.data?.fields) {
-        query.data.fields
-          .filter((f: IndexField) => f.includeInResponse)
-          .forEach((f: IndexField) => {
-            if (!fieldMap.has(f.fieldName)) {
-              fieldMap.set(f.fieldName, f);
-            }
-          });
-      }
-    });
-
-    return Array.from(fieldMap.values());
-  }, [indexFieldQueries]);
+  // Fields from all selected indexes and external indexes
+  const { availableFields, isLoading } = useAvailableDisplayFields(
+    indexes.map((idx) => idx.searchIndexId),
+    externalSources.map((src) => src.dataSourceId)
+  );
 
   // Current display fields
   const displayFields = displayConfig?.displayFields || [];

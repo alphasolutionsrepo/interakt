@@ -13,10 +13,8 @@ import {
   Trash2,
   Compass,
   Database,
+  Globe,
   Brain,
-  Key,
-  Copy,
-  Check,
   RefreshCw,
   Layers,
   Clock,
@@ -30,6 +28,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useSearchExperience } from '../_lib/hooks';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+import { AccessTokenRow } from '@/shared/ui/custom/AccessTokenRow';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { SearchWidgetCard } from './SearchWidgetCard';
@@ -45,27 +44,6 @@ import {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function CopyButton({ text, label }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    toast.success(label ? `${label} copied` : 'Copied to clipboard');
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <Button variant="ghost" size="sm" onClick={handleCopy} className="h-7 px-2">
-      {copied ? (
-        <Check className="h-3.5 w-3.5 text-green-600" />
-      ) : (
-        <Copy className="h-3.5 w-3.5" />
-      )}
-    </Button>
-  );
-}
 
 // ============================================================================
 // SKELETON COMPONENT
@@ -241,6 +219,10 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
         }
         actions={
           <>
+            <Button variant="outline" size="sm" className="rounded-xl" onClick={handleRegenerateToken} disabled={isRegeneratingToken}>
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRegeneratingToken ? 'animate-spin' : ''}`} />
+              Regenerate Token
+            </Button>
             <Button
               variant={experience.isActive ? 'outline' : 'default'}
               className={`rounded-xl ${experience.isActive ? '' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
@@ -274,7 +256,9 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Indexes</p>
-                <p className="text-3xl font-bold tracking-tight">{experience.indexes.length}</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {experience.indexes.length + (experience.externalSources?.length ?? 0)}
+                </p>
               </div>
               <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 shadow-sm">
                 <Layers className="size-6 text-blue-500" />
@@ -382,14 +366,14 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
       <CollapsibleCard
         icon={<Database className="h-4 w-4 text-emerald-500" />}
         title="Connected Indexes"
-        description="Search indexes linked to this experience."
+        description="Search indexes and external indexes linked to this experience."
         headerExtras={
           <Badge variant="outline" className="rounded-lg text-xs font-mono shrink-0">
-            {experience.indexes.length}
+            {experience.indexes.length + (experience.externalSources?.length ?? 0)}
           </Badge>
         }
       >
-        {experience.indexes.length === 0 ? (
+        {experience.indexes.length === 0 && !experience.externalSources?.length ? (
           <p className="text-sm text-muted-foreground text-center py-4">No indexes connected</p>
         ) : (
           <div className="space-y-3">
@@ -424,6 +408,26 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
                 </div>
               </div>
             ))}
+            {experience.externalSources?.map((src) => (
+              <Link
+                key={src.id}
+                href={`/data-sources/${src.dataSourceId}`}
+                className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50 hover:bg-muted/50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-background border border-border/50 shadow-sm">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{src.dataSource.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{src.dataSource.provider ?? 'external'}</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="rounded-lg px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                  External index
+                </Badge>
+              </Link>
+            ))}
           </div>
         )}
       </CollapsibleCard>
@@ -457,29 +461,11 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
           <div className="h-px flex-1 bg-border/60" />
         </div>
 
-        {/* Access Token — keep as a full card here since it has the Regenerate action */}
-        <CollapsibleCard
-          icon={<Key className="h-4 w-4 text-amber-500" />}
-          title="Access Token"
-          description={<>Use this token in the <code className="text-xs bg-muted px-1.5 py-0.5 rounded-md font-mono">X-Access-Token</code> header.</>}
-          headerExtras={
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              onClick={handleRegenerateToken}
-              disabled={isRegeneratingToken}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 mr-2 ${isRegeneratingToken ? 'animate-spin' : ''}`} />
-              Regenerate
-            </Button>
-          }
-        >
-          <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl font-mono text-sm border border-border/50">
-            <code className="flex-1 text-foreground/80 truncate">{experience.accessToken}</code>
-            <CopyButton text={experience.accessToken} label="Access token" />
-          </div>
-        </CollapsibleCard>
+        {/* Access Token — same compact row as AI experiences; Regenerate is in the header */}
+        <AccessTokenRow
+          token={experience.accessToken}
+          hint={<>send as <code className="font-mono">X-Access-Token</code></>}
+        />
 
         {/* Search Widget — UI-only drop-in configurator */}
         <SearchWidgetCard

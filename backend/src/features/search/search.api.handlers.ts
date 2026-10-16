@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getGlobalSearchConfig } from '@/features/global-settings';
+import { runWithTelemetryLevel } from '@/features/telemetry';
 import * as searchService from './search.service';
 import { searchRequestSchema } from './search.validation';
 import { SearchError } from './search.types';
@@ -34,6 +35,11 @@ const searchByNameParamsSchema = z.object({
 // ============================================================================
 // SEARCH BY INDEX ID
 // ============================================================================
+
+/** Whether a playground request asked for its search to be traced (`trace: true`). */
+function wantsTrace(body: unknown): boolean {
+    return (body as { trace?: unknown } | null)?.trace === true;
+}
 
 /**
  * POST /api/search/index/:id
@@ -67,14 +73,17 @@ export async function handleSearchById(
 
         // Execute search - cast validated data to SearchRequest
         // (zod's inferred type differs slightly but query is validated as required)
-        const result = await searchService.searchById(
-            paramsValidation.data.id,
-            bodyValidation.data as SearchRequest,
-            {
-                source: 'playground',
-                hybridConfig: globalConfig.hybridDefaults,
-                timeoutMs: globalConfig.timeout.timeoutMs,
-            }
+        // Admin playground searches: untraced, or traced in full when asked for.
+        const result = await runWithTelemetryLevel(wantsTrace(body) ? 'full' : 'off', () =>
+            searchService.searchById(
+                paramsValidation.data.id,
+                bodyValidation.data as SearchRequest,
+                {
+                    source: 'playground',
+                    hybridConfig: globalConfig.hybridDefaults,
+                    timeoutMs: globalConfig.timeout.timeoutMs,
+                }
+            )
         );
 
         return apiResponse.success(result);
@@ -117,14 +126,17 @@ export async function handleSearchByName(
         const globalConfig = await getGlobalSearchConfig();
 
         // Execute search - cast validated data to SearchRequest
-        const result = await searchService.searchByName(
-            paramsValidation.data.name,
-            bodyValidation.data as SearchRequest,
-            {
-                source: 'playground',
-                hybridConfig: globalConfig.hybridDefaults,
-                timeoutMs: globalConfig.timeout.timeoutMs,
-            }
+        // Admin playground searches: untraced, or traced in full when asked for.
+        const result = await runWithTelemetryLevel(wantsTrace(body) ? 'full' : 'off', () =>
+            searchService.searchByName(
+                paramsValidation.data.name,
+                bodyValidation.data as SearchRequest,
+                {
+                    source: 'playground',
+                    hybridConfig: globalConfig.hybridDefaults,
+                    timeoutMs: globalConfig.timeout.timeoutMs,
+                }
+            )
         );
 
         return apiResponse.success(result);

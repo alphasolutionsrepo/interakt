@@ -51,8 +51,10 @@ import {
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
-import { useQuery, useQueries } from '@tanstack/react-query';
 import { useSearchExperience, useSlugAvailability } from '../_lib/hooks';
+import { useAvailableDisplayFields } from '../_lib/hooks/useAvailableDisplayFields';
+import { ExperienceSourcesCard } from './ExperienceSources';
+import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 import {
   MULTI_INDEX_STRATEGY_INFO,
   RESULT_MERGE_STRATEGY_INFO,
@@ -65,18 +67,6 @@ import {
  SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
 import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-interface IndexField {
-  id: number;
-  fieldName: string;
-  displayName: string | null;
-  fieldType: string;
-  includeInResponse: boolean;
-}
 
 // ============================================================================
 // ICON MAP FOR DISPLAY FIELD ROLES
@@ -144,46 +134,18 @@ interface DisplayConfigTabProps {
         displayName: string;
       };
     }>;
+    externalSources?: Array<{ dataSourceId: string }>;
   };
   displayConfig: SearchExperienceDisplayConfig | null;
   onDisplayConfigChange: (config: SearchExperienceDisplayConfig | null) => void;
 }
 
 function DisplayConfigTab({ experience, displayConfig, onDisplayConfigChange }: DisplayConfigTabProps) {
-  // Fetch fields for all attached indexes
-  const indexFieldQueries = useQueries({
-    queries: experience.indexes.map((idx) => ({
-      queryKey: ['search-index-fields', idx.searchIndexId],
-      queryFn: async () => {
-        const response = await fetch(`/api/search-indexes/${idx.searchIndexId}/fields`);
-        if (!response.ok) throw new Error('Failed to fetch fields');
-        const data = await response.json();
-        return { indexId: idx.searchIndexId, fields: data.data || data.fields || [] };
-      },
-      enabled: !!idx.searchIndexId,
-    })),
-  });
-
-  const isLoadingFields = indexFieldQueries.some((q) => q.isLoading);
-
-  // Merge fields from all indexes (only includeInResponse fields)
-  const availableFields = useMemo(() => {
-    const fieldMap = new Map<string, IndexField>();
-
-    indexFieldQueries.forEach((query) => {
-      if (query.data?.fields) {
-        query.data.fields
-          .filter((f: IndexField) => f.includeInResponse)
-          .forEach((f: IndexField) => {
-            if (!fieldMap.has(f.fieldName)) {
-              fieldMap.set(f.fieldName, f);
-            }
-          });
-      }
-    });
-
-    return Array.from(fieldMap.values());
-  }, [indexFieldQueries]);
+  // Fields from all attached indexes and external indexes
+  const { availableFields, isLoading: isLoadingFields } = useAvailableDisplayFields(
+    experience.indexes.map((idx) => idx.searchIndexId),
+    (experience.externalSources ?? []).map((src) => src.dataSourceId)
+  );
 
   // Current display fields
   const displayFields = displayConfig?.displayFields || [];
@@ -506,6 +468,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
       summary: {
         enabled: boolean;
         maxResultsForContext: number;
+        contextCharsPerResult?: number;
         maxTokens?: number;
         customInstructions?: string;
       };
@@ -611,19 +574,6 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
     { enabled: !!formData && formData.slug !== experience?.slug && formData.slug.length >= 3 }
   );
 
-  // Fetch AI providers
-  const { data: providersData } = useQuery({
-    queryKey: ['ai-providers'],
-    queryFn: async () => {
-      const response = await fetch('/api/ai-service/providers');
-      const data = await response.json();
-      return data.data || data;
-    },
-    enabled: !!formData,
-  });
-
-  const providers = providersData?.providers || [];
-  const selectedProvider = providers.find((p: { id: string }) => p.id === formData?.aiConfig.providerId);
   // Update helpers
   const updateField = useCallback(<K extends keyof NonNullable<typeof formData>>(
     field: K,
@@ -1009,6 +959,8 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
               </div>
             </CardContent>
           </Card>
+
+          <ExperienceSourcesCard experienceId={id} />
         </TabsContent>
 
         {/* Search Tab */}
@@ -1405,6 +1357,29 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
             <>
               <Card className="border-border/60 shadow-sm rounded-2xl">
                 <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 font-semibold">
+                    <Brain className="h-4 w-4 text-violet-500" />
+                    AI Provider &amp; Model
+                  </CardTitle>
+                  <CardDescription>
+                    The model that writes summaries. Select a specific provider and model, or leave as system default.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ProviderModelSelect
+                    providerId={formData.aiConfig.providerId}
+                    modelId={formData.aiConfig.modelId}
+                    onChange={(v) =>
+                      setFormData((prev) =>
+                        prev ? { ...prev, aiConfig: { ...prev.aiConfig, providerId: v.providerId, modelId: v.modelId } } : null
+                      )
+                    }
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/60 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base flex items-center gap-2 font-semibold">
                       <Brain className="h-4 w-4 text-violet-500" />
@@ -1430,7 +1405,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-3 gap-4">
                         <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
                           <div className="flex items-center justify-between">
                             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Search Results</Label>
@@ -1459,7 +1434,28 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
                             className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
                           />
                         </div>
+                        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Page Text</Label>
+                            <span className="text-xs text-muted-foreground/60">chars / result</span>
+                          </div>
+                          <Input
+                            type="number"
+                            min={200}
+                            max={8000}
+                            step={100}
+                            placeholder="500"
+                            value={formData.aiConfig.summary.contextCharsPerResult ?? ''}
+                            onChange={(e) => updateSummaryConfig('contextCharsPerResult', e.target.value ? parseInt(e.target.value) : undefined)}
+                            className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
+                          />
+                        </div>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Page Text: how much of each result&apos;s longer text the summary reads, picked by relevance to the
+                        query (the opening plus matching passages). Empty reads the first 500 characters. More text gives
+                        richer answers but takes longer to read, especially on local models.
+                      </p>
                     </div>
 
                     {/* Custom Instructions Section - Collapsible */}
@@ -1655,6 +1651,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
             experienceName={formData?.name || experience.name}
             experienceDescription={formData?.description || experience.description || undefined}
             indexIds={experience.indexes.map((idx) => idx.searchIndexId)}
+            dataSourceIds={(experience.externalSources ?? []).map((src) => src.dataSourceId)}
             type="summary"
             currentInstructions={formData?.aiConfig.summary.customInstructions}
             onApply={(instructions) => updateSummaryConfig('customInstructions', instructions)}

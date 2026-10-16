@@ -15,7 +15,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { searchExperiencesApi, searchExperienceIndexesApi, ApiError } from '../api-client';
+import { searchExperiencesApi, searchExperienceIndexesApi,
+  searchExperienceExternalSourcesApi, ApiError } from '../api-client';
 import type {
   CreateSearchExperienceDTO,
   UpdateSearchExperienceDTO,
@@ -206,6 +207,28 @@ export function useSearchExperience(id: string | undefined) {
     },
   });
 
+  const addExternalSourceMutation = useMutation({
+    mutationFn: (dataSourceId: string) => searchExperienceExternalSourcesApi.add(id!, dataSourceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
+      toast.success('External index added');
+    },
+    onError: (error: ApiError) => {
+      toast.error(error.message || 'Failed to add external index');
+    },
+  });
+
+  const removeExternalSourceMutation = useMutation({
+    mutationFn: (dataSourceId: string) => searchExperienceExternalSourcesApi.remove(id!, dataSourceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
+      toast.success('External index removed');
+    },
+    onError: (error: ApiError) => {
+      toast.error(error.message || 'Failed to remove external index');
+    },
+  });
+
   return {
     // Data
     experience: query.data,
@@ -222,6 +245,8 @@ export function useSearchExperience(id: string | undefined) {
     addIndex: addIndexMutation.mutateAsync,
     updateIndex: updateIndexMutation.mutateAsync,
     removeIndex: removeIndexMutation.mutateAsync,
+    addExternalSource: addExternalSourceMutation.mutateAsync,
+    removeExternalSource: removeExternalSourceMutation.mutateAsync,
 
     // Action states
     isUpdating: updateMutation.isPending,
@@ -230,6 +255,7 @@ export function useSearchExperience(id: string | undefined) {
     isAddingIndex: addIndexMutation.isPending,
     isUpdatingIndex: updateIndexMutation.isPending,
     isRemovingIndex: removeIndexMutation.isPending,
+    isChangingExternalSources: addExternalSourceMutation.isPending || removeExternalSourceMutation.isPending,
 
     // Refetch
     refetch: query.refetch,

@@ -9,7 +9,7 @@
 
 import 'server-only';
 
-import { and, count, desc, eq, gte, lte, or, sql, sum, avg } from 'drizzle-orm';
+import { and, count, desc, eq, gte, lte, ne, or, sql, sum, avg } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
 import type { AnalyticsSource } from './analytics.types';
 
@@ -460,6 +460,8 @@ export async function getPopularQueries(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
+    // Internal lookups (facet values, vocabularies) are not queries anyone asked
+    conditions.push(ne(searchEvents.triggerType, 'system'));
 
     const results = await analyticsDB
       .select({
@@ -506,6 +508,7 @@ export async function getZeroResultQueries(
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
     conditions.push(eq(searchEvents.isZeroResult, true));
+    conditions.push(ne(searchEvents.triggerType, 'system'));
 
     const results = await analyticsDB
       .select({

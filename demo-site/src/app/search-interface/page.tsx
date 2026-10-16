@@ -638,6 +638,8 @@ function SearchPageContent() {
           <StreamingAISummary
             query={query}
             results={results}
+            totalResults={pagination?.totalItems}
+            displayConfig={displayConfig}
             isSearchLoading={isLoading}
             onFollowUpClick={handleFollowUpSearch}
           />

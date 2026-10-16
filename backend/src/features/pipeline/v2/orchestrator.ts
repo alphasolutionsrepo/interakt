@@ -689,7 +689,7 @@ export async function runV2Pipeline(
   };
 
     }, // end withSpan callback
-  )); // end withSpan + withExperienceContext
+  ), input.experience.slug); // end withSpan + withExperienceContext
 
   const raced = await Promise.race([work, timeoutPromise]);
   if (timeoutHandle) clearTimeout(timeoutHandle);

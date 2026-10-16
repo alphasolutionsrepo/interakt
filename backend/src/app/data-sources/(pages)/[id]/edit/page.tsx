@@ -15,6 +15,7 @@ import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../../_components/DataSou
 import { Step2_Config } from '../../../_components/CreateWizard/Step2_Config';
 import { useDataSource } from '../../../_lib/hooks/useDataSources';
 import type { DataSourceType } from '../../../_lib/api-client';
+import { externalConfigToForm, externalFormToConfig } from '../../../_lib/external-config';
 
 export default function EditDataSourcePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -34,11 +35,16 @@ export default function EditDataSourcePage({ params }: { params: Promise<{ id: s
     if (dataSource) {
       setName(dataSource.name);
       setDescription(dataSource.description ?? '');
-      setConfig(dataSource.config);
+      // External index config is edited in form shape (provider under connection,
+      // fixed filters as text); see external-config.ts.
+      const formConfig = dataSource.type === 'search_index_external'
+        ? externalConfigToForm(dataSource.config)
+        : dataSource.config;
+      setConfig(formConfig);
       initialValues.current = {
         name: dataSource.name,
         description: dataSource.description ?? '',
-        config: JSON.stringify(dataSource.config),
+        config: JSON.stringify(formConfig),
       };
     }
   }, [dataSource]);
@@ -67,14 +73,16 @@ export default function EditDataSourcePage({ params }: { params: Promise<{ id: s
       await updateDataSource({
         name,
         description: description.trim() || undefined,
-        config,
+        config: dataSource?.type === 'search_index_external'
+          ? externalFormToConfig(config, dataSource.config)
+          : config,
       });
       router.push(`/data-sources/${id}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to save');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, description, config, id, updateDataSource, router]);
+  }, [name, description, config, id, updateDataSource, router, dataSource]);
 
   const [handleSave, isSaving] = useMinDelayAction(doSave);
 

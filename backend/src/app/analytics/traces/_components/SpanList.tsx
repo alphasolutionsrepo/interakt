@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Bot, AlertCircle, Wrench } from 'lucide-react';
 import { getDurationColor } from '@/features/analytics/analytics-thresholds';
 import type { SpanListItem } from '../_lib/api-client';
+import { humanizeOpName } from './SpanDetailPanel';
 
 interface SpanListProps {
   spans: SpanListItem[];
@@ -32,13 +33,20 @@ function durationColor(ms: number): string {
   return getDurationColor(ms);
 }
 
+/** What a request-level trace is, shown in the row's subline. */
+const TRACE_KINDS: Record<string, string> = {
+  'chat.ai_experience.turn': 'Chat',
+  'search_experience.search': 'Search',
+  'search_experience.summary': 'AI summary',
+};
+
 export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps) {
   if (spans.length === 0) {
     return (
       <div className="flex h-48 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
         <Bot className="size-8 opacity-30" />
-        <p>No conversations yet.</p>
-        <p className="text-xs">Start a chat in an AI Experience to see it here.</p>
+        <p>No traces yet.</p>
+        <p className="text-xs">Chat with an AI Experience or search a Search Experience to see it here.</p>
       </div>
     );
   }
@@ -51,6 +59,7 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
           const isSelected = span.id === selectedSpanId;
           const message = span.userMessage?.trim();
           const experience = span.experienceSlug ?? span.experienceType ?? null;
+          const kind = TRACE_KINDS[span.operationName];
 
           return (
             <button
@@ -80,7 +89,7 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
                 )}>
                   {message
                     ? (message.length > 72 ? message.slice(0, 72) + '…' : message)
-                    : <span className="italic text-muted-foreground">No message recorded</span>
+                    : <span className="italic text-muted-foreground">{humanizeOpName(span.operationName)} · no message recorded</span>
                   }
                 </p>
 
@@ -90,6 +99,12 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
                     <>
                       <Wrench className="size-3 shrink-0" />
                       <span className="truncate font-mono">{experience}</span>
+                      <span className="text-muted-foreground/40">·</span>
+                    </>
+                  )}
+                  {kind && (
+                    <>
+                      <span>{kind}</span>
                       <span className="text-muted-foreground/40">·</span>
                     </>
                   )}

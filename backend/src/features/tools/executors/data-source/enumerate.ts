@@ -11,12 +11,12 @@
 import * as searchService from '@/features/search/search.service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
-import { callAzureAISearchEnumerate } from '../callers/azure-ai-search';
-import { callElasticsearchEnumerate } from '../callers/elasticsearch';
+import { getConnector } from '@/features/data-source/external-search/external-search.service';
 import {
   resolveDataSource,
   logger,
   type DataSourceSchema,
+  type DataSourceField,
   type ResolvedExternalSource,
   type OperationResult,
 } from './shared';
@@ -105,6 +105,7 @@ async function enumerateFromManagedIndex(
     return { success: false, error: `Field "${field}" is not facetable/filterable` };
   }
 
+  // A facet-value lookup, not a search anyone typed: 'system' keeps it out of search analytics.
   const response = await searchService.searchById(searchIndexId, {
     query: '*',
     searchType: 'lexical',
@@ -116,7 +117,7 @@ async function enumerateFromManagedIndex(
       orderBy: 'count',
       orderDirection: 'desc',
     }],
-  });
+  }, { triggerType: 'system' });
 
   const facet = response.facets?.find(f => f.field === field);
   const valueMappings = indexField.filterValueMappings ?? {};
@@ -144,12 +145,14 @@ async function enumerateFromExternalSource(
   field: string,
   maxValues: number,
 ): Promise<OperationResult> {
-  // Optional: validate field exists and is facetable in schema
+  // Validate the field against the schema, which also tells the connector how to
+  // aggregate it (e.g. an Elasticsearch keyword sub-field).
+  let fields: DataSourceField[] | undefined;
   try {
     const ds = await dataSourceService.getDataSourceById(source.dataSourceId);
     if (ds?.schema) {
-      const schema = ds.schema as DataSourceSchema;
-      const dsField = schema.fields.find(f => f.name === field);
+      fields = (ds.schema as DataSourceSchema).fields;
+      const dsField = fields.find(f => f.name === field);
       if (dsField && !dsField.isFilterable && !dsField.isFacetable) {
         return { success: false, error: `Field "${field}" is not filterable/facetable` };
       }
@@ -158,23 +161,31 @@ async function enumerateFromExternalSource(
     // Non-critical schema check — proceed with the live query
   }
 
-  switch (source.provider) {
-    case 'azure-ai-search':
-      return callAzureAISearchEnumerate(
-        { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey },
-        { field, maxValues },
-      );
+  // A facet-only search: no hits, one terms facet on the field.
+  const connector = getConnector(source.provider);
+  if (!connector) {
+    return {
+      success: false,
+      error: `Enumerate is not yet implemented for provider '${source.provider}'`,
+    };
+  }
 
-    case 'elasticsearch':
-      return callElasticsearchEnumerate(
-        { endpoint: source.endpoint, indexName: source.indexName, apiKey: source.apiKey, authType: source.authType },
-        { field, maxValues },
-      );
-
-    default:
-      return {
-        success: false,
-        error: `Enumerate is not yet implemented for provider '${source.provider}'`,
-      };
+  try {
+    const result = await connector.search(
+      source,
+      { query: '*', offset: 0, limit: 0, facets: [{ field, size: maxValues }] },
+      fields,
+    );
+    const buckets = result.facets?.find((f) => f.field === field)?.buckets ?? [];
+    return {
+      success: true,
+      data: {
+        field,
+        values: buckets.map((b) => ({ value: b.key, count: b.count })),
+        totalDistinctValues: buckets.length,
+      },
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

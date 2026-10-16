@@ -50,9 +50,18 @@ export const wizardStep1Schema = z.object({
         sortOrder: z.number().int().min(0).default(0),
         aiDescription: z.string().max(1000).optional(),
       })
-    )
-    .min(1, 'At least one index is required'),
-});
+    ),
+  externalSources: z.array(
+    z.object({
+      dataSourceId: z.string().uuid('Invalid data source ID'),
+      weight: z.number().min(0.1).max(10).default(1.0),
+      sortOrder: z.number().int().min(0).default(0),
+    })
+  ),
+}).refine(
+  (v) => v.indexes.length + v.externalSources.length > 0,
+  { message: 'Select at least one search index or external index', path: ['indexes'] },
+);
 
 export type WizardStep1Data = z.infer<typeof wizardStep1Schema>;
 
@@ -165,6 +174,12 @@ export interface WizardFormData {
     sortOrder: number;
     aiDescription?: string;
   }>;
+  /** External indexes (data sources of type search_index_external) */
+  externalSources: Array<{
+    dataSourceId: string;
+    weight: number;
+    sortOrder: number;
+  }>;
 
   // Step 2
   searchConfig: {
@@ -238,6 +253,7 @@ export const WIZARD_DEFAULT_VALUES: WizardFormData = {
   slug: '',
   description: '',
   indexes: [],
+  externalSources: [],
   searchConfig: {
     ...DEFAULT_SEARCH_CONFIG,
     autocomplete: { ...DEFAULT_AUTOCOMPLETE_CONFIG },

@@ -57,6 +57,8 @@ import {
   searchExperienceIndexes,
   searchExperiencesRelations,
   searchExperienceIndexesRelations,
+  searchExperienceExternalSources,
+  searchExperienceExternalSourcesRelations,
 } from './search-experience.schema';
 
 // Global Search Settings
@@ -273,6 +275,8 @@ export const schema = {
   searchExperienceIndexes,
   searchExperiencesRelations,
   searchExperienceIndexesRelations,
+  searchExperienceExternalSources,
+  searchExperienceExternalSourcesRelations,
 
   // Global Search Settings
   globalSearchSettings,
