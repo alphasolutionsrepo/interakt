@@ -12,6 +12,8 @@ import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import { profileFields, resolveSampleSize } from './field-profiler';
 import * as toolsService from '@/features/tools/tools.service';
+// The cache module itself, not the search-experience barrel, which imports this service back
+import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } from '@/features/search-experience/search-experience.cache';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 import { resolveExternalConnection } from './external-search/external-connection';
 import { sampleSitecore, inferSitecoreFields } from './external-search/connectors/sitecore-search.connector';
@@ -71,6 +73,9 @@ export async function updateDataSource(id: string, input: UpdateDataSourceDTO, u
     updatedBy: userId,
   });
 
+  // Search experiences cache the data source's name and on/off state
+  await invalidateSearchExperiencesByDataSource(id);
+
   logger.info('Updated data source', { dataSourceId: id, slug: existing.slug, userId });
 
   return updated;
@@ -83,6 +88,7 @@ export async function deleteDataSource(id: string, userId: string) {
   }
 
   await repository.deleteDataSource(id);
+  await invalidateSearchExperiencesByDataSource(id);
 
   logger.info('Deleted data source', { dataSourceId: id, slug: existing.slug, userId });
 }

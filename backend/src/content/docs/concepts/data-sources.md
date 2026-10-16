@@ -94,7 +94,7 @@ Each row shows the health status — green check if the source can be reached, r
 
 ## The detail page
 
-The header has the name, type badge, and an **Activate / Deactivate** toggle plus an **Edit** button.
+The header has the name, type badge, and an **Activate / Deactivate** toggle plus an **Edit** button. Changes take effect on the next request: a deactivated source is no longer searched by the experiences that use it, and a renamed source shows its new name on their results.
 
 ### Stats strip
 Four numbers: health, status, document count, storage used.
