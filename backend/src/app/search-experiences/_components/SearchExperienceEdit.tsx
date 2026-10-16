@@ -468,6 +468,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
       summary: {
         enabled: boolean;
         maxResultsForContext: number;
+        contextCharsPerResult?: number;
         maxTokens?: number;
         customInstructions?: string;
       };
@@ -1404,7 +1405,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-3 gap-4">
                         <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
                           <div className="flex items-center justify-between">
                             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Search Results</Label>
@@ -1433,7 +1434,28 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
                             className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
                           />
                         </div>
+                        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Page Text</Label>
+                            <span className="text-xs text-muted-foreground/60">chars / result</span>
+                          </div>
+                          <Input
+                            type="number"
+                            min={200}
+                            max={8000}
+                            step={100}
+                            placeholder="500"
+                            value={formData.aiConfig.summary.contextCharsPerResult ?? ''}
+                            onChange={(e) => updateSummaryConfig('contextCharsPerResult', e.target.value ? parseInt(e.target.value) : undefined)}
+                            className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
+                          />
+                        </div>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Page Text: how much of each result&apos;s longer text the summary reads, picked by relevance to the
+                        query (the opening plus matching passages). Empty reads the first 500 characters. More text gives
+                        richer answers but takes longer to read, especially on local models.
+                      </p>
                     </div>
 
                     {/* Custom Instructions Section - Collapsible */}

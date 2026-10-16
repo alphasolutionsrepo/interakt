@@ -100,6 +100,7 @@ export const aiSummaryConfigSchema = z.object({
   maxResultsForContext: z.number().int().min(1).max(50).default(DEFAULT_AI_CONFIG.summary.maxResultsForContext),
   customInstructions: z.string().max(5000).optional(),
   maxTokens: z.number().int().min(50).max(4000).optional(),
+  contextCharsPerResult: z.number().int().min(200).max(8000).optional(),
 });
 
 export const queryUnderstandingConfigSchema = z.object({

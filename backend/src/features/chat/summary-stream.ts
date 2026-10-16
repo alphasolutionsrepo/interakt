@@ -21,6 +21,7 @@ import type {
   SummarizeAPIRequest,
 } from '@/features/search-experience/search-experience.types';
 import { buildSummarySystemPrompt, formatFieldsForContext } from '@/features/chat/prompt-builder';
+import { selectFieldPassages } from '@/features/chat/summary-context';
 
 const logger = createLogger('summary-stream');
 
@@ -55,7 +56,8 @@ export function createSummaryStream(
     validated.query,
     resultsForPrompt,
     validated.totalResults,
-    validated.instruction
+    validated.instruction,
+    summaryConfig.contextCharsPerResult
   );
 
   // Build messages for AI
@@ -185,7 +187,9 @@ export function buildSummaryUserPrompt(
   query: string,
   results: Array<{ id: string; index: { id: string; name: string }; fields: Record<string, unknown> }>,
   totalResults?: number,
-  instruction?: string
+  instruction?: string,
+  /** Characters of each long text field to read, chosen by relevance; unset keeps a 500-character cut */
+  contextChars?: number
 ): string {
   const resultsText = results
     .map((r, i) => {
@@ -193,9 +197,10 @@ export function buildSummaryUserPrompt(
       const title = (titleKey && r.fields[titleKey]) || `Item ${i + 1}`;
       // The title is already on the [n] line and the id means nothing to the model:
       // every token here is read before the first word appears
-      const details = formatFieldsForContext(
-        Object.fromEntries(Object.entries(r.fields).filter(([key]) => key !== titleKey && key !== 'id'))
-      );
+      const fields = Object.fromEntries(Object.entries(r.fields).filter(([key]) => key !== titleKey && key !== 'id'));
+      const details = contextChars
+        ? formatFieldsForContext(selectFieldPassages(fields, query, contextChars), contextChars + 50)
+        : formatFieldsForContext(fields);
       return `[${i + 1}] ${title}${details ? `\n${details}` : ''}`;
     })
     .join('\n\n---\n\n');

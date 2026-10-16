@@ -92,7 +92,7 @@ export function AISummaryContent({ summary, isStreaming, isComplete, results, di
         {blocks.map((block, i) =>
           block.kind === 'paragraph' ? (
             <p key={i}>
-              <Runs runs={block.runs} sources={sources} />
+              <Runs runs={block.runs} sources={sources} labelLink={labelCitation(block.runs)} />
             </p>
           ) : (
             <ul key={i} className="list-disc space-y-1.5 pl-5 marker:text-muted-foreground">

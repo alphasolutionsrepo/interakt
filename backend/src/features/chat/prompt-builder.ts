@@ -202,7 +202,7 @@ export function buildSummarySystemPrompt(options: BuildSummaryPromptOptions): st
  * `material`), and will (correctly, per its own "don't claim what isn't in
  * the data" instructions) claim that attribute doesn't exist.
  */
-export function formatFieldsForContext(fields: Record<string, unknown>): string {
+export function formatFieldsForContext(fields: Record<string, unknown>, maxValueLength = 500): string {
   const parts: string[] = [];
 
   for (const [key, value] of Object.entries(fields)) {
@@ -221,8 +221,8 @@ export function formatFieldsForContext(fields: Record<string, unknown>): string 
     }
 
     // Truncate very long values
-    if (formattedValue.length > 500) {
-      formattedValue = formattedValue.substring(0, 500) + '...';
+    if (formattedValue.length > maxValueLength) {
+      formattedValue = formattedValue.substring(0, maxValueLength) + '...';
     }
 
     // Use readable field name (convert camelCase/snake_case to Title Case)

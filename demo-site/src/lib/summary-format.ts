@@ -109,8 +109,8 @@ export function parseSummary(text: string): SummaryBlock[] {
 }
 
 /**
- * The result a list item's lead label points at: when the item opens with a bold label
- * ("**For veterans:** … [2]"), the label links to the item's first citation.
+ * The result a line's lead label points at: when a list item or paragraph opens with a
+ * bold label ("**For veterans:** … [2]"), the label links to its first citation.
  */
 export function labelCitation(runs: InlineRun[]): number | null {
   const first = runs.find((r) => r.kind !== 'text' || r.text.trim() !== '');

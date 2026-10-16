@@ -126,6 +126,12 @@ export interface SearchExperienceAISummaryConfig {
   customInstructions?: string;
   /** Max tokens for summary response */
   maxTokens?: number;
+  /**
+   * Characters of each result's long text fields (page body, excerpts) the summary
+   * reads, chosen by relevance to the query: the opening plus matching passages.
+   * Unset: each field is cut at 500 characters.
+   */
+  contextCharsPerResult?: number;
 }
 
 /**

@@ -906,7 +906,7 @@ function AiSummary({ text, streaming, sources }: { text: string; streaming: bool
           : blocks.map((b, i) =>
               b.kind === 'paragraph' ? (
                 <p key={i}>
-                  <Runs runs={b.runs} sources={sources} />
+                  <Runs runs={b.runs} sources={sources} labelLink={labelCitation(b.runs)} />
                 </p>
               ) : (
                 <ul key={i}>
