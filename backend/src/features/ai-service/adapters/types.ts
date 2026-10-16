@@ -139,9 +139,13 @@ export interface AdapterFetchOptions {
 }
 
 /**
- * Parse SSE (Server-Sent Events) stream
+ * Read a provider's streaming response body as text.
+ *
+ * A caller that stops early (a summary the visitor cancelled) closes the body,
+ * which drops the connection, so the provider stops generating. Releasing the
+ * reader alone would leave the request running to its token limit.
  */
-export async function* parseSSEStream(
+async function* readStreamText(
     response: Response,
     providerKey: string
 ): AsyncGenerator<string, void, unknown> {
@@ -151,55 +155,60 @@ export async function* parseSSEStream(
     }
 
     const decoder = new TextDecoder();
-    let buffer = '';
+    let finished = false;
 
     try {
         while (true) {
             const { done, value } = await reader.read();
-
             if (done) {
-                break;
+                finished = true;
+                return;
             }
-
-            buffer += decoder.decode(value, { stream: true });
-
-            // Split by double newline (SSE event separator)
-            const events = buffer.split('\n\n');
-
-            // Keep the last partial event in buffer
-            buffer = events.pop() || '';
-
-            for (const event of events) {
-                // Skip empty events
-                if (!event.trim()) continue;
-
-                // Parse SSE format
-                const lines = event.split('\n');
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6);
-                        if (data !== '[DONE]') {
-                            yield data;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Process any remaining data in buffer
-        if (buffer.trim()) {
-            const lines = buffer.split('\n');
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    if (data !== '[DONE]') {
-                        yield data;
-                    }
-                }
-            }
+            yield decoder.decode(value, { stream: true });
         }
     } finally {
+        if (!finished) {
+            await reader.cancel().catch(() => { /* already closed */ });
+        }
         reader.releaseLock();
+    }
+}
+
+/**
+ * Split streamed text into records at a separator, keeping a partial record
+ * until the rest of it arrives.
+ */
+async function* splitRecords(
+    text: AsyncGenerator<string, void, unknown>,
+    separator: string
+): AsyncGenerator<string, void, unknown> {
+    let buffer = '';
+    for await (const chunk of text) {
+        buffer += chunk;
+        const records = buffer.split(separator);
+        buffer = records.pop() || '';
+        yield* records;
+    }
+    if (buffer) yield buffer;
+}
+
+/**
+ * Parse SSE (Server-Sent Events) stream
+ */
+export async function* parseSSEStream(
+    response: Response,
+    providerKey: string
+): AsyncGenerator<string, void, unknown> {
+    for await (const event of splitRecords(readStreamText(response, providerKey), '\n\n')) {
+        if (!event.trim()) continue;
+        for (const line of event.split('\n')) {
+            if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data !== '[DONE]') {
+                    yield data;
+                }
+            }
+        }
     }
 }
 
@@ -210,42 +219,9 @@ export async function* parseNDJSONStream(
     response: Response,
     providerKey: string
 ): AsyncGenerator<string, void, unknown> {
-    const reader = response.body?.getReader();
-    if (!reader) {
-        throw new AdapterError('No response body', providerKey);
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-
-            if (done) {
-                break;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-
-            // Split by newline (NDJSON format)
-            const lines = buffer.split('\n');
-
-            // Keep the last partial line in buffer
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-                if (line.trim()) {
-                    yield line;
-                }
-            }
+    for await (const line of splitRecords(readStreamText(response, providerKey), '\n')) {
+        if (line.trim()) {
+            yield line;
         }
-
-        // Process any remaining data in buffer
-        if (buffer.trim()) {
-            yield buffer;
-        }
-    } finally {
-        reader.releaseLock();
     }
 }

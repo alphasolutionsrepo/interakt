@@ -47,6 +47,7 @@ export const ATTR = {
   SEARCH_PROVIDER: 'alpha.search.provider', // 'elasticsearch' | 'azure_ai_search'
   SEARCH_TOTAL_RESULTS: 'alpha.search.total_results',
   SEARCH_RETURNED: 'alpha.search.results_returned',
+  SUMMARY_CANCELLED: 'alpha.summary.cancelled', // the client went away before the summary finished
   SEARCH_HAS_FILTERS: 'alpha.search.has_filters',
   SEARCH_TRIGGER: 'alpha.search.trigger_type', // 'user' | 'ai_tool' | 'ai_rag'
   SEARCH_ES_TOOK_MS: 'alpha.search.es_took_ms',
