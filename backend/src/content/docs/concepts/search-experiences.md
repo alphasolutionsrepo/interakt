@@ -18,7 +18,7 @@ The create flow is a four-step wizard.
 | Field | What it controls |
 |---|---|
 | **Name** | Display name shown in the admin and (sometimes) to end-users in the widget. |
-| **Slug** | URL path your users hit (e.g. `product-search` → `/api/v1/search-experiences/product-search/search`). Lowercase, hyphens. **Can't be changed after creation** — pick deliberately. |
+| **Slug** | The experience's identifier in URLs (e.g. `product-search` → `/api/v1/search/product-search/search`). Lowercase, hyphens. **Can't be changed after creation** — pick deliberately. |
 | **Description** | Optional, internal. |
 | **Index selection** | Pick one or more indexes. The first one defaults to **Primary**; additions default to **Secondary**. Roles can be changed; primary index gets the most weight in ranking. External indexes defined under **Data Sources** are listed too, so an experience can search an engine you already run. |
 
