@@ -88,6 +88,26 @@ describe('cancelling a summary', () => {
     expect(log.error).toHaveBeenCalledWith('Summary generation failed', expect.anything());
   });
 
+  it('aborts the model request when the visitor leaves before the first word', async () => {
+    const ai = await import('@/features/ai-service/ai-service.service');
+    let signal: AbortSignal | undefined;
+    // A model still reading the prompt: nothing arrives until the request is aborted,
+    // and then the AI service ends the stream without an error
+    vi.spyOn(ai, 'streamChat').mockImplementationOnce(async function* (_messages, options) {
+      signal = options?.signal;
+      await new Promise((resolve) => signal?.addEventListener('abort', resolve));
+    } as never);
+
+    const reader = createSummaryStream(experience, request).getReader();
+    await reader.read(); // sources
+    await reader.cancel('new search');
+    await span.settled;
+
+    expect(signal?.aborted).toBe(true);
+    expect(span.attributes['alpha.summary.cancelled']).toBe(true);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
   it('streams a whole summary when nobody cancels', async () => {
     const reader = createSummaryStream(experience, request).getReader();
     let text = '';

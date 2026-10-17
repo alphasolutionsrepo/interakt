@@ -33,6 +33,7 @@ import {
     type TextGenerationResult,
     type ChatOptions,
     type ChatResult,
+    type ChatRequest,
     type ChatMessage,
     type ChatStreamChunk,
     type EmbeddingOptions,
@@ -518,19 +519,21 @@ export async function* streamChat(
             { messageCount: messages.length, hasTools: !!options?.tools?.length, messages, experienceId: options?.experienceId },
             async function* () {
                 let yielded = false;
+                const request: ChatRequest = {
+                    messages,
+                    maxTokens: options?.maxTokens,
+                    temperature: options?.temperature,
+                    topP: options?.topP,
+                    stopSequences: options?.stopSequences,
+                    stream: true,
+                    tools: options?.tools,
+                    toolChoice: options?.toolChoice,
+                    responseFormat: options?.responseFormat,
+                    signal: options?.signal,
+                };
                 const innerStream = await withRetry(
                     async () => adapter.streamChat(
-                        {
-                            messages,
-                            maxTokens: options?.maxTokens,
-                            temperature: options?.temperature,
-                            topP: options?.topP,
-                            stopSequences: options?.stopSequences,
-                            stream: true,
-                            tools: options?.tools,
-                            toolChoice: options?.toolChoice,
-                            responseFormat: options?.responseFormat,
-                        },
+                        request,
                         toAdapterConfig(config!)
                     ),
                     { maxRetries: config!.maxRetries },
@@ -541,6 +544,9 @@ export async function* streamChat(
                         yield chunk;
                     }
                 } catch (err) {
+                    // The caller cancelled: the request was aborted on purpose, so
+                    // the stream just ends (no error, no retry)
+                    if (options?.signal?.aborted) return;
                     // If the error fired before any chunk, the connection never
                     // produced output — withRetry above won't catch this case
                     // because adapter.streamChat returns the iterator lazily.
@@ -551,17 +557,7 @@ export async function* streamChat(
                         error: (err as Error).message,
                     });
                     const retryStream = adapter.streamChat(
-                        {
-                            messages,
-                            maxTokens: options?.maxTokens,
-                            temperature: options?.temperature,
-                            topP: options?.topP,
-                            stopSequences: options?.stopSequences,
-                            stream: true,
-                            tools: options?.tools,
-                            toolChoice: options?.toolChoice,
-                            responseFormat: options?.responseFormat,
-                        },
+                        request,
                         toAdapterConfig(config!)
                     );
                     yield* retryStream;

@@ -139,6 +139,15 @@ export interface AdapterFetchOptions {
 }
 
 /**
+ * The signal for a provider request: the adapter's timeout, plus the caller's
+ * cancel signal when there is one, so a caller that goes away stops the request
+ * even before the first token (a long prompt can take seconds to read).
+ */
+export function requestSignal(timeout: AbortSignal, caller?: AbortSignal): AbortSignal {
+    return caller ? AbortSignal.any([timeout, caller]) : timeout;
+}
+
+/**
  * Read a provider's streaming response body as text.
  *
  * A caller that stops early (a summary the visitor cancelled) closes the body,

@@ -25,7 +25,7 @@ import type {
     ToolParameterSchema,
     ResponseFormat,
 } from '../ai-service.types';
-import { AIProviderAdapter, AdapterError, parseSSEStream } from './types';
+import { AIProviderAdapter, AdapterError, parseSSEStream, requestSignal } from './types';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -448,7 +448,8 @@ export class OpenAIAdapter implements AIProviderAdapter {
         const response = await this.makeStreamRequest(
             `${config.baseUrl}/chat/completions`,
             openaiRequest,
-            config
+            config,
+            request.signal
         );
 
         let fullContent = '';
@@ -656,7 +657,8 @@ export class OpenAIAdapter implements AIProviderAdapter {
     private async makeStreamRequest(
         url: string,
         body: unknown,
-        config: AdapterConfig
+        config: AdapterConfig,
+        signal?: AbortSignal
     ): Promise<Response> {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), config.timeout);
@@ -666,7 +668,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
                 method: 'POST',
                 headers: this.getHeaders(config),
                 body: JSON.stringify(body),
-                signal: controller.signal,
+                signal: requestSignal(controller.signal, signal),
             });
 
             clearTimeout(timeoutId);

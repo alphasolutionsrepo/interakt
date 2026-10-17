@@ -69,8 +69,10 @@ export function createSummaryStream(
   // Create streaming response
   const encoder = new TextEncoder();
   // Set when the client goes away (a new search, Stop, a closed page). A cancel is
-  // not a failure: generation stops and nothing more is written to the stream.
+  // not a failure: the model request is aborted at once and nothing more is
+  // written to the stream.
   let cancelled = false;
+  const modelRequest = new AbortController();
   return new ReadableStream({
     // One trace per summary (search_experience.summary), with the model call nested
     // in it, so summaries show on the Traces page next to searches and chat turns.
@@ -90,6 +92,7 @@ export function createSummaryStream(
     ),
     cancel: () => {
       cancelled = true;
+      modelRequest.abort();
     },
   });
 
@@ -124,6 +127,7 @@ export function createSummaryStream(
         feature: 'search_experience_summary',
         // Links the model call to the experience and applies its trace level
         experienceId: experience.id,
+        signal: modelRequest.signal,
       });
 
       const sources: DocumentReference[] = resultsForPrompt.map((r) => ({
@@ -137,7 +141,7 @@ export function createSummaryStream(
       send({ type: 'sources', sources });
 
       for await (const chunk of generator) {
-        // Leaving the loop ends the model's stream, which closes its connection
+        // A cancel aborts the model request; this catches one already in hand
         if (cancelled) break;
 
         if (chunk.content) {
