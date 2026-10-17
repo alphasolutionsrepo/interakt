@@ -27,6 +27,7 @@ interface StreamingAISummaryProps {
 export function StreamingAISummary({ query, results, totalResults, displayConfig, isSearchLoading, onFollowUpClick }: StreamingAISummaryProps) {
   const {
     summary,
+    sources,
     followUpQueries,
     isStreaming,
     isComplete,
@@ -172,7 +173,7 @@ export function StreamingAISummary({ query, results, totalResults, displayConfig
                   summary={summary}
                   isStreaming={isStreaming}
                   isComplete={isComplete}
-                  results={results}
+                  sources={sources}
                   displayConfig={displayConfig}
                   className="text-[15px] text-foreground/80"
                 />

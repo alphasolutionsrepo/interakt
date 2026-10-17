@@ -16,7 +16,15 @@ POST /api/v1/ai-experiences/<slug>/chat
 
 Authenticated with the experience's access token. The response is a **server-sent events (SSE)** stream — the AI's reply comes back in chunks as it's generated, plus events for tool calls and citations along the way.
 
-Each experience's detail page has a **curl example** under the **Access Token** card with the current URL, headers, and request body shape. Copy that.
+A complete request:
+
+```bash
+curl -N -X POST "https://admin.interakt.app/api/v1/ai-experiences/<slug>/chat" \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -H "X-Access-Token: YOUR_CHAT_ACCESS_TOKEN" \
+  -d '{"message":"Find me a warm winter coat"}'
+```
 
 ## Why use the API instead of the widget
 
@@ -27,11 +35,11 @@ Each experience's detail page has a **curl example** under the **Access Token** 
 
 ## Sessions
 
-Multi-turn chat needs a `sessionId` — a string your frontend generates and re-sends across turns. Interakt uses it to load the conversation history. The widget handles this automatically; custom frontends need to:
+Interakt keeps the conversation history in a session. The widget handles this automatically; custom frontends need to:
 
-1. Generate a session ID on first message (a UUID is fine).
-2. Store it (localStorage, cookie, memory).
-3. Pass the same ID on every subsequent message in the same conversation.
+1. Send the first message without a `sessionId`.
+2. Read the `sessionId` from the stream's `done` event and store it (localStorage, cookie, memory).
+3. Send that `sessionId` with every later message in the same conversation.
 
 When the user closes the chat and reopens it days later, you decide whether to reuse the old session or start a new one based on your TTL.
 
@@ -39,12 +47,14 @@ When the user closes the chat and reopens it days later, you decide whether to r
 
 The stream sends a sequence of events. Common ones:
 
-- `processing` — request accepted, pipeline starting.
+- `step_start` / `step_complete` — a pipeline step (guardrails, planning, tools, response) began or finished.
 - `tool_call` — the AI decided to call a tool. Includes the tool name and arguments.
-- `tool_result` — the tool returned data.
-- `content` — a chunk of the AI's response text.
+- `tool_result` — the tool finished, with its result count.
+- `preset` — structured data to render, such as product cards, with the preset name.
+- `content` — a chunk of the AI's response text, in `text`.
 - `sources` — citations / referenced records from tool results.
-- `done` — end of stream.
+- `error` — something went wrong; `message` says what.
+- `done` — end of stream, with the `sessionId` to send next turn.
 
 Your frontend renders `content` chunks as they arrive. The other events are useful for showing "thinking" indicators, tool-use UI, and citations alongside the response.
 
@@ -53,14 +63,14 @@ Your frontend renders `content` chunks as they arrive. The other events are usef
 The exact JSON shape evolves. Two living references that are always current:
 
 - **The Chat Playground.** The Chat Playground card on each AI experience detail page runs the same code path. The browser dev tools network panel shows the live request and SSE stream.
-- **The detail page's curl example** under the Access Token card.
+- **The request above**, with your experience's slug and token.
 
 ## Common gotchas
 
 - **CORS errors from the browser.** Add your origin to the experience's allowed origins.
 - **HTTP 401.** Wrong token or token revoked.
 - **HTTP 429.** Rate-limited. Back off and retry.
-- **Session resets on every turn.** Your client isn't storing or passing the `sessionId`. Each request without one starts a fresh conversation.
+- **Session resets on every turn.** Your client isn't sending the `sessionId` from the last `done` event. A request without one, or with an id Interakt didn't issue, starts a fresh conversation.
 - **SSE buffering.** Some proxies buffer SSE streams, blocking real-time delivery. If responses arrive all at once instead of streaming, check whether your proxy / CDN supports streaming.
 
 ## Where to go next

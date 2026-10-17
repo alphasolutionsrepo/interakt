@@ -69,16 +69,16 @@ interface AISummaryContentProps {
   summary: string;
   isStreaming: boolean;
   isComplete: boolean;
-  /** The results the summary was generated from, in the order sent */
-  results: SearchResult[];
+  /** The results the summary was written from, in the order sent (useAISummary's sources) */
+  sources: SearchResult[];
   displayConfig?: DisplayConfig | null;
   /** Text size and color of the body, e.g. "text-sm text-foreground/80" */
   className?: string;
 }
 
-export function AISummaryContent({ summary, isStreaming, isComplete, results, displayConfig, className }: AISummaryContentProps) {
-  // Citations number the results sent for summarizing (the first 10), in order
-  const sources: SummarySource[] = results.slice(0, 10).map((r) => ({
+export function AISummaryContent({ summary, isStreaming, isComplete, sources: summarized, displayConfig, className }: AISummaryContentProps) {
+  // Citations number the results sent for summarizing, in order
+  const sources: SummarySource[] = summarized.map((r) => ({
     title: getItemTitle(r, displayConfig),
     ...getItemLink(r, displayConfig),
   }));

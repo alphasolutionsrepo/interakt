@@ -163,6 +163,9 @@ export function SearchRequestBody({ rootSpan, spans }: { rootSpan: SpanListItem;
           <div className="flex items-center gap-2">
             {isSummary ? <FileText className="size-4 text-amber-500" /> : <Search className="size-4 text-blue-500" />}
             <span className="text-sm font-semibold">{isSummary ? 'AI summary of search results' : 'Search request'}</span>
+            {isSummary && attr(root, 'alpha.summary.cancelled') === 'true' && (
+              <Badge variant="secondary" className="text-[10px]">Cancelled by the visitor</Badge>
+            )}
             {source && <Badge variant="outline" className="ml-auto text-[10px]">{SOURCE_LABELS[source] ?? source}</Badge>}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">

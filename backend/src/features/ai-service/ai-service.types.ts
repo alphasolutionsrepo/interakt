@@ -242,6 +242,8 @@ export interface ChatOptions extends AIServiceOptions {
     toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
     /** Response format for structured outputs (OpenAI json_schema) */
     responseFormat?: ResponseFormat;
+    /** Aborting it stops the model request at once (the caller went away); the stream then ends without an error */
+    signal?: AbortSignal;
 }
 
 export interface ChatRequest {
@@ -257,6 +259,8 @@ export interface ChatRequest {
     toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
     /** Response format for structured outputs */
     responseFormat?: ResponseFormat;
+    /** The caller's cancel signal, attached to the provider request */
+    signal?: AbortSignal;
 }
 
 export interface ChatResult {

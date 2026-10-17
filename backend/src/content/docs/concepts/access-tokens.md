@@ -16,7 +16,6 @@ Sidebar → **Experiences** → open any experience → **Access Token** card on
 - The token, **masked** (first 10 chars + last 10 chars, with dots in the middle). The full token is never re-displayed once saved.
 - A **Copy** button (copies the full value).
 - A **Regenerate Token** button in the experience header — invalidates the existing one and creates a new one.
-- A sample curl example showing how to call the API with the token.
 
 ## Generating a token
 

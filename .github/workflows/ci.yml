@@ -70,3 +70,26 @@ jobs:
 
       - name: Test
         run: npm test
+
+  demo-site:
+    name: Demo site · type-check · test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: demo-site
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: demo-site/package-lock.json
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Test
+        run: npm test

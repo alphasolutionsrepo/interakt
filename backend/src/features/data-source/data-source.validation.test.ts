@@ -4,6 +4,7 @@ import {
   updateDataSourceSchema,
   listDataSourcesQuerySchema,
   updateHealthSchema,
+  configSchemaForType,
 } from './data-source.validation';
 
 // ============================================================================
@@ -154,6 +155,29 @@ describe('createDataSourceSchema', () => {
         providerSettings: { fixedFilters: [{ field: 'name', operator: 'contains', value: 'x' }] },
       });
       expect(createDataSourceSchema.safeParse(input).success).toBe(false);
+    });
+
+    it('rejects a fixed filter that cannot be sent, saying why and which one', () => {
+      const input = validExternalIndexInput();
+      Object.assign(input.config, {
+        provider: 'sitecore_search',
+        providerSettings: { fixedFilters: [
+          { field: 'site', operator: 'eq', value: 'www' },
+          { field: '', operator: 'or', filters: [{ field: 'price', operator: 'range', value: {} }] },
+        ] },
+      });
+      const result = createDataSourceSchema.safeParse(input);
+      expect(result.success).toBe(false);
+      expect(result.error?.issues).toEqual([expect.objectContaining({
+        path: ['config', 'providerSettings', 'fixedFilters', 1],
+        message: "Fixed filter 2 can't be used: 'range' needs a from or to value",
+      })]);
+    });
+
+    it('checks fixed filters on updates too', () => {
+      const config = { ...validExternalIndexInput().config, provider: 'sitecore_search',
+        providerSettings: { fixedFilters: [{ field: 'price', operator: 'range', value: {} }] } };
+      expect(configSchemaForType('search_index_external')!.safeParse(config).success).toBe(false);
     });
   });
 

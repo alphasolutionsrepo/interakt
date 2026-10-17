@@ -8,13 +8,13 @@ Most users put search in front of their site using the [drop-in search widget](.
 
 ## The basics
 
-Every search experience has a public endpoint at:
+Every search experience is served by one public endpoint:
 
 ```
-POST /api/v1/search-experiences/<slug>/search
+POST /api/v1/search
 ```
 
-Authenticated with the experience's access token:
+The access token identifies the experience, so there is no slug in the path. Authenticate with the token:
 
 ```
 Authorization: Bearer <your-token>
@@ -26,7 +26,16 @@ Or:
 X-Access-Token: <your-token>
 ```
 
-The detail page of each search experience has a working **curl example** under the **Access Token** card — copy that for the exact, current request shape.
+A complete request:
+
+```bash
+curl -X POST "https://admin.interakt.app/api/v1/search" \
+  -H "Content-Type: application/json" \
+  -H "X-Access-Token: YOUR_SEARCH_ACCESS_TOKEN" \
+  -d '{"query":"denim jacket","page":1,"pageSize":20}'
+```
+
+The response is `{ "success": true, "data": { ... } }`. Hits arrive as `data.results[].source`, with `total`, `pagination`, `facets` and the experience's `displayConfig` alongside.
 
 ## Why use the API instead of the widget
 
@@ -42,7 +51,7 @@ Same as the widget, but as raw JSON:
 - Search hits with all configured fields.
 - Facet counts.
 - Pagination metadata.
-- AI summary (if enabled on the experience).
+- AI summary (if enabled on the experience), streamed from `POST /api/v1/summarize`.
 - Highlights.
 
 The display configuration is included so your frontend can format result cards consistently with whatever the widget would render.

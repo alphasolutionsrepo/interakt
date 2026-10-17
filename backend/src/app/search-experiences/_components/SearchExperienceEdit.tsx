@@ -535,7 +535,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
         slug: experience.slug,
         description: experience.description || '',
         isActive: experience.isActive,
-        telemetryDetailLevel: experience.telemetryDetailLevel ?? 'off',
+        telemetryDetailLevel: experience.telemetryDetailLevel ?? 'metadata',
         searchConfig: parsedSearchConfig,
         aiConfig: parsedAIConfig,
         toolsConfig: JSON.parse(JSON.stringify(experience.toolsConfig)) as typeof formData.toolsConfig,

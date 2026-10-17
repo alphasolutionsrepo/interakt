@@ -68,6 +68,11 @@ export function createSummaryStream(
 
   // Create streaming response
   const encoder = new TextEncoder();
+  // Set when the client goes away (a new search, Stop, a closed page). A cancel is
+  // not a failure: the model request is aborted at once and nothing more is
+  // written to the stream.
+  let cancelled = false;
+  const modelRequest = new AbortController();
   return new ReadableStream({
     // One trace per summary (search_experience.summary), with the model call nested
     // in it, so summaries show on the Traces page next to searches and chat turns.
@@ -83,11 +88,27 @@ export function createSummaryStream(
           ...(shouldLogContent(experience.id) && { [ATTR.SEARCH_QUERY]: validated.query }),
         },
       },
-      () => streamSummary(controller),
+      (span) => streamSummary(controller, span),
     ),
+    cancel: () => {
+      cancelled = true;
+      modelRequest.abort();
+    },
   });
 
-  async function streamSummary(controller: ReadableStreamDefaultController<Uint8Array>) {
+  async function streamSummary(
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    span: { setAttribute(key: string, value: boolean): unknown },
+  ) {
+    const send = (event: ChatStreamEvent | '[DONE]') => {
+      if (cancelled) return;
+      controller.enqueue(encoder.encode(`data: ${event === '[DONE]' ? event : JSON.stringify(event)}\n\n`));
+    };
+    const finish = async () => {
+      await flushTelemetry();
+      if (!cancelled) controller.close();
+    };
+
     try {
       const maxTokens = summaryConfig.maxTokens ?? 500;
       logger.info('Starting summary generation', {
@@ -106,6 +127,7 @@ export function createSummaryStream(
         feature: 'search_experience_summary',
         // Links the model call to the experience and applies its trace level
         experienceId: experience.id,
+        signal: modelRequest.signal,
       });
 
       const sources: DocumentReference[] = resultsForPrompt.map((r) => ({
@@ -116,27 +138,18 @@ export function createSummaryStream(
       }));
 
       // Send sources event first
-      const sourcesEvent: ChatStreamEvent = {
-        type: 'sources',
-        sources,
-      };
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(sourcesEvent)}\n\n`));
-
-      let totalContent = '';
+      send({ type: 'sources', sources });
 
       for await (const chunk of generator) {
+        // A cancel aborts the model request; this catches one already in hand
+        if (cancelled) break;
+
         if (chunk.content) {
-          totalContent += chunk.content;
-          const contentEvent: ChatStreamEvent = {
-            type: 'content',
-            text: chunk.content,
-            content: chunk.content,
-          };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentEvent)}\n\n`));
+          send({ type: 'content', text: chunk.content, content: chunk.content });
         }
 
         if (chunk.done && chunk.usage) {
-          const doneEvent: ChatStreamEvent = {
+          send({
             type: 'done',
             usage: {
               promptTokens: chunk.usage.inputTokens,
@@ -144,14 +157,19 @@ export function createSummaryStream(
               totalTokens: chunk.usage.totalTokens,
             },
             messageId: uuidv4(),
-          };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(doneEvent)}\n\n`));
+          });
         }
       }
 
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-      await flushTelemetry();
-      controller.close();
+      if (cancelled) {
+        span.setAttribute(ATTR.SUMMARY_CANCELLED, true);
+        logger.info('Summary cancelled by the client', { experienceId: experience.id });
+        await finish();
+        return;
+      }
+
+      send('[DONE]');
+      await finish();
 
       logger.info('Summary generated', {
         experienceId: experience.id,
@@ -159,19 +177,25 @@ export function createSummaryStream(
         resultCount: validated.results.length,
       });
     } catch (error) {
+      if (cancelled) {
+        // The model call ended because the client went away
+        span.setAttribute(ATTR.SUMMARY_CANCELLED, true);
+        logger.info('Summary cancelled by the client', { experienceId: experience.id });
+        await finish();
+        return;
+      }
+
       logger.error('Summary generation failed', {
         experienceId: experience.id,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
 
-      const errorEvent: ChatStreamEvent = {
+      send({
         type: 'error',
         error: error instanceof Error ? error.message : 'Failed to generate summary',
         code: 'AI_ERROR',
-      };
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
-      await flushTelemetry();
-      controller.close();
+      });
+      await finish();
     }
   }
 }

@@ -9,6 +9,8 @@
 import 'server-only';
 
 import { and, count, desc, eq, gte, lte, sql, avg, like, asc, or } from 'drizzle-orm';
+
+import { ATTR } from './attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('telemetry-query');
@@ -40,6 +42,8 @@ export interface SpanListItem {
   // Denormalized from JSONB attributes for list display
   userMessage: string | null;
   experienceSlug: string | null;
+  /** A summary the visitor left before it finished (alpha.summary.cancelled) */
+  cancelled: boolean;
 }
 
 export interface SpanDetail extends SpanListItem {
@@ -210,6 +214,7 @@ export async function getRecentSpans(
           // A chat turn's message, or a search request's query (both recorded only at 'full')
           userMessage: sql<string | null>`coalesce(${otelSpans.attributes}->>'alpha.chat.user_message', ${otelSpans.attributes}->>'alpha.search.query')`,
           experienceSlug: sql<string | null>`${otelSpans.attributes}->>'alpha.experience.slug'`,
+          cancelled: sql<boolean>`coalesce(${otelSpans.attributes}->>${ATTR.SUMMARY_CANCELLED} = 'true', false)`,
         })
         .from(otelSpans)
         .where(where)

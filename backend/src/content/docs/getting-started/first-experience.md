@@ -136,7 +136,7 @@ On the experience detail page, expand the **Search Widget** card.
 - Click **Copy** to copy the embed snippet — a single `<script>` tag plus a `<div>`.
 - Paste it into the HTML of your site where you want the search box.
 
-If you'd rather call the API directly (custom frontend), the **Access token** card has the token and a curl example.
+If you'd rather call the API directly (custom frontend), copy the token from the **Access token** card and see [Calling the search API](../guides/call-the-search-api).
 
 > **The search experience must be Active** for the widget/API to work. The detail-page header has an **Activate** button — click it once you're ready to go live. Inactive experiences exist but reject incoming traffic.
 

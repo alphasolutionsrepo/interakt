@@ -257,7 +257,7 @@ describe('observabilityConfigSchema', () => {
     const result = observabilityConfigSchema.safeParse({});
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.telemetryDetailLevel).toBe('off');
+      expect(result.data.telemetryDetailLevel).toBe('metadata');
       expect(result.data.enableConversationLogging).toBe(true);
       expect(result.data.conversationRetentionDays).toBe(90);
     }

@@ -18,6 +18,7 @@ vi.mock('@/features/data-source/external-search/external-search.service', () => 
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { searchExternalSource } from '@/features/data-source/external-search/external-search.service';
+import { SearchError } from '@/features/search/search.types';
 import { searchExternalSourceForExperience } from './external-source-search';
 import type { SearchExperienceExternalSourceWithDetails, SearchExperienceWithIndexes } from './search-experience.types';
 
@@ -64,5 +65,38 @@ describe('searchExternalSourceForExperience', () => {
     await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x' }, EXPERIENCE)).rejects.toThrow(
       /^An external search source is unavailable$/,
     );
+  });
+
+  it('refuses a filter the engine cannot apply instead of returning the unfiltered set', async () => {
+    vi.mocked(searchExternalSource).mockResolvedValueOnce({
+      dataSource: { id: 'ds', name: 'Sitecore', fields: [] },
+      result: {
+        hits: [{ id: 'a', score: 1, source: { id: 'a' } }, { id: 'b', score: 1, source: { id: 'b' } }],
+        total: 2,
+        took: 3,
+        unappliedFilters: [{ field: 'title', reason: 'contains is not supported' }],
+        unappliedSort: [],
+      },
+    } as Awaited<ReturnType<typeof searchExternalSource>>);
+    const search = searchExternalSourceForExperience(
+      SOURCE, [], { query: 'x', filters: [{ field: 'title', operator: 'contains', value: 'zzz' }] }, EXPERIENCE,
+    );
+    await expect(search).rejects.toBeInstanceOf(SearchError);
+    await expect(search).rejects.toMatchObject({ code: 'INVALID_FILTER', message: "This search source can't filter on title" });
+  });
+
+  it('still answers when only the sort could not be applied', async () => {
+    vi.mocked(searchExternalSource).mockResolvedValueOnce({
+      dataSource: { id: 'ds', name: 'Sitecore', fields: [] },
+      result: {
+        hits: [{ id: 'a', score: 1, source: { id: 'a' } }],
+        total: 1,
+        took: 3,
+        unappliedFilters: [],
+        unappliedSort: [{ field: 'price', reason: 'not sortable' }],
+      },
+    } as Awaited<ReturnType<typeof searchExternalSource>>);
+    const response = await searchExternalSourceForExperience(SOURCE, [], { query: 'x' }, EXPERIENCE);
+    expect(response.hits.map((h) => h.id)).toEqual(['a']);
   });
 });

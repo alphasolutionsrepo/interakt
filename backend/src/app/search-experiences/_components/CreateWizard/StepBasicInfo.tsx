@@ -166,7 +166,7 @@ export function StepBasicInfo({
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Used in API endpoints: /api/v1/search-experiences/{formData.slug || 'your-slug'}
+          Used in API endpoints: /api/v1/search/{formData.slug || 'your-slug'}/search
         </p>
         {errors.slug && (
           <p className="text-sm text-destructive font-medium">{errors.slug}</p>

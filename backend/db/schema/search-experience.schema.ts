@@ -287,7 +287,7 @@ export const searchExperiences = pgTable('search_experiences', {
   isActive: boolean('is_active').default(true).notNull(),
 
   /** Telemetry detail level: 'off' | 'metadata' | 'full' */
-  telemetryDetailLevel: text('telemetry_detail_level').$type<'off' | 'metadata' | 'full'>().default('off').notNull(),
+  telemetryDetailLevel: text('telemetry_detail_level').$type<'off' | 'metadata' | 'full'>().default('metadata').notNull(),
 
   // ═══════════════════════════════════════════════════════════════════════════
   // AUDIT

@@ -8,6 +8,7 @@ import {
   sitecoreSettings,
   translateFilter,
   buildFilter,
+  untranslatableReason,
   buildSitecoreRequest,
   mapSitecoreResponse,
   isMatchAll,
@@ -114,6 +115,34 @@ describe('buildFilter', () => {
     ]);
     expect(filter).toEqual({ type: 'and', filters: [{ type: 'eq', name: 'type', value: 'a' }] });
     expect(unapplied).toEqual([{ field: 'name', operator, reason: `Sitecore Search has no '${operator}' filter` }]);
+  });
+});
+
+describe('filters Sitecore cannot be sent', () => {
+  it.each([
+    ['a range with no bounds', { field: 'price', operator: 'range', value: {} }, "'range' needs a from or to value"],
+    ['an empty list', { field: 'type', operator: 'in', value: [] }, "'in' needs at least one value"],
+    ['a comparison with no value', { field: 'price', operator: 'gte' }, "'gte' needs a value"],
+    ['a field-less condition', { field: '', operator: 'eq', value: 'x' }, "'eq' needs a field"],
+    ['an empty and', { field: '', operator: 'and', filters: [] }, "'and' needs at least one filter"],
+    ['an empty not', { field: '', operator: 'not', filters: [] }, "'not' needs a filter"],
+  ] as const)('explains %s', (_case, clause, reason) => {
+    expect(untranslatableReason(clause as never)).toBe(reason);
+  });
+
+  it('explains a problem inside a nested filter', () => {
+    const clause = { field: '', operator: 'or', filters: [{ field: 'price', operator: 'range', value: {} }] };
+    expect(untranslatableReason(clause as never)).toBe("'range' needs a from or to value");
+  });
+
+  it('finds nothing wrong with a filter it can send', () => {
+    expect(untranslatableReason({ field: 'price', operator: 'range', value: { from: 10 } })).toBeUndefined();
+  });
+
+  it('names the fixed filter that cannot be sent, and where to fix it', () => {
+    expect(() => buildFilter([{ field: 'price', operator: 'range', value: {} }], undefined)).toThrow(
+      "Fixed filter on 'price' can't be used: 'range' needs a from or to value. Fix it in the data source's settings.",
+    );
   });
 });
 

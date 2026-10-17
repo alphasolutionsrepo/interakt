@@ -149,7 +149,7 @@ Both search and chat are logged automatically with no extra setup. Every search 
 1. Writes the raw event to the trace store.
 2. Aggregates it into the analytics dashboards on the next processing run.
 
-You can configure the **observability level** per chat experience (Off / Metadata / Full) on the experience's edit page. Off means no traces — only aggregate counts. Full means everything is captured.
+You can configure the **observability level** per chat and search experience (Off / Metadata / Full) on the experience's edit page. Experiences start at Metadata: timings, counts and status, without query or message text. Off means no traces — only aggregate counts. Full means everything is captured.
 
 ## What about PII?
 

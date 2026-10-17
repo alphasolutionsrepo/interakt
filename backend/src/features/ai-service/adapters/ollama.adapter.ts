@@ -23,7 +23,7 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 
-import { AIProviderAdapter, AdapterError, parseNDJSONStream } from './types';
+import { AIProviderAdapter, AdapterError, parseNDJSONStream, requestSignal } from './types';
 
 /**
  * Ollama's structured-output `format` field. Ollama 0.5+ accepts a full JSON
@@ -252,7 +252,8 @@ export class OllamaAdapter implements AIProviderAdapter {
         const response = await this.makeStreamRequest(
             `${config.baseUrl}/api/chat`,
             ollamaRequest,
-            config
+            config,
+            request.signal
         );
 
         let fullContent = '';
@@ -429,7 +430,8 @@ export class OllamaAdapter implements AIProviderAdapter {
     private async makeStreamRequest(
         url: string,
         body: unknown,
-        config: AdapterConfig
+        config: AdapterConfig,
+        signal?: AbortSignal
     ): Promise<Response> {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), config.timeout);
@@ -441,7 +443,7 @@ export class OllamaAdapter implements AIProviderAdapter {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(body),
-                signal: controller.signal,
+                signal: requestSignal(controller.signal, signal),
             });
 
             clearTimeout(timeoutId);
