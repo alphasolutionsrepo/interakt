@@ -177,6 +177,21 @@ describe('V2 Pipeline Orchestrator', () => {
     });
   });
 
+  describe('model choice', () => {
+    it("uses the experience's model for every AI call in the turn, the answer included", async () => {
+      const deps = makeDeps();
+
+      await runV2Pipeline(makeInput(), deps);
+
+      const chat = deps.synthesis.chat as ReturnType<typeof vi.fn>;
+      const features = chat.mock.calls.map(([, options]) => options?.feature);
+      expect(features).toEqual(['turn-planner', 'param-extraction', 'response-synthesis']);
+      for (const [, options] of chat.mock.calls) {
+        expect(options).toMatchObject({ providerId: 'p1', modelId: 1 });
+      }
+    });
+  });
+
   describe('direct response (greeting)', () => {
     it('skips execution loop for direct responses', async () => {
       const chatMock = vi.fn()

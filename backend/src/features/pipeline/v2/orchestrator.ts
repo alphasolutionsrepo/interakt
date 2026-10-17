@@ -577,6 +577,8 @@ export async function runV2Pipeline(
         },
         trackedDeps.synthesis,
         onEvent,
+        // The answer is written by the experience's model, like every other step
+        { providerId: turnContext.providerId ?? undefined, modelId: turnContext.modelId ?? undefined },
       );
       if (result.data) {
         span.setAttribute('alpha.v2.preset', result.data.preset);
