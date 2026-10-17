@@ -33,6 +33,7 @@
 
 import 'server-only';
 
+import { asFieldType } from '../../../filter-value';
 import { SearchError, type FilterClause, type FieldConfig } from '../../../search.types';
 
 /** Field type lookup — maps field name to its type (e.g., 'array', 'text', 'keyword') */
@@ -268,25 +269,18 @@ function coerceAll(values: unknown[], fieldType?: string): string[] | ClauseDrop
 }
 
 function formatOperand(value: unknown, fieldType?: string): string | null {
+    const typed = asFieldType(value, fieldType);
+    if (typed === undefined) return null;
     switch (fieldType) {
-        case 'number': {
-            const n = typeof value === 'number' ? value : Number(String(value).trim());
-            return Number.isFinite(n) ? String(n) : null;
-        }
-        case 'boolean': {
-            if (typeof value === 'boolean') return value ? 'true' : 'false';
-            const s = String(value).trim().toLowerCase();
-            if (s === 'true') return 'true';
-            if (s === 'false') return 'false';
-            return null;
-        }
+        case 'number':
+        case 'boolean':
         case 'date':
         case 'datetime':
-            // Edm.DateTimeOffset literal — unquoted ISO 8601
-            return String(value);
+            // Bare literals; a date is an unquoted ISO 8601 Edm.DateTimeOffset
+            return String(typed);
         default:
             // text / keyword / url / email / json / image_url / unknown → quoted string
-            return `'${escapeOData(String(value))}'`;
+            return `'${escapeOData(String(typed))}'`;
     }
 }
 

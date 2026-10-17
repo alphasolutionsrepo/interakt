@@ -296,4 +296,52 @@ describe('sitecoreSearchConnector', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("sends filter values as the source's field types", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 0, content: [] }] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const fields = inferSitecoreFields({ total: 1, items: [{ id: 'a', type: 'page', year: 2024 }], facets: new Map([['type', 'Type']]) });
+      await sitecoreSearchConnector.search(connection(), {
+        query: '', offset: 0, limit: 3,
+        filters: [{ field: 'type', operator: 'eq', value: 80 }, { field: 'year', operator: 'gte', value: '2020' }],
+      }, fields);
+      const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+      expect(sent.widget.items[0].search.filter.filters).toEqual([
+        { type: 'eq', name: 'type', value: '80' },
+        { type: 'gte', name: 'year', value: 2020 },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+// Sitecore rejects a value that isn't its attribute's type: "filter value '80' not of the expected type"
+describe("filter values as their field's type", () => {
+  const types = new Map([['type', 'text'], ['price', 'number'], ['open', 'boolean']]);
+  const sent = (field: string, operator: string, value: unknown) =>
+    translateFilter({ field, operator, value } as never, types);
+
+  it("sends a value as its field's type when the source lists the field", () => {
+    expect(sent('type', 'eq', 80)).toEqual({ type: 'eq', name: 'type', value: '80' });
+    expect(sent('type', 'eq', true)).toEqual({ type: 'eq', name: 'type', value: 'true' });
+    expect(sent('price', 'lte', '80')).toEqual({ type: 'lte', name: 'price', value: 80 });
+    expect(sent('open', 'eq', 'true')).toEqual({ type: 'eq', name: 'open', value: true });
+    expect(sent('type', 'in', ['page', 80])).toEqual({ type: 'anyOf', name: 'type', values: ['page', '80'] });
+    expect(sent('price', 'range', { from: '10', to: 80 })).toEqual({
+      type: 'and', filters: [{ type: 'gte', name: 'price', value: 10 }, { type: 'lte', name: 'price', value: 80 }],
+    });
+    expect(translateFilter({ operator: 'not', filters: [{ field: 'type', operator: 'eq', value: 80 }] } as never, types))
+      .toEqual({ type: 'not', filter: { type: 'eq', name: 'type', value: '80' } });
+  });
+
+  it("reports a value that can't be its field's type as not applied", () => {
+    expect(buildFilter([], [{ field: 'price', operator: 'lte', value: 'cheap' }] as never, types).unapplied).toEqual([
+      { field: 'price', operator: 'lte', reason: `"cheap" is not a number value for 'price'` },
+    ]);
+  });
 });

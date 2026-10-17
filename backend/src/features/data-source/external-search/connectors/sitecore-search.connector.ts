@@ -109,7 +109,7 @@ export const sitecoreSearchConnector: ExternalSearchConnector = {
   async search(
     connection: ExternalConnection,
     request: ExternalSearchRequest,
-    _fields?: DataSourceField[],
+    fields?: DataSourceField[],
   ): Promise<ExternalSearchResult> {
     // Sitecore rejects limit 0 ("under minimum allowed value 1"), which a facet-only
     // request (enumerate, facet values) asks for: fetch one item and drop it.
@@ -121,6 +121,7 @@ export const sitecoreSearchConnector: ExternalSearchConnector = {
       facets: request.facets,
       sort: request.sort,
       fields: request.selectFields,
+      fieldTypes: fields ? new Map(fields.map((f) => [f.name, f.type])) : undefined,
     });
 
     const mapped = mapSitecoreResponse(call.json, connection.indexName, request.offset);
