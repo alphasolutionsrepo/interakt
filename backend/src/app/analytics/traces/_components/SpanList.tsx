@@ -1,11 +1,16 @@
 'use client';
 
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn } from '@/lib/utils';
 import { Bot, AlertCircle, Wrench } from 'lucide-react';
-import { getDurationColor } from '@/features/analytics/analytics-thresholds';
+
 import type { SpanListItem } from '../_lib/api-client';
+import { traceStatus } from '../_lib/trace-status';
+
 import { humanizeOpName } from './SpanDetailPanel';
+
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { getDurationColor } from '@/features/analytics/analytics-thresholds';
+import { cn } from '@/lib/utils';
 
 interface SpanListProps {
   spans: SpanListItem[];
@@ -55,7 +60,8 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
     <ScrollArea className="h-full">
       <div className="divide-y">
         {spans.map((span) => {
-          const isError = span.statusCode === 'ERROR';
+          const status = traceStatus(span);
+          const isError = status === 'error';
           const isSelected = span.id === selectedSpanId;
           const message = span.userMessage?.trim();
           const experience = span.experienceSlug ?? span.experienceType ?? null;
@@ -76,7 +82,7 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
                 {isError ? (
                   <AlertCircle className="size-3.5 text-destructive" />
                 ) : (
-                  <span className="block size-2.5 rounded-full bg-green-500 mt-0.5" />
+                  <span className={cn('block size-2.5 rounded-full mt-0.5', status === 'cancelled' ? 'bg-muted-foreground/40' : 'bg-green-500')} />
                 )}
               </div>
 
@@ -109,6 +115,9 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
                     </>
                   )}
                   <span>{relativeTime(span.startTime)}</span>
+                  {status === 'cancelled' && (
+                    <Badge variant="secondary" className="text-[10px]">Cancelled</Badge>
+                  )}
                 </div>
               </div>
 

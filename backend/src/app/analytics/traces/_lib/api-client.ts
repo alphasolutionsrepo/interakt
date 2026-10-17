@@ -22,6 +22,8 @@ export interface SpanListItem {
   sessionId: string | null;
   userMessage: string | null;
   experienceSlug: string | null;
+  /** A summary the visitor left before it finished */
+  cancelled: boolean;
 }
 
 export interface SpanDetail extends SpanListItem {
