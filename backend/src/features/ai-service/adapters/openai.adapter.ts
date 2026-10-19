@@ -25,6 +25,7 @@ import type {
     ToolParameterSchema,
     ResponseFormat,
 } from '../ai-service.types';
+import { estimateChatUsage } from '../utils/token-counter';
 import { AIProviderAdapter, AdapterError, parseSSEStream, requestSignal } from './types';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -556,7 +557,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
         yield {
             content: '',
             done: true,
-            usage: usage ?? this.estimateUsage(request, fullContent),
+            usage: usage ?? estimateChatUsage(request.messages, fullContent, config.modelKey),
             finishReason,
             ...(toolCalls.length > 0 && { toolCalls }),
         };
@@ -756,33 +757,6 @@ export class OpenAIAdapter implements AIProviderAdapter {
     ): 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error' {
         if (!reason) return 'stop';
         return reason;
-    }
-
-    /**
-     * Estimate usage when not provided (fallback)
-     */
-    private estimateUsage(request: ChatRequest, output: string): TokenUsage {
-        // Rough estimation: ~4 chars per token
-        const inputTokens = Math.ceil(
-            request.messages.reduce((acc, m) => {
-                if (typeof m.content === 'string') {
-                    return acc + m.content.length;
-                }
-                // For array content, estimate based on text blocks
-                return acc + m.content.reduce((sum, block) => {
-                    if ('text' in block) return sum + block.text.length;
-                    if ('content' in block) return sum + block.content.length;
-                    return sum;
-                }, 0);
-            }, 0) / 4
-        );
-        const outputTokens = Math.ceil(output.length / 4);
-
-        return {
-            inputTokens,
-            outputTokens,
-            totalTokens: inputTokens + outputTokens,
-        };
     }
 
     /**

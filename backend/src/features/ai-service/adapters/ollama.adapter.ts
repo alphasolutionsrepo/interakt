@@ -23,6 +23,7 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 
+import { estimateChatUsage } from '../utils/token-counter';
 import { AIProviderAdapter, AdapterError, parseNDJSONStream, requestSignal } from './types';
 
 /**
@@ -283,7 +284,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         // Final chunk with usage
         const usage = lastChunk
             ? this.extractUsageFromChat(lastChunk)
-            : this.estimateUsage(request, fullContent);
+            : estimateChatUsage(request.messages, fullContent, config.modelKey);
 
         yield {
             content: '',
@@ -530,23 +531,6 @@ export class OllamaAdapter implements AIProviderAdapter {
             inputTokens: response.prompt_eval_count ?? 0,
             outputTokens: response.eval_count ?? 0,
             totalTokens: (response.prompt_eval_count ?? 0) + (response.eval_count ?? 0),
-        };
-    }
-
-    /**
-     * Estimate usage when not provided
-     */
-    private estimateUsage(request: ChatRequest, output: string): TokenUsage {
-        // Rough estimation: ~4 chars per token
-        const inputTokens = Math.ceil(
-            request.messages.reduce((acc, m) => acc + m.content.length, 0) / 4
-        );
-        const outputTokens = Math.ceil(output.length / 4);
-
-        return {
-            inputTokens,
-            outputTokens,
-            totalTokens: inputTokens + outputTokens,
         };
     }
 

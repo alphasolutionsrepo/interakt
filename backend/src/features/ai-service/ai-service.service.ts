@@ -24,6 +24,7 @@ import { getAdapter } from './adapters';
 import { withResilience, withRetry } from './ai-service.resilience';
 import { trackUsage, updateRealtimeMetrics } from './ai-service.analytics';
 import { processEmbeddingBatches } from './utils/batch-processor';
+import { estimateChatUsage } from './utils/token-counter';
 import { AI_SERVICE_DEFAULTS } from './ai-service.validation';
 import { traceGenerateText, traceChat as traceChatSpan, traceStreamChat, traceGenerateEmbeddings } from './ai-service.tracing';
 import { ATTR } from '@/features/telemetry';
@@ -493,6 +494,10 @@ export async function* streamChat(
     const firstChunkTime = { value: 0 };
 
     let config: ResolvedProviderConfig | undefined;
+    let lastChunk: ChatStreamChunk | undefined;
+    let streamedText = '';
+    let ended = false;
+    let failed = false;
 
     try {
         config = await resolveProviderConfig('chat', options);
@@ -565,13 +570,12 @@ export async function* streamChat(
             }
         );
 
-        let lastChunk: ChatStreamChunk | undefined;
-
         for await (const chunk of tracedStream) {
             // Track time to first token
             if (firstChunkTime.value === 0 && chunk.content) {
                 firstChunkTime.value = Date.now() - startTime;
             }
+            streamedText += chunk.content;
 
             // Transform to external format with metadata
             const outputChunk: ChatStreamChunk = {
@@ -594,35 +598,9 @@ export async function* streamChat(
             lastChunk = outputChunk;
             yield outputChunk;
         }
-
-        // Track analytics on completion
-        if (lastChunk?.done && config) {
-            const durationMs = Date.now() - startTime;
-            const metrics: AIUsageMetrics = {
-                requestId,
-                operation: 'chat',
-                providerId: config.providerId,
-                providerKey: config.providerKey,
-                modelId: config.modelId,
-                modelKey: config.modelKey,
-                inputTokens: lastChunk.usage?.inputTokens ?? 0,
-                outputTokens: lastChunk.usage?.outputTokens ?? 0,
-                totalTokens: lastChunk.usage?.totalTokens ?? 0,
-                durationMs,
-                timeToFirstToken: firstChunkTime.value,
-                success: true,
-                userId: options?.userId,
-                sessionId: options?.sessionId,
-                feature: options?.feature,
-                metadata: {
-                    streaming: true,
-                    messageCount: messages.length,
-                },
-            };
-            void trackUsage(metrics);
-            updateRealtimeMetrics(metrics);
-        }
+        ended = true;
     } catch (error) {
+        failed = true;
         const durationMs = Date.now() - startTime;
 
         if (config) {
@@ -652,6 +630,43 @@ export async function* streamChat(
 
         logger.error('Streaming chat failed', error as Error, { requestId });
         throw error;
+    } finally {
+        // Usage is recorded however the stream ends. The caller may stop reading
+        // (a break closes this generator, so nothing after the loop runs) or abort
+        // its signal; the model still did the work up to that point.
+        if (config && !failed) {
+            const complete = lastChunk?.done === true;
+            const cancelled = !complete && (!ended || options?.signal?.aborted === true);
+            const usage = complete
+                ? lastChunk!.usage
+                : estimateChatUsage(messages, streamedText, config.modelKey);
+            const metrics: AIUsageMetrics = {
+                requestId,
+                operation: 'chat',
+                providerId: config.providerId,
+                providerKey: config.providerKey,
+                modelId: config.modelId,
+                modelKey: config.modelKey,
+                inputTokens: usage?.inputTokens ?? 0,
+                outputTokens: usage?.outputTokens ?? 0,
+                totalTokens: usage?.totalTokens ?? 0,
+                durationMs: Date.now() - startTime,
+                // None when no text arrived (e.g. cancelled while the model read the prompt)
+                timeToFirstToken: firstChunkTime.value || undefined,
+                success: true,
+                userId: options?.userId,
+                sessionId: options?.sessionId,
+                feature: options?.feature,
+                metadata: {
+                    streaming: true,
+                    messageCount: messages.length,
+                    ...(cancelled && { cancelled: true }),
+                    ...(!complete && { usageEstimated: true }),
+                },
+            };
+            void trackUsage(metrics);
+            updateRealtimeMetrics(metrics);
+        }
     }
 }
 
