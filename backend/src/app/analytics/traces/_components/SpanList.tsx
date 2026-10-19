@@ -1,8 +1,10 @@
 'use client';
 
-import { Bot, AlertCircle, Wrench } from 'lucide-react';
+import { Bot, AlertCircle, MessageSquare, Search, Sparkles, Wrench, type LucideIcon } from 'lucide-react';
+import { Fragment } from 'react';
 
 import type { SpanListItem } from '../_lib/api-client';
+import { traceFacts } from '../_lib/trace-facts';
 import { traceStatus } from '../_lib/trace-status';
 
 import { humanizeOpName } from './SpanDetailPanel';
@@ -38,12 +40,46 @@ function durationColor(ms: number): string {
   return getDurationColor(ms);
 }
 
-/** What a request-level trace is, shown in the row's subline. */
-const TRACE_KINDS: Record<string, string> = {
-  'chat.ai_experience.turn': 'Chat',
-  'search_experience.search': 'Search',
-  'search_experience.summary': 'AI summary',
+/**
+ * What a request-level trace is, shown as a coloured tag at the start of the row.
+ * `content` names what the visitor sent, which only 'Full' telemetry stores.
+ */
+const TRACE_KINDS: Record<string, { label: string; icon: LucideIcon; className: string; content: 'query' | 'message' }> = {
+  'chat.ai_experience.turn': {
+    label: 'Chat',
+    icon: MessageSquare,
+    content: 'message',
+    className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
+  },
+  'search_experience.search': {
+    label: 'Search',
+    icon: Search,
+    content: 'query',
+    className: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
+  },
+  'search_experience.summary': {
+    label: 'AI summary',
+    icon: Sparkles,
+    content: 'query',
+    className: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
+  },
 };
+
+/**
+ * A trace without the visitor's words comes from 'Metadata only' telemetry: 'Off'
+ * records no trace and 'Full' records the words. Says so, and how to change it.
+ */
+function NotStored({ content }: { content: 'query' | 'message' }) {
+  const noun = content === 'query' ? 'Query' : 'Message';
+  return (
+    <span
+      className="italic font-normal text-muted-foreground"
+      title={`Recorded with the experience's Telemetry setting on "Metadata only", which doesn't store what visitors ${content === 'query' ? 'search for' : 'write'}. Set it to "Full" to see ${content === 'query' ? 'queries' : 'messages'} in new traces.`}
+    >
+      {noun} not stored · Metadata only
+    </span>
+  );
+}
 
 export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps) {
   if (spans.length === 0) {
@@ -66,6 +102,7 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
           const message = span.userMessage?.trim();
           const experience = span.experienceSlug ?? span.experienceType ?? null;
           const kind = TRACE_KINDS[span.operationName];
+          const facts = traceFacts(span);
 
           return (
             <button
@@ -88,18 +125,29 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
 
               {/* Content */}
               <div className="min-w-0 flex-1">
-                {/* Message preview */}
-                <p className={cn(
-                  'truncate text-sm font-medium leading-snug',
-                  isError && 'text-destructive',
-                )}>
-                  {message
-                    ? (message.length > 72 ? message.slice(0, 72) + '…' : message)
-                    : <span className="italic text-muted-foreground">{humanizeOpName(span.operationName)} · no message recorded</span>
-                  }
-                </p>
+                {/* Kind tag + message preview */}
+                <div className="flex items-center gap-2 min-w-0">
+                  {kind && (
+                    <span className={cn('inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium', kind.className)}>
+                      <kind.icon className="size-3" />
+                      {kind.label}
+                    </span>
+                  )}
+                  {/* Fills the rest of the row: sized to its text, truncation would clip an italic last letter */}
+                  <p className={cn(
+                    'min-w-0 flex-1 truncate pr-0.5 text-sm font-medium leading-snug',
+                    isError && 'text-destructive',
+                  )}>
+                    {message
+                      ? (message.length > 72 ? message.slice(0, 72) + '…' : message)
+                      : kind
+                        ? <NotStored content={kind.content} />
+                        : <span className="italic font-normal text-muted-foreground">{humanizeOpName(span.operationName)} · no message recorded</span>
+                    }
+                  </p>
+                </div>
 
-                {/* Subline: experience + time */}
+                {/* Subline: experience, facts, time */}
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                   {experience && (
                     <>
@@ -108,13 +156,13 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
                       <span className="text-muted-foreground/40">·</span>
                     </>
                   )}
-                  {kind && (
-                    <>
-                      <span>{kind}</span>
+                  {facts.map((fact) => (
+                    <Fragment key={fact}>
+                      <span className="shrink-0 font-mono">{fact}</span>
                       <span className="text-muted-foreground/40">·</span>
-                    </>
-                  )}
-                  <span>{relativeTime(span.startTime)}</span>
+                    </Fragment>
+                  ))}
+                  <span className="shrink-0">{relativeTime(span.startTime)}</span>
                   {status === 'cancelled' && (
                     <Badge variant="secondary" className="text-[10px]">Cancelled</Badge>
                   )}
