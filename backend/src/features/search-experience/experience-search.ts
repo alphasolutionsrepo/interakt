@@ -592,9 +592,7 @@ function rankEntries(
 
   // A source can't return the same hit twice, but keep the first if one ever does
   const seen = new Set<string>();
-  return ranked
-    .filter(({ key }) => (seen.has(key) ? false : (seen.add(key), true)))
-    .map(({ set, hit, rrf }) => ({ set, hit, rrf }));
+  return ranked.filter(({ key }) => (seen.has(key) ? false : (seen.add(key), true)));
 }
 
 function fieldValue(source: Record<string, unknown>, path: string): unknown {

@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { Database, Globe, Sparkles, Binary, ChevronRight, Search, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ATTR } from '@/features/telemetry/attribute-keys';
 import { cn } from '@/lib/utils';
 import type { SpanDetail, SpanListItem } from '../_lib/api-client';
 
@@ -163,7 +164,7 @@ export function SearchRequestBody({ rootSpan, spans }: { rootSpan: SpanListItem;
           <div className="flex items-center gap-2">
             {isSummary ? <FileText className="size-4 text-amber-500" /> : <Search className="size-4 text-blue-500" />}
             <span className="text-sm font-semibold">{isSummary ? 'AI summary of search results' : 'Search request'}</span>
-            {isSummary && attr(root, 'alpha.summary.cancelled') === 'true' && (
+            {isSummary && attr(root, ATTR.SUMMARY_CANCELLED) === 'true' && (
               <Badge variant="secondary" className="text-[10px]">Cancelled by the visitor</Badge>
             )}
             {source && <Badge variant="outline" className="ml-auto text-[10px]">{SOURCE_LABELS[source] ?? source}</Badge>}

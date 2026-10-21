@@ -108,6 +108,12 @@ export function createSummaryStream(
       await flushTelemetry();
       if (!cancelled) controller.close();
     };
+    // A cancel is not a failure: mark the trace, note it, and end quietly
+    const endCancelled = async () => {
+      span.setAttribute(ATTR.SUMMARY_CANCELLED, true);
+      logger.info('Summary cancelled by the client', { experienceId: experience.id });
+      await finish();
+    };
 
     try {
       const maxTokens = summaryConfig.maxTokens ?? 500;
@@ -161,12 +167,7 @@ export function createSummaryStream(
         }
       }
 
-      if (cancelled) {
-        span.setAttribute(ATTR.SUMMARY_CANCELLED, true);
-        logger.info('Summary cancelled by the client', { experienceId: experience.id });
-        await finish();
-        return;
-      }
+      if (cancelled) return await endCancelled();
 
       send('[DONE]');
       await finish();
@@ -177,13 +178,8 @@ export function createSummaryStream(
         resultCount: validated.results.length,
       });
     } catch (error) {
-      if (cancelled) {
-        // The model call ended because the client went away
-        span.setAttribute(ATTR.SUMMARY_CANCELLED, true);
-        logger.info('Summary cancelled by the client', { experienceId: experience.id });
-        await finish();
-        return;
-      }
+      // The model call ended because the client went away
+      if (cancelled) return await endCancelled();
 
       logger.error('Summary generation failed', {
         experienceId: experience.id,
