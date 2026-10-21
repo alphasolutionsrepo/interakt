@@ -19,8 +19,10 @@
 import 'server-only';
 
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
+import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
 import { getDateRange, type TimeRange } from './analytics-query.service';
+import { textAvailability } from './insight-text';
 import { clusterIntents, type IntentClusteringResult } from './intent-clustering';
 import { detectProactiveInsights } from './proactive-insights.service';
 import type { ProcessingStep } from '@/db/analytics-schema/analytics-insights.schema';
@@ -222,7 +224,7 @@ export async function runAnalyticsProcessing(
       await upsertInsight(
         'intent_clusters',
         timeRange,
-        clusterResult as unknown as Record<string, unknown>,
+        { ...clusterResult, ...textAvailability([...spans, ...chatSpans], [ATTR.V2_PLAN_REASONING, ATTR.CHAT_USER_MESSAGE]) },
         spans.length,
         clusterStep.durationMs
       );
@@ -246,7 +248,7 @@ export async function runAnalyticsProcessing(
       await upsertInsight(
         'demand_signals',
         timeRange,
-        demandResult,
+        { ...demandResult, ...textAvailability(toolSpans, [ATTR.TOOL_INPUT_PARAMS, ATTR.SEARCH_QUERY]) },
         spans.length,
         demandStep.durationMs
       );
