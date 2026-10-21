@@ -24,7 +24,7 @@ import type {
 } from '../ai-service.types';
 
 import { estimateChatUsage } from '../utils/token-counter';
-import { AIProviderAdapter, AdapterError, parseNDJSONStream, requestSignal } from './types';
+import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal } from './types';
 
 /**
  * Ollama's structured-output `format` field. Ollama 0.5+ accepts a full JSON
@@ -462,12 +462,7 @@ export class OllamaAdapter implements AIProviderAdapter {
             }
 
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new AdapterError(
-                    'Request timed out',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
+                throw abortedRequestError(this.providerKey, signal);
             }
 
             if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {

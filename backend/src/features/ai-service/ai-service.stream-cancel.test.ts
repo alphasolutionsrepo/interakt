@@ -30,6 +30,7 @@ vi.mock('@/features/ai-providers/ai-providers.service', () => ({
   getResolvedDefaults: vi.fn(),
 }));
 
+import { OllamaAdapter, OpenAIAdapter } from './adapters';
 import { streamChat } from './ai-service.service';
 
 const abortError = () => new DOMException('This operation was aborted', 'AbortError');
@@ -68,6 +69,13 @@ const oneWordModel = vi.fn(async (_url: string, init?: RequestInit) => {
   });
   return new Response(body);
 });
+
+/** A provider that is briefly unavailable (503), then slow on the retry until aborted */
+const blipThenSilentModel = vi.fn(async (url: string, init?: RequestInit) =>
+  blipThenSilentModel.mock.calls.length === 1
+    ? new Response('{"error":"service unavailable"}', { status: 503 })
+    : silentModel(url, init),
+);
 
 /** A complete Ollama answer with the usage the model reports */
 const completeModel = vi.fn(async () => new Response(
@@ -180,5 +188,53 @@ describe('cancelling a streaming chat call', () => {
     })()).rejects.toThrow();
     expect(log.error).toHaveBeenCalled();
     expect(recorded()).toMatchObject({ success: false });
+  });
+});
+
+describe('cancelling during the retry of a failed first request', () => {
+  it.each(['ollama', 'openai'])('ends like any cancel: recorded as cancelled, not as a failure (%s API style)', async (key) => {
+    provider.key = key;
+    vi.stubGlobal('fetch', blipThenSilentModel);
+    const caller = new AbortController();
+
+    const done = (async () => {
+      for await (const chunk of run(caller.signal)) void chunk;
+    })();
+    await vi.waitFor(() => expect(blipThenSilentModel).toHaveBeenCalledTimes(2)); // the retry is waiting
+    caller.abort();
+    await done;
+
+    expect(log.warn).toHaveBeenCalledOnce(); // the retry
+    expect(log.error).not.toHaveBeenCalled();
+    expect(recorded()).toMatchObject({
+      success: true,
+      inputTokens: PROMPT_ESTIMATE,
+      outputTokens: 0,
+      metadata: { cancelled: true, usageEstimated: true },
+    });
+  });
+});
+
+describe('an aborted provider request', () => {
+  const request = { messages: [{ role: 'user' as const, content: prompt }], stream: true };
+  const config = (timeout: number) => ({ baseUrl: 'http://model.test', modelKey: 'qwen2.5:14b', timeout, settings: {} });
+  const firstChunk = (adapter: OllamaAdapter | OpenAIAdapter, timeout: number, signal?: AbortSignal) =>
+    adapter.streamChat({ ...request, signal }, config(timeout))[Symbol.asyncIterator]().next();
+
+  it.each([new OllamaAdapter(), new OpenAIAdapter()])('is a cancel when the caller aborted, not a retryable timeout ($providerKey)', async (adapter) => {
+    vi.stubGlobal('fetch', silentModel);
+    const caller = new AbortController();
+    const pending = firstChunk(adapter, 60_000, caller.signal);
+    await vi.waitFor(() => expect(silentModel).toHaveBeenCalled());
+    caller.abort();
+
+    await expect(pending).rejects.toMatchObject({ message: 'Request cancelled by the caller', retryable: false });
+  });
+
+  it.each([new OllamaAdapter(), new OpenAIAdapter()])('is a retryable timeout when our own timer fired ($providerKey)', async (adapter) => {
+    vi.stubGlobal('fetch', silentModel);
+
+    await expect(firstChunk(adapter, 20, new AbortController().signal))
+      .rejects.toMatchObject({ message: 'Request timed out', retryable: true });
   });
 });

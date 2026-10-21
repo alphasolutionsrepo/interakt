@@ -561,11 +561,13 @@ export async function* streamChat(
                         provider: config!.providerKey,
                         error: (err as Error).message,
                     });
-                    const retryStream = adapter.streamChat(
-                        request,
-                        toAdapterConfig(config!)
-                    );
-                    yield* retryStream;
+                    try {
+                        yield* adapter.streamChat(request, toAdapterConfig(config!));
+                    } catch (retryErr) {
+                        // A cancel during the retry ends the stream the same way
+                        if (options?.signal?.aborted) return;
+                        throw retryErr;
+                    }
                 }
             }
         );

@@ -148,6 +148,17 @@ export function requestSignal(timeout: AbortSignal, caller?: AbortSignal): Abort
 }
 
 /**
+ * The error for a provider request that was aborted. A caller's cancel (a summary
+ * the visitor left) is not a timeout: it is not retried and not a provider failure.
+ * Only our own timer firing is a timeout.
+ */
+export function abortedRequestError(providerKey: string, caller?: AbortSignal): AdapterError {
+    return caller?.aborted
+        ? new AdapterError('Request cancelled by the caller', providerKey, undefined, false)
+        : new AdapterError('Request timed out', providerKey, undefined, true);
+}
+
+/**
  * Read a provider's streaming response body as text.
  *
  * A caller that stops early (a summary the visitor cancelled) closes the body,

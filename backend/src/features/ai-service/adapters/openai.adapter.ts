@@ -26,7 +26,7 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
-import { AIProviderAdapter, AdapterError, parseSSEStream, requestSignal } from './types';
+import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal } from './types';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -687,12 +687,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
             }
 
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new AdapterError(
-                    'Request timed out',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
+                throw abortedRequestError(this.providerKey, signal);
             }
 
             throw new AdapterError(
