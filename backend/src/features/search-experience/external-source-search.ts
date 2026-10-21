@@ -121,6 +121,21 @@ export async function searchExternalSourceForExperience(
           // Asking only for hidden fields gets the default fields, as with no includeFields
           selectFields: selectFields?.length ? selectFields : undefined,
         });
+        // A filter the engine can't apply would return the unfiltered set as if it were the
+        // answer. Refuse it, as a managed index does: alone this source answers 400; next to
+        // other sources it drops out and the response is marked partial. Refused inside the
+        // span, so the trace step shows the refusal instead of a normal answer.
+        const unapplied = searched.result.unappliedFilters;
+        if (unapplied.length > 0) {
+          const fields = [...new Set(unapplied.map((u) => u.field))];
+          logger.warn('External index cannot apply a filter; refusing the search', {
+            dataSourceId: source.dataSourceId,
+            unappliedFilters: unapplied.map((u) => `${u.field}: ${u.reason}`),
+          });
+          track({ total: 0, returned: 0, error: `filter not applied: ${fields.join(', ')}` });
+          throw new SearchError(`This search source can't filter on ${fields.join(', ')}`, 'INVALID_FILTER', { fields });
+        }
+        // Counts only for an answer: a refused search's hits are the unfiltered set
         span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, searched.result.total);
         span.setAttribute(ATTR.SEARCH_RETURNED, searched.result.hits.length);
         span.setAttribute(ATTR.SEARCH_ES_TOOK_MS, searched.result.took);
@@ -128,6 +143,7 @@ export async function searchExternalSourceForExperience(
       }
     ));
   } catch (error) {
+    if (error instanceof SearchError && error.code === 'INVALID_FILTER') throw error; // the refusal above
     const message = error instanceof Error ? error.message : String(error);
     track({ total: 0, returned: 0, error: message });
     // The engine's message (status, response body) is for admins: logs, analytics and
@@ -140,18 +156,6 @@ export async function searchExternalSourceForExperience(
     throw new SearchError('An external search source is unavailable', 'PROVIDER_ERROR');
   }
 
-  // A filter the engine can't apply would return the unfiltered set as if it were the
-  // answer. Refuse it, as a managed index does: alone this source answers 400; next to
-  // other sources it drops out and the response is marked partial.
-  if (result.unappliedFilters.length > 0) {
-    const fields = [...new Set(result.unappliedFilters.map((u) => u.field))];
-    logger.warn('External index cannot apply a filter; refusing the search', {
-      dataSourceId: source.dataSourceId,
-      unappliedFilters: result.unappliedFilters.map((u) => `${u.field}: ${u.reason}`),
-    });
-    track({ total: 0, returned: 0, error: `filter not applied: ${fields.join(', ')}` });
-    throw new SearchError(`This search source can't filter on ${fields.join(', ')}`, 'INVALID_FILTER', { fields });
-  }
   if (result.unappliedSort.length > 0) {
     logger.warn('External index could not apply part of the sort', {
       dataSourceId: source.dataSourceId,
