@@ -104,7 +104,10 @@ function StepRow({ span, rootStart, rootDuration }: { span: SpanDetail; rootStar
           {hasContent && <ChevronRight className={cn('size-3.5 text-muted-foreground transition-transform', open && 'rotate-90')} />}
         </div>
         {/* Where this step sits within the request */}
-        <div className="mt-2 h-1.5 w-full rounded-full bg-muted">
+        <div
+          className="mt-2 h-1.5 w-full rounded-full bg-muted"
+          title={`Started ${fmt(offset)} into the request · took ${fmt(span.durationMs)} of ${fmt(rootDuration)}`}
+        >
           <div className="h-1.5 rounded-full bg-primary/40" style={{ marginLeft: `${left}%`, width: `${Math.min(width, 100 - left)}%` }} />
         </div>
         {facts.length > 0 && (
@@ -179,11 +182,6 @@ export function SearchRequestBody({ rootSpan, spans }: { rootSpan: SpanListItem;
               Duration: <span className="font-medium text-foreground">{fmt(rootSpan.durationMs)}</span>
             </span>
           </div>
-          {!rootSpan.userMessage && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              The query is recorded only when the experience&apos;s telemetry level is Full.
-            </p>
-          )}
         </div>
 
         {steps.length === 0 ? (

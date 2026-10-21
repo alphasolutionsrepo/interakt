@@ -5,8 +5,10 @@ import { Fragment } from 'react';
 
 import type { SpanListItem } from '../_lib/api-client';
 import { traceFacts } from '../_lib/trace-facts';
+import { traceContent, traceMessage } from '../_lib/trace-message';
 import { traceStatus } from '../_lib/trace-status';
 
+import { EmptyMessage, NotStored } from './NotStored';
 import { humanizeOpName } from './SpanDetailPanel';
 
 import { Badge } from '@/components/ui/badge';
@@ -40,46 +42,24 @@ function durationColor(ms: number): string {
   return getDurationColor(ms);
 }
 
-/**
- * What a request-level trace is, shown as a coloured tag at the start of the row.
- * `content` names what the visitor sent, which only 'Full' telemetry stores.
- */
-const TRACE_KINDS: Record<string, { label: string; icon: LucideIcon; className: string; content: 'query' | 'message' }> = {
+/** What a request-level trace is, shown as a coloured tag at the start of the row. */
+const TRACE_KINDS: Record<string, { label: string; icon: LucideIcon; className: string }> = {
   'chat.ai_experience.turn': {
     label: 'Chat',
     icon: MessageSquare,
-    content: 'message',
     className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
   },
   'search_experience.search': {
     label: 'Search',
     icon: Search,
-    content: 'query',
     className: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
   },
   'search_experience.summary': {
     label: 'AI summary',
     icon: Sparkles,
-    content: 'query',
     className: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
   },
 };
-
-/**
- * A trace without the visitor's words comes from 'Metadata only' telemetry: 'Off'
- * records no trace and 'Full' records the words. Says so, and how to change it.
- */
-function NotStored({ content }: { content: 'query' | 'message' }) {
-  const noun = content === 'query' ? 'Query' : 'Message';
-  return (
-    <span
-      className="italic font-normal text-muted-foreground"
-      title={`Recorded with the experience's Telemetry setting on "Metadata only", which doesn't store what visitors ${content === 'query' ? 'search for' : 'write'}. Set it to "Full" to see ${content === 'query' ? 'queries' : 'messages'} in new traces.`}
-    >
-      {noun} not stored · Metadata only
-    </span>
-  );
-}
 
 export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps) {
   if (spans.length === 0) {
@@ -99,7 +79,7 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
           const status = traceStatus(span);
           const isError = status === 'error';
           const isSelected = span.id === selectedSpanId;
-          const message = span.userMessage?.trim();
+          const message = traceMessage(span.userMessage);
           const experience = span.experienceSlug ?? span.experienceType ?? null;
           const kind = TRACE_KINDS[span.operationName];
           const facts = traceFacts(span);
@@ -138,11 +118,13 @@ export function SpanList({ spans, selectedSpanId, onSelectSpan }: SpanListProps)
                     'min-w-0 flex-1 truncate pr-0.5 text-sm font-medium leading-snug',
                     isError && 'text-destructive',
                   )}>
-                    {message
-                      ? (message.length > 72 ? message.slice(0, 72) + '…' : message)
-                      : kind
-                        ? <NotStored content={kind.content} />
-                        : <span className="italic font-normal text-muted-foreground">{humanizeOpName(span.operationName)} · no message recorded</span>
+                    {message.kind === 'text'
+                      ? (message.text.length > 72 ? message.text.slice(0, 72) + '…' : message.text)
+                      : !kind
+                        ? <span className="italic font-normal text-muted-foreground">{humanizeOpName(span.operationName)} · no message recorded</span>
+                        : message.kind === 'empty'
+                          ? <EmptyMessage content={traceContent(span.operationName)} />
+                          : <NotStored content={traceContent(span.operationName)} />
                     }
                   </p>
                 </div>
