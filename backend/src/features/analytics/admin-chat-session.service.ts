@@ -36,6 +36,9 @@ export interface CreateSessionInput {
   title?: string;
   providerId?: string;
   modelId?: number;
+  /** Experience the conversation is scoped to (omit for all experiences) */
+  experienceId?: string;
+  experienceName?: string;
 }
 
 export interface UpdateSessionInput {
@@ -96,6 +99,8 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Adm
     messages: [],
     providerId: input.providerId,
     modelId: input.modelId,
+    experienceId: input.experienceId ?? null,
+    experienceName: input.experienceId ? input.experienceName ?? null : null,
     totalTokens: 0,
     totalInputTokens: 0,
     totalOutputTokens: 0,
@@ -137,6 +142,8 @@ export async function listSessions(options: ListSessionsOptions = {}): Promise<A
     .select({
       id: adminChatSessions.id,
       title: adminChatSessions.title,
+      experienceId: adminChatSessions.experienceId,
+      experienceName: adminChatSessions.experienceName,
       messageCount: adminChatSessions.messageCount,
       lastMessageAt: adminChatSessions.lastMessageAt,
       createdAt: adminChatSessions.createdAt,

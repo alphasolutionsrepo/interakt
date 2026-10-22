@@ -74,6 +74,11 @@ export const adminChatSessions = pgTable(
     // Messages stored as JSON array
     messages: json('messages').$type<AdminChatMessage[]>().notNull().default([]),
 
+    // Experience the conversation is scoped to (null = all experiences). The name is a
+    // snapshot so the scope stays readable after the experience is renamed or deleted.
+    experienceId: uuid('experience_id'),
+    experienceName: varchar('experience_name', { length: 255 }),
+
     // AI configuration used
     providerId: varchar('provider_id', { length: 255 }),
     modelId: integer('model_id'),
@@ -97,6 +102,7 @@ export const adminChatSessions = pgTable(
     createdAtIdx: index('idx_admin_chat_sessions_created').on(table.createdAt),
     lastMessageAtIdx: index('idx_admin_chat_sessions_last_message').on(table.lastMessageAt),
     titleIdx: index('idx_admin_chat_sessions_title').on(table.title),
+    experienceIdx: index('idx_admin_chat_sessions_experience').on(table.experienceId),
   })
 );
 
@@ -110,6 +116,8 @@ export type InsertAdminChatSession = InferInsertModel<typeof adminChatSessions>;
 export interface AdminChatSessionSummary {
   id: string;
   title: string;
+  experienceId: string | null;
+  experienceName: string | null;
   messageCount: number;
   lastMessageAt: Date | null;
   createdAt: Date;

@@ -306,7 +306,7 @@ export async function handleGetAIUsage(request: NextRequest) {
         ? { from: new Date(params.from), to: new Date(params.to) }
         : undefined;
 
-    const metrics = await getAIUsageMetrics(params.timeRange as TimeRange, customRange);
+    const metrics = await getAIUsageMetrics(params.timeRange as TimeRange, params.experienceId, customRange);
 
     return successResponse(metrics);
   } catch (error) {
@@ -335,7 +335,7 @@ export async function handleGetToolUsage(request: NextRequest) {
         ? { from: new Date(params.from), to: new Date(params.to) }
         : undefined;
 
-    const metrics = await getToolUsageMetrics(params.timeRange as TimeRange, customRange);
+    const metrics = await getToolUsageMetrics(params.timeRange as TimeRange, params.experienceId, customRange);
 
     return successResponse(metrics);
   } catch (error) {
@@ -426,8 +426,8 @@ export async function handleGetDashboard(request: NextRequest) {
       getZeroResultQueries(timeRange, experienceId, 10, customRange),
       getSearchTypeBreakdown(timeRange, experienceId, customRange),
       getPerformanceMetrics(timeRange, experienceId, customRange),
-      getAIUsageMetrics(timeRange, customRange),
-      getToolUsageMetrics(timeRange, customRange),
+      getAIUsageMetrics(timeRange, experienceId, customRange),
+      getToolUsageMetrics(timeRange, experienceId, customRange),
       getRecentSearchEvents(10, experienceId),
     ]);
 

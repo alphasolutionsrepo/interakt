@@ -41,6 +41,10 @@ export interface AnalyticsTurnContext {
   userMessage: string;
   sessionId: string | null;
   experienceId: string | null;
+  /** Display name of the selected experience (null = all experiences) */
+  experienceName: string | null;
+  /** Time range selected on the analytics page; the default for every tool call */
+  timeRange: string | null;
   conversationHistory: AnalyticsTurnMessage[];
   conversationSummary: string | null;
   sessionFacts: Record<string, string>;
@@ -104,6 +108,8 @@ export interface AnalyticsPipelineInput {
   message: string;
   sessionId?: string;
   experienceId?: string;
+  experienceName?: string;
+  timeRange?: string;
   providerId?: string;
   modelId?: number;
 }

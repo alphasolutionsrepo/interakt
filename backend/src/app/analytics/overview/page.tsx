@@ -4,20 +4,10 @@
 
 import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  useAnalyticsDashboard,
-  type TimeRange,
-} from '../_lib/hooks/useAnalytics';
+import { useAnalyticsDashboard } from '../_lib/hooks/useAnalytics';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Button } from '@/shared/ui/components/button';
 import { Skeleton } from '@/shared/ui/components/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/select';
 import {
   Search,
   SearchX,
@@ -30,7 +20,6 @@ import {
   Activity,
   Zap,
   Target,
-  Clock,
   Bot,
   Coins,
   Wrench,
@@ -71,6 +60,7 @@ import {
 } from 'recharts';
 import { RecentSearchesFeed } from '../_components/RecentSearchesFeed';
 import { ExperienceSelector } from '../_components/ExperienceSelector';
+import { TimeRangeSelector } from '../_components/TimeRangeSelector';
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { getThresholds } from '@/features/analytics/analytics-thresholds';
 
@@ -100,15 +90,25 @@ function formatMs(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
 
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${formatNumber(count)} ${count === 1 ? singular : plural}`;
+}
+
+/** Wildcard/empty queries are browse requests (e.g. a widget's initial load), not something a user typed */
+function displayQuery(query: string): string {
+  const q = query.trim();
+  return q === '' || q === '*' ? '(browse all)' : query;
+}
+
 // ============================================================================
 // PROCESSING STATUS BANNER
 // ============================================================================
 
-function useProcessingStatus() {
+function useProcessingStatus(experienceId: string | undefined) {
   return useQuery({
-    queryKey: ['analytics', 'processing-status'],
+    queryKey: ['analytics', 'processing-status', experienceId],
     queryFn: async () => {
-      const res = await fetch('/api/analytics/process');
+      const res = await fetch(`/api/analytics/process${experienceId ? `?experienceId=${experienceId}` : ''}`);
       if (!res.ok) throw new Error('Failed to fetch status');
       const json = await res.json();
       return json.data as {
@@ -126,8 +126,8 @@ function useProcessingStatus() {
 }
 
 function ProcessingStatusBanner() {
-  const { data: status, refetch } = useProcessingStatus();
-  const { experienceId } = useAnalyticsContext();
+  const { experienceId, experienceName } = useAnalyticsContext();
+  const { data: status, refetch } = useProcessingStatus(experienceId);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const queryClient = useQueryClient();
@@ -163,7 +163,7 @@ function ProcessingStatusBanner() {
       setIsProcessing(false);
       refetch();
     }
-  }, [refetch]);
+  }, [refetch, experienceId]);
 
   const isRunning = isProcessing || status?.currentRun?.status === 'running';
   const isStale = status?.isStale ?? true;
@@ -186,7 +186,9 @@ function ProcessingStatusBanner() {
           <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />
         </div>
         <div>
-          <p className="text-sm font-medium">AI Insights</p>
+          <p className="text-sm font-medium" title="AI-generated summaries used by Analytics Chat. Refreshing does not change the numbers on this page, which are always live.">
+            AI Insights{experienceId ? ` · ${experienceName}` : ''}
+          </p>
           <p className="text-xs text-muted-foreground">
             {isRunning ? (
               <span className="flex items-center gap-1">
@@ -242,9 +244,11 @@ function ProcessingStatusBanner() {
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Clear Analytics Data</AlertDialogTitle>
+              <AlertDialogTitle>
+                {experienceId ? `Clear analytics data for ${experienceName}?` : 'Clear analytics data for ALL experiences?'}
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete all analytics data{experienceId ? ' for the selected experience' : ''} including processed insights, spans, search events, and chat sessions. This action cannot be undone.
+                This will permanently delete {experienceId ? <>all analytics data for <strong>{experienceName}</strong></> : <><strong>all analytics data for every experience</strong></>}, including processed insights, spans, search events, and chat sessions. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -266,7 +270,7 @@ function ProcessingStatusBanner() {
                   }
                 }}
               >
-                Clear All Data
+                {experienceId ? 'Clear Experience Data' : 'Clear All Data'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -447,7 +451,7 @@ function SearchTrendsChart({ data, isLoading }: TrendsChartProps) {
             </div>
             <CardTitle className="text-lg font-semibold">Search Trends</CardTitle>
           </div>
-          <p className="ml-12 text-sm text-muted-foreground">Search volume over time by type</p>
+          <p className="ml-12 text-sm text-muted-foreground">Total searches and distinct queries over time</p>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-[280px] w-full rounded-xl" />
@@ -471,7 +475,7 @@ function SearchTrendsChart({ data, isLoading }: TrendsChartProps) {
           </div>
           <CardTitle className="text-lg font-semibold">Search Trends</CardTitle>
         </div>
-        <p className="ml-12 text-sm text-muted-foreground">Search volume over time by type</p>
+        <p className="ml-12 text-sm text-muted-foreground">Total searches and distinct queries over time</p>
       </CardHeader>
       <CardContent>
         <div className="h-[280px]">
@@ -688,7 +692,7 @@ function PopularQueries({ data, isLoading }: PopularQueriesProps) {
             </div>
             <CardTitle className="text-lg font-semibold">Popular Searches</CardTitle>
           </div>
-          <p className="ml-12 text-sm text-muted-foreground">Top queries by search volume</p>
+          <p className="ml-12 text-sm text-muted-foreground">Most searched queries, with the average number of results</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -712,7 +716,7 @@ function PopularQueries({ data, isLoading }: PopularQueriesProps) {
           </div>
           <CardTitle className="text-lg font-semibold">Popular Searches</CardTitle>
         </div>
-        <p className="ml-12 text-sm text-muted-foreground">Top queries by search volume</p>
+        <p className="ml-12 text-sm text-muted-foreground">Most searched queries, with the average number of results</p>
       </CardHeader>
       <CardContent>
         {queries.length === 0 ? (
@@ -730,11 +734,11 @@ function PopularQueries({ data, isLoading }: PopularQueriesProps) {
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
                     {index + 1}
                   </span>
-                  <span className="font-medium">{item.query}</span>
+                  <span className="font-medium">{displayQuery(item.query)}</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-muted-foreground">
-                    {formatNumber(item.avgResults)} results
+                    {formatNumber(item.avgResults)} avg results
                   </span>
                   <span className="min-w-[50px] text-right text-sm font-bold text-primary">
                     {formatNumber(item.searchCount)}
@@ -755,10 +759,12 @@ function PopularQueries({ data, isLoading }: PopularQueriesProps) {
 
 interface FailedSearchesProps {
   data?: Array<{ query: string; occurrenceCount: number; lastSeen: string }>;
+  /** Shown instead of the list when there is nothing meaningful to list */
+  emptyMessage?: string;
   isLoading?: boolean;
 }
 
-function FailedSearches({ data, isLoading }: FailedSearchesProps) {
+function FailedSearches({ data, emptyMessage, isLoading }: FailedSearchesProps) {
   if (isLoading) {
     return (
       <Card className="rounded-2xl border-border/60 shadow-sm">
@@ -796,7 +802,11 @@ function FailedSearches({ data, isLoading }: FailedSearchesProps) {
         <p className="ml-12 text-sm text-muted-foreground">Queries that returned no results</p>
       </CardHeader>
       <CardContent>
-        {queries.length === 0 ? (
+        {emptyMessage ? (
+          <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+            {emptyMessage}
+          </div>
+        ) : queries.length === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2">
             <div className="rounded-full bg-green-100 p-3 dark:bg-green-900">
               <Target className="h-6 w-6 text-green-600 dark:text-green-400" />
@@ -811,9 +821,9 @@ function FailedSearches({ data, isLoading }: FailedSearchesProps) {
                 key={item.query}
                 className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50/50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/20"
               >
-                <span className="font-medium text-red-700 dark:text-red-300">{item.query}</span>
+                <span className="font-medium text-red-700 dark:text-red-300">{displayQuery(item.query)}</span>
                 <span className="text-sm font-bold text-red-600 dark:text-red-400">
-                  {formatNumber(item.occurrenceCount)} searches
+                  {pluralize(item.occurrenceCount, 'search', 'searches')}
                 </span>
               </div>
             ))}
@@ -995,9 +1005,8 @@ function ToolUsageChart({ data, isLoading }: { data?: Record<string, number>; is
 // ============================================================================
 
 export default function AnalyticsOverviewPage() {
-  const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const queryClient = useQueryClient();
-  const { experienceId, experienceType, experienceName } = useAnalyticsContext();
+  const { experienceId, experienceType, experienceName, timeRange } = useAnalyticsContext();
 
   const { data, isLoading, isFetching } = useAnalyticsDashboard(timeRange, experienceId);
 
@@ -1012,9 +1021,11 @@ export default function AnalyticsOverviewPage() {
   const successRate = 1 - zeroResultRate;
   const avgDuration = safeNumber(data?.overview?.avgSearchDurationMs);
 
-  // Quality score (when specific experience selected)
-  const avgResults = data?.popularQueries?.length
-    ? data.popularQueries.reduce((sum: number, q: { avgResults: number }) => sum + q.avgResults, 0) / data.popularQueries.length
+  // Quality score (when specific experience selected) — average results across the top
+  // queries, weighted by how often each was searched
+  const popularSearchCount = (data?.popularQueries ?? []).reduce((sum, q) => sum + q.searchCount, 0);
+  const avgResults = popularSearchCount > 0
+    ? data!.popularQueries.reduce((sum, q) => sum + q.avgResults * q.searchCount, 0) / popularSearchCount
     : 0;
   const qualityScore = calculateQualityScore(zeroResultRate, avgResults, avgDuration);
   const isAllExperiences = !experienceId;
@@ -1026,23 +1037,25 @@ export default function AnalyticsOverviewPage() {
   // Determine status variants based on env-aware thresholds
   const t = getThresholds();
 
-  const getSuccessVariant = (): 'success' | 'warning' | 'error' => {
+  const getSuccessVariant = (): 'default' | 'success' | 'warning' | 'error' => {
+    if (totalSearches === 0) return 'default';
     if (successRate >= t.successRate.excellent) return 'success';
     if (successRate >= t.successRate.good) return 'warning';
     return 'error';
   };
 
   const getSpeedVariant = (): 'success' | 'warning' | 'default' => {
+    if (totalSearches === 0) return 'default';
     if (avgDuration < t.latency.excellent) return 'success';
     if (avgDuration < t.latency.acceptable) return 'default';
     return 'warning';
   };
 
   const getSpeedDescription = (): string => {
-    if (avgDuration === 0) return 'No searches recorded yet';
-    if (avgDuration < t.latency.excellent) return 'Search performance improved';
-    if (avgDuration < t.latency.acceptable) return 'Good search performance';
-    return 'Consider optimizing search';
+    if (totalSearches === 0) return 'No searches in this period';
+    if (avgDuration < t.latency.excellent) return 'Fast — average time per search';
+    if (avgDuration < t.latency.acceptable) return 'Acceptable — average time per search';
+    return 'Slow — consider optimizing search';
   };
 
   const getActivityDescription = (): string => {
@@ -1062,9 +1075,17 @@ export default function AnalyticsOverviewPage() {
 
   const timeRangeLabel = timeRange === '1h' ? 'hour' : timeRange === '24h' ? '24 hours' : timeRange === '7d' ? '7 days' : '30 days';
 
+  // AI numbers. "AI requests" are individual model calls (chat + embeddings) in every mode;
+  // conversations (pipeline turns) are only available per experience.
+  const totalAIRequests = safeNumber(data?.aiUsage?.totalRequests);
+  const avgAIDurationMs = safeNumber(data?.aiUsage?.avgDurationMs);
+  const conversationTurns = isAIExperience ? safeNumber(data?.overview?.totalAIRequests) : 0;
+  const searchesFromToolCalls = data?.overview?.searchesFromToolCalls ?? false;
+
   // Check if there's any data at all
-  const totalAIRequests = safeNumber(data?.overview?.totalAIRequests);
-  const hasData = totalSearches > 0 || totalAIRequests > 0;
+  const hasData = totalSearches > 0 || totalAIRequests > 0 || conversationTurns > 0;
+  // The score needs per-query result counts, which external (tool-call) searches don't have
+  const showQualityScore = totalSearches > 0 && !searchesFromToolCalls;
 
   // Show empty state only when viewing all experiences and there's truly no data
   if (!isLoading && !hasData && isAllExperiences) {
@@ -1072,26 +1093,15 @@ export default function AnalyticsOverviewPage() {
       <div className="flex-1 space-y-6 p-6 lg:p-8">
         <PageHeader
           variant="hero"
-          title="Search Analytics"
-          description="Real-time insights into your search performance"
+          title="Analytics Overview"
+          description="Search and AI activity across all experiences"
           icon={BarChart3}
           iconBg="bg-blue-500/10"
           iconColor="text-blue-500"
           actions={
             <>
               <ExperienceSelector />
-              <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
-                <SelectTrigger className="w-[140px] rounded-xl">
-                  <Clock className="mr-2 size-4 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1h">Last Hour</SelectItem>
-                  <SelectItem value="24h">Last 24 Hours</SelectItem>
-                  <SelectItem value="7d">Last 7 Days</SelectItem>
-                  <SelectItem value="30d">Last 30 Days</SelectItem>
-                </SelectContent>
-              </Select>
+              <TimeRangeSelector />
               <Button
                 variant="outline"
                 size="icon"
@@ -1122,18 +1132,7 @@ export default function AnalyticsOverviewPage() {
         actions={
           <>
             <ExperienceSelector />
-            <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
-              <SelectTrigger className="w-[140px] rounded-xl">
-                <Clock className="mr-2 size-4 text-muted-foreground" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1h">Last Hour</SelectItem>
-                <SelectItem value="24h">Last 24 Hours</SelectItem>
-                <SelectItem value="7d">Last 7 Days</SelectItem>
-                <SelectItem value="30d">Last 30 Days</SelectItem>
-              </SelectContent>
-            </Select>
+            <TimeRangeSelector />
             <Button
               variant="outline"
               size="icon"
@@ -1157,20 +1156,29 @@ export default function AnalyticsOverviewPage() {
 
       {/* Quality Score (when specific experience selected) */}
       {!isAllExperiences && hasData && (
-        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-          <QualityScore
-            score={qualityScore}
-            successRate={successRate}
-            avgResults={avgResults}
-            responseTimeMs={avgDuration}
-            isLoading={isLoading}
-          />
+        <div className={`grid gap-6 ${showQualityScore ? 'lg:grid-cols-[280px_1fr]' : ''}`}>
+          {showQualityScore && (
+            <QualityScore
+              score={qualityScore}
+              successRate={successRate}
+              avgResults={avgResults}
+              responseTimeMs={avgDuration}
+              isLoading={isLoading}
+            />
+          )}
           <div className="flex items-center">
             <div className="space-y-1">
               <h3 className="text-lg font-semibold">{experienceName}</h3>
               <p className="text-sm text-muted-foreground">
-                {experienceType === 'ai' ? 'AI Experience' : 'Search Experience'} — {formatNumber(experienceType === 'ai' ? totalAIRequests : totalSearches)} {experienceType === 'ai' ? 'conversations' : 'searches'} in this period
+                {isAIExperience
+                  ? `AI Experience — ${pluralize(conversationTurns, 'conversation turn')} in the last ${timeRangeLabel}`
+                  : `Search Experience — ${pluralize(totalSearches, 'search', 'searches')} in the last ${timeRangeLabel}`}
               </p>
+              {showQualityScore && (
+                <p className="text-xs text-muted-foreground">
+                  The search quality score combines success rate, average results and response time.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -1196,23 +1204,20 @@ export default function AnalyticsOverviewPage() {
                 title="Search Activity"
                 value={formatNumber(totalSearches)}
                 description={getActivityDescription()}
-                trend={totalSearches > 0 ? { value: `vs last ${timeRangeLabel}`, direction: 'neutral' } : undefined}
                 variant="default"
                 icon={Activity}
               />
               <KeyInsightCard
                 title="Search Speed"
-                value={formatMs(avgDuration)}
+                value={totalSearches > 0 ? formatMs(avgDuration) : '—'}
                 description={getSpeedDescription()}
-                trend={avgDuration > 0 ? { value: avgDuration < 300 ? '↑ 100.0%' : '−', direction: avgDuration < 300 ? 'up' : 'neutral' } : undefined}
                 variant={getSpeedVariant()}
                 icon={Zap}
               />
               <KeyInsightCard
                 title="Search Success Rate"
-                value={formatPercent(successRate)}
+                value={totalSearches > 0 ? formatPercent(successRate) : '—'}
                 description={getSuccessDescription()}
-                trend={successRate < 1 ? { value: `${failedSearches} failed`, direction: successRate < 0.8 ? 'down' : 'neutral' } : undefined}
                 variant={getSuccessVariant()}
                 icon={Target}
               />
@@ -1222,8 +1227,8 @@ export default function AnalyticsOverviewPage() {
                   value={formatNumber(totalAIRequests)}
                   description={
                     totalAIRequests > 0
-                      ? `${formatNumber(totalAIRequests)} requests in last ${timeRangeLabel}`
-                      : 'No AI activity yet'
+                      ? `AI model calls in the last ${timeRangeLabel}`
+                      : 'No AI activity in this period'
                   }
                   variant="default"
                   icon={Bot}
@@ -1238,13 +1243,22 @@ export default function AnalyticsOverviewPage() {
       <div className="space-y-6">
         <SectionHeader
           title="Search Volume & Usage"
-          description="Understanding your search traffic patterns"
+          description="Includes searches typed by users, searches made by AI assistants, and automatic browse requests"
         />
+        {searchesFromToolCalls && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              This experience searches an external index, so search counts, speed and success rate come from the AI&apos;s
+              search tool calls. Per-query details (trends, popular and failed searches) aren&apos;t available for external searches.
+            </span>
+          </div>
+        )}
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             title="Total Searches"
             value={formatNumber(totalSearches)}
-            subtitle={`in last ${timeRangeLabel}`}
+            subtitle={`in the last ${timeRangeLabel}`}
             icon={Search}
             iconBgColor="bg-blue-100 dark:bg-blue-900"
             iconColor="text-blue-600 dark:text-blue-400"
@@ -1252,30 +1266,30 @@ export default function AnalyticsOverviewPage() {
           <MetricCard
             title="Failed Searches"
             value={formatNumber(failedSearches)}
-            subtitle={`${formatPercent(zeroResultRate)} of all searches`}
+            subtitle={totalSearches > 0 ? `returned no results (${formatPercent(zeroResultRate)} of searches)` : 'returned no results'}
             icon={SearchX}
             iconBgColor="bg-red-100 dark:bg-red-900"
             iconColor="text-red-600 dark:text-red-400"
           />
           <MetricCard
-            title="User Engagement"
+            title="Repeat Searches"
             value={
               data?.overview?.uniqueQueries && totalSearches
                 ? (totalSearches / Math.max(data.overview.uniqueQueries, 1)).toFixed(1)
-                : '0.0'
+                : '—'
             }
-            subtitle="searches per user on average"
+            subtitle="average times each distinct query was searched"
             icon={Users}
             iconBgColor="bg-purple-100 dark:bg-purple-900"
             iconColor="text-purple-600 dark:text-purple-400"
           />
           <MetricCard
             title="Most Popular Search"
-            value={data?.popularQueries?.[0]?.query || 'N/A'}
+            value={data?.popularQueries?.[0] ? displayQuery(data.popularQueries[0].query) : '—'}
             subtitle={
               data?.popularQueries?.[0]
-                ? `searched ${formatNumber(data.popularQueries[0].searchCount)} times`
-                : 'No data yet'
+                ? `searched ${pluralize(data.popularQueries[0].searchCount, 'time')}`
+                : 'No searches in this period'
             }
             icon={Star}
             iconBgColor="bg-amber-100 dark:bg-amber-900"
@@ -1297,7 +1311,11 @@ export default function AnalyticsOverviewPage() {
       {/* Tables Row */}
       <div className="grid gap-6 lg:grid-cols-2">
         <PopularQueries data={data?.popularQueries} isLoading={isLoading} />
-        <FailedSearches data={data?.zeroResults} isLoading={isLoading} />
+        <FailedSearches
+          data={data?.zeroResults}
+          emptyMessage={totalSearches === 0 ? 'No searches in this period' : searchesFromToolCalls ? 'Not available for external searches' : undefined}
+          isLoading={isLoading}
+        />
       </div>
 
       {/* AI & Tools (hidden for search-only experiences) */}
@@ -1306,13 +1324,17 @@ export default function AnalyticsOverviewPage() {
           <div className="space-y-6">
             <SectionHeader
               title="AI & Tools"
-              description="AI usage, token consumption, and tool execution metrics"
+              description={
+                isAllExperiences
+                  ? 'AI model usage across the platform, including embeddings created while indexing documents'
+                  : 'AI model usage and tool calls made while answering this experience’s conversations'
+              }
             />
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               <MetricCard
                 title="AI Requests"
                 value={formatNumber(totalAIRequests)}
-                subtitle={`in last ${timeRangeLabel}`}
+                subtitle="model calls (chat + embeddings)"
                 icon={Bot}
                 iconBgColor="bg-violet-100 dark:bg-violet-900"
                 iconColor="text-violet-600 dark:text-violet-400"
@@ -1329,9 +1351,9 @@ export default function AnalyticsOverviewPage() {
                 title="Tool Executions"
                 value={formatNumber(safeNumber(data?.toolUsage?.totalExecutions))}
                 subtitle={
-                  data?.toolUsage?.successRate != null
-                    ? `${(data.toolUsage.successRate * 100).toFixed(1)}% success rate`
-                    : `in last ${timeRangeLabel}`
+                  safeNumber(data?.toolUsage?.totalExecutions) > 0
+                    ? `${(safeNumber(data?.toolUsage?.successRate) * 100).toFixed(1)}% completed without errors`
+                    : 'No tool calls in this period'
                 }
                 icon={Wrench}
                 iconBgColor="bg-orange-100 dark:bg-orange-900"
@@ -1339,11 +1361,11 @@ export default function AnalyticsOverviewPage() {
               />
               <MetricCard
                 title="Avg AI Latency"
-                value={formatMs(safeNumber(data?.overview?.avgAIDurationMs))}
+                value={totalAIRequests > 0 ? formatMs(avgAIDurationMs) : '—'}
                 subtitle={
-                  data?.overview?.avgSearchDurationMs
-                    ? `Search: ${formatMs(data.overview.avgSearchDurationMs)}`
-                    : `in last ${timeRangeLabel}`
+                  isAIExperience && conversationTurns > 0
+                    ? `per model call · ${formatMs(safeNumber(data?.overview?.avgAIDurationMs))} per conversation turn`
+                    : 'per model call'
                 }
                 icon={Timer}
                 iconBgColor="bg-teal-100 dark:bg-teal-900"
@@ -1368,7 +1390,7 @@ export default function AnalyticsOverviewPage() {
       <div className="space-y-6">
         <SectionHeader
           title="Recent Activity"
-          description="Live feed of recent search events"
+          description="The 10 most recent searches (not limited to the selected time range)"
         />
         <RecentSearchesFeed data={data?.recentSearches} isLoading={isLoading} />
       </div>

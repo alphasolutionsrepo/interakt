@@ -9,7 +9,7 @@
 
 import 'server-only';
 
-import { and, count, desc, eq, gte, lte, ne, or, sql, sum, avg } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, lte, ne, or, sql, sum, avg } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
 import type { AnalyticsSource } from './analytics.types';
 
@@ -34,6 +34,8 @@ export interface OverviewMetrics {
   zeroResultRate: number;
   avgSearchDurationMs: number;
   avgAIDurationMs: number;
+  /** True when search counts come from AI tool-call spans (the experience searches an external index, so no search events exist) */
+  searchesFromToolCalls: boolean;
   searchesByTrigger: {
     user: number;
     ai_tool: number;
@@ -168,7 +170,7 @@ export function getGranularityForRange(range: DateRange): Granularity {
  * When filtering by experienceId, also matches by the experience's associated
  * index IDs so that historical events (before experienceId was tracked) are included.
  */
-async function buildSearchConditions(
+export async function buildSearchConditions(
   range: DateRange,
   experienceId?: string,
   sourceFilter: AnalyticsSource | 'all' = 'api',
@@ -179,24 +181,35 @@ async function buildSearchConditions(
     lte(searchEvents.timestamp, range.to),
   ];
   if (experienceId) {
-    const indexIds = await getExperienceIndexIds(experienceId);
-    if (indexIds.length > 0) {
-      // Match by experienceId directly OR by the experience's associated index IDs
-      // (covers historical data where experienceId was not yet tracked)
-      conditions.push(
-        or(
-          eq(searchEvents.experienceId, experienceId),
-          sql`${searchEvents.indexIds}::jsonb ?| array[${sql.join(indexIds.map(id => sql`${id}`), sql`, `)}]`,
-        )!,
-      );
-    } else {
-      conditions.push(eq(searchEvents.experienceId, experienceId));
-    }
+    conditions.push(await buildExperienceCondition(searchEvents, experienceId));
   }
   if (sourceFilter !== 'all') {
     conditions.push(eq(searchEvents.source, sourceFilter));
   }
   return { searchEvents, conditions };
+}
+
+/**
+ * Match search events belonging to an experience: by experienceId directly, or by the
+ * experience's associated index IDs for historical events where experienceId was not yet
+ * tracked. The index fallback only applies to untagged events — events tagged with a
+ * different experience that share an index must not be counted.
+ */
+async function buildExperienceCondition(
+  searchEvents: typeof import('@/db/analytics-schema').searchEvents,
+  experienceId: string,
+) {
+  const indexIds = await getExperienceIndexIds(experienceId);
+  if (indexIds.length === 0) {
+    return eq(searchEvents.experienceId, experienceId);
+  }
+  return or(
+    eq(searchEvents.experienceId, experienceId),
+    and(
+      isNull(searchEvents.experienceId),
+      sql`${searchEvents.indexIds}::jsonb ?| array[${sql.join(indexIds.map(id => sql`${id}`), sql`, `)}]`,
+    ),
+  )!;
 }
 
 /** Cache of experience -> index IDs to avoid repeated DB lookups within a request */
@@ -324,6 +337,7 @@ export async function getOverviewMetrics(
     let totalSearches = Number(metrics?.total ?? 0);
     let zeroResults = Number(metrics?.zeroResults ?? 0);
     let avgSearchDurationMs = Number(metrics?.avgDuration ?? 0);
+    let searchesFromToolCalls = false;
 
     // Fallback: for AI experiences with external search (no searchEvents), use OTel tool execution spans
     if (totalSearches === 0 && experienceId) {
@@ -346,6 +360,7 @@ export async function getOverviewMetrics(
         totalSearches = Number(otelSearch.total);
         zeroResults = Number(otelSearch.zeroResults);
         avgSearchDurationMs = Number(otelSearch.avgDuration);
+        searchesFromToolCalls = true;
       }
     }
 
@@ -356,6 +371,7 @@ export async function getOverviewMetrics(
       zeroResultRate: totalSearches > 0 ? zeroResults / totalSearches : 0,
       avgSearchDurationMs,
       avgAIDurationMs: aiData.avgDuration,
+      searchesFromToolCalls,
       searchesByTrigger: {
         user: Number(metrics?.userSearches ?? 0),
         ai_tool: Number(metrics?.aiToolSearches ?? 0),
@@ -377,6 +393,7 @@ function getEmptyOverviewMetrics(): OverviewMetrics {
     zeroResultRate: 0,
     avgSearchDurationMs: 0,
     avgAIDurationMs: 0,
+    searchesFromToolCalls: false,
     searchesByTrigger: { user: 0, ai_tool: 0, ai_rag: 0, system: 0 },
   };
 }
@@ -642,6 +659,7 @@ function getEmptyPerformanceMetrics(): PerformanceMetrics {
  */
 export async function getAIUsageMetrics(
   timeRange: TimeRange,
+  experienceId?: string,
   customRange?: DateRange
 ): Promise<AIUsageMetrics> {
   const range = getDateRange(timeRange, customRange);
@@ -650,6 +668,44 @@ export async function getAIUsageMetrics(
     const { analyticsDB } = await import('@/db/index');
     if (!analyticsDB) {
       return getEmptyAIMetrics();
+    }
+
+    // aiUsageEvents has no experienceId — use the ai.* spans in the experience's traces
+    if (experienceId) {
+      const { otelSpans } = await import('@/db/analytics-schema');
+      const tokens = (key: string) => sql<number>`COALESCE(SUM((${otelSpans.attributes}->>${key})::int), 0)`;
+      const results = await analyticsDB
+        .select({
+          totalRequests: count(),
+          totalTokens: tokens('alpha.ai.total_tokens'),
+          inputTokens: tokens('alpha.ai.input_tokens'),
+          outputTokens: tokens('alpha.ai.output_tokens'),
+          avgDuration: avg(otelSpans.durationMs),
+          chatOps: count(sql`CASE WHEN ${otelSpans.attributes}->>'alpha.ai.operation' = 'chat' THEN 1 END`),
+          embeddingOps: count(sql`CASE WHEN ${otelSpans.attributes}->>'alpha.ai.operation' = 'embedding' THEN 1 END`),
+        })
+        .from(otelSpans)
+        .where(and(
+          sql`${otelSpans.operationName} LIKE 'ai.%'`,
+          gte(otelSpans.startTime, range.from),
+          lte(otelSpans.startTime, range.to),
+          inExperienceTrace(otelSpans, experienceId, range),
+        ));
+
+      const row = results[0];
+      return {
+        totalRequests: Number(row?.totalRequests ?? 0),
+        totalTokens: Number(row?.totalTokens ?? 0),
+        inputTokens: Number(row?.inputTokens ?? 0),
+        outputTokens: Number(row?.outputTokens ?? 0),
+        estimatedCostUsd: 0, // cost is not recorded on spans
+        avgDurationMs: Number(row?.avgDuration ?? 0),
+        byOperation: {
+          text: 0,
+          chat: Number(row?.chatOps ?? 0),
+          embedding: Number(row?.embeddingOps ?? 0),
+        },
+      };
     }
 
     const { aiUsageEvents } = await import('@/db/analytics-schema');
@@ -694,6 +750,23 @@ export async function getAIUsageMetrics(
   }
 }
 
+/**
+ * Restrict spans to traces that belong to an experience. Only pipeline spans carry
+ * experienceId; the ai.* and tool.execute spans inside the same trace do not.
+ */
+export function inExperienceTrace(
+  otelSpans: typeof import('@/db/analytics-schema').otelSpans,
+  experienceId: string,
+  range: DateRange,
+) {
+  return sql`${otelSpans.traceId} IN (
+    SELECT exp.trace_id FROM otel_spans exp
+    WHERE exp.experience_id = ${experienceId}
+      AND exp.start_time >= ${range.from.toISOString()}
+      AND exp.start_time <= ${range.to.toISOString()}
+  )`;
+}
+
 function getEmptyAIMetrics(): AIUsageMetrics {
   return {
     totalRequests: 0,
@@ -711,6 +784,7 @@ function getEmptyAIMetrics(): AIUsageMetrics {
  */
 export async function getToolUsageMetrics(
   timeRange: TimeRange,
+  experienceId?: string,
   customRange?: DateRange
 ): Promise<ToolUsageMetrics> {
   const range = getDateRange(timeRange, customRange);
@@ -719,6 +793,44 @@ export async function getToolUsageMetrics(
     const { analyticsDB } = await import('@/db/index');
     if (!analyticsDB) {
       return getEmptyToolMetrics();
+    }
+
+    // aiToolExecutions has no experienceId — use the tool.execute spans in the experience's traces
+    if (experienceId) {
+      const { otelSpans } = await import('@/db/analytics-schema');
+      const toolName = sql<string>`${otelSpans.attributes}->>'alpha.tool.slug'`;
+      const toolType = sql<string>`${otelSpans.attributes}->>'alpha.tool.type'`;
+      const conditions = and(
+        eq(otelSpans.operationName, 'tool.execute'),
+        gte(otelSpans.startTime, range.from),
+        lte(otelSpans.startTime, range.to),
+        inExperienceTrace(otelSpans, experienceId, range),
+      );
+
+      const [overallResults, byToolResults, byCategoryResults] = await Promise.all([
+        analyticsDB
+          .select({
+            total: count(),
+            successful: count(sql`CASE WHEN ${otelSpans.attributes}->>'alpha.tool.success' = 'true' THEN 1 END`),
+            avgDuration: avg(otelSpans.durationMs),
+          })
+          .from(otelSpans)
+          .where(conditions),
+        analyticsDB.select({ toolName, count: count() }).from(otelSpans).where(conditions).groupBy(toolName),
+        analyticsDB.select({ category: toolType, count: count() }).from(otelSpans).where(conditions).groupBy(toolType),
+      ]);
+
+      const overall = overallResults[0];
+      const total = Number(overall?.total ?? 0);
+      const successful = Number(overall?.successful ?? 0);
+
+      return {
+        totalExecutions: total,
+        successRate: total > 0 ? successful / total : 0,
+        avgDurationMs: Number(overall?.avgDuration ?? 0),
+        byTool: Object.fromEntries(byToolResults.map((r) => [r.toolName ?? 'unknown', Number(r.count)])),
+        byCategory: Object.fromEntries(byCategoryResults.map((r) => [r.category ?? 'unknown', Number(r.count)])),
+      };
     }
 
     const { aiToolExecutions } = await import('@/db/analytics-schema');
@@ -817,17 +929,7 @@ export async function getRecentSearchEvents(
 
     const conditions = [eq(searchEvents.source, 'api')];
     if (experienceId) {
-      const indexIds = await getExperienceIndexIds(experienceId);
-      if (indexIds.length > 0) {
-        conditions.push(
-          or(
-            eq(searchEvents.experienceId, experienceId),
-            sql`${searchEvents.indexIds}::jsonb ?| array[${sql.join(indexIds.map(id => sql`${id}`), sql`, `)}]`,
-          )!,
-        );
-      } else {
-        conditions.push(eq(searchEvents.experienceId, experienceId));
-      }
+      conditions.push(await buildExperienceCondition(searchEvents, experienceId));
     }
 
     const results = await analyticsDB

@@ -9,57 +9,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/select';
-import { Button } from '@/shared/ui/components/button';
-import { RefreshCw } from 'lucide-react';
+import { Clock } from 'lucide-react';
+import { useAnalyticsContext, TIME_RANGE_OPTIONS } from '../_lib/AnalyticsContext';
 import type { TimeRange } from '../_lib/hooks/useAnalytics';
 
 interface TimeRangeSelectorProps {
-  value: TimeRange;
-  onChange: (value: TimeRange) => void;
-  onRefresh?: () => void;
-  isRefreshing?: boolean;
+  compact?: boolean;
 }
 
-const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
-  { value: '1h', label: 'Last 1 hour' },
-  { value: '24h', label: 'Last 24 hours' },
-  { value: '7d', label: 'Last 7 days' },
-  { value: '30d', label: 'Last 30 days' },
-  { value: '90d', label: 'Last 90 days' },
-];
+/** Time range picker shared by the analytics pages (the selection carries across them) */
+export function TimeRangeSelector({ compact = false }: TimeRangeSelectorProps) {
+  const { timeRange, setTimeRange } = useAnalyticsContext();
 
-export function TimeRangeSelector({
-  value,
-  onChange,
-  onRefresh,
-  isRefreshing,
-}: TimeRangeSelectorProps) {
   return (
-    <div className="flex items-center gap-2">
-      <Select value={value} onValueChange={(v) => onChange(v as TimeRange)}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Select time range" />
-        </SelectTrigger>
-        <SelectContent>
-          {TIME_RANGE_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {onRefresh && (
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="shrink-0"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-        </Button>
-      )}
-    </div>
+    <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
+      <SelectTrigger className={compact ? 'w-[150px] h-8 text-xs rounded-lg' : 'w-[160px] rounded-xl'}>
+        <Clock className={compact ? 'mr-1.5 size-3 text-muted-foreground' : 'mr-2 size-4 text-muted-foreground'} />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {TIME_RANGE_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

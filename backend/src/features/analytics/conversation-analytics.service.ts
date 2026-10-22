@@ -238,7 +238,9 @@ export async function getRetryAnalysis(
 // ============================================================================
 
 export async function getConversationDetail(
-  traceId: string
+  traceId: string,
+  /** When set, only return the conversation if it belongs to this experience */
+  experienceId?: string
 ): Promise<ConversationDetail | null> {
   const { analyticsDB } = await import('@/db/index');
   const { otelSpans } = await import('@/db/analytics-schema');
@@ -253,12 +255,14 @@ export async function getConversationDetail(
       statusCode: otelSpans.statusCode,
       startTime: otelSpans.startTime,
       attributes: otelSpans.attributes,
+      experienceId: otelSpans.experienceId,
     })
     .from(otelSpans)
     .where(eq(otelSpans.traceId, traceId))
     .orderBy(otelSpans.startTime);
 
   if (spans.length === 0) return null;
+  if (experienceId && !spans.some((s) => s.experienceId === experienceId)) return null;
 
   const config = getAnalyticsConfig();
   const redact = config.redactUserMessages;

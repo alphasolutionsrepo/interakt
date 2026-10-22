@@ -16,11 +16,30 @@ interface RecentSearchesFeedProps {
 
 function formatTime(timestamp: string): string {
   const date = new Date(timestamp);
-  return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (date.toDateString() === new Date().toDateString()) return `Today, ${time}`;
+  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
+}
+
+function getTriggerLabel(triggerType: string): string {
+  switch (triggerType) {
+    case 'user':
+      return 'User search';
+    case 'ai_tool':
+      return 'AI tool search';
+    case 'ai_rag':
+      return 'AI context lookup';
+    case 'system':
+      return 'Automatic';
+    default:
+      return triggerType;
+  }
+}
+
+/** Wildcard/empty queries are browse requests (e.g. a widget's initial load), not something a user typed */
+function isBrowseQuery(query: string): boolean {
+  const q = query.trim();
+  return q === '' || q === '*';
 }
 
 function getTriggerIcon(triggerType: string) {
@@ -65,8 +84,8 @@ export function RecentSearchesFeed({ data, isLoading }: RecentSearchesFeedProps)
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Live Search Feed</CardTitle>
-          <CardDescription>Real-time search activity</CardDescription>
+          <CardTitle>Recent Searches</CardTitle>
+          <CardDescription>Newest first</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -83,12 +102,12 @@ export function RecentSearchesFeed({ data, isLoading }: RecentSearchesFeedProps)
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Live Search Feed</CardTitle>
-          <CardDescription>Real-time search activity</CardDescription>
+          <CardTitle>Recent Searches</CardTitle>
+          <CardDescription>Newest first</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex h-[300px] items-center justify-center text-muted-foreground">
-            No recent searches
+            No searches yet
           </div>
         </CardContent>
       </Card>
@@ -98,8 +117,8 @@ export function RecentSearchesFeed({ data, isLoading }: RecentSearchesFeedProps)
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Live Search Feed</CardTitle>
-        <CardDescription>Real-time search activity</CardDescription>
+        <CardTitle>Recent Searches</CardTitle>
+        <CardDescription>Newest first</CardDescription>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[400px]">
@@ -125,7 +144,7 @@ export function RecentSearchesFeed({ data, isLoading }: RecentSearchesFeedProps)
                       className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${getTriggerColor(event.triggerType)}`}
                     >
                       {getTriggerIcon(event.triggerType)}
-                      {event.triggerType}
+                      {getTriggerLabel(event.triggerType)}
                     </span>
                     <Badge variant="outline" className={`text-xs ${getSearchTypeBadge(event.searchType)}`}>
                       {event.searchType}
@@ -133,11 +152,11 @@ export function RecentSearchesFeed({ data, isLoading }: RecentSearchesFeedProps)
                   </div>
 
                   <p className="mt-1 truncate text-sm font-medium" title={event.query}>
-                    &ldquo;{event.query}&rdquo;
+                    {isBrowseQuery(event.query) ? <span className="italic text-muted-foreground">(browse all — no search term)</span> : <>&ldquo;{event.query}&rdquo;</>}
                   </p>
 
                   <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{event.totalResults} results</span>
+                    <span>{event.totalResults.toLocaleString()} {event.totalResults === 1 ? 'result' : 'results'}</span>
                     <span>{event.durationMs}ms</span>
                   </div>
                 </div>

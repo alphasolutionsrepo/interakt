@@ -9,9 +9,9 @@
 
 import 'server-only';
 
-import { sql, count, eq, gte, lte, and, isNotNull } from 'drizzle-orm';
+import { sql, count, eq, gte, lte, and, isNotNull, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { getDateRange, type TimeRange } from './analytics-query.service';
+import { buildSearchConditions, getDateRange, type TimeRange } from './analytics-query.service';
 
 const logger = createLogger('analytics-experience-summary');
 
@@ -23,7 +23,10 @@ export interface ExperienceSummary {
   id: string;
   name: string;
   type: 'ai' | 'search';
-  totalConversations: number;
+  /** Conversations for AI experiences, searches for search experiences */
+  volume: number;
+  /** Experience no longer exists in the main database */
+  deleted: boolean;
   successRate: number;
   zeroResultRate: number;
   avgLatencyMs: number;
@@ -67,17 +70,18 @@ export async function getExperienceSummaries(
       )
       .groupBy(otelSpans.experienceId, otelSpans.experienceType);
 
-    // AI experience zero-result rates from tool.execute spans
+    // AI experience zero-result rates from tool execution steps (tool.execute spans
+    // carry no experienceId; their pipeline.v2.action.tool_execution parents do)
     const toolRows = await analyticsDB
       .select({
         experienceId: otelSpans.experienceId,
         totalSearches: sql<number>`COUNT(*)::int`,
-        zeroResults: sql<number>`COUNT(CASE WHEN (${otelSpans.attributes}->>'alpha.tool.result_count')::int = 0 THEN 1 END)::int`,
+        zeroResults: sql<number>`COUNT(CASE WHEN (${otelSpans.attributes}->>'alpha.v2.step.result_count')::int = 0 THEN 1 END)::int`,
       })
       .from(otelSpans)
       .where(
         and(
-          eq(otelSpans.operationName, 'tool.execute'),
+          eq(otelSpans.operationName, 'pipeline.v2.action.tool_execution'),
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           isNotNull(otelSpans.experienceId),
@@ -96,27 +100,50 @@ export async function getExperienceSummaries(
     }
 
     // ── Search experiences: query searchEvents table ───────────────────
-    const searchRows = await analyticsDB
-      .select({
-        experienceId: searchEvents.experienceId,
-        totalSearches: count(),
-        zeroResults: sql<number>`COUNT(CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END)::int`,
-        avgDurationMs: sql<number>`COALESCE(AVG(${searchEvents.durationMs}), 0)::int`,
-        totalSessions: sql<number>`COUNT(DISTINCT ${searchEvents.sessionId})::int`,
-      })
+    // Candidates: experiences with tagged events in range, plus search experiences with
+    // indexes (whose older untagged events are matched by index)
+    const taggedRows = await analyticsDB
+      .selectDistinct({ experienceId: searchEvents.experienceId })
       .from(searchEvents)
       .where(
         and(
-          eq(searchEvents.triggerType, 'user'),
+          eq(searchEvents.source, 'api'),
           gte(searchEvents.timestamp, range.from),
           lte(searchEvents.timestamp, range.to),
           isNotNull(searchEvents.experienceId),
         )
+      );
+    const aiExperienceIds = turnRows.map((r) => r.experienceId).filter(Boolean) as string[];
+    const candidateSearchIds = new Set<string>(
+      [...taggedRows.map((r) => r.experienceId), ...(await fetchSearchExperienceIdsWithIndexes())]
+        .filter((id): id is string => id != null && !aiExperienceIds.includes(id)),
+    );
+
+    // Count each one with the overview's own matching rules so the table and the
+    // drill-down always agree. Conditions are built one at a time (each may look up the
+    // experience's indexes in the main DB, cached), then the counts run in parallel.
+    const searchConditions: Array<{ experienceId: string; conditions: SQL[] }> = [];
+    for (const experienceId of candidateSearchIds) {
+      const { conditions } = await buildSearchConditions(range, experienceId);
+      searchConditions.push({ experienceId, conditions });
+    }
+    const searchRows = (
+      await Promise.all(
+        searchConditions.map(async ({ experienceId, conditions }) => {
+          const [row] = await analyticsDB
+            .select({
+              totalSearches: count(),
+              zeroResults: sql<number>`COUNT(CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END)::int`,
+              avgDurationMs: sql<number>`COALESCE(AVG(${searchEvents.durationMs}), 0)::int`,
+            })
+            .from(searchEvents)
+            .where(and(...conditions));
+          return { experienceId, ...row, totalSearches: Number(row?.totalSearches ?? 0) };
+        }),
       )
-      .groupBy(searchEvents.experienceId);
+    ).filter((r) => r.totalSearches > 0);
 
     // Collect all experience IDs for name lookup
-    const aiExperienceIds = turnRows.map((r) => r.experienceId).filter(Boolean) as string[];
     const searchExperienceIds = searchRows
       .map((r) => r.experienceId)
       .filter((id): id is string => id != null && !aiExperienceIds.includes(id));
@@ -137,7 +164,8 @@ export async function getExperienceSummaries(
         id: row.experienceId,
         name: nameInfo?.name || row.experienceId.slice(0, 8),
         type: (row.experienceType as 'ai' | 'search') || nameInfo?.type || 'ai',
-        totalConversations: row.totalConversations,
+        volume: row.totalConversations,
+        deleted: !nameInfo,
         successRate: row.totalTurns > 0 ? row.successCount / row.totalTurns : 0,
         zeroResultRate: zeroInfo && zeroInfo.total > 0 ? zeroInfo.zero / zeroInfo.total : 0,
         avgLatencyMs: row.avgDurationMs,
@@ -156,7 +184,8 @@ export async function getExperienceSummaries(
         id: row.experienceId,
         name: nameInfo?.name || row.experienceId.slice(0, 8),
         type: 'search',
-        totalConversations: row.totalSessions,
+        volume: row.totalSearches,
+        deleted: !nameInfo,
         successRate: row.totalSearches > 0
           ? (row.totalSearches - row.zeroResults) / row.totalSearches
           : 0,
@@ -167,12 +196,27 @@ export async function getExperienceSummaries(
       });
     }
 
-    // Sort by total conversations descending
-    summaries.sort((a, b) => b.totalConversations - a.totalConversations);
+    // Sort by volume descending, deleted experiences last
+    summaries.sort((a, b) => Number(a.deleted) - Number(b.deleted) || b.volume - a.volume);
 
     return summaries;
   } catch (error) {
     logger.error('Failed to get experience summaries', { error });
+    return [];
+  }
+}
+
+/** Search experiences that have at least one index attached */
+async function fetchSearchExperienceIdsWithIndexes(): Promise<string[]> {
+  try {
+    const { db } = await import('@/db/index');
+    const { searchExperienceIndexes } = await import('@/db/schema');
+    const rows = await db
+      .selectDistinct({ id: searchExperienceIndexes.searchExperienceId })
+      .from(searchExperienceIndexes);
+    return rows.map((r) => r.id);
+  } catch (error) {
+    logger.warn('Failed to fetch search experience indexes (non-fatal)', { error });
     return [];
   }
 }

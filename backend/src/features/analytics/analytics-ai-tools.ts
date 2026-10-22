@@ -714,6 +714,8 @@ export interface ToolExecutionResult {
   /** Data type identifier for frontend rendering */
   dataType?: string;
   error?: string;
+  /** Time range the data actually covers (may differ from the requested one); unset when the result has no time range */
+  timeRange?: string;
 }
 
 /**
@@ -729,12 +731,13 @@ export async function executeAnalyticsTool(
   const cacheKey = getCacheKey(toolName, args);
   const cached = getCachedResult(cacheKey);
   if (cached !== null) {
-    const cachedData = cached as { formatted: string; raw: unknown };
+    const cachedData = cached as { formatted: string; raw: unknown; timeRange?: string };
     return {
       success: true,
       data: cachedData.formatted,
       rawData: cachedData.raw,
       dataType: TOOL_DATA_TYPES[toolName],
+      timeRange: cachedData.timeRange,
     };
   }
 
@@ -747,6 +750,9 @@ export async function executeAnalyticsTool(
 
     let formatted: string;
     let raw: unknown;
+    // The period the returned data actually covers; tools below override it when they
+    // read a different range or have none
+    let coveredTimeRange: string | undefined = timeRange;
 
     switch (toolName) {
       case 'get_search_overview': {
@@ -802,7 +808,9 @@ export async function executeAnalyticsTool(
       case 'get_cost_analysis':
       case 'get_proactive_insights':
       case 'get_guardrail_analytics': {
-        const insightTimeRange = (['24h', '7d', '30d'].includes(timeRange) ? timeRange : '7d') as string;
+        // Insights are precomputed for 24h/7d/30d only; the closest match for 1h is 24h
+        const insightTimeRange = (['24h', '7d', '30d'].includes(timeRange) ? timeRange : timeRange === '1h' ? '24h' : '7d') as string;
+        coveredTimeRange = insightTimeRange;
         const insightType = TOOL_TO_INSIGHT_TYPE[toolName];
         const result = await getPreComputedInsight(insightType, insightTimeRange, experienceId);
         if (!result) {
@@ -823,21 +831,26 @@ export async function executeAnalyticsTool(
         if (!traceId) {
           return { success: false, error: 'traceId is required' };
         }
-        const detail = await getConversationDetail(traceId);
+        const detail = await getConversationDetail(traceId, experienceId);
         if (!detail) {
           return {
             success: true,
-            data: `No conversation found for trace ID "${traceId}".`,
+            data: experienceId
+              ? `No conversation found for trace ID "${traceId}" in the selected experience.`
+              : `No conversation found for trace ID "${traceId}".`,
             rawData: null,
             dataType: 'conversation_detail',
           };
         }
         formatted = formatConversationDetailForAI(detail);
         raw = detail;
+        coveredTimeRange = undefined;
         break;
       }
 
       case 'get_recent_searches': {
+        // Latest N searches regardless of time range
+        coveredTimeRange = undefined;
         const data = await getRecentSearchEvents(limit || 20, experienceId);
         formatted = formatRecentSearchesForAI(data);
         raw = data;
@@ -850,6 +863,7 @@ export async function executeAnalyticsTool(
           return { success: false, error: 'queryText is required' };
         }
         const queryTimeRange = (args.timeRange as TimeRange) || '7d';
+        coveredTimeRange = queryTimeRange;
         const data = await getQuerySearchEvents(queryText, queryTimeRange, experienceId, limit || 50);
         formatted = formatQuerySearchEventsForAI(data, queryText);
         raw = data;
@@ -886,13 +900,14 @@ export async function executeAnalyticsTool(
     }
 
     // Cache both formatted and raw data
-    setCachedResult(cacheKey, { formatted, raw });
+    setCachedResult(cacheKey, { formatted, raw, timeRange: coveredTimeRange });
 
     return {
       success: true,
       data: formatted,
       rawData: raw,
       dataType: TOOL_DATA_TYPES[toolName],
+      timeRange: coveredTimeRange,
     };
   } catch (error) {
     return {
