@@ -397,11 +397,8 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
   }
 
   // ── Run V2 Pipeline (S2 → D1 → D2 → D3 → D4) ───────────────────────
-  const deps = createProductionV2Deps(
-    experience.id,
-    experience.providerId ?? undefined,
-    experience.modelId ?? undefined,
-  );
+  // The experience's model reaches every AI call through the turn context below.
+  const deps = createProductionV2Deps();
 
   const result = await runV2Pipeline(
     {

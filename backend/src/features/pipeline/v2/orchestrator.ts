@@ -577,6 +577,8 @@ export async function runV2Pipeline(
         },
         trackedDeps.synthesis,
         onEvent,
+        // The answer is written by the experience's model, like every other step
+        { providerId: turnContext.providerId ?? undefined, modelId: turnContext.modelId ?? undefined },
       );
       if (result.data) {
         span.setAttribute('alpha.v2.preset', result.data.preset);
@@ -806,11 +808,7 @@ function triggerPostTurnTasks(
 /**
  * Create all production dependencies for the V2 pipeline.
  */
-export function createProductionV2Deps(
-  experienceId: string,
-  providerId?: string,
-  modelId?: number,
-): V2PipelineDeps {
+export function createProductionV2Deps(): V2PipelineDeps {
   // Lazy imports to avoid circular dependencies
   const chatFn: ChatFn = async (messages, options) => {
     const { chat } = await import('@/features/ai-service/ai-service.service');
