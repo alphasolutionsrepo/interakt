@@ -90,20 +90,38 @@ export function createSlugger(): (text: string) => string {
 const ENTITIES: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': ' ' };
 
 /**
+ * Drop HTML tags, repeating until nothing changes so nested or broken tags
+ * (`<<b>b>`) can't leave one behind. Not a sanitiser — callers still escape
+ * the text before rendering it as HTML.
+ */
+function stripTags(text: string): string {
+  let previous: string;
+  let current = text;
+  do {
+    previous = current;
+    current = current.replace(/<[^<>]*>/g, '');
+  } while (current !== previous);
+  return current;
+}
+
+/**
  * Inline markdown to the text a reader sees: links and images keep their label,
  * code spans keep their content, emphasis markers and HTML tags go. This is
  * also the text the renderer slugs a heading from, so it must match what
  * react-markdown puts in the heading.
+ *
+ * The result is plain text for indexing and anchors, not safe HTML: escape it
+ * before rendering (docs-search.ts does).
  */
 export function inlineToText(markdown: string): string {
   // Code spans are literal: park them behind placeholders (emphasis can wrap
   // them, as in **see `x` here**), strip the markup, then put them back.
   const code: string[] = [];
   const parked = markdown.replace(/`+([^`]*)`+/g, (_, inner: string) => `\u0000${code.push(inner) - 1}\u0000`);
-  return parked
+  const withoutLinks = parked
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/<[^>]+>/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+  return stripTags(withoutLinks)
     .replace(/(\*\*|__|~~)(.+?)\1/g, '$2')
     .replace(/(^|[^\w*])\*(?!\s)(.+?)\*(?!\w)/g, '$1$2')
     .replace(/(^|\W)_(?!\s)(.+?)_(?!\w)/g, '$1$2')

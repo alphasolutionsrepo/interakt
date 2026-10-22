@@ -45,6 +45,15 @@ describe('inlineToText', () => {
     expect(inlineToText('A &amp; B <br/>')).toBe('A & B ');
   });
 
+  it('leaves no tag behind from nested or broken tags', () => {
+    // Each pass exposes the next tag; repeating removes it too.
+    expect(inlineToText('a <<script>script>alert(1)</script> b')).toBe('a alert(1) b');
+    expect(inlineToText('x <scr<script>ipt>y')).toBe('x y');
+    for (const input of ['<<script>script>', '<scr<b>ipt>', '<<<i>i>i>']) {
+      expect(inlineToText(input)).not.toMatch(/<[a-z]/i);
+    }
+  });
+
   it('strips emphasis that wraps a code span', () => {
     expect(inlineToText('**bound to an `allowed-origins` list**')).toBe('bound to an allowed-origins list');
   });
