@@ -50,18 +50,19 @@ in `.env` at your endpoints. `npm run dev` still handles migrations and seeding.
 
 Go to **Platform → Initial Setup** (or open http://localhost:3000/setup directly) and:
 
-1. **Configure an AI provider** — Ollama for local/free, OpenAI for cloud. This is required:
-   until a provider is configured and set as the system default, the in-app docs and help
-   assistant are unavailable, because the docs are indexed with the default provider's
-   embedding model.
+1. **Configure an AI provider** — Ollama for local/free, OpenAI for cloud. This is required
+   for the Help Assistant, which answers from the docs indexed with the default provider's
+   embedding model. Reading and searching the docs work without it; docs search switches
+   from keyword-only to hybrid once a provider is configured.
 2. **Load the Fashion Catalog demo data** — sample content plus ready-made Search and AI
    experiences with access tokens, which is exactly what the demo site needs.
 
 Then open http://localhost:3000/docs and spend ten minutes on
 [What is Interakt](http://localhost:3000/docs/getting-started/what-is-interakt) and
 [Architecture](http://localhost:3000/docs/getting-started/architecture) before clicking around
-the admin. The **?** icon on any admin screen opens the docs page for what you're looking at,
-plus an **Ask** tab backed by Interakt's own assistant running over the docs.
+the admin. The **?** icon on any admin screen (or Ctrl+K) opens the docs page for what you're
+looking at, with a box to **Search** the docs or **Ask AI** — Interakt's own search and
+assistant, running over the docs.
 
 ### Demo site (reference integration)
 

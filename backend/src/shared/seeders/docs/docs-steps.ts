@@ -5,6 +5,7 @@
 // step list and the progress-event type without pulling in server modules.
 
 export const DOCS_SEED_STEPS = [
+  { id: 'search', label: 'Docs search' },
   { id: 'datasource', label: 'Docs data source' },
   { id: 'ingest', label: 'Ingest & embed docs' },
   { id: 'tool', label: 'Search tool' },

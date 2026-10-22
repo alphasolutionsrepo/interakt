@@ -12,6 +12,12 @@
  */
 export const HELP_EXPERIENCE_SLUG = 'help-assistant';
 
+/**
+ * Slug of the seeded docs search experience (and the name of its index) that
+ * docs search talks to. Seeded by src/shared/seeders/docs/docs-search.seeder.ts.
+ */
+export const DOCS_SEARCH_SLUG = 'interakt-docs';
+
 export interface HelpTarget {
   /** Fallback drawer title (the doc's own H1 overrides this once loaded). */
   title: string;

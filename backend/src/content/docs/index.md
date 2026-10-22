@@ -1,6 +1,6 @@
 # Interakt user documentation
 
-End-user documentation for the Interakt admin dashboard. These docs are also indexed into the in-app **Help Assistant** (the ? icon in any admin screen, **Ask** tab).
+End-user documentation for the Interakt admin dashboard. These docs are also indexed into in-app docs search and the **Help Assistant** — the ? icon in any admin screen (or Ctrl+K), in **Search** and **Ask AI** mode.
 
 If you're reading this on GitHub:
 

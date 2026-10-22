@@ -14,19 +14,19 @@
  *
  * Re-running is safe: a content checksum skips unchanged docs; on change it
  * wipes and re-ingests. resetDocs() tears it down.
+ *
+ * It first refreshes docs search (docs-search.seeder.ts), which is built at
+ * startup without an AI provider and turns hybrid here. Reset leaves docs
+ * search alone.
  */
 
 import 'server-only';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 
-import { eq } from 'drizzle-orm';
-
+import { getDocsSearchStatus, seedDocsSearch, type DocsSearchStatus } from './docs-search.seeder';
+import { DOCS_ROOT, getAdminUserId, readDocs, type DocFile } from './docs-source';
 import type { DocsSeedProgressEvent } from './docs-steps';
 
-import { db } from '@/db/index';
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
-import { user } from '@/db/schema/users.schema';
 import {
   createAIExperience,
   getAIExperienceBySlug,
@@ -49,7 +49,6 @@ import {
   getToolsByDataSourceId,
   deleteTool,
 } from '@/features/tools/tools.service';
-import { deriveTitle, stripFrontmatter } from '@/shared/help/markdown';
 import { createLogger } from '@/shared/logger/logger';
 import {
   calculateChecksum,
@@ -69,9 +68,6 @@ const DATA_SOURCE_NAME = 'Interakt Docs';
 const DATA_SOURCE_SLUG = 'interakt-docs';
 const EXPERIENCE_NAME = 'Help Assistant';
 export const HELP_EXPERIENCE_SLUG = 'help-assistant';
-
-/** Where the end-user docs live (read at runtime from the Node cwd). */
-const DOCS_ROOT = path.resolve(process.cwd(), 'src', 'content', 'docs');
 
 /** knowledge_chunks.embedding is a hard-coded vector(1536) — ingestion needs a matching model. */
 const REQUIRED_EMBEDDING_DIMS = 1536;
@@ -95,15 +91,6 @@ export interface DocsSeedSummary {
   chunks?: number;
   toolId?: string;
   experienceSlug?: string;
-}
-
-interface DocFile {
-  /** Slug-ish relative path without extension, e.g. "guides/add-tools-to-your-chat". */
-  slug: string;
-  /** Human title (first H1, falling back to the slug). Used as the document name. */
-  title: string;
-  /** Markdown body with frontmatter stripped. */
-  content: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +117,24 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
         `(e.g. OpenAI text-embedding-3-small). Pick a ${REQUIRED_EMBEDDING_DIMS}-dim embedding model, then retry.`,
     );
   }
+
+  // Docs search has its own checksum. Run it first: an embedding model now
+  // exists, so a keyword-only index built at startup upgrades to hybrid here
+  // without waiting for a restart. A failure here never blocks the assistant.
+  emit({ step: 'search', status: 'start' });
+  const search = await seedDocsSearch({ force: options.force }).catch((e: Error) => {
+    logger.warn('Docs search build failed (non-fatal)', { error: e.message });
+    return null;
+  });
+  emit({
+    step: 'search',
+    status: 'done',
+    detail: search
+      ? search.skipped
+        ? search.reason ?? 'up to date'
+        : `${search.searchType} · ${search.sections} sections`
+      : 'failed',
+  });
 
   // Read the docs from disk and compute an idempotency checksum.
   const docs = await readDocs();
@@ -385,6 +390,8 @@ export interface DocsSeedStatus {
   };
   /** True when the docs assistant can be (re)built right now. */
   ready: boolean;
+  /** Docs search — built at startup, independent of the assistant. */
+  search: DocsSearchStatus;
 }
 
 export async function getDocsSeedStatus(): Promise<DocsSeedStatus> {
@@ -413,6 +420,7 @@ export async function getDocsSeedStatus(): Promise<DocsSeedStatus> {
       reason,
     },
     ready: configured && dimensionsOk,
+    search: await getDocsSearchStatus(),
   };
 }
 
@@ -450,40 +458,4 @@ export async function resetDocs(): Promise<DocsResetSummary> {
 
   await tryStep('seed-registry entry', () => deleteRegistryEntry(SEED_TYPES.DOCS, DOCS_KEY));
   return { deleted };
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Recursively read every .md under DOCS_ROOT, frontmatter-stripped. */
-async function readDocs(): Promise<DocFile[]> {
-  const entries = await fs.readdir(DOCS_ROOT, { recursive: true, withFileTypes: true });
-  const docs: DocFile[] = [];
-
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-    const dir = (entry as unknown as { parentPath?: string; path?: string }).parentPath
-      ?? (entry as unknown as { path?: string }).path
-      ?? DOCS_ROOT;
-    const full = path.join(dir, entry.name);
-    const raw = await fs.readFile(full, 'utf8');
-    const content = stripFrontmatter(raw).trim();
-    if (!content) continue;
-    const slug = path.relative(DOCS_ROOT, full).replace(/\\/g, '/').replace(/\.md$/i, '');
-    const title = deriveTitle(content) ?? slug;
-    docs.push({ slug, title, content });
-  }
-
-  // Stable order so the checksum is deterministic.
-  docs.sort((a, b) => a.slug.localeCompare(b.slug));
-  return docs;
-}
-
-async function getAdminUserId(): Promise<string> {
-  const admin = await db.query.user.findFirst({ where: eq(user.role, 'admin') });
-  if (!admin) {
-    throw new Error('No admin user found. An admin user is required to seed the docs Help Assistant.');
-  }
-  return admin.id;
 }

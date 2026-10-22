@@ -124,7 +124,7 @@ If your guardrails are too aggressive, lower the threshold or expand the allowed
 
 ## The Help Assistant — guardrails disabled
 
-The built-in Help Assistant (the one in the ? icon → Ask tab) has guardrails **disabled** by design. The whole point of it is to answer freely about Interakt. If you replicate the Help Assistant for your own internal documentation, you'll probably want it the same way.
+The built-in Help Assistant (the one in the ? icon → Ask AI) has guardrails **disabled** by design. The whole point of it is to answer freely about Interakt. If you replicate the Help Assistant for your own internal documentation, you'll probably want it the same way.
 
 ## Common gotchas
 

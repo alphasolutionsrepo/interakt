@@ -6,6 +6,7 @@
 
 import type { ReactNode } from 'react';
 
+import { DocsSearchButton } from './_components/DocsSearchButton';
 import { DocsSidebar } from './_components/DocsSidebar';
 
 import { listDocs } from '@/shared/help/help.server';
@@ -21,7 +22,11 @@ export default async function DocsLayout({ children }: { children: ReactNode }) 
         </div>
       </aside>
       <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-3xl px-6 py-8 lg:px-10">{children}</div>
+        <div className="mx-auto max-w-3xl px-6 py-8 lg:px-10">
+          {/* The sidebar (with its search box) is hidden on small screens. */}
+          <DocsSearchButton className="mb-6 md:hidden" />
+          {children}
+        </div>
       </main>
     </div>
   );
