@@ -14,6 +14,7 @@
  * - Search experience created/updated/deleted
  * - Search experience index added/updated/removed
  * - Connected search index updated (name, displayName, isActive, etc.)
+ * - Connected external data source updated or deleted (name, isActive, config)
  */
 
 import { CacheManager } from '@/shared/cache/cache-manager';
@@ -33,9 +34,13 @@ const cache = new CacheManager('search-experience', {
   maxSize: 500, // Reasonable limit for search experiences
 });
 
-// Track which experiences use which search indexes for reverse invalidation
-// Map<searchIndexId, Set<experienceId>>
-const indexToExperienceMap = new Map<string, Set<string>>();
+// Which cached experiences use which search indexes and external data sources,
+// so a change to one drops every experience that carries its details.
+// Map<dependencyKey, Set<experienceId>>
+const dependents = new Map<string, Set<string>>();
+
+const indexDependency = (searchIndexId: string) => `index:${searchIndexId}`;
+const sourceDependency = (dataSourceId: string) => `source:${dataSourceId}`;
 
 // ============================================================================
 // CACHE KEYS
@@ -75,8 +80,7 @@ export function set(experience: SearchExperienceWithIndexes): void {
   cache.set(tokenKey(experience.accessToken), experience);
   cache.set(idKey(experience.id), experience);
 
-  // Track index associations for reverse invalidation
-  trackIndexAssociations(experience);
+  trackDependencies(experience);
 
   logger.debug('Cached search experience', {
     id: experience.id,
@@ -152,8 +156,7 @@ export async function invalidateExperience(experienceId: string, accessToken?: s
     await cache.delete(tokenKey(token));
   }
 
-  // Clean up index associations
-  cleanupIndexAssociations(experienceId);
+  forgetDependencies(experienceId);
 
   logger.debug('Invalidated search experience cache', { experienceId });
 }
@@ -163,24 +166,26 @@ export async function invalidateExperience(experienceId: string, accessToken?: s
  * Call when: search index is updated (name, displayName, isActive, etc.)
  */
 export async function invalidateBySearchIndex(searchIndexId: string): Promise<void> {
-  const experienceIds = indexToExperienceMap.get(searchIndexId);
+  await invalidateDependents(indexDependency(searchIndexId));
+}
 
-  if (!experienceIds || experienceIds.size === 0) {
-    return;
-  }
+/**
+ * Invalidate cache for all experiences searching a specific external data source
+ * Call when: data source is updated (name, isActive, config) or deleted
+ */
+export async function invalidateByDataSource(dataSourceId: string): Promise<void> {
+  await invalidateDependents(sourceDependency(dataSourceId));
+}
 
-  logger.debug('Invalidating experiences by search index', {
-    searchIndexId,
-    experienceCount: experienceIds.size,
-  });
+async function invalidateDependents(dependency: string): Promise<void> {
+  const experienceIds = [...(dependents.get(dependency) ?? [])];
+  if (experienceIds.length === 0) return;
 
-  // Invalidate all affected experiences
+  logger.debug('Invalidating experiences by dependency', { dependency, experienceCount: experienceIds.length });
+
   for (const experienceId of experienceIds) {
     await invalidateExperience(experienceId);
   }
-
-  // Clear the mapping for this index
-  indexToExperienceMap.delete(searchIndexId);
 }
 
 /**
@@ -189,41 +194,38 @@ export async function invalidateBySearchIndex(searchIndexId: string): Promise<vo
  */
 export async function clearAll(): Promise<void> {
   await cache.clear();
-  indexToExperienceMap.clear();
+  dependents.clear();
   logger.info('Cleared all search experience cache');
 }
 
 // ============================================================================
-// INDEX ASSOCIATION TRACKING
+// DEPENDENCY TRACKING
 // ============================================================================
 
-/**
- * Track which search indexes are used by an experience
- * This enables reverse invalidation when a search index changes
- */
-function trackIndexAssociations(experience: SearchExperienceWithIndexes): void {
-  // Clean up old associations first
-  cleanupIndexAssociations(experience.id);
+/** Record the indexes and external data sources an experience uses. */
+function trackDependencies(experience: SearchExperienceWithIndexes): void {
+  forgetDependencies(experience.id);
 
-  // Add new associations
-  for (const idx of experience.indexes) {
-    let experienceSet = indexToExperienceMap.get(idx.searchIndexId);
-    if (!experienceSet) {
-      experienceSet = new Set();
-      indexToExperienceMap.set(idx.searchIndexId, experienceSet);
+  const keys = [
+    ...experience.indexes.map((idx) => indexDependency(idx.searchIndexId)),
+    ...(experience.externalSources ?? []).map((src) => sourceDependency(src.dataSourceId)),
+  ];
+  for (const key of keys) {
+    let experienceIds = dependents.get(key);
+    if (!experienceIds) {
+      experienceIds = new Set();
+      dependents.set(key, experienceIds);
     }
-    experienceSet.add(experience.id);
+    experienceIds.add(experience.id);
   }
 }
 
-/**
- * Remove all index associations for an experience
- */
-function cleanupIndexAssociations(experienceId: string): void {
-  for (const [indexId, experienceSet] of indexToExperienceMap.entries()) {
-    experienceSet.delete(experienceId);
-    if (experienceSet.size === 0) {
-      indexToExperienceMap.delete(indexId);
+/** Remove an experience from every dependency it was recorded under. */
+function forgetDependencies(experienceId: string): void {
+  for (const [key, experienceIds] of dependents.entries()) {
+    experienceIds.delete(experienceId);
+    if (experienceIds.size === 0) {
+      dependents.delete(key);
     }
   }
 }
@@ -235,6 +237,6 @@ function cleanupIndexAssociations(experienceId: string): void {
 export function getStats() {
   return {
     ...cache.getStats(),
-    indexMappings: indexToExperienceMap.size,
+    dependencies: dependents.size,
   };
 }

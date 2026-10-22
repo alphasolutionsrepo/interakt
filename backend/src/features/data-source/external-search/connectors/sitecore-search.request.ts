@@ -80,34 +80,54 @@ function asArray(value: unknown): unknown[] {
 
 /** Thrown inside translation; turned into an unapplied clause by the caller. */
 class UnsupportedFilter extends Error {
-  constructor(readonly clause: FilterClause) {
-    super(`Sitecore Search has no '${clause.operator}' filter`);
+  constructor(readonly clause: FilterClause, reason = `Sitecore Search has no '${clause.operator}' filter`) {
+    super(reason);
   }
+}
+
+const COMPARISONS = new Set(['eq', 'neq', 'gt', 'gte', 'lt', 'lte']);
+
+/** A condition on one field (not and / or / not) needs that field. */
+function leaf(clause: FilterClause): string {
+  if (!clause.field) throw new UnsupportedFilter(clause, `'${clause.operator}' needs a field`);
+  return clause.field;
+}
+
+function nonEmptyValues(clause: FilterClause): unknown[] {
+  const values = asArray(clause.value).filter((v) => v !== undefined);
+  if (values.length === 0) throw new UnsupportedFilter(clause, `'${clause.operator}' needs at least one value`);
+  return values;
 }
 
 /**
  * Translate one filter clause into a Sitecore filter.
  *
- * @throws UnsupportedFilter for operators Sitecore cannot express
+ * @throws UnsupportedFilter for clauses Sitecore cannot be sent: an operator it
+ *   has no equivalent for, or a clause missing what its operator needs
  */
 export function translateFilter(clause: FilterClause): SitecoreFilter {
-  const { field, operator, value } = clause;
+  const { operator, value } = clause;
+
+  if (COMPARISONS.has(operator) && value === undefined) {
+    throw new UnsupportedFilter(clause, `'${operator}' needs a value`);
+  }
 
   switch (operator) {
     case 'eq':
-      return { type: 'eq', name: field, value };
+      return { type: 'eq', name: leaf(clause), value };
     case 'neq':
-      return { type: 'not', filter: { type: 'eq', name: field, value } };
+      return { type: 'not', filter: { type: 'eq', name: leaf(clause), value } };
     case 'gt':
     case 'gte':
     case 'lt':
     case 'lte':
-      return { type: operator, name: field, value };
+      return { type: operator, name: leaf(clause), value };
     case 'in':
-      return { type: 'anyOf', name: field, values: asArray(value) };
+      return { type: 'anyOf', name: leaf(clause), values: nonEmptyValues(clause) };
     case 'nin':
-      return { type: 'not', filter: { type: 'anyOf', name: field, values: asArray(value) } };
+      return { type: 'not', filter: { type: 'anyOf', name: leaf(clause), values: nonEmptyValues(clause) } };
     case 'range': {
+      const field = leaf(clause);
       const range = (value ?? {}) as RangeValue;
       const bounds: SitecoreFilter[] = [];
       if (range.from !== undefined) {
@@ -116,20 +136,37 @@ export function translateFilter(clause: FilterClause): SitecoreFilter {
       if (range.to !== undefined) {
         bounds.push({ type: range.includeUpper === false ? 'lt' : 'lte', name: field, value: range.to });
       }
-      if (bounds.length === 0) throw new UnsupportedFilter(clause);
+      if (bounds.length === 0) throw new UnsupportedFilter(clause, "'range' needs a from or to value");
       return bounds.length === 1 ? bounds[0] : { type: 'and', filters: bounds };
     }
     case 'and':
-    case 'or':
-      return { type: operator, filters: (clause.filters ?? []).map(translateFilter) };
+    case 'or': {
+      const filters = (clause.filters ?? []).map(translateFilter);
+      if (filters.length === 0) throw new UnsupportedFilter(clause, `'${operator}' needs at least one filter`);
+      return { type: operator, filters };
+    }
     case 'not': {
       const inner = (clause.filters ?? []).map(translateFilter);
-      if (inner.length === 0) throw new UnsupportedFilter(clause);
+      if (inner.length === 0) throw new UnsupportedFilter(clause, "'not' needs a filter");
       return { type: 'not', filter: inner.length === 1 ? inner[0] : { type: 'and', filters: inner } };
     }
     default:
       // contains, prefix, exists, missing: no Sitecore equivalent
       throw new UnsupportedFilter(clause);
+  }
+}
+
+/**
+ * Why a filter can't be sent to Sitecore Search, or undefined when it can. Data
+ * source validation uses this, so it refuses exactly what translation would.
+ */
+export function untranslatableReason(clause: FilterClause): string | undefined {
+  try {
+    translateFilter(clause);
+    return undefined;
+  } catch (error) {
+    if (error instanceof UnsupportedFilter) return error.message;
+    throw error;
   }
 }
 
@@ -142,7 +179,18 @@ export function buildFilter(
   fixed: FilterClause[],
   requested: FilterClause[] | undefined,
 ): { filter?: SitecoreFilter; unapplied: UnappliedClause[] } {
-  const translated: SitecoreFilter[] = fixed.map(translateFilter);
+  // Data source validation rejects these, so this is a source saved before it did:
+  // a fixed filter goes on every query, so say which one and where to fix it.
+  const translated: SitecoreFilter[] = fixed.map((clause) => {
+    try {
+      return translateFilter(clause);
+    } catch (error) {
+      if (!(error instanceof UnsupportedFilter)) throw error;
+      throw new Error(
+        `Fixed filter on '${clause.field}' can't be used: ${error.message}. Fix it in the data source's settings.`,
+      );
+    }
+  });
   const unapplied: UnappliedClause[] = [];
 
   for (const clause of requested ?? []) {

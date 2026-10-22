@@ -14,6 +14,16 @@ import type { SpanKind } from '@opentelemetry/api';
  */
 export type TelemetryDetailLevel = 'off' | 'metadata' | 'full';
 
+/** What tells traces apart in the Traces list: metadata, recorded at every level */
+export interface TraceListFacts {
+  /** Results the search returned, or the summary was given */
+  resultsReturned: number | null;
+  /** The models the trace's AI calls used, comma-separated */
+  modelKeys: string | null;
+  /** Tokens across the trace's AI calls (none for a cancelled summary) */
+  totalTokens: number | null;
+}
+
 /** Configuration for the telemetry system */
 export interface TelemetryConfig {
   enabled: boolean;

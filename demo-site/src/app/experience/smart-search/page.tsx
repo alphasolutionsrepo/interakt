@@ -659,7 +659,7 @@ export default function SmartSearchPage() {
                     summary={aiSummary.summary}
                     isStreaming={aiSummary.isStreaming}
                     isComplete={aiSummary.isComplete}
-                    results={searchState.results}
+                    sources={aiSummary.sources}
                     displayConfig={searchState.displayConfig}
                   />
                 )}

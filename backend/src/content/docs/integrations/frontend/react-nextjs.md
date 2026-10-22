@@ -179,8 +179,7 @@ Search is a plain `POST` that returns JSON. A small debounced hook keeps it resp
 import { useEffect, useState } from "react";
 
 const BASE = "https://admin.interakt.app";
-const SLUG = "product-search"; // your search experience slug
-const TOKEN = process.env.NEXT_PUBLIC_INTERAKT_SEARCH_TOKEN!;
+const TOKEN = process.env.NEXT_PUBLIC_INTERAKT_SEARCH_TOKEN!; // identifies the search experience
 
 export function useInteraktSearch(query: string) {
   const [results, setResults] = useState<any[]>([]);
@@ -195,7 +194,7 @@ export function useInteraktSearch(query: string) {
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${BASE}/api/v1/search-experiences/${SLUG}/search`, {
+        const res = await fetch(`${BASE}/api/v1/search`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -205,8 +204,8 @@ export function useInteraktSearch(query: string) {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error(`Interakt ${res.status}`);
-        const data = await res.json();
-        setResults(data.hits ?? data.results ?? []); // see note on shape below
+        const { data } = await res.json();
+        setResults(data.results); // each hit's fields are in hit.source
       } catch (err) {
         if ((err as Error).name !== "AbortError") console.error(err);
       } finally {
@@ -240,7 +239,7 @@ export default function SearchBox() {
       <ul>
         {results.map((hit) => (
           <li key={hit.id}>
-            <a href={hit.url}>{hit.title}</a>
+            <a href={hit.source.url}>{hit.source.title}</a>
           </li>
         ))}
       </ul>
@@ -251,8 +250,7 @@ export default function SearchBox() {
 
 > **The exact request/response shape evolves** (facets, pagination, AI summaries, highlights, and
 > the per-experience display configuration come back too). Get the current shape live from
-> **Playground → Experience Search** in the admin, or the curl example on the experience's detail
-> page. Full reference: [Calling the search API](../../guides/call-the-search-api).
+> **Playground → Experience Search** in the admin. Full reference: [Calling the search API](../../guides/call-the-search-api).
 
 ### Chat (streaming)
 
@@ -272,8 +270,8 @@ export function useInteraktChat() {
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
-  // Persist the session id so multi-turn context is kept across messages.
-  const sessionId = useRef<string>(crypto.randomUUID());
+  // Interakt issues the session id on the first reply; send it back to keep the conversation.
+  const sessionId = useRef<string | undefined>(undefined);
 
   async function send(message: string) {
     setBusy(true);
@@ -309,15 +307,16 @@ export function useInteraktChat() {
 
         switch (evt.type) {
           case "content":
-            setAnswer((prev) => prev + (evt.text ?? evt.delta ?? ""));
+            setAnswer((prev) => prev + evt.text);
             break;
           case "sources":
             setSources(evt.sources ?? []);
             break;
           case "done":
+            sessionId.current = evt.sessionId;
             setBusy(false);
             break;
-          // "processing" / "tool_call" / "tool_result" — drive "thinking" UI here.
+          // "step_start" / "tool_call" / "tool_result" — drive "thinking" UI here.
         }
       }
     }
@@ -330,10 +329,10 @@ export function useInteraktChat() {
 
 Key points:
 
-- **Sessions.** Generate a `sessionId` once and re-send it on every turn so Interakt loads the
-  conversation history. Store it (`useRef`, `localStorage`, or a cookie) and decide your own TTL for
-  when to start a fresh session.
-- **Event types.** Render `content` chunks as they arrive; use `processing` / `tool_call` /
+- **Sessions.** The `done` event carries the `sessionId`; send it on every later turn so Interakt
+  loads the conversation history. Store it (`useRef`, `localStorage`, or a cookie) and decide your
+  own TTL for when to start a fresh session.
+- **Event types.** Render `content` chunks as they arrive; use `step_start` / `tool_call` /
   `tool_result` for "thinking" and tool-use indicators, and `sources` for citations.
 
 > The event names and payload fields are the canonical list, but exact field names evolve — confirm
@@ -354,7 +353,7 @@ Next.js you *can* instead proxy through a **Route Handler** (`app/api/.../route.
 export async function POST(req: Request) {
   const body = await req.text();
   const res = await fetch(
-    "https://admin.interakt.app/api/v1/search-experiences/product-search/search",
+    "https://admin.interakt.app/api/v1/search",
     {
       method: "POST",
       headers: {

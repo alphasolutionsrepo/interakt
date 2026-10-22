@@ -501,6 +501,8 @@ interface CustomerIntentsData {
   totalIntents: number;
   uniqueIntents: number;
   empty?: boolean;
+  /** Why it's empty when the traces held no visitor text (Metadata only telemetry) */
+  note?: string;
 }
 
 function CustomerIntentRenderer({ data }: { data: CustomerIntentsData }) {
@@ -508,7 +510,7 @@ function CustomerIntentRenderer({ data }: { data: CustomerIntentsData }) {
     return (
       <div className="flex items-center gap-2 py-2 text-muted-foreground">
         <AlertCircle className="h-4 w-4 text-amber-500" />
-        <span className="text-sm">No intent data available. Run Refresh Insights first.</span>
+        <span className="text-sm">{data.note ?? 'No intent data available. Run Refresh Insights first.'}</span>
       </div>
     );
   }
@@ -699,6 +701,8 @@ interface DemandSignalsData {
   topCategories: Array<{ name: string; count: number }>;
   topQueries: Array<{ query: string; count: number }>;
   empty?: boolean;
+  /** Why it's empty when the traces held no visitor text */
+  note?: string;
 }
 
 function DemandSignalRenderer({ data }: { data: DemandSignalsData }) {
@@ -712,7 +716,7 @@ function DemandSignalRenderer({ data }: { data: DemandSignalsData }) {
     return (
       <div className="flex items-center gap-2 py-2 text-muted-foreground">
         <AlertCircle className="h-4 w-4 text-amber-500" />
-        <span className="text-sm">No demand signal data available. Brand and category filters may not be in use yet.</span>
+        <span className="text-sm">{data.note ?? 'No demand signal data available. Brand and category filters may not be in use yet.'}</span>
       </div>
     );
   }

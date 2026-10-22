@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+import type { FilterClause } from '@/features/search/search.types';
+
+import { untranslatableReason } from './external-search/connectors/sitecore-search.request';
+
 // ============================================================================
 // DATA SOURCE TYPE CONSTANTS
 // ============================================================================
@@ -39,19 +43,39 @@ const searchIndexConfigSchema = z.object({
 });
 
 /**
- * A filter every query to a Sitecore source carries. Only operators Sitecore can
- * express: a fixed filter it couldn't apply would fail every search, not just one.
+ * A filter every query to a Sitecore source carries. Its shape only: whether
+ * Sitecore can be sent it is checked against the connector's own translation
+ * (see sitecoreFixedFilterIssues), so the two can't disagree.
  */
 const fixedFilterSchema: z.ZodTypeAny = z.lazy(() =>
   z.object({
     field: z.string(),
-    operator: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'nin', 'range', 'and', 'or', 'not'], {
-      errorMap: () => ({ message: 'Sitecore fixed filters support eq, neq, gt, gte, lt, lte, in, nin, range, and, or, not' }),
-    }),
+    operator: z.string(),
     value: z.unknown().optional(),
     filters: z.array(fixedFilterSchema).optional(),
   }),
 );
+
+/**
+ * A fixed filter Sitecore can't be sent fails every search on the source, so it
+ * is refused when the data source is saved.
+ */
+function checkSitecoreFixedFilters(
+  config: { provider?: string; providerSettings?: { fixedFilters?: unknown[] } },
+  ctx: z.RefinementCtx,
+): void {
+  if (config.provider !== 'sitecore_search') return;
+  (config.providerSettings?.fixedFilters ?? []).forEach((clause, i) => {
+    const reason = untranslatableReason(clause as FilterClause);
+    if (reason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['providerSettings', 'fixedFilters', i],
+        message: `Fixed filter ${i + 1} can't be used: ${reason}`,
+      });
+    }
+  });
+}
 
 const externalSearchIndexConfigSchema = z.object({
   provider: z.enum(['elasticsearch', 'azure_ai_search', 'sitecore_search']),
@@ -90,7 +114,7 @@ const externalSearchIndexConfigSchema = z.object({
   profileSampleSize: z.number().int().min(0).max(500).optional(),
   // Connector-specific settings (e.g. Sitecore entity and fixed filters).
   providerSettings: z.object({ fixedFilters: z.array(fixedFilterSchema).optional() }).passthrough().optional(),
-});
+}).superRefine(checkSitecoreFixedFilters);
 
 const fileStoreConfigSchema = z.object({
   chunkingStrategy: z.enum(['page', 'paragraph', 'token_count', 'semantic']),

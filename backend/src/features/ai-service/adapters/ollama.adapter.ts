@@ -23,7 +23,8 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 
-import { AIProviderAdapter, AdapterError, parseNDJSONStream } from './types';
+import { estimateChatUsage } from '../utils/token-counter';
+import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal } from './types';
 
 /**
  * Ollama's structured-output `format` field. Ollama 0.5+ accepts a full JSON
@@ -252,7 +253,8 @@ export class OllamaAdapter implements AIProviderAdapter {
         const response = await this.makeStreamRequest(
             `${config.baseUrl}/api/chat`,
             ollamaRequest,
-            config
+            config,
+            request.signal
         );
 
         let fullContent = '';
@@ -282,7 +284,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         // Final chunk with usage
         const usage = lastChunk
             ? this.extractUsageFromChat(lastChunk)
-            : this.estimateUsage(request, fullContent);
+            : estimateChatUsage(request.messages, fullContent, config.modelKey);
 
         yield {
             content: '',
@@ -429,7 +431,8 @@ export class OllamaAdapter implements AIProviderAdapter {
     private async makeStreamRequest(
         url: string,
         body: unknown,
-        config: AdapterConfig
+        config: AdapterConfig,
+        signal?: AbortSignal
     ): Promise<Response> {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), config.timeout);
@@ -441,7 +444,7 @@ export class OllamaAdapter implements AIProviderAdapter {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(body),
-                signal: controller.signal,
+                signal: requestSignal(controller.signal, signal),
             });
 
             clearTimeout(timeoutId);
@@ -459,12 +462,7 @@ export class OllamaAdapter implements AIProviderAdapter {
             }
 
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new AdapterError(
-                    'Request timed out',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
+                throw abortedRequestError(this.providerKey, signal);
             }
 
             if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
@@ -528,23 +526,6 @@ export class OllamaAdapter implements AIProviderAdapter {
             inputTokens: response.prompt_eval_count ?? 0,
             outputTokens: response.eval_count ?? 0,
             totalTokens: (response.prompt_eval_count ?? 0) + (response.eval_count ?? 0),
-        };
-    }
-
-    /**
-     * Estimate usage when not provided
-     */
-    private estimateUsage(request: ChatRequest, output: string): TokenUsage {
-        // Rough estimation: ~4 chars per token
-        const inputTokens = Math.ceil(
-            request.messages.reduce((acc, m) => acc + m.content.length, 0) / 4
-        );
-        const outputTokens = Math.ceil(output.length / 4);
-
-        return {
-            inputTokens,
-            outputTokens,
-            totalTokens: inputTokens + outputTokens,
         };
     }
 

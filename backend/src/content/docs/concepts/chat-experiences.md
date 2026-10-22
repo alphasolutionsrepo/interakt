@@ -116,7 +116,7 @@ The embed configuration — see [Embed widgets](embed-widgets).
 
 ### Access Token card
 
-The token (masked), a Copy button, a curl example. Regenerate Token is in the header.
+The token (masked) and a Copy button. Regenerate Token is in the header.
 
 ### Danger zone
 Delete button.
@@ -148,15 +148,9 @@ Two chat experiences over the same data can feel completely different based on:
 
 ## Streaming and tool calls
 
-Chat responses stream as the AI generates them. Your widget (or custom frontend) sees a sequence of events:
+Chat responses stream as the AI generates them: pipeline steps, tool calls and their results, response text chunk by chunk, citations, and a final `done` event.
 
-- `processing` — request received.
-- `tool_call` / `tool_result` — when tools fire.
-- `content` — response text, chunk by chunk.
-- `sources` — citations / referenced records.
-- `done` — end of stream.
-
-The drop-in widget handles all this. If you're building a custom frontend, see [Access tokens](access-tokens) for the API model and try the Playground to see actual request/response shapes.
+The drop-in widget handles all this. If you're building a custom frontend, [Calling the chat API](../guides/call-the-chat-api) lists every event, and [Access tokens](access-tokens) covers the API model.
 
 ## Common gotchas
 

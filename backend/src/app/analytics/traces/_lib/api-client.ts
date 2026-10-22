@@ -1,8 +1,10 @@
 // app/analytics/traces/_lib/api-client.ts
 
+import type { TraceListFacts } from '@/features/telemetry/telemetry.types';
+
 export type TimeRange = '1h' | '24h' | '7d' | '30d' | '90d';
 
-export interface SpanListItem {
+export interface SpanListItem extends TraceListFacts {
   id: string;
   traceId: string;
   spanId: string;
@@ -22,6 +24,8 @@ export interface SpanListItem {
   sessionId: string | null;
   userMessage: string | null;
   experienceSlug: string | null;
+  /** A summary the visitor left before it finished */
+  cancelled: boolean;
 }
 
 export interface SpanDetail extends SpanListItem {

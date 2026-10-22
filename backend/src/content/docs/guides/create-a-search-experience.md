@@ -109,21 +109,16 @@ See [Embed widgets](../concepts/embed-widgets) for the full set of configuration
 
 ## 8. Calling the API from a custom frontend
 
-If you're building your own UI instead of using the widget, your frontend calls the experience's search endpoint with the access token. The detail page's **Access Token** card has a curl example to copy from.
+If you're building your own UI instead of using the widget, your frontend calls the search endpoint with the experience's access token (copy it from the **Access Token** card):
 
-The general shape:
-
+```bash
+curl -X POST "https://admin.interakt.app/api/v1/search" \
+  -H "Content-Type: application/json" \
+  -H "X-Access-Token: YOUR_SEARCH_ACCESS_TOKEN" \
+  -d '{"query":"denim jacket","page":1,"pageSize":20}'
 ```
-POST /api/v1/search-experiences/<your-slug>/search
-Authorization: Bearer <your-token>
-Content-Type: application/json
 
-{
-  "query": "denim jacket",
-  "limit": 20,
-  "filters": { ... }
-}
-```
+See [Calling the search API](call-the-search-api) for the response and the other request options.
 
 ## Common gotchas
 

@@ -628,7 +628,7 @@ export default function AISearchPage() {
                       summary={aiSummary.summary}
                       isStreaming={aiSummary.isStreaming}
                       isComplete={aiSummary.isComplete}
-                      results={searchState.results}
+                      sources={aiSummary.sources}
                       displayConfig={searchState.displayConfig}
                     />
                   )}

@@ -1184,7 +1184,7 @@ function formatInsightForAI(
         avgOutcomeSuccess: number;
         topQueries: string[];
       }>;
-      if (clusters.length === 0) return 'No customer intents found.';
+      if (clusters.length === 0) return typeof data.note === 'string' ? data.note : 'No customer intents found.';
       let result = `Customer Intent Analysis (${data.totalIntents} total, ${data.uniqueIntents} unique):\n\n`;
       for (let i = 0; i < clusters.length; i++) {
         const c = clusters[i];
@@ -1233,7 +1233,9 @@ function formatInsightForAI(
       const categories = (data.topCategories || []) as Array<{ name: string; count: number }>;
       const queries = (data.topQueries || []) as Array<{ query: string; count: number }>;
       if (brands.length === 0 && categories.length === 0 && queries.length === 0) {
-        return 'No demand signal data found. Brand and category filters may not be in use, and no search queries were recorded in this period.';
+        return typeof data.note === 'string'
+          ? data.note
+          : 'No demand signal data found. Brand and category filters may not be in use, and no search queries were recorded in this period.';
       }
       let result = `Demand Signals:\n\n`;
       if (brands.length > 0) {

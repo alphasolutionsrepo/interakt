@@ -14,6 +14,7 @@ import type { ExportResult } from '@opentelemetry/core';
 import { ExportResultCode } from '@opentelemetry/core';
 import { createLogger } from '@/shared/logger/logger';
 import { ATTR } from './attribute-keys';
+import { storableSpanData } from './content-policy';
 
 const logger = createLogger('postgres-span-exporter');
 
@@ -43,9 +44,10 @@ function isApplicationSpan(span: ReadableSpan): boolean {
   for (const prefix of APP_SPAN_PREFIXES) {
     if (span.name.startsWith(prefix)) return true;
   }
-  // Also accept any span that carries alpha.* attributes
+  // Also accept any span that carries alpha.* attributes. The content-policy mark is
+  // on every span, so it doesn't count (library spans like Elasticsearch's stay out).
   const attrs = span.attributes as Record<string, unknown>;
-  return Object.keys(attrs).some((k) => k.startsWith('alpha.'));
+  return Object.keys(attrs).some((k) => k.startsWith('alpha.') && k !== ATTR.CONTENT_RECORDED);
 }
 
 function isNextJsInternalSpan(span: ReadableSpan): boolean {
@@ -116,7 +118,8 @@ export class PostgresSpanExporter implements SpanExporter {
   }
 
   private spanToRow(span: ReadableSpan): Record<string, unknown> {
-    const attrs = span.attributes as Record<string, unknown>;
+    // Below 'full' telemetry, content is dropped here, where every span is written
+    const { attributes: attrs, events } = storableSpanData(span.attributes as Record<string, unknown>, span.events);
     const startMs = hrTimeToMs(span.startTime);
     const endMs = hrTimeToMs(span.endTime);
 
@@ -143,7 +146,7 @@ export class PostgresSpanExporter implements SpanExporter {
 
       // Full payloads
       attributes: attrs,
-      events: span.events.map((e) => ({
+      events: events.map((e) => ({
         name: e.name,
         timestamp: new Date(hrTimeToMs(e.time)).toISOString(),
         attributes: (e.attributes as Record<string, unknown>) ?? {},

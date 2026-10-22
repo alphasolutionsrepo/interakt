@@ -39,6 +39,8 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import type { SpanListItem, SpanDetail } from '../_lib/api-client';
 import { useTraceSpans } from '../_lib/hooks/useTraces';
+import { traceContent, traceMessage } from '../_lib/trace-message';
+import { EmptyMessage, NotStored } from './NotStored';
 import { SearchRequestBody } from './SearchRequestDetail';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1541,6 +1543,8 @@ function TurnHeader({
   }
 
   const totalTokens = totalInputTokens + totalOutputTokens;
+  const headerMessage = traceMessage(rootSpan.userMessage);
+  const headerContent = traceContent(rootSpan.operationName);
 
   return (
     <div className="shrink-0 border-b bg-muted/20 px-5 py-4">
@@ -1552,7 +1556,11 @@ function TurnHeader({
               ? <Search className="mt-0.5 size-4 shrink-0 text-blue-500" />
               : <MessageSquare className="mt-0.5 size-4 shrink-0 text-blue-500" />}
             <p className="text-sm font-semibold leading-snug">
-              {rootSpan.userMessage?.trim() || <span className="italic text-muted-foreground">No message recorded</span>}
+              {headerMessage.kind === 'text'
+                ? headerMessage.text
+                : headerMessage.kind === 'empty'
+                  ? <EmptyMessage content={headerContent} />
+                  : <NotStored content={headerContent} />}
             </p>
           </div>
 

@@ -67,8 +67,8 @@ export default function TracesPage() {
     <div className="flex h-full flex-col gap-4 p-6">
       {/* Header */}
       <PageHeader
-        title="Conversations"
-        description="Every chat turn — what the user said, what tools were called, what the AI replied"
+        title="Traces"
+        description="Every chat turn, search and AI summary: what was asked, what ran, and how long it took"
         icon={Activity}
         iconBg="bg-violet-100"
         iconColor="text-violet-600"
@@ -158,8 +158,8 @@ export default function TracesPage() {
       <ConfirmationDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        title="Clear All Conversations"
-        description="This will permanently delete all recorded conversation traces. This cannot be undone."
+        title="Clear all traces"
+        description="This permanently deletes every recorded trace (chats, searches and AI summaries) for all experiences. This cannot be undone."
         actionLabel="Clear All"
         onConfirm={handleDeleteAll}
         variant="destructive"

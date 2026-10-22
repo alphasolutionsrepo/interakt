@@ -124,14 +124,13 @@ Content-Type: application/json
 Accept: text/event-stream
 
 {
-  "message": "Find me a warm winter coat",
-  "sessionId": "user-123-conv-456"
+  "message": "Find me a warm winter coat"
 }
 ```
 
-Response is a server-sent events stream. Your frontend renders it as it arrives. Keep the same `sessionId` across turns to maintain conversation history.
+Response is a server-sent events stream. Your frontend renders it as it arrives. The `done` event carries a `sessionId`: send it with the next message to continue the conversation.
 
-The detail page's **Access Token** card has a working curl example.
+Copy the token from the detail page's **Access Token** card. [Calling the chat API](call-the-chat-api) covers the events in the stream.
 
 ## Common gotchas
 
@@ -139,7 +138,7 @@ The detail page's **Access Token** card has a working curl example.
 - **The chat is too eager to call tools** ("for every question I get a database search"). The descriptions are too broad. Narrow the "when to use" guidance in the description.
 - **The chat is too cautious.** Topic-gate guardrails are blocking too aggressively. Lower the threshold or expand the allowed-domains list.
 - **The chat doesn't follow the system instructions.** Often the model is too small (Ollama 7B). Switch to OpenAI for production-quality instruction-following.
-- **Sessions don't persist.** Your widget / app needs to keep the `sessionId` across turns. The widget handles this; custom frontends need to store and pass it.
+- **Sessions don't persist.** Your widget / app needs to keep the `sessionId` across turns. The widget handles this; custom frontends need to store the `sessionId` from the `done` event and pass it.
 
 ## Where to go next
 

@@ -60,6 +60,7 @@ export function initializeTelemetry(): void {
     } = require('@opentelemetry/semantic-conventions');
 
     const { PostgresSpanExporter } = require('./postgres-span-exporter');
+    const { ContentPolicyProcessor } = require('./content-policy');
 
     // Create resource describing this service (v2 API: resourceFromAttributes)
     const resource = resourceFromAttributes({
@@ -80,7 +81,8 @@ export function initializeTelemetry(): void {
     // Create provider with span processors (v2 API: passed in constructor)
     const p = new NodeTracerProvider({
       resource,
-      spanProcessors: [batchProcessor],
+      // The content policy marks each span when it starts; the exporter applies the mark
+      spanProcessors: [new ContentPolicyProcessor(), batchProcessor],
     });
 
     // Register as the global tracer provider

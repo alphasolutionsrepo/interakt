@@ -47,6 +47,7 @@ export const ATTR = {
   SEARCH_PROVIDER: 'alpha.search.provider', // 'elasticsearch' | 'azure_ai_search'
   SEARCH_TOTAL_RESULTS: 'alpha.search.total_results',
   SEARCH_RETURNED: 'alpha.search.results_returned',
+  SUMMARY_CANCELLED: 'alpha.summary.cancelled', // the client went away before the summary finished
   SEARCH_HAS_FILTERS: 'alpha.search.has_filters',
   SEARCH_TRIGGER: 'alpha.search.trigger_type', // 'user' | 'ai_tool' | 'ai_rag'
   SEARCH_ES_TOOK_MS: 'alpha.search.es_took_ms',
@@ -78,6 +79,7 @@ export const ATTR = {
 
   // === Chat Turn ===
   CHAT_USER_MESSAGE: 'alpha.chat.user_message',
+  V2_PLAN_REASONING: 'alpha.v2.plan.reasoning',
   CHAT_AI_DECISION: 'alpha.chat.ai_decision_type', // 'direct_response' | 'tool_call' | 'error'
   CHAT_RESPONSE_PRESET: 'alpha.chat.response_preset', // 'item_grid' | 'single_card' | 'markdown_rich'
   CHAT_CONTEXT_SOURCE: 'alpha.chat.context_source',
@@ -96,4 +98,55 @@ export const ATTR = {
   V2_GUARDRAIL_CLOSEST_GENERAL_TERM: 'alpha.v2.guardrail.closest_general_term',
   V2_GUARDRAIL_SHORT_CIRCUITED: 'alpha.v2.guardrail.short_circuited',
   V2_GUARDRAIL_BLOCKLIST_MATCHED: 'alpha.v2.guardrail.blocklist_matched',
+
+  // === Content policy ===
+  // Whether the trace may keep content (true only at 'full'); set when a span starts
+  CONTENT_RECORDED: 'alpha.telemetry.content_recorded',
 } as const;
+
+/**
+ * Attributes that hold what a visitor wrote, what the model wrote, or values taken
+ * from them (queries, filters, tool input). Only 'full' telemetry keeps them: below
+ * 'full' the exporter drops them from spans and span events. A new attribute that
+ * carries content belongs here.
+ */
+export const CONTENT_ATTRIBUTES: ReadonlySet<string> = new Set([
+  ATTR.CHAT_USER_MESSAGE,
+  ATTR.SEARCH_QUERY,
+  ATTR.TOOL_INPUT_PARAMS,
+  ATTR.V2_PLAN_REASONING,
+  'alpha.v2.plan.actions',
+  'alpha.v2.plan.clarification',
+  'alpha.v2.action_summaries',
+  'alpha.v2.action_steps',
+  'alpha.v2.action_step.summary',
+  'alpha.v2.action_step.detail',
+  'alpha.v2.round.reason',
+  'alpha.v2.response_text',
+  'alpha.v2.guardrail.response_text',
+  'alpha.v2.step.query',
+  'alpha.v2.step.final_query',
+  'alpha.v2.step.original_query',
+  'alpha.v2.step.extracted_params',
+  'alpha.v2.step.input_params',
+  'alpha.v2.step.filters',
+  'alpha.v2.step.original_filters',
+  'alpha.v2.step.final_filters',
+  'alpha.v2.step.dropped_filters',
+  'alpha.v2.step.sort',
+  'alpha.v2.step.sanitized_hints',
+  'alpha.v2.step.removed_hints',
+  'alpha.v2.step.hint_annotations',
+  'alpha.v2.step.retry_log',
+  'alpha.v2.step.error',
+]);
+
+/** Span events that are all content: prompts, history, answers, tool input and output. */
+export const CONTENT_EVENTS: ReadonlySet<string> = new Set([
+  'ai.messages_sent',
+  'ai.response',
+  'context.system_prompt',
+  'context.history',
+  'tool.input',
+  'tool.output',
+]);

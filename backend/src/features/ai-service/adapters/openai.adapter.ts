@@ -25,7 +25,8 @@ import type {
     ToolParameterSchema,
     ResponseFormat,
 } from '../ai-service.types';
-import { AIProviderAdapter, AdapterError, parseSSEStream } from './types';
+import { estimateChatUsage } from '../utils/token-counter';
+import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal } from './types';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -448,7 +449,8 @@ export class OpenAIAdapter implements AIProviderAdapter {
         const response = await this.makeStreamRequest(
             `${config.baseUrl}/chat/completions`,
             openaiRequest,
-            config
+            config,
+            request.signal
         );
 
         let fullContent = '';
@@ -555,7 +557,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
         yield {
             content: '',
             done: true,
-            usage: usage ?? this.estimateUsage(request, fullContent),
+            usage: usage ?? estimateChatUsage(request.messages, fullContent, config.modelKey),
             finishReason,
             ...(toolCalls.length > 0 && { toolCalls }),
         };
@@ -656,7 +658,8 @@ export class OpenAIAdapter implements AIProviderAdapter {
     private async makeStreamRequest(
         url: string,
         body: unknown,
-        config: AdapterConfig
+        config: AdapterConfig,
+        signal?: AbortSignal
     ): Promise<Response> {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), config.timeout);
@@ -666,7 +669,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
                 method: 'POST',
                 headers: this.getHeaders(config),
                 body: JSON.stringify(body),
-                signal: controller.signal,
+                signal: requestSignal(controller.signal, signal),
             });
 
             clearTimeout(timeoutId);
@@ -684,12 +687,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
             }
 
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new AdapterError(
-                    'Request timed out',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
+                throw abortedRequestError(this.providerKey, signal);
             }
 
             throw new AdapterError(
@@ -754,33 +752,6 @@ export class OpenAIAdapter implements AIProviderAdapter {
     ): 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error' {
         if (!reason) return 'stop';
         return reason;
-    }
-
-    /**
-     * Estimate usage when not provided (fallback)
-     */
-    private estimateUsage(request: ChatRequest, output: string): TokenUsage {
-        // Rough estimation: ~4 chars per token
-        const inputTokens = Math.ceil(
-            request.messages.reduce((acc, m) => {
-                if (typeof m.content === 'string') {
-                    return acc + m.content.length;
-                }
-                // For array content, estimate based on text blocks
-                return acc + m.content.reduce((sum, block) => {
-                    if ('text' in block) return sum + block.text.length;
-                    if ('content' in block) return sum + block.content.length;
-                    return sum;
-                }, 0);
-            }, 0) / 4
-        );
-        const outputTokens = Math.ceil(output.length / 4);
-
-        return {
-            inputTokens,
-            outputTokens,
-            totalTokens: inputTokens + outputTokens,
-        };
     }
 
     /**

@@ -413,7 +413,7 @@ function ResultsStep({
               summary={aiSummary.summary}
               isStreaming={aiSummary.isStreaming}
               isComplete={aiSummary.isComplete}
-              results={results}
+              sources={aiSummary.sources}
               displayConfig={displayConfig}
             />
           </div>

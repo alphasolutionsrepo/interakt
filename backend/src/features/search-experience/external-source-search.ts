@@ -92,10 +92,11 @@ export async function searchExternalSourceForExperience(
   const hidden = new Set(fields.filter((f) => f.isRetrievable === false).map((f) => f.name));
   const selectFields = request.includeFields?.filter((name) => !hidden.has(name));
 
+  let result: Awaited<ReturnType<typeof searchExternalSource>>['result'];
   try {
     // External engines have no search.execute span of their own: record one here,
     // nested under the experience's search trace.
-    const { result } = await withSpan(
+    ({ result } = await withSpan(
       {
         name: 'search.external',
         experienceId: experience.id,
@@ -120,47 +121,29 @@ export async function searchExternalSourceForExperience(
           // Asking only for hidden fields gets the default fields, as with no includeFields
           selectFields: selectFields?.length ? selectFields : undefined,
         });
+        // A filter the engine can't apply would return the unfiltered set as if it were the
+        // answer. Refuse it, as a managed index does: alone this source answers 400; next to
+        // other sources it drops out and the response is marked partial. Refused inside the
+        // span, so the trace step shows the refusal instead of a normal answer.
+        const unapplied = searched.result.unappliedFilters;
+        if (unapplied.length > 0) {
+          const fields = [...new Set(unapplied.map((u) => u.field))];
+          logger.warn('External index cannot apply a filter; refusing the search', {
+            dataSourceId: source.dataSourceId,
+            unappliedFilters: unapplied.map((u) => `${u.field}: ${u.reason}`),
+          });
+          track({ total: 0, returned: 0, error: `filter not applied: ${fields.join(', ')}` });
+          throw new SearchError(`This search source can't filter on ${fields.join(', ')}`, 'INVALID_FILTER', { fields });
+        }
+        // Counts only for an answer: a refused search's hits are the unfiltered set
         span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, searched.result.total);
         span.setAttribute(ATTR.SEARCH_RETURNED, searched.result.hits.length);
         span.setAttribute(ATTR.SEARCH_ES_TOOK_MS, searched.result.took);
         return searched;
       }
-    );
-
-    if (result.unappliedFilters.length > 0 || result.unappliedSort.length > 0) {
-      logger.warn('External index could not apply part of the request', {
-        dataSourceId: source.dataSourceId,
-        unappliedFilters: result.unappliedFilters.map((u) => `${u.field}: ${u.reason}`),
-        unappliedSort: result.unappliedSort.map((u) => `${u.field}: ${u.reason}`),
-      });
-    }
-
-    const totalPages = Math.ceil(result.total / pageSize);
-    track({ total: result.total, returned: result.hits.length, took: result.took, topScore: result.hits[0]?.score });
-
-    const hits = hidden.size === 0
-      ? result.hits
-      : result.hits.map((hit) => ({
-          ...hit,
-          source: Object.fromEntries(Object.entries(hit.source).filter(([key]) => !hidden.has(key))),
-        }));
-
-    return {
-      hits,
-      total: { value: result.total, relation: 'eq' },
-      facets: result.facets?.map((f) => ({ field: f.field, type: 'terms' as const, buckets: f.buckets })),
-      took: result.took,
-      maxScore: result.hits[0]?.score,
-      pagination: {
-        page,
-        pageSize,
-        totalPages,
-        totalItems: result.total,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1,
-      },
-    };
+    ));
   } catch (error) {
+    if (error instanceof SearchError && error.code === 'INVALID_FILTER') throw error; // the refusal above
     const message = error instanceof Error ? error.message : String(error);
     track({ total: 0, returned: 0, error: message });
     // The engine's message (status, response body) is for admins: logs, analytics and
@@ -172,4 +155,37 @@ export async function searchExternalSourceForExperience(
     });
     throw new SearchError('An external search source is unavailable', 'PROVIDER_ERROR');
   }
+
+  if (result.unappliedSort.length > 0) {
+    logger.warn('External index could not apply part of the sort', {
+      dataSourceId: source.dataSourceId,
+      unappliedSort: result.unappliedSort.map((u) => `${u.field}: ${u.reason}`),
+    });
+  }
+
+  const totalPages = Math.ceil(result.total / pageSize);
+  track({ total: result.total, returned: result.hits.length, took: result.took, topScore: result.hits[0]?.score });
+
+  const hits = hidden.size === 0
+    ? result.hits
+    : result.hits.map((hit) => ({
+        ...hit,
+        source: Object.fromEntries(Object.entries(hit.source).filter(([key]) => !hidden.has(key))),
+      }));
+
+  return {
+    hits,
+    total: { value: result.total, relation: 'eq' },
+    facets: result.facets?.map((f) => ({ field: f.field, type: 'terms' as const, buckets: f.buckets })),
+    took: result.took,
+    maxScore: result.hits[0]?.score,
+    pagination: {
+      page,
+      pageSize,
+      totalPages,
+      totalItems: result.total,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+    },
+  };
 }

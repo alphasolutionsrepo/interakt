@@ -54,8 +54,8 @@ export interface ExperienceSearchResult {
   results: SearchResponse;
   /** Sources that were searched */
   sourcesSearched: Array<{ id: string; name: string; displayName: string }>;
-  /** Source of each hit, keyed by hit id */
-  hitOrigins: Map<string, HitOrigin>;
+  /** Source of each returned hit. Keyed by the hit object: two sources can return the same id. */
+  hitOrigins: WeakMap<SearchHit, HitOrigin>;
   /** Sources that failed while others answered: the results are partial */
   failedSources: HitOrigin[];
   /** What query understanding did, when it ran */
@@ -122,7 +122,7 @@ export async function executeExperienceSearch(
         ? { ...request, query: publicRequest.query, filters: publicRequest.filters as SearchRequest['filters'] }
         : request;
 
-      const hitOrigins = new Map<string, HitOrigin>();
+      const hitOrigins = new WeakMap<SearchHit, HitOrigin>();
       const failedSources: HitOrigin[] = [];
       const results = await executeMultiIndexSearch(
         indexes,
@@ -387,7 +387,7 @@ async function executeMultiIndexSearch(
   requests: { managed: SearchRequest; external: SearchRequest },
   experience: SearchExperienceWithIndexes,
   options: ExperienceSearchOptions,
-  hitOrigins: Map<string, HitOrigin>,
+  hitOrigins: WeakMap<SearchHit, HitOrigin>,
   failedSources: HitOrigin[]
 ): Promise<SearchResponse> {
   const hybridConfig = experience.searchConfig?.hybridConfig;
@@ -405,22 +405,13 @@ async function executeMultiIndexSearch(
     }),
   };
 
-  // Each search records where its hits came from, so callers can attribute results
-  // after merging without the public response shape changing.
-  const tag = (origin: HitOrigin) => (result: SearchResponse) => {
-    for (const hit of result.hits) {
-      if (!hitOrigins.has(hit.id)) hitOrigins.set(hit.id, origin);
-    }
-    return result;
-  };
-
   const sources: SourceSearch[] = [
     ...indexes.map((idx) => {
       const origin = { id: idx.searchIndexId, name: idx.searchIndex.name, kind: 'index' as const };
       return {
         origin,
         weight: idx.weight ?? 1,
-        run: (req: SearchRequest) => searchService.searchById(idx.searchIndexId, req, searchOptions).then(tag(origin)),
+        run: (req: SearchRequest) => searchService.searchById(idx.searchIndexId, req, searchOptions),
         request: requests.managed,
       };
     }),
@@ -436,7 +427,7 @@ async function executeMultiIndexSearch(
             req,
             experience,
             options.source
-          ).then(tag(origin)),
+          ),
         request: requests.external,
       };
     }),
@@ -444,7 +435,9 @@ async function executeMultiIndexSearch(
 
   // Single source search
   if (sources.length === 1) {
-    return sources[0].run(sources[0].request);
+    const result = await sources[0].run(sources[0].request);
+    for (const hit of result.hits) hitOrigins.set(hit, sources[0].origin);
+    return result;
   }
 
   // Several sources: each returns its top page × pageSize, the merge ranks them together
@@ -465,7 +458,7 @@ async function executeMultiIndexSearch(
     )
   );
 
-  return mergeSearchResults(outcomes, requests.managed, experience, { exact, failedSources });
+  return mergeSearchResults(outcomes, requests.managed, experience, { exact, failedSources, hitOrigins });
 }
 
 /** One source of an experience search, and how much its ranking counts. */
@@ -477,17 +470,18 @@ interface SourceSearch {
 }
 
 /**
- * Merge search results from multiple sources
+ * Merge search results from multiple sources. Records each returned hit's source in
+ * `merge.hitOrigins`.
  */
-function mergeSearchResults(
-  results: Array<{ source: SourceSearch; result: SearchResponse | null; error: unknown }>,
+export function mergeSearchResults(
+  results: Array<{ source: Pick<SourceSearch, 'origin' | 'weight'>; result: SearchResponse | null; error: unknown }>,
   request: SearchRequest,
-  experience: SearchExperienceWithIndexes,
-  merge: { exact: boolean; failedSources: HitOrigin[] }
+  experience: Pick<SearchExperienceWithIndexes, 'id'>,
+  merge: { exact: boolean; failedSources: HitOrigin[]; hitOrigins: WeakMap<SearchHit, HitOrigin> }
 ): SearchResponse {
   // Filter successful results
   const successfulResults = results.filter((r) => r.result !== null) as Array<{
-    source: SourceSearch;
+    source: Pick<SourceSearch, 'origin' | 'weight'>;
     result: SearchResponse;
   }>;
 
@@ -513,13 +507,18 @@ function mergeSearchResults(
   const pageSize = request.pageSize ?? 20;
   const page = request.page ?? 1;
 
-  const ranked = rankHits(
+  const ranked = rankEntries(
     successfulResults.map((r) => ({ key: r.source.origin.id, weight: r.source.weight, hits: r.result.hits })),
     request.sort
   );
-  const mergedHits = merge.exact
+  const pageEntries = merge.exact
     ? ranked.slice((page - 1) * pageSize, page * pageSize)
     : ranked.slice(0, pageSize);
+  const mergedHits = pageEntries.map(({ set, hit, rrf }) => {
+    const merged = { ...hit, score: rrf };
+    merge.hitOrigins.set(merged, successfulResults[set].source.origin);
+    return merged;
+  });
 
   // Merge facets
   const mergedFacets = mergeFacets(successfulResults.map((r) => r.result.facets ?? []));
@@ -564,8 +563,17 @@ export function rankHits(
   sort?: SortClause[],
   k: number = 60 // RRF constant
 ): SearchHit[] {
-  const ranked = sets.flatMap(({ key, weight, hits }) =>
-    hits.map((hit, rank) => ({ key: `${key}\u0000${hit.id}`, hit, rrf: weight / (k + rank + 1) }))
+  return rankEntries(sets, sort, k).map(({ hit, rrf }) => ({ ...hit, score: rrf }));
+}
+
+/** rankHits, keeping which set (by position) each hit came from. */
+function rankEntries(
+  sets: Array<{ key: string; weight: number; hits: SearchHit[] }>,
+  sort?: SortClause[],
+  k: number = 60
+): Array<{ set: number; hit: SearchHit; rrf: number }> {
+  const ranked = sets.flatMap(({ key, weight, hits }, set) =>
+    hits.map((hit, rank) => ({ set, key: `${key}\u0000${hit.id}`, hit, rrf: weight / (k + rank + 1) }))
   );
 
   const byField = (sort ?? []).filter((c) => c.field !== '_score');
@@ -584,9 +592,7 @@ export function rankHits(
 
   // A source can't return the same hit twice, but keep the first if one ever does
   const seen = new Set<string>();
-  return ranked
-    .filter(({ key }) => (seen.has(key) ? false : (seen.add(key), true)))
-    .map(({ hit, rrf }) => ({ ...hit, score: rrf }));
+  return ranked.filter(({ key }) => (seen.has(key) ? false : (seen.add(key), true)));
 }
 
 function fieldValue(source: Record<string, unknown>, path: string): unknown {

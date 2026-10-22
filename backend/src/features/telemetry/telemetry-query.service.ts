@@ -9,6 +9,9 @@
 import 'server-only';
 
 import { and, count, desc, eq, gte, lte, sql, avg, like, asc, or } from 'drizzle-orm';
+
+import { ATTR } from './attribute-keys';
+import type { TraceListFacts } from './telemetry.types';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('telemetry-query');
@@ -19,7 +22,7 @@ const logger = createLogger('telemetry-query');
 
 export type TimeRange = '1h' | '24h' | '7d' | '30d' | '90d';
 
-export interface SpanListItem {
+export interface SpanListItem extends TraceListFacts {
   id: string;
   traceId: string;
   spanId: string;
@@ -40,6 +43,8 @@ export interface SpanListItem {
   // Denormalized from JSONB attributes for list display
   userMessage: string | null;
   experienceSlug: string | null;
+  /** A summary the visitor left before it finished (alpha.summary.cancelled) */
+  cancelled: boolean;
 }
 
 export interface SpanDetail extends SpanListItem {
@@ -210,6 +215,14 @@ export async function getRecentSpans(
           // A chat turn's message, or a search request's query (both recorded only at 'full')
           userMessage: sql<string | null>`coalesce(${otelSpans.attributes}->>'alpha.chat.user_message', ${otelSpans.attributes}->>'alpha.search.query')`,
           experienceSlug: sql<string | null>`${otelSpans.attributes}->>'alpha.experience.slug'`,
+          cancelled: sql<boolean>`coalesce(${otelSpans.attributes}->>${ATTR.SUMMARY_CANCELLED} = 'true', false)`,
+          resultsReturned: sql<number | null>`(${otelSpans.attributes}->>${ATTR.SEARCH_RETURNED})::int`,
+          // From the model calls inside the trace (metadata, recorded at every level). Only the
+          // AI service's call spans count (they carry alpha.ai.operation): a chat turn's span
+          // repeats the total, which would count it twice. The outer table is named in full:
+          // drizzle writes an unqualified column, which `s` would capture.
+          modelKeys: sql<string | null>`(select string_agg(distinct s.attributes->>${ATTR.AI_MODEL_KEY}, ', ') from ${otelSpans} s where s.trace_id = ${otelSpans}.trace_id and s.attributes ? ${ATTR.AI_OPERATION})`,
+          totalTokens: sql<number | null>`(select sum((s.attributes->>${ATTR.AI_TOTAL_TOKENS})::int)::int from ${otelSpans} s where s.trace_id = ${otelSpans}.trace_id and s.attributes ? ${ATTR.AI_OPERATION})`,
         })
         .from(otelSpans)
         .where(where)

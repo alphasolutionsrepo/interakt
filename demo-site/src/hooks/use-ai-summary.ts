@@ -11,6 +11,8 @@ import type { SearchResult } from '@/lib/api/types';
 
 export interface UseAISummaryState {
   summary: string;
+  /** The results the summary was written from, in the order sent; citations number these */
+  sources: SearchResult[];
   followUpQueries: string[];
   isStreaming: boolean;
   isComplete: boolean;
@@ -33,16 +35,22 @@ export type UseAISummaryReturn = UseAISummaryState & UseAISummaryActions & {
 // HOOK
 // ============================================================================
 
+/** How many results are sent for summarizing */
+const MAX_SUMMARY_RESULTS = 10;
+
+const EMPTY_STATE: UseAISummaryState = {
+  summary: '',
+  sources: [],
+  followUpQueries: [],
+  isStreaming: false,
+  isComplete: false,
+  isCollapsed: false,
+  error: null,
+};
+
 export function useAISummary(): UseAISummaryReturn {
   const { settings, isConfigured } = useSettings();
-  const [state, setState] = useState<UseAISummaryState>({
-    summary: '',
-    followUpQueries: [],
-    isStreaming: false,
-    isComplete: false,
-    isCollapsed: false,
-    error: null,
-  });
+  const [state, setState] = useState<UseAISummaryState>(EMPTY_STATE);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -61,19 +69,14 @@ export function useAISummary(): UseAISummaryReturn {
     }
     abortControllerRef.current = new AbortController();
 
-    setState({
-      summary: '',
-      followUpQueries: [],
-      isStreaming: true,
-      isComplete: false,
-      isCollapsed: false,
-      error: null,
-    });
+    // Kept with the summary: the results on screen change with paging and filters
+    const sources = results.slice(0, MAX_SUMMARY_RESULTS);
+    setState({ ...EMPTY_STATE, sources, isStreaming: true });
 
     const apiClient = createApiClient(settings.apiUrl, settings.accessToken);
 
     // Prepare results for summarization
-    const summarizeResults = results.slice(0, 10).map((r) => ({
+    const summarizeResults = sources.map((r) => ({
       id: r.id,
       index: { id: 'default', name: 'default' },
       fields: r.source,
@@ -149,14 +152,7 @@ export function useAISummary(): UseAISummaryReturn {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    setState({
-      summary: '',
-      followUpQueries: [],
-      isStreaming: false,
-      isComplete: false,
-      isCollapsed: false,
-      error: null,
-    });
+    setState(EMPTY_STATE);
   }, []);
 
   // =========================================================================

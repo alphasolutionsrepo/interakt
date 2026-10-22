@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { Database, Globe, Sparkles, Binary, ChevronRight, Search, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ATTR } from '@/features/telemetry/attribute-keys';
 import { cn } from '@/lib/utils';
 import type { SpanDetail, SpanListItem } from '../_lib/api-client';
 
@@ -103,7 +104,10 @@ function StepRow({ span, rootStart, rootDuration }: { span: SpanDetail; rootStar
           {hasContent && <ChevronRight className={cn('size-3.5 text-muted-foreground transition-transform', open && 'rotate-90')} />}
         </div>
         {/* Where this step sits within the request */}
-        <div className="mt-2 h-1.5 w-full rounded-full bg-muted">
+        <div
+          className="mt-2 h-1.5 w-full rounded-full bg-muted"
+          title={`Started ${fmt(offset)} into the request · took ${fmt(span.durationMs)} of ${fmt(rootDuration)}`}
+        >
           <div className="h-1.5 rounded-full bg-primary/40" style={{ marginLeft: `${left}%`, width: `${Math.min(width, 100 - left)}%` }} />
         </div>
         {facts.length > 0 && (
@@ -163,6 +167,9 @@ export function SearchRequestBody({ rootSpan, spans }: { rootSpan: SpanListItem;
           <div className="flex items-center gap-2">
             {isSummary ? <FileText className="size-4 text-amber-500" /> : <Search className="size-4 text-blue-500" />}
             <span className="text-sm font-semibold">{isSummary ? 'AI summary of search results' : 'Search request'}</span>
+            {isSummary && attr(root, ATTR.SUMMARY_CANCELLED) === 'true' && (
+              <Badge variant="secondary" className="text-[10px]">Cancelled by the visitor</Badge>
+            )}
             {source && <Badge variant="outline" className="ml-auto text-[10px]">{SOURCE_LABELS[source] ?? source}</Badge>}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -175,11 +182,6 @@ export function SearchRequestBody({ rootSpan, spans }: { rootSpan: SpanListItem;
               Duration: <span className="font-medium text-foreground">{fmt(rootSpan.durationMs)}</span>
             </span>
           </div>
-          {!rootSpan.userMessage && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              The query is recorded only when the experience&apos;s telemetry level is Full.
-            </p>
-          )}
         </div>
 
         {steps.length === 0 ? (
