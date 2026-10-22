@@ -172,13 +172,15 @@ export function checkPublicAccess(
 
   const client = clientIp(request);
   let { retryAfter } = rateLimiter.check(`${scope}:${client}:minute`, policy.perMinute, MINUTE);
+  let limit = 'per-minute';
   // The daily total is checked only for requests the per-client limit lets through.
   if (!retryAfter && policy.perDay) {
     ({ retryAfter } = rateLimiter.check(`${scope}:day`, policy.perDay, DAY));
+    limit = 'daily';
   }
 
   if (retryAfter) {
-    logger.warn('Rate limit exceeded', { scope, client, retryAfter });
+    logger.warn(limit === 'daily' ? 'Daily total reached' : 'Rate limit exceeded', { scope, client, retryAfter });
     return NextResponse.json(
       { success: false, error: 'Rate limit exceeded', code: 'RATE_LIMIT_EXCEEDED', retryAfter },
       { status: 429, headers: { 'Retry-After': String(retryAfter) } },

@@ -3,8 +3,9 @@
 import { NextRequest } from 'next/server';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+const warn = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/logger/logger', () => ({
-  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() }),
 }));
 
 import {
@@ -181,6 +182,25 @@ describe('checkPublicAccess', () => {
     expect(checkPublicAccess(request({ 'X-Forwarded-For': '2.2.2.2' }), settings)).toBeNull();
     expect(checkPublicAccess(request({ 'X-Forwarded-For': '3.3.3.3' }), settings)).toBeNull();
     expect(checkPublicAccess(request({ 'X-Forwarded-For': '4.4.4.4' }), settings)?.status).toBe(429);
+  });
+
+  it("logs which limit refused a request: the client's per-minute limit or the experience's daily total", () => {
+    const settings = access({ perMinute: 1, perDay: 2 });
+    checkPublicAccess(request({ 'X-Forwarded-For': '1.1.1.1' }), settings);
+    checkPublicAccess(request({ 'X-Forwarded-For': '1.1.1.1' }), settings);
+    expect(warn).toHaveBeenLastCalledWith('Rate limit exceeded', expect.objectContaining({ scope: 'search:e1' }));
+    checkPublicAccess(request({ 'X-Forwarded-For': '2.2.2.2' }), settings);
+    checkPublicAccess(request({ 'X-Forwarded-For': '3.3.3.3' }), settings);
+    expect(warn).toHaveBeenLastCalledWith('Daily total reached', expect.objectContaining({ scope: 'search:e1' }));
+  });
+
+  it("counts requests from Interakt's own pages towards the limits", () => {
+    const settings = access({ allowedOrigins: ['https://shop.example'], perMinute: 1, perDay: 2 });
+    const own = { Origin: 'https://admin.example', 'Sec-Fetch-Site': 'same-origin', 'X-Forwarded-For': '1.1.1.1' };
+    expect(checkPublicAccess(request(own), settings)).toBeNull();
+    expect(checkPublicAccess(request(own), settings)?.status).toBe(429);
+    expect(checkPublicAccess(request({ ...own, 'X-Forwarded-For': '2.2.2.2' }), settings)).toBeNull();
+    expect(checkPublicAccess(request({ ...own, 'X-Forwarded-For': '3.3.3.3' }), settings)?.status).toBe(429);
   });
 
   it("always allows Interakt's own pages (the admin's widget previews), as the browser reports them", () => {
