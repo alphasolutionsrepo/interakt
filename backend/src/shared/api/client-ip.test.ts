@@ -46,6 +46,7 @@ describe('clientIp', () => {
       clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
     }
     expect(warn).toHaveBeenCalledTimes(4);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('two'); // the setting's value isn't logged
   });
 
   it('falls back to X-Real-IP, then to "unknown"', () => {

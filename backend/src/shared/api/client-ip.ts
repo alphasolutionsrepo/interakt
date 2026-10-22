@@ -26,7 +26,8 @@ function trustedHops(): number {
   if (Number.isInteger(hops) && hops >= 1) return hops;
   if (warnedAbout !== setting) {
     warnedAbout = setting;
-    logger.warn('TRUSTED_PROXY_HOPS must be a whole number from 1; using 1', { setting });
+    // Settings are not logged: values read from the environment can be secrets elsewhere
+    logger.warn('TRUSTED_PROXY_HOPS must be a whole number from 1; using 1');
   }
   return DEFAULT_HOPS;
 }
