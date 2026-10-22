@@ -588,6 +588,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The calling page is on a site not in the experience's allowed
+            origins.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit reached. Retry after the number of seconds in the
+            Retry-After header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Search provider unavailable.
           content:
@@ -615,6 +629,20 @@ paths:
                 $ref: "#/components/schemas/AutocompleteResponse"
         "401":
           description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The calling page is on a site not in the experience's allowed
+            origins.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit reached. Retry after the number of seconds in the
+            Retry-After header.
           content:
             application/json:
               schema:
@@ -648,7 +676,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: AI summarization is not enabled for this experience.
+          description: AI summarization is not enabled for this experience, or the calling
+            page is on a site not in its allowed origins.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit reached. Retry after the number of seconds in the
+            Retry-After header.
           content:
             application/json:
               schema:
@@ -681,8 +717,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The calling page is on a site not in the experience's allowed
+            origins.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Document not found in any active index.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit reached. Retry after the number of seconds in the
+            Retry-After header.
           content:
             application/json:
               schema:
@@ -722,7 +772,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: AI Experience is not active.
+          description: AI Experience is not active, or the calling page is on a site not
+            in its allowed origins.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit reached. Retry after the number of seconds in the
+            Retry-After header.
           content:
             application/json:
               schema:
@@ -749,7 +807,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: AI Experience is not active.
+          description: AI Experience is not active, or the calling page is on a site not
+            in its allowed origins.
           content:
             application/json:
               schema:
