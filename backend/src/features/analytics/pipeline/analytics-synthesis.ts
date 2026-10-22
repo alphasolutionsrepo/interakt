@@ -31,6 +31,32 @@ function formatTimeRange(range: string): string {
   return labels[range] ?? range;
 }
 
+/**
+ * Tell the model which period the data covers. Uses the range each tool actually read
+ * (e.g. precomputed insights only exist for 24h/7d/30d, so a "last hour" request reads
+ * 24h data), and calls out when that differs from what was asked for.
+ */
+export function describeDataPeriods(actions: AnalyticsActionResult[]): string {
+  const notes: string[] = [];
+  const covered = new Set<string>();
+  for (const action of actions) {
+    if (!action.result.success || !action.result.timeRange) continue;
+    const actual = action.result.timeRange;
+    covered.add(actual);
+    const requested = action.parameters?.timeRange ? String(action.parameters.timeRange) : undefined;
+    if (requested && requested !== actual) {
+      notes.push(
+        `${action.toolSlug} has no data for the ${formatTimeRange(requested)}; its results cover the ${formatTimeRange(actual)}. Say this explicitly and do not describe these numbers as the ${formatTimeRange(requested)}.`,
+      );
+    }
+  }
+  if (covered.size === 0) return '';
+  return [
+    `The data covers: ${[...covered].map((r) => `the ${formatTimeRange(r)}`).join(', ')}. State the period in your answer.`,
+    ...notes,
+  ].join('\n');
+}
+
 function prepareResults(actions: AnalyticsActionResult[]): string {
   if (actions.length === 0) return '';
 
@@ -102,10 +128,7 @@ export async function synthesizeAnalyticsResponse(
       const experienceNote = context.experienceId
         ? `All data below is scoped to the experience "${context.experienceName ?? 'selected experience'}" only. Say so when it matters (e.g. "for ${context.experienceName ?? 'this experience'}, ..."), and do not present these numbers as platform-wide.`
         : `You are showing data across all experiences.`;
-      const periods = [...new Set(actions.map((a) => a.parameters?.timeRange).filter(Boolean).map(String))];
-      const periodNote = periods.length > 0
-        ? `The data covers this period: ${periods.map(formatTimeRange).join(', ')}. State the period in your answer.`
-        : '';
+      const periodNote = describeDataPeriods(actions);
 
       messages.push({
         role: 'system',

@@ -106,7 +106,7 @@ interface ExperienceSelectorProps {
 }
 
 export function ExperienceSelector({ compact = false }: ExperienceSelectorProps) {
-  const { experienceId, experienceName, experienceType, setExperience } = useAnalyticsContext();
+  const { experienceId, experienceName, experienceType, setExperience, keepWhenMissing } = useAnalyticsContext();
   const { data, isLoading } = useExperiences();
   const experiences = data?.experiences ?? [];
 
@@ -120,11 +120,15 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
     const exp = experiences.find((e) => e.id === experienceId);
     if (!exp) {
       // Only drop the selection when we know the full list; a failed fetch is not "deleted"
-      if (data?.complete) setExperience(undefined);
+      // A saved conversation about a since-deleted experience keeps its scope (shown as deleted)
+      if (data?.complete && !keepWhenMissing) setExperience(undefined);
     } else if (exp.name !== experienceName || exp.type !== experienceType) {
       setExperience(exp.id, exp.name, exp.type);
     }
-  }, [isLoading, data, experiences, experienceId, experienceName, experienceType, setExperience]);
+  }, [isLoading, data, experiences, experienceId, experienceName, experienceType, keepWhenMissing, setExperience]);
+
+  // Selected experience that is not in the list (deleted, or the list is still incomplete)
+  const missingSelection = !!experienceId && !experiences.some((e) => e.id === experienceId);
 
   const renderLabel = (exp: ExperienceOption) => (exp.isActive ? exp.name : `${exp.name} (inactive)`);
 
@@ -158,6 +162,12 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
             All Experiences
           </span>
         </SelectItem>
+
+        {missingSelection && (
+          <SelectItem value={experienceId}>
+            {data?.complete ? `${experienceName} (deleted)` : experienceName}
+          </SelectItem>
+        )}
 
         {aiExperiences.length > 0 && (
           <SelectGroup>

@@ -9,9 +9,9 @@
 
 import 'server-only';
 
-import { sql, count, eq, gte, lte, and, isNotNull } from 'drizzle-orm';
+import { sql, count, eq, gte, lte, and, isNotNull, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { getDateRange, type TimeRange } from './analytics-query.service';
+import { buildSearchConditions, getDateRange, type TimeRange } from './analytics-query.service';
 
 const logger = createLogger('analytics-experience-summary');
 
@@ -100,27 +100,50 @@ export async function getExperienceSummaries(
     }
 
     // ── Search experiences: query searchEvents table ───────────────────
-    const searchRows = await analyticsDB
-      .select({
-        experienceId: searchEvents.experienceId,
-        totalSearches: count(),
-        zeroResults: sql<number>`COUNT(CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END)::int`,
-        avgDurationMs: sql<number>`COALESCE(AVG(${searchEvents.durationMs}), 0)::int`,
-      })
+    // Candidates: experiences with tagged events in range, plus search experiences with
+    // indexes (whose older untagged events are matched by index)
+    const taggedRows = await analyticsDB
+      .selectDistinct({ experienceId: searchEvents.experienceId })
       .from(searchEvents)
       .where(
         and(
-          // Same scope as the overview dashboard so the drill-down numbers match
           eq(searchEvents.source, 'api'),
           gte(searchEvents.timestamp, range.from),
           lte(searchEvents.timestamp, range.to),
           isNotNull(searchEvents.experienceId),
         )
+      );
+    const aiExperienceIds = turnRows.map((r) => r.experienceId).filter(Boolean) as string[];
+    const candidateSearchIds = new Set<string>(
+      [...taggedRows.map((r) => r.experienceId), ...(await fetchSearchExperienceIdsWithIndexes())]
+        .filter((id): id is string => id != null && !aiExperienceIds.includes(id)),
+    );
+
+    // Count each one with the overview's own matching rules so the table and the
+    // drill-down always agree. Conditions are built one at a time (each may look up the
+    // experience's indexes in the main DB, cached), then the counts run in parallel.
+    const searchConditions: Array<{ experienceId: string; conditions: SQL[] }> = [];
+    for (const experienceId of candidateSearchIds) {
+      const { conditions } = await buildSearchConditions(range, experienceId);
+      searchConditions.push({ experienceId, conditions });
+    }
+    const searchRows = (
+      await Promise.all(
+        searchConditions.map(async ({ experienceId, conditions }) => {
+          const [row] = await analyticsDB
+            .select({
+              totalSearches: count(),
+              zeroResults: sql<number>`COUNT(CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END)::int`,
+              avgDurationMs: sql<number>`COALESCE(AVG(${searchEvents.durationMs}), 0)::int`,
+            })
+            .from(searchEvents)
+            .where(and(...conditions));
+          return { experienceId, ...row, totalSearches: Number(row?.totalSearches ?? 0) };
+        }),
       )
-      .groupBy(searchEvents.experienceId);
+    ).filter((r) => r.totalSearches > 0);
 
     // Collect all experience IDs for name lookup
-    const aiExperienceIds = turnRows.map((r) => r.experienceId).filter(Boolean) as string[];
     const searchExperienceIds = searchRows
       .map((r) => r.experienceId)
       .filter((id): id is string => id != null && !aiExperienceIds.includes(id));
@@ -179,6 +202,21 @@ export async function getExperienceSummaries(
     return summaries;
   } catch (error) {
     logger.error('Failed to get experience summaries', { error });
+    return [];
+  }
+}
+
+/** Search experiences that have at least one index attached */
+async function fetchSearchExperienceIdsWithIndexes(): Promise<string[]> {
+  try {
+    const { db } = await import('@/db/index');
+    const { searchExperienceIndexes } = await import('@/db/schema');
+    const rows = await db
+      .selectDistinct({ id: searchExperienceIndexes.searchExperienceId })
+      .from(searchExperienceIndexes);
+    return rows.map((r) => r.id);
+  } catch (error) {
+    logger.warn('Failed to fetch search experience indexes (non-fatal)', { error });
     return [];
   }
 }

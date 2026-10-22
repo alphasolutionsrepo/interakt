@@ -46,6 +46,11 @@ function writeStored(key: string, value: string | undefined) {
 
 export type ExperienceType = 'ai' | 'search';
 
+interface SetExperienceOptions {
+  /** Keep this selection even if the experience has since been deleted */
+  keepWhenMissing?: boolean;
+}
+
 interface AnalyticsContextValue {
   /** Selected experience ID, undefined = all experiences */
   experienceId: string | undefined;
@@ -54,7 +59,9 @@ interface AnalyticsContextValue {
   /** Type of selected experience */
   experienceType: ExperienceType | undefined;
   /** Update the selected experience */
-  setExperience: (id: string | undefined, name?: string, type?: ExperienceType) => void;
+  setExperience: (id: string | undefined, name?: string, type?: ExperienceType, options?: SetExperienceOptions) => void;
+  /** True when the selection came from a saved record (e.g. a chat session) and must be kept even if the experience no longer exists */
+  keepWhenMissing: boolean;
   /** Selected time range, shared by the overview and analytics chat */
   timeRange: TimeRange;
   setTimeRange: (range: TimeRange) => void;
@@ -75,13 +82,15 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const [experienceName, setExperienceName] = useState('All Experiences');
   const [experienceType, setExperienceType] = useState<ExperienceType | undefined>(undefined);
   const [timeRange, setTimeRange] = useState<TimeRange>(DEFAULT_TIME_RANGE);
+  const [keepWhenMissing, setKeepWhenMissing] = useState(false);
 
   const pathname = usePathname();
 
-  const setExperience = useCallback((id: string | undefined, name?: string, type?: ExperienceType) => {
+  const setExperience = useCallback((id: string | undefined, name?: string, type?: ExperienceType, options?: SetExperienceOptions) => {
     setExperienceId(id);
     setExperienceName(name || (id ? 'Selected experience' : 'All Experiences'));
     setExperienceType(id ? type : undefined);
+    setKeepWhenMissing(!!id && !!options?.keepWhenMissing);
   }, []);
 
   // Restore the selection from the URL (or this tab's last selection) on first load. Name
@@ -115,7 +124,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
 
   return (
     <AnalyticsContext.Provider
-      value={{ experienceId, experienceName, experienceType, setExperience, timeRange, setTimeRange }}
+      value={{ experienceId, experienceName, experienceType, setExperience, keepWhenMissing, timeRange, setTimeRange }}
     >
       {children}
     </AnalyticsContext.Provider>

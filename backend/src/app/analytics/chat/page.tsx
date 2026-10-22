@@ -832,8 +832,12 @@ export default function AnalyticsChatPage() {
       const sessionScope = sessionData.experienceId ?? null;
       conversationScopeRef.current = sessionScope;
       setScopeNotice(null);
-      if (sessionScope !== (experienceId ?? null)) {
-        setExperience(sessionScope ?? undefined, sessionData.experienceName ?? undefined);
+      // Always re-apply a stored experience so its scope survives even if the
+      // experience has since been deleted (the selector shows it as deleted)
+      if (sessionScope) {
+        setExperience(sessionScope, sessionData.experienceName ?? undefined, undefined, { keepWhenMissing: true });
+      } else if (experienceId) {
+        setExperience(undefined);
       }
       const loadedMessages: ChatMessage[] = sessionData.messages.map((m) => ({
         id: m.id,

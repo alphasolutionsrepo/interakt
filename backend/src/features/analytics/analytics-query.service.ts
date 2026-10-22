@@ -170,7 +170,7 @@ export function getGranularityForRange(range: DateRange): Granularity {
  * When filtering by experienceId, also matches by the experience's associated
  * index IDs so that historical events (before experienceId was tracked) are included.
  */
-async function buildSearchConditions(
+export async function buildSearchConditions(
   range: DateRange,
   experienceId?: string,
   sourceFilter: AnalyticsSource | 'all' = 'api',
