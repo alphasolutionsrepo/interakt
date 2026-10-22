@@ -69,11 +69,31 @@ const config = {
     ],
   ],
 
+  themes: [
+    [
+      // Local full-text search: the index is built with the site, so there's
+      // no external service or API key, and it works on GitHub Pages as-is.
+      require.resolve('@easyops-cn/docusaurus-search-local'),
+      /** @type {import('@easyops-cn/docusaurus-search-local').PluginOptions} */
+      ({
+        hashed: true,
+        // Docs are served at the site root (routeBasePath above).
+        docsRouteBasePath: '/',
+        indexBlog: false,
+        indexPages: false,
+        highlightSearchTermsOnTargetPage: true,
+        explicitSearchResultPath: true,
+        searchBarShortcutHint: true,
+      }),
+    ],
+  ],
+
   themeConfig: /** @type {import('@docusaurus/preset-classic').ThemeConfig} */ ({
     navbar: {
       title: 'Interakt',
       items: [
         { to: '/api/', label: 'API Reference', position: 'left' },
+        { type: 'search', position: 'right' },
       ],
     },
     colorMode: { respectPrefersColorScheme: true },
