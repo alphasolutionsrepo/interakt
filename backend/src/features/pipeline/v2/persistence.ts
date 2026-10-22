@@ -46,12 +46,6 @@ export interface PersistenceDeps {
       lastToolResults?: Record<string, unknown>;
     },
   ) => Promise<void>;
-
-  /** Fire-and-forget: extract episodic memories from this turn */
-  triggerMemoryExtraction?: (sessionId: string, userId: string, experienceId: string) => void;
-
-  /** Fire-and-forget: summarize conversation if needed */
-  triggerSummarization?: (sessionId: string) => void;
 }
 
 // ============================================================================
@@ -134,44 +128,4 @@ export async function persistTurn(
       durationMs,
     };
   }
-}
-
-// ============================================================================
-// PRODUCTION DEPENDENCY FACTORY
-// ============================================================================
-
-export function createProductionPersistenceDeps(
-  experienceId: string,
-  providerId?: string,
-  modelId?: number,
-): PersistenceDeps {
-  return {
-    async addMessages(sessionId, messages) {
-      const sessionsService = await import('@/features/sessions/sessions.service');
-      await sessionsService.addMessages(sessionId, messages.map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-        metadata: m.metadata,
-      })));
-    },
-
-    async updateSession(sessionId, updates) {
-      const sessionsService = await import('@/features/sessions/sessions.service');
-      await sessionsService.updateSession(sessionId, updates as any);
-    },
-
-    triggerMemoryExtraction(sessionId, userId, expId) {
-      import('@/features/user-memories/memory-extraction.service').then(({ extractMemoriesFromSession }) => {
-        extractMemoriesFromSession(sessionId, userId, expId, { providerId, modelId })
-          .catch((err: Error) => logger.error('Async memory extraction failed', err, { sessionId }));
-      });
-    },
-
-    triggerSummarization(sessionId) {
-      import('@/features/sessions/summarization.service').then(({ summarizeSession }) => {
-        summarizeSession(sessionId, 20, { providerId, modelId })
-          .catch((err: Error) => logger.error('Async summarization failed', err, { sessionId }));
-      });
-    },
-  };
 }

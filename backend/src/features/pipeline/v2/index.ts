@@ -58,10 +58,7 @@ export type {
 } from './orchestrator';
 
 // D4: Persistence
-export {
-  persistTurn,
-  createProductionPersistenceDeps,
-} from './persistence';
+export { persistTurn } from './persistence';
 export type {
   PersistenceDeps,
 } from './persistence';
