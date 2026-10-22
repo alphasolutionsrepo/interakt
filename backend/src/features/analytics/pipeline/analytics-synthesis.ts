@@ -26,6 +26,11 @@ const logger = createLogger('analytics-synthesis');
 // D3a: RESULT PREPARATION (trim for token budget)
 // ============================================================================
 
+function formatTimeRange(range: string): string {
+  const labels: Record<string, string> = { '1h': 'last hour', '24h': 'last 24 hours', '7d': 'last 7 days', '30d': 'last 30 days' };
+  return labels[range] ?? range;
+}
+
 function prepareResults(actions: AnalyticsActionResult[]): string {
   if (actions.length === 0) return '';
 
@@ -95,12 +100,16 @@ export async function synthesizeAnalyticsResponse(
       // Build synthesis prompt with trimmed results
       const preparedData = prepareResults(actions);
       const experienceNote = context.experienceId
-        ? `You are showing data for a specific experience.`
+        ? `All data below is scoped to the experience "${context.experienceName ?? 'selected experience'}" only. Say so when it matters (e.g. "for ${context.experienceName ?? 'this experience'}, ..."), and do not present these numbers as platform-wide.`
         : `You are showing data across all experiences.`;
+      const periods = [...new Set(actions.map((a) => a.parameters?.timeRange).filter(Boolean).map(String))];
+      const periodNote = periods.length > 0
+        ? `The data covers this period: ${periods.map(formatTimeRange).join(', ')}. State the period in your answer.`
+        : '';
 
       messages.push({
         role: 'system',
-        content: `${SYNTHESIS_PROMPT}\n\n${experienceNote}\n\n## Tool Results\n${preparedData}`,
+        content: `${SYNTHESIS_PROMPT}\n\n${experienceNote}\n${periodNote}\n\n## Tool Results\n${preparedData}`,
       });
     }
 

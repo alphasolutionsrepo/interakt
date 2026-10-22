@@ -30,6 +30,7 @@ const logger = createLogger('analytics-execution');
 export async function executeAnalyticsTools(
   plan: AnalyticsTurnPlan,
   experienceId: string | null,
+  defaultTimeRange: string | null,
   emit: SSEEmitter
 ): Promise<ModuleResult<AnalyticsExecutionResult>> {
   const startTime = Date.now();
@@ -48,14 +49,17 @@ export async function executeAnalyticsTools(
     const executions = plan.actions.map(async (action) => {
       const toolStart = Date.now();
 
-      // Build params from hints + inject experienceId
+      // Build params from hints. The user's experience selection always wins over any
+      // experienceId the planner put in its hints.
       const params: Record<string, unknown> = { ...action.hints };
-      if (experienceId && !params.experienceId) {
+      if (experienceId) {
         params.experienceId = experienceId;
+      } else {
+        delete params.experienceId;
       }
-      // Set default timeRange if not specified
+      // Default to the range selected on the page
       if (!params.timeRange) {
-        params.timeRange = '7d';
+        params.timeRange = defaultTimeRange ?? '7d';
       }
 
       // Emit tool start

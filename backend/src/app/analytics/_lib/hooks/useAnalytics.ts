@@ -13,6 +13,7 @@ export interface OverviewMetrics {
   zeroResultRate: number;
   avgSearchDurationMs: number;
   avgAIDurationMs: number;
+  searchesFromToolCalls: boolean;
   searchesByTrigger: {
     user: number;
     ai_tool: number;

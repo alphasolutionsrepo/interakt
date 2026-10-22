@@ -52,6 +52,8 @@ export async function assembleAnalyticsContext(input: {
   userMessage: string;
   sessionId?: string;
   experienceId?: string;
+  experienceName?: string;
+  timeRange?: string;
   providerId?: string;
   modelId?: number;
 }): Promise<ModuleResult<AnalyticsTurnContext>> {
@@ -70,6 +72,18 @@ export async function assembleAnalyticsContext(input: {
     if (sessionId) {
       const { getSession: getAdminChatSession } = await import('../admin-chat-session.service');
       const session = await getAdminChatSession(sessionId);
+
+      // A conversation stays scoped to the experience it started with — mixing history
+      // and facts from one experience into answers about another gives misleading results
+      const sessionExperienceId = session?.experienceId ?? null;
+      if (session && (session.messageCount ?? 0) > 0 && sessionExperienceId !== (input.experienceId ?? null)) {
+        const scope = sessionExperienceId ? `"${session.experienceName ?? 'another experience'}"` : 'all experiences';
+        return {
+          success: false,
+          summary: `This conversation is about ${scope}. Start a new conversation to ask about a different experience.`,
+          durationMs: Date.now() - startTime,
+        };
+      }
 
       if (session) {
         // Sliding window: take last N messages
@@ -104,6 +118,8 @@ export async function assembleAnalyticsContext(input: {
       userMessage: input.userMessage,
       sessionId,
       experienceId: input.experienceId || null,
+      experienceName: input.experienceId ? input.experienceName || null : null,
+      timeRange: input.timeRange || null,
       conversationHistory,
       conversationSummary,
       sessionFacts,

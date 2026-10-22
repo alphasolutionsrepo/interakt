@@ -19,7 +19,9 @@ interface ExperienceSummary {
   id: string;
   name: string;
   type: 'ai' | 'search';
-  totalConversations: number;
+  /** Conversations for AI experiences, searches for search experiences */
+  volume: number;
+  deleted: boolean;
   successRate: number;
   zeroResultRate: number;
   avgLatencyMs: number;
@@ -100,16 +102,17 @@ export function ExperienceComparisonTable({ timeRange }: ExperienceComparisonTab
     <Card className="rounded-2xl">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Experiences</CardTitle>
+        <p className="text-xs text-muted-foreground">Select an experience to see its detailed analytics</p>
       </CardHeader>
       <CardContent>
         <div className="space-y-1.5">
           {/* Header */}
-          <div className="grid grid-cols-[1fr_80px_80px_80px_80px] gap-2 px-3 py-1.5 text-xs text-muted-foreground font-medium">
+          <div className="grid grid-cols-[1fr_96px_80px_80px_80px] gap-2 px-3 py-1.5 text-xs text-muted-foreground font-medium">
             <span>Experience</span>
-            <span className="text-right">Convos</span>
-            <span className="text-right">Success</span>
-            <span className="text-right">Zero Results</span>
-            <span className="text-right">Latency</span>
+            <span className="text-right" title="Conversations for AI experiences, searches for search experiences">Volume</span>
+            <span className="text-right" title="AI: conversation turns that completed successfully. Search: searches that returned results.">Success</span>
+            <span className="text-right" title="Share of searches (including AI tool searches) that returned no results">Zero Results</span>
+            <span className="text-right" title="AI: average time per conversation turn. Search: average search time.">Avg Time</span>
           </div>
 
           {/* Rows */}
@@ -117,7 +120,9 @@ export function ExperienceComparisonTable({ timeRange }: ExperienceComparisonTab
             <button
               key={exp.id}
               onClick={() => setExperience(exp.id, exp.name, exp.type)}
-              className="w-full grid grid-cols-[1fr_80px_80px_80px_80px] gap-2 items-center px-3 py-2.5 rounded-xl hover:bg-muted/50 transition-colors text-left group"
+              disabled={exp.deleted}
+              title={exp.deleted ? `This experience was deleted (ID ${exp.id}). Its historical data is still included in the totals.` : undefined}
+              className="w-full grid grid-cols-[1fr_96px_80px_80px_80px] gap-2 items-center px-3 py-2.5 rounded-xl enabled:hover:bg-muted/50 disabled:opacity-60 transition-colors text-left group"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className={cn(
@@ -131,14 +136,23 @@ export function ExperienceComparisonTable({ timeRange }: ExperienceComparisonTab
                   )}
                 </div>
                 <div className="min-w-0">
-                  <span className="text-sm font-medium truncate block">{exp.name}</span>
+                  <span className="text-sm font-medium truncate block">
+                    {exp.deleted ? `Deleted experience (${exp.id.slice(0, 8)})` : exp.name}
+                  </span>
                   <Badge variant="outline" className="text-[10px] px-1 py-0 mt-0.5">
                     {exp.type === 'ai' ? 'AI' : 'Search'}
                   </Badge>
                 </div>
-                <ArrowRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto" />
+                {!exp.deleted && (
+                  <ArrowRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto" />
+                )}
               </div>
-              <span className="text-sm text-right font-medium">{exp.totalConversations}</span>
+              <span className="text-sm text-right font-medium">
+                {exp.volume.toLocaleString()}
+                <span className="block text-[10px] font-normal text-muted-foreground">
+                  {exp.type === 'ai' ? (exp.volume === 1 ? 'conversation' : 'conversations') : (exp.volume === 1 ? 'search' : 'searches')}
+                </span>
+              </span>
               <span className={cn('text-sm text-right font-medium', getRateColor(exp.successRate, true))}>
                 {formatRate(exp.successRate)}
               </span>

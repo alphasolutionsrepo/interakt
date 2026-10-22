@@ -21,6 +21,8 @@ const logger = createLogger('analytics-persistence');
 
 export async function persistAnalyticsTurn(input: {
   sessionId: string | null;
+  experienceId: string | null;
+  experienceName: string | null;
   userMessage: string;
   responseText: string;
   toolsUsed: string[];
@@ -46,6 +48,8 @@ export async function persistAnalyticsTurn(input: {
       const newSession = await createAdminChatSession({
         providerId: input.providerId || undefined,
         modelId: input.modelId || undefined,
+        experienceId: input.experienceId || undefined,
+        experienceName: input.experienceName || undefined,
       });
       sessionId = newSession.id;
     }

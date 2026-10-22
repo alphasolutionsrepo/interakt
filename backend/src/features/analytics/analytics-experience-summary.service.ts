@@ -23,7 +23,10 @@ export interface ExperienceSummary {
   id: string;
   name: string;
   type: 'ai' | 'search';
-  totalConversations: number;
+  /** Conversations for AI experiences, searches for search experiences */
+  volume: number;
+  /** Experience no longer exists in the main database */
+  deleted: boolean;
   successRate: number;
   zeroResultRate: number;
   avgLatencyMs: number;
@@ -67,17 +70,18 @@ export async function getExperienceSummaries(
       )
       .groupBy(otelSpans.experienceId, otelSpans.experienceType);
 
-    // AI experience zero-result rates from tool.execute spans
+    // AI experience zero-result rates from tool execution steps (tool.execute spans
+    // carry no experienceId; their pipeline.v2.action.tool_execution parents do)
     const toolRows = await analyticsDB
       .select({
         experienceId: otelSpans.experienceId,
         totalSearches: sql<number>`COUNT(*)::int`,
-        zeroResults: sql<number>`COUNT(CASE WHEN (${otelSpans.attributes}->>'alpha.tool.result_count')::int = 0 THEN 1 END)::int`,
+        zeroResults: sql<number>`COUNT(CASE WHEN (${otelSpans.attributes}->>'alpha.v2.step.result_count')::int = 0 THEN 1 END)::int`,
       })
       .from(otelSpans)
       .where(
         and(
-          eq(otelSpans.operationName, 'tool.execute'),
+          eq(otelSpans.operationName, 'pipeline.v2.action.tool_execution'),
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           isNotNull(otelSpans.experienceId),
@@ -102,12 +106,12 @@ export async function getExperienceSummaries(
         totalSearches: count(),
         zeroResults: sql<number>`COUNT(CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END)::int`,
         avgDurationMs: sql<number>`COALESCE(AVG(${searchEvents.durationMs}), 0)::int`,
-        totalSessions: sql<number>`COUNT(DISTINCT ${searchEvents.sessionId})::int`,
       })
       .from(searchEvents)
       .where(
         and(
-          eq(searchEvents.triggerType, 'user'),
+          // Same scope as the overview dashboard so the drill-down numbers match
+          eq(searchEvents.source, 'api'),
           gte(searchEvents.timestamp, range.from),
           lte(searchEvents.timestamp, range.to),
           isNotNull(searchEvents.experienceId),
@@ -137,7 +141,8 @@ export async function getExperienceSummaries(
         id: row.experienceId,
         name: nameInfo?.name || row.experienceId.slice(0, 8),
         type: (row.experienceType as 'ai' | 'search') || nameInfo?.type || 'ai',
-        totalConversations: row.totalConversations,
+        volume: row.totalConversations,
+        deleted: !nameInfo,
         successRate: row.totalTurns > 0 ? row.successCount / row.totalTurns : 0,
         zeroResultRate: zeroInfo && zeroInfo.total > 0 ? zeroInfo.zero / zeroInfo.total : 0,
         avgLatencyMs: row.avgDurationMs,
@@ -156,7 +161,8 @@ export async function getExperienceSummaries(
         id: row.experienceId,
         name: nameInfo?.name || row.experienceId.slice(0, 8),
         type: 'search',
-        totalConversations: row.totalSessions,
+        volume: row.totalSearches,
+        deleted: !nameInfo,
         successRate: row.totalSearches > 0
           ? (row.totalSearches - row.zeroResults) / row.totalSearches
           : 0,
@@ -167,8 +173,8 @@ export async function getExperienceSummaries(
       });
     }
 
-    // Sort by total conversations descending
-    summaries.sort((a, b) => b.totalConversations - a.totalConversations);
+    // Sort by volume descending, deleted experiences last
+    summaries.sort((a, b) => Number(a.deleted) - Number(b.deleted) || b.volume - a.volume);
 
     return summaries;
   } catch (error) {

@@ -76,12 +76,15 @@ export async function runAnalyticsPipeline(
       userMessage: input.message,
       sessionId: input.sessionId,
       experienceId: input.experienceId,
+      experienceName: input.experienceName,
+      timeRange: input.timeRange,
       providerId: input.providerId,
       modelId: input.modelId,
     });
 
     if (!contextResult.success || !contextResult.data) {
-      throw new Error(`Context assembly failed: ${contextResult.summary}`);
+      // summary is user-facing: either a scope mismatch or "Context assembly failed: ..."
+      throw new Error(contextResult.summary);
     }
 
     const context = contextResult.data;
@@ -111,6 +114,7 @@ export async function runAnalyticsPipeline(
     const executionResult = await executeAnalyticsTools(
       plan,
       context.experienceId,
+      context.timeRange,
       emit
     );
 
@@ -154,6 +158,8 @@ export async function runAnalyticsPipeline(
 
     const persistResult = await persistAnalyticsTurn({
       sessionId: context.sessionId,
+      experienceId: context.experienceId,
+      experienceName: context.experienceName,
       userMessage: input.message,
       responseText,
       toolsUsed,

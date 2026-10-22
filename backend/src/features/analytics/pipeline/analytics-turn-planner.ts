@@ -90,7 +90,7 @@ function buildPlanResponseFormat(tools: AnalyticsToolSummary[]) {
 // SYSTEM PROMPT
 // ============================================================================
 
-function buildPlannerPrompt(tools: AnalyticsToolSummary[]): string {
+function buildPlannerPrompt(tools: AnalyticsToolSummary[], selectedTimeRange: string | null): string {
   const toolList = tools
     .map((t) => `- **${t.slug}**: ${t.description} [${t.category}]`)
     .join('\n');
@@ -104,7 +104,9 @@ ${toolList}
 1. Select 1-3 tools from the list. Use exact slugs.
 2. Tools marked [precomputed] require "Refresh Insights" to have been run.
 3. For greetings, "thanks", "what can you do?" → set directResponse=true, empty actions.
-4. Default timeRange: '7d' for precomputed tools, '24h' for live tools, unless user specifies.
+4. ${selectedTimeRange
+    ? `The user has selected the time range '${selectedTimeRange}' on the page. Use it as timeRange for every tool unless the user's message explicitly names a different period (e.g. "today", "last 24 hours").`
+    : "Default timeRange: '7d' for precomputed tools, '24h' for live tools, unless user specifies."}
 5. hints must be a JSON string with tool parameters: { "timeRange": "7d", "limit": 10 }
 6. For get_query_search_events, hints MUST include "queryText".
 7. For get_conversation_detail, hints MUST include "traceId".
@@ -133,7 +135,7 @@ export async function planAnalyticsTurn(
   try {
     // Build messages
     const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: buildPlannerPrompt(context.availableTools) },
+      { role: 'system', content: buildPlannerPrompt(context.availableTools, context.timeRange) },
     ];
 
     // Add conversation summary if available

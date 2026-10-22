@@ -21,7 +21,7 @@ import 'server-only';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
-import { getDateRange, type TimeRange } from './analytics-query.service';
+import { getDateRange, inExperienceTrace, type TimeRange } from './analytics-query.service';
 import { textAvailability } from './insight-text';
 import { clusterIntents, type IntentClusteringResult } from './intent-clustering';
 import { detectProactiveInsights } from './proactive-insights.service';
@@ -587,8 +587,10 @@ async function fetchToolSpans(
     sql`(${otelSpans.operationName} LIKE 'tool.%' OR ${otelSpans.operationName} LIKE 'search.%')`,
   ];
 
+  // tool.* spans (and most search.* spans) carry no experienceId — match them by the
+  // experience's traces instead
   if (experienceId) {
-    conditions.push(eq(otelSpans.experienceId, experienceId));
+    conditions.push(inExperienceTrace(otelSpans, experienceId, range));
   }
 
   const rows = await db

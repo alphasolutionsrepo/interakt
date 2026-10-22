@@ -802,7 +802,8 @@ export async function executeAnalyticsTool(
       case 'get_cost_analysis':
       case 'get_proactive_insights':
       case 'get_guardrail_analytics': {
-        const insightTimeRange = (['24h', '7d', '30d'].includes(timeRange) ? timeRange : '7d') as string;
+        // Insights are precomputed for 24h/7d/30d only; the closest match for 1h is 24h
+        const insightTimeRange = (['24h', '7d', '30d'].includes(timeRange) ? timeRange : timeRange === '1h' ? '24h' : '7d') as string;
         const insightType = TOOL_TO_INSIGHT_TYPE[toolName];
         const result = await getPreComputedInsight(insightType, insightTimeRange, experienceId);
         if (!result) {
@@ -823,11 +824,13 @@ export async function executeAnalyticsTool(
         if (!traceId) {
           return { success: false, error: 'traceId is required' };
         }
-        const detail = await getConversationDetail(traceId);
+        const detail = await getConversationDetail(traceId, experienceId);
         if (!detail) {
           return {
             success: true,
-            data: `No conversation found for trace ID "${traceId}".`,
+            data: experienceId
+              ? `No conversation found for trace ID "${traceId}" in the selected experience.`
+              : `No conversation found for trace ID "${traceId}".`,
             rawData: null,
             dataType: 'conversation_detail',
           };

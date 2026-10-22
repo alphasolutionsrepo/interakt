@@ -26,6 +26,8 @@ const chatRequestSchema = z.object({
   providerId: z.string().nullish().transform((v) => v ?? undefined),
   modelId: z.number().nullish().transform((v) => v ?? undefined),
   experienceId: z.string().uuid().nullish().transform((v) => v ?? undefined),
+  experienceName: z.string().max(200).nullish().transform((v) => v ?? undefined),
+  timeRange: z.enum(['1h', '24h', '7d', '30d']).nullish().transform((v) => v ?? undefined),
 });
 
 // ============================================================================
@@ -58,6 +60,8 @@ export async function POST(request: NextRequest) {
               message: parsed.message,
               sessionId: parsed.sessionId,
               experienceId: parsed.experienceId,
+              experienceName: parsed.experienceName,
+              timeRange: parsed.timeRange,
               providerId: parsed.providerId,
               modelId: parsed.modelId,
             },

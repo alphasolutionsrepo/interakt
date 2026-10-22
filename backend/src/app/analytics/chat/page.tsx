@@ -49,7 +49,8 @@ import { cn } from '@/lib/utils';
 import { AnalyticsDataRenderer } from './_components/AnalyticsDataRenderer';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ExperienceSelector } from '../_components/ExperienceSelector';
-import { useAnalyticsContext } from '../_lib/AnalyticsContext';
+import { TimeRangeSelector } from '../_components/TimeRangeSelector';
+import { useAnalyticsContext, TIME_RANGE_OPTIONS } from '../_lib/AnalyticsContext';
 
 // ============================================================================
 // TYPES
@@ -134,6 +135,9 @@ interface SessionMessage {
 interface Session {
   id: string;
   title: string;
+  /** Experience the conversation is scoped to (null = all experiences) */
+  experienceId: string | null;
+  experienceName: string | null;
   messages: SessionMessage[];
   messageCount: number;
   createdAt: string;
@@ -142,6 +146,8 @@ interface Session {
 interface SessionSummary {
   id: string;
   title: string;
+  experienceId: string | null;
+  experienceName: string | null;
   messageCount: number;
   lastMessageAt: string | null;
   createdAt: string;
@@ -164,11 +170,11 @@ interface SessionsResponse {
 // PROCESSING STATUS (compact banner for chat page)
 // ============================================================================
 
-function useProcessingStatus() {
+function useProcessingStatus(experienceId: string | undefined) {
   return useQuery({
-    queryKey: ['analytics', 'processing-status'],
+    queryKey: ['analytics', 'processing-status', experienceId],
     queryFn: async () => {
-      const res = await fetch('/api/analytics/process');
+      const res = await fetch(`/api/analytics/process${experienceId ? `?experienceId=${experienceId}` : ''}`);
       if (!res.ok) throw new Error('Failed to fetch status');
       const json = await res.json();
       return json.data as {
@@ -183,8 +189,8 @@ function useProcessingStatus() {
 }
 
 function ProcessingStatusBanner() {
-  const { data: status, refetch } = useProcessingStatus();
   const { experienceId } = useAnalyticsContext();
+  const { data: status, refetch } = useProcessingStatus(experienceId);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const triggerProcessing = useCallback(async () => {
@@ -209,7 +215,7 @@ function ProcessingStatusBanner() {
       setIsProcessing(false);
       refetch();
     }
-  }, [refetch]);
+  }, [refetch, experienceId]);
 
   const isRunning = isProcessing || status?.currentRun?.status === 'running';
   const isStale = status?.isStale ?? true;
@@ -752,8 +758,11 @@ function HistorySheet({ isOpen, onClose, sessions, isLoading, currentSessionId, 
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{session.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {session.experienceId ? session.experienceName ?? 'Single experience' : 'All Experiences'}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {session.messageCount} messages
+                        {session.messageCount} {session.messageCount === 1 ? 'message' : 'messages'}
                         {session.lastMessageAt && (
                           <> · {formatDistanceToNow(new Date(session.lastMessageAt), { addSuffix: true })}</>
                         )}
@@ -779,8 +788,11 @@ function HistorySheet({ isOpen, onClose, sessions, isLoading, currentSessionId, 
 
 export default function AnalyticsChatPage() {
   const queryClient = useQueryClient();
-  const { experienceId, experienceName } = useAnalyticsContext();
+  const { experienceId, experienceName, setExperience, timeRange } = useAnalyticsContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Experience the open conversation is scoped to: undefined = no conversation yet, null = all experiences
+  const conversationScopeRef = useRef<string | null | undefined>(undefined);
+  const [scopeNotice, setScopeNotice] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
@@ -813,9 +825,16 @@ export default function AnalyticsChatPage() {
     }
   }, [providersData?.defaults?.chat?.modelId, selectedProviderId, selectedModelId]);
 
-  // Load session messages when session changes
+  // Load session messages when session changes, and switch the page to the
+  // experience the conversation is scoped to
   useEffect(() => {
     if (sessionData?.messages) {
+      const sessionScope = sessionData.experienceId ?? null;
+      conversationScopeRef.current = sessionScope;
+      setScopeNotice(null);
+      if (sessionScope !== (experienceId ?? null)) {
+        setExperience(sessionScope ?? undefined, sessionData.experienceName ?? undefined);
+      }
       const loadedMessages: ChatMessage[] = sessionData.messages.map((m) => ({
         id: m.id,
         role: m.role,
@@ -827,7 +846,21 @@ export default function AnalyticsChatPage() {
       }));
       setMessages(loadedMessages);
     }
+    // Only react to a newly loaded session, not to later experience changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionData]);
+
+  // A conversation stays scoped to one experience. Switching experience mid-conversation
+  // starts a new one (the old one stays in History) instead of mixing the two.
+  useEffect(() => {
+    const scope = conversationScopeRef.current;
+    if (scope === undefined || scope === (experienceId ?? null)) return;
+    abortControllerRef.current?.abort();
+    conversationScopeRef.current = undefined;
+    setCurrentSessionId(null);
+    setMessages([]);
+    setScopeNotice('You switched experience, so a new conversation was started. The previous one is still in History.');
+  }, [experienceId]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -837,6 +870,12 @@ export default function AnalyticsChatPage() {
   const handleSubmit = useCallback(async (messageContent?: string) => {
     const content = messageContent || input.trim();
     if (!content || isLoading) return;
+
+    // The first message fixes the conversation's scope
+    if (conversationScopeRef.current === undefined) {
+      conversationScopeRef.current = experienceId ?? null;
+    }
+    setScopeNotice(null);
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -879,6 +918,8 @@ export default function AnalyticsChatPage() {
           providerId: selectedProviderId,
           modelId: selectedModelId,
           experienceId,
+          experienceName: experienceId ? experienceName : undefined,
+          timeRange,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -1069,13 +1110,15 @@ export default function AnalyticsChatPage() {
       setToolsExecuted([]);
       abortControllerRef.current = null;
     }
-  }, [input, isLoading, currentSessionId, selectedProviderId, selectedModelId, experienceId, queryClient]);
+  }, [input, isLoading, currentSessionId, selectedProviderId, selectedModelId, experienceId, experienceName, timeRange, queryClient]);
 
   const handleSuggestedQuestion = useCallback((question: string) => {
     handleSubmit(question);
   }, [handleSubmit]);
 
   const handleNewSession = useCallback(() => {
+    conversationScopeRef.current = undefined;
+    setScopeNotice(null);
     setCurrentSessionId(null);
     setMessages([]);
   }, []);
@@ -1106,6 +1149,7 @@ export default function AnalyticsChatPage() {
   const currentSessionTitle = sessionData?.title || 'New Conversation';
 
   const hasMessages = messages.length > 0;
+  const scopeRangeLabel = TIME_RANGE_OPTIONS.find((o) => o.value === timeRange)?.label ?? timeRange;
 
   // Provider settings popover content (reused in both states)
   const providerSettingsContent = (
@@ -1182,6 +1226,7 @@ export default function AnalyticsChatPage() {
               <div className="flex items-center gap-2">
                 {/* Experience Selector */}
                 <ExperienceSelector />
+                <TimeRangeSelector />
 
                 {/* AI Provider Settings */}
                 <Popover>
@@ -1228,6 +1273,15 @@ export default function AnalyticsChatPage() {
         {/* Main Content - Scrollable */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-5xl px-6 lg:px-8 py-10">
+            {scopeNotice && (
+              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                {scopeNotice}
+              </div>
+            )}
+            <p className="mb-6 text-sm text-muted-foreground">
+              Answers cover <span className="font-medium text-foreground">{experienceId ? experienceName : 'all experiences'}</span>
+              {' '}for the <span className="font-medium text-foreground">{scopeRangeLabel.toLowerCase()}</span> unless your question names a different period.
+            </p>
             {isLoadingProviders ? (
               <div className="text-center py-20">
                 <Skeleton className="mx-auto size-16 rounded-2xl" />
@@ -1367,11 +1421,15 @@ export default function AnalyticsChatPage() {
               <h1 className="text-sm font-semibold tracking-tight truncate">
                 {currentSessionId ? currentSessionTitle : 'Analytics Chat'}
               </h1>
+              <p className="truncate text-xs text-muted-foreground">
+                {experienceId ? experienceName : 'All experiences'} · {scopeRangeLabel}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Experience Selector - Compact */}
             <ExperienceSelector compact />
+            <TimeRangeSelector compact />
 
             {/* AI Provider Settings - Compact */}
             <Popover>
