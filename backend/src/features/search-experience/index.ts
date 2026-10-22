@@ -56,7 +56,6 @@ export {
   updateIndex,
   removeIndex,
   // Validation helpers
-  validateOrigin,
   // Error classes
   SearchExperienceError,
   NotFoundError,

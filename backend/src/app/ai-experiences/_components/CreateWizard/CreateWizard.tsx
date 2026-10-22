@@ -743,7 +743,7 @@ function Step4({ data, onChange }: { data: WizardData; onChange: (d: Partial<Wiz
             <Label className="text-xs">Requests per Day</Label>
             <Input type="number" min={1} value={data.rateLimitRequestsPerDay}
               onChange={(e) => onChange({ rateLimitRequestsPerDay: e.target.value })}
-              placeholder="Unlimited" className="rounded-xl" />
+              placeholder="10000" title="Chat messages for the whole experience per day" className="rounded-xl" />
           </div>
         </div>
       </div>

@@ -47,9 +47,9 @@ Below the instructions field there's a **Preview composed prompt** toggle — it
 
 | Field | What it controls |
 |---|---|
-| **Allowed origins** | CORS — domains allowed to call this chat from a browser. |
-| **Rate limit — per minute** | Per-token + IP. Default 60. |
-| **Rate limit — per day** | Optional cap. Leave blank for unlimited. |
+| **Allowed origins** | CORS — sites whose web pages may call this chat. Empty allows any site. |
+| **Rate limit — per minute** | For each client. Default 60. |
+| **Rate limit — per day** | Chat messages for the whole experience. Default 10,000. |
 
 Click **Create**. You land on the detail page.
 
@@ -157,7 +157,7 @@ The drop-in widget handles all this. If you're building a custom frontend, [Call
 - **Forgot to assign tools.** A chat with no tools just chats — it can't fetch your data. Look at the **Tools** card.
 - **Tool descriptions are vague.** The AI decides whether to call a tool based on its description. A tool called "search" described as "searches" will be ignored or called for everything. Override the description on the experience to say *what* it searches and *when* the AI should use it.
 - **Picking a model that's too small.** Local 7B models on Ollama are fine for prototyping; for production-quality answers, OpenAI `gpt-4o` or `gpt-4o-mini` is the floor. Small models ignore instructions and invent facts.
-- **No allowed origins set.** Browser-side calls fail with a CORS error until you add the site's origin.
+- **No allowed origins set.** Any site can embed the chat with its token. Add your production domain (and your dev URL) so other sites can't.
 - **The system instructions are too short.** A two-line system prompt produces a generic chatbot. Be specific: who is this chat for, what should it do, what should it never do, what's the tone, when should it cite sources, what's the fallback if it can't answer.
 - **High max-context but small token budget.** If you set max-context to 100 messages but the model has an 8k token limit, each turn truncates. Match these.
 

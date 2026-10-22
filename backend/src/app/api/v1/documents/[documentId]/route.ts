@@ -26,10 +26,7 @@ export async function GET(
 
   try {
     // 1. Authenticate via access token (gets experience)
-    const authResult = await authenticateAccessToken(request, {
-      validateOrigin: true,
-      checkRateLimit: true,
-    });
+    const authResult = await authenticateAccessToken(request);
 
     if (!authResult.success) {
       return (authResult as MiddlewareError).response;

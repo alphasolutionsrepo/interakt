@@ -78,7 +78,7 @@ For experiences over sensitive data (internal documents, customer PII), prefer t
 The companion to the token. Set on the experience itself (Edit → Access control → Allowed origins).
 
 - **Empty list** — all origins allowed. Fine for server-side use; bad for browser-facing experiences.
-- **One or more origins** — browser requests from any other origin are rejected.
+- **One or more origins** — browser requests from any other origin are rejected. Interakt's own pages (the widget previews in the admin) are always allowed.
 
 You'll want this set to your production site's URL and (during dev) `http://localhost:3000`-style URLs.
 
@@ -86,12 +86,18 @@ CORS doesn't apply to server-to-server requests — the Origin header is set by 
 
 ## Rate limits
 
-Per token + IP combination.
+Set on the experience, and applied to every request made with its token.
 
-- **Search experiences** — set on the experience (default 60 req/min).
-- **AI experiences** — set on the experience (default 60 req/min, plus optional per-day cap).
+- **Per minute, for each client** — search experiences: searches per minute (default 60; autocomplete, AI summaries and document reads count too). AI experiences: chats per minute (default 60).
+- **Per day, for the whole experience** — AI experiences: chat messages per day (default 10,000).
 
-Exceeding the limit returns HTTP 429 with a `Retry-After` header. Your app should back off and retry.
+Loading the widget's settings and fetching the embed snippet aren't counted towards either limit.
+
+Exceeding a limit returns HTTP 429 with a `Retry-After` header. Your app should back off and retry. Limits are counted in memory on each server instance.
+
+A client is the address your proxy reports in `X-Forwarded-For`. Self-hosting behind more than one proxy, such as a CDN in front of a load balancer? Set `TRUSTED_PROXY_HOPS` to how many there are (default 1).
+
+Calling Interakt from your own server? Every request then comes from your server's address, so set the per-minute limit to cover your site's traffic.
 
 ## Rotation procedure
 

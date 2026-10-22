@@ -5,35 +5,39 @@
  *
  * Routes that serve both real clients and the admin playgrounds use this: a
  * matching access token (`Authorization: Bearer …` or `X-Access-Token`) is real
- * traffic; otherwise a signed-in admin is testing. Callers record admin requests
- * as test traffic (analytics source 'admin_test') and don't trace them by default.
+ * traffic and gets the experience's access settings (allowed origins, rate limits);
+ * otherwise a signed-in admin is testing. Callers record admin requests as test
+ * traffic (analytics source 'admin_test') and don't trace them by default.
  */
 
 import 'server-only';
 
-import type { NextRequest } from 'next/server';
+import type { NextRequest, NextResponse } from 'next/server';
 import { auth } from './auth.api.handlers';
+import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
 
 /** Who is calling: a client with the experience's token, or a signed-in admin. */
 export type ExperienceCaller = 'api' | 'admin';
 
 /**
- * @returns 'api' for a matching access token, 'admin' for a signed-in session,
- *   or null when neither (respond 401)
+ * `caller` is null when the request may not go ahead. `refused` then holds the 403 or
+ * 429 response for a token caller outside the experience's settings; without it, the
+ * request had neither a matching token nor a session and the route answers 401.
  */
+export type TokenOrSessionResult =
+  | { caller: ExperienceCaller; refused?: undefined }
+  | { caller: null; refused?: NextResponse };
+
 export async function authenticateTokenOrSession(
   request: NextRequest,
-  experienceAccessToken: string | null | undefined,
-): Promise<ExperienceCaller | null> {
-  const authHeader = request.headers.get('Authorization') ?? '';
-  const token = authHeader.startsWith('Bearer ')
-    ? authHeader.slice(7).trim()
-    : (request.headers.get('X-Access-Token') ?? '').trim();
-
-  if (token && experienceAccessToken && token === experienceAccessToken) {
-    return 'api';
+  experience: ExperienceAccess,
+): Promise<TokenOrSessionResult> {
+  const token = readAccessToken(request);
+  if (token && experience.accessToken && token === experience.accessToken) {
+    const refused = checkPublicAccess(request, experience);
+    return refused ? { caller: null, refused } : { caller: 'api' };
   }
 
   const session = await auth();
-  return session?.user ? 'admin' : null;
+  return session?.user ? { caller: 'admin' } : { caller: null };
 }
