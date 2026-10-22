@@ -178,7 +178,9 @@ beforeEach(() => {
   mocks.getDocumentByIdFromIndex.mockResolvedValue({ id: 'd1', fields: {} });
   mocks.getAIExperienceBySlug.mockResolvedValue(aiExperience);
   mocks.getAIExperienceByAccessToken.mockImplementation(async (token: string) => (token === 'chat-token' ? aiExperience : null));
-  mocks.executeExperienceSearch.mockResolvedValue({ results: [], totalResults: 0, facets: [], sources: [] });
+  mocks.executeExperienceSearch.mockResolvedValue({
+    results: { hits: [], total: { value: 0 }, pagination: {}, facets: [] }, sourcesSearched: [], failedSources: [],
+  });
   mocks.createSummaryStream.mockReturnValue(new ReadableStream({ start: (c) => c.close() }));
   mocks.runChatPipeline.mockResolvedValue({ sessionId: 's', responseText: 'ok', usage: {} });
 });
@@ -227,6 +229,14 @@ describe("the admin's widget preview", () => {
     const own = { 'X-Access-Token': 'chat-token', Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin' };
     expect(await settle(await widgetConfig(req('/api/v1/ai-experiences/widget-config', 'GET', own)))).toBe(200);
     expect(await settle(await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', own, { message: 'hi' })))).toBe(200);
+  });
+
+  it("works on the search routes too, which the search playground's autocomplete and documents use", async () => {
+    const own = { 'X-Access-Token': 'search-token', Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin' };
+    expect(await settle(await searchByToken(req('/api/v1/search', 'POST', own, { query: 'jeans' })))).toBe(200);
+    expect(await settle(await autocomplete(req('/api/v1/autocomplete', 'POST', own, { query: 'je' })))).toBe(200);
+    const other = { ...own, 'Sec-Fetch-Site': 'cross-site' };
+    expect(await settle(await autocomplete(req('/api/v1/autocomplete', 'POST', other, { query: 'je' })))).toBe(403);
   });
 
   it('refuses another site that sends forwarded headers naming itself', async () => {
