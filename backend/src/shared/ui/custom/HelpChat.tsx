@@ -40,11 +40,16 @@ export function useHelpChat(): HelpChat {
   const [busy, setBusy] = useState(false);
   const [notReady, setNotReady] = useState(false);
   const sessionId = useRef<string | null>(null);
+  /** The request in flight; reset() aborts it so a closed drawer doesn't leave the chat busy. */
+  const inFlight = useRef<AbortController | null>(null);
 
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || busy) return;
+      const controller = new AbortController();
+      inFlight.current = controller;
+      const { signal } = controller;
       setBusy(true);
       setNotReady(false);
 
@@ -59,15 +64,19 @@ export function useHelpChat(): HelpChat {
       const sid = sessionId.current ?? crypto.randomUUID();
       sessionId.current = sid;
 
-      const patch = (fn: (m: ChatMessage) => ChatMessage) =>
-        setMessages((prev) => prev.map((m) => (m.id === assistantId ? fn(m) : m)));
+      // Once aborted, this request's answer belongs to a conversation that's gone.
+      const patch = (fn: (m: ChatMessage) => ChatMessage) => {
+        if (!signal.aborted) setMessages((prev) => prev.map((m) => (m.id === assistantId ? fn(m) : m)));
+      };
 
       try {
         const res = await fetch(`/api/v1/ai-experiences/${HELP_EXPERIENCE_SLUG}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: trimmed, sessionId: sid }),
+          signal,
         });
+        if (signal.aborted) return;
 
         // The assistant hasn't been built yet (experience missing) — guide the user.
         if (res.status === 404) {
@@ -126,13 +135,20 @@ export function useHelpChat(): HelpChat {
           step: undefined,
         }));
       } finally {
-        setBusy(false);
+        // A newer request (after a reset) owns `busy` now.
+        if (inFlight.current === controller) {
+          inFlight.current = null;
+          setBusy(false);
+        }
       }
     },
     [busy],
   );
 
   const reset = useCallback(() => {
+    inFlight.current?.abort();
+    inFlight.current = null;
+    setBusy(false);
     setMessages([]);
     setNotReady(false);
     sessionId.current = null;

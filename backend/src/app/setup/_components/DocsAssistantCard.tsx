@@ -39,7 +39,23 @@ interface DocsStatus {
     searchType: 'lexical' | 'hybrid' | null;
     embeddingModelKey: string | null;
     sections: number | null;
+    hybridFailure: { model: string; error: string } | null;
+    conflict: string | null;
   };
+}
+
+function describeDocsSearch(search: DocsStatus['search']): string {
+  const sections = `${search.sections ?? 0} sections`;
+  if (search.conflict) return search.conflict;
+  if (!search.built) return 'not built yet — it builds automatically when the server starts.';
+  if (search.hybridFailure) {
+    const model = search.hybridFailure.model.split(':')[0];
+    return `keyword search · ${sections}. Hybrid search failed with ${model} (${search.hybridFailure.error}); Rebuild tries again.`;
+  }
+  if (search.searchType === 'hybrid') {
+    return `hybrid (keyword + semantic${search.embeddingModelKey ? `, ${search.embeddingModelKey}` : ''}) · ${sections}.`;
+  }
+  return `keyword search · ${sections}. Building the assistant upgrades it to hybrid.`;
 }
 
 export function DocsAssistantCard() {
@@ -162,11 +178,7 @@ export function DocsAssistantCard() {
             <Search className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <p className="text-muted-foreground">
               <span className="font-medium text-foreground">Docs search: </span>
-              {!status.search.built
-                ? 'not built yet — it builds automatically when the server starts.'
-                : status.search.searchType === 'hybrid'
-                  ? `hybrid (keyword + semantic${status.search.embeddingModelKey ? `, ${status.search.embeddingModelKey}` : ''}) · ${status.search.sections ?? 0} sections.`
-                  : `keyword search · ${status.search.sections ?? 0} sections. Building the assistant upgrades it to hybrid.`}{' '}
+              {describeDocsSearch(status.search)}{' '}
               Open it from the <span className="font-medium text-foreground">?</span> in the header or with Ctrl/⌘+K.
             </p>
           </div>

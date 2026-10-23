@@ -3,8 +3,8 @@
 /**
  * Docs search seeder — builds the in-app docs search on Interakt's own search
  * stack: a search index of the end-user docs (one record per section) and a
- * search experience over it. The /docs search dialog and the help drawer's
- * Search tab call that experience.
+ * search experience over it. The help drawer's Search mode calls that
+ * experience.
  *
  * Unlike the Help Assistant it needs no AI provider: the index goes into the
  * deployment's search engine (SEARCH_PROVIDER) as keyword-only search, and is
@@ -16,7 +16,13 @@
  * unchanged runs. Changed docs reload the existing index in place; a changed
  * search mode, embedding model or schema recreates the index and experience.
  * Both are managed resources — edits made to them in the admin are replaced
- * on the next rebuild.
+ * on the next rebuild — but the seeder never touches an index or experience
+ * with the same name that it didn't create.
+ *
+ * Any failure of a hybrid build falls back to keyword-only. The failure is
+ * remembered per embedding model, so later runs go straight to keyword-only
+ * instead of re-embedding every section to fail again; Rebuild, a different
+ * model, or a day passing tries hybrid again.
  */
 
 import 'server-only';
@@ -63,6 +69,11 @@ const INDEX_NAME = DOCS_SEARCH_SLUG;
 const SCHEMA_VERSION = 1;
 /** Arbitrary, fixed key for the Postgres advisory lock that keeps replicas from building at once. */
 const LOCK_KEY = 72_001;
+/** How long a failed hybrid build keeps docs search keyword-only before hybrid is tried again. */
+const HYBRID_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
+/** Descriptions mark the index and experience as the seeder's own (see assertOwned). */
+const INDEX_DESCRIPTION = "Interakt's own product documentation, one record per section. Powers in-app docs search.";
+const EXPERIENCE_DESCRIPTION = 'Search over the product documentation, used by in-app docs search.';
 
 /** Fields beyond the auto-created system ones. Boosts: page title > section heading > body. */
 const FIELDS: MappingEntryInput[] = [
@@ -116,13 +127,24 @@ export interface DocsSearchSeedSummary {
   sections?: number;
 }
 
+/** A hybrid build that failed, and with which embedding model (see modelSignature). */
+interface HybridFailure {
+  model: string;
+  error: string;
+  at: string;
+}
+
 interface DocsSearchMeta {
   schemaVersion: number;
   searchType: SearchMode['searchType'];
   embeddingModelKey: string | null;
   sections: number;
   seededAt: string;
+  hybridFailure: HybridFailure | null;
 }
+
+/** An index or experience named like ours exists that the seeder didn't create. Not retried. */
+export class DocsSearchConflictError extends Error {}
 
 // ---------------------------------------------------------------------------
 // Orchestrator
@@ -147,17 +169,48 @@ async function build(force: boolean): Promise<DocsSearchSeedSummary> {
   if (records.length === 0) throw new Error('No documentation found to index.');
 
   const mode = await resolveSearchMode();
-  const summary = await buildWithMode(records, mode, adminId, force);
+  const previous = await readMeta();
+  if (mode.searchType === 'lexical') return buildLexical(records, adminId, force, previous?.hybridFailure ?? null);
 
-  // Embeddings that didn't happen (bad key, provider down) would leave a hybrid
-  // index whose every query fails to embed. Fall back to keyword-only rather
-  // than ship broken search; the next build retries hybrid.
-  if (summary === 'embeddings-failed') {
-    logger.warn('Docs search embeddings failed — rebuilding as keyword-only');
-    const fallback = await buildWithMode(records, { searchType: 'lexical' }, adminId, true);
-    if (fallback === 'embeddings-failed') throw new Error('Docs search could not be built.');
-    return fallback;
+  // This model failed before: stay keyword-only rather than re-embed every
+  // section to fail again, until a rebuild is forced or the wait is over.
+  const model = modelSignature(mode);
+  const failed = previous?.hybridFailure;
+  if (!force && failed?.model === model && Date.now() - Date.parse(failed.at) < HYBRID_RETRY_AFTER_MS) {
+    logger.info('Hybrid docs search failed with this embedding model before — building keyword-only', { model });
+    return buildLexical(records, adminId, force, failed);
   }
+
+  let error: string;
+  try {
+    const summary = await buildWithMode(records, mode, adminId, force, null);
+    if (summary !== 'embeddings-failed') return summary;
+    // No vectors (bad key, provider down): every query would fail to embed.
+    error = 'the embedding model returned no vectors';
+  } catch (e) {
+    // The engine being unreachable, or a name clash, isn't about hybrid — let
+    // the caller see it (startup retries the first).
+    if (e instanceof DocsSearchConflictError || isTransientError(e)) throw e;
+    error = (e as Error).message;
+  }
+
+  // Any other hybrid failure (e.g. the engine rejecting vectors whose real size
+  // doesn't match the model's configured dimensions) falls back to keyword-only.
+  logger.warn('Hybrid docs search build failed — building keyword-only instead', { model, error });
+  const hybridFailure: HybridFailure = { model, error: error.slice(0, 500), at: new Date().toISOString() };
+  return buildLexical(records, adminId, true, hybridFailure);
+}
+
+/** A keyword-only build, carrying forward any hybrid failure to remember. */
+async function buildLexical(
+  records: DocsSearchRecord[],
+  adminId: string,
+  force: boolean,
+  hybridFailure: HybridFailure | null,
+): Promise<DocsSearchSeedSummary> {
+  const summary = await buildWithMode(records, { searchType: 'lexical' }, adminId, force, hybridFailure);
+  // Only hybrid builds can come back without vectors.
+  if (summary === 'embeddings-failed') throw new Error('Docs search could not be built.');
   return summary;
 }
 
@@ -166,6 +219,7 @@ async function buildWithMode(
   mode: SearchMode,
   adminId: string,
   force: boolean,
+  hybridFailure: HybridFailure | null,
 ): Promise<DocsSearchSeedSummary | 'embeddings-failed'> {
   const embeddingModelKey = mode.searchType === 'hybrid' ? mode.modelKey ?? String(mode.modelId) : null;
   const checksum = calculateChecksum({ schemaVersion: SCHEMA_VERSION, searchType: mode.searchType, embeddingModelKey, records });
@@ -174,6 +228,7 @@ async function buildWithMode(
   const meta = entry?.metadata as Partial<DocsSearchMeta> | undefined;
   let index = await getSearchIndexByName(INDEX_NAME);
   let experience = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
+  assertOwned(!!entry, index, experience);
 
   if (!force && entry?.checksum === checksum && index && experience) {
     logger.info('Docs search unchanged — skipping');
@@ -224,11 +279,56 @@ async function buildWithMode(
     embeddingModelKey,
     sections: result.indexedDocuments,
     seededAt: new Date().toISOString(),
+    hybridFailure,
   };
   await upsertRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY, checksum, nextMeta as unknown as Record<string, unknown>);
 
   logger.info('✅ Docs search built', { sections: result.indexedDocuments, searchType: mode.searchType, embedded });
   return { skipped: false, searchType: mode.searchType, sections: result.indexedDocuments };
+}
+
+async function readMeta(): Promise<Partial<DocsSearchMeta> | undefined> {
+  const entry = await getRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY);
+  return entry?.metadata as Partial<DocsSearchMeta> | undefined;
+}
+
+/** Identifies an embedding model *and* its configured size, so fixing the size counts as a new model. */
+function modelSignature(mode: Extract<SearchMode, { searchType: 'hybrid' }>): string {
+  return `${mode.modelKey ?? mode.modelId}:${mode.dimensions}`;
+}
+
+/**
+ * Refuse to manage an index or experience called "interakt-docs" that this
+ * seeder didn't create — an admin may have made one by hand. Ours are those
+ * recorded in the seed registry, or that carry our description.
+ */
+function assertOwned(
+  registered: boolean,
+  index: { description?: string | null } | null,
+  experience: { description?: string | null } | null,
+): void {
+  if (registered) return;
+  const foreign = [
+    index && index.description !== INDEX_DESCRIPTION && `search index "${INDEX_NAME}"`,
+    experience && experience.description !== EXPERIENCE_DESCRIPTION && `search experience "${DOCS_SEARCH_SLUG}"`,
+  ].filter(Boolean);
+  if (foreign.length) {
+    throw new DocsSearchConflictError(
+      `A ${foreign.join(' and a ')} already exist${foreign.length > 1 ? '' : 's'} and weren't created by docs search. ` +
+        'Rename or delete it to enable in-app docs search.',
+    );
+  }
+}
+
+/** Errors worth retrying: the search engine or database still starting, or briefly unreachable. */
+export function isTransientError(e: unknown): boolean {
+  const err = e as { name?: string; code?: string; message?: string; meta?: { statusCode?: number } };
+  const text = `${err?.name ?? ''} ${err?.code ?? ''} ${err?.message ?? ''}`;
+  return (
+    /ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|ConnectionError|NoLivingConnections|TimeoutError/i.test(
+      text,
+    ) || err?.meta?.statusCode === 503
+  );
 }
 
 /** Hybrid when a system default embedding model (with a known vector size) exists, keyword-only otherwise. */
@@ -255,7 +355,7 @@ async function createIndex(mode: SearchMode, adminId: string) {
   const input = {
     name: INDEX_NAME,
     displayName: 'Interakt Docs',
-    description: "Interakt's own product documentation, one record per section. Powers in-app docs search.",
+    description: INDEX_DESCRIPTION,
     searchType: mode.searchType,
     indexingStrategy: 'on_upload',
     language: 'english',
@@ -310,7 +410,7 @@ async function createExperience(indexId: string, adminId: string) {
   const input = {
     name: 'Interakt Docs',
     slug: DOCS_SEARCH_SLUG,
-    description: 'Search over the product documentation, used by in-app docs search.',
+    description: EXPERIENCE_DESCRIPTION,
     indexes: [{ searchIndexId: indexId, role: 'primary', weight: 1, sortOrder: 0 }],
     searchConfig: {
       defaultPageSize: 8,
@@ -320,7 +420,7 @@ async function createExperience(indexId: string, adminId: string) {
       // 'auto' follows the index: keyword-only until it's rebuilt as hybrid.
       defaultSearchType: 'auto',
     },
-    // The help drawer's Ask tab is the AI answer; this experience is just search.
+    // The help drawer's Ask AI is the AI answer; this experience is just search.
     aiConfig: { enabled: false, providerId: null, modelId: null, summary: { enabled: false } },
     toolsConfig: { enabled: ['search'], settings: {} },
     displayConfig: {
@@ -351,17 +451,35 @@ export interface DocsSearchStatus {
   embeddingModelKey: string | null;
   sections: number | null;
   seededAt: string | null;
+  /** Why docs search is keyword-only although an embedding model exists, if a hybrid build failed. */
+  hybridFailure: HybridFailure | null;
+  /** Set when an index or experience with our name exists that docs search didn't create. */
+  conflict: string | null;
 }
 
 export async function getDocsSearchStatus(): Promise<DocsSearchStatus> {
   const entry = await getRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY).catch(() => null);
   const meta = entry?.metadata as Partial<DocsSearchMeta> | undefined;
+
+  let conflict: string | null = null;
+  if (!entry) {
+    try {
+      const index = await getSearchIndexByName(INDEX_NAME);
+      const experience = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
+      assertOwned(false, index, experience);
+    } catch (e) {
+      if (e instanceof DocsSearchConflictError) conflict = e.message;
+    }
+  }
+
   return {
     built: !!entry,
     searchType: meta?.searchType ?? null,
     embeddingModelKey: meta?.embeddingModelKey ?? null,
     sections: meta?.sections ?? null,
     seededAt: meta?.seededAt ?? null,
+    hybridFailure: meta?.searchType === 'lexical' ? meta?.hybridFailure ?? null : null,
+    conflict,
   };
 }
 
@@ -373,23 +491,24 @@ const STARTUP_ATTEMPTS = 3;
 const STARTUP_RETRY_MS = 20_000;
 
 /**
- * Build docs search at server start, in the background. Retries a few times
- * because the search engine may still be starting alongside the app (e.g.
- * docker compose). Never throws.
+ * Build docs search at server start, in the background. Retries only errors
+ * that look transient — the search engine may still be starting alongside the
+ * app (e.g. docker compose); anything else would just fail the same way again.
+ * Never throws.
  */
-export async function buildDocsSearchOnStartup(): Promise<void> {
+export async function buildDocsSearchOnStartup(retryDelayMs = STARTUP_RETRY_MS): Promise<void> {
   for (let attempt = 1; attempt <= STARTUP_ATTEMPTS; attempt++) {
     try {
       await seedDocsSearch();
       return;
     } catch (e) {
-      const last = attempt === STARTUP_ATTEMPTS;
-      logger.warn(`Docs search build failed${last ? '' : ' — retrying'}`, {
+      const retry = attempt < STARTUP_ATTEMPTS && isTransientError(e);
+      logger.warn(`Docs search build failed${retry ? ' — retrying' : ''}`, {
         attempt,
         error: (e as Error).message,
       });
-      if (last) return;
-      await new Promise((resolve) => setTimeout(resolve, STARTUP_RETRY_MS));
+      if (!retry) return;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }
 }

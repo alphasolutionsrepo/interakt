@@ -132,7 +132,11 @@ Docs search (the **?** icon in the header → **Search**, or **Ctrl+K**) is buil
 - **Without an AI provider** it's keyword search.
 - **Once a system default embedding model exists** it becomes hybrid (keyword + semantic). Building the Help Assistant upgrades it straight away; otherwise it happens on the next restart. Unlike the Help Assistant, any embedding model works.
 
-The **Documentation Assistant** card on this page shows which mode it's in and how many sections are indexed. **Rebuild** refreshes it along with the assistant. Both resources are managed by Interakt and rebuilt whenever the docs change, so edits you make to them in the admin don't stick.
+If a hybrid build fails — say, the embedding model's real output size doesn't match its configured dimensions — docs search falls back to keyword search and stays that way for that model, rather than failing again on every restart. **Rebuild**, a different embedding model, or a day passing tries hybrid again.
+
+If an index or search experience called `interakt-docs` already exists and wasn't created by docs search, docs search leaves it alone and doesn't build; rename or delete it to enable docs search.
+
+The **Documentation Assistant** card on this page shows which mode it's in, how many sections are indexed, and why it's keyword-only if a hybrid build failed. **Rebuild** refreshes it along with the assistant. Both resources are managed by Interakt and rebuilt whenever the docs change, so edits you make to them in the admin don't stick.
 
 ## Common gotchas
 

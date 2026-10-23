@@ -16,7 +16,8 @@ import {
   type DocsSearchHit,
 } from './docs-search';
 
-const DEBOUNCE_MS = 150;
+/** Long enough that typing at a normal pace sends one search per pause, not one per keystroke. */
+const DEBOUNCE_MS = 300;
 
 export interface DocsSearchState {
   status: 'idle' | 'loading' | 'ready' | 'error';
