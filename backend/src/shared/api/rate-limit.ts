@@ -21,6 +21,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { clientIp } from './client-ip';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -37,6 +39,7 @@ export interface RateLimitConfig {
 interface WindowEntry {
   count: number;
   windowStart: number;
+  windowMs: number;
 }
 
 // ============================================================================
@@ -51,9 +54,9 @@ function cleanup(): void {
   const now = Date.now();
   if (now - lastCleanup < CLEANUP_INTERVAL) return;
 
-  const cutoff = now - 10 * 60_000; // Remove entries older than 10 minutes
+  // Each entry goes once its own window is over (a minute, a day, …).
   for (const [key, entry] of store.entries()) {
-    if (entry.windowStart < cutoff) {
+    if (now - entry.windowStart >= entry.windowMs) {
       store.delete(key);
     }
   }
@@ -63,14 +66,6 @@ function cleanup(): void {
 // ============================================================================
 // CORE RATE LIMITER
 // ============================================================================
-
-function getClientIp(request: NextRequest): string {
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    request.headers.get('x-real-ip') ??
-    'unknown'
-  );
-}
 
 export const rateLimiter = {
   /**
@@ -96,7 +91,7 @@ export const rateLimiter = {
       return { allowed: true, remaining: maxRequests - entry.count };
     }
 
-    store.set(key, { count: 1, windowStart: now });
+    store.set(key, { count: 1, windowStart: now, windowMs });
     return { allowed: true, remaining: maxRequests - 1 };
   },
 
@@ -108,6 +103,12 @@ export const rateLimiter = {
   /** Clear all entries (for testing) */
   clear(): void {
     store.clear();
+    lastCleanup = 0;
+  },
+
+  /** How many entries are held in memory (for testing) */
+  size(): number {
+    return store.size;
   },
 };
 
@@ -128,7 +129,7 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
   const {
     maxRequests = 60,
     windowMs = 60_000,
-    keyFn = getClientIp,
+    keyFn = clientIp,
   } = config;
 
   const wrapped = async (...args: Parameters<T>): Promise<NextResponse> => {

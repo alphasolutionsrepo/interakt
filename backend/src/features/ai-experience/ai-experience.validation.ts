@@ -120,7 +120,7 @@ export const sessionConfigSchema = z.object({
 // ============================================================================
 
 const rateLimitsSchema = z.object({
-  chatPerMinute: z.number().int().min(1).max(1000).default(30),
+  chatPerMinute: z.number().int().min(1).max(1000).default(60),
   requestsPerDay: z.number().int().min(1).max(1_000_000).default(10_000),
 });
 

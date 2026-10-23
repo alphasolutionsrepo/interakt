@@ -16,6 +16,7 @@
 import 'server-only';
 
 import type { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/shared/api/client-ip';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { parseKey, verifyIngestionKey } from './ingestion-key.service';
@@ -53,8 +54,7 @@ function extractBearer(request: NextRequest): string | null {
  *
  * Uses the presented key's public prefix, which identifies the caller without a
  * database lookup (keyFn is synchronous) and cannot be forged without the real
- * key. Contrast the default IP-based key, which `x-forwarded-for` makes
- * trivially spoofable.
+ * key.
  *
  * Session requests fall back to the client IP — the admin UI is low-volume, and
  * resolving a session is async.
@@ -67,12 +67,7 @@ export function ingestionRateLimitKey(request: NextRequest): string {
         return `key:${parsed.keyPrefix}`;
     }
 
-    const forwarded = request.headers.get('x-forwarded-for');
-    const ip = forwarded?.split(',')[0].trim()
-        || request.headers.get('x-real-ip')
-        || 'unknown';
-
-    return `ip:${ip}`;
+    return `ip:${clientIp(request)}`;
 }
 
 /**

@@ -203,11 +203,11 @@ describe('accessConfigSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('applies rate limit defaults', () => {
+  it('applies rate limit defaults (the same 60 per minute the form, the seeders and the docs use)', () => {
     const result = accessConfigSchema.safeParse({ rateLimits: {} });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.rateLimits.chatPerMinute).toBe(30);
+      expect(result.data.rateLimits.chatPerMinute).toBe(60);
       expect(result.data.rateLimits.requestsPerDay).toBe(10_000);
     }
   });

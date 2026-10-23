@@ -13,21 +13,18 @@
 // Response: text/event-stream (SSE)
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/features/auth/auth.api.handlers';
-import { getAIExperienceByAccessToken } from '@/features/ai-experience/ai-experience.service';
+
+import { authenticateAIAccessToken } from '@/features/ai-experience/access-token.middleware';
 import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
+import { auth } from '@/features/auth/auth.api.handlers';
+import { readAccessToken } from '@/features/auth/public-access';
 import { runChatPipeline } from '@/features/pipeline/chat-pipeline';
-import { flushTelemetry } from '@/features/telemetry';
 import type { PipelineStreamEvent } from '@/features/pipeline/pipeline.types';
+import { flushTelemetry } from '@/features/telemetry';
 
 export async function POST(request: NextRequest) {
-  // ── Extract access token ───────────────────────────────────────────────────
-  const authHeader = request.headers.get('Authorization') ?? '';
-  const accessToken = authHeader.startsWith('Bearer ')
-    ? authHeader.slice(7).trim()
-    : (request.headers.get('X-Access-Token') ?? '').trim();
-
-  if (!accessToken) {
+  // ── No access token: a dashboard session is pointed at the slug route ──────
+  if (!readAccessToken(request)) {
     // Fall back to dashboard session auth
     const session = await auth();
     if (!session?.user) {
@@ -58,14 +55,10 @@ export async function POST(request: NextRequest) {
 
   const { message, sessionId: clientSessionId } = parsed.data;
 
-  // ── Resolve experience from token (cached) ────────────────────────────────
-  const experience = await getAIExperienceByAccessToken(accessToken);
-  if (!experience) {
-    return NextResponse.json({ error: 'Invalid access token' }, { status: 401 });
-  }
-  if (!experience.isActive) {
-    return NextResponse.json({ error: 'AI Experience is not active' }, { status: 403 });
-  }
+  // ── Resolve experience from token; allowed origins and rate limits ────────
+  const authResult = await authenticateAIAccessToken(request);
+  if (authResult.response) return authResult.response;
+  const { experience } = authResult;
 
   // ── Stream pipeline ────────────────────────────────────────────────────────
   const encoder = new TextEncoder();

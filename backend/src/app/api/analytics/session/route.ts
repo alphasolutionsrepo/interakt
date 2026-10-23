@@ -9,6 +9,7 @@ import {
   hashIP,
 } from '@/features/analytics';
 import type { SessionType } from '@/features/analytics';
+import { clientIp } from '@/shared/api/client-ip';
 
 // ============================================================================
 // SCHEMAS
@@ -44,10 +45,8 @@ export async function POST(request: NextRequest) {
 
     // Get client info (privacy-respecting)
     const userAgent = request.headers.get('user-agent') || undefined;
-    const forwardedFor = request.headers.get('x-forwarded-for');
-    const realIp = request.headers.get('x-real-ip');
-    const ip = forwardedFor?.split(',')[0]?.trim() || realIp || undefined;
-    const ipHash = ip ? hashIP(ip) : undefined;
+    const ip = clientIp(request);
+    const ipHash = ip === 'unknown' ? undefined : hashIP(ip);
     const origin = request.headers.get('origin') || undefined;
 
     // Create or get session

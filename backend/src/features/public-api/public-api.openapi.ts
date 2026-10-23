@@ -217,6 +217,8 @@ registry.registerPath({
     200: { description: 'Search results.', content: json(searchResponseSchema) },
     400: errorResponse('Invalid request body or no valid indexes configured.'),
     401: errorResponse('Missing or invalid access token.'),
+    403: errorResponse('The calling page is on a site not in the experience\'s allowed origins.'),
+    429: errorResponse('Rate limit reached. Retry after the number of seconds in the Retry-After header.'),
     503: errorResponse('Search provider unavailable.'),
   },
 });
@@ -232,6 +234,8 @@ registry.registerPath({
   responses: {
     200: { description: 'Suggestions.', content: json(autocompleteResponseSchema) },
     401: errorResponse('Missing or invalid access token.'),
+    403: errorResponse('The calling page is on a site not in the experience\'s allowed origins.'),
+    429: errorResponse('Rate limit reached. Retry after the number of seconds in the Retry-After header.'),
   },
 });
 
@@ -247,7 +251,8 @@ registry.registerPath({
   responses: {
     200: { description: 'SSE stream of summary content.', content: { 'text/event-stream': { schema: z.string() } } },
     401: errorResponse('Missing or invalid access token.'),
-    403: errorResponse('AI summarization is not enabled for this experience.'),
+    403: errorResponse('AI summarization is not enabled for this experience, or the calling page is on a site not in its allowed origins.'),
+    429: errorResponse('Rate limit reached. Retry after the number of seconds in the Retry-After header.'),
   },
 });
 
@@ -266,7 +271,9 @@ registry.registerPath({
   responses: {
     200: { description: 'The document.', content: json(documentResponseSchema) },
     401: errorResponse('Missing or invalid access token.'),
+    403: errorResponse('The calling page is on a site not in the experience\'s allowed origins.'),
     404: errorResponse('Document not found in any active index.'),
+    429: errorResponse('Rate limit reached. Retry after the number of seconds in the Retry-After header.'),
   },
 });
 
@@ -284,7 +291,8 @@ registry.registerPath({
     200: { description: 'SSE stream of the assistant turn.', content: { 'text/event-stream': { schema: z.string() } } },
     400: errorResponse('Invalid request body.'),
     401: errorResponse('Missing or invalid access token.'),
-    403: errorResponse('AI Experience is not active.'),
+    403: errorResponse('AI Experience is not active, or the calling page is on a site not in its allowed origins.'),
+    429: errorResponse('Rate limit reached. Retry after the number of seconds in the Retry-After header.'),
   },
 });
 
@@ -298,7 +306,7 @@ registry.registerPath({
   responses: {
     200: { description: 'Widget configuration.', content: json(widgetConfigResponseSchema) },
     401: errorResponse('Missing or invalid access token.'),
-    403: errorResponse('AI Experience is not active.'),
+    403: errorResponse('AI Experience is not active, or the calling page is on a site not in its allowed origins.'),
   },
 });
 

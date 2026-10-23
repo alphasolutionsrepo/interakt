@@ -596,7 +596,7 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
               </div>
               <div className="space-y-1.5">
                 <Label>Requests / Day</Label>
-                <Input type="number" min={1} value={rateLimitRPD} onChange={(e) => setRateLimitRPD(e.target.value)} placeholder="Unlimited" className="rounded-xl" />
+                <Input type="number" min={1} value={rateLimitRPD} onChange={(e) => setRateLimitRPD(e.target.value)} placeholder="10000" title="Chat messages for the whole experience per day" className="rounded-xl" />
               </div>
             </div>
           </AdvancedGroup>
