@@ -229,13 +229,15 @@ async function executeExternalSearch(
 
   // Fire-and-forget analytics tracking for external searches
   const durationMs = Date.now() - startTime;
-  const { getExperienceContext } = await import('@/features/search/search.service');
+  const { getExperienceContext, getAnalyticsSourceContext } = await import('@/features/search/search.service');
   const ctx = getExperienceContext();
   const resultData = result.data as { results?: unknown[]; totalCount?: number } | undefined;
 
   trackSearch({
     requestId: crypto.randomUUID(),
     triggerType: 'ai_tool',
+    // An admin test chat runs the turn as 'admin_test'; without this it counts as live traffic.
+    source: getAnalyticsSourceContext(),
     searchType: 'lexical',
     // An external index is identified by its data source, as in search experiences.
     indexIds: [source.dataSourceId],

@@ -98,6 +98,8 @@ export interface DashboardData {
   overview: OverviewMetrics;
   trends: SearchTrendPoint[];
   popularQueries: PopularQuery[];
+  /** What AI assistants searched for while answering visitors */
+  assistantQueries: PopularQuery[];
   zeroResults: ZeroResultQuery[];
   searchTypes: SearchTypeBreakdown;
   performance: PerformanceMetrics;

@@ -278,12 +278,14 @@ export async function getOverviewMetrics(
     const { aiUsageEvents } = await import('@/db/analytics-schema');
     const { searchEvents, conditions: searchConditions } = await buildSearchConditions(range, experienceId);
 
-    // Search metrics
+    // Search metrics. Internal lookups (facet values, vocabularies) are counted under
+    // searchesByTrigger.system only: they aren't searches anyone made.
+    const notSystem = sql`${searchEvents.triggerType} <> 'system'`;
     const searchMetrics = await analyticsDB
       .select({
-        total: count(),
-        zeroResults: count(sql`CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END`),
-        avgDuration: avg(searchEvents.durationMs),
+        total: count(sql`CASE WHEN ${notSystem} THEN 1 END`),
+        zeroResults: count(sql`CASE WHEN ${searchEvents.isZeroResult} = true AND ${notSystem} THEN 1 END`),
+        avgDuration: sql<number | null>`AVG(CASE WHEN ${notSystem} THEN ${searchEvents.durationMs} END)`,
         userSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'user' THEN 1 END`),
         aiToolSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'ai_tool' THEN 1 END`),
         aiRagSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'ai_rag' THEN 1 END`),
@@ -298,7 +300,7 @@ export async function getOverviewMetrics(
         uniqueQueries: count(sql`DISTINCT ${searchEvents.queryNormalized}`),
       })
       .from(searchEvents)
-      .where(and(...searchConditions));
+      .where(and(...searchConditions, ne(searchEvents.triggerType, 'system')));
 
     // AI metrics — use otelSpans when filtering by experience (aiUsageEvents has no experienceId)
     let aiData: { total: number; avgDuration: number };
@@ -416,6 +418,8 @@ export async function getSearchTrends(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
+    // Match the overview totals: internal lookups aren't searches anyone made
+    conditions.push(ne(searchEvents.triggerType, 'system'));
 
     // Determine time bucket expression based on granularity
     let timeBucketExpr;
@@ -460,13 +464,29 @@ export async function getSearchTrends(
 }
 
 /**
+ * Who made a search: a visitor typing it, or an AI assistant searching to answer one.
+ * Internal lookups (facet values, vocabularies) are neither.
+ */
+export type SearchOrigin = 'visitor' | 'assistant';
+
+function searchOriginCondition(
+  searchEvents: typeof import('@/db/analytics-schema').searchEvents,
+  origin: SearchOrigin,
+) {
+  return origin === 'visitor'
+    ? eq(searchEvents.triggerType, 'user')
+    : or(eq(searchEvents.triggerType, 'ai_tool'), eq(searchEvents.triggerType, 'ai_rag'))!;
+}
+
+/**
  * Get popular queries
  */
 export async function getPopularQueries(
   timeRange: TimeRange,
   experienceId?: string,
   limit: number = 20,
-  customRange?: DateRange
+  customRange?: DateRange,
+  origin: SearchOrigin = 'visitor',
 ): Promise<PopularQueryResult[]> {
   const range = getDateRange(timeRange, customRange);
 
@@ -477,8 +497,7 @@ export async function getPopularQueries(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
-    // Internal lookups (facet values, vocabularies) are not queries anyone asked
-    conditions.push(ne(searchEvents.triggerType, 'system'));
+    conditions.push(searchOriginCondition(searchEvents, origin));
 
     const results = await analyticsDB
       .select({
@@ -513,7 +532,8 @@ export async function getZeroResultQueries(
   timeRange: TimeRange,
   experienceId?: string,
   limit: number = 50,
-  customRange?: DateRange
+  customRange?: DateRange,
+  origin: SearchOrigin = 'visitor',
 ): Promise<ZeroResultQueryResult[]> {
   const range = getDateRange(timeRange, customRange);
 
@@ -525,7 +545,7 @@ export async function getZeroResultQueries(
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
     conditions.push(eq(searchEvents.isZeroResult, true));
-    conditions.push(ne(searchEvents.triggerType, 'system'));
+    conditions.push(searchOriginCondition(searchEvents, origin));
 
     const results = await analyticsDB
       .select({

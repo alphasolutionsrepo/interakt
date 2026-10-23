@@ -33,3 +33,18 @@ describe('external lookup', () => {
     });
   });
 });
+
+describe('external lookup fallback', () => {
+  it('returns not found instead of an unrelated top hit', async () => {
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'p2', score: 1, source: { name: 'Denim Jacket' } }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: 'XYZ-999' });
+
+    expect(result).toEqual({
+      success: true,
+      data: { found: false, requested: 'XYZ-999', message: 'No record matches "XYZ-999".' },
+    });
+  });
+});
