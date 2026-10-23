@@ -155,6 +155,14 @@ export function getExperienceContext(): { experienceId: string; experienceSlug?:
     return experienceContextStore.getStore();
 }
 
+/**
+ * Get the current analytics source (if any).
+ * Used by external search executors, which track searches themselves.
+ */
+export function getAnalyticsSourceContext(): AnalyticsSourceType | undefined {
+    return analyticsSourceStore.getStore();
+}
+
 function getAnalyticsSource(options?: SearchOptions): AnalyticsSourceType {
     return options?.source ?? analyticsSourceStore.getStore() ?? 'api';
 }

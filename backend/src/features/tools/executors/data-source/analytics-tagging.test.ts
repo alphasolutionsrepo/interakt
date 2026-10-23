@@ -13,6 +13,7 @@ const searchById = vi.fn();
 vi.mock('@/features/search/search.service', () => ({
   searchById: (...args: unknown[]) => searchById(...args),
   getExperienceContext: () => undefined,
+  getAnalyticsSourceContext: () => undefined,
 }));
 vi.mock('@/features/analytics', () => ({ trackSearch: vi.fn() }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById: vi.fn() }));
