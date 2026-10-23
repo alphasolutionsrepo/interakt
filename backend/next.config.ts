@@ -41,10 +41,6 @@ const nextConfig: NextConfig = {
             value: "*",
           },
           {
-            key: "Access-Control-Allow-Credentials",
-            value: "true",
-          },
-          {
             key: "Access-Control-Max-Age",
             value: "86400",
           },

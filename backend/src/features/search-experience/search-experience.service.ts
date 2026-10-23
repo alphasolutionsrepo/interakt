@@ -760,31 +760,6 @@ export async function removeIndex(
 }
 
 // ============================================================================
-// VALIDATION HELPERS
-// ============================================================================
-
-/**
- * Validate CORS origin
- */
-export function validateOrigin(
-  experience: SearchExperienceWithIndexes,
-  origin: string | null
-): boolean {
-  // If no origins configured, allow all
-  if (!experience.allowedOrigins || experience.allowedOrigins.length === 0) {
-    return true;
-  }
-
-  // If origin is null, only allow if explicitly configured
-  if (!origin) {
-    return false;
-  }
-
-  // Check if origin is in allowed list
-  return experience.allowedOrigins.includes(origin);
-}
-
-// ============================================================================
 // AI-POWERED CUSTOM INSTRUCTIONS GENERATION
 // ============================================================================
 

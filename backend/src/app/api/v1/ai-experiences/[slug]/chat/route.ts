@@ -16,12 +16,14 @@
 //   data: {"type":"error","message":"..."}
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
+
 import { getAIExperienceBySlug } from '@/features/ai-experience/ai-experience.service';
 import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
+import { aiExperienceAccess } from '@/features/auth/public-access';
+import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { runChatPipeline } from '@/features/pipeline/chat-pipeline';
-import { flushTelemetry } from '@/features/telemetry';
 import type { PipelineStreamEvent } from '@/features/pipeline/pipeline.types';
+import { flushTelemetry } from '@/features/telemetry';
 
 export async function POST(
   request: NextRequest,
@@ -58,9 +60,9 @@ export async function POST(
 
   // ── Authenticate ───────────────────────────────────────────────────────────
   // Access token (external/demo-site clients) or dashboard session (admin test panel)
-  const caller = await authenticateTokenOrSession(request, experience.accessToken);
+  const { caller, refused } = await authenticateTokenOrSession(request, aiExperienceAccess(experience));
   if (!caller) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return refused ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const analyticsSource: 'api' | 'admin_test' = caller === 'admin' ? 'admin_test' : 'api';
 

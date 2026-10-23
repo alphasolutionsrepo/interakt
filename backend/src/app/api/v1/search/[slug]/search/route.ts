@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodError, z } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
+import { searchExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { flushTelemetry, runWithTelemetryLevel } from '@/features/telemetry';
 import type { FacetResult, SearchErrorCode } from '@/features/search/search.types';
@@ -68,9 +69,9 @@ export async function POST(
     // 2. Authenticate: the experience's access token (real traffic) or an admin
     //    session (playground). Admin searches are recorded as 'admin_test', which
     //    analytics leaves out by default, and are not traced unless asked for.
-    const caller = await authenticateTokenOrSession(request, experience.accessToken);
+    const { caller, refused } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
     if (!caller) {
-      return NextResponse.json(
+      return refused ?? NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
         { status: 401 }
       );

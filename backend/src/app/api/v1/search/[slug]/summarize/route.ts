@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
+import { searchExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { runWithTelemetryLevel } from '@/features/telemetry';
 import { createSummaryStream } from '@/features/chat/summary-stream';
@@ -66,9 +67,9 @@ export async function POST(
 
     // 3. Authenticate: the experience's access token, or an admin session. Admin
     //    summaries are not traced unless the request asks for it (then in full).
-    const caller = await authenticateTokenOrSession(request, experience.accessToken);
+    const { caller, refused } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
     if (!caller) {
-      return NextResponse.json(
+      return refused ?? NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
         { status: 401 }
       );

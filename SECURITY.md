@@ -46,6 +46,9 @@ these are your responsibility to set correctly, not defaults to ship to producti
   configurable CORS origins and rate limiting. Set explicit `allowedOrigins` on each
   experience; the rate limiter is in-memory by default and should be backed by a shared
   store (e.g. Redis) for multi-instance deployments.
+- **Proxies.** Run Interakt behind a proxy that adds the client's address to
+  `X-Forwarded-For`, and set `TRUSTED_PROXY_HOPS` to the number of such proxies (default 1).
+  Per-client rate limits use the address those proxies added.
 - **Transport.** Terminate TLS in front of the app and never disable certificate validation
   (`NODE_TLS_REJECT_UNAUTHORIZED=0`) outside of local development.
 

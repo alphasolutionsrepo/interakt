@@ -23,9 +23,9 @@ export default defineConfig({
       // need to no-op it so modules that gate themselves with it can be loaded.
       'server-only': path.resolve(__dirname, 'src/shared/test/server-only-stub.ts'),
       // next-auth pulls in next/server which fails to resolve under vitest's
-      // ESM resolver. Tests that touch this chain don't exercise auth, so
-      // stub the entry points.
-      'next/server': path.resolve(__dirname, 'src/shared/test/server-only-stub.ts'),
+      // ESM resolver. The stand-in covers the NextRequest/NextResponse parts our
+      // routes use, so route handlers can be tested directly.
+      'next/server': path.resolve(__dirname, 'src/shared/test/next-server-stub.ts'),
     },
   },
 });

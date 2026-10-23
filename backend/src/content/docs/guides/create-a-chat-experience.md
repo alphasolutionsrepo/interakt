@@ -60,9 +60,9 @@ Click **Next**.
 
 | Field | What to put |
 |---|---|
-| **Allowed origins** | **Add your production domain and your dev URL.** Without them, browser calls fail. |
+| **Allowed origins** | **Add your production domain and your dev URL.** Without them, any site can use this chat with its token. |
 | **Rate limit per minute** | 60 default. |
-| **Rate limit per day** | Leave blank for unlimited, or set a cap. |
+| **Rate limit per day** | Chat messages for the whole experience per day. Default 10,000. |
 
 Click **Create**.
 
