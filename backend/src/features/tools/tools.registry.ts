@@ -119,8 +119,9 @@ export const DATA_SOURCE_CAPABILITIES: Record<DataSourceType, OperationCapabilit
       description: 'Retrieve a specific document by its unique identifier',
       slugSuffix: 'find',
       aiDescriptionTemplate:
-        'Look up a specific item by ID from "{dataSourceName}". ' +
-        'Use this when you have a specific document ID and need its full details.',
+        'Look up a specific item from "{dataSourceName}" by its ID, SKU or exact name. ' +
+        'Use this when the user names a specific item and you need that item, not similar ones. ' +
+        'Returns found: false when no item matches.',
       supportsAutoSchema: false,
       defaultConfig: {},
     },
@@ -169,7 +170,8 @@ export const DATA_SOURCE_CAPABILITIES: Record<DataSourceType, OperationCapabilit
       description: 'Retrieve a specific document by ID from the external index',
       slugSuffix: 'find',
       aiDescriptionTemplate:
-        'Look up a specific document by ID from the external "{dataSourceName}" index.',
+        'Look up a specific document from the external "{dataSourceName}" index by its ID or exact name. ' +
+        'Returns found: false when no document matches.',
       supportsAutoSchema: false,
       defaultConfig: {},
     },

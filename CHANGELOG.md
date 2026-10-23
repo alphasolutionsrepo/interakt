@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - AI experiences enforce their allowed origins, chats per minute (default 60) and requests per day (default 10,000 chat messages per experience). Settings saved on existing AI experiences take effect on upgrade.
 - Per-client rate limits identify a client by the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` places from the end.
+- Find Record returns an item only when its ID, SKU or name matches the request. Otherwise it returns `found: false` with no product card, which the test chat and tool analytics no longer show as a failure. New Find Record tools describe name lookups; existing tools keep their description until regenerated.
+
+### Fixed
+
+- The filter box on the Experiences, Indexes and Data Sources lists no longer loses focus after one keystroke.
 
 ### Removed
 

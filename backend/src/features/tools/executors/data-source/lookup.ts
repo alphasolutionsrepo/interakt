@@ -128,22 +128,26 @@ async function lookupFromManagedIndex(
 
   // Fallback: the "id" often isn't a real document key — the planner commonly
   // passes a product name/title (e.g. "Vesper & Co Crew Neck Sweater") to the
-  // find tool. Run a search and return the top match so a name never dead-ends
-  // with "not found".
+  // find tool. Search for it, but only return a hit that is the record asked for:
+  // the top hit for an unknown id is usually an unrelated item.
   try {
-    const response = await searchService.searchById(searchIndexId, { query: documentId, pageSize: 1 }, { triggerType: 'ai_tool' });
-    const top = response.hits[0];
-    if (top) {
-      logger.info('Lookup id was not a document key — returning top search match', {
+    const response = await searchService.searchById(
+      searchIndexId,
+      { query: documentId, pageSize: FALLBACK_CANDIDATES },
+      { triggerType: 'ai_tool' },
+    );
+    const match = response.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source));
+    if (match) {
+      logger.info('Lookup id was not a document key — returning matching search hit', {
         searchIndexId,
         query: documentId,
-        matchedId: top.id,
+        matchedId: match.id,
       });
       return {
         success: true,
         data: {
-          id: top.id,
-          document: top.source,
+          id: match.id,
+          document: match.source,
           matchedBy: 'search_fallback',
         },
       };
@@ -152,10 +156,7 @@ async function lookupFromManagedIndex(
     logger.warn('Lookup search fallback failed (non-fatal)', { error: (error as Error).message });
   }
 
-  return {
-    success: false,
-    error: `Document with id="${documentId}" not found`,
-  };
+  return notFound(documentId);
 }
 
 // ============================================================================
@@ -197,20 +198,78 @@ async function lookupFromExternalSource(
     if (hit) return { success: true, data: { id: hit.id, document: hit.source } };
 
     // Fallback, as for managed indexes: the "id" is often a name or title the planner
-    // took from an earlier answer, so return the top search match for it.
-    const searched = await connector.search(source, { query: documentId, offset: 0, limit: 1 }, fields);
-    const top = searched.hits[0];
-    if (top) {
-      logger.info('External lookup id did not match — returning top search match', {
+    // took from an earlier answer. Only a hit that is the record asked for is returned.
+    const searched = await connector.search(source, { query: documentId, offset: 0, limit: FALLBACK_CANDIDATES }, fields);
+    const match = searched.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source));
+    if (match) {
+      logger.info('External lookup id did not match — returning matching search hit', {
         dataSourceId: source.dataSourceId,
         query: documentId,
-        matchedId: top.id,
+        matchedId: match.id,
       });
-      return { success: true, data: { id: top.id, document: top.source, matchedBy: 'search_fallback' } };
+      return { success: true, data: { id: match.id, document: match.source, matchedBy: 'search_fallback' } };
     }
 
-    return { success: false, error: `Document with ${idField}="${documentId}" not found` };
+    return notFound(documentId);
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+// ============================================================================
+// SEARCH FALLBACK MATCHING
+// ============================================================================
+
+/** How many search hits the fallback checks for the record asked for. */
+const FALLBACK_CANDIDATES = 5;
+
+/** Fields that identify a record exactly: id, sku, productCode, item_number, ... */
+const IDENTIFIER_FIELD = /(^|_|-)(id|sku|code|key|slug|handle|number|ref|ean|upc|gtin|mpn)$|(Id|ID|Sku|SKU|Code|Key|Slug|Handle|Number|Ref)$/;
+/** Fields that name a record: name, title, productName, ... */
+const NAME_FIELD = /name|title/i;
+/** Fields about a related item (brandName, categoryId, ...), which don't identify this record. */
+const RELATED_FIELD = /brand|category|categories|vendor|manufacturer|supplier|seller|parent|collection|store|author/i;
+
+function normalize(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+/**
+ * Whether a search hit is the record that was asked for: its id or an identifier
+ * field equals the requested value, or its name/title contains every word of it.
+ * "Crew Neck Sweater" finds "Vesper & Co Crew Neck Sweater"; "Haven & Hart Denim
+ * Bomber" does not find "Haven & Hart Streetwear Denim Jacket"; "XYZ-999" finds nothing.
+ */
+export function matchesRequestedRecord(
+  requested: string,
+  hitId: string | undefined,
+  fields: Record<string, unknown> | undefined,
+): boolean {
+  const wanted = normalize(requested);
+  if (!wanted) return false;
+  if (hitId !== undefined && normalize(String(hitId)) === wanted) return true;
+
+  const wantedWords = wanted.split(' ');
+  for (const [name, value] of Object.entries(fields ?? {})) {
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    if (RELATED_FIELD.test(name)) continue;
+    const text = normalize(String(value));
+    if (IDENTIFIER_FIELD.test(name) && text === wanted) return true;
+    if (NAME_FIELD.test(name)) {
+      const words = new Set(text.split(' '));
+      if (wantedWords.every((word) => words.has(word))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * No record matches. That is an answer, not a failure: there is no document, so
+ * no product card is shown, and the planner counts it as zero results.
+ */
+function notFound(requested: string): OperationResult {
+  return {
+    success: true,
+    data: { found: false, requested, message: `No record matches "${requested}".` },
+  };
 }
