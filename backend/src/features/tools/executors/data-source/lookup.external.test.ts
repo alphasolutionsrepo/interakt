@@ -47,4 +47,21 @@ describe('external lookup fallback', () => {
       data: { found: false, requested: 'XYZ-999', message: 'No record matches "XYZ-999".' },
     });
   });
+
+  it('returns the hit a reworded request names', async () => {
+    const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' };
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({
+        hits: [
+          { id: 'p1', score: 2, source: { name: 'Atlas Apparel Athleisure Crew Neck Sweater', brand: 'Atlas Apparel' } },
+          { id: 'p2', score: 1, source: sweater },
+        ],
+        unappliedFilters: [],
+      });
+
+    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: 'Casual Crew Neck Sweater by Vesper & Co' });
+
+    expect(result).toEqual({ success: true, data: { id: 'p2', document: sweater, matchedBy: 'search_fallback' } });
+  });
 });

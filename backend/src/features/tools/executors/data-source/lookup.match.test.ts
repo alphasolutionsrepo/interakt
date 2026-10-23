@@ -39,7 +39,33 @@ describe('matchesRequestedRecord', () => {
   });
 
   it('ignores fields that do not identify or name the record', () => {
-    expect(matchesRequestedRecord('Jackets', 'x', { category: 'Jackets', name: 'Denim Jacket' })).toBe(false);
+    expect(matchesRequestedRecord('Outerwear', 'x', { category: 'Outerwear', name: 'Denim Jacket' })).toBe(false);
+  });
+
+  it('matches a request that names the record in a different order or with extra words', () => {
+    const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' };
+    expect(matchesRequestedRecord('Casual Crew Neck Sweater by Vesper & Co', 'x', sweater)).toBe(true);
+    expect(matchesRequestedRecord('Vesper & Co Casual Crew Neck Sweater in tan', 'x', sweater)).toBe(true);
+  });
+
+  it('treats plurals as the same word', () => {
+    const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater' };
+    expect(matchesRequestedRecord('Vesper & Co Casual Crew Neck Sweaters', 'x', sweater)).toBe(true);
+    expect(matchesRequestedRecord('Linen Dresses', 'x', { name: 'Linen Dress' })).toBe(true);
+    expect(matchesRequestedRecord('Pastel Hoodie', 'x', { name: 'Pastel Hoodies' })).toBe(true);
+    expect(matchesRequestedRecord('Silk Blouses', 'x', { name: 'Silk Blouse' })).toBe(true);
+    expect(matchesRequestedRecord('Leather Watches', 'x', { name: 'Leather Watch' })).toBe(true);
+  });
+
+  it('matches a brand kept in its own field', () => {
+    const sweater = { name: 'Crew Neck Sweater', brand: 'Vesper & Co' };
+    expect(matchesRequestedRecord('Vesper & Co Crew Neck Sweater', 'x', sweater)).toBe(true);
+    expect(matchesRequestedRecord('Vesper & Co Crew Neck Sweater', 'x', { name: 'Crew Neck Sweater', brand: 'Atlas Apparel' })).toBe(false);
+  });
+
+  it('does not match a short name that is only part of the request', () => {
+    expect(matchesRequestedRecord('Vesper & Co Casual Crew Neck Sweater', 'x', { name: 'Sweater' })).toBe(false);
+    expect(matchesRequestedRecord('Haven & Hart Denim Bomber', 'x', { name: 'Denim', brand: 'Haven & Hart' })).toBe(false);
   });
 
   it('ignores fields about a related item', () => {
@@ -64,6 +90,21 @@ describe('managed lookup fallback', () => {
       success: true,
       data: { id: 'p2', document: { name: 'Vesper & Co Crew Neck Sweater' }, matchedBy: 'search_fallback' },
     });
+  });
+
+  it('returns the hit a reworded request names', async () => {
+    const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' };
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'p1', source: { name: 'Atlas Apparel Athleisure Crew Neck Sweater', brand: 'Atlas Apparel' } },
+        { id: 'p2', source: sweater },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Vesper & Co Casual Crew Neck Sweaters in tan' });
+
+    expect(result).toEqual({ success: true, data: { id: 'p2', document: sweater, matchedBy: 'search_fallback' } });
   });
 
   it('returns not found, with no document, when no hit matches', async () => {

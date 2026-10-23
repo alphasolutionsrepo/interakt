@@ -229,16 +229,33 @@ const IDENTIFIER_FIELD = /(^|_|-)(id|sku|code|key|slug|handle|number|ref|ean|upc
 const NAME_FIELD = /name|title/i;
 /** Fields about a related item (brandName, categoryId, ...), which don't identify this record. */
 const RELATED_FIELD = /brand|category|categories|vendor|manufacturer|supplier|seller|parent|collection|store|author/i;
+/** Fields naming the record's brand, which a request often puts next to the name. */
+const BRAND_FIELD = /brand|vendor|manufacturer/i;
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
+/** A word without its plural ending, so "sweaters" and "sweater" compare equal. */
+function singular(word: string): string {
+  if (word.length <= 3 || word.endsWith('ss')) return word;
+  if (/(ss|x|z|ch|sh)es$/.test(word)) return word.slice(0, -2);
+  return word.endsWith('s') ? word.slice(0, -1) : word;
+}
+
+function wordsOf(text: string): string[] {
+  return normalize(text).split(' ').filter(Boolean).map(singular);
+}
+
 /**
- * Whether a search hit is the record that was asked for: its id or an identifier
- * field equals the requested value, or its name/title contains every word of it.
- * "Crew Neck Sweater" finds "Vesper & Co Crew Neck Sweater"; "Haven & Hart Denim
- * Bomber" does not find "Haven & Hart Streetwear Denim Jacket"; "XYZ-999" finds nothing.
+ * Whether a search hit is the record that was asked for:
+ * - its id or an identifier field equals the requested value, or
+ * - its name/title contains every requested word ("Crew Neck Sweater" finds
+ *   "Vesper & Co Crew Neck Sweater"), or
+ * - every word of its name and brand is in the request, and the name makes up at
+ *   least half of it ("Casual Crew Neck Sweater by Vesper & Co", "... Sweater in tan").
+ * Plurals count as the same word. "Haven & Hart Denim Bomber" does not find
+ * "Haven & Hart Streetwear Denim Jacket"; "XYZ-999" finds nothing.
  */
 export function matchesRequestedRecord(
   requested: string,
@@ -249,15 +266,24 @@ export function matchesRequestedRecord(
   if (!wanted) return false;
   if (hitId !== undefined && normalize(String(hitId)) === wanted) return true;
 
-  const wantedWords = wanted.split(' ');
-  for (const [name, value] of Object.entries(fields ?? {})) {
-    if (typeof value !== 'string' && typeof value !== 'number') continue;
+  const entries = Object.entries(fields ?? {}).filter(
+    (entry): entry is [string, string | number] => typeof entry[1] === 'string' || typeof entry[1] === 'number',
+  );
+  const brandWords = entries
+    .filter(([name]) => BRAND_FIELD.test(name) && !IDENTIFIER_FIELD.test(name))
+    .flatMap(([, value]) => wordsOf(String(value)));
+  const wantedWords = new Set(wordsOf(requested));
+
+  for (const [name, value] of entries) {
     if (RELATED_FIELD.test(name)) continue;
-    const text = normalize(String(value));
-    if (IDENTIFIER_FIELD.test(name) && text === wanted) return true;
+    if (IDENTIFIER_FIELD.test(name) && normalize(String(value)) === wanted) return true;
     if (NAME_FIELD.test(name)) {
-      const words = new Set(text.split(' '));
-      if (wantedWords.every((word) => words.has(word))) return true;
+      const nameWords = new Set(wordsOf(String(value)));
+      if ([...wantedWords].every((word) => nameWords.has(word))) return true;
+      const recordWords = new Set([...nameWords, ...brandWords]);
+      if ([...recordWords].every((word) => wantedWords.has(word)) && nameWords.size * 2 >= wantedWords.size) {
+        return true;
+      }
     }
   }
   return false;
