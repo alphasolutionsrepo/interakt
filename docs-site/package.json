@@ -9,9 +9,10 @@
   "dependencies": {
     "@docusaurus/core": "^3.10.1",
     "@docusaurus/preset-classic": "^3.10.1",
-    "redocusaurus": "^2.5.0",
+    "@easyops-cn/docusaurus-search-local": "^0.55.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "redocusaurus": "^2.5.0"
   },
   "engines": {
     "node": ">=18.0"
