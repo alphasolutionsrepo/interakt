@@ -77,6 +77,11 @@ function humanize(id: string): string {
   return id.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Display title of a top-level docs folder ("concepts" → "Concepts"), as the sidebar shows it. */
+export function docGroupTitle(id: string): string {
+  return GROUP_TITLES[id] ?? humanize(id);
+}
+
 /**
  * Walk the docs tree and return a structured listing for the docs site
  * navigation. Excludes the landing `index.md` from group listings — it's
@@ -128,7 +133,7 @@ export async function listDocs(): Promise<DocsTree> {
           const orderIndex = GROUP_ORDER.indexOf(groupId);
           groupsMap.set(groupId, {
             id: groupId,
-            title: GROUP_TITLES[groupId] ?? humanize(groupId),
+            title: docGroupTitle(groupId),
             position: orderIndex === -1 ? 999 : orderIndex,
             docs: [item],
           });

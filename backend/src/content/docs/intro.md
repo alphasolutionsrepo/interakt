@@ -33,7 +33,7 @@ The sidebar groups screens by what you're doing:
 - **Analytics** — what people searched for and chatted about, response times, and the trace of every conversation.
 - **Platform** — AI providers, secrets vault, system health, settings, users, initial setup.
 
-The **? icon** in the top-right of every screen opens a help drawer with the docs page for whatever you're looking at. There's also an **Ask** tab in that drawer — Interakt's own AI assistant trained on these docs.
+The **? icon** in the top-right of every screen (or **Ctrl+K**, **⌘K** on a Mac) opens a help drawer with the docs page for whatever you're looking at. From its box you can **Search** every section of these docs, or switch to **Ask AI** — Interakt's own AI assistant trained on these docs.
 
 ## Recommended reading order
 

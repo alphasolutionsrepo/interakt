@@ -34,7 +34,7 @@ export default async function DocsPage({ params }: DocsPageProps) {
 
   return (
     <article className="prose-sm">
-      <DocBody slug={docSlug} content={doc.content} />
+      <DocBody slug={docSlug} content={doc.content} headingAnchors />
     </article>
   );
 }

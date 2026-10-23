@@ -11,6 +11,8 @@ import { BookOpen } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+import { DocsSearchButton } from './DocsSearchButton';
+
 import { cn } from '@/lib/utils';
 import type { DocsTree } from '@/shared/help/help.server';
 
@@ -34,6 +36,8 @@ export function DocsSidebar({ tree }: DocsSidebarProps) {
       >
         <BookOpen className="size-4" /> Documentation
       </Link>
+
+      <DocsSearchButton />
 
       {tree.root.length > 0 && (
         <ul className="space-y-0.5">

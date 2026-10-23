@@ -121,9 +121,22 @@ The alert spells this out, and the only button it offers is **Reset**.
 
 Independent of the demo, every time you boot Interakt with an AI provider configured, the platform also builds the **Help Assistant** — a chat experience trained on these docs. It uses the same pipeline as your own chat experiences, but its data is the documentation you're reading right now.
 
-You access it via the **?** icon in the top-right of any admin page → **Ask** tab. Ask it "what does facetable mean" or "how do I add synonyms" and it grounds the answer in the docs.
+You access it via the **?** icon in the top-right of any admin page → **Ask AI**. Ask it "what does facetable mean" or "how do I add synonyms" and it grounds the answer in the docs.
 
 The Help Assistant requires a system default embedding model of 1536 dimensions (OpenAI `text-embedding-3-small` or compatible). If your default is something else (e.g. Ollama's 768-dim model), the Help Assistant won't build until you switch the embedding default.
+
+## Docs search — built at startup
+
+Docs search (the **?** icon in the header → **Search**, or **Ctrl+K**) is built when the server starts — no setup, and no AI provider needed. It's a search index called `interakt-docs` and a search experience of the same name, in whichever search engine your deployment uses. You'll see both in the admin like any other index and experience.
+
+- **Without an AI provider** it's keyword search.
+- **Once a system default embedding model exists** it becomes hybrid (keyword + semantic). Building the Help Assistant upgrades it straight away; otherwise it happens on the next restart. Unlike the Help Assistant, any embedding model works.
+
+If a hybrid build fails — say, the embedding model's real output size doesn't match its configured dimensions — docs search falls back to keyword search and stays that way for that model, rather than failing again on every restart. **Rebuild**, a different embedding model, or a day passing tries hybrid again.
+
+If an index or search experience called `interakt-docs` already exists and wasn't created by docs search, docs search leaves it alone and doesn't build; rename or delete it to enable docs search.
+
+The **Documentation Assistant** card on this page shows which mode it's in, how many sections are indexed, and why it's keyword-only if a hybrid build failed. **Rebuild** refreshes it along with the assistant. Both resources are managed by Interakt and rebuilt whenever the docs change, so edits you make to them in the admin don't stick.
 
 ## Common gotchas
 

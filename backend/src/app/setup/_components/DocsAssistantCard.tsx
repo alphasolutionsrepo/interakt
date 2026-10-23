@@ -7,8 +7,10 @@
 // a system default embedding model existing, auto-builds the first time that
 // prerequisite is met, and otherwise offers a manual rebuild. The docs "Read"
 // tab in the help drawer works regardless — only this "Ask" capability needs it.
+// Docs search is built at startup without it; this build (and Rebuild) also
+// refreshes docs search, upgrading it to hybrid now that embeddings exist.
 
-import { BookOpen, Check, Loader2, RefreshCw, AlertTriangle, ArrowRight } from 'lucide-react';
+import { BookOpen, Check, Loader2, RefreshCw, AlertTriangle, ArrowRight, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -32,6 +34,28 @@ interface DocsStatus {
     reason: string | null;
   };
   ready: boolean;
+  search: {
+    built: boolean;
+    searchType: 'lexical' | 'hybrid' | null;
+    embeddingModelKey: string | null;
+    sections: number | null;
+    hybridFailure: { model: string; error: string } | null;
+    conflict: string | null;
+  };
+}
+
+function describeDocsSearch(search: DocsStatus['search']): string {
+  const sections = `${search.sections ?? 0} sections`;
+  if (search.conflict) return search.conflict;
+  if (!search.built) return 'not built yet — it builds automatically when the server starts.';
+  if (search.hybridFailure) {
+    const model = search.hybridFailure.model.split(':')[0];
+    return `keyword search · ${sections}. Hybrid search failed with ${model} (${search.hybridFailure.error}); Rebuild tries again.`;
+  }
+  if (search.searchType === 'hybrid') {
+    return `hybrid (keyword + semantic${search.embeddingModelKey ? `, ${search.embeddingModelKey}` : ''}) · ${sections}.`;
+  }
+  return `keyword search · ${sections}. Building the assistant upgrades it to hybrid.`;
 }
 
 export function DocsAssistantCard() {
@@ -148,6 +172,18 @@ export function DocsAssistantCard() {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Docs search builds at startup with no AI provider; the build below upgrades it to hybrid. */}
+        {status && (
+          <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm">
+            <Search className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <p className="text-muted-foreground">
+              <span className="font-medium text-foreground">Docs search: </span>
+              {describeDocsSearch(status.search)}{' '}
+              Open it from the <span className="font-medium text-foreground">?</span> in the header or with Ctrl/⌘+K.
+            </p>
+          </div>
+        )}
+
         {loading && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Checking status…
@@ -171,7 +207,7 @@ export function DocsAssistantCard() {
                 Configure an AI provider <ArrowRight className="h-3.5 w-3.5" />
               </Link>
               <p className="text-xs text-muted-foreground">
-                The docs “Read” tab in the help drawer works without this — only “Ask” (chat) needs it.
+                Reading and searching the docs work without this — only “Ask” (chat) needs it.
               </p>
             </AlertDescription>
           </Alert>
@@ -194,7 +230,7 @@ export function DocsAssistantCard() {
               <span className="font-medium text-foreground">{status.documents ?? 0} docs</span> indexed and embedded
               {status.embedding.modelKey ? ` with ${status.embedding.modelKey}` : ''}.
             </p>
-            <p>Open the help drawer (the ? in the header) and switch to the <span className="font-medium text-foreground">Ask</span> tab to use it.</p>
+            <p>Open the help drawer (the ? in the header) and switch to <span className="font-medium text-foreground">Ask AI</span> to use it.</p>
           </div>
         )}
 

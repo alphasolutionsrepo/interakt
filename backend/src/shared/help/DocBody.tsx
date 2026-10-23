@@ -14,6 +14,7 @@ import { useCallback } from 'react';
 
 import { Markdown } from '@/components/custom/markdown';
 import { resolveDocLink } from '@/shared/help/help-content';
+import { rehypeHeadingIds } from '@/shared/help/rehype-heading-ids';
 
 interface DocBodyProps {
   /** Slug of the doc whose content is being rendered (used to resolve relative links). */
@@ -26,10 +27,17 @@ interface DocBodyProps {
    * the default behavior is `router.push(`/docs/${resolved}`)`.
    */
   onInternalLink?: (resolvedSlug: string) => void;
+  /**
+   * Give headings ids, so `/docs/<slug>#<anchor>` links (search results) land
+   * on the right section. On for doc pages; off for chat answers.
+   */
+  headingAnchors?: boolean;
   className?: string;
 }
 
-export function DocBody({ slug, content, onInternalLink, className }: DocBodyProps) {
+const HEADING_ID_PLUGINS = [rehypeHeadingIds];
+
+export function DocBody({ slug, content, onInternalLink, headingAnchors, className }: DocBodyProps) {
   const router = useRouter();
 
   const handleLink = useCallback(
@@ -54,7 +62,11 @@ export function DocBody({ slug, content, onInternalLink, className }: DocBodyPro
   );
 
   return (
-    <Markdown className={className} onInternalLink={handleLink}>
+    <Markdown
+      className={className}
+      onInternalLink={handleLink}
+      rehypePlugins={headingAnchors ? HEADING_ID_PLUGINS : undefined}
+    >
       {content}
     </Markdown>
   );

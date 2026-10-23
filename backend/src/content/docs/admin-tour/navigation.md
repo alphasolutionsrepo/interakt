@@ -6,10 +6,14 @@ sidebar_position: 1
 
 The left sidebar groups screens by what you're doing. If you can't find something, it's probably in one of these groups.
 
-The **?** icon in the top-right of every screen opens a help drawer with the docs page for whatever you're looking at. There are two tabs in the drawer:
+The **?** icon in the top-right of every screen — or **Ctrl+K** (**⌘K** on a Mac) — opens the help drawer. Until you type, it shows the docs page for whatever you're looking at. The box at the top has two modes; you pick one with the **Search | Ask AI** switch above it:
 
-- **Read** — the docs page for this screen.
-- **Ask** — Interakt's own AI assistant, trained on these docs. Ask it anything in plain English.
+- **Search** — search every section of the docs. Results come in as you type, each a section of a page with the matching words highlighted; picking one opens the docs at that section. Use the chips to narrow results to Getting started, Concepts, Guides and so on.
+- **Ask AI** — ask Interakt's own AI assistant, trained on these docs, anything in plain English. Press Enter to send; the answer cites the docs it used. The conversation lasts until you close the drawer.
+
+The drawer remembers the mode you used last. In Search, the last row offers to ask your question instead — it only does so if you pick it.
+
+Docs search runs on Interakt's own search engine — a search experience over an index of these docs, built automatically when the server starts. Once an AI provider is configured it also understands what you mean, not only the words you type: "block offensive messages" finds the guardrails blocklist.
 
 ## Sidebar groups
 

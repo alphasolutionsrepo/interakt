@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { memo } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Options as ReactMarkdownOptions } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
@@ -15,9 +15,11 @@ interface MarkdownProps {
    * drawer to browse between docs without leaving the panel.
    */
   onInternalLink?: (href: string) => void;
+  /** Extra rehype plugins, e.g. heading ids for the docs renderer. Pass a stable array. */
+  rehypePlugins?: ReactMarkdownOptions["rehypePlugins"];
 }
 
-const NonMemoizedMarkdown = ({ children, className, onInternalLink }: MarkdownProps) => {
+const NonMemoizedMarkdown = ({ children, className, onInternalLink, rehypePlugins }: MarkdownProps) => {
   const components = {
     // Code blocks and inline code
     code: ({ node, inline, className: codeClassName, children, ...props }: any) => {
@@ -40,16 +42,16 @@ const NonMemoizedMarkdown = ({ children, className, onInternalLink }: MarkdownPr
     },
     // Headings
     h1: ({ node, children, ...props }: any) => (
-      <h1 className="text-xl font-bold mt-4 mb-2" {...props}>{children}</h1>
+      <h1 className="text-xl font-bold mt-4 mb-2 scroll-mt-20" {...props}>{children}</h1>
     ),
     h2: ({ node, children, ...props }: any) => (
-      <h2 className="text-lg font-bold mt-4 mb-2" {...props}>{children}</h2>
+      <h2 className="text-lg font-bold mt-4 mb-2 scroll-mt-20" {...props}>{children}</h2>
     ),
     h3: ({ node, children, ...props }: any) => (
-      <h3 className="text-base font-bold mt-3 mb-1" {...props}>{children}</h3>
+      <h3 className="text-base font-bold mt-3 mb-1 scroll-mt-20" {...props}>{children}</h3>
     ),
     h4: ({ node, children, ...props }: any) => (
-      <h4 className="text-sm font-bold mt-2 mb-1" {...props}>{children}</h4>
+      <h4 className="text-sm font-bold mt-2 mb-1 scroll-mt-20" {...props}>{children}</h4>
     ),
     // Paragraphs
     p: ({ node, children, ...props }: any) => (
@@ -197,7 +199,7 @@ const NonMemoizedMarkdown = ({ children, className, onInternalLink }: MarkdownPr
 
   return (
     <div className={cn("prose-sm", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={components}>
         {children}
       </ReactMarkdown>
     </div>
@@ -209,5 +211,6 @@ export const Markdown = memo(
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     prevProps.className === nextProps.className &&
-    prevProps.onInternalLink === nextProps.onInternalLink,
+    prevProps.onInternalLink === nextProps.onInternalLink &&
+    prevProps.rehypePlugins === nextProps.rehypePlugins,
 );
