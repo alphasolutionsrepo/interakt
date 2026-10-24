@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { toolsApi, ApiError } from '../api-client';
 import type { CreateToolPayload, UpdateToolPayload, ListToolsParams } from '../api-client';
@@ -44,6 +44,9 @@ export function useTools(params?: ListToolsParams) {
   const query = useQuery({
     queryKey: toolKeys.list(params as Record<string, unknown>),
     queryFn: () => toolsApi.list(params),
+    // Keep the current list on screen while a new filter loads, so the page
+    // doesn't swap to its skeleton and unmount the search box.
+    placeholderData: keepPreviousData,
   });
 
   const deleteMutation = useMutation({
