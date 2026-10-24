@@ -3,8 +3,8 @@
 /**
  * Data Source Lookup Executor
  *
- * Single-purpose executor: retrieves a specific document by its unique identifier.
- * The AI uses this when it has a specific document ID and needs full details.
+ * Single-purpose executor: retrieves one specific document by its id or, on a search
+ * index, by a SKU or name (a search that keeps only the document asked for).
  */
 
 import * as searchService from '@/features/search/search.service';
@@ -61,16 +61,17 @@ export async function executeDataSourceLookup(
 
     const source = await resolveDataSource(dataSourceId);
 
-    if (source.kind === 'file_store') return executeFileStoreLookup(dataSourceId, config, input);
+    // Awaited so a rejection lands in the catch below instead of escaping it
+    if (source.kind === 'file_store') return await executeFileStoreLookup(dataSourceId, config, input);
 
     // Managed indexes fetch by document key — provider-agnostic (ES _id / Azure key).
     if (source.kind === 'managed') {
-      return lookupFromManagedIndex(source.searchIndexId, documentId);
+      return await lookupFromManagedIndex(source.searchIndexId, documentId);
     }
 
     // External sources still look up via a filterable id field.
     const idField = lookupConfig.idField ?? await resolveIdField(source.dataSourceId);
-    return lookupFromExternalSource(source, idField, documentId);
+    return await lookupFromExternalSource(source, idField, documentId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Data source lookup failed', error as Error, { dataSourceId });
@@ -129,31 +130,28 @@ async function lookupFromManagedIndex(
   // Fallback: the "id" often isn't a real document key — the planner commonly
   // passes a product name/title (e.g. "Vesper & Co Crew Neck Sweater") to the
   // find tool. Search for it, but only return a hit that is the record asked for:
-  // the top hit for an unknown id is usually an unrelated item.
-  try {
-    const response = await searchService.searchById(
+  // the top hit for an unknown id is usually an unrelated item. A failed search is a failed
+  // lookup (the caller reports it), not "no such record", as on external sources.
+  const response = await searchService.searchById(
+    searchIndexId,
+    { query: documentId, pageSize: FALLBACK_CANDIDATES },
+    { triggerType: 'ai_tool' },
+  );
+  const match = response.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source));
+  if (match) {
+    logger.info('Lookup id was not a document key — returning matching search hit', {
       searchIndexId,
-      { query: documentId, pageSize: FALLBACK_CANDIDATES },
-      { triggerType: 'ai_tool' },
-    );
-    const match = response.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source));
-    if (match) {
-      logger.info('Lookup id was not a document key — returning matching search hit', {
-        searchIndexId,
-        query: documentId,
-        matchedId: match.id,
-      });
-      return {
-        success: true,
-        data: {
-          id: match.id,
-          document: match.source,
-          matchedBy: 'search_fallback',
-        },
-      };
-    }
-  } catch (error) {
-    logger.warn('Lookup search fallback failed (non-fatal)', { error: (error as Error).message });
+      query: documentId,
+      matchedId: match.id,
+    });
+    return {
+      success: true,
+      data: {
+        id: match.id,
+        document: match.source,
+        matchedBy: 'search_fallback',
+      },
+    };
   }
 
   return notFound(documentId);
@@ -250,8 +248,9 @@ function wordsOf(text: string): string[] {
 /**
  * Whether a search hit is the record that was asked for:
  * - its id or an identifier field equals the requested value, or
- * - its name/title contains every requested word ("Crew Neck Sweater" finds
- *   "Vesper & Co Crew Neck Sweater"), or
+ * - its name/title (with its brand) has every requested word and the request is more than
+ *   the brand ("Crew Neck Sweater" finds "Vesper & Co Crew Neck Sweater"; "Haven & Hart
+ *   Denim Jacket" finds "Streetwear Denim Jacket" by Haven & Hart), or
  * - every word of its name and brand is in the request, and the name makes up at
  *   least half of it ("Casual Crew Neck Sweater by Vesper & Co", "... Sweater in tan").
  * Plurals count as the same word. "Haven & Hart Denim Bomber" does not find
@@ -269,9 +268,11 @@ export function matchesRequestedRecord(
   const entries = Object.entries(fields ?? {}).filter(
     (entry): entry is [string, string | number] => typeof entry[1] === 'string' || typeof entry[1] === 'number',
   );
-  const brandWords = entries
-    .filter(([name]) => BRAND_FIELD.test(name) && !IDENTIFIER_FIELD.test(name))
-    .flatMap(([, value]) => wordsOf(String(value)));
+  const brandWords = new Set(
+    entries
+      .filter(([name]) => BRAND_FIELD.test(name) && !IDENTIFIER_FIELD.test(name))
+      .flatMap(([, value]) => wordsOf(String(value))),
+  );
   const wantedWords = new Set(wordsOf(requested));
 
   for (const [name, value] of entries) {
@@ -279,8 +280,9 @@ export function matchesRequestedRecord(
     if (IDENTIFIER_FIELD.test(name) && normalize(String(value)) === wanted) return true;
     if (NAME_FIELD.test(name)) {
       const nameWords = new Set(wordsOf(String(value)));
-      if ([...wantedWords].every((word) => nameWords.has(word))) return true;
       const recordWords = new Set([...nameWords, ...brandWords]);
+      const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));
+      if (namesTheItem && [...wantedWords].every((word) => recordWords.has(word))) return true;
       if ([...recordWords].every((word) => wantedWords.has(word)) && nameWords.size * 2 >= wantedWords.size) {
         return true;
       }

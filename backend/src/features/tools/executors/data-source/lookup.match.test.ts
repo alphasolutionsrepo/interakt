@@ -68,6 +68,17 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('Haven & Hart Denim Bomber', 'x', { name: 'Denim', brand: 'Haven & Hart' })).toBe(false);
   });
 
+  it('matches the brand plus part of the title when the brand is in its own field', () => {
+    const jacket = { name: 'Streetwear Denim Jacket', brand: 'Haven & Hart' };
+    expect(matchesRequestedRecord('Haven & Hart Denim Jacket', 'x', jacket)).toBe(true);
+    expect(matchesRequestedRecord('Haven & Hart Denim Jacket', 'x', { ...jacket, brand: 'Atlas Apparel' })).toBe(false);
+  });
+
+  it('does not take the brand alone as the item', () => {
+    const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' };
+    expect(matchesRequestedRecord('Vesper & Co', 'x', sweater)).toBe(false);
+  });
+
   it('ignores fields about a related item', () => {
     expect(matchesRequestedRecord('Nike', 'x', { brandName: 'Nike', name: 'Air Runner' })).toBe(false);
     expect(matchesRequestedRecord('12', 'x', { categoryId: '12', name: 'Air Runner' })).toBe(false);
@@ -90,6 +101,21 @@ describe('managed lookup fallback', () => {
       success: true,
       data: { id: 'p2', document: { name: 'Vesper & Co Crew Neck Sweater' }, matchedBy: 'search_fallback' },
     });
+    // Looking past the top hit needs more than one candidate from the engine
+    expect(searchById).toHaveBeenCalledWith(
+      'idx',
+      { query: 'Vesper & Co Crew Neck Sweater', pageSize: 5 },
+      { triggerType: 'ai_tool' },
+    );
+  });
+
+  it('reports a failed fallback search as a failed lookup, not as not found', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockRejectedValueOnce(new Error('search_phase_execution_exception'));
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Vesper & Co Crew Neck Sweater' });
+
+    expect(result).toEqual({ success: false, error: 'search_phase_execution_exception' });
   });
 
   it('returns the hit a reworded request names', async () => {

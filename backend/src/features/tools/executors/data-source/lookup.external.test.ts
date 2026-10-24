@@ -63,5 +63,20 @@ describe('external lookup fallback', () => {
     const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: 'Casual Crew Neck Sweater by Vesper & Co' });
 
     expect(result).toEqual({ success: true, data: { id: 'p2', document: sweater, matchedBy: 'search_fallback' } });
+    expect(search).toHaveBeenLastCalledWith(
+      expect.anything(),
+      { query: 'Casual Crew Neck Sweater by Vesper & Co', offset: 0, limit: 5 },
+      undefined,
+    );
+  });
+
+  it('reports a failed fallback search as a failed lookup, like managed indexes', async () => {
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockRejectedValueOnce(new Error('HTTP 500'));
+
+    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: 'Vesper & Co Sweater' });
+
+    expect(result).toEqual({ success: false, error: 'HTTP 500' });
   });
 });

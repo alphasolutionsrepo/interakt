@@ -9,23 +9,32 @@
 -- wrote, or one generated under an earlier data source name, is not touched. Per-experience
 -- overrides (ai_experience_tools.override_ai_description) are not touched either.
 -- File-store lookups take a chunk id only and keep their text.
+-- The generator adds 'The document ID field is "<field>".' after the template when the
+-- source has an id field; that sentence is still true, so it is kept. Anything else after
+-- the template means someone edited it.
 UPDATE "tools" AS t
 SET "ai_description" = 'Look up one specific item in "' || ds."name" || '" by its ID, SKU or full name. '
   || 'Use this when the user asks about that item, not similar ones. Returns found: false when no item matches.'
-FROM "data_sources" AS ds
+  || substr(t."ai_description", length(old.text) + 1)
+FROM "data_sources" AS ds,
+  LATERAL (SELECT 'Look up a specific item by ID from "' || ds."name" || '". '
+    || 'Use this when you have a specific document ID and need its full details.' AS text) AS old
 WHERE ds."id" = t."data_source_id"
   AND t."operation" = 'lookup'
   AND ds."type" = 'search_index'
-  AND t."ai_description" = 'Look up a specific item by ID from "' || ds."name" || '". '
-    || 'Use this when you have a specific document ID and need its full details.';--> statement-breakpoint
+  AND left(t."ai_description", length(old.text)) = old.text
+  AND substr(t."ai_description", length(old.text) + 1) ~ '^(\n\nThe document ID field is "[^"\n]+"\.)?$';--> statement-breakpoint
 UPDATE "tools" AS t
 SET "ai_description" = 'Look up one specific item in the external "' || ds."name" || '" index by its ID, SKU or full name. '
   || 'Use this when the user asks about that item, not similar ones. Returns found: false when no item matches.'
-FROM "data_sources" AS ds
+  || substr(t."ai_description", length(old.text) + 1)
+FROM "data_sources" AS ds,
+  LATERAL (SELECT 'Look up a specific document by ID from the external "' || ds."name" || '" index.' AS text) AS old
 WHERE ds."id" = t."data_source_id"
   AND t."operation" = 'lookup'
   AND ds."type" = 'search_index_external'
-  AND t."ai_description" = 'Look up a specific document by ID from the external "' || ds."name" || '" index.';--> statement-breakpoint
+  AND left(t."ai_description", length(old.text)) = old.text
+  AND substr(t."ai_description", length(old.text) + 1) ~ '^(\n\nThe document ID field is "[^"\n]+"\.)?$';--> statement-breakpoint
 -- The input schema, when it is exactly one of the two old defaults (the executor's, or the
 -- create wizard's copy).
 UPDATE "tools" AS t

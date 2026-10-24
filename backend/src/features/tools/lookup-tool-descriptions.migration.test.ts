@@ -14,6 +14,8 @@ import path from 'path';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import type { DataSourceSchema } from '@/db/schema/data-sources.schema';
+
 import { generateToolDescription } from './tools.description-generator';
 
 const MIGRATION = readFileSync(path.join(__dirname, '../../../db/drizzle/0033_lookup_tool_descriptions.sql'), 'utf8');
@@ -28,6 +30,9 @@ const WIZARD_DEFAULT = schemaWith('The unique identifier of the document');
 const OLD_MANAGED = (name: string) =>
   `Look up a specific item by ID from "${name}". Use this when you have a specific document ID and need its full details.`;
 const OLD_EXTERNAL = (name: string) => `Look up a specific document by ID from the external "${name}" index.`;
+// What the generator appends when the source has an id field
+const ID_FIELD = '\n\nThe document ID field is "productId".';
+const WITH_ID_FIELD = { fields: [{ name: 'productId', type: 'keyword', role: 'id' }] } as unknown as DataSourceSchema;
 
 const SOURCES = [
   { id: 'catalog', type: 'search_index', name: 'Fashion Catalog' },
@@ -42,6 +47,9 @@ const TOOLS = [
   { id: 'adminSchema', source: 'catalog', operation: 'lookup', description: OLD_MANAGED('Fashion Catalog'), schema: schemaWith('A product handle') },
   { id: 'oldName', source: 'renamed', operation: 'lookup', description: OLD_MANAGED('Fashion Catalog'), schema: EXECUTOR_DEFAULT },
   { id: 'externalDefault', source: 'shop', operation: 'lookup', description: OLD_EXTERNAL('Shop'), schema: EXECUTOR_DEFAULT },
+  { id: 'managedIdField', source: 'catalog', operation: 'lookup', description: OLD_MANAGED('Fashion Catalog') + ID_FIELD, schema: EXECUTOR_DEFAULT },
+  { id: 'externalIdField', source: 'shop', operation: 'lookup', description: OLD_EXTERNAL('Shop') + ID_FIELD, schema: EXECUTOR_DEFAULT },
+  { id: 'editedAfter', source: 'catalog', operation: 'lookup', description: OLD_MANAGED('Fashion Catalog') + ' Prefer the SKU.', schema: EXECUTOR_DEFAULT },
   { id: 'fileStore', source: 'docs', operation: 'lookup', description: 'Look up a specific document or chunk by ID from "Docs".', schema: EXECUTOR_DEFAULT },
   { id: 'searchTool', source: 'catalog', operation: 'search', description: OLD_MANAGED('Fashion Catalog'), schema: EXECUTOR_DEFAULT },
 ];
@@ -82,6 +90,19 @@ describe('migration 0033: Find Record descriptions', () => {
 
   it('gives an untouched external-index lookup what a new tool gets', async () => {
     expect(await tool('externalDefault')).toEqual({ ai_description: external.aiDescription, input_schema: external.inputSchema });
+  });
+
+  it('keeps the generated id-field sentence after the template', async () => {
+    expect((await tool('managedIdField')).ai_description).toBe(
+      generateToolDescription('Fashion Catalog', 'search_index', 'lookup', WITH_ID_FIELD).aiDescription,
+    );
+    expect((await tool('externalIdField')).ai_description).toBe(
+      generateToolDescription('Shop', 'search_index_external', 'lookup', WITH_ID_FIELD).aiDescription,
+    );
+  });
+
+  it('keeps a description someone added to after the template', async () => {
+    expect((await tool('editedAfter')).ai_description).toBe(`${OLD_MANAGED('Fashion Catalog')} Prefer the SKU.`);
   });
 
   it('keeps a description an admin wrote, and updates the default schema next to it', async () => {

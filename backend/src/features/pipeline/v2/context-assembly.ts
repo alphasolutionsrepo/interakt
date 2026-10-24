@@ -100,7 +100,7 @@ export interface EpisodicMemoryLoader {
 export interface DataSchemaLoader {
   loadFieldSchema(dataSourceId: string): Promise<{ name: string; fields: DataSourceField[] } | null>;
   /** The data source's type (search_index, file_store, ...), or null if it doesn't exist. */
-  loadSourceType?(dataSourceId: string): Promise<string | null>;
+  loadSourceType(dataSourceId: string): Promise<string | null>;
 }
 
 export interface ContextAssemblyDeps {
@@ -629,8 +629,7 @@ async function markLookupsThatFindByName(
   definitions: ToolDefinitionV2[],
   loader: DataSchemaLoader | undefined,
 ): Promise<void> {
-  const loadSourceType = loader?.loadSourceType?.bind(loader);
-  if (!loadSourceType) return;
+  if (!loader) return;
   await Promise.all(
     tools
       .filter((tool) => tool.operation === 'lookup')
@@ -638,7 +637,7 @@ async function markLookupsThatFindByName(
         const dataSourceId = definitions.find((d) => d.slug === tool.slug)?.dataSourceId;
         if (!dataSourceId) return;
         try {
-          const type = await loadSourceType(dataSourceId);
+          const type = await loader.loadSourceType(dataSourceId);
           if (type && lookupFindsByName(type)) tool.findsByName = true;
         } catch (error) {
           logger.warn('Could not read the data source type of a lookup tool', {
