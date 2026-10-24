@@ -232,6 +232,13 @@
       "when": 1792091915096,
       "tag": "0032_telemetry_metadata_default",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792799938829,
+      "tag": "0033_lookup_tool_descriptions",
+      "breakpoints": true
     }
   ]
 }

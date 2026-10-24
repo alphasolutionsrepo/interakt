@@ -31,6 +31,7 @@ import type { ResultMemoryStore } from '../pipeline.types';
 import type { ToolParameterSchema } from '@/features/ai-service/ai-service.types';
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { buildDataContext, type DataContextSource, type DataContextLimits } from './data-context';
+import { lookupFindsByName } from '@/features/tools/tools.registry';
 
 const logger = createLogger('v2:context-assembly');
 
@@ -98,6 +99,8 @@ export interface EpisodicMemoryLoader {
  */
 export interface DataSchemaLoader {
   loadFieldSchema(dataSourceId: string): Promise<{ name: string; fields: DataSourceField[] } | null>;
+  /** The data source's type (search_index, file_store, ...), or null if it doesn't exist. */
+  loadSourceType?(dataSourceId: string): Promise<string | null>;
 }
 
 export interface ContextAssemblyDeps {
@@ -182,6 +185,7 @@ export async function assembleContext(
       input.experience.tools,
       input.experience.mcpConnections,
     );
+    await markLookupsThatFindByName(availableTools, toolDefinitions, deps.dataSchemaLoader);
 
     // 7. Load episodic memories (async, failure-tolerant)
     //    Gated by enableUserContext — when disabled, skip the embedding + search cost.
@@ -614,6 +618,38 @@ export function createProductionEpisodicMemoryLoader(): EpisodicMemoryLoader {
  * Best-effort throughout: this enriches planning, and a failure to load a schema must not
  * fail the turn. Losing it costs plan quality, not the answer.
  */
+/**
+ * Tell the planner which lookups also find an item by name. A search-index lookup falls back
+ * to a search and keeps only the item asked for (lookup.ts); a file-store lookup takes a chunk
+ * id only, so a title sent to it can only come back empty. If the type can't be read, the
+ * lookup keeps the id-only rule.
+ */
+async function markLookupsThatFindByName(
+  tools: ToolSummary[],
+  definitions: ToolDefinitionV2[],
+  loader: DataSchemaLoader | undefined,
+): Promise<void> {
+  const loadSourceType = loader?.loadSourceType?.bind(loader);
+  if (!loadSourceType) return;
+  await Promise.all(
+    tools
+      .filter((tool) => tool.operation === 'lookup')
+      .map(async (tool) => {
+        const dataSourceId = definitions.find((d) => d.slug === tool.slug)?.dataSourceId;
+        if (!dataSourceId) return;
+        try {
+          const type = await loadSourceType(dataSourceId);
+          if (type && lookupFindsByName(type)) tool.findsByName = true;
+        } catch (error) {
+          logger.warn('Could not read the data source type of a lookup tool', {
+            dataSourceId,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }),
+  );
+}
+
 async function loadDataContext(
   toolDefinitions: ToolDefinitionV2[],
   loader: DataSchemaLoader | undefined,

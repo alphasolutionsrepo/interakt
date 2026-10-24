@@ -873,6 +873,11 @@ export function createProductionV2Deps(): V2PipelineDeps {
           if (!ds || !schema?.fields?.length) return null;
           return { name: ds.name, fields: schema.fields as never };
         },
+        async loadSourceType(dataSourceId) {
+          const dataSourceService = await import('@/features/data-source/data-source.service');
+          const ds = await dataSourceService.getDataSourceById(dataSourceId);
+          return ds?.type ?? null;
+        },
       },
       episodicMemoryLoader: {
         async retrieveRelevantMemories(userId, expId, userMessage, maxMemories) {

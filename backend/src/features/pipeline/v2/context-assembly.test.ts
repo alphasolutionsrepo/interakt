@@ -395,6 +395,46 @@ describe('S2: Context Assembly', () => {
       expect(ctx.availableTools[1].slug).toBe('product-lookup');
     });
 
+    it('marks lookups on a search index as finding items by name, and file-store lookups not', async () => {
+      const input = makeInput({
+        experience: makeExperience({
+          tools: [
+            makeToolAssignment({ slug: 'catalog-find', operation: 'lookup', dataSourceId: 'ds-catalog' }),
+            makeToolAssignment({ slug: 'docs-find', operation: 'lookup', dataSourceId: 'ds-docs' }),
+            makeToolAssignment({ slug: 'catalog-search', operation: 'search', dataSourceId: 'ds-catalog' }),
+          ],
+        }),
+      });
+      const types: Record<string, string> = { 'ds-catalog': 'search_index', 'ds-docs': 'file_store' };
+      const loadSourceType = vi.fn(async (id: string) => types[id] ?? null);
+
+      const result = await assembleContext(input, makeDeps({
+        dataSchemaLoader: { loadFieldSchema: vi.fn().mockResolvedValue(null), loadSourceType },
+      }));
+      const bySlug = Object.fromEntries(result.data!.availableTools.map((t) => [t.slug, t]));
+
+      expect(bySlug['catalog-find'].findsByName).toBe(true);
+      expect(bySlug['docs-find'].findsByName).toBeUndefined();
+      expect(bySlug['catalog-search'].findsByName).toBeUndefined();
+      expect(loadSourceType).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps a lookup id-only when its source type cannot be read', async () => {
+      const input = makeInput({
+        experience: makeExperience({ tools: [makeToolAssignment({ slug: 'catalog-find', operation: 'lookup' })] }),
+      });
+
+      const result = await assembleContext(input, makeDeps({
+        dataSchemaLoader: {
+          loadFieldSchema: vi.fn().mockResolvedValue(null),
+          loadSourceType: vi.fn().mockRejectedValue(new Error('db down')),
+        },
+      }));
+
+      expect(result.success).toBe(true);
+      expect(result.data!.availableTools[0].findsByName).toBeUndefined();
+    });
+
     it('builds full tool definitions with input schemas', async () => {
       const result = await assembleContext(makeInput(), makeDeps());
       const ctx = result.data!;
