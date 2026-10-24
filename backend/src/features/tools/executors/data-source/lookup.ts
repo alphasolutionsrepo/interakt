@@ -15,6 +15,7 @@ import {
   resolveDataSource,
   logger,
   type DataSourceSchema,
+  type DataSourceField,
   type ResolvedExternalSource,
   type OperationResult,
 } from './shared';
@@ -61,17 +62,21 @@ export async function executeDataSourceLookup(
 
     const source = await resolveDataSource(dataSourceId);
 
-    // Awaited so a rejection lands in the catch below instead of escaping it
-    if (source.kind === 'file_store') return await executeFileStoreLookup(dataSourceId, config, input);
+    // The branches below are returned, not awaited: an engine error rejects and reaches
+    // executeTool, which retries transient errors and labels the call failed.
+    if (source.kind === 'file_store') return executeFileStoreLookup(dataSourceId, config, input);
+
+    const fields = await loadSchemaFields(dataSourceId);
+    const nameFields = fields.filter((f) => f.role === 'title').map((f) => f.name);
 
     // Managed indexes fetch by document key — provider-agnostic (ES _id / Azure key).
     if (source.kind === 'managed') {
-      return await lookupFromManagedIndex(source.searchIndexId, documentId);
+      return lookupFromManagedIndex(source.searchIndexId, documentId, nameFields);
     }
 
     // External sources still look up via a filterable id field.
-    const idField = lookupConfig.idField ?? await resolveIdField(source.dataSourceId);
-    return await lookupFromExternalSource(source, idField, documentId);
+    const idField = lookupConfig.idField ?? resolveIdField(fields);
+    return lookupFromExternalSource(source, idField, documentId, fields, nameFields);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Data source lookup failed', error as Error, { dataSourceId });
@@ -83,24 +88,27 @@ export async function executeDataSourceLookup(
 // ID FIELD RESOLUTION
 // ============================================================================
 
+/** The data source's discovered fields; none when it has no schema or can't be read. */
+async function loadSchemaFields(dataSourceId: string): Promise<DataSourceField[]> {
+  try {
+    const ds = await dataSourceService.getDataSourceById(dataSourceId);
+    return (ds?.schema as DataSourceSchema | null)?.fields ?? [];
+  } catch {
+    // Non-critical — the lookup still works without roles
+    return [];
+  }
+}
+
 /**
  * Determine the correct ID field name from the data source schema.
  * Priority: schema field with role='id' → common field names → fallback 'id'.
  */
-async function resolveIdField(dataSourceId: string): Promise<string> {
-  try {
-    const ds = await dataSourceService.getDataSourceById(dataSourceId);
-    if (ds?.schema) {
-      const schema = ds.schema as DataSourceSchema;
-      const idRoleField = schema.fields.find(f => f.role === 'id');
-      if (idRoleField) return idRoleField.name;
-      // Fall back to common ID field names found in the schema
-      for (const candidate of ['id', 'Id', 'key', 'Key', '_id']) {
-        if (schema.fields.some(f => f.name === candidate)) return candidate;
-      }
-    }
-  } catch {
-    // Non-critical — fall through to default
+function resolveIdField(fields: DataSourceField[]): string {
+  const idRoleField = fields.find(f => f.role === 'id');
+  if (idRoleField) return idRoleField.name;
+  // Fall back to common ID field names found in the schema
+  for (const candidate of ['id', 'Id', 'key', 'Key', '_id']) {
+    if (fields.some(f => f.name === candidate)) return candidate;
   }
   return 'id';
 }
@@ -112,6 +120,7 @@ async function resolveIdField(dataSourceId: string): Promise<string> {
 async function lookupFromManagedIndex(
   searchIndexId: string,
   documentId: string,
+  nameFields: string[],
 ): Promise<OperationResult> {
   // Fetch by document key via the index's engine provider (ES _id / Azure key).
   // No filterable field or role:'id' needed — works identically for both providers.
@@ -131,13 +140,13 @@ async function lookupFromManagedIndex(
   // passes a product name/title (e.g. "Vesper & Co Crew Neck Sweater") to the
   // find tool. Search for it, but only return a hit that is the record asked for:
   // the top hit for an unknown id is usually an unrelated item. A failed search is a failed
-  // lookup (the caller reports it), not "no such record", as on external sources.
+  // lookup, not "no such record".
   const response = await searchService.searchById(
     searchIndexId,
     { query: documentId, pageSize: FALLBACK_CANDIDATES },
     { triggerType: 'ai_tool' },
   );
-  const match = response.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source));
+  const match = response.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source, nameFields));
   if (match) {
     logger.info('Lookup id was not a document key — returning matching search hit', {
       searchIndexId,
@@ -165,14 +174,13 @@ async function lookupFromExternalSource(
   source: ResolvedExternalSource,
   idField: string,
   documentId: string,
+  fields: DataSourceField[],
+  nameFields: string[],
 ): Promise<OperationResult> {
   const connector = getConnector(source.provider);
   if (!connector) {
     return { success: false, error: `Lookup for provider '${source.provider}' is not yet implemented` };
   }
-
-  const ds = await dataSourceService.getDataSourceById(source.dataSourceId);
-  const fields = (ds?.schema as DataSourceSchema | null)?.fields;
 
   try {
     // The id filter can fail outright, e.g. an engine where the id attribute isn't
@@ -198,7 +206,7 @@ async function lookupFromExternalSource(
     // Fallback, as for managed indexes: the "id" is often a name or title the planner
     // took from an earlier answer. Only a hit that is the record asked for is returned.
     const searched = await connector.search(source, { query: documentId, offset: 0, limit: FALLBACK_CANDIDATES }, fields);
-    const match = searched.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source));
+    const match = searched.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source, nameFields));
     if (match) {
       logger.info('External lookup id did not match — returning matching search hit', {
         dataSourceId: source.dataSourceId,
@@ -223,8 +231,16 @@ const FALLBACK_CANDIDATES = 5;
 
 /** Fields that identify a record exactly: id, sku, productCode, item_number, ... */
 const IDENTIFIER_FIELD = /(^|_|-)(id|sku|code|key|slug|handle|number|ref|ean|upc|gtin|mpn)$|(Id|ID|Sku|SKU|Code|Key|Slug|Handle|Number|Ref)$/;
-/** Fields that name a record: name, title, productName, ... */
-const NAME_FIELD = /name|title/i;
+/**
+ * Fields that name a record, besides any the schema gives the 'title' role. Exact names, so
+ * colorName or fileName don't count as the record's name.
+ */
+const NAME_FIELDS = new Set([
+  'name', 'title', 'label', 'heading', 'displayname', 'productname', 'producttitle', 'itemname',
+  'documenttitle', 'pagetitle',
+]);
+const isNameField = (field: string, nameFields: string[]) =>
+  nameFields.includes(field) || NAME_FIELDS.has(field.toLowerCase().replace(/[_\-\s]/g, ''));
 /** Fields about a related item (brandName, categoryId, ...), which don't identify this record. */
 const RELATED_FIELD = /brand|category|categories|vendor|manufacturer|supplier|seller|parent|collection|store|author/i;
 /** Fields naming the record's brand, which a request often puts next to the name. */
@@ -260,6 +276,7 @@ export function matchesRequestedRecord(
   requested: string,
   hitId: string | undefined,
   fields: Record<string, unknown> | undefined,
+  nameFields: string[] = [],
 ): boolean {
   const wanted = normalize(requested);
   if (!wanted) return false;
@@ -278,7 +295,7 @@ export function matchesRequestedRecord(
   for (const [name, value] of entries) {
     if (RELATED_FIELD.test(name)) continue;
     if (IDENTIFIER_FIELD.test(name) && normalize(String(value)) === wanted) return true;
-    if (NAME_FIELD.test(name)) {
+    if (isNameField(name, nameFields)) {
       const nameWords = new Set(wordsOf(String(value)));
       const recordWords = new Set([...nameWords, ...brandWords]);
       const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));

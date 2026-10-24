@@ -9,7 +9,8 @@ import { describe, it, expect, vi } from 'vitest';
 
 const { getDocumentByIdFromIndex, searchById } = vi.hoisted(() => ({ getDocumentByIdFromIndex: vi.fn(), searchById: vi.fn() }));
 vi.mock('@/features/search/search.service', () => ({ getDocumentByIdFromIndex, searchById }));
-vi.mock('@/features/data-source/data-source.service', () => ({}));
+const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
+vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
 vi.mock('@/features/data-source/external-search/external-search.service', () => ({}));
 vi.mock('./shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./shared')>()),
@@ -74,6 +75,14 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('Haven & Hart Denim Jacket', 'x', { ...jacket, brand: 'Atlas Apparel' })).toBe(false);
   });
 
+  it('counts only name fields as the name, not fields that merely end in "name"', () => {
+    expect(matchesRequestedRecord('Navy', 'x', { name: 'Crew Neck Sweater', colorName: 'Navy' })).toBe(false);
+    expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { label: 'Crew Neck Sweater' })).toBe(true);
+    expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { product_name: 'Crew Neck Sweater' })).toBe(true);
+    expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { headline: 'Crew Neck Sweater' })).toBe(false);
+    expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { headline: 'Crew Neck Sweater' }, ['headline'])).toBe(true);
+  });
+
   it('does not take the brand alone as the item', () => {
     const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' };
     expect(matchesRequestedRecord('Vesper & Co', 'x', sweater)).toBe(false);
@@ -109,13 +118,24 @@ describe('managed lookup fallback', () => {
     );
   });
 
-  it('reports a failed fallback search as a failed lookup, not as not found', async () => {
+  it('lets a failed fallback search throw, not answer not found (executeTool retries and labels it)', async () => {
     getDocumentByIdFromIndex.mockResolvedValueOnce(null);
     searchById.mockRejectedValueOnce(new Error('search_phase_execution_exception'));
 
-    const result = await executeDataSourceLookup('ds', {}, { id: 'Vesper & Co Crew Neck Sweater' });
+    await expect(executeDataSourceLookup('ds', {}, { id: 'Vesper & Co Crew Neck Sweater' }))
+      .rejects.toThrow('search_phase_execution_exception');
+  });
 
-    expect(result).toEqual({ success: false, error: 'search_phase_execution_exception' });
+  it("matches on the field the data source's schema calls the title", async () => {
+    getDataSourceById.mockResolvedValueOnce({
+      schema: { fields: [{ name: 'headline', type: 'text', role: 'title' }] },
+    } as never);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { headline: 'Crew Neck Sweater' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Crew Neck Sweater' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'p1', matchedBy: 'search_fallback' } });
   });
 
   it('returns the hit a reworded request names', async () => {

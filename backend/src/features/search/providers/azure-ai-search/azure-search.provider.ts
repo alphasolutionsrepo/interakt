@@ -412,6 +412,11 @@ export class AzureSearchProvider implements SearchProvider {
                 source,
             };
         } catch (error) {
+            // No document with that key is an answer, not a failure (as on Elasticsearch):
+            // Find Record then tries a search for it by name.
+            if ((error as { statusCode?: number } | null)?.statusCode === 404) {
+                return { found: false };
+            }
             const message = error instanceof Error ? error.message : 'Get document failed';
             logger.error('Azure getDocument failed', { indexName, documentId, error: message });
             return { found: false, error: message };

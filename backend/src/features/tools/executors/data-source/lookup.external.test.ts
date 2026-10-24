@@ -66,7 +66,7 @@ describe('external lookup fallback', () => {
     expect(search).toHaveBeenLastCalledWith(
       expect.anything(),
       { query: 'Casual Crew Neck Sweater by Vesper & Co', offset: 0, limit: 5 },
-      undefined,
+      [],
     );
   });
 
