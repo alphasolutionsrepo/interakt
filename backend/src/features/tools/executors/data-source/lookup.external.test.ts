@@ -10,7 +10,8 @@ import { describe, it, expect, vi } from 'vitest';
 
 const search = vi.fn();
 vi.mock('@/features/search/search.service', () => ({}));
-vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
+const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn(async () => ({ schema: null }) as unknown) }));
+vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
 vi.mock('@/features/data-source/external-search/external-search.service', () => ({ getConnector: () => ({ search }) }));
 vi.mock('./shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./shared')>()),
@@ -70,13 +71,45 @@ describe('external lookup fallback', () => {
     );
   });
 
-  it('reports a failed fallback search as a failed lookup, like managed indexes', async () => {
+  it('lets a failed fallback search throw, like managed indexes (executeTool retries it)', async () => {
     search
       .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
       .mockRejectedValueOnce(new Error('HTTP 500'));
 
-    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: 'Vesper & Co Sweater' });
+    await expect(executeDataSourceLookup('ds', { idField: 'id' }, { id: 'Vesper & Co Sweater' })).rejects.toThrow('HTTP 500');
+  });
+});
 
-    expect(result).toEqual({ success: false, error: 'HTTP 500' });
+describe('external lookup and the data source schema', () => {
+  const schema = { fields: [{ name: 'productId', type: 'keyword', role: 'id' }, { name: 'headline', type: 'text', role: 'title' }] };
+
+  it("filters on the field the schema calls the id when the tool doesn't set one", async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    search.mockResolvedValueOnce({ hits: [{ id: 'p1', score: 1, source: { productId: 'PROD-1' } }], unappliedFilters: [] });
+
+    await executeDataSourceLookup('ds', {}, { id: 'PROD-1' });
+
+    expect(search.mock.lastCall?.[1]).toMatchObject({ filters: [{ field: 'productId', operator: 'eq', value: 'PROD-1' }] });
+  });
+
+  it('matches a name on the field the schema calls the title', async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'p1', score: 1, source: { headline: 'Crew Neck Sweater' } }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Crew Neck Sweater' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'p1', matchedBy: 'search_fallback' } });
+  });
+
+  it("still looks the item up, on field 'id', when the schema can't be read", async () => {
+    getDataSourceById.mockRejectedValueOnce(new Error('db down'));
+    search.mockResolvedValueOnce({ hits: [{ id: 'p1', score: 1, source: { name: 'Crew Neck Sweater' } }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'p1' });
+
+    expect(search.mock.lastCall?.[1]).toMatchObject({ filters: [{ field: 'id', operator: 'eq', value: 'p1' }] });
+    expect(result).toMatchObject({ success: true, data: { id: 'p1' } });
   });
 });

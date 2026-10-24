@@ -93,8 +93,12 @@ async function loadSchemaFields(dataSourceId: string): Promise<DataSourceField[]
   try {
     const ds = await dataSourceService.getDataSourceById(dataSourceId);
     return (ds?.schema as DataSourceSchema | null)?.fields ?? [];
-  } catch {
-    // Non-critical — the lookup still works without roles
+  } catch (error) {
+    // Non-critical: the lookup still works without roles (id field 'id', exact name fields)
+    logger.warn('Could not read the data source schema for a lookup', {
+      dataSourceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }
@@ -182,44 +186,42 @@ async function lookupFromExternalSource(
     return { success: false, error: `Lookup for provider '${source.provider}' is not yet implemented` };
   }
 
-  try {
-    // The id filter can fail outright, e.g. an engine where the id attribute isn't
-    // filterable. The search fallback below still finds the document then.
-    const result = await connector
-      .search(
-        source,
-        { query: '*', offset: 0, limit: 1, filters: [{ field: idField, operator: 'eq', value: documentId }] },
-        fields,
-      )
-      .catch((error: unknown) => {
-        logger.info('External lookup by id failed — falling back to search', {
-          dataSourceId: source.dataSourceId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      });
-    // An id filter the engine could not apply would return an arbitrary document,
-    // so only trust a hit when the filter was applied.
-    const hit = result && result.unappliedFilters.length === 0 ? result.hits[0] : undefined;
-    if (hit) return { success: true, data: { id: hit.id, document: hit.source } };
-
-    // Fallback, as for managed indexes: the "id" is often a name or title the planner
-    // took from an earlier answer. Only a hit that is the record asked for is returned.
-    const searched = await connector.search(source, { query: documentId, offset: 0, limit: FALLBACK_CANDIDATES }, fields);
-    const match = searched.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source, nameFields));
-    if (match) {
-      logger.info('External lookup id did not match — returning matching search hit', {
+  // An engine error on the fallback search rejects, as on managed indexes, so executeTool
+  // retries a transient one and labels a lasting one failed.
+  // The id filter can fail outright, e.g. an engine where the id attribute isn't
+  // filterable. The search fallback below still finds the document then.
+  const result = await connector
+    .search(
+      source,
+      { query: '*', offset: 0, limit: 1, filters: [{ field: idField, operator: 'eq', value: documentId }] },
+      fields,
+    )
+    .catch((error: unknown) => {
+      logger.info('External lookup by id failed — falling back to search', {
         dataSourceId: source.dataSourceId,
-        query: documentId,
-        matchedId: match.id,
+        error: error instanceof Error ? error.message : String(error),
       });
-      return { success: true, data: { id: match.id, document: match.source, matchedBy: 'search_fallback' } };
-    }
+      return null;
+    });
+  // An id filter the engine could not apply would return an arbitrary document,
+  // so only trust a hit when the filter was applied.
+  const hit = result && result.unappliedFilters.length === 0 ? result.hits[0] : undefined;
+  if (hit) return { success: true, data: { id: hit.id, document: hit.source } };
 
-    return notFound(documentId);
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  // Fallback, as for managed indexes: the "id" is often a name or title the planner
+  // took from an earlier answer. Only a hit that is the record asked for is returned.
+  const searched = await connector.search(source, { query: documentId, offset: 0, limit: FALLBACK_CANDIDATES }, fields);
+  const match = searched.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source, nameFields));
+  if (match) {
+    logger.info('External lookup id did not match — returning matching search hit', {
+      dataSourceId: source.dataSourceId,
+      query: documentId,
+      matchedId: match.id,
+    });
+    return { success: true, data: { id: match.id, document: match.source, matchedBy: 'search_fallback' } };
   }
+
+  return notFound(documentId);
 }
 
 // ============================================================================

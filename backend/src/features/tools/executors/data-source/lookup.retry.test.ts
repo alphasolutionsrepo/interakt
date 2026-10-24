@@ -17,19 +17,23 @@ vi.mock('@/features/telemetry', () => ({
   ),
   ATTR: new Proxy({}, { get: (_t, k) => `alpha.${String(k).toLowerCase()}` }),
 }));
-const { getToolById, getDocumentByIdFromIndex, searchById } = vi.hoisted(() => ({
+const { getToolById, getDocumentByIdFromIndex, searchById, resolveDataSource, connectorSearch } = vi.hoisted(() => ({
   getToolById: vi.fn(),
   getDocumentByIdFromIndex: vi.fn(),
   searchById: vi.fn(),
+  resolveDataSource: vi.fn(),
+  connectorSearch: vi.fn(),
 }));
 vi.mock('../../tools.service', () => ({ getToolById }));
 vi.mock('@/features/secrets/secrets.service', () => ({ resolveSecret: vi.fn() }));
 vi.mock('@/features/search/search.service', () => ({ getDocumentByIdFromIndex, searchById }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
-vi.mock('@/features/data-source/external-search/external-search.service', () => ({ getConnector: vi.fn() }));
+vi.mock('@/features/data-source/external-search/external-search.service', () => ({
+  getConnector: () => ({ search: connectorSearch }),
+}));
 vi.mock('./shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./shared')>()),
-  resolveDataSource: vi.fn(async () => ({ kind: 'managed', searchIndexId: 'idx' })),
+  resolveDataSource,
 }));
 vi.mock('@/features/mcp-connection/mcp-tool-resolver', () => ({ isMcpToolId: () => false, parseMcpToolId: () => null }));
 vi.mock('@/features/mcp-connection/mcp-executor', () => ({ executeMcpTool: vi.fn() }));
@@ -55,8 +59,23 @@ const findTool = {
 describe('Find Record through executeTool', () => {
   beforeEach(() => {
     getToolById.mockResolvedValue(findTool);
+    resolveDataSource.mockResolvedValue({ kind: 'managed', searchIndexId: 'idx' });
     getDocumentByIdFromIndex.mockReset();
     searchById.mockReset();
+    connectorSearch.mockReset();
+  });
+
+  it('retries a transient engine error on an external source\'s fallback search', async () => {
+    resolveDataSource.mockResolvedValue({ kind: 'external', provider: 'sitecore-search', dataSourceId: 'ds-1' });
+    connectorSearch
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockRejectedValueOnce(new Error('503 Service Unavailable'))
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'p2', score: 1, source: { name: 'Crew Neck Sweater' } }], unappliedFilters: [] });
+
+    const result = await executeTool('find-1', { id: 'Crew Neck Sweater' });
+
+    expect(result).toMatchObject({ success: true, retriesUsed: 1, data: { id: 'p2', matchedBy: 'search_fallback' } });
   });
 
   it('retries a transient engine error on the key fetch', async () => {
