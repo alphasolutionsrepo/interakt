@@ -243,6 +243,8 @@ const NAME_FIELDS = new Set([
 ]);
 const isNameField = (field: string, nameFields: string[]) =>
   nameFields.includes(field) || NAME_FIELDS.has(field.toLowerCase().replace(/[_\-\s]/g, ''));
+/** When a record has none of those: a field whose name ends in name or title (HotelName, itemTitle). */
+const LOOSE_NAME_FIELD = /(name|title)$/i;
 /** Fields about a related item (brandName, categoryId, ...), which don't identify this record. */
 const RELATED_FIELD = /brand|category|categories|vendor|manufacturer|supplier|seller|parent|collection|store|author/i;
 /** Fields naming the record's brand, which a request often puts next to the name. */
@@ -293,18 +295,21 @@ export function matchesRequestedRecord(
       .flatMap(([, value]) => wordsOf(String(value))),
   );
   const wantedWords = new Set(wordsOf(requested));
+  const own = entries.filter(([name]) => !RELATED_FIELD.test(name));
 
-  for (const [name, value] of entries) {
-    if (RELATED_FIELD.test(name)) continue;
-    if (IDENTIFIER_FIELD.test(name) && normalize(String(value)) === wanted) return true;
-    if (isNameField(name, nameFields)) {
-      const nameWords = new Set(wordsOf(String(value)));
-      const recordWords = new Set([...nameWords, ...brandWords]);
-      const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));
-      if (namesTheItem && [...wantedWords].every((word) => recordWords.has(word))) return true;
-      if ([...recordWords].every((word) => wantedWords.has(word)) && nameWords.size * 2 >= wantedWords.size) {
-        return true;
-      }
+  if (own.some(([name, value]) => IDENTIFIER_FIELD.test(name) && normalize(String(value)) === wanted)) return true;
+
+  // The record's name: its known name fields, or, if it has none, fields ending in name/title
+  const known = own.filter(([name]) => isNameField(name, nameFields));
+  const names = known.length > 0 ? known : own.filter(([name]) => LOOSE_NAME_FIELD.test(name));
+
+  for (const [, value] of names) {
+    const nameWords = new Set(wordsOf(String(value)));
+    const recordWords = new Set([...nameWords, ...brandWords]);
+    const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));
+    if (namesTheItem && [...wantedWords].every((word) => recordWords.has(word))) return true;
+    if ([...recordWords].every((word) => wantedWords.has(word)) && nameWords.size * 2 >= wantedWords.size) {
+      return true;
     }
   }
   return false;

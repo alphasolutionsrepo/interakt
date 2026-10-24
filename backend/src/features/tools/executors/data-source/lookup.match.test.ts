@@ -83,6 +83,12 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { headline: 'Crew Neck Sweater' }, ['headline'])).toBe(true);
   });
 
+  it('uses fields ending in name or title when a record has no known name field', () => {
+    expect(matchesRequestedRecord('Fancy Stay', 'h1', { HotelId: 'h1', HotelName: 'Fancy Stay' })).toBe(true);
+    expect(matchesRequestedRecord('Navy', 'x', { name: 'Crew Neck Sweater', colorName: 'Navy' })).toBe(false);
+    expect(matchesRequestedRecord('Acme', 'x', { HotelName: 'Fancy Stay', brandName: 'Acme' })).toBe(false);
+  });
+
   it('does not take the brand alone as the item', () => {
     const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' };
     expect(matchesRequestedRecord('Vesper & Co', 'x', sweater)).toBe(false);

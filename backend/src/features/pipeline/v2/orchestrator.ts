@@ -808,6 +808,11 @@ function triggerPostTurnTasks(
 /**
  * Create all production dependencies for the V2 pipeline.
  */
+async function loadDataSource(id: string) {
+  const dataSourceService = await import('@/features/data-source/data-source.service');
+  return dataSourceService.getDataSourceById(id);
+}
+
 export function createProductionV2Deps(): V2PipelineDeps {
   // Lazy imports to avoid circular dependencies
   const chatFn: ChatFn = async (messages, options) => {
@@ -830,6 +835,13 @@ export function createProductionV2Deps(): V2PipelineDeps {
         ((result.data as any)?.document ? 1 : undefined),
       error: result.error,
     };
+  };
+
+  // These deps live for one turn: each data source row is read once, for its type and schema
+  const dataSources = new Map<string, ReturnType<typeof loadDataSource>>();
+  const readDataSource = (id: string) => {
+    if (!dataSources.has(id)) dataSources.set(id, loadDataSource(id));
+    return dataSources.get(id)!;
   };
 
   return {
@@ -867,15 +879,13 @@ export function createProductionV2Deps(): V2PipelineDeps {
       },
       dataSchemaLoader: {
         async loadFieldSchema(dataSourceId) {
-          const dataSourceService = await import('@/features/data-source/data-source.service');
-          const ds = await dataSourceService.getDataSourceById(dataSourceId);
+          const ds = await readDataSource(dataSourceId);
           const schema = ds?.schema as { fields?: unknown[] } | null | undefined;
           if (!ds || !schema?.fields?.length) return null;
           return { name: ds.name, fields: schema.fields as never };
         },
         async loadSourceType(dataSourceId) {
-          const dataSourceService = await import('@/features/data-source/data-source.service');
-          const ds = await dataSourceService.getDataSourceById(dataSourceId);
+          const ds = await readDataSource(dataSourceId);
           return ds?.type ?? null;
         },
       },

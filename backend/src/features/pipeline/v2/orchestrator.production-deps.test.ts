@@ -29,6 +29,16 @@ describe('production data loader', () => {
     expect(getDataSourceById).toHaveBeenCalledWith('ds-1');
   });
 
+  it('reads each data source once per turn, for its type and its schema', async () => {
+    const turnLoader = createProductionV2Deps().contextAssembly.dataSchemaLoader!;
+    getDataSourceById.mockClear().mockResolvedValue({ id: 'ds-2', name: 'Catalog', type: 'search_index', schema: null });
+
+    await turnLoader.loadSourceType('ds-2');
+    await turnLoader.loadFieldSchema('ds-2');
+
+    expect(getDataSourceById).toHaveBeenCalledTimes(1);
+  });
+
   it('returns null for a data source that does not exist', async () => {
     getDataSourceById.mockResolvedValueOnce(null);
 
