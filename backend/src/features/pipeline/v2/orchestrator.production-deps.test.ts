@@ -16,7 +16,11 @@ vi.mock('@/features/prompt-templates', () => ({
 }));
 const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn() }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
+const { executeTool } = vi.hoisted(() => ({ executeTool: vi.fn() }));
+vi.mock('@/features/tools/tools.executor', () => ({ executeTool }));
 
+import type { ActionStepContext, ActionStepDeps } from './action-steps/action-step.types';
+import { ToolExecutionStep } from './action-steps/tool-execution.step';
 import { createProductionV2Deps } from './orchestrator';
 
 describe('production data loader', () => {
@@ -43,5 +47,37 @@ describe('production data loader', () => {
     getDataSourceById.mockResolvedValueOnce(null);
 
     expect(await loader.loadSourceType('gone')).toBeNull();
+  });
+});
+
+describe('production tool executor', () => {
+  /** Runs one Find Record call through the production executor and the tool step. */
+  async function runLookup(data: unknown) {
+    executeTool.mockResolvedValueOnce({ success: true, data, durationMs: 5 });
+    const deps = {
+      executeTool: createProductionV2Deps().executionLoop.executeTool,
+      emit: () => {},
+    } as unknown as ActionStepDeps;
+    const ctx = {
+      action: { toolSlug: 'catalog-find', intent: 'find one item' },
+      toolId: 'tool-1',
+      validatedParams: { id: 'XYZ-999' },
+    } as unknown as ActionStepContext;
+    return new ToolExecutionStep().execute(ctx, deps);
+  }
+
+  it('counts a lookup that found nothing as zero results', async () => {
+    const step = await runLookup({ found: false, requested: 'XYZ-999', message: 'No record matches "XYZ-999".' });
+
+    expect(step.context.toolResult?.resultCount).toBe(0);
+    expect(step.summary).toBe('0 result(s) returned');
+    expect(step.spanAttributes?.['alpha.v2.step.result_count']).toBe(0);
+  });
+
+  it('counts a lookup that found its record as one result', async () => {
+    const step = await runLookup({ id: 'p1', document: { name: 'Denim Jacket' }, matchedBy: 'search_fallback' });
+
+    expect(step.context.toolResult?.resultCount).toBe(1);
+    expect(step.summary).toBe('1 result(s) returned');
   });
 });

@@ -21,6 +21,7 @@ import { executeLoop } from './execution-loop';
 import { synthesizeResponse } from './response-synthesis';
 import { persistTurn } from './persistence';
 import { assessRound, mergeRounds } from './planning-assessment';
+import { singleRecordCount } from './result-count';
 import type { RoundAssessment } from './planning-assessment';
 import { GOVERNED_POLICY, describePolicy, type ExecutionPolicy } from '@/features/ai-experience/execution-policy';
 import type {
@@ -831,8 +832,8 @@ export function createProductionV2Deps(): V2PipelineDeps {
         (result.data as any)?.totalCount ??
         (Array.isArray((result.data as any)?.results) ? (result.data as any).results.length : undefined) ??
         (Array.isArray(result.data) ? result.data.length : undefined) ??
-        // Lookup results return { id, document } — count as 1 result
-        ((result.data as any)?.document ? 1 : undefined),
+        // A lookup counts 1 with its record, 0 when it found none
+        singleRecordCount(result.data),
       error: result.error,
     };
   };
