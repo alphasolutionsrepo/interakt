@@ -69,7 +69,8 @@ function countResults(action: ActionResult): number {
 
   if (Array.isArray(data)) return data.length;
   if (data && typeof data === 'object') {
-    for (const key of ['results', 'items', 'values', 'documents'] as const) {
+    // `matches`: a lookup that several items fit; the answer asks which one, so it is usable.
+    for (const key of ['results', 'items', 'values', 'documents', 'matches'] as const) {
       const value = (data as Record<string, unknown>)[key];
       if (Array.isArray(value)) return value.length;
     }

@@ -269,6 +269,14 @@ function wordsOf(text: string): string[] {
   return normalize(text).split(' ').filter(Boolean).map(singular);
 }
 
+/** Words too common to tell two names apart ("the", "of", ...). */
+const FILLER_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'by', 'at']);
+
+/** The words that carry meaning, so "the crew neck sweater" compares like "crew neck sweater". */
+function contentWords(text: string): string[] {
+  return wordsOf(text).filter((word) => !FILLER_WORDS.has(word));
+}
+
 type Entry = [string, string | number];
 
 function scalarEntries(fields: Record<string, unknown> | undefined): Entry[] {
@@ -282,10 +290,35 @@ function ownEntries(entries: Entry[]): Entry[] {
   return entries.filter(([name]) => !RELATED_FIELD.test(name));
 }
 
-/** Whether the record's id, or one of its identifier fields, is the requested value. */
-function isIdentifiedBy(wanted: string, hitId: string | undefined, own: Entry[]): boolean {
+const isScalar = (value: unknown): value is string | number => typeof value === 'string' || typeof value === 'number';
+
+/**
+ * The record's codes: values of its identifier fields (sku, productCode, ...) and any other
+ * value with a digit in it (isbn, partNo, model), also inside lists (variants[].sku).
+ */
+function codeValues(source: Record<string, unknown> | undefined): Array<string | number> {
+  const codes: Array<string | number> = [];
+  const add = (field: string, value: unknown) => {
+    if (isScalar(value) && (IDENTIFIER_FIELD.test(field) || /\d/.test(String(value)))) codes.push(value);
+  };
+  for (const [field, value] of Object.entries(source ?? {})) {
+    if (RELATED_FIELD.test(field)) continue;
+    if (!Array.isArray(value)) {
+      add(field, value);
+      continue;
+    }
+    for (const item of value) {
+      if (item && typeof item === 'object') Object.entries(item).forEach(([key, inner]) => add(key, inner));
+      else add(field, item);
+    }
+  }
+  return codes;
+}
+
+/** Whether the record's id, or one of its codes, is the whole requested value. */
+function isIdentifiedBy(wanted: string, hitId: string | undefined, source: Record<string, unknown> | undefined): boolean {
   if (hitId !== undefined && normalize(String(hitId)) === wanted) return true;
-  return own.some(([name, value]) => IDENTIFIER_FIELD.test(name) && normalize(String(value)) === wanted);
+  return codeValues(source).some((code) => normalize(String(code)) === wanted);
 }
 
 /** The words of a record's brand, which a request often puts next to the name. */
@@ -323,15 +356,15 @@ export function matchesRequestedRecord(
   const wanted = normalize(requested);
   if (!wanted) return false;
 
+  if (isIdentifiedBy(wanted, hitId, fields)) return true;
+
   const entries = scalarEntries(fields);
   const own = ownEntries(entries);
-  if (isIdentifiedBy(wanted, hitId, own)) return true;
-
   const brandWords = brandWordsOf(entries);
-  const wantedWords = new Set(wordsOf(requested));
+  const wantedWords = new Set(contentWords(requested));
 
   for (const [, value] of nameEntries(own, nameFields)) {
-    const nameWords = new Set(wordsOf(String(value)));
+    const nameWords = new Set(contentWords(String(value)));
     const recordWords = new Set([...nameWords, ...brandWords]);
     const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));
     if (namesTheItem && [...wantedWords].every((word) => recordWords.has(word))) return true;
@@ -352,9 +385,8 @@ function nameOf(hit: Hit, nameFields: string[]): string | number | undefined {
 /** Whether a hit is exactly the request: same id or code, or the same full name. */
 function isExactMatch(requested: string, hit: Hit, nameFields: string[]): boolean {
   const wanted = normalize(requested);
-  const own = ownEntries(scalarEntries(hit.source));
-  return isIdentifiedBy(wanted, hit.id, own)
-    || nameEntries(own, nameFields).some(([, value]) => normalize(String(value)) === wanted);
+  return isIdentifiedBy(wanted, hit.id, hit.source)
+    || nameEntries(ownEntries(scalarEntries(hit.source)), nameFields).some(([, value]) => normalize(String(value)) === wanted);
 }
 
 /**
@@ -385,8 +417,6 @@ function severalMatch(requested: string, hits: Hit[], nameFields: string[]): Ope
 
 /** How many near misses a not-found lookup offers, so the answer can ask "did you mean ...?". */
 const CLOSEST_MATCHES = 3;
-/** Words too common to make two names alike. */
-const FILLER_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'by', 'at']);
 
 /**
  * No record matches. That is an answer, not a failure: there is no document, so no product
@@ -396,7 +426,7 @@ const FILLER_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', '
  * the brand and filler words, count as close. They are not the item asked for.
  */
 function notFound(requested: string, hits: Hit[], nameFields: string[]): OperationResult {
-  const wantedWords = new Set(wordsOf(requested).filter((word) => !FILLER_WORDS.has(word)));
+  const wantedWords = new Set(contentWords(requested));
   const closestMatches = hits
     .map((hit) => {
       const brandWords = brandWordsOf(scalarEntries(hit.source));

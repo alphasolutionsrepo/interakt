@@ -506,6 +506,29 @@ describe('relaxed constraints reach the answer', () => {
     expect(presets.every((e) => (e as { preset?: string }).preset === 'rich_text')).toBe(true);
   });
 
+  it('passes several matches to the answer, with no product card', async () => {
+    const chat = vi.fn().mockResolvedValue(makeChatResult('Which one do you mean?'));
+    const emit = vi.fn();
+    const several = {
+      found: false,
+      requested: 'Crew Neck Sweater',
+      message: 'Several records match "Crew Neck Sweater". matches lists them; ask the user which one they mean.',
+      matches: [{ id: 'p1', name: 'Echo Style Minimalist Crew Neck Sweater' }, { id: 'p2', name: 'Atlas Apparel Athleisure Crew Neck Sweater' }],
+    };
+
+    await synthesizeResponse(
+      makeInput({ actionResults: [makeActionResult('product-search', { result: { success: true, data: several } })] }),
+      { chat } as SynthesisDeps,
+      emit,
+    );
+
+    const prompt = JSON.stringify(chat.mock.calls[0]);
+    expect(prompt).toContain('Atlas Apparel Athleisure Crew Neck Sweater');
+    expect(prompt).toContain('ask the user which one they mean');
+    const presets = emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'preset');
+    expect(presets.every((e) => (e as { preset?: string }).preset === 'rich_text')).toBe(true);
+  });
+
   it('says nothing about relaxation on an ordinary result', async () => {
     const chat = vi.fn().mockResolvedValue(makeChatResult('Here you go.'));
 

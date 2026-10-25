@@ -72,7 +72,7 @@ describe('Find Record matching on the demo catalog', () => {
       ),
     );
     expect(wrong).toEqual([]);
-  });
+  }, 30_000); // every phrasing of every product against the whole catalog: ~440k checks
 
   it('finds nothing for a product type the brand does not make', () => {
     const wrong = products.flatMap((product) => {

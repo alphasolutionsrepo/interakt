@@ -93,6 +93,25 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('Acme', 'x', { HotelName: 'Fancy Stay', brandName: 'Acme' })).toBe(false);
   });
 
+  it('matches a code held in any field, or in a list, by its whole value', () => {
+    expect(matchesRequestedRecord('978-0134494166', 'b1', { title: 'Clean Architecture', isbn: '978-0134494166' })).toBe(true);
+    expect(matchesRequestedRecord('HB-2231', 'x', { name: 'Hand Blender', partNo: 'HB-2231' })).toBe(true);
+    expect(matchesRequestedRecord('SKU-2', 'x', { name: 'Desk Lamp', variants: [{ sku: 'SKU-1' }, { sku: 'SKU-2' }] })).toBe(true);
+    expect(matchesRequestedRecord('X100', 'x', { name: 'Camera', models: ['X100', 'X200'] })).toBe(true);
+  });
+
+  it('does not take a plain word from another field, or part of a code, as the item', () => {
+    expect(matchesRequestedRecord('Black', 'x', { name: 'Desk Lamp', color: 'Black' })).toBe(false);
+    expect(matchesRequestedRecord('2231', 'x', { name: 'Hand Blender', partNo: 'HB-2231' })).toBe(false);
+    expect(matchesRequestedRecord('SKU-3', 'x', { name: 'Desk Lamp', variants: [{ sku: 'SKU-1' }] })).toBe(false);
+  });
+
+  it('ignores filler words on both sides', () => {
+    expect(matchesRequestedRecord('the crew neck sweater', 'x', { name: 'Vesper & Co Crew Neck Sweater' })).toBe(true);
+    expect(matchesRequestedRecord('The Lord of the Rings', 'x', { title: 'Lord of the Rings' })).toBe(true);
+    expect(matchesRequestedRecord('the sweater by Vesper & Co for the winter season', 'x', { name: 'Sweater' })).toBe(false);
+  });
+
   it('does not take the brand alone as the item', () => {
     const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' };
     expect(matchesRequestedRecord('Vesper & Co', 'x', sweater)).toBe(false);
