@@ -190,6 +190,37 @@ describe('managed lookup fallback', () => {
     expect(result).toMatchObject({ success: true, data: { id: 's1' } });
   });
 
+  it('does not return an item that only mentions the code, over the item that has it in its name', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'phone', source: { name: 'Apple iPhone 15 128GB' } },
+        { id: 'case', source: { name: 'Clear Case', compatibleWith: 'iPhone 15' } },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'iPhone 15' });
+
+    expect(result.data).toMatchObject({
+      found: false,
+      matches: [{ id: 'phone', name: 'Apple iPhone 15 128GB' }, { id: 'case', name: 'Clear Case' }],
+    });
+  });
+
+  it('still finds the item whose identifier field holds the code, over one that mentions it', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'case', source: { name: 'Clear Case', compatibleWith: 'HB-2231' } },
+        { id: 'blender', source: { name: 'Hand Blender', sku: 'HB-2231' } },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'HB-2231' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'blender' } });
+  });
+
   it('does not take a plain number from another field as the item', async () => {
     getDocumentByIdFromIndex.mockResolvedValueOnce(null);
     searchById.mockResolvedValueOnce({ hits: [{ id: 'p88', source: { name: 'Tote Bag', reviewCount: 245, price: 19.99 } }] });

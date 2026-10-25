@@ -292,14 +292,17 @@ function ownEntries(entries: Entry[]): Entry[] {
 const isScalar = (value: unknown): value is string | number => typeof value === 'string' || typeof value === 'number';
 
 /**
- * The record's codes: values of its identifier fields (sku, productCode, ...) and any other
- * text with a digit in it (isbn, partNo, model), also inside lists (variants[].sku). A plain
- * number (price, reviewCount) is a code only in an identifier field.
+ * The record's codes, also inside lists (variants[].sku): values of its identifier fields
+ * (sku, productCode, ...), which identify it for certain, and any other text with a digit in it
+ * (isbn, partNo, model, but also compatibleWith: "iPhone 15"), which only might. A plain number
+ * (price, reviewCount) is a code only in an identifier field.
  */
-function codeValues(source: Record<string, unknown> | undefined): Array<string | number> {
-  const codes: Array<string | number> = [];
+function codeValues(source: Record<string, unknown> | undefined): Array<{ value: string | number; certain: boolean }> {
+  const codes: Array<{ value: string | number; certain: boolean }> = [];
   const add = (field: string, value: unknown) => {
-    if (isScalar(value) && (IDENTIFIER_FIELD.test(field) || (typeof value === 'string' && /\d/.test(value)))) codes.push(value);
+    if (!isScalar(value)) return;
+    if (IDENTIFIER_FIELD.test(field)) codes.push({ value, certain: true });
+    else if (typeof value === 'string' && /\d/.test(value)) codes.push({ value, certain: false });
   };
   for (const [field, value] of Object.entries(source ?? {})) {
     if (RELATED_FIELD.test(field)) continue;
@@ -315,10 +318,18 @@ function codeValues(source: Record<string, unknown> | undefined): Array<string |
   return codes;
 }
 
-/** Whether the record's id, or one of its codes, is the whole requested value. */
-function isIdentifiedBy(wanted: string, hitId: string | undefined, source: Record<string, unknown> | undefined): boolean {
+/**
+ * Whether the record's id, or one of its codes, is the whole requested value. With `certainOnly`,
+ * only the id and identifier fields count, not other text that happens to hold the value.
+ */
+function isIdentifiedBy(
+  wanted: string,
+  hitId: string | undefined,
+  source: Record<string, unknown> | undefined,
+  certainOnly = false,
+): boolean {
   if (hitId !== undefined && normalize(String(hitId)) === wanted) return true;
-  return codeValues(source).some((code) => normalize(String(code)) === wanted);
+  return codeValues(source).some((code) => (code.certain || !certainOnly) && normalize(String(code.value)) === wanted);
 }
 
 /** The words of a record's brand, which a request often puts next to the name. */
@@ -393,10 +404,10 @@ function nameOf(hit: Hit, nameFields: string[]): string | number | undefined {
   return nameEntries(scalarEntries(hit.source), nameFields)[0]?.[1];
 }
 
-/** Whether a hit is exactly the request: same id or code, or the same full name. */
+/** Whether a hit is exactly the request: same id or identifier-field code, or the same full name. */
 function isExactMatch(requested: string, hit: Hit, nameFields: string[]): boolean {
   const wanted = normalize(requested);
-  return isIdentifiedBy(wanted, hit.id, hit.source)
+  return isIdentifiedBy(wanted, hit.id, hit.source, true)
     || nameEntries(scalarEntries(hit.source), nameFields).some(([, value]) => normalize(String(value)) === wanted);
 }
 
