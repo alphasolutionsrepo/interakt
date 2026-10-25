@@ -69,12 +69,12 @@ function countResults(action: ActionResult): number {
 
   if (Array.isArray(data)) return data.length;
   if (data && typeof data === 'object') {
-    // `matches`: a lookup that several items fit; the answer asks which one, so it is usable.
-    for (const key of ['results', 'items', 'values', 'documents', 'matches'] as const) {
+    for (const key of ['results', 'items', 'values', 'documents'] as const) {
       const value = (data as Record<string, unknown>)[key];
       if (Array.isArray(value)) return value.length;
     }
-    // Single-document shapes (lookup): found:false must not read as a result.
+    // Single-document shapes (lookup): found:false must not read as a result; several matches
+    // do, since the answer asks which one.
     const single = singleRecordCount(data);
     if (single !== undefined) return single;
   }

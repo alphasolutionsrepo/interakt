@@ -74,6 +74,15 @@ describe('production tool executor', () => {
     expect(step.spanAttributes?.['alpha.v2.step.result_count']).toBe(0);
   });
 
+  it('counts a lookup that several items fit by its matches, as planning does', async () => {
+    const step = await runLookup({
+      found: false, requested: 'Crew Neck Sweater', message: 'Several records match', matches: [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }],
+    });
+
+    expect(step.context.toolResult?.resultCount).toBe(3);
+    expect(step.summary).toBe('3 result(s) returned');
+  });
+
   it('counts a lookup that found its record as one result', async () => {
     const step = await runLookup({ id: 'p1', document: { name: 'Denim Jacket' }, matchedBy: 'search_fallback' });
 

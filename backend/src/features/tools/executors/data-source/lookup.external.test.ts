@@ -86,6 +86,22 @@ describe('external lookup fallback', () => {
 });
 
 describe('external lookup when several records fit', () => {
+  it('returns the record whose id was given, even when another record holds the same code', async () => {
+    search
+      .mockRejectedValueOnce(new Error('Sitecore Search returned HTTP 400: id is not filterable'))
+      .mockResolvedValueOnce({
+        hits: [
+          { id: '88', score: 2, source: { name: 'Tote Bag', partNo: '245' } },
+          { id: '245', score: 1, source: { name: 'Wool Scarf' } },
+        ],
+        unappliedFilters: [],
+      });
+
+    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: '245' });
+
+    expect(result).toMatchObject({ success: true, data: { id: '245', document: { name: 'Wool Scarf' } } });
+  });
+
   it('says several match instead of returning the first', async () => {
     search
       .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })

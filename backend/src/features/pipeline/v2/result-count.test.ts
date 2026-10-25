@@ -11,6 +11,10 @@ describe('singleRecordCount', () => {
     expect(singleRecordCount({ id: 'p1', document: { name: 'Denim Jacket' } })).toBe(1);
   });
 
+  it('counts a lookup that several items fit by its list of matches', () => {
+    expect(singleRecordCount({ found: false, matches: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] })).toBe(3);
+  });
+
   it('leaves lists and other shapes to the caller', () => {
     expect(singleRecordCount({ results: [] })).toBeUndefined();
     expect(singleRecordCount([{ id: 'p1' }])).toBeUndefined();

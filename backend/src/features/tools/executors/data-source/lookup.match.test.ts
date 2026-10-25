@@ -167,6 +167,38 @@ describe('managed lookup fallback', () => {
     expect(result).toMatchObject({ success: true, data: { id: 'p1', matchedBy: 'search_fallback' } });
   });
 
+  it("treats the schema's title field as the name, even one called storeName", async () => {
+    getDataSourceById.mockResolvedValueOnce({
+      schema: { fields: [{ name: 'storeId', type: 'keyword', role: 'id' }, { name: 'storeName', type: 'text', role: 'title' }] },
+    } as never);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [{ id: 's1', source: { storeId: 's1', storeName: 'Downtown Flagship', managerName: 'Ana Ruiz' } }],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Downtown Flagship' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 's1', matchedBy: 'search_fallback' } });
+  });
+
+  it('uses a name field like storeName when the record has no other name, without a schema', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 's1', source: { storeName: 'Downtown Flagship', city: 'Austin' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Downtown Flagship' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 's1' } });
+  });
+
+  it('does not take a plain number from another field as the item', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'p88', source: { name: 'Tote Bag', reviewCount: 245, price: 19.99 } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: '245' });
+
+    expect(result.data).toMatchObject({ found: false });
+  });
+
   it('returns the hit a reworded request names', async () => {
     const sweater = { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' };
     getDocumentByIdFromIndex.mockResolvedValueOnce(null);

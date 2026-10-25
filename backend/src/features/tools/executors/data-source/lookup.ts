@@ -245,8 +245,7 @@ const NAME_FIELDS = new Set([
   'name', 'title', 'label', 'heading', 'displayname', 'productname', 'producttitle', 'itemname',
   'documenttitle', 'pagetitle',
 ]);
-const isNameField = (field: string, nameFields: string[]) =>
-  nameFields.includes(field) || NAME_FIELDS.has(field.toLowerCase().replace(/[_\-\s]/g, ''));
+const isNameField = (field: string) => NAME_FIELDS.has(field.toLowerCase().replace(/[_\-\s]/g, ''));
 /** When a record has none of those: a field whose name ends in name or title (HotelName, itemTitle). */
 const LOOSE_NAME_FIELD = /(name|title)$/i;
 /** Fields about a related item (brandName, categoryId, ...), which don't identify this record. */
@@ -294,12 +293,13 @@ const isScalar = (value: unknown): value is string | number => typeof value === 
 
 /**
  * The record's codes: values of its identifier fields (sku, productCode, ...) and any other
- * value with a digit in it (isbn, partNo, model), also inside lists (variants[].sku).
+ * text with a digit in it (isbn, partNo, model), also inside lists (variants[].sku). A plain
+ * number (price, reviewCount) is a code only in an identifier field.
  */
 function codeValues(source: Record<string, unknown> | undefined): Array<string | number> {
   const codes: Array<string | number> = [];
   const add = (field: string, value: unknown) => {
-    if (isScalar(value) && (IDENTIFIER_FIELD.test(field) || /\d/.test(String(value)))) codes.push(value);
+    if (isScalar(value) && (IDENTIFIER_FIELD.test(field) || (typeof value === 'string' && /\d/.test(value)))) codes.push(value);
   };
   for (const [field, value] of Object.entries(source ?? {})) {
     if (RELATED_FIELD.test(field)) continue;
@@ -330,10 +330,22 @@ function brandWordsOf(entries: Entry[]): Set<string> {
   );
 }
 
-/** A record's name fields: its known ones, or, if it has none, fields ending in name/title. */
-function nameEntries(own: Entry[], nameFields: string[]): Entry[] {
-  const known = own.filter(([name]) => isNameField(name, nameFields));
-  return known.length > 0 ? known : own.filter(([name]) => LOOSE_NAME_FIELD.test(name));
+/**
+ * A record's name fields, the first of: the fields its schema calls the title (whatever they
+ * are called, storeName included); its own known name fields; its own fields ending in
+ * name/title; and, for a record that is itself a store, brand or author, any such field.
+ */
+function nameEntries(entries: Entry[], nameFields: string[]): Entry[] {
+  const own = ownEntries(entries);
+  for (const pick of [
+    entries.filter(([name]) => nameFields.includes(name)),
+    own.filter(([name]) => isNameField(name)),
+    own.filter(([name]) => LOOSE_NAME_FIELD.test(name)),
+    entries.filter(([name]) => LOOSE_NAME_FIELD.test(name)),
+  ]) {
+    if (pick.length > 0) return pick;
+  }
+  return [];
 }
 
 /**
@@ -359,11 +371,10 @@ export function matchesRequestedRecord(
   if (isIdentifiedBy(wanted, hitId, fields)) return true;
 
   const entries = scalarEntries(fields);
-  const own = ownEntries(entries);
   const brandWords = brandWordsOf(entries);
   const wantedWords = new Set(contentWords(requested));
 
-  for (const [, value] of nameEntries(own, nameFields)) {
+  for (const [, value] of nameEntries(entries, nameFields)) {
     const nameWords = new Set(contentWords(String(value)));
     const recordWords = new Set([...nameWords, ...brandWords]);
     const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));
@@ -379,21 +390,25 @@ type Hit = { id?: string; source?: Record<string, unknown> };
 
 /** The record's name, as shown in a list of matches. */
 function nameOf(hit: Hit, nameFields: string[]): string | number | undefined {
-  return nameEntries(ownEntries(scalarEntries(hit.source)), nameFields)[0]?.[1];
+  return nameEntries(scalarEntries(hit.source), nameFields)[0]?.[1];
 }
 
 /** Whether a hit is exactly the request: same id or code, or the same full name. */
 function isExactMatch(requested: string, hit: Hit, nameFields: string[]): boolean {
   const wanted = normalize(requested);
   return isIdentifiedBy(wanted, hit.id, hit.source)
-    || nameEntries(ownEntries(scalarEntries(hit.source)), nameFields).some(([, value]) => normalize(String(value)) === wanted);
+    || nameEntries(scalarEntries(hit.source), nameFields).some(([, value]) => normalize(String(value)) === wanted);
 }
 
 /**
- * The one hit that is the record asked for, or the hits when several fit: an exact match wins
- * over partial ones; two exact matches (records sharing a name) or two partial ones are several.
+ * The one hit that is the record asked for, or the hits when several fit: the record with that
+ * id wins, then an exact match (code or full name) over partial ones; two exact matches
+ * (records sharing a name) or two partial ones are several.
  */
 function resolveMatch(requested: string, hits: Hit[], nameFields: string[]): { one?: Hit; several?: Hit[] } {
+  const wanted = normalize(requested);
+  const byId = hits.filter((hit) => hit.id !== undefined && normalize(String(hit.id)) === wanted);
+  if (byId.length === 1) return { one: byId[0] };
   const exact = hits.filter((hit) => isExactMatch(requested, hit, nameFields));
   const fitting = exact.length > 0
     ? exact
