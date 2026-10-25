@@ -131,7 +131,8 @@ export const DATA_SOURCE_CAPABILITIES: Record<DataSourceType, OperationCapabilit
       aiDescriptionTemplate:
         'Look up one specific item in "{dataSourceName}" by its ID, SKU or full name. ' +
         'Use this when the user asks about that item, not similar ones. ' +
-        'Returns found: false when no item matches.',
+        'When several items fit, returns found: false with matches; ask the user which one. ' +
+        'When none fits, returns found: false with closestMatches.',
       supportsAutoSchema: false,
       inputDescriptions: { id: LOOKUP_ID_OR_NAME },
       findsByName: true,
@@ -184,7 +185,8 @@ export const DATA_SOURCE_CAPABILITIES: Record<DataSourceType, OperationCapabilit
       aiDescriptionTemplate:
         'Look up one specific item in the external "{dataSourceName}" index by its ID, SKU or full name. ' +
         'Use this when the user asks about that item, not similar ones. ' +
-        'Returns found: false when no item matches.',
+        'When several items fit, returns found: false with matches; ask the user which one. ' +
+        'When none fits, returns found: false with closestMatches.',
       supportsAutoSchema: false,
       inputDescriptions: { id: LOOKUP_ID_OR_NAME },
       findsByName: true,

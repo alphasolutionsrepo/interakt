@@ -1,7 +1,8 @@
 -- Find Record tools on a search index say they take an id, a SKU or a name.
 --
 -- The lookup on a managed or external search index falls back to a search and keeps only
--- the item asked for, so a name works as well as an id. The planner is now told so, but
+-- the item asked for, so a name works as well as an id; when several items fit, or none
+-- does, it says so and lists them. The planner is now told so, but
 -- each tool also stores its own description and input schema, generated when it was
 -- created: "by ID ... when you have a specific document ID". Left alone, those would
 -- contradict the planner. Only text that is exactly the old generated default is replaced
@@ -14,7 +15,9 @@
 -- the template means someone edited it.
 UPDATE "tools" AS t
 SET "ai_description" = 'Look up one specific item in "' || ds."name" || '" by its ID, SKU or full name. '
-  || 'Use this when the user asks about that item, not similar ones. Returns found: false when no item matches.'
+  || 'Use this when the user asks about that item, not similar ones. '
+  || 'When several items fit, returns found: false with matches; ask the user which one. '
+  || 'When none fits, returns found: false with closestMatches.'
   || substr(t."ai_description", length(old.text) + 1)
 FROM "data_sources" AS ds,
   LATERAL (SELECT 'Look up a specific item by ID from "' || ds."name" || '". '
@@ -26,7 +29,9 @@ WHERE ds."id" = t."data_source_id"
   AND substr(t."ai_description", length(old.text) + 1) ~ '^(\n\nThe document ID field is "[^"\n]+"\.)?$';--> statement-breakpoint
 UPDATE "tools" AS t
 SET "ai_description" = 'Look up one specific item in the external "' || ds."name" || '" index by its ID, SKU or full name. '
-  || 'Use this when the user asks about that item, not similar ones. Returns found: false when no item matches.'
+  || 'Use this when the user asks about that item, not similar ones. '
+  || 'When several items fit, returns found: false with matches; ask the user which one. '
+  || 'When none fits, returns found: false with closestMatches.'
   || substr(t."ai_description", length(old.text) + 1)
 FROM "data_sources" AS ds,
   LATERAL (SELECT 'Look up a specific document by ID from the external "' || ds."name" || '" index.' AS text) AS old

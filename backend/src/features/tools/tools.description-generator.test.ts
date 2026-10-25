@@ -20,7 +20,7 @@ describe('Find Record descriptions', () => {
 
     expect(aiDescription).toBe(
       'Look up one specific item in "Fashion Catalog" by its ID, SKU or full name. '
-      + 'Use this when the user asks about that item, not similar ones. Returns found: false when no item matches.',
+      + 'Use this when the user asks about that item, not similar ones. When several items fit, returns found: false with matches; ask the user which one. When none fits, returns found: false with closestMatches.',
     );
     expect(idDescription(inputSchema)).toBe("The item's ID, SKU or full name, as the user gave it");
   });
@@ -29,6 +29,7 @@ describe('Find Record descriptions', () => {
     const { aiDescription, inputSchema } = generateToolDescription('Shop', 'search_index_external', 'lookup');
 
     expect(aiDescription).toContain('in the external "Shop" index by its ID, SKU or full name');
+    expect(aiDescription).toContain('When several items fit, returns found: false with matches; ask the user which one.');
     expect(idDescription(inputSchema)).toBe("The item's ID, SKU or full name, as the user gave it");
   });
 

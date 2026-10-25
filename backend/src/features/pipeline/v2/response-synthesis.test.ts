@@ -304,6 +304,16 @@ describe('D3: Response Synthesis', () => {
       expect(preset).toBe('rich_text');
     });
 
+    it('shows no card for a lookup miss, even with closest matches', () => {
+      const { preset, presetPayload } = _selectPreset(makeInput({
+        actionResults: [makeActionResult('product-search', {
+          result: { success: true, data: { found: false, requested: 'x', closestMatches: [{ id: 'p1', name: 'Product' }] } },
+        })],
+      }));
+      expect(preset).toBe('rich_text');
+      expect(presetPayload).toBeUndefined();
+    });
+
     it('returns single_card for 1 result with displayConfig', () => {
       const { preset, presetPayload } = _selectPreset(makeInput({
         actionResults: [makeActionResult('product-search', {
@@ -471,6 +481,29 @@ describe('relaxed constraints reach the answer', () => {
     const systemPrompt = JSON.stringify(chat.mock.calls[0]);
     expect(systemPrompt).toContain('the search was widened');
     expect(systemPrompt).toContain('Say so');
+  });
+
+  it('passes a lookup miss and its closest matches to the answer, with no product card', async () => {
+    const chat = vi.fn().mockResolvedValue(makeChatResult('Did you mean the Casual Crew Neck Sweater?'));
+    const emit = vi.fn();
+    const miss = {
+      found: false,
+      requested: 'Vesper crew neck sweater in navy',
+      message: 'No record matches "Vesper crew neck sweater in navy". closestMatches lists the nearest items found; none of them is the item asked for.',
+      closestMatches: [{ id: 'p1', name: 'Vesper & Co Casual Crew Neck Sweater' }],
+    };
+
+    await synthesizeResponse(
+      makeInput({ actionResults: [makeActionResult('product-search', { result: { success: true, data: miss } })] }),
+      { chat } as SynthesisDeps,
+      emit,
+    );
+
+    const prompt = JSON.stringify(chat.mock.calls[0]);
+    expect(prompt).toContain('Vesper & Co Casual Crew Neck Sweater');
+    expect(prompt).toContain('none of them is the item asked for');
+    const presets = emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'preset');
+    expect(presets.every((e) => (e as { preset?: string }).preset === 'rich_text')).toBe(true);
   });
 
   it('says nothing about relaxation on an ordinary result', async () => {

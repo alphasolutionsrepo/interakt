@@ -150,7 +150,9 @@ async function lookupFromManagedIndex(
     { query: documentId, pageSize: FALLBACK_CANDIDATES },
     { triggerType: 'ai_tool' },
   );
-  const match = response.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source, nameFields));
+  const resolved = resolveMatch(documentId, response.hits, nameFields);
+  if (resolved.several) return severalMatch(documentId, resolved.several, nameFields);
+  const match = resolved.one;
   if (match) {
     logger.info('Lookup id was not a document key — returning matching search hit', {
       searchIndexId,
@@ -167,7 +169,7 @@ async function lookupFromManagedIndex(
     };
   }
 
-  return notFound(documentId);
+  return notFound(documentId, response.hits, nameFields);
 }
 
 // ============================================================================
@@ -211,7 +213,9 @@ async function lookupFromExternalSource(
   // Fallback, as for managed indexes: the "id" is often a name or title the planner
   // took from an earlier answer. Only a hit that is the record asked for is returned.
   const searched = await connector.search(source, { query: documentId, offset: 0, limit: FALLBACK_CANDIDATES }, fields);
-  const match = searched.hits.find((hit) => matchesRequestedRecord(documentId, hit.id, hit.source, nameFields));
+  const resolved = resolveMatch(documentId, searched.hits, nameFields);
+  if (resolved.several) return severalMatch(documentId, resolved.several, nameFields);
+  const match = resolved.one;
   if (match) {
     logger.info('External lookup id did not match — returning matching search hit', {
       dataSourceId: source.dataSourceId,
@@ -221,7 +225,7 @@ async function lookupFromExternalSource(
     return { success: true, data: { id: match.id, document: match.source, matchedBy: 'search_fallback' } };
   }
 
-  return notFound(documentId);
+  return notFound(documentId, searched.hits, nameFields);
 }
 
 // ============================================================================
@@ -265,6 +269,40 @@ function wordsOf(text: string): string[] {
   return normalize(text).split(' ').filter(Boolean).map(singular);
 }
 
+type Entry = [string, string | number];
+
+function scalarEntries(fields: Record<string, unknown> | undefined): Entry[] {
+  return Object.entries(fields ?? {}).filter(
+    (entry): entry is Entry => typeof entry[1] === 'string' || typeof entry[1] === 'number',
+  );
+}
+
+/** A record's own fields: those that aren't about a related item (brand, category, ...). */
+function ownEntries(entries: Entry[]): Entry[] {
+  return entries.filter(([name]) => !RELATED_FIELD.test(name));
+}
+
+/** Whether the record's id, or one of its identifier fields, is the requested value. */
+function isIdentifiedBy(wanted: string, hitId: string | undefined, own: Entry[]): boolean {
+  if (hitId !== undefined && normalize(String(hitId)) === wanted) return true;
+  return own.some(([name, value]) => IDENTIFIER_FIELD.test(name) && normalize(String(value)) === wanted);
+}
+
+/** The words of a record's brand, which a request often puts next to the name. */
+function brandWordsOf(entries: Entry[]): Set<string> {
+  return new Set(
+    entries
+      .filter(([name]) => BRAND_FIELD.test(name) && !IDENTIFIER_FIELD.test(name))
+      .flatMap(([, value]) => wordsOf(String(value))),
+  );
+}
+
+/** A record's name fields: its known ones, or, if it has none, fields ending in name/title. */
+function nameEntries(own: Entry[], nameFields: string[]): Entry[] {
+  const known = own.filter(([name]) => isNameField(name, nameFields));
+  return known.length > 0 ? known : own.filter(([name]) => LOOSE_NAME_FIELD.test(name));
+}
+
 /**
  * Whether a search hit is the record that was asked for:
  * - its id or an identifier field equals the requested value, or
@@ -284,26 +322,15 @@ export function matchesRequestedRecord(
 ): boolean {
   const wanted = normalize(requested);
   if (!wanted) return false;
-  if (hitId !== undefined && normalize(String(hitId)) === wanted) return true;
 
-  const entries = Object.entries(fields ?? {}).filter(
-    (entry): entry is [string, string | number] => typeof entry[1] === 'string' || typeof entry[1] === 'number',
-  );
-  const brandWords = new Set(
-    entries
-      .filter(([name]) => BRAND_FIELD.test(name) && !IDENTIFIER_FIELD.test(name))
-      .flatMap(([, value]) => wordsOf(String(value))),
-  );
+  const entries = scalarEntries(fields);
+  const own = ownEntries(entries);
+  if (isIdentifiedBy(wanted, hitId, own)) return true;
+
+  const brandWords = brandWordsOf(entries);
   const wantedWords = new Set(wordsOf(requested));
-  const own = entries.filter(([name]) => !RELATED_FIELD.test(name));
 
-  if (own.some(([name, value]) => IDENTIFIER_FIELD.test(name) && normalize(String(value)) === wanted)) return true;
-
-  // The record's name: its known name fields, or, if it has none, fields ending in name/title
-  const known = own.filter(([name]) => isNameField(name, nameFields));
-  const names = known.length > 0 ? known : own.filter(([name]) => LOOSE_NAME_FIELD.test(name));
-
-  for (const [, value] of names) {
+  for (const [, value] of nameEntries(own, nameFields)) {
     const nameWords = new Set(wordsOf(String(value)));
     const recordWords = new Set([...nameWords, ...brandWords]);
     const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));
@@ -315,13 +342,82 @@ export function matchesRequestedRecord(
   return false;
 }
 
+type Hit = { id?: string; source?: Record<string, unknown> };
+
+/** The record's name, as shown in a list of matches. */
+function nameOf(hit: Hit, nameFields: string[]): string | number | undefined {
+  return nameEntries(ownEntries(scalarEntries(hit.source)), nameFields)[0]?.[1];
+}
+
+/** Whether a hit is exactly the request: same id or code, or the same full name. */
+function isExactMatch(requested: string, hit: Hit, nameFields: string[]): boolean {
+  const wanted = normalize(requested);
+  const own = ownEntries(scalarEntries(hit.source));
+  return isIdentifiedBy(wanted, hit.id, own)
+    || nameEntries(own, nameFields).some(([, value]) => normalize(String(value)) === wanted);
+}
+
 /**
- * No record matches. That is an answer, not a failure: there is no document, so
- * no product card is shown, and the planner counts it as zero results.
+ * The one hit that is the record asked for, or the hits when several fit: an exact match wins
+ * over partial ones; two exact matches (records sharing a name) or two partial ones are several.
  */
-function notFound(requested: string): OperationResult {
+function resolveMatch(requested: string, hits: Hit[], nameFields: string[]): { one?: Hit; several?: Hit[] } {
+  const exact = hits.filter((hit) => isExactMatch(requested, hit, nameFields));
+  const fitting = exact.length > 0
+    ? exact
+    : hits.filter((hit) => matchesRequestedRecord(requested, hit.id, hit.source, nameFields));
+  if (fitting.length === 1) return { one: fitting[0] };
+  return fitting.length > 1 ? { several: fitting } : {};
+}
+
+/** Several records fit the request: none is returned as the record; the caller asks which one. */
+function severalMatch(requested: string, hits: Hit[], nameFields: string[]): OperationResult {
   return {
     success: true,
-    data: { found: false, requested, message: `No record matches "${requested}".` },
+    data: {
+      found: false,
+      requested,
+      message: `Several records match "${requested}". matches lists them; ask the user which one they mean.`,
+      matches: hits.map((hit) => ({ id: hit.id, name: nameOf(hit, nameFields) })),
+    },
+  };
+}
+
+/** How many near misses a not-found lookup offers, so the answer can ask "did you mean ...?". */
+const CLOSEST_MATCHES = 3;
+/** Words too common to make two names alike. */
+const FILLER_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'by', 'at']);
+
+/**
+ * No record matches. That is an answer, not a failure: there is no document, so no product
+ * card is shown, and the planner counts it as zero results. The search hits that were checked
+ * and rejected come back as closestMatches (id and name only), so a near miss (a reworded name,
+ * an extra word) isn't a dead end. Only hits whose name shares a word with the request, besides
+ * the brand and filler words, count as close. They are not the item asked for.
+ */
+function notFound(requested: string, hits: Hit[], nameFields: string[]): OperationResult {
+  const wantedWords = new Set(wordsOf(requested).filter((word) => !FILLER_WORDS.has(word)));
+  const closestMatches = hits
+    .map((hit) => {
+      const brandWords = brandWordsOf(scalarEntries(hit.source));
+      const name = nameOf(hit, nameFields);
+      const close = name !== undefined
+        && wordsOf(String(name)).some((word) => wantedWords.has(word) && !brandWords.has(word));
+      return close ? { id: hit.id, name } : null;
+    })
+    .filter((match) => match !== null)
+    .slice(0, CLOSEST_MATCHES);
+  if (closestMatches.length === 0) {
+    return { success: true, data: { found: false, requested, message: `No record matches "${requested}".` } };
+  }
+  return {
+    success: true,
+    data: {
+      found: false,
+      requested,
+      message: `No record matches "${requested}". closestMatches lists the nearest items found;`
+        + ' none of them is the item asked for.',
+      closestMatches,
+    },
   };
 }

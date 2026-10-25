@@ -17,7 +17,11 @@ vi.mock('./shared', async (importOriginal) => ({
   resolveDataSource: vi.fn(async () => ({ kind: 'managed', searchIndexId: 'idx' })),
 }));
 
+import catalog from '../../../../../setup/data/fashion_catalog.json';
+
 import { executeDataSourceLookup, matchesRequestedRecord } from './lookup';
+
+const products = catalog as Array<{ productId: string; name: string }>;
 
 describe('matchesRequestedRecord', () => {
   it('matches the hit id', () => {
@@ -162,6 +166,164 @@ describe('managed lookup fallback', () => {
   it('returns not found, with no document, when no hit matches', async () => {
     getDocumentByIdFromIndex.mockResolvedValueOnce(null);
     searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { name: 'Streetwear Denim Jacket' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Haven & Hart Denim Bomber' });
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        found: false,
+        requested: 'Haven & Hart Denim Bomber',
+        message: 'No record matches "Haven & Hart Denim Bomber". closestMatches lists the nearest items found;'
+          + ' none of them is the item asked for.',
+        closestMatches: [{ id: 'p1', name: 'Streetwear Denim Jacket' }],
+      },
+    });
+  });
+
+  it('leaves out hits that share only the brand or a filler word with the request', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'p1', source: { name: 'Haven & Hart Flowing Maxi Dress', brand: 'Haven & Hart' } },
+        { id: 'p2', source: { name: 'Card for Mom' } },
+        { id: 'p3', source: { name: 'Haven & Hart Streetwear Denim Jacket', brand: 'Haven & Hart' } },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Haven & Hart Denim Bomber for Dad' });
+
+    expect((result.data as { closestMatches: unknown[] }).closestMatches).toEqual([
+      { id: 'p3', name: 'Haven & Hart Streetwear Denim Jacket' },
+    ]);
+  });
+
+  it('answers plain not found when no hit shares a word with the request', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { name: 'Streetwear Denim Jacket' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'XYZ-999' });
+
+    expect(result).toEqual({
+      success: true,
+      data: { found: false, requested: 'XYZ-999', message: 'No record matches "XYZ-999".' },
+    });
+  });
+
+  it('offers at most three closest matches, by id and name only', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: ['A', 'B', 'C', 'D'].map((x) => ({ id: x, source: { name: `Denim Jacket ${x}`, price: 10, brand: 'Acme' } })),
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Haven & Hart Denim Bomber' });
+
+    expect((result.data as { closestMatches: unknown[] }).closestMatches).toEqual([
+      { id: 'A', name: 'Denim Jacket A' },
+      { id: 'B', name: 'Denim Jacket B' },
+      { id: 'C', name: 'Denim Jacket C' },
+    ]);
+  });
+
+  it('says several match, with the list, when more than one item fits', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'p1', source: { name: 'Vesper & Co Casual Crew Neck Sweater', brand: 'Vesper & Co' } },
+        { id: 'p2', source: { name: 'Echo Style Minimalist Crew Neck Sweater', brand: 'Echo Style' } },
+        { id: 'p3', source: { name: 'Indigo Park Casual V-Neck Sweater', brand: 'Indigo Park' } },
+        { id: 'p4', source: { name: 'Atlas Apparel Athleisure Crew Neck Sweater', brand: 'Atlas Apparel' } },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Crew Neck Sweater' });
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        found: false,
+        requested: 'Crew Neck Sweater',
+        message: 'Several records match "Crew Neck Sweater". matches lists them; ask the user which one they mean.',
+        matches: [
+          { id: 'p1', name: 'Vesper & Co Casual Crew Neck Sweater' },
+          { id: 'p2', name: 'Echo Style Minimalist Crew Neck Sweater' },
+          { id: 'p4', name: 'Atlas Apparel Athleisure Crew Neck Sweater' },
+        ],
+      },
+    });
+  });
+
+  it('says several match when two records share the exact name', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'p1', source: { name: 'Atlas Apparel Formal V-Neck Sweater', material: 'wool' } },
+        { id: 'p2', source: { name: 'Atlas Apparel Formal V-Neck Sweater', material: 'cashmere' } },
+        { id: 'p3', source: { name: 'Atlas Apparel Formal V-Neck Sweater Vest' } },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Atlas Apparel Formal V-Neck Sweater' });
+
+    expect((result.data as { matches: unknown[] }).matches).toEqual([
+      { id: 'p1', name: 'Atlas Apparel Formal V-Neck Sweater' },
+      { id: 'p2', name: 'Atlas Apparel Formal V-Neck Sweater' },
+    ]);
+  });
+
+  it('returns the exact match when longer names also fit', async () => {
+    const exact = { name: 'Crew Neck Sweater' };
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'p1', source: { name: 'Crew Neck Sweater Deluxe' } },
+        { id: 'p2', source: exact },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'crew neck sweater' });
+
+    expect(result).toEqual({ success: true, data: { id: 'p2', document: exact, matchedBy: 'search_fallback' } });
+  });
+
+  it('finds a document by its title with an extra word', async () => {
+    const guide = { title: 'Quarterly Planning Guide' };
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'doc-7', source: guide }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Quarterly Planning Guide 2024' });
+
+    expect(result).toEqual({ success: true, data: { id: 'doc-7', document: guide, matchedBy: 'search_fallback' } });
+  });
+
+  it('offers a record whose title shares a word when a code comes with an extra word', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'INV-2041', source: { title: 'Invoice Template' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'INV-2041 template' });
+
+    expect(result.data).toMatchObject({ found: false, closestMatches: [{ id: 'INV-2041', name: 'Invoice Template' }] });
+  });
+
+  it('finds every demo product by its full name, or says several match when names are shared', async () => {
+    const hits = products.map((p) => ({ id: p.productId, source: p as unknown as Record<string, unknown> }));
+    const wrong: string[] = [];
+    for (const product of products) {
+      getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+      searchById.mockResolvedValueOnce({ hits });
+      const data = (await executeDataSourceLookup('ds', {}, { id: product.name })).data as {
+        id?: string; matches?: Array<{ id: string; name: string }>;
+      };
+      const ok = data.id === product.productId
+        || (data.matches?.some((m) => m.id === product.productId) && data.matches.every((m) => m.name === product.name));
+      if (!ok) wrong.push(`${product.name} -> ${JSON.stringify(data).slice(0, 120)}`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('answers plain not found when the search finds nothing', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [] });
 
     const result = await executeDataSourceLookup('ds', {}, { id: 'XYZ-999' });
 

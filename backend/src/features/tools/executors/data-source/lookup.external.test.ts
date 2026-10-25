@@ -41,11 +41,16 @@ describe('external lookup fallback', () => {
       .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
       .mockResolvedValueOnce({ hits: [{ id: 'p2', score: 1, source: { name: 'Denim Jacket' } }], unappliedFilters: [] });
 
-    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: 'XYZ-999' });
+    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: 'Denim Bomber' });
 
     expect(result).toEqual({
       success: true,
-      data: { found: false, requested: 'XYZ-999', message: 'No record matches "XYZ-999".' },
+      data: {
+        found: false,
+        requested: 'Denim Bomber',
+        message: 'No record matches "Denim Bomber". closestMatches lists the nearest items found; none of them is the item asked for.',
+        closestMatches: [{ id: 'p2', name: 'Denim Jacket' }],
+      },
     });
   });
 
@@ -77,6 +82,27 @@ describe('external lookup fallback', () => {
       .mockRejectedValueOnce(new Error('HTTP 500'));
 
     await expect(executeDataSourceLookup('ds', { idField: 'id' }, { id: 'Vesper & Co Sweater' })).rejects.toThrow('HTTP 500');
+  });
+});
+
+describe('external lookup when several records fit', () => {
+  it('says several match instead of returning the first', async () => {
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({
+        hits: [
+          { id: 'p1', score: 2, source: { name: 'Trail Running Shoe' } },
+          { id: 'p2', score: 1, source: { name: 'Trail Running Shoe' } },
+        ],
+        unappliedFilters: [],
+      });
+
+    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: 'Trail Running Shoe' });
+
+    expect(result.data).toMatchObject({
+      found: false,
+      matches: [{ id: 'p1', name: 'Trail Running Shoe' }, { id: 'p2', name: 'Trail Running Shoe' }],
+    });
   });
 });
 
