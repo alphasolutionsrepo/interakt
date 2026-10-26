@@ -487,6 +487,11 @@ function buildSourceConfig(
         config.includes = context.defaultResponseFields;
     }
 
+    if (request.includeSearchedFields) {
+        const searched = context.searchableFields.map(f => f.fieldName);
+        config.includes = [...new Set([...config.includes, ...searched])];
+    }
+
     // Exclude specified fields
     if (request.excludeFields && request.excludeFields.length > 0) {
         config.excludes = request.excludeFields;

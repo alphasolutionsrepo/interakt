@@ -8,13 +8,18 @@
 import { describe, it, expect, vi } from 'vitest';
 
 // A key fetch finds the record unless a test says otherwise (each starts with a miss on the
-// requested value; a later fetch is the matched record being read as responses show it).
-const { getDocumentByIdFromIndex, searchById } = vi.hoisted(() => ({
-  getDocumentByIdFromIndex: vi.fn(
-    async (_index: string, key: string): Promise<{ id: string; fields: Record<string, unknown> } | null> => ({ id: key, fields: { id: key } }),
-  ),
-  searchById: vi.fn(),
-}));
+// requested value; a later fetch is the matched record being read as responses show it, which
+// here is every field the last search returned for it).
+const { getDocumentByIdFromIndex, searchById } = vi.hoisted(() => {
+  const searchById = vi.fn();
+  type Found = { id: string; fields: Record<string, unknown> } | null;
+  const getDocumentByIdFromIndex = vi.fn(async (_index: string, key: string): Promise<Found> => {
+    const last = await searchById.mock.results.at(-1)?.value;
+    const hit = (last?.hits ?? []).find((h: { id: string }) => h.id === key);
+    return { id: key, fields: hit ? hit.source : { id: key } };
+  });
+  return { getDocumentByIdFromIndex, searchById };
+});
 vi.mock('@/features/search/search.service', () => ({ getDocumentByIdFromIndex, searchById }));
 const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
@@ -153,7 +158,7 @@ describe('managed lookup fallback', () => {
     // Looking past the top hit needs more than one candidate from the engine
     expect(searchById).toHaveBeenCalledWith(
       'idx',
-      { query: 'Vesper & Co Crew Neck Sweater', pageSize: 5 },
+      { query: 'Vesper & Co Crew Neck Sweater', pageSize: 5, includeSearchedFields: true },
       { triggerType: 'ai_tool' },
     );
   });
@@ -219,10 +224,10 @@ describe('managed lookup fallback', () => {
     const b = { id: 'b', source: { name: 'Product B', sku: 'B-200' } };
     getDocumentByIdFromIndex.mockResolvedValueOnce(null);
     searchById.mockResolvedValueOnce({ hits: [{ id: 'a', source: { name: 'Product A', sku: 'A-100', relatedProducts: [{ sku: 'B-200' }] } }, b] });
+    const listed = await executeDataSourceLookup('ds', {}, { id: 'B-200' });
+
     getDocumentByIdFromIndex.mockResolvedValueOnce(null);
     searchById.mockResolvedValueOnce({ hits: [{ id: 'a', source: { name: 'Product A', relatedProductSku: 'B-200' } }, b] });
-
-    const listed = await executeDataSourceLookup('ds', {}, { id: 'B-200' });
     const pointed = await executeDataSourceLookup('ds', {}, { id: 'B-200' });
 
     expect(listed).toMatchObject({ success: true, data: { id: 'b' } });
@@ -277,15 +282,11 @@ describe('managed lookup fallback', () => {
     const result = await executeDataSourceLookup('ds', {}, { id: 12345 });
 
     expect(result).toMatchObject({ success: true, data: { id: 'p1' } });
-    expect(getDocumentByIdFromIndex).toHaveBeenLastCalledWith('idx', '12345');
+    // The key fetch, before the matched record is read again
+    expect(getDocumentByIdFromIndex.mock.calls.at(-2)).toEqual(['idx', '12345']);
   });
 
   it('matches on a field kept out of responses, and returns only the fields responses show', async () => {
-    getDataSourceById.mockResolvedValueOnce({
-      schema: {
-        fields: [{ name: 'name', type: 'text', role: 'title' }, { name: 'sku', type: 'keyword' }, { name: 'embedding', type: 'vector' }],
-      },
-    } as never);
     getDocumentByIdFromIndex
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: 'p1', fields: { name: 'Crew Neck Sweater' } });
@@ -293,7 +294,7 @@ describe('managed lookup fallback', () => {
 
     const result = await executeDataSourceLookup('ds', {}, { id: 'ABC-123' });
 
-    expect(searchById).toHaveBeenLastCalledWith('idx', expect.objectContaining({ includeFields: ['name', 'sku'] }), expect.anything());
+    expect(searchById).toHaveBeenLastCalledWith('idx', expect.objectContaining({ includeSearchedFields: true }), expect.anything());
     expect(result).toEqual({
       success: true,
       data: { id: 'p1', document: { name: 'Crew Neck Sweater' }, matchedBy: 'search_fallback' },
@@ -301,9 +302,6 @@ describe('managed lookup fallback', () => {
   });
 
   it('answers not found, without hidden fields, when the matched item is gone by the time it is fetched', async () => {
-    getDataSourceById.mockResolvedValueOnce({
-      schema: { fields: [{ name: 'name', type: 'text', role: 'title' }, { name: 'sku', type: 'keyword' }] },
-    } as never);
     getDocumentByIdFromIndex.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { name: 'Crew Neck Sweater', sku: 'ABC-123' } }] });
 

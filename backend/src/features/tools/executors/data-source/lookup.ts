@@ -160,13 +160,11 @@ async function lookupFromManagedIndex(
   // Read only now: a key that exists needs no schema
   const schema = await loadSchemaOnMiss();
   const roles = rolesOf(schema);
-  // Ask for every field but vectors, not only those responses show, so a sku or name kept out
-  // of responses can still be matched; the record itself is then fetched as responses show it.
-  const matchFields = (schema?.fields ?? []).filter((f) => f.type !== 'vector').map((f) => f.name);
-  const includeFields = matchFields.length > 0 ? matchFields : undefined;
+  // The hits carry the fields the search looked in, so a sku kept out of responses can still be
+  // matched; the record itself is then fetched as responses show it.
   const response = await searchService.searchById(
     searchIndexId,
-    { query: documentId, pageSize: FALLBACK_CANDIDATES, ...(includeFields && { includeFields }) },
+    { query: documentId, pageSize: FALLBACK_CANDIDATES, includeSearchedFields: true },
     { triggerType: 'ai_tool' },
   );
   const resolved = resolveMatch(documentId, response.hits, roles);
@@ -178,13 +176,13 @@ async function lookupFromManagedIndex(
       query: documentId,
       matchedId: match.id,
     });
-    const shown = includeFields && match.id ? await searchService.getDocumentByIdFromIndex(searchIndexId, match.id) : null;
-    if (includeFields && !shown) return noRecordFound(documentId);
+    const shown = await searchService.getDocumentByIdFromIndex(searchIndexId, match.id);
+    if (!shown) return noRecordFound(documentId);
     return {
       success: true,
       data: {
         id: match.id,
-        document: shown ? shown.fields : match.source,
+        document: shown.fields,
         matchedBy: 'search_fallback',
       },
     };

@@ -134,3 +134,29 @@ describe('searchable field types', () => {
         expect(options.highlightPostTag).toBe('</em>');
     });
 });
+
+describe('searched fields in the response', () => {
+    // sku is searched but kept out of responses; price is shown; rating is neither
+    const context: SearchContext = {
+        ...buildContext([
+            { fieldName: 'name', fieldType: 'text' },
+            { fieldName: 'sku', fieldType: 'keyword' },
+            { fieldName: 'rating', fieldType: 'number' },
+        ]),
+        defaultResponseFields: ['name', 'price'],
+    };
+    const select = (request: Partial<SearchRequest>) =>
+        buildAzureSearchOptions({
+            context,
+            request: { query: 'ABC-123', ...request } as SearchRequest,
+            searchType: 'lexical',
+        } as ProviderSearchRequest).select;
+
+    it('returns the shown fields plus the fields Azure searched, when asked', () => {
+        expect(select({ includeSearchedFields: true })).toEqual(['id', 'name', 'price', 'sku']);
+    });
+
+    it('returns only the shown fields otherwise', () => {
+        expect(select({})).toEqual(['id', 'name', 'price']);
+    });
+});

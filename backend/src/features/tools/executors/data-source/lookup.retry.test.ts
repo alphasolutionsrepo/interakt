@@ -89,7 +89,11 @@ describe('Find Record through executeTool', () => {
   });
 
   it('retries a transient engine error on the search fallback', async () => {
-    getDocumentByIdFromIndex.mockResolvedValue(null);
+    // The key fetch misses on both attempts; the second attempt then reads the matched record
+    getDocumentByIdFromIndex
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'p2', fields: { name: 'Crew Neck Sweater' } });
     searchById
       .mockRejectedValueOnce(new Error('503 Service Unavailable'))
       .mockResolvedValueOnce({ hits: [{ id: 'p2', source: { name: 'Crew Neck Sweater' } }] });

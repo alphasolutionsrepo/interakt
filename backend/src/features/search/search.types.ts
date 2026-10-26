@@ -38,6 +38,12 @@ export interface SearchRequest {
     /** Fields to include in response (defaults to includeInResponse fields) */
     includeFields?: string[];
 
+    /**
+     * Also return the fields the query searched, including ones kept out of responses, so the
+     * caller can tell why a hit matched. Not for showing: those fields may be hidden.
+     */
+    includeSearchedFields?: boolean;
+
     /** Fields to exclude from response */
     excludeFields?: string[];
 

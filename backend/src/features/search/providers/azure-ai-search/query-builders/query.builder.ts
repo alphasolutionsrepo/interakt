@@ -87,7 +87,10 @@ export function buildAzureSearchOptions(providerRequest: ProviderSearchRequest):
 
     // Select fields (what to return in results)
     // Always include 'id' (the key field) so document IDs are available for React keys, etc.
-    const responseFields = request.includeFields ?? context.defaultResponseFields;
+    const shownFields = request.includeFields ?? context.defaultResponseFields;
+    const responseFields = request.includeSearchedFields
+        ? [...new Set([...shownFields, ...azureSearchableFields.map(f => f.fieldName)])]
+        : shownFields;
     if (responseFields.length > 0) {
         const fieldsWithId = responseFields.includes('id')
             ? responseFields
