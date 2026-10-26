@@ -66,17 +66,18 @@ export async function executeDataSourceLookup(
     // executeTool, which retries transient errors and labels the call failed.
     if (source.kind === 'file_store') return executeFileStoreLookup(dataSourceId, config, input);
 
-    const fields = await loadSchemaFields(dataSourceId);
-    const nameFields = fields.filter((f) => f.role === 'title').map((f) => f.name);
+    const schema = await loadSchema(dataSourceId);
+    const fields = schema?.fields ?? [];
+    const roles = rolesOf(schema);
 
     // Managed indexes fetch by document key — provider-agnostic (ES _id / Azure key).
     if (source.kind === 'managed') {
-      return lookupFromManagedIndex(source.searchIndexId, documentId, nameFields);
+      return lookupFromManagedIndex(source.searchIndexId, documentId, roles);
     }
 
     // External sources still look up via a filterable id field.
     const idField = lookupConfig.idField ?? resolveIdField(fields);
-    return lookupFromExternalSource(source, idField, documentId, fields, nameFields);
+    return lookupFromExternalSource(source, idField, documentId, fields, roles);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Data source lookup failed', error as Error, { dataSourceId });
@@ -88,19 +89,29 @@ export async function executeDataSourceLookup(
 // ID FIELD RESOLUTION
 // ============================================================================
 
-/** The data source's discovered fields; none when it has no schema or can't be read. */
-async function loadSchemaFields(dataSourceId: string): Promise<DataSourceField[]> {
+/** The data source's schema; none when it has no schema or can't be read. */
+async function loadSchema(dataSourceId: string): Promise<DataSourceSchema | null> {
   try {
     const ds = await dataSourceService.getDataSourceById(dataSourceId);
-    return (ds?.schema as DataSourceSchema | null)?.fields ?? [];
+    return (ds?.schema as DataSourceSchema | null) ?? null;
   } catch (error) {
     // Non-critical: the lookup still works without roles (id field 'id', exact name fields)
     logger.warn('Could not read the data source schema for a lookup', {
       dataSourceId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return [];
+    return null;
   }
+}
+
+/** The fields the schema says name and identify a record, and whether an admin confirmed them. */
+function rolesOf(schema: DataSourceSchema | null): FieldRoles {
+  const fields = schema?.fields ?? [];
+  return {
+    titleFields: fields.filter((f) => f.role === 'title').map((f) => f.name),
+    idFields: fields.filter((f) => f.role === 'id').map((f) => f.name),
+    confirmed: schema?.rolesConfirmed === true,
+  };
 }
 
 /**
@@ -124,7 +135,7 @@ function resolveIdField(fields: DataSourceField[]): string {
 async function lookupFromManagedIndex(
   searchIndexId: string,
   documentId: string,
-  nameFields: string[],
+  roles: FieldRoles,
 ): Promise<OperationResult> {
   // Fetch by document key via the index's engine provider (ES _id / Azure key).
   // No filterable field or role:'id' needed — works identically for both providers.
@@ -150,8 +161,8 @@ async function lookupFromManagedIndex(
     { query: documentId, pageSize: FALLBACK_CANDIDATES },
     { triggerType: 'ai_tool' },
   );
-  const resolved = resolveMatch(documentId, response.hits, nameFields);
-  if (resolved.several) return severalMatch(documentId, resolved.several, nameFields);
+  const resolved = resolveMatch(documentId, response.hits, roles);
+  if (resolved.several) return severalMatch(documentId, resolved.several, roles);
   const match = resolved.one;
   if (match) {
     logger.info('Lookup id was not a document key — returning matching search hit', {
@@ -169,7 +180,7 @@ async function lookupFromManagedIndex(
     };
   }
 
-  return notFound(documentId, response.hits, nameFields);
+  return notFound(documentId, response.hits, roles);
 }
 
 // ============================================================================
@@ -181,7 +192,7 @@ async function lookupFromExternalSource(
   idField: string,
   documentId: string,
   fields: DataSourceField[],
-  nameFields: string[],
+  roles: FieldRoles,
 ): Promise<OperationResult> {
   const connector = getConnector(source.provider);
   if (!connector) {
@@ -213,8 +224,8 @@ async function lookupFromExternalSource(
   // Fallback, as for managed indexes: the "id" is often a name or title the planner
   // took from an earlier answer. Only a hit that is the record asked for is returned.
   const searched = await connector.search(source, { query: documentId, offset: 0, limit: FALLBACK_CANDIDATES }, fields);
-  const resolved = resolveMatch(documentId, searched.hits, nameFields);
-  if (resolved.several) return severalMatch(documentId, resolved.several, nameFields);
+  const resolved = resolveMatch(documentId, searched.hits, roles);
+  if (resolved.several) return severalMatch(documentId, resolved.several, roles);
   const match = resolved.one;
   if (match) {
     logger.info('External lookup id did not match — returning matching search hit', {
@@ -225,7 +236,7 @@ async function lookupFromExternalSource(
     return { success: true, data: { id: match.id, document: match.source, matchedBy: 'search_fallback' } };
   }
 
-  return notFound(documentId, searched.hits, nameFields);
+  return notFound(documentId, searched.hits, roles);
 }
 
 // ============================================================================
@@ -238,8 +249,8 @@ const FALLBACK_CANDIDATES = 5;
 /** Fields that identify a record exactly: id, sku, productCode, item_number, ... */
 const IDENTIFIER_FIELD = /(^|_|-)(id|sku|code|key|slug|handle|number|ref|ean|upc|gtin|mpn)$|(Id|ID|Sku|SKU|Code|Key|Slug|Handle|Number|Ref)$/;
 /**
- * Fields that name a record, besides any the schema gives the 'title' role. Exact names, so
- * colorName or fileName don't count as the record's name.
+ * Guessed name fields, for a record whose schema declares none: exact names, so colorName or
+ * fileName don't count as the record's name.
  */
 const NAME_FIELDS = new Set([
   'name', 'title', 'label', 'heading', 'displayname', 'productname', 'producttitle', 'itemname',
@@ -292,13 +303,42 @@ function ownEntries(entries: Entry[]): Entry[] {
 const isScalar = (value: unknown): value is string | number => typeof value === 'string' || typeof value === 'number';
 
 /**
- * The record's codes, also inside lists (variants[].sku): values of its identifier fields
- * (sku, productCode, ...), which identify it for certain, and any other text with a digit in it
- * (isbn, partNo, model, but also compatibleWith: "iPhone 15"), which only might. A plain number
- * (price, reviewCount) is a code only in an identifier field.
+ * Which fields name and identify a record, from the data source's schema: the fields with the
+ * 'title' role (one or more; read together as one name) and the 'id' role. Until an admin
+ * confirms them (`rolesConfirmed`), the lookup also falls back to guessing from field names,
+ * so sources set up before roles could be confirmed keep working.
  */
-function codeValues(source: Record<string, unknown> | undefined): Array<{ value: string | number; certain: boolean }> {
-  const codes: Array<{ value: string | number; certain: boolean }> = [];
+export interface FieldRoles {
+  titleFields?: string[];
+  idFields?: string[];
+  confirmed?: boolean;
+}
+
+/** The values at a field path ("name", "variants.sku"), across lists. */
+function valuesAt(source: Record<string, unknown> | undefined, path: string): Array<string | number> {
+  let current: unknown[] = [source];
+  for (const key of path.split('.')) {
+    current = current
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => (value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined));
+  }
+  return current.flatMap((value) => (Array.isArray(value) ? value : [value])).filter(isScalar);
+}
+
+/**
+ * The record's codes, with whether each identifies it for certain: the values of its declared
+ * id fields, also inside lists (variants.sku). Until roles are confirmed, also guessed ones: the
+ * values of fields named like identifiers (sku, productCode, ...), which are certain, and any
+ * other text with a digit in it (isbn, partNo, model, but also compatibleWith: "iPhone 15"),
+ * which only might be. A plain number (price, reviewCount) is never guessed to be a code.
+ */
+function codeValues(
+  source: Record<string, unknown> | undefined,
+  roles: FieldRoles,
+): Array<{ value: string | number; certain: boolean }> {
+  const codes = (roles.idFields ?? []).flatMap((field) => valuesAt(source, field)).map((value) => ({ value, certain: true }));
+  if (roles.confirmed) return codes;
+
   const add = (field: string, value: unknown) => {
     if (!isScalar(value)) return;
     if (IDENTIFIER_FIELD.test(field)) codes.push({ value, certain: true });
@@ -320,73 +360,86 @@ function codeValues(source: Record<string, unknown> | undefined): Array<{ value:
 
 /**
  * Whether the record's id, or one of its codes, is the whole requested value. With `certainOnly`,
- * only the id and identifier fields count, not other text that happens to hold the value.
+ * only the id and certain codes count, not other text that happens to hold the value.
  */
 function isIdentifiedBy(
   wanted: string,
   hitId: string | undefined,
   source: Record<string, unknown> | undefined,
+  roles: FieldRoles,
   certainOnly = false,
 ): boolean {
   if (hitId !== undefined && normalize(String(hitId)) === wanted) return true;
-  return codeValues(source).some((code) => (code.certain || !certainOnly) && normalize(String(code.value)) === wanted);
+  return codeValues(source, roles).some((code) => (code.certain || !certainOnly) && normalize(String(code.value)) === wanted);
 }
 
-/** The words of a record's brand, which a request often puts next to the name. */
-function brandWordsOf(entries: Entry[]): Set<string> {
+/**
+ * The words of a record's brand, which a request often puts next to the name. Guessed from
+ * field names until roles are confirmed; after that a brand counts only as part of the title.
+ */
+function brandWordsOf(source: Record<string, unknown> | undefined, roles: FieldRoles): Set<string> {
+  if (roles.confirmed) return new Set();
   return new Set(
-    entries
+    scalarEntries(source)
       .filter(([name]) => BRAND_FIELD.test(name) && !IDENTIFIER_FIELD.test(name))
       .flatMap(([, value]) => wordsOf(String(value))),
   );
 }
 
 /**
- * A record's name fields, the first of: the fields its schema calls the title (whatever they
- * are called, storeName included); its own known name fields; its own fields ending in
- * name/title; and, for a record that is itself a store, brand or author, any such field.
+ * The record's names. Its declared title fields read together as one name ("Robert Martin" and
+ * "Clean Architecture"). Without them, and only until roles are confirmed, the first of: its own
+ * known name fields, its own fields ending in name/title, and, for a record that is itself a
+ * store, brand or author, any such field.
  */
-function nameEntries(entries: Entry[], nameFields: string[]): Entry[] {
+function namesOf(source: Record<string, unknown> | undefined, roles: FieldRoles): string[] {
+  const declared = declaredTitleValues(source, roles);
+  if (declared.length > 0) return [declared.join(' ')];
+  if (roles.confirmed) return [];
+
+  const entries = scalarEntries(source);
   const own = ownEntries(entries);
   for (const pick of [
-    entries.filter(([name]) => nameFields.includes(name)),
     own.filter(([name]) => isNameField(name)),
     own.filter(([name]) => LOOSE_NAME_FIELD.test(name)),
     entries.filter(([name]) => LOOSE_NAME_FIELD.test(name)),
   ]) {
-    if (pick.length > 0) return pick;
+    if (pick.length > 0) return pick.map(([, value]) => String(value));
   }
   return [];
 }
 
+function declaredTitleValues(source: Record<string, unknown> | undefined, roles: FieldRoles): string[] {
+  return (roles.titleFields ?? []).flatMap((field) => valuesAt(source, field)).map(String);
+}
+
 /**
  * Whether a search hit is the record that was asked for:
- * - its id or an identifier field equals the requested value, or
- * - its name/title (with its brand) has every requested word and the request is more than
+ * - its id or one of its codes equals the requested value, or
+ * - its name (with its brand) has every requested word and the request is more than
  *   the brand ("Crew Neck Sweater" finds "Vesper & Co Crew Neck Sweater"; "Haven & Hart
  *   Denim Jacket" finds "Streetwear Denim Jacket" by Haven & Hart), or
  * - every word of its name and brand is in the request, and the name makes up at
  *   least half of it ("Casual Crew Neck Sweater by Vesper & Co", "... Sweater in tan").
- * Plurals count as the same word. "Haven & Hart Denim Bomber" does not find
+ * Plurals and filler words don't count. "Haven & Hart Denim Bomber" does not find
  * "Haven & Hart Streetwear Denim Jacket"; "XYZ-999" finds nothing.
  */
 export function matchesRequestedRecord(
   requested: string,
   hitId: string | undefined,
   fields: Record<string, unknown> | undefined,
-  nameFields: string[] = [],
+  roles: FieldRoles = {},
 ): boolean {
   const wanted = normalize(requested);
   if (!wanted) return false;
 
-  if (isIdentifiedBy(wanted, hitId, fields)) return true;
+  if (isIdentifiedBy(wanted, hitId, fields, roles)) return true;
 
-  const entries = scalarEntries(fields);
-  const brandWords = brandWordsOf(entries);
+  const brandWords = brandWordsOf(fields, roles);
   const wantedWords = new Set(contentWords(requested));
 
-  for (const [, value] of nameEntries(entries, nameFields)) {
-    const nameWords = new Set(contentWords(String(value)));
+  for (const name of namesOf(fields, roles)) {
+    const nameWords = new Set(contentWords(name));
     const recordWords = new Set([...nameWords, ...brandWords]);
     const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));
     if (namesTheItem && [...wantedWords].every((word) => recordWords.has(word))) return true;
@@ -400,43 +453,46 @@ export function matchesRequestedRecord(
 type Hit = { id?: string; source?: Record<string, unknown> };
 
 /** The record's name, as shown in a list of matches. */
-function nameOf(hit: Hit, nameFields: string[]): string | number | undefined {
-  return nameEntries(scalarEntries(hit.source), nameFields)[0]?.[1];
+function nameOf(hit: Hit, roles: FieldRoles): string | undefined {
+  return namesOf(hit.source, roles)[0];
 }
 
-/** Whether a hit is exactly the request: same id or identifier-field code, or the same full name. */
-function isExactMatch(requested: string, hit: Hit, nameFields: string[]): boolean {
+/**
+ * Whether a hit is exactly the request: same id or certain code, or the same full name (the
+ * whole name, or one declared title field on its own).
+ */
+function isExactMatch(requested: string, hit: Hit, roles: FieldRoles): boolean {
   const wanted = normalize(requested);
-  return isIdentifiedBy(wanted, hit.id, hit.source, true)
-    || nameEntries(scalarEntries(hit.source), nameFields).some(([, value]) => normalize(String(value)) === wanted);
+  return isIdentifiedBy(wanted, hit.id, hit.source, roles, true)
+    || [...namesOf(hit.source, roles), ...declaredTitleValues(hit.source, roles)].some((name) => normalize(name) === wanted);
 }
 
 /**
  * The one hit that is the record asked for, or the hits when several fit: the record with that
- * id wins, then an exact match (code or full name) over partial ones; two exact matches
+ * id wins, then an exact match (certain code or full name) over partial ones; two exact matches
  * (records sharing a name) or two partial ones are several.
  */
-function resolveMatch(requested: string, hits: Hit[], nameFields: string[]): { one?: Hit; several?: Hit[] } {
+function resolveMatch(requested: string, hits: Hit[], roles: FieldRoles): { one?: Hit; several?: Hit[] } {
   const wanted = normalize(requested);
   const byId = hits.filter((hit) => hit.id !== undefined && normalize(String(hit.id)) === wanted);
   if (byId.length === 1) return { one: byId[0] };
-  const exact = hits.filter((hit) => isExactMatch(requested, hit, nameFields));
+  const exact = hits.filter((hit) => isExactMatch(requested, hit, roles));
   const fitting = exact.length > 0
     ? exact
-    : hits.filter((hit) => matchesRequestedRecord(requested, hit.id, hit.source, nameFields));
+    : hits.filter((hit) => matchesRequestedRecord(requested, hit.id, hit.source, roles));
   if (fitting.length === 1) return { one: fitting[0] };
   return fitting.length > 1 ? { several: fitting } : {};
 }
 
 /** Several records fit the request: none is returned as the record; the caller asks which one. */
-function severalMatch(requested: string, hits: Hit[], nameFields: string[]): OperationResult {
+function severalMatch(requested: string, hits: Hit[], roles: FieldRoles): OperationResult {
   return {
     success: true,
     data: {
       found: false,
       requested,
       message: `Several records match "${requested}". matches lists them; ask the user which one they mean.`,
-      matches: hits.map((hit) => ({ id: hit.id, name: nameOf(hit, nameFields) })),
+      matches: hits.map((hit) => ({ id: hit.id, name: nameOf(hit, roles) })),
     },
   };
 }
@@ -451,14 +507,14 @@ const CLOSEST_MATCHES = 3;
  * an extra word) isn't a dead end. Only hits whose name shares a word with the request, besides
  * the brand and filler words, count as close. They are not the item asked for.
  */
-function notFound(requested: string, hits: Hit[], nameFields: string[]): OperationResult {
+function notFound(requested: string, hits: Hit[], roles: FieldRoles): OperationResult {
   const wantedWords = new Set(contentWords(requested));
   const closestMatches = hits
     .map((hit) => {
-      const brandWords = brandWordsOf(scalarEntries(hit.source));
-      const name = nameOf(hit, nameFields);
+      const brandWords = brandWordsOf(hit.source, roles);
+      const name = nameOf(hit, roles);
       const close = name !== undefined
-        && wordsOf(String(name)).some((word) => wantedWords.has(word) && !brandWords.has(word));
+        && wordsOf(name).some((word) => wantedWords.has(word) && !brandWords.has(word));
       return close ? { id: hit.id, name } : null;
     })
     .filter((match) => match !== null)

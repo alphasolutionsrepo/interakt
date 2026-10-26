@@ -84,7 +84,7 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { label: 'Crew Neck Sweater' })).toBe(true);
     expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { product_name: 'Crew Neck Sweater' })).toBe(true);
     expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { headline: 'Crew Neck Sweater' })).toBe(false);
-    expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { headline: 'Crew Neck Sweater' }, ['headline'])).toBe(true);
+    expect(matchesRequestedRecord('Crew Neck Sweater', 'x', { headline: 'Crew Neck Sweater' }, { titleFields: ['headline'] })).toBe(true);
   });
 
   it('uses fields ending in name or title when a record has no known name field', () => {
@@ -413,5 +413,75 @@ describe('managed lookup fallback', () => {
       success: true,
       data: { found: false, requested: 'XYZ-999', message: 'No record matches "XYZ-999".' },
     });
+  });
+});
+
+describe('with field roles from the data source', () => {
+  const withSchema = (fields: Array<{ name: string; role: string }>, rolesConfirmed?: boolean) =>
+    getDataSourceById.mockResolvedValueOnce({
+      schema: { fields: fields.map((f) => ({ ...f, type: 'text' })), ...(rolesConfirmed !== undefined && { rolesConfirmed }) },
+    } as never);
+
+  it('reads several title fields as one name', async () => {
+    withSchema([{ name: 'author', role: 'title' }, { name: 'title', role: 'title' }]);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [{ id: 'b1', source: { author: 'Robert Martin', title: "Clean Architecture: A Craftsman's Guide" } }],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Martin Clean Architecture' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'b1' } });
+  });
+
+  it('takes a value in a declared id field as certain, over a record that only mentions it', async () => {
+    withSchema([{ name: 'name', role: 'title' }, { name: 'partNo', role: 'id' }]);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'jar', source: { name: 'Blender Jar', compatibleWith: 'HB-2231' } },
+        { id: 'blender', source: { name: 'Hand Blender', partNo: 'HB-2231' } },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'HB-2231' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'blender' } });
+  });
+
+  it('finds a code in a declared id field inside a list', async () => {
+    withSchema([{ name: 'name', role: 'title' }, { name: 'variants.sku', role: 'id' }], true);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'lamp', source: { name: 'Desk Lamp', variants: [{ sku: 'LMP-1' }, { sku: 'LMP-2' }] } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'LMP-2' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'lamp' } });
+  });
+
+  it('uses only the declared fields once roles are confirmed', async () => {
+    const lamp = { id: 'lamp', source: { name: 'Desk Lamp', compatibleWith: 'LMP-1' } };
+    withSchema([{ name: 'label', role: 'title' }], true);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [lamp] });
+    withSchema([{ name: 'label', role: 'title' }], true);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [lamp] });
+
+    const byName = await executeDataSourceLookup('ds', {}, { id: 'Desk Lamp' });
+    const byMention = await executeDataSourceLookup('ds', {}, { id: 'LMP-1' });
+
+    expect(byName.data).toMatchObject({ found: false });
+    expect(byMention.data).toMatchObject({ found: false });
+  });
+
+  it('still falls back to guessing fields while roles are not confirmed', async () => {
+    withSchema([{ name: 'label', role: 'title' }]);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'lamp', source: { name: 'Desk Lamp' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'Desk Lamp' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'lamp' } });
   });
 });
