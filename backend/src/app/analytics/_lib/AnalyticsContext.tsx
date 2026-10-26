@@ -1,27 +1,25 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import type { TimeRange } from './hooks/useAnalytics';
+import {
+  DEFAULT_PERIOD,
+  approximateTimeRange,
+  browserTimeZone,
+  parsePeriod,
+  periodFromParams,
+  periodLabel,
+  serializePeriod,
+  writePeriodParams,
+  type Period,
+} from './period';
 
-/** URL query params that carry the selection across reloads and shared links */
+/** URL query param that carries the experience across reloads and shared links (the period uses range or from/to) */
 const EXPERIENCE_PARAM = 'experience';
-const RANGE_PARAM = 'range';
 /** Fallback for full-page navigation between analytics pages (sidebar links drop the query string) */
 const EXPERIENCE_STORAGE_KEY = 'analytics.experienceId';
-const RANGE_STORAGE_KEY = 'analytics.timeRange';
-
-const DEFAULT_TIME_RANGE: TimeRange = '7d';
-export const TIME_RANGE_OPTIONS: Array<{ value: TimeRange; label: string }> = [
-  { value: '1h', label: 'Last Hour' },
-  { value: '24h', label: 'Last 24 Hours' },
-  { value: '7d', label: 'Last 7 Days' },
-  { value: '30d', label: 'Last 30 Days' },
-];
-
-function isTimeRange(value: string | null): value is TimeRange {
-  return TIME_RANGE_OPTIONS.some((o) => o.value === value);
-}
+const PERIOD_STORAGE_KEY = 'analytics.period';
 
 function readStored(key: string): string | null {
   try {
@@ -62,9 +60,18 @@ interface AnalyticsContextValue {
   setExperience: (id: string | undefined, name?: string, type?: ExperienceType, options?: SetExperienceOptions) => void;
   /** True when the selection came from a saved record (e.g. a chat session) and must be kept even if the experience no longer exists */
   keepWhenMissing: boolean;
-  /** Selected time range, shared by the overview and analytics chat */
+  /** Selected period (preset or custom dates), shared by every analytics section */
+  period: Period;
+  setPeriod: (period: Period) => void;
+  /** "Last 7 days", "Oct 1 – Oct 13" */
+  periodLabel: string;
+  /** The viewer's time zone, which days and "today" follow */
+  timeZone: string;
+  /**
+   * The nearest fixed range to the period, for what only understands those:
+   * stored insights and the analytics chat.
+   */
   timeRange: TimeRange;
-  setTimeRange: (range: TimeRange) => void;
 }
 
 // ============================================================================
@@ -81,8 +88,9 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const [experienceId, setExperienceId] = useState<string | undefined>(undefined);
   const [experienceName, setExperienceName] = useState('All Experiences');
   const [experienceType, setExperienceType] = useState<ExperienceType | undefined>(undefined);
-  const [timeRange, setTimeRange] = useState<TimeRange>(DEFAULT_TIME_RANGE);
+  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD);
   const [keepWhenMissing, setKeepWhenMissing] = useState(false);
+  const [timeZone, setTimeZone] = useState('UTC');
 
   const pathname = usePathname();
 
@@ -100,8 +108,9 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
     const params = new URLSearchParams(window.location.search);
     const id = params.has(EXPERIENCE_PARAM) ? params.get(EXPERIENCE_PARAM) : readStored(EXPERIENCE_STORAGE_KEY);
     if (id) setExperience(id);
-    const range = params.has(RANGE_PARAM) ? params.get(RANGE_PARAM) : readStored(RANGE_STORAGE_KEY);
-    if (isTimeRange(range)) setTimeRange(range);
+    const restoredPeriod = periodFromParams(params) ?? parsePeriod(readStored(PERIOD_STORAGE_KEY));
+    if (restoredPeriod) setPeriod(restoredPeriod);
+    setTimeZone(browserTimeZone());
     setRestored(true);
   }, [setExperience]);
 
@@ -109,26 +118,36 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!restored) return;
     writeStored(EXPERIENCE_STORAGE_KEY, experienceId);
-    writeStored(RANGE_STORAGE_KEY, timeRange);
+    writeStored(PERIOD_STORAGE_KEY, serializePeriod(period));
     const url = new URL(window.location.href);
     if (experienceId) {
       url.searchParams.set(EXPERIENCE_PARAM, experienceId);
     } else {
       url.searchParams.delete(EXPERIENCE_PARAM);
     }
-    url.searchParams.set(RANGE_PARAM, timeRange);
+    writePeriodParams(url, period);
     if (url.href !== window.location.href) {
       window.history.replaceState(window.history.state, '', url.href);
     }
-  }, [restored, experienceId, timeRange, pathname]);
+  }, [restored, experienceId, period, pathname]);
 
-  return (
-    <AnalyticsContext.Provider
-      value={{ experienceId, experienceName, experienceType, setExperience, keepWhenMissing, timeRange, setTimeRange }}
-    >
-      {children}
-    </AnalyticsContext.Provider>
+  const value = useMemo(
+    () => ({
+      experienceId,
+      experienceName,
+      experienceType,
+      setExperience,
+      keepWhenMissing,
+      period,
+      setPeriod,
+      periodLabel: periodLabel(period),
+      timeZone,
+      timeRange: approximateTimeRange(period),
+    }),
+    [experienceId, experienceName, experienceType, setExperience, keepWhenMissing, period, timeZone],
   );
+
+  return <AnalyticsContext.Provider value={value}>{children}</AnalyticsContext.Provider>;
 }
 
 // ============================================================================

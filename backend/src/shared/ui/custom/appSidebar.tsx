@@ -69,11 +69,14 @@ function isUrlActive(pathname: string, itemUrl: string, allSubItemUrls?: string[
 }
 
 /**
- * Check if a parent item with sub-items should be considered active
+ * Check if a parent item with sub-items should be considered active: on any of its
+ * sub-items' pages, or any other page under its own URL (Analytics' settings and
+ * full chat pages aren't listed, but belong to it)
  */
-function isParentActive(pathname: string, subItems: Array<{ url: string }>): boolean {
-  return subItems.some(subItem =>
-    pathname === subItem.url || pathname.startsWith(subItem.url + "/")
+function isParentActive(pathname: string, subItems: Array<{ url: string }>, parentUrl?: string): boolean {
+  return (
+    subItems.some(subItem => pathname === subItem.url || pathname.startsWith(subItem.url + "/")) ||
+    (!!parentUrl && parentUrl !== "/" && pathname.startsWith(parentUrl + "/"))
   )
 }
 
@@ -86,9 +89,7 @@ function computeOpenStates(currentPath: string) {
     const isMainGroup = group.name === "sidebar.groups.main"
     const hasActiveItem = group.items.some(item => {
       if (item.subItems) {
-        const isActive = item.subItems.some(subItem =>
-          currentPath === subItem.url || currentPath.startsWith(subItem.url + "/")
-        )
+        const isActive = isParentActive(currentPath, item.subItems, item.url)
         if (isActive) {
           items.add(item.title)
         }
@@ -171,7 +172,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                           // Collect all sub-item URLs for smart active detection
                           const allSubItemUrls = item.subItems.map(si => si.url)
                           // Check if parent should show as active (any child page is active)
-                          const parentIsActive = isParentActive(pathname, item.subItems)
+                          const parentIsActive = isParentActive(pathname, item.subItems, item.url)
 
                           // Find the listing page URL (usually the one without /create)
                           const listingUrl = item.subItems.find(si => !si.url.includes('/create'))?.url || item.subItems[0].url

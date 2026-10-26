@@ -153,9 +153,9 @@ export function CustomInstructionsGenerator({
 
         <div className="space-y-4 py-4">
           {/* Guidance Alert */}
-          <Alert className="bg-blue-50 border-blue-200">
+          <Alert className="bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800">
             <Info className="h-4 w-4 text-blue-500" />
-            <AlertDescription className="text-blue-700 text-sm">
+            <AlertDescription className="text-blue-700 dark:text-blue-300 text-sm">
               <strong>What this generates:</strong> AI persona, domain expertise, tone, and behavior rules.
               <br />
               <strong>Already handled:</strong> Search functionality, response formatting, and safety.
@@ -221,7 +221,7 @@ export function CustomInstructionsGenerator({
                       <Sparkles className="h-3 w-3" />
                       Generated Instructions
                     </Label>
-                    <div className="p-3 rounded-md bg-green-50 border border-green-200 text-sm max-h-48 overflow-y-auto whitespace-pre-wrap">
+                    <div className="p-3 rounded-md bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 text-sm max-h-48 overflow-y-auto whitespace-pre-wrap">
                       {generatedInstructions}
                     </div>
                   </div>

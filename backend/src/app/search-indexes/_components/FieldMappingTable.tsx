@@ -118,18 +118,18 @@ interface FieldMappingTableProps {
 
 function getFieldTypeBadgeColor(fieldType: string): string {
     const colors: Record<string, string> = {
-        text: 'bg-blue-50 text-blue-700 border-blue-200',
-        keyword: 'bg-violet-50 text-violet-700 border-violet-200',
-        number: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        boolean: 'bg-amber-50 text-amber-700 border-amber-200',
-        datetime: 'bg-pink-50 text-pink-700 border-pink-200',
-        date: 'bg-pink-50 text-pink-700 border-pink-200',
-        json: 'bg-slate-100 text-slate-700 border-slate-300',
-        array: 'bg-orange-50 text-orange-700 border-orange-200',
-        object: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-        vector: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        text: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+        keyword: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800',
+        number: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+        boolean: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        datetime: 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800',
+        date: 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800',
+        json: 'bg-slate-100 dark:bg-muted text-slate-700 dark:text-muted-foreground border-slate-300 dark:border-border',
+        array: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800',
+        object: 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800',
+        vector: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
     };
-    return colors[fieldType.toLowerCase()] || 'bg-slate-50 text-slate-600 border-slate-200';
+    return colors[fieldType.toLowerCase()] || 'bg-slate-50 dark:bg-muted/40 text-slate-600 border-slate-200 dark:border-border';
 }
 
 function getFieldMappingStatus(
@@ -253,14 +253,14 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 };
 
 const BG_MAP: Record<string, string> = {
-    source: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-    static: 'bg-purple-50 border-purple-200 text-purple-800',
-    generated: 'bg-amber-50 border-amber-200 text-amber-800',
-    computed: 'bg-blue-50 border-blue-200 text-blue-800',
-    collect: 'bg-cyan-50 border-cyan-200 text-cyan-800',
-    reference: 'bg-indigo-50 border-indigo-200 text-indigo-800',
-    fallback: 'bg-slate-100 border-slate-300 text-slate-700',
-    none: 'bg-slate-50 border-slate-200 text-slate-400',
+    source: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200',
+    static: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200',
+    generated: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200',
+    computed: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200',
+    collect: 'bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-800 text-cyan-800 dark:text-cyan-200',
+    reference: 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200',
+    fallback: 'bg-slate-100 dark:bg-muted border-slate-300 dark:border-border text-slate-700 dark:text-muted-foreground',
+    none: 'bg-slate-50 dark:bg-muted/40 border-slate-200 dark:border-border text-slate-400',
 };
 
 const MODE_LABELS: Record<MappingMode, string> = {
@@ -328,16 +328,16 @@ function StatusIndicator({
 
 function LoadingSkeleton() {
     return (
-        <div className="border border-slate-200 rounded-lg overflow-hidden">
+        <div className="border border-slate-200 dark:border-border rounded-lg overflow-hidden">
             <div className="animate-pulse">
-                <div className="h-12 bg-slate-100" />
+                <div className="h-12 bg-slate-100 dark:bg-muted" />
                 {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center gap-4 p-4 border-t border-slate-100">
-                        <div className="h-4 bg-slate-200 rounded w-32" />
-                        <div className="h-6 bg-slate-200 rounded w-16" />
-                        <div className="h-8 bg-slate-200 rounded flex-1 max-w-[280px]" />
-                        <div className="h-4 bg-slate-200 rounded w-20" />
-                        <div className="h-6 bg-slate-200 rounded w-16" />
+                    <div key={i} className="flex items-center gap-4 p-4 border-t border-slate-100 dark:border-border">
+                        <div className="h-4 bg-slate-200 dark:bg-muted rounded w-32" />
+                        <div className="h-6 bg-slate-200 dark:bg-muted rounded w-16" />
+                        <div className="h-8 bg-slate-200 dark:bg-muted rounded flex-1 max-w-[280px]" />
+                        <div className="h-4 bg-slate-200 dark:bg-muted rounded w-20" />
+                        <div className="h-6 bg-slate-200 dark:bg-muted rounded w-16" />
                     </div>
                 ))}
             </div>
@@ -351,11 +351,11 @@ function LoadingSkeleton() {
 
 function EmptyState() {
     return (
-        <div className="border border-slate-200 rounded-lg p-8 text-center">
+        <div className="border border-slate-200 dark:border-border rounded-lg p-8 text-center">
             <div className="text-slate-400 mb-2">
                 <Filter className="h-12 w-12 mx-auto opacity-50" />
             </div>
-            <h3 className="font-medium text-slate-700 mb-1">No fields defined</h3>
+            <h3 className="font-medium text-slate-700 dark:text-muted-foreground mb-1">No fields defined</h3>
             <p className="text-sm text-slate-500">
                 This index doesn&apos;t have any fields configured yet.
             </p>
@@ -459,23 +459,23 @@ export function FieldMappingTable({
 
     return (
         <>
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <div className="border border-slate-200 dark:border-border rounded-lg overflow-hidden">
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                            <TableHead className="font-semibold text-slate-700 w-[180px]">
+                        <TableRow className="bg-slate-50/80 dark:bg-muted/40 hover:bg-slate-50/80">
+                            <TableHead className="font-semibold text-slate-700 dark:text-muted-foreground w-[180px]">
                                 Index Field
                             </TableHead>
-                            <TableHead className="font-semibold text-slate-700 w-20">
+                            <TableHead className="font-semibold text-slate-700 dark:text-muted-foreground w-20">
                                 Type
                             </TableHead>
-                            <TableHead className="font-semibold text-slate-700 min-w-[280px]">
+                            <TableHead className="font-semibold text-slate-700 dark:text-muted-foreground min-w-[280px]">
                                 Value / Source
                             </TableHead>
-                            <TableHead className="font-semibold text-slate-700 w-[110px]">
+                            <TableHead className="font-semibold text-slate-700 dark:text-muted-foreground w-[110px]">
                                 Status
                             </TableHead>
-                            <TableHead className="font-semibold text-slate-700 w-[120px] text-center">
+                            <TableHead className="font-semibold text-slate-700 dark:text-muted-foreground w-[120px] text-center">
                                 Attributes
                             </TableHead>
                         </TableRow>
@@ -512,14 +512,14 @@ export function FieldMappingTable({
                                     key={field.id}
                                     className={cn(
                                         'transition-colors',
-                                        status === 'required-unmapped' && 'bg-red-50/30',
+                                        status === 'required-unmapped' && 'bg-red-50/30 dark:bg-red-950/40',
                                         status === 'skipped' && 'opacity-50'
                                     )}
                                 >
                                     {/* Field Name */}
                                     <TableCell className="py-3">
                                         <div className="flex flex-col">
-                                            <span className="font-medium text-slate-900 text-sm">
+                                            <span className="font-medium text-slate-900 dark:text-foreground text-sm">
                                                 {field.displayName || field.fieldName}
                                             </span>
                                             {field.displayName &&
@@ -562,7 +562,7 @@ export function FieldMappingTable({
                                             {/* Mode badge */}
                                             <Badge
                                                 variant="outline"
-                                                className="text-[10px] px-1.5 py-0.5 font-medium bg-slate-100 text-slate-600 border-slate-200 shrink-0"
+                                                className="text-[10px] px-1.5 py-0.5 font-medium bg-slate-100 dark:bg-muted text-slate-600 border-slate-200 dark:border-border shrink-0"
                                             >
                                                 {MODE_LABELS[config.mode]}
                                             </Badge>
@@ -585,7 +585,7 @@ export function FieldMappingTable({
                                             {hasTransform && (
                                                 <Badge
                                                     variant="outline"
-                                                    className="text-[10px] px-1.5 py-0.5 bg-orange-50 text-orange-700 border-orange-200 shrink-0"
+                                                    className="text-[10px] px-1.5 py-0.5 bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800 shrink-0"
                                                 >
                                                     {VALUE_TRANSFORM_INFO[config.transform!]
                                                         ?.label || config.transform}
@@ -596,7 +596,7 @@ export function FieldMappingTable({
                                             {mapping?.isVectorSource && (
                                                 <Badge
                                                     variant="outline"
-                                                    className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border-indigo-200 shrink-0"
+                                                    className="text-[10px] px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 shrink-0"
                                                 >
                                                     <Brain className="h-3 w-3 mr-0.5" />
                                                     Embed
@@ -617,7 +617,7 @@ export function FieldMappingTable({
                                                 {field.isRequired && (
                                                     <Tooltip>
                                                         <TooltipTrigger>
-                                                            <div className="p-1 rounded bg-red-50 text-red-600">
+                                                            <div className="p-1 rounded bg-red-50 dark:bg-red-950/40 text-red-600">
                                                                 <AlertCircle className="h-3.5 w-3.5" />
                                                             </div>
                                                         </TooltipTrigger>
@@ -629,7 +629,7 @@ export function FieldMappingTable({
                                                 {field.isSystemField && (
                                                     <Tooltip>
                                                         <TooltipTrigger>
-                                                            <div className="p-1 rounded bg-slate-100 text-slate-600">
+                                                            <div className="p-1 rounded bg-slate-100 dark:bg-muted text-slate-600">
                                                                 <Lock className="h-3.5 w-3.5" />
                                                             </div>
                                                         </TooltipTrigger>
@@ -641,7 +641,7 @@ export function FieldMappingTable({
                                                 {effectiveSearchable && (
                                                     <Tooltip>
                                                         <TooltipTrigger>
-                                                            <div className="p-1 rounded bg-blue-50 text-blue-600">
+                                                            <div className="p-1 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-600">
                                                                 <Search className="h-3.5 w-3.5" />
                                                             </div>
                                                         </TooltipTrigger>
@@ -653,7 +653,7 @@ export function FieldMappingTable({
                                                 {effectiveFacetable && (
                                                     <Tooltip>
                                                         <TooltipTrigger>
-                                                            <div className="p-1 rounded bg-violet-50 text-violet-600">
+                                                            <div className="p-1 rounded bg-violet-50 dark:bg-violet-950/40 text-violet-600">
                                                                 <Filter className="h-3.5 w-3.5" />
                                                             </div>
                                                         </TooltipTrigger>
@@ -665,7 +665,7 @@ export function FieldMappingTable({
                                                 {effectiveAutocomplete && (
                                                     <Tooltip>
                                                         <TooltipTrigger>
-                                                            <div className="p-1 rounded bg-amber-50 text-amber-600">
+                                                            <div className="p-1 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-600">
                                                                 <Sparkles className="h-3.5 w-3.5" />
                                                             </div>
                                                         </TooltipTrigger>

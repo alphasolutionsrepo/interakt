@@ -57,9 +57,17 @@ A cron expression has five fields: `minute hour day-of-month month day-of-week`.
 | `*/15 * * * *` | every 15 minutes |
 | `0 6 * * 1` | every Monday at 06:00 |
 
-Each job type has **one** schedule; saving again replaces it, and **Remove schedule** clears it. Schedules are stored in the database and **survive restarts** — there's nothing to configure in environment variables.
+Each job type has **one** schedule; saving again replaces it, and **Remove schedule** clears it. Schedules are stored in the database and **survive restarts**.
 
 > Scheduled runs use the server's timezone (UTC by default).
+
+### Default schedule for Refresh AI insights
+
+**Refresh AI insights** runs every night at 02:00 UTC unless you set a different schedule. The nightly run refreshes the all-experiences view and then each experience with activity in the last 30 days, so the analytics overview's "What needs attention" list is current each morning.
+
+The default is set once, the first time the app starts with it. After that the schedule is yours: change it or remove it in the UI and it stays that way across restarts. To start without the nightly run at all, set `INSIGHTS_REFRESH_CRON=off` before the first start. To change the default time or zone, set `INSIGHTS_REFRESH_CRON` (a cron expression) and `INSIGHTS_REFRESH_TIMEZONE` (for example `Europe/Copenhagen`).
+
+A run refreshes every active experience in turn, so it may take a while. It is allowed up to 4 hours and is not retried if it fails; the next night's run picks up where it left off.
 
 ## Notes
 

@@ -452,7 +452,7 @@ export function SearchPanel({ experienceId, slug, accessToken, trace = false }: 
                   {results.timing.totalMs}ms
                 </Badge>
                 {activeConfigCount > 0 && (
-                  <Badge variant="outline" className="gap-1 text-amber-600 border-amber-200 shrink-0">
+                  <Badge variant="outline" className="gap-1 text-amber-600 border-amber-200 dark:border-amber-800 shrink-0">
                     <Filter className="h-3 w-3" />
                     {activeConfigCount} active
                   </Badge>

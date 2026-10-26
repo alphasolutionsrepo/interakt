@@ -64,6 +64,8 @@ export interface SpanMetrics {
   avgDurationMs: number;
   p95DurationMs: number;
   topOperations: Array<{ operation: string; count: number; avgDurationMs: number }>;
+  /** Request-level turns (chat turns, search requests): what the Traces list shows */
+  turns: { total: number; errors: number; avgDurationMs: number; p95DurationMs: number };
   /**
    * Health summary for fire-and-forget post-turn tasks (memory extraction,
    * summarization). These tasks log errors but don't surface them to users;
@@ -85,6 +87,8 @@ export interface SpanFilterOptions {
   pipelineType?: string;
   minDurationMs?: number;
   search?: string;
+  /** One trace, whenever it happened: the period is ignored */
+  traceId?: string;
   /** When true, only return root spans (no parentSpanId) — one per conversation turn */
   rootOnly?: boolean;
 }
@@ -104,7 +108,9 @@ function escapeLikePattern(input: string): string {
   return input.replace(/[\\%_]/g, '\\$&');
 }
 
-function getDateRange(timeRange: TimeRange): { from: Date; to: Date } {
+function getDateRange(timeRange: TimeRange, period?: { from: Date; to: Date }): { from: Date; to: Date } {
+  // An explicit period from the analytics pages wins over the preset
+  if (period) return period;
   const to = new Date();
   const from = new Date();
 
@@ -137,19 +143,20 @@ export async function getRecentSpans(
   timeRange: TimeRange,
   options?: SpanFilterOptions,
   limit: number = 100,
-  offset: number = 0
+  offset: number = 0,
+  period?: { from: Date; to: Date }
 ): Promise<{ spans: SpanListItem[]; total: number }> {
   try {
     const { analyticsDB } = await import('@/db/index');
     if (!analyticsDB) return { spans: [], total: 0 };
 
     const { otelSpans } = await import('@/db/analytics-schema');
-    const range = getDateRange(timeRange);
+    const range = getDateRange(timeRange, period);
 
-    const conditions = [
-      gte(otelSpans.startTime, range.from),
-      lte(otelSpans.startTime, range.to),
-    ];
+    // A trace asked for by id is found whenever it happened
+    const conditions = options?.traceId
+      ? [eq(otelSpans.traceId, options.traceId)]
+      : [gte(otelSpans.startTime, range.from), lte(otelSpans.startTime, range.to)];
 
     if (options?.operationName) {
       conditions.push(like(otelSpans.operationName, `%${escapeLikePattern(options.operationName)}%`));
@@ -175,6 +182,7 @@ export async function getRecentSpans(
         or(
           like(otelSpans.operationName, pattern),
           sql`${otelSpans.attributes}->>'alpha.chat.user_message' ILIKE ${pattern}`,
+          sql`${otelSpans.attributes}->>'alpha.search.query' ILIKE ${pattern}`,
           sql`${otelSpans.attributes}->>'alpha.experience.slug' ILIKE ${pattern}`,
         )!,
       );
@@ -283,7 +291,11 @@ export async function getTraceSpans(traceId: string): Promise<SpanDetail[]> {
   }
 }
 
-export async function getSpanMetrics(timeRange: TimeRange): Promise<SpanMetrics> {
+export async function getSpanMetrics(
+  timeRange: TimeRange,
+  period?: { from: Date; to: Date },
+  experienceId?: string
+): Promise<SpanMetrics> {
   const empty: SpanMetrics = {
     totalSpans: 0,
     errorCount: 0,
@@ -291,6 +303,7 @@ export async function getSpanMetrics(timeRange: TimeRange): Promise<SpanMetrics>
     avgDurationMs: 0,
     p95DurationMs: 0,
     topOperations: [],
+    turns: { total: 0, errors: 0, avgDurationMs: 0, p95DurationMs: 0 },
     asyncTasks: { total: 0, errors: 0, byOperation: [] },
   };
 
@@ -299,15 +312,18 @@ export async function getSpanMetrics(timeRange: TimeRange): Promise<SpanMetrics>
     if (!analyticsDB) return empty;
 
     const { otelSpans } = await import('@/db/analytics-schema');
-    const range = getDateRange(timeRange);
+    const range = getDateRange(timeRange, period);
 
     const conditions = [
       gte(otelSpans.startTime, range.from),
       lte(otelSpans.startTime, range.to),
+      ...(experienceId ? [eq(otelSpans.experienceId, experienceId)] : []),
     ];
     const where = and(...conditions);
+    // The same request-level spans the Traces list shows (see rootOnly in getRecentSpans)
+    const isTurn = or(like(otelSpans.operationName, 'chat.%'), like(otelSpans.operationName, 'search_experience.%'))!;
 
-    const [overallResult, topOpsResult, asyncTaskResult] = await Promise.all([
+    const [overallResult, turnResult, topOpsResult, asyncTaskResult] = await Promise.all([
       analyticsDB
         .select({
           total: count(),
@@ -317,6 +333,15 @@ export async function getSpanMetrics(timeRange: TimeRange): Promise<SpanMetrics>
         })
         .from(otelSpans)
         .where(where),
+      analyticsDB
+        .select({
+          total: count(),
+          errors: count(sql`CASE WHEN ${otelSpans.statusCode} = 'ERROR' THEN 1 END`),
+          avgDuration: avg(otelSpans.durationMs),
+          p95Duration: sql<number>`percentile_cont(0.95) WITHIN GROUP (ORDER BY ${otelSpans.durationMs})`,
+        })
+        .from(otelSpans)
+        .where(and(where, isTurn)),
       analyticsDB
         .select({
           operation: otelSpans.operationName,
@@ -337,7 +362,8 @@ export async function getSpanMetrics(timeRange: TimeRange): Promise<SpanMetrics>
           errors: count(sql`CASE WHEN ${otelSpans.statusCode} = 'ERROR' THEN 1 END`),
         })
         .from(otelSpans)
-        .where(and(...conditions, sql`${otelSpans.operationName} LIKE 'pipeline.post.%'`))
+        // All experiences: background tasks don't always record which experience they ran for
+        .where(and(gte(otelSpans.startTime, range.from), lte(otelSpans.startTime, range.to), sql`${otelSpans.operationName} LIKE 'pipeline.post.%'`))
         .groupBy(otelSpans.operationName),
     ]);
 
@@ -357,6 +383,12 @@ export async function getSpanMetrics(timeRange: TimeRange): Promise<SpanMetrics>
       errorRate: total > 0 ? errors / total : 0,
       avgDurationMs: Number(overall?.avgDuration ?? 0),
       p95DurationMs: Number(overall?.p95Duration ?? 0),
+      turns: {
+        total: Number(turnResult[0]?.total ?? 0),
+        errors: Number(turnResult[0]?.errors ?? 0),
+        avgDurationMs: Number(turnResult[0]?.avgDuration ?? 0),
+        p95DurationMs: Number(turnResult[0]?.p95Duration ?? 0),
+      },
       topOperations: topOpsResult.map((r) => ({
         operation: r.operation,
         count: Number(r.count),

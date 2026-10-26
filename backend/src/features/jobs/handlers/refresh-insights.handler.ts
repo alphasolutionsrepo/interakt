@@ -6,12 +6,20 @@ import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('job-refresh-insights');
 
+/** Experiences with activity in this many days get their insights refreshed. */
+const ACTIVE_WITHIN_DAYS = 30;
+
 /**
  * Worker for the `refresh-insights` queue.
  *
  * pg-boss batches jobs to a worker, so we receive an array. For this queue each
  * job is an independent insights recompute; we run them sequentially to avoid
  * piling several multi-LLM-call pipelines onto the server at once.
+ *
+ * A job with an experienceId refreshes that experience. A job without one (the
+ * nightly schedule) refreshes the all-experiences view and then every experience
+ * with recent activity, so each experience's "What needs attention" list stays
+ * current.
  *
  * The returned value becomes the job's `output`, visible in the admin UI.
  */
@@ -23,32 +31,43 @@ export async function refreshInsightsWorker(
   const { runAnalyticsProcessing } = await import(
     '@/features/analytics/analytics-processing.service'
   );
+  const { listRecentlyActiveExperienceIds } = await import(
+    '@/features/analytics/analytics-insights.service'
+  );
 
   const results = [];
   for (const job of jobs) {
     const { experienceId, triggeredBy } = job.data ?? {};
-    logger.info('Refreshing AI insights', { jobId: job.id, experienceId });
+    const scopes: Array<string | undefined> = experienceId
+      ? [experienceId]
+      : [undefined, ...(await listRecentlyActiveExperienceIds(ACTIVE_WITHIN_DAYS))];
 
-    const result = await runAnalyticsProcessing({
-      experienceId,
-      triggeredBy: triggeredBy ?? 'scheduler',
-    });
+    logger.info('Refreshing AI insights', { jobId: job.id, experienceId, scopes: scopes.length });
 
-    if (result.status === 'failed') {
-      // Throwing marks the job failed and lets pg-boss apply its retry policy.
-      logger.error('Insights refresh failed', {
-        jobId: job.id,
-        error: result.error,
+    const runs = [];
+    const failures = [];
+    for (const scope of scopes) {
+      const result = await runAnalyticsProcessing({
+        experienceId: scope,
+        triggeredBy: triggeredBy ?? 'scheduler',
       });
-      throw new Error(result.error ?? 'Insights refresh failed');
+      if (result.status === 'failed') {
+        logger.error('Insights refresh failed', { jobId: job.id, experienceId: scope, error: result.error });
+        failures.push({ experienceId: scope ?? null, error: result.error });
+      } else {
+        runs.push({ experienceId: scope ?? null, runId: result.runId, durationMs: result.durationMs });
+      }
     }
 
-    logger.info('Insights refresh complete', {
-      jobId: job.id,
-      runId: result.runId,
-      durationMs: result.durationMs,
-    });
-    results.push({ jobId: job.id, runId: result.runId });
+    // Throwing marks the job failed and lets pg-boss retry it. Only do that when
+    // nothing succeeded: a retry reprocesses every scope, so one failing
+    // experience shouldn't redo the others. Partial failures are in the output.
+    if (runs.length === 0 && failures.length > 0) {
+      throw new Error(failures[0].error ?? 'Insights refresh failed');
+    }
+
+    logger.info('Insights refresh complete', { jobId: job.id, refreshed: runs.length, failed: failures.length });
+    results.push({ jobId: job.id, runs, failures });
   }
 
   return results;

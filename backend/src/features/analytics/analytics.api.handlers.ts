@@ -21,6 +21,7 @@ import {
   getAIUsageMetrics,
   getToolUsageMetrics,
   getRecentSearchEvents,
+  getDateRange,
   getQueueStats,
   getAnalyticsStatus,
   updateAnalyticsConfig,
@@ -33,6 +34,8 @@ import {
   type TimeRange,
   type AnalyticsFeatureFlags,
 } from './index';
+import { READABLE_INSIGHT_TYPES, getProactiveInsights, getStoredInsight, hideFinding, unhideFinding } from './analytics-insights.service';
+import { PeriodError, readRequestedPeriod, readTimeZone } from './analytics-period';
 
 const logger = createLogger('analytics-api');
 
@@ -388,6 +391,89 @@ export async function handleGetStatus() {
   }
 }
 
+const insightsQuerySchema = z.object({
+  type: z.enum(READABLE_INSIGHT_TYPES).default('proactive_insights'),
+  // Insights are only computed for these periods
+  timeRange: z.enum(['24h', '7d', '30d']).default('7d'),
+  experienceId: z.string().uuid().optional(),
+});
+
+/**
+ * GET /api/analytics/insights
+ * Returns a stored insight for an experience, or all experiences combined, with
+ * when it was computed. The default type, proactive_insights, is "what needs
+ * attention" and returns its list as `insights`; other types return `data`.
+ */
+export async function handleGetInsights(request: NextRequest) {
+  try {
+    const authError = await checkAuth();
+    if (authError) return authError;
+
+    const searchParams = request.nextUrl.searchParams;
+    const params = insightsQuerySchema.parse({
+      type: searchParams.get('type') ?? undefined,
+      timeRange: searchParams.get('timeRange') ?? undefined,
+      experienceId: searchParams.get('experienceId') ?? undefined,
+    });
+
+    if (params.type === 'proactive_insights') {
+      return successResponse(await getProactiveInsights(params.timeRange, params.experienceId));
+    }
+    return successResponse(await getStoredInsight(params.type, params.timeRange, params.experienceId));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return errorResponse(`Invalid parameters: ${error.message}`);
+    }
+    logger.error('Failed to get insights', error as Error);
+    return errorResponse('Failed to get insights', 500);
+  }
+}
+
+const hiddenFindingSchema = z.object({
+  findingId: z.string().regex(/^[a-z0-9_]{1,100}$/),
+  experienceId: z.string().uuid().optional(),
+});
+const hideFindingSchema = hiddenFindingSchema.extend({
+  days: z.number().int().min(1).max(90).default(7),
+});
+
+/**
+ * POST /api/analytics/insights/hidden — hide a finding for some days
+ * DELETE /api/analytics/insights/hidden?findingId=…&experienceId=… — show it again
+ * Hides are shared by every admin.
+ */
+export async function handleHideFinding(request: NextRequest) {
+  try {
+    const authError = await checkAuth();
+    if (authError) return authError;
+    const body = hideFindingSchema.parse(await request.json().catch(() => ({})));
+    const hiddenUntil = await hideFinding(body.findingId, body.experienceId, body.days);
+    return successResponse({ findingId: body.findingId, hiddenUntil: hiddenUntil.toISOString() });
+  } catch (error) {
+    if (error instanceof z.ZodError) return errorResponse(`Invalid request: ${error.message}`);
+    logger.error('Failed to hide finding', error as Error);
+    return errorResponse('Failed to hide finding', 500);
+  }
+}
+
+export async function handleUnhideFinding(request: NextRequest) {
+  try {
+    const authError = await checkAuth();
+    if (authError) return authError;
+    const sp = request.nextUrl.searchParams;
+    const params = hiddenFindingSchema.parse({
+      findingId: sp.get('findingId') ?? undefined,
+      experienceId: sp.get('experienceId') ?? undefined,
+    });
+    await unhideFinding(params.findingId, params.experienceId);
+    return successResponse({ findingId: params.findingId });
+  } catch (error) {
+    if (error instanceof z.ZodError) return errorResponse(`Invalid request: ${error.message}`);
+    logger.error('Failed to show finding again', error as Error);
+    return errorResponse('Failed to show finding again', 500);
+  }
+}
+
 /**
  * GET /api/analytics/dashboard
  * Returns all dashboard data in a single request
@@ -400,13 +486,27 @@ export async function handleGetDashboard(request: NextRequest) {
     const rawParams = parseQueryParams(request);
     const params = analyticsQuerySchema.parse(rawParams);
 
-    const customRange =
-      params.timeRange === 'custom' && params.from && params.to
-        ? { from: new Date(params.from), to: new Date(params.to) }
-        : undefined;
+    // The analytics pages send an explicit period and the viewer's time zone
+    const searchParams = request.nextUrl.searchParams;
+    const customRange = params.timeRange === 'custom' ? readRequestedPeriod(searchParams) : undefined;
+    if (params.timeRange === 'custom' && !customRange) {
+      return errorResponse('A custom period needs from and to');
+    }
+    const timeZone = readTimeZone(searchParams);
 
     const timeRange = params.timeRange as TimeRange;
     const experienceId = params.experienceId;
+
+    // ?view=totals: just the headline totals, for comparing with the previous period
+    // without the trend and query-list aggregations
+    if (searchParams.get('view') === 'totals') {
+      const [overview, aiUsage, toolUsage] = await Promise.all([
+        getOverviewMetrics(timeRange, experienceId, customRange),
+        getAIUsageMetrics(timeRange, experienceId, customRange),
+        getToolUsageMetrics(timeRange, experienceId, customRange),
+      ]);
+      return successResponse({ overview, aiUsage, toolUsage });
+    }
 
     // Fetch all data in parallel
     const [
@@ -421,14 +521,14 @@ export async function handleGetDashboard(request: NextRequest) {
       recentSearches,
     ] = await Promise.all([
       getOverviewMetrics(timeRange, experienceId, customRange),
-      getSearchTrends(timeRange, experienceId, customRange),
+      getSearchTrends(timeRange, experienceId, customRange, timeZone),
       getPopularQueries(timeRange, experienceId, 10, customRange),
       getZeroResultQueries(timeRange, experienceId, 10, customRange),
       getSearchTypeBreakdown(timeRange, experienceId, customRange),
       getPerformanceMetrics(timeRange, experienceId, customRange),
       getAIUsageMetrics(timeRange, experienceId, customRange),
       getToolUsageMetrics(timeRange, experienceId, customRange),
-      getRecentSearchEvents(10, experienceId),
+      getRecentSearchEvents(10, experienceId, getDateRange(timeRange, customRange)),
     ]);
 
     return successResponse({
@@ -444,12 +544,16 @@ export async function handleGetDashboard(request: NextRequest) {
       meta: {
         timeRange: params.timeRange,
         experienceId: experienceId ?? null,
+        timeZone,
         generatedAt: new Date().toISOString(),
       },
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return errorResponse(`Invalid parameters: ${error.message}`);
+    }
+    if (error instanceof PeriodError) {
+      return errorResponse(error.message);
     }
     logger.error('Failed to get dashboard data', error as Error);
     return errorResponse('Failed to get dashboard data', 500);

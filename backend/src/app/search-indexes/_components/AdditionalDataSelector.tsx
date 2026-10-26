@@ -81,18 +81,18 @@ interface UnmappedFieldItemProps {
 
 function getTypeColor(inferredType: string): string {
     const colors: Record<string, string> = {
-        string: 'bg-blue-50 text-blue-700 border-blue-200',
-        number: 'bg-green-50 text-green-700 border-green-200',
-        boolean: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-        null: 'bg-slate-50 text-slate-500 border-slate-200',
-        object: 'bg-purple-50 text-purple-700 border-purple-200',
-        'array:string': 'bg-blue-50 text-blue-700 border-blue-200',
-        'array:number': 'bg-green-50 text-green-700 border-green-200',
-        'array:boolean': 'bg-yellow-50 text-yellow-700 border-yellow-200',
-        'array:object': 'bg-purple-50 text-purple-700 border-purple-200',
-        'array:mixed': 'bg-orange-50 text-orange-700 border-orange-200',
+        string: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+        number: 'bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800',
+        boolean: 'bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800',
+        null: 'bg-slate-50 dark:bg-muted/40 text-slate-500 border-slate-200 dark:border-border',
+        object: 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+        'array:string': 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+        'array:number': 'bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800',
+        'array:boolean': 'bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800',
+        'array:object': 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+        'array:mixed': 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800',
     };
-    return colors[inferredType] || 'bg-slate-50 text-slate-600 border-slate-200';
+    return colors[inferredType] || 'bg-slate-50 dark:bg-muted/40 text-slate-600 border-slate-200 dark:border-border';
 }
 
 function formatSampleValue(value: unknown): string {
@@ -136,8 +136,8 @@ function UnmappedFieldItem({ field, isSelected, onToggle }: UnmappedFieldItemPro
             className={cn(
                 'flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer',
                 isSelected
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-white border-slate-200 hover:bg-slate-50'
+                    ? 'bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800'
+                    : 'bg-white dark:bg-card border-slate-200 dark:border-border hover:bg-slate-50'
             )}
             onClick={() => onToggle(!isSelected)}
         >
@@ -149,7 +149,7 @@ function UnmappedFieldItem({ field, isSelected, onToggle }: UnmappedFieldItemPro
 
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-medium text-slate-900">
+                    <span className="font-mono text-sm font-medium text-slate-900 dark:text-foreground">
                         {field.path}
                     </span>
                     <Badge
@@ -172,7 +172,7 @@ function EmptyUnmappedState() {
     return (
         <div className="text-center py-8">
             <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" />
-            <p className="text-sm font-medium text-slate-700">All fields are mapped!</p>
+            <p className="text-sm font-medium text-slate-700 dark:text-muted-foreground">All fields are mapped!</p>
             <p className="text-xs text-slate-500 mt-1">
                 There are no unmapped source fields to collect.
             </p>
@@ -184,7 +184,7 @@ function NoSourceDataState() {
     return (
         <div className="text-center py-8">
             <Database className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm font-medium text-slate-700">No source data loaded</p>
+            <p className="text-sm font-medium text-slate-700 dark:text-muted-foreground">No source data loaded</p>
             <p className="text-xs text-slate-500 mt-1">
                 Load a sample JSON to see available fields.
             </p>
@@ -301,16 +301,16 @@ export function AdditionalDataSelector({
                 </div>
 
                 {/* Info alert */}
-                <div className="flex items-start gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-800">
                     <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                    <p className="text-xs text-blue-700">
-                        Selected fields will be stored in the <code className="bg-blue-100 px-1 rounded">additionalData</code> object
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                        Selected fields will be stored in the <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">additionalData</code> object
                         for each document. Only select fields you need to preserve.
                     </p>
                 </div>
 
                 {/* Field list */}
-                <ScrollArea className="h-[300px] rounded-lg border border-slate-200">
+                <ScrollArea className="h-[300px] rounded-lg border border-slate-200 dark:border-border">
                     <div className="p-2 space-y-2">
                         {filteredFields.length === 0 ? (
                             <div className="text-center py-6 text-sm text-slate-500">
@@ -331,7 +331,7 @@ export function AdditionalDataSelector({
 
                 {/* Selected summary */}
                 {selectedPaths.length > 0 && (
-                    <div className="pt-2 border-t border-slate-200">
+                    <div className="pt-2 border-t border-slate-200 dark:border-border">
                         <Label className="text-xs text-slate-600 mb-2 block">
                             Selected fields ({selectedPaths.length}):
                         </Label>

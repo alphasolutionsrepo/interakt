@@ -54,6 +54,8 @@ interface AnalyticsDataBlock {
   tool: string;
   dataType: string;
   data: unknown;
+  /** The period the data covers, e.g. "Oct 13, 2026" */
+  periodLabel?: string;
 }
 
 interface AnalyticsDataRendererProps {
@@ -1173,6 +1175,281 @@ function QuerySearchEventsRenderer({ data }: { data: QuerySearchEvent[] }) {
 }
 
 // ============================================================================
+// PERIOD COMPARISON
+// ============================================================================
+
+interface PeriodSide {
+  label: string;
+  overview: { totalSearches: number; uniqueQueries: number; zeroResultRate: number; avgSearchDurationMs: number };
+  ai: { totalRequests: number; totalTokens: number; estimatedCostUsd: number };
+}
+
+interface PeriodComparisonData {
+  current: PeriodSide;
+  previous: PeriodSide;
+}
+
+/** "+12%", "−3.1 pts"; better or worse only where the figure has a better direction */
+function ChangeCell({ now, before, kind, higherIsBetter }: { now: number; before: number; kind: 'count' | 'rate'; higherIsBetter?: boolean }) {
+  let text: string;
+  let direction = 0;
+  if (kind === 'rate') {
+    const pts = (now - before) * 100;
+    direction = Math.abs(pts) < 0.05 ? 0 : Math.sign(pts);
+    text = direction === 0 ? 'same' : `${pts > 0 ? '+' : '−'}${Math.abs(pts).toFixed(1)} pts`;
+  } else if (before === 0) {
+    text = now === 0 ? 'same' : 'new';
+  } else {
+    const pct = Math.round(((now - before) / before) * 100);
+    direction = Math.sign(pct);
+    text = pct === 0 ? 'same' : `${pct > 0 ? '+' : '−'}${Math.abs(pct)}%`;
+  }
+  const verdict = direction === 0 || higherIsBetter === undefined ? null : (direction > 0) === higherIsBetter ? 'better' : 'worse';
+  return (
+    <span className="inline-flex items-center gap-1 tabular-nums">
+      {verdict && (
+        <span
+          className={cn('size-1.5 rounded-full', verdict === 'better' ? 'bg-emerald-500' : 'bg-red-500')}
+          aria-hidden
+        />
+      )}
+      {text}
+      {verdict && <span className="sr-only">({verdict})</span>}
+    </span>
+  );
+}
+
+function PeriodComparisonRenderer({ data }: { data: PeriodComparisonData }) {
+  const { current: c, previous: p } = data;
+  const searched = c.overview.totalSearches > 0 && p.overview.totalSearches > 0;
+  const rows: Array<{ label: string; now: string; before: string; change: React.ReactNode }> = [
+    {
+      label: 'Searches',
+      now: formatNumber(c.overview.totalSearches),
+      before: formatNumber(p.overview.totalSearches),
+      change: <ChangeCell now={c.overview.totalSearches} before={p.overview.totalSearches} kind="count" />,
+    },
+    ...(searched
+      ? [
+          {
+            label: 'Found nothing',
+            now: formatPercent(c.overview.zeroResultRate),
+            before: formatPercent(p.overview.zeroResultRate),
+            change: <ChangeCell now={c.overview.zeroResultRate} before={p.overview.zeroResultRate} kind="rate" higherIsBetter={false} />,
+          },
+          {
+            label: 'Search time',
+            now: formatDuration(c.overview.avgSearchDurationMs),
+            before: formatDuration(p.overview.avgSearchDurationMs),
+            change: <ChangeCell now={c.overview.avgSearchDurationMs} before={p.overview.avgSearchDurationMs} kind="count" higherIsBetter={false} />,
+          },
+        ]
+      : []),
+    {
+      label: 'AI model calls',
+      now: formatNumber(c.ai.totalRequests),
+      before: formatNumber(p.ai.totalRequests),
+      change: <ChangeCell now={c.ai.totalRequests} before={p.ai.totalRequests} kind="count" />,
+    },
+    {
+      label: 'Tokens',
+      now: formatNumber(c.ai.totalTokens),
+      before: formatNumber(p.ai.totalTokens),
+      change: <ChangeCell now={c.ai.totalTokens} before={p.ai.totalTokens} kind="count" />,
+    },
+  ];
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="pb-1.5 font-normal" />
+            <th className="pb-1.5 text-right font-normal">{p.label}</th>
+            <th className="pb-1.5 text-right font-normal">{c.label}</th>
+            <th className="pb-1.5 text-right font-normal">Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} className="border-t border-border/50">
+              <td className="py-1.5 text-muted-foreground">{r.label}</td>
+              <td className="py-1.5 text-right tabular-nums">{r.before}</td>
+              <td className="py-1.5 text-right font-medium tabular-nums">{r.now}</td>
+              <td className="py-1.5 text-right text-xs">{r.change}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================================
+// EXPERIENCE COMPARISON
+// ============================================================================
+
+interface ExperienceComparisonRow {
+  id: string;
+  name: string;
+  type: 'ai' | 'search';
+  volume: number;
+  deleted: boolean;
+  successRate: number;
+  zeroResultRate: number;
+  avgLatencyMs: number;
+}
+
+function ExperienceComparisonRenderer({ data }: { data: ExperienceComparisonRow[] }) {
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const rows = [...data].sort((a, b) => b.volume - a.volume);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="pb-1.5 font-normal">Experience</th>
+            <th className="pb-1.5 text-right font-normal">Volume</th>
+            <th className="pb-1.5 text-right font-normal">Succeeded</th>
+            <th className="pb-1.5 text-right font-normal">Found nothing</th>
+            <th className="pb-1.5 text-right font-normal">Avg time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((e) => (
+            <tr key={e.id} className="border-t border-border/50">
+              <td className="max-w-[12rem] truncate py-1.5" title={e.name}>
+                {e.name}
+                {e.deleted && <span className="text-xs text-muted-foreground"> (deleted)</span>}
+              </td>
+              <td className="py-1.5 text-right tabular-nums">
+                {formatNumber(e.volume)} <span className="text-xs text-muted-foreground">{e.type === 'ai' ? 'conv.' : 'searches'}</span>
+              </td>
+              <td className="py-1.5 text-right tabular-nums">{e.type === 'ai' ? formatPercent(e.successRate) : '—'}</td>
+              <td className="py-1.5 text-right tabular-nums">{formatPercent(e.zeroResultRate)}</td>
+              <td className="py-1.5 text-right tabular-nums">{formatDuration(e.avgLatencyMs)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================================
+// FAILED TURNS
+// ============================================================================
+
+interface FailedTurnsData {
+  totalTurns: number;
+  failedTurns: number;
+  byReason: Record<string, number>;
+  recent: Array<{ traceId: string; at: string; experienceName: string | null; outcome: string | null; error: string | null }>;
+}
+
+const timeFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+function FailedTurnsRenderer({ data }: { data: FailedTurnsData }) {
+  if (!data || data.totalTurns === 0) return null;
+  if (data.failedTurns === 0) {
+    return (
+      <p className="flex items-center gap-2 text-sm">
+        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+        All {formatNumber(data.totalTurns)} turns succeeded
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm">
+        <span className="font-semibold">{formatNumber(data.failedTurns)}</span>
+        <span className="text-muted-foreground"> of {formatNumber(data.totalTurns)} turns failed ({formatPercent(data.failedTurns / data.totalTurns)})</span>
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {Object.entries(data.byReason)
+          .sort((a, b) => b[1] - a[1])
+          .map(([reason, n]) => (
+            <Badge key={reason} variant="secondary" className="font-normal">
+              {reason === 'error' ? 'Errored' : reason.replace(/_/g, ' ')} · {n}
+            </Badge>
+          ))}
+      </div>
+      <ul className="space-y-1.5 text-sm">
+        {data.recent.slice(0, 8).map((t) => (
+          <li key={t.traceId} className="flex items-baseline justify-between gap-3 border-t border-border/50 pt-1.5">
+            <span className="min-w-0 truncate">
+              <span className="text-muted-foreground">{timeFmt.format(new Date(t.at))}</span>
+              {t.experienceName && <> · {t.experienceName}</>}
+              <span className="text-muted-foreground"> · {t.error ? 'errored' : (t.outcome ?? 'no outcome').replace(/_/g, ' ')}</span>
+            </span>
+            <a href={`/analytics/traces?trace=${t.traceId}`} className="shrink-0 text-xs text-violet-600 hover:underline dark:text-violet-400">
+              Open trace
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ============================================================================
+// AI USAGE
+// ============================================================================
+
+interface AIUsageData {
+  usage: {
+    totalRequests: number;
+    totalTokens: number;
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+    byOperation: { text: number; chat: number; embedding: number };
+  };
+  tools: { totalExecutions: number; successRate: number; byTool: Record<string, number> };
+}
+
+function AIUsageRenderer({ data }: { data: AIUsageData }) {
+  if (!data || (data.usage.totalRequests === 0 && data.tools.totalExecutions === 0)) return null;
+  const { usage, tools } = data;
+  const topTools = Object.entries(tools.byTool).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg bg-muted/50 p-2">
+          <span className="text-xs text-muted-foreground">Model calls</span>
+          <p className="text-lg font-semibold">{formatNumber(usage.totalRequests)}</p>
+        </div>
+        <div className="rounded-lg bg-muted/50 p-2">
+          <span className="text-xs text-muted-foreground">Tokens</span>
+          <p className="text-lg font-semibold">{formatNumber(usage.totalTokens)}</p>
+        </div>
+        <div className="rounded-lg bg-muted/50 p-2">
+          <span className="text-xs text-muted-foreground">Est. cost</span>
+          <p className="text-lg font-semibold">{usage.estimatedCostUsd > 0 ? formatCurrency(usage.estimatedCostUsd) : '—'}</p>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Chat {formatNumber(usage.byOperation.chat)} · text {formatNumber(usage.byOperation.text)} · embeddings{' '}
+        {formatNumber(usage.byOperation.embedding)} · {formatNumber(usage.inputTokens)} tokens in, {formatNumber(usage.outputTokens)} out
+      </p>
+      {topTools.length > 0 && (
+        <div className="space-y-1 text-sm">
+          <p className="text-xs text-muted-foreground">
+            {formatNumber(tools.totalExecutions)} tool calls, {formatPercent(tools.successRate)} without errors
+          </p>
+          {topTools.map(([name, n]) => (
+            <div key={name} className="flex justify-between gap-3">
+              <span className="truncate font-mono text-xs">{name}</span>
+              <span className="tabular-nums">{formatNumber(n)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // MAIN RENDERER
 // ============================================================================
 
@@ -1212,6 +1489,14 @@ function renderDataBlock(block: AnalyticsDataBlock): React.ReactNode {
       return <RecentSearchesRenderer data={data as RecentSearch[]} />;
     case 'query_search_events':
       return <QuerySearchEventsRenderer data={data as QuerySearchEvent[]} />;
+    case 'period_comparison':
+      return <PeriodComparisonRenderer data={data as PeriodComparisonData} />;
+    case 'experience_comparison':
+      return <ExperienceComparisonRenderer data={data as ExperienceComparisonRow[]} />;
+    case 'failed_turns':
+      return <FailedTurnsRenderer data={data as FailedTurnsData} />;
+    case 'ai_usage':
+      return <AIUsageRenderer data={data as AIUsageData} />;
     default:
       return null;
   }
@@ -1251,6 +1536,14 @@ function getBlockTitle(dataType: string): string {
       return 'Recent Searches';
     case 'query_search_events':
       return 'Query Analysis';
+    case 'period_comparison':
+      return 'Compared with the period before';
+    case 'experience_comparison':
+      return 'Experiences compared';
+    case 'failed_turns':
+      return 'Failed conversation turns';
+    case 'ai_usage':
+      return 'AI usage and cost';
     default:
       return 'Data';
   }
@@ -1273,6 +1566,7 @@ function DataBlockCard({ block }: { block: AnalyticsDataBlock }) {
           </div>
           {getBlockTitle(block.dataType)}
         </CardTitle>
+        {block.periodLabel && <p className="text-xs text-muted-foreground">{block.periodLabel}</p>}
       </CardHeader>
       <CardContent className="px-3 pb-3">
         {content}

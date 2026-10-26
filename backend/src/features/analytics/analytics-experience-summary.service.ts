@@ -11,7 +11,7 @@ import 'server-only';
 
 import { sql, count, eq, gte, lte, and, isNotNull, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { buildSearchConditions, getDateRange, type TimeRange } from './analytics-query.service';
+import { buildSearchConditions, getDateRange, type DateRange, type TimeRange } from './analytics-query.service';
 
 const logger = createLogger('analytics-experience-summary');
 
@@ -37,14 +37,15 @@ export interface ExperienceSummary {
 // ============================================================================
 
 export async function getExperienceSummaries(
-  timeRange: TimeRange
+  timeRange: TimeRange,
+  customRange?: DateRange
 ): Promise<ExperienceSummary[]> {
   const { analyticsDB } = await import('@/db/index');
   const { otelSpans } = await import('@/db/analytics-schema');
 
   if (!analyticsDB) return [];
 
-  const range = getDateRange(timeRange);
+  const range = getDateRange(timeRange, customRange);
 
   try {
     const { searchEvents } = await import('@/db/analytics-schema');
@@ -225,7 +226,7 @@ async function fetchSearchExperienceIdsWithIndexes(): Promise<string[]> {
 // EXPERIENCE NAME LOOKUP
 // ============================================================================
 
-async function fetchExperienceNames(
+export async function fetchExperienceNames(
   experienceIds: string[]
 ): Promise<Map<string, { name: string; type: 'ai' | 'search' }>> {
   const nameMap = new Map<string, { name: string; type: 'ai' | 'search' }>();

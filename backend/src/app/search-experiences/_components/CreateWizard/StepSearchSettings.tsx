@@ -418,7 +418,7 @@ export function StepSearchSettings({
             <Blend className="h-4 w-4" />
             Hybrid Search Tuning
             {!searchConfig.hybridConfig && (
-              <span className="text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-normal text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
                 Using Global Defaults
               </span>
             )}

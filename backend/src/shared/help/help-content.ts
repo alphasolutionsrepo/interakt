@@ -122,6 +122,10 @@ const HELP_ROUTES: HelpRoute[] = [
   { match: '/analytics/traces', title: 'Conversations / traces', doc: 'concepts/analytics' },
   { match: '/analytics/chat', title: 'Analytics chat', doc: 'concepts/analytics' },
   { match: '/analytics/overview', title: 'Analytics overview', doc: 'concepts/analytics' },
+  { match: '/analytics/search', title: 'Analytics: search', doc: 'concepts/analytics' },
+  { match: '/analytics/conversations', title: 'Analytics: conversations', doc: 'concepts/analytics' },
+  { match: '/analytics/ai', title: 'Analytics: AI & cost', doc: 'concepts/analytics' },
+  { match: '/analytics/settings', title: 'Analytics settings', doc: 'concepts/analytics' },
   { match: '/analytics', title: 'Analytics', doc: 'concepts/analytics' },
 
   // Administration

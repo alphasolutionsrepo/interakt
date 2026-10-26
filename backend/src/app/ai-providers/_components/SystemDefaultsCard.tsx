@@ -124,12 +124,12 @@ function DefaultRow({
                 <div className="flex items-center gap-2">
                     <div className={cn(
                         "p-1.5 rounded-md",
-                        cannotSave && hasChanges ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-600"
+                        cannotSave && hasChanges ? "bg-amber-100 dark:bg-amber-900/40 text-amber-600" : "bg-slate-100 dark:bg-muted text-slate-600"
                     )}>
                         {setting.icon}
                     </div>
                     <div>
-                        <div className="text-sm font-medium text-slate-900">{setting.label}</div>
+                        <div className="text-sm font-medium text-slate-900 dark:text-foreground">{setting.label}</div>
                     </div>
                 </div>
 
@@ -141,7 +141,7 @@ function DefaultRow({
                         disabled={isSaving || cannotSave}
                         className={cn(
                             "h-7 text-xs",
-                            cannotSave && "border-amber-300 text-amber-600 cursor-not-allowed"
+                            cannotSave && "border-amber-300 dark:border-amber-700 text-amber-600 cursor-not-allowed"
                         )}
                     >
                         {isSaving ? (
@@ -368,8 +368,8 @@ export function SystemDefaultsCard({
 
     if (isLoading) {
         return (
-            <div className="bg-white border-2 border-slate-200 rounded-xl shadow-sm">
-                <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
+            <div className="bg-white dark:bg-card border-2 border-slate-200 dark:border-border rounded-xl shadow-sm">
+                <div className="px-5 py-4 border-b border-slate-200 dark:border-border bg-slate-50 dark:bg-muted/40">
                     <Skeleton className="h-5 w-32 mb-1" />
                     <Skeleton className="h-4 w-48" />
                 </div>
@@ -387,10 +387,10 @@ export function SystemDefaultsCard({
     }
 
     return (
-        <div className="bg-white border-2 border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-card border-2 border-slate-200 dark:border-border rounded-xl shadow-sm overflow-hidden">
             {/* Header with accent */}
-            <div className="px-5 py-4 border-b-2 border-slate-200 bg-slate-100">
-                <h3 className="font-semibold text-slate-900">System Defaults</h3>
+            <div className="px-5 py-4 border-b-2 border-slate-200 dark:border-border bg-slate-100 dark:bg-muted">
+                <h3 className="font-semibold text-slate-900 dark:text-foreground">System Defaults</h3>
                 <p className="text-sm text-slate-600 mt-0.5">
                     Default AI models for different tasks
                 </p>

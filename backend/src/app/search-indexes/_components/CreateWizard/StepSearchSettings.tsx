@@ -94,30 +94,30 @@ function getStrategyColor(strategy: IndexingStrategy, isSelected: boolean) {
     switch (strategy) {
         case 'on_upload':
             return {
-                bg: 'bg-emerald-50',
-                border: 'border-emerald-300 ring-2 ring-emerald-200',
+                bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+                border: 'border-emerald-300 dark:border-emerald-700 ring-2 ring-emerald-200',
                 iconBg: 'bg-emerald-600',
                 iconText: 'text-white',
-                text: 'text-emerald-900',
-                desc: 'text-emerald-700',
+                text: 'text-emerald-900 dark:text-emerald-200',
+                desc: 'text-emerald-700 dark:text-emerald-300',
             };
         case 'scheduled':
             return {
-                bg: 'bg-sky-50',
-                border: 'border-sky-300 ring-2 ring-sky-200',
+                bg: 'bg-sky-50 dark:bg-sky-950/40',
+                border: 'border-sky-300 dark:border-sky-700 ring-2 ring-sky-200',
                 iconBg: 'bg-sky-600',
                 iconText: 'text-white',
-                text: 'text-sky-900',
-                desc: 'text-sky-700',
+                text: 'text-sky-900 dark:text-sky-200',
+                desc: 'text-sky-700 dark:text-sky-300',
             };
         case 'manual':
             return {
-                bg: 'bg-orange-50',
-                border: 'border-orange-300 ring-2 ring-orange-200',
+                bg: 'bg-orange-50 dark:bg-orange-950/40',
+                border: 'border-orange-300 dark:border-orange-700 ring-2 ring-orange-200',
                 iconBg: 'bg-orange-600',
                 iconText: 'text-white',
-                text: 'text-orange-900',
-                desc: 'text-orange-700',
+                text: 'text-orange-900 dark:text-orange-200',
+                desc: 'text-orange-700 dark:text-orange-300',
             };
         default:
             return {

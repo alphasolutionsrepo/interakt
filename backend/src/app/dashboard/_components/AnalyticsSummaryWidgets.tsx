@@ -91,7 +91,7 @@ function InsightCard({
       border: 'border-emerald-200 dark:border-emerald-800',
       iconBg: 'bg-emerald-100 dark:bg-emerald-900',
       iconColor: 'text-emerald-600 dark:text-emerald-400',
-      trendUp: 'text-emerald-700',
+      trendUp: 'text-emerald-700 dark:text-emerald-300',
       trendDown: 'text-red-600',
     },
     warning: {
@@ -107,7 +107,7 @@ function InsightCard({
       border: 'border-red-200 dark:border-red-800',
       iconBg: 'bg-red-100 dark:bg-red-900',
       iconColor: 'text-red-600 dark:text-red-400',
-      trendUp: 'text-red-700',
+      trendUp: 'text-red-700 dark:text-red-300',
       trendDown: 'text-emerald-600',
     },
   };

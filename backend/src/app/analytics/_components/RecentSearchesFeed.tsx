@@ -2,172 +2,86 @@
 
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/components/card';
-import { Skeleton } from '@/shared/ui/components/skeleton';
-import { Badge } from '@/shared/ui/components/badge';
-import { ScrollArea } from '@/shared/ui/components/scroll-area';
-import { Search, Bot, Server, CheckCircle, XCircle } from 'lucide-react';
+import { CircleAlert, History } from 'lucide-react';
+
 import type { RecentSearchEvent } from '../_lib/hooks/useAnalytics';
+
+import { isBrowseQuery } from './sections/dashboard-cards';
+import { ChartCard, formatCompact, formatMs } from './viz';
 
 interface RecentSearchesFeedProps {
   data?: RecentSearchEvent[];
   isLoading?: boolean;
+  refreshing?: boolean;
 }
 
-function formatTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  if (date.toDateString() === new Date().toDateString()) return `Today, ${time}`;
-  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
-}
+const TRIGGER_LABEL: Record<string, string> = {
+  user: 'Visitor',
+  ai_tool: 'AI assistant',
+  ai_rag: 'AI context lookup',
+  system: 'Automatic',
+};
 
-function getTriggerLabel(triggerType: string): string {
-  switch (triggerType) {
-    case 'user':
-      return 'User search';
-    case 'ai_tool':
-      return 'AI tool search';
-    case 'ai_rag':
-      return 'AI context lookup';
-    case 'system':
-      return 'Automatic';
-    default:
-      return triggerType;
-  }
-}
+const timeFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-/** Wildcard/empty queries are browse requests (e.g. a widget's initial load), not something a user typed */
-function isBrowseQuery(query: string): boolean {
-  const q = query.trim();
-  return q === '' || q === '*';
-}
-
-function getTriggerIcon(triggerType: string) {
-  switch (triggerType) {
-    case 'user':
-      return <Search className="h-3 w-3" />;
-    case 'ai_tool':
-    case 'ai_rag':
-      return <Bot className="h-3 w-3" />;
-    case 'system':
-      return <Server className="h-3 w-3" />;
-    default:
-      return <Search className="h-3 w-3" />;
-  }
-}
-
-function getTriggerColor(triggerType: string) {
-  switch (triggerType) {
-    case 'user':
-      return 'bg-blue-500/10 text-blue-500';
-    case 'ai_tool':
-    case 'ai_rag':
-      return 'bg-purple-500/10 text-purple-500';
-    case 'system':
-      return 'bg-gray-500/10 text-gray-500';
-    default:
-      return 'bg-gray-500/10 text-gray-500';
-  }
-}
-
-function getSearchTypeBadge(searchType: string) {
-  const colors: Record<string, string> = {
-    lexical: 'bg-blue-500/10 text-blue-600',
-    semantic: 'bg-green-500/10 text-green-600',
-    hybrid: 'bg-purple-500/10 text-purple-600',
-  };
-  return colors[searchType] || 'bg-gray-500/10 text-gray-600';
-}
-
-export function RecentSearchesFeed({ data, isLoading }: RecentSearchesFeedProps) {
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Searches</CardTitle>
-          <CardDescription>Newest first</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!data || data.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Searches</CardTitle>
-          <CardDescription>Newest first</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex h-[300px] items-center justify-center text-muted-foreground">
-            No searches yet
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
+/** The latest searches in the selected period, newest first, one line each */
+export function RecentSearchesFeed({ data, isLoading, refreshing }: RecentSearchesFeedProps) {
+  const rows = data ?? [];
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recent Searches</CardTitle>
-        <CardDescription>Newest first</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[400px]">
-          <div className="space-y-3">
-            {data.map((event) => (
-              <div
-                key={event.id}
-                className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
-              >
-                {/* Status indicator */}
-                <div className="mt-0.5">
-                  {event.success ? (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
+    <ChartCard
+      title="Latest searches"
+      description="The 10 most recent in this period, newest first"
+      icon={History}
+      loading={isLoading}
+      refreshing={refreshing}
+      skeletonHeight={200}
+      empty={rows.length === 0 ? 'No searches in this period' : undefined}
+    >
+      <div className="-mx-2 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground">
+              <th className="px-2 pb-2 font-normal">Search</th>
+              <th className="px-2 pb-2 font-normal">By</th>
+              <th className="px-2 pb-2 text-right font-normal">Results</th>
+              <th className="px-2 pb-2 text-right font-normal">Time</th>
+              <th className="px-2 pb-2 text-right font-normal">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((event) => (
+              <tr key={event.id} className="border-t border-border/50">
+                <td className="max-w-[16rem] truncate px-2 py-2" title={event.query}>
+                  {isBrowseQuery(event.query) ? (
+                    <span className="italic text-muted-foreground">(browse all)</span>
                   ) : (
-                    <XCircle className="h-4 w-4 text-red-500" />
+                    event.query
                   )}
-                </div>
-
-                {/* Main content */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${getTriggerColor(event.triggerType)}`}
-                    >
-                      {getTriggerIcon(event.triggerType)}
-                      {getTriggerLabel(event.triggerType)}
+                  <span className="ml-1.5 text-xs text-muted-foreground">{event.searchType}</span>
+                </td>
+                <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
+                  {TRIGGER_LABEL[event.triggerType] ?? event.triggerType}
+                </td>
+                <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">
+                  {event.totalResults === 0 ? (
+                    <span className="inline-flex items-center gap-1">
+                      <CircleAlert className="size-3.5 text-viz-critical" aria-hidden /> None
                     </span>
-                    <Badge variant="outline" className={`text-xs ${getSearchTypeBadge(event.searchType)}`}>
-                      {event.searchType}
-                    </Badge>
-                  </div>
-
-                  <p className="mt-1 truncate text-sm font-medium" title={event.query}>
-                    {isBrowseQuery(event.query) ? <span className="italic text-muted-foreground">(browse all — no search term)</span> : <>&ldquo;{event.query}&rdquo;</>}
-                  </p>
-
-                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{event.totalResults.toLocaleString()} {event.totalResults === 1 ? 'result' : 'results'}</span>
-                    <span>{event.durationMs}ms</span>
-                  </div>
-                </div>
-
-                {/* Timestamp */}
-                <div className="text-xs text-muted-foreground">{formatTime(event.timestamp)}</div>
-              </div>
+                  ) : (
+                    formatCompact(event.totalResults)
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-muted-foreground">
+                  {formatMs(event.durationMs)}
+                </td>
+                <td className="whitespace-nowrap px-2 py-2 text-right text-muted-foreground">
+                  {timeFmt.format(new Date(event.timestamp))}
+                </td>
+              </tr>
             ))}
-          </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
+          </tbody>
+        </table>
+      </div>
+    </ChartCard>
   );
 }

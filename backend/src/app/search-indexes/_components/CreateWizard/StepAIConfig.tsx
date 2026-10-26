@@ -213,10 +213,10 @@ export function StepAIConfig({ formData, errors, updateField, updateFieldBulk }:
     if (searchType !== 'semantic' && searchType !== 'hybrid') {
         return (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                <div className="h-16 w-16 rounded-full bg-slate-100 dark:bg-muted flex items-center justify-center mb-4">
                     <Brain className="h-8 w-8 text-slate-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-slate-700 mb-2">
+                <h3 className="text-lg font-semibold text-slate-700 dark:text-muted-foreground mb-2">
                     AI Configuration Not Required
                 </h3>
                 <p className="text-slate-500 max-w-md">

@@ -28,6 +28,28 @@ export interface JobTypeDef {
   worker: (jobs: Array<{ id: string; data: never }>) => Promise<unknown>;
   /** Jobs processed per batch (default 1 — serialize heavy work). */
   batchSize?: number;
+  /**
+   * Schedule set once, the first time the jobs engine starts with this job type.
+   * Changing or removing it in the operator console sticks: it is not set again.
+   * Omit for jobs that only run on demand.
+   */
+  defaultSchedule?: { cron: string; timezone: string };
+  /**
+   * Queue settings, applied at every boot (existing queues are updated too). pg-boss
+   * defaults are 15 minutes to expire and 2 retries, which suits short jobs only.
+   */
+  queueOptions?: { expireInSeconds?: number; retryLimit?: number };
+}
+
+/**
+ * Nightly insights refresh, so "What needs attention" is current each morning.
+ * INSIGHTS_REFRESH_CRON changes the time; set it to "off" to keep insights
+ * on-demand only. INSIGHTS_REFRESH_TIMEZONE is an IANA zone (default UTC).
+ */
+function insightsRefreshSchedule(): JobTypeDef['defaultSchedule'] {
+  const cron = process.env.INSIGHTS_REFRESH_CRON?.trim() || '0 2 * * *';
+  if (cron.toLowerCase() === 'off') return undefined;
+  return { cron, timezone: process.env.INSIGHTS_REFRESH_TIMEZONE?.trim() || 'UTC' };
 }
 
 export const JOB_TYPES: readonly JobTypeDef[] = [
@@ -35,10 +57,15 @@ export const JOB_TYPES: readonly JobTypeDef[] = [
     queue: QUEUE.REFRESH_INSIGHTS,
     label: 'Refresh AI insights',
     description:
-      'Recompute analytics AI insights. Omit experienceId to process all active experiences.',
+      'Recompute analytics AI insights. Omit experienceId to process all experiences combined, then each experience active in the last 30 days.',
     payloadExample: { experienceId: '' },
     worker: refreshInsightsWorker,
     batchSize: 1,
+    defaultSchedule: insightsRefreshSchedule(),
+    // One run covers every active experience, so it can take a while. Expiring it
+    // mid-run and retrying would process (and pay for) the same work again; a run
+    // that fails is picked up by the next night's.
+    queueOptions: { expireInSeconds: 4 * 60 * 60, retryLimit: 0 },
   },
 ];
 

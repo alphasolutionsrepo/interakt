@@ -486,7 +486,7 @@ function SystemPromptStep({ spans }: { spans: SpanDetail[] }) {
         </>
       }
       defaultOpen={false}
-      accent="border-slate-300"
+      accent="border-slate-300 dark:border-border"
     >
       {toolDefinitions && toolDefinitions.length > 0 && (
         <div className="mb-3">
@@ -572,7 +572,7 @@ function AiResponseStep({ step, forceOpen }: { step: Extract<TimelineStep, { kin
       badge={
         <>
           <CopyButton text={copyText} title="Copy response" />
-          <Badge variant="outline" className="text-[10px] text-violet-600 border-violet-300">response</Badge>
+          <Badge variant="outline" className="text-[10px] text-violet-600 border-violet-300 dark:border-violet-700">response</Badge>
         </>
       }
       defaultOpen={!!preview}
@@ -799,9 +799,9 @@ function ToolCallStep({ step, forceOpen }: { step: Extract<TimelineStep, { kind:
       {/* Context size — surfaces MCP/RAG payload bloat that feeds the next LLM call */}
       {resultSizeChars > 0 && (() => {
         const tone = resultEstTokens >= 25000
-          ? { wrap: 'border-red-300 bg-red-500/10 text-red-700 dark:text-red-300', label: 'text-red-700 dark:text-red-300' }
+          ? { wrap: 'border-red-300 dark:border-red-700 bg-red-500/10 text-red-700 dark:text-red-300', label: 'text-red-700 dark:text-red-300' }
           : resultEstTokens >= 5000
-          ? { wrap: 'border-amber-300 bg-amber-500/10 text-amber-700 dark:text-amber-300', label: 'text-amber-700 dark:text-amber-400' }
+          ? { wrap: 'border-amber-300 dark:border-amber-700 bg-amber-500/10 text-amber-700 dark:text-amber-300', label: 'text-amber-700 dark:text-amber-400' }
           : { wrap: 'border-border/60 bg-muted/40 text-muted-foreground', label: 'text-foreground/80' };
         return (
           <div className={`mt-2 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${tone.wrap}`}>
@@ -829,17 +829,17 @@ function ToolCallStep({ step, forceOpen }: { step: Extract<TimelineStep, { kind:
 // ─────────────────────────────────────────────────────────────────────────────
 
 const V2_PHASE_ICONS: Record<string, { icon: React.ElementType; iconClass: string; accent: string }> = {
-  input_guardrail: { icon: ShieldCheck, iconClass: 'text-red-500', accent: 'border-red-300' },
-  context_assembly: { icon: FileText, iconClass: 'text-slate-500', accent: 'border-slate-300' },
+  input_guardrail: { icon: ShieldCheck, iconClass: 'text-red-500', accent: 'border-red-300 dark:border-red-700' },
+  context_assembly: { icon: FileText, iconClass: 'text-slate-500', accent: 'border-slate-300 dark:border-border' },
   turn_planner: { icon: Bot, iconClass: 'text-violet-600 dark:text-violet-400', accent: 'border-violet-400' },
   execution_loop: { icon: Wrench, iconClass: 'text-orange-600 dark:text-orange-400', accent: 'border-orange-400' },
   response_synthesis: { icon: Bot, iconClass: 'text-violet-600 dark:text-violet-400', accent: 'border-violet-400' },
-  persistence: { icon: CheckCircle2, iconClass: 'text-green-500', accent: 'border-green-300' },
+  persistence: { icon: CheckCircle2, iconClass: 'text-green-500', accent: 'border-green-300 dark:border-green-700' },
   // Guardrail sub-stages
-  blocklist_check: { icon: ShieldCheck, iconClass: 'text-red-500', accent: 'border-red-200' },
-  greeting_detection: { icon: MessageSquare, iconClass: 'text-amber-500', accent: 'border-amber-200' },
-  domain_filter: { icon: Search, iconClass: 'text-violet-500', accent: 'border-violet-200' },
-  lightweight_synthesis: { icon: Bot, iconClass: 'text-sky-500', accent: 'border-sky-200' },
+  blocklist_check: { icon: ShieldCheck, iconClass: 'text-red-500', accent: 'border-red-200 dark:border-red-800' },
+  greeting_detection: { icon: MessageSquare, iconClass: 'text-amber-500', accent: 'border-amber-200 dark:border-amber-800' },
+  domain_filter: { icon: Search, iconClass: 'text-violet-500', accent: 'border-violet-200 dark:border-violet-800' },
+  lightweight_synthesis: { icon: Bot, iconClass: 'text-sky-500', accent: 'border-sky-200 dark:border-sky-800' },
 };
 
 function GuardrailStep({ step, forceOpen }: { step: Extract<TimelineStep, { kind: 'guardrail' }>; forceOpen?: boolean }) {
@@ -853,18 +853,18 @@ function GuardrailStep({ step, forceOpen }: { step: Extract<TimelineStep, { kind
 
   // Route descriptions
   const ROUTE_INFO: Record<string, { label: string; description: string; icon: typeof ArrowRight; bannerClass: string }> = {
-    blocked: { label: 'Blocked', description: 'Message matched a blocklist rule and was rejected', icon: X, bannerClass: 'bg-red-500/10 border-red-300 text-red-700 dark:text-red-300' },
-    greeting: { label: 'Greeting → Lightweight AI', description: 'Detected as a greeting, responded with a lightweight AI call instead of full pipeline', icon: MessageSquare, bannerClass: 'bg-amber-500/10 border-amber-300 text-amber-700 dark:text-amber-300' },
+    blocked: { label: 'Blocked', description: 'Message matched a blocklist rule and was rejected', icon: X, bannerClass: 'bg-red-500/10 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300' },
+    greeting: { label: 'Greeting → Lightweight AI', description: 'Detected as a greeting, responded with a lightweight AI call instead of full pipeline', icon: MessageSquare, bannerClass: 'bg-amber-500/10 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300' },
     general: {
       label: step.shortCircuited ? 'General → Lightweight AI' : 'General → Full Pipeline (active session)',
       description: step.shortCircuited
         ? 'Classified as general/smalltalk, responded with lightweight AI instead of full pipeline'
         : 'Classified as general but user has an active session — treated as a follow-up and routed to full pipeline',
       icon: step.shortCircuited ? MessageSquare : ArrowRight,
-      bannerClass: step.shortCircuited ? 'bg-sky-500/10 border-sky-300 text-sky-700 dark:text-sky-300' : 'bg-violet-500/10 border-violet-300 text-violet-700 dark:text-violet-300',
+      bannerClass: step.shortCircuited ? 'bg-sky-500/10 border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300' : 'bg-violet-500/10 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300',
     },
-    off_topic: { label: 'Off-topic → Lightweight AI', description: 'Message is outside the configured domain, responded with a polite redirect', icon: X, bannerClass: 'bg-slate-500/10 border-slate-300 text-slate-600 dark:text-slate-400' },
-    domain: { label: 'Domain → Full Pipeline', description: 'Message is on-topic, proceeding through the full Plan → Execute → Synthesize pipeline', icon: ArrowRight, bannerClass: 'bg-violet-500/10 border-violet-300 text-violet-700 dark:text-violet-300' },
+    off_topic: { label: 'Off-topic → Lightweight AI', description: 'Message is outside the configured domain, responded with a polite redirect', icon: X, bannerClass: 'bg-slate-500/10 border-slate-300 dark:border-border text-slate-600 dark:text-slate-400' },
+    domain: { label: 'Domain → Full Pipeline', description: 'Message is on-topic, proceeding through the full Plan → Execute → Synthesize pipeline', icon: ArrowRight, bannerClass: 'bg-violet-500/10 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300' },
   };
 
   const route = ROUTE_INFO[step.classification] ?? ROUTE_INFO.domain;
@@ -884,7 +884,7 @@ function GuardrailStep({ step, forceOpen }: { step: Extract<TimelineStep, { kind
       }
       defaultOpen
       forceOpen={forceOpen}
-      accent="border-red-300"
+      accent="border-red-300 dark:border-red-700"
     >
       {/* Routing decision banner — the most important thing to see */}
       <div className={cn('flex items-start gap-3 rounded-lg border px-4 py-3 mb-3', route.bannerClass)}>

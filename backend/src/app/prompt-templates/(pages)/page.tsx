@@ -92,7 +92,7 @@ function TemplateRow({ template, onClick }: { template: PromptTemplate; onClick:
             v{template.version}
           </Badge>
           {template.isSystemDefault && (
-            <Badge className="text-xs bg-blue-500/10 text-blue-600 border-blue-200 shrink-0">
+            <Badge className="text-xs bg-blue-500/10 text-blue-600 border-blue-200 dark:border-blue-800 shrink-0">
               System Default
             </Badge>
           )}

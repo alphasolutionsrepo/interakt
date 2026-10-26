@@ -54,6 +54,9 @@ export async function assembleAnalyticsContext(input: {
   experienceId?: string;
   experienceName?: string;
   timeRange?: string;
+  period?: { from: string; to: string };
+  timeZone?: string;
+  pageSection?: string;
   providerId?: string;
   modelId?: number;
 }): Promise<ModuleResult<AnalyticsTurnContext>> {
@@ -108,9 +111,11 @@ export async function assembleAnalyticsContext(input: {
     // searchEvents data, not OTel spans, so pre-computed insights are unavailable
     let availableTools: AnalyticsToolSummary[] = ANALYTICS_TOOL_SUMMARIES;
     if (input.experienceId) {
+      // Comparing experiences doesn't fit a conversation about one of them
+      availableTools = availableTools.filter(t => t.availability !== 'all-experiences');
       const isSearch = await isSearchExperience(input.experienceId);
       if (isSearch) {
-        availableTools = ANALYTICS_TOOL_SUMMARIES.filter(t => t.category !== 'precomputed');
+        availableTools = availableTools.filter(t => t.category !== 'precomputed' && t.availability !== 'chat-experiences');
       }
     }
 
@@ -120,6 +125,9 @@ export async function assembleAnalyticsContext(input: {
       experienceId: input.experienceId || null,
       experienceName: input.experienceId ? input.experienceName || null : null,
       timeRange: input.timeRange || null,
+      period: input.period ? { from: new Date(input.period.from), to: new Date(input.period.to) } : null,
+      timeZone: input.timeZone || 'UTC',
+      pageSection: input.pageSection || null,
       conversationHistory,
       conversationSummary,
       sessionFacts,

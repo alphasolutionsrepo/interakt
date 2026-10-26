@@ -352,7 +352,7 @@ export function ModelFormDialog({
                     </div>
 
                     {/* Pricing Section */}
-                    <div className="space-y-3 rounded-lg border p-3 bg-slate-50">
+                    <div className="space-y-3 rounded-lg border p-3 bg-slate-50 dark:bg-muted/40">
                         <div>
                             <Label className="text-sm font-medium">Pricing (for cost estimation)</Label>
                             <p className="text-xs text-slate-500">
@@ -413,7 +413,7 @@ export function ModelFormDialog({
 
                     {/* OpenAI Capabilities Section (only for chat/text models) */}
                     {(modelType === 'chat' || modelType === 'text') && (
-                        <div className="space-y-3 rounded-lg border p-3 bg-blue-50/50">
+                        <div className="space-y-3 rounded-lg border p-3 bg-blue-50/50 dark:bg-blue-950/40">
                             <div>
                                 <Label className="text-sm font-medium">OpenAI Model Options</Label>
                                 <p className="text-xs text-slate-500">

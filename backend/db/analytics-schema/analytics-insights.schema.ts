@@ -138,3 +138,28 @@ export const analyticsProcessingRuns = pgTable(
 
 export type AnalyticsProcessingRun = InferSelectModel<typeof analyticsProcessingRuns>;
 export type NewAnalyticsProcessingRun = InferInsertModel<typeof analyticsProcessingRuns>;
+
+// ============================================================================
+// HIDDEN FINDINGS
+// ============================================================================
+
+/**
+ * Findings from "What needs attention" an admin has hidden for a while, so the
+ * nightly refresh doesn't keep showing what's already being handled. Shared by
+ * every admin. A finding is identified by its rule (e.g.
+ * "search_quality_high_zero_rate"), so a hide covers it however its numbers change.
+ */
+export const analyticsHiddenFindings = pgTable(
+  'analytics_hidden_findings',
+  {
+    id: uuid('id').primaryKey().notNull().defaultRandom(),
+    // The experience id, or "all" for the all-experiences view
+    scope: varchar('scope', { length: 64 }).notNull(),
+    findingId: varchar('finding_id', { length: 100 }).notNull(),
+    hiddenUntil: timestamp('hidden_until', { withTimezone: true }).notNull(),
+    hiddenAt: timestamp('hidden_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique('uq_hidden_findings_scope').on(table.scope, table.findingId)]
+);
+
+export type AnalyticsHiddenFinding = InferSelectModel<typeof analyticsHiddenFindings>;

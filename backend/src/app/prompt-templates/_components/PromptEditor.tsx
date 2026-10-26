@@ -113,7 +113,7 @@ export function PromptEditor({ template, onCancel, onSave, isSaving }: Props) {
         )}
 
         {unknown.length === 0 && unused.length > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-300/50 bg-amber-500/5 p-3">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300/50 dark:border-amber-700 bg-amber-500/5 p-3">
             <AlertTriangle className="size-4 text-amber-600 mt-0.5 shrink-0" />
             <p className="text-xs text-muted-foreground">
               Not used by this template:{' '}

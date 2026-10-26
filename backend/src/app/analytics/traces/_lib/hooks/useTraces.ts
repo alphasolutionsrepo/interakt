@@ -4,12 +4,13 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { tracesApi, type TimeRange, type SpanFilterOptions } from '../api-client';
+import { tracesApi, type SpanFilterOptions } from '../api-client';
+import { periodKey, type Period } from '../../../_lib/period';
 
-export function useSpans(timeRange: TimeRange, filters?: SpanFilterOptions, limit = 100, offset = 0) {
+export function useSpans(period: Period, filters?: SpanFilterOptions, limit = 100, offset = 0) {
   return useQuery({
-    queryKey: ['telemetry', 'spans', timeRange, filters, limit, offset],
-    queryFn: () => tracesApi.list(timeRange, filters, limit, offset),
+    queryKey: ['telemetry', 'spans', periodKey(period), filters, limit, offset],
+    queryFn: () => tracesApi.list(period, filters, limit, offset),
     refetchInterval: 30000,
     staleTime: 15000,
   });
@@ -33,10 +34,10 @@ export function useTraceSpans(traceId: string | null) {
   });
 }
 
-export function useSpanMetrics(timeRange: TimeRange) {
+export function useSpanMetrics(period: Period, experienceId?: string) {
   return useQuery({
-    queryKey: ['telemetry', 'metrics', timeRange],
-    queryFn: () => tracesApi.getMetrics(timeRange),
+    queryKey: ['telemetry', 'metrics', periodKey(period), experienceId],
+    queryFn: () => tracesApi.getMetrics(period, experienceId),
     refetchInterval: 60000,
     staleTime: 30000,
   });

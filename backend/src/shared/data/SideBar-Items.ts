@@ -6,7 +6,6 @@ import {
     BookOpen,
     Home,
     Database,
-    MessageSquare,
     Activity,
     Cog,
     Plus,
@@ -154,19 +153,38 @@ export const sidebarGroups = [
         icon: BarChart3,
         items: [
             {
-                title: "sidebar.items.overview",
-                url: "/analytics/overview",
+                // The analytics sections, also reachable from the tabs inside Analytics.
+                // Its Settings tab is left out here: it's an admin page, not a view.
+                title: "sidebar.items.analytics",
+                url: "/analytics",
                 icon: Activity,
-            },
-            {
-                title: "sidebar.items.chat",
-                url: "/analytics/chat",
-                icon: MessageSquare,
-            },
-            {
-                title: "sidebar.items.traces",
-                url: "/analytics/traces",
-                icon: FileText,
+                subItems: [
+                    {
+                        title: "sidebar.items.overview",
+                        url: "/analytics/overview",
+                        icon: Activity,
+                    },
+                    {
+                        title: "sidebar.items.analyticsSearch",
+                        url: "/analytics/search",
+                        icon: Search,
+                    },
+                    {
+                        title: "sidebar.items.conversations",
+                        url: "/analytics/conversations",
+                        icon: MessageCircle,
+                    },
+                    {
+                        title: "sidebar.items.aiCost",
+                        url: "/analytics/ai",
+                        icon: Cpu,
+                    },
+                    {
+                        title: "sidebar.items.traces",
+                        url: "/analytics/traces",
+                        icon: ListTree,
+                    },
+                ]
             },
         ]
     },

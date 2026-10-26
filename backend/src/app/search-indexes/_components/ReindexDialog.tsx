@@ -147,7 +147,7 @@ export function ReindexDialog({
                     {/* Confirming State */}
                     {state === 'confirming' && (
                         <div className="space-y-4">
-                            <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+                            <div className="bg-slate-50 dark:bg-muted/40 rounded-lg p-4 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm text-slate-600">Index</span>
                                     <Badge variant="outline" className="font-mono">
@@ -164,12 +164,12 @@ export function ReindexDialog({
                                 )}
                             </div>
 
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
                                 <div className="flex gap-2">
                                     <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                                    <div className="text-sm text-amber-800">
+                                    <div className="text-sm text-amber-800 dark:text-amber-200">
                                         <p className="font-medium">This will:</p>
-                                        <ul className="list-disc list-inside mt-1 space-y-0.5 text-amber-700">
+                                        <ul className="list-disc list-inside mt-1 space-y-0.5 text-amber-700 dark:text-amber-300">
                                             <li>Fetch all documents from the current index</li>
                                             <li>Delete and recreate the index with new mappings</li>
                                             <li>Re-index all documents (preserving embeddings)</li>
@@ -195,8 +195,8 @@ export function ReindexDialog({
                                 )}
                             </div>
 
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                <p className="text-sm text-blue-700">
+                            <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                                <p className="text-sm text-blue-700 dark:text-blue-300">
                                     This may take a while depending on the number of documents.
                                     Please do not close this dialog.
                                 </p>
@@ -208,12 +208,12 @@ export function ReindexDialog({
                     {state === 'success' && result && (
                         <div className="space-y-4">
                             <div className="flex flex-col items-center justify-center py-4">
-                                <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                                <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mb-4">
                                     <CheckCircle2 className="h-8 w-8 text-emerald-600" />
                                 </div>
                             </div>
 
-                            <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+                            <div className="bg-slate-50 dark:bg-muted/40 rounded-lg p-4 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2 text-slate-600">
                                         <FileText className="h-4 w-4" />
@@ -243,8 +243,8 @@ export function ReindexDialog({
                                 </div>
                             </div>
 
-                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                                <p className="text-sm text-emerald-700">
+                            <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3">
+                                <p className="text-sm text-emerald-700 dark:text-emerald-300">
                                     Index mappings have been updated. Autocomplete and other
                                     field settings are now active.
                                 </p>
@@ -256,13 +256,13 @@ export function ReindexDialog({
                     {state === 'error' && (
                         <div className="space-y-4">
                             <div className="flex flex-col items-center justify-center py-4">
-                                <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                                <div className="h-16 w-16 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center mb-4">
                                     <XCircle className="h-8 w-8 text-red-600" />
                                 </div>
                             </div>
 
-                            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                                <p className="text-sm text-red-700 font-medium mb-1">
+                            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                                <p className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
                                     Error Details
                                 </p>
                                 <pre className="text-sm text-red-600 whitespace-pre-wrap break-words max-h-48 overflow-y-auto font-sans">

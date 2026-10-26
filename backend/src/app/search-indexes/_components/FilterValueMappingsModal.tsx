@@ -149,7 +149,7 @@ function CanonicalValueRow({ entry, onUpdate, onDelete, isDuplicate }: Canonical
     return (
         <div className={cn(
             "flex items-center gap-2 px-2.5 py-1.5 rounded-md border",
-            isDuplicate ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"
+            isDuplicate ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40" : "border-slate-200 dark:border-border bg-white dark:bg-card"
         )}>
             {/* Canonical Value */}
             <div className="flex-1 flex items-center gap-1.5 min-w-0">
@@ -159,7 +159,7 @@ function CanonicalValueRow({ entry, onUpdate, onDelete, isDuplicate }: Canonical
                     placeholder="e.g., Men"
                     className={cn(
                         "h-7 text-sm font-medium",
-                        isDuplicate && "border-red-300 focus-visible:ring-red-400"
+                        isDuplicate && "border-red-300 dark:border-red-700 focus-visible:ring-red-400"
                     )}
                 />
                 {entry.docCount !== undefined && (
@@ -178,7 +178,7 @@ function CanonicalValueRow({ entry, onUpdate, onDelete, isDuplicate }: Canonical
             <ArrowRight className="h-3.5 w-3.5 text-slate-300 shrink-0" />
 
             {/* Aliases */}
-            <div className="flex-2 flex flex-wrap items-center gap-1 min-h-7 px-2 py-1 border border-slate-200 rounded-md bg-slate-50">
+            <div className="flex-2 flex flex-wrap items-center gap-1 min-h-7 px-2 py-1 border border-slate-200 dark:border-border rounded-md bg-slate-50 dark:bg-muted/40">
                 {entry.aliases.map((alias, index) => (
                     <Badge
                         key={index}
@@ -370,11 +370,11 @@ export function FilterValueMappingsModal({
                 </DialogHeader>
 
                 {/* Info Banner */}
-                <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
                     <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                    <div className="text-blue-800">
+                    <div className="text-blue-800 dark:text-blue-200">
                         <p className="font-medium mb-1">How it works:</p>
-                        <ul className="text-xs space-y-0.5 text-blue-700">
+                        <ul className="text-xs space-y-0.5 text-blue-700 dark:text-blue-300">
                             <li>AI suggests filter value (e.g., &quot;male&quot;, &quot;mens&quot;)</li>
                             <li>System normalizes and matches against aliases</li>
                             <li>If matched, uses the canonical value (e.g., &quot;Men&quot;) for the actual filter</li>
@@ -457,7 +457,7 @@ export function FilterValueMappingsModal({
 
                 {/* Auto-generate feedback */}
                 {autoGenerateError && (
-                    <div className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                    <div className="flex items-start gap-2 p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-700 dark:text-amber-300">
                         <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                         {autoGenerateError}
                     </div>
@@ -465,7 +465,7 @@ export function FilterValueMappingsModal({
 
                 {/* Auto-generate success */}
                 {autoGenerateCount !== null && (
-                    <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+                    <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 rounded text-xs text-green-700 dark:text-green-300">
                         <Check className="h-3.5 w-3.5 shrink-0" />
                         Added {autoGenerateCount} value{autoGenerateCount !== 1 ? 's' : ''} from index.
                         Review below, then hit Save Mappings.

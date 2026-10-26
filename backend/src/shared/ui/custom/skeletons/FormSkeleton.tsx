@@ -35,7 +35,7 @@ export function FormSkeleton({
 
     if (showCard) {
         return (
-            <Card className="border-slate-200 max-w-4xl">
+            <Card className="border-slate-200 dark:border-border max-w-4xl">
                 {showHeader && (
                     <CardHeader>
                         <Skeleton className="h-6 w-48" />

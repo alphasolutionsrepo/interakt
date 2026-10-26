@@ -12,6 +12,8 @@ import 'server-only';
 
 import { createLogger } from '@/shared/logger/logger';
 import { executeAnalyticsTool } from '../analytics-ai-tools';
+import { calendarDaysIn, describePeriod, type RequestedPeriod } from '../analytics-period';
+import { getDateRange, type TimeRange } from '../analytics-query.service';
 import type {
   ModuleResult,
   AnalyticsTurnPlan,
@@ -27,11 +29,46 @@ const logger = createLogger('analytics-execution');
 // MAIN
 // ============================================================================
 
+/** The nearest fixed range to a period, for tools that only have those (stored insights) */
+function nearestTimeRange(period: RequestedPeriod): string {
+  const hours = (period.to.getTime() - period.from.getTime()) / 3_600_000;
+  if (hours <= 26) return '24h';
+  if (hours <= 8 * 24) return '7d';
+  if (hours <= 32 * 24) return '30d';
+  return '90d';
+}
+
+/**
+ * The period one tool call covers: calendar days the planner named in its hints
+ * ("Oct 13"), a fixed range it named ("24h"), or else the page's period.
+ */
+export function resolveToolPeriod(
+  hints: Record<string, unknown>,
+  pagePeriod: RequestedPeriod | null,
+  timeZone: string,
+  now: Date = new Date(),
+): RequestedPeriod | null {
+  if (typeof hints.from === 'string' && typeof hints.to === 'string') {
+    try {
+      return calendarDaysIn(hints.from, hints.to, timeZone, now);
+    } catch (error) {
+      logger.warn('Planner gave dates that are not a period; using the page period', { from: hints.from, to: hints.to, error: String(error) });
+    }
+  }
+  if (typeof hints.timeRange === 'string' && hints.timeRange !== 'custom') {
+    return getDateRange(hints.timeRange as TimeRange);
+  }
+  return pagePeriod;
+}
+
 export async function executeAnalyticsTools(
   plan: AnalyticsTurnPlan,
   experienceId: string | null,
   defaultTimeRange: string | null,
-  emit: SSEEmitter
+  emit: SSEEmitter,
+  /** The page's exact period and the viewer's time zone, when the page sent them */
+  pagePeriod: RequestedPeriod | null = null,
+  timeZone: string = 'UTC',
 ): Promise<ModuleResult<AnalyticsExecutionResult>> {
   const startTime = Date.now();
 
@@ -57,8 +94,18 @@ export async function executeAnalyticsTools(
       } else {
         delete params.experienceId;
       }
-      // Default to the range selected on the page
-      if (!params.timeRange) {
+      // The exact period this call covers, sent as instants; the fixed range stays
+      // alongside for tools that only have those
+      const period = resolveToolPeriod(action.hints, pagePeriod, timeZone);
+      delete params.from;
+      delete params.to;
+      if (period) {
+        params.from = period.from.toISOString();
+        params.to = period.to.toISOString();
+        params.timeZone = timeZone;
+        params.timeRange = nearestTimeRange(period);
+      } else if (!params.timeRange) {
+        // Default to the range selected on the page
         params.timeRange = defaultTimeRange ?? '7d';
       }
 
@@ -67,6 +114,12 @@ export async function executeAnalyticsTools(
 
       // Execute
       const result = await executeAnalyticsTool(action.toolSlug, params);
+      // What the card says it covers: the exact period when the tool read one
+      const periodLabel = result.period
+        ? describePeriod({ from: new Date(result.period.from), to: new Date(result.period.to) }, timeZone)
+        : result.timeRange
+          ? `Last ${result.timeRange.replace('h', ' hours').replace('d', ' days')}`
+          : undefined;
 
       // Emit tool data for frontend rendering
       if (result.success && result.rawData && result.dataType) {
@@ -75,6 +128,7 @@ export async function executeAnalyticsTools(
           tool: action.toolSlug,
           dataType: result.dataType,
           data: result.rawData,
+          periodLabel,
         });
       }
 
@@ -91,6 +145,7 @@ export async function executeAnalyticsTools(
         intent: action.intent,
         parameters: params,
         result,
+        periodLabel,
         durationMs: Date.now() - toolStart,
       } satisfies AnalyticsActionResult;
     });
@@ -105,6 +160,7 @@ export async function executeAnalyticsTools(
         tool: a.toolSlug,
         dataType: a.result.dataType!,
         data: a.result.rawData,
+        periodLabel: a.periodLabel,
       }));
 
     const successCount = executedActions.filter((a) => a.result.success).length;

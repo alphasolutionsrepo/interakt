@@ -31,10 +31,10 @@ function SummarySkeleton() {
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
-                <Card key={i} className="border-slate-200">
+                <Card key={i} className="border-slate-200 dark:border-border">
                     <CardContent className="p-4">
-                        <div className="h-4 w-20 bg-slate-200 rounded animate-pulse mb-2" />
-                        <div className="h-8 w-12 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-4 w-20 bg-slate-200 dark:bg-muted rounded animate-pulse mb-2" />
+                        <div className="h-8 w-12 bg-slate-200 dark:bg-muted rounded animate-pulse" />
                     </CardContent>
                 </Card>
             ))}
@@ -44,21 +44,21 @@ function SummarySkeleton() {
 
 function CompactSkeleton() {
     return (
-        <Card className="border-slate-200 h-full">
+        <Card className="border-slate-200 dark:border-border h-full">
             <CardContent className="p-3">
                 <div className="flex items-center gap-3">
                     {[...Array(4)].map((_, i) => (
                         <div key={i} className="flex items-center gap-1.5">
-                            <div className="h-4 w-4 bg-slate-200 rounded animate-pulse" />
-                            <div className="h-4 w-6 bg-slate-200 rounded animate-pulse" />
-                            <div className="h-3 w-12 bg-slate-200 rounded animate-pulse" />
-                            {i < 3 && <div className="w-px h-5 bg-slate-200 ml-1.5" />}
+                            <div className="h-4 w-4 bg-slate-200 dark:bg-muted rounded animate-pulse" />
+                            <div className="h-4 w-6 bg-slate-200 dark:bg-muted rounded animate-pulse" />
+                            <div className="h-3 w-12 bg-slate-200 dark:bg-muted rounded animate-pulse" />
+                            {i < 3 && <div className="w-px h-5 bg-slate-200 dark:bg-muted ml-1.5" />}
                         </div>
                     ))}
                 </div>
                 <div className="mt-2 flex items-center gap-2">
-                    <div className="h-1.5 flex-1 bg-slate-200 rounded animate-pulse" />
-                    <div className="h-3 w-8 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-1.5 flex-1 bg-slate-200 dark:bg-muted rounded animate-pulse" />
+                    <div className="h-3 w-8 bg-slate-200 dark:bg-muted rounded animate-pulse" />
                 </div>
             </CardContent>
         </Card>
@@ -72,7 +72,7 @@ interface MiniStatProps {
     colorClass?: string;
 }
 
-function MiniStat({ icon, value, label, colorClass = 'text-slate-700' }: MiniStatProps) {
+function MiniStat({ icon, value, label, colorClass = 'text-slate-700 dark:text-muted-foreground' }: MiniStatProps) {
     return (
         <div className="flex items-center gap-1.5">
             <span className={cn('flex h-4 w-4 items-center justify-center [&>svg]:h-4 [&>svg]:w-4', colorClass)}>
@@ -107,7 +107,7 @@ export function FieldMappingSummary({
 
     if (compact) {
         return (
-            <Card className="border-slate-200 h-full">
+            <Card className="border-slate-200 dark:border-border h-full">
                 <CardContent className="p-3">
                     <div className="flex items-center gap-3 flex-wrap">
                         <MiniStat
@@ -115,21 +115,21 @@ export function FieldMappingSummary({
                             value={summary.totalFields}
                             label="Total"
                         />
-                        <div className="w-px h-5 bg-slate-200" />
+                        <div className="w-px h-5 bg-slate-200 dark:bg-muted" />
                         <MiniStat
                             icon={<CheckCircle2 />}
                             value={summary.mappedFields}
                             label="Mapped"
                             colorClass="text-emerald-600"
                         />
-                        <div className="w-px h-5 bg-slate-200" />
+                        <div className="w-px h-5 bg-slate-200 dark:bg-muted" />
                         <MiniStat
                             icon={<AlertCircle />}
                             value={summary.unmappedFields}
                             label="Unmapped"
                             colorClass={summary.unmappedFields > 0 ? 'text-amber-600' : 'text-slate-400'}
                         />
-                        <div className="w-px h-5 bg-slate-200" />
+                        <div className="w-px h-5 bg-slate-200 dark:bg-muted" />
                         <MiniStat
                             icon={<Target />}
                             value={`${summary.requiredMappedFields}/${summary.requiredFields}`}
@@ -155,16 +155,16 @@ export function FieldMappingSummary({
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {/* Total Fields */}
-                <Card className="border-slate-200">
+                <Card className="border-slate-200 dark:border-border">
                     <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm text-slate-500">Total Fields</p>
-                                <p className="text-2xl font-bold text-slate-900">
+                                <p className="text-2xl font-bold text-slate-900 dark:text-foreground">
                                     {summary.totalFields}
                                 </p>
                             </div>
-                            <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+                            <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-muted flex items-center justify-center">
                                 <Layers className="h-5 w-5 text-slate-600" />
                             </div>
                         </div>
@@ -172,7 +172,7 @@ export function FieldMappingSummary({
                 </Card>
 
                 {/* Mapped Fields */}
-                <Card className="border-slate-200">
+                <Card className="border-slate-200 dark:border-border">
                     <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                             <div>
@@ -181,7 +181,7 @@ export function FieldMappingSummary({
                                     {summary.mappedFields}
                                 </p>
                             </div>
-                            <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                            <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
                                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                             </div>
                         </div>
@@ -189,7 +189,7 @@ export function FieldMappingSummary({
                 </Card>
 
                 {/* Unmapped Fields */}
-                <Card className="border-slate-200">
+                <Card className="border-slate-200 dark:border-border">
                     <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                             <div>
@@ -203,7 +203,7 @@ export function FieldMappingSummary({
                             </div>
                             <div className={cn(
                                 'h-10 w-10 rounded-full flex items-center justify-center',
-                                summary.unmappedFields > 0 ? 'bg-amber-100' : 'bg-slate-100'
+                                summary.unmappedFields > 0 ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-slate-100 dark:bg-muted'
                             )}>
                                 <AlertCircle className={cn(
                                     'h-5 w-5',
@@ -216,8 +216,8 @@ export function FieldMappingSummary({
 
                 {/* Required Status */}
                 <Card className={cn(
-                    'border-slate-200',
-                    !summary.isReadyForIndexing && 'border-red-200 bg-red-50/30'
+                    'border-slate-200 dark:border-border',
+                    !summary.isReadyForIndexing && 'border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-950/40'
                 )}>
                     <CardContent className="p-4">
                         <div className="flex items-center justify-between">
@@ -232,7 +232,7 @@ export function FieldMappingSummary({
                             </div>
                             <div className={cn(
                                 'h-10 w-10 rounded-full flex items-center justify-center',
-                                summary.isReadyForIndexing ? 'bg-emerald-100' : 'bg-red-100'
+                                summary.isReadyForIndexing ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-red-100 dark:bg-red-900/40'
                             )}>
                                 <Target className={cn(
                                     'h-5 w-5',
@@ -245,12 +245,12 @@ export function FieldMappingSummary({
             </div>
 
             {/* Progress Bar */}
-            <Card className="border-slate-200">
+            <Card className="border-slate-200 dark:border-border">
                 <CardContent className="p-4">
                     <div className="space-y-3">
                         <div className="flex items-center justify-between text-sm">
                             <span className="text-slate-600">Mapping Progress</span>
-                            <span className="font-medium text-slate-900">{mappingPercentage}%</span>
+                            <span className="font-medium text-slate-900 dark:text-foreground">{mappingPercentage}%</span>
                         </div>
                         <Progress value={mappingPercentage} className="h-2" />
 

@@ -158,7 +158,7 @@ export function useDashboardData() {
     page: 1,
     pageSize: 100,
   });
-  const analyticsQuery = useAnalyticsDashboard('24h');
+  const analyticsQuery = useAnalyticsDashboard({ preset: '24h' });
   const recentSearchesQuery = useRecentSearches(undefined, 8);
 
   const isLoading =

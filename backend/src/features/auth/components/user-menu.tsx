@@ -19,7 +19,7 @@ export function UserMenu() {
     const pathname = usePathname()
 
     if (status === 'loading') {
-        return <div className="h-8 w-8 rounded-full bg-gray-200 animate-pulse" />
+        return <div className="h-8 w-8 rounded-full bg-gray-200 dark:bg-muted animate-pulse" />
     }
 
     if (!session?.user) {

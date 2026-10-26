@@ -110,7 +110,7 @@ function DropZone({
             className={cn(
                 'border-2 border-dashed rounded-lg p-8 transition-colors text-center',
                 isDragging && 'border-primary bg-primary/5',
-                !isDragging && 'border-slate-200 hover:border-slate-300',
+                !isDragging && 'border-slate-200 dark:border-border hover:border-slate-300',
                 disabled && 'opacity-50 cursor-not-allowed'
             )}
             onDragOver={handleDragOver}
@@ -129,7 +129,7 @@ function DropZone({
             <div className="flex flex-col items-center gap-4">
                 <div className={cn(
                     'h-14 w-14 rounded-full flex items-center justify-center',
-                    isDragging ? 'bg-primary/10' : 'bg-slate-100'
+                    isDragging ? 'bg-primary/10' : 'bg-slate-100 dark:bg-muted'
                 )}>
                     <Upload className={cn(
                         'h-7 w-7',
@@ -138,7 +138,7 @@ function DropZone({
                 </div>
 
                 <div className="space-y-1">
-                    <p className="text-sm font-medium text-slate-900">
+                    <p className="text-sm font-medium text-slate-900 dark:text-foreground">
                         {isDragging ? 'Drop your file here' : 'Drag & drop a JSON file'}
                     </p>
                     <p className="text-xs text-slate-500">
@@ -177,15 +177,15 @@ function DocumentPreview({
     const previewDoc = documents[0];
 
     return (
-        <Card className="border-slate-200">
-            <CardHeader className="py-3 px-4 border-b border-slate-100">
+        <Card className="border-slate-200 dark:border-border">
+            <CardHeader className="py-3 px-4 border-b border-slate-100 dark:border-border">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                        <div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
                             <FileText className="h-5 w-5 text-emerald-600" />
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-slate-900">
+                            <p className="text-sm font-medium text-slate-900 dark:text-foreground">
                                 {fileName || 'Pasted JSON'}
                             </p>
                             <p className="text-xs text-slate-500">
@@ -208,8 +208,8 @@ function DocumentPreview({
 
             <CardContent className="p-4">
                 <p className="text-xs text-slate-500 mb-2">Sample document preview:</p>
-                <ScrollArea className="h-48 rounded border border-slate-100 bg-slate-50">
-                    <pre className="p-3 text-xs text-slate-700 font-mono">
+                <ScrollArea className="h-48 rounded border border-slate-100 dark:border-border bg-slate-50 dark:bg-muted/40">
+                    <pre className="p-3 text-xs text-slate-700 dark:text-muted-foreground font-mono">
                         {JSON.stringify(previewDoc, null, 2)}
                     </pre>
                 </ScrollArea>
@@ -243,8 +243,8 @@ function IndexingProgress({
     return (
         <Card className={cn(
             'border',
-            isComplete && 'border-emerald-200 bg-emerald-50/30',
-            isFailed && 'border-red-200 bg-red-50/30'
+            isComplete && 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/40',
+            isFailed && 'border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-950/40'
         )}>
             <CardContent className="p-6">
                 <div className="space-y-4">
@@ -257,7 +257,7 @@ function IndexingProgress({
                                 isProcessing && 'animate-spin'
                             )} />
                             <div>
-                                <p className="font-medium text-slate-900">{config.label}</p>
+                                <p className="font-medium text-slate-900 dark:text-foreground">{config.label}</p>
                                 <p className="text-sm text-slate-500">
                                     {status.progress.indexed.toLocaleString()} of {status.progress.total.toLocaleString()} indexed
                                     {status.progress.failed > 0 && (
@@ -290,11 +290,11 @@ function IndexingProgress({
 
                     {/* Summary badges */}
                     <div className="flex gap-2 flex-wrap">
-                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                        <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
                             {status.progress.indexed} indexed
                         </Badge>
                         {status.progress.failed > 0 && (
-                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                            <Badge variant="outline" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800">
                                 {status.progress.failed} failed
                             </Badge>
                         )}
@@ -303,10 +303,10 @@ function IndexingProgress({
                     {/* Errors */}
                     {status.errors.length > 0 && (
                         <div className="mt-4">
-                            <p className="text-sm font-medium text-slate-700 mb-2">
+                            <p className="text-sm font-medium text-slate-700 dark:text-muted-foreground mb-2">
                                 Errors ({status.errors.length})
                             </p>
-                            <ScrollArea className="h-32 rounded border border-red-100 bg-red-50/50">
+                            <ScrollArea className="h-32 rounded border border-red-100 dark:border-red-900 bg-red-50/50 dark:bg-red-950/40">
                                 <div className="p-3 space-y-2">
                                     {status.errors.slice(0, 10).map((err, i) => (
                                         <div key={i} className="text-xs">
@@ -488,7 +488,7 @@ export function DocumentUploadPanel({
         <div className="space-y-6">
             {/* Header */}
             <div>
-                <h3 className="text-lg font-semibold text-slate-900">Upload Documents</h3>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-foreground">Upload Documents</h3>
                 <p className="text-sm text-slate-500">
                     Upload a JSON file or paste JSON data to index documents
                 </p>
@@ -509,7 +509,7 @@ export function DocumentUploadPanel({
                         <div className="flex items-center gap-3">
                             <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
                             <div>
-                                <p className="font-medium text-slate-900">Starting indexing...</p>
+                                <p className="font-medium text-slate-900 dark:text-foreground">Starting indexing...</p>
                                 <p className="text-sm text-slate-500">Preparing to index documents</p>
                             </div>
                         </div>
