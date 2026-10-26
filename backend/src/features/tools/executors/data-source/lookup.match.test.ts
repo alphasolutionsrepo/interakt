@@ -7,7 +7,14 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-const { getDocumentByIdFromIndex, searchById } = vi.hoisted(() => ({ getDocumentByIdFromIndex: vi.fn(), searchById: vi.fn() }));
+// A key fetch finds the record unless a test says otherwise (each starts with a miss on the
+// requested value; a later fetch is the matched record being read as responses show it).
+const { getDocumentByIdFromIndex, searchById } = vi.hoisted(() => ({
+  getDocumentByIdFromIndex: vi.fn(
+    async (_index: string, key: string): Promise<{ id: string; fields: Record<string, unknown> } | null> => ({ id: key, fields: { id: key } }),
+  ),
+  searchById: vi.fn(),
+}));
 vi.mock('@/features/search/search.service', () => ({ getDocumentByIdFromIndex, searchById }));
 const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
@@ -271,6 +278,26 @@ describe('managed lookup fallback', () => {
 
     expect(result).toMatchObject({ success: true, data: { id: 'p1' } });
     expect(getDocumentByIdFromIndex).toHaveBeenLastCalledWith('idx', '12345');
+  });
+
+  it('matches on a field kept out of responses, and returns only the fields responses show', async () => {
+    getDataSourceById.mockResolvedValueOnce({
+      schema: {
+        fields: [{ name: 'name', type: 'text', role: 'title' }, { name: 'sku', type: 'keyword' }, { name: 'embedding', type: 'vector' }],
+      },
+    } as never);
+    getDocumentByIdFromIndex
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'p1', fields: { name: 'Crew Neck Sweater' } });
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { name: 'Crew Neck Sweater', sku: 'ABC-123' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'ABC-123' });
+
+    expect(searchById).toHaveBeenLastCalledWith('idx', expect.objectContaining({ includeFields: ['name', 'sku'] }), expect.anything());
+    expect(result).toEqual({
+      success: true,
+      data: { id: 'p1', document: { name: 'Crew Neck Sweater' }, matchedBy: 'search_fallback' },
+    });
   });
 
   it('reads the data source only when the key fetch misses', async () => {

@@ -70,7 +70,7 @@ export async function executeDataSourceLookup(
 
     // Managed indexes fetch by document key — provider-agnostic (ES _id / Azure key).
     if (source.kind === 'managed') {
-      return lookupFromManagedIndex(source.searchIndexId, documentId, async () => rolesOf(await loadSchema(dataSourceId)));
+      return lookupFromManagedIndex(source.searchIndexId, documentId, () => loadSchema(dataSourceId));
     }
 
     // External sources still look up via a filterable id field.
@@ -136,7 +136,7 @@ function resolveIdField(fields: DataSourceField[]): string {
 async function lookupFromManagedIndex(
   searchIndexId: string,
   documentId: string,
-  loadRoles: () => Promise<FieldRoles>,
+  loadSchemaOnMiss: () => Promise<DataSourceSchema | null>,
 ): Promise<OperationResult> {
   // Fetch by document key via the index's engine provider (ES _id / Azure key).
   // No filterable field or role:'id' needed — works identically for both providers.
@@ -157,13 +157,18 @@ async function lookupFromManagedIndex(
   // find tool. Search for it, but only return a hit that is the record asked for:
   // the top hit for an unknown id is usually an unrelated item. A failed search is a failed
   // lookup, not "no such record".
+  // Read only now: a key that exists needs no schema
+  const schema = await loadSchemaOnMiss();
+  const roles = rolesOf(schema);
+  // Ask for every field but vectors, not only those responses show, so a sku or name kept out
+  // of responses can still be matched; the record itself is then fetched as responses show it.
+  const matchFields = (schema?.fields ?? []).filter((f) => f.type !== 'vector').map((f) => f.name);
+  const includeFields = matchFields.length > 0 ? matchFields : undefined;
   const response = await searchService.searchById(
     searchIndexId,
-    { query: documentId, pageSize: FALLBACK_CANDIDATES },
+    { query: documentId, pageSize: FALLBACK_CANDIDATES, ...(includeFields && { includeFields }) },
     { triggerType: 'ai_tool' },
   );
-  // Read only now: a key that exists needs no roles
-  const roles = await loadRoles();
   const resolved = resolveMatch(documentId, response.hits, roles);
   if (resolved.several) return severalMatch(documentId, resolved.several, roles);
   const match = resolved.one;
@@ -173,11 +178,13 @@ async function lookupFromManagedIndex(
       query: documentId,
       matchedId: match.id,
     });
+    const shown = includeFields && match.id ? await searchService.getDocumentByIdFromIndex(searchIndexId, match.id) : null;
+    if (includeFields && !shown) return noRecordFound(documentId);
     return {
       success: true,
       data: {
         id: match.id,
-        document: match.source,
+        document: shown ? shown.fields : match.source,
         matchedBy: 'search_fallback',
       },
     };
