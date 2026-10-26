@@ -296,11 +296,16 @@ function normalize(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-/** A word without its plural ending, so "sweaters" and "sweater" compare equal. */
+/**
+ * A word without its plural ending, so "sweaters" and "sweater" compare equal. Words ending in
+ * -ies, -y or -ie all end in "i", so "batteries" meets "battery" and "hoodies" meets "hoodie".
+ */
 function singular(word: string): string {
   if (word.length <= 3 || word.endsWith('ss')) return word;
   if (/(ss|x|z|ch|sh)es$/.test(word)) return word.slice(0, -2);
-  return word.endsWith('s') ? word.slice(0, -1) : word;
+  if (word.length > 4 && word.endsWith('ies')) return `${word.slice(0, -3)}i`;
+  const one = word.endsWith('s') ? word.slice(0, -1) : word;
+  return one.length > 3 ? one.replace(/([^aeiou])y$/, '$1i').replace(/ie$/, 'i') : one;
 }
 
 function wordsOf(text: string): string[] {

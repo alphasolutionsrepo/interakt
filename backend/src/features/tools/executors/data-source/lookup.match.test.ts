@@ -86,6 +86,11 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('Pastel Hoodie', 'x', { name: 'Pastel Hoodies' })).toBe(true);
     expect(matchesRequestedRecord('Silk Blouses', 'x', { name: 'Silk Blouse' })).toBe(true);
     expect(matchesRequestedRecord('Leather Watches', 'x', { name: 'Leather Watch' })).toBe(true);
+    expect(matchesRequestedRecord('Camera Batteries', 'x', { name: 'Camera Battery' })).toBe(true);
+    expect(matchesRequestedRecord('Travel Accessory', 'x', { name: 'Travel Accessories' })).toBe(true);
+    expect(matchesRequestedRecord('Pastel Hoodies', 'x', { name: 'Pastel Hoodie' })).toBe(true);
+    expect(matchesRequestedRecord('Silk Ties', 'x', { name: 'Silk Tie' })).toBe(true);
+    expect(matchesRequestedRecord('Party Dress', 'x', { name: 'Part Dress' })).toBe(false);
   });
 
   it('matches a brand kept in its own field', () => {
