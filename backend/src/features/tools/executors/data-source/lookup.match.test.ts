@@ -55,6 +55,12 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('GJ-100', 'x', { title: 'Glass Jar', parentCode: 'GJ-100' })).toBe(false);
   });
 
+  it('takes a code-named field without a digit as an attribute, not an identifier', () => {
+    expect(matchesRequestedRecord('Navy', 'x', { name: 'Crew Sweater', colorCode: 'NAVY' })).toBe(false);
+    expect(matchesRequestedRecord('us', 'x', { name: 'Crew Sweater', countryCode: 'US' })).toBe(false);
+    expect(matchesRequestedRecord('CS-104', 'x', { name: 'Crew Sweater', styleCode: 'CS-104' })).toBe(true);
+  });
+
   it('reads the same record afresh under different roles', () => {
     const lamp = { name: 'Desk Lamp', label: 'Reading Light' };
 

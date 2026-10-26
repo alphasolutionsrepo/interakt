@@ -385,8 +385,12 @@ function codeValues(
 
   const add = (field: string, value: unknown, inList: boolean) => {
     if (!isScalar(value)) return;
-    if (IDENTIFIER_FIELD.test(field.split('.').pop() ?? field)) codes.push({ value, strength: inList ? CODE.listed : CODE.field });
-    else if (typeof value === 'string' && /\d/.test(value)) codes.push({ value, strength: CODE.possible });
+    const hasDigit = /\d/.test(String(value));
+    // A guessed id field holds a code only when its value has a digit: colorCode "NAVY" or
+    // countryCode "US" are attributes, so the item is offered rather than returned
+    if (IDENTIFIER_FIELD.test(field.split('.').pop() ?? field)) {
+      codes.push({ value, strength: hasDigit ? (inList ? CODE.listed : CODE.field) : CODE.possible });
+    } else if (typeof value === 'string' && hasDigit) codes.push({ value, strength: CODE.possible });
   };
   for (const [field, value] of Object.entries(source ?? {})) {
     if (isRelatedField(field)) continue;

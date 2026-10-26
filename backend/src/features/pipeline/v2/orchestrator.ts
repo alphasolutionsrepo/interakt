@@ -841,7 +841,13 @@ export function createProductionV2Deps(): V2PipelineDeps {
   // These deps live for one turn: each data source row is read once, for its type and schema
   const dataSources = new Map<string, ReturnType<typeof loadDataSource>>();
   const readDataSource = (id: string) => {
-    if (!dataSources.has(id)) dataSources.set(id, loadDataSource(id));
+    if (!dataSources.has(id)) {
+      // A failed read isn't kept: the next read in the turn tries again
+      dataSources.set(id, loadDataSource(id).catch((error: unknown) => {
+        dataSources.delete(id);
+        throw error;
+      }));
+    }
     return dataSources.get(id)!;
   };
 

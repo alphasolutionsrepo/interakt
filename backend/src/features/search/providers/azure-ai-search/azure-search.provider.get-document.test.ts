@@ -2,7 +2,9 @@
 
 /**
  * A key that doesn't exist is "not found", not an error, as on Elasticsearch, so Find Record
- * goes on to search for the item by name. Other errors still come back as errors.
+ * goes on to search for the item by name. Azure answers 404 for a missing key-shaped id and 400
+ * for an id a key can't be (a product name: checked on a live service, 26 Oct). Other errors
+ * still come back as errors.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -22,7 +24,15 @@ describe('AzureSearchProvider.getDocument', () => {
   it('returns not found, with no error, for a key that does not exist', async () => {
     getDocument.mockRejectedValueOnce(Object.assign(new Error('Not Found'), { statusCode: 404 }));
 
+    expect(await provider.getDocument('products', 'XYZ-999')).toEqual({ found: false });
+  });
+
+  it('returns not found for an id a key cannot be, without asking Azure (it would answer 400)', async () => {
+    getDocument.mockClear();
+
     expect(await provider.getDocument('products', 'Vesper & Co Crew Neck Sweater')).toEqual({ found: false });
+    expect(await provider.getDocument('products', 'Crew Neck Sweater')).toEqual({ found: false });
+    expect(getDocument).not.toHaveBeenCalled();
   });
 
   it('returns other failures as errors', async () => {

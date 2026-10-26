@@ -43,6 +43,16 @@ describe('production data loader', () => {
     expect(getDataSourceById).toHaveBeenCalledTimes(1);
   });
 
+  it('reads a data source again after a failed read in the same turn', async () => {
+    const turnLoader = createProductionV2Deps().contextAssembly.dataSchemaLoader!;
+    getDataSourceById.mockClear()
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockResolvedValueOnce({ id: 'ds-3', name: 'Catalog', type: 'search_index', schema: null });
+
+    await expect(turnLoader.loadSourceType('ds-3')).rejects.toThrow('connection reset');
+    expect(await turnLoader.loadSourceType('ds-3')).toBe('search_index');
+  });
+
   it('returns null for a data source that does not exist', async () => {
     getDataSourceById.mockResolvedValueOnce(null);
 

@@ -37,7 +37,14 @@ describe('getDocumentByIdFromIndex on an Azure index', () => {
   it('returns no document for a key Azure does not have', async () => {
     getDocument.mockRejectedValueOnce(Object.assign(new Error('Not Found'), { statusCode: 404 }));
 
+    expect(await getDocumentByIdFromIndex('idx', 'XYZ-999')).toBeNull();
+  });
+
+  it('returns no document for a product name, which can\'t be an Azure key', async () => {
+    getDocument.mockClear();
+
     expect(await getDocumentByIdFromIndex('idx', 'Vesper & Co Crew Neck Sweater')).toBeNull();
+    expect(getDocument).not.toHaveBeenCalled();
   });
 
   it('rejects on any other failure', async () => {

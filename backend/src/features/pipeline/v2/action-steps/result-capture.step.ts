@@ -36,12 +36,13 @@ export class ResultCaptureStep implements ActionStep {
     // durable reference to "which item" and has to re-resolve it by fuzzy
     // name search, which is why losing track of the item looks intermittent
     // rather than a hard failure.
-    // A lookup that several items fit, or that offers near misses, lists them for the user to
-    // pick from; they become the visible results, so "the second one" refers to that list.
+    // A lookup that several items fit lists them for the user to pick from, so "the second one"
+    // refers to that list. Near misses a not-found lookup offers don't replace the list the user
+    // was looking at: "the second one" still means the second item of that list.
     const record = data as Record<string, unknown>;
     const rawItems = Array.isArray(data)
       ? data
-      : record?.results ?? record?.matches ?? record?.closestMatches ??
+      : record?.results ?? record?.matches ??
         (data && typeof data === 'object' && 'id' in data ? [data] : []);
     const items = Array.isArray(rawItems) ? rawItems : [];
     const resultCount = ctx.toolResult.resultCount ?? items.length;
