@@ -305,13 +305,14 @@ describe('D3: Response Synthesis', () => {
     });
 
     it('shows no card for a lookup miss, even with closest matches', () => {
-      const { preset, presetPayload } = _selectPreset(makeInput({
+      const { preset, presetPayload, debug } = _selectPreset(makeInput({
         actionResults: [makeActionResult('product-search', {
           result: { success: true, data: { found: false, requested: 'x', closestMatches: [{ id: 'p1', name: 'Product' }] } },
         })],
       }));
       expect(preset).toBe('rich_text');
       expect(presetPayload).toBeUndefined();
+      expect(debug.reason).toBe('no_items_extracted');
     });
 
     it('keeps a later search on the same source as cards after a lookup miss', () => {
