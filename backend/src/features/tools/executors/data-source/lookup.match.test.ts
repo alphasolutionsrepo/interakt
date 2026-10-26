@@ -55,6 +55,14 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('GJ-100', 'x', { title: 'Glass Jar', parentCode: 'GJ-100' })).toBe(false);
   });
 
+  it('reads the same record afresh under different roles', () => {
+    const lamp = { name: 'Desk Lamp', label: 'Reading Light' };
+
+    expect(matchesRequestedRecord('Desk Lamp', 'x', lamp)).toBe(true);
+    expect(matchesRequestedRecord('Desk Lamp', 'x', lamp, { titleFields: ['label'], confirmed: true })).toBe(false);
+    expect(matchesRequestedRecord('Reading Light', 'x', lamp, { titleFields: ['label'], confirmed: true })).toBe(true);
+  });
+
   it('ignores fields that do not identify or name the record', () => {
     expect(matchesRequestedRecord('Outerwear', 'x', { category: 'Outerwear', name: 'Denim Jacket' })).toBe(false);
   });

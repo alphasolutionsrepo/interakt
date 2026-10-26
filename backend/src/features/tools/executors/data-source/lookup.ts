@@ -169,7 +169,7 @@ async function lookupFromManagedIndex(
   );
   const hits: Hit[] = response.hits.map((hit) => ({
     id: hit.id,
-    source: { ...hit.source, ...hit.hiddenSearchedFields },
+    source: hit.hiddenSearchedFields ? { ...hit.source, ...hit.hiddenSearchedFields } : hit.source,
     shown: hit.source,
   }));
   const resolved = resolveMatch(documentId, hits, roles);
@@ -410,9 +410,46 @@ function codeStrength(
   roles: FieldRoles,
 ): number {
   if (hitId !== undefined && normalize(String(hitId)) === wanted) return CODE.key;
-  return codeValues(source, roles)
-    .filter((code) => normalize(String(code.value)) === wanted)
+  return factsOf(source, roles).codes
+    .filter((code) => code.normalized === wanted)
     .reduce((best, code) => Math.max(best, code.strength), CODE.none);
+}
+
+/** What the matcher reads from a record: its codes, names and brand words. */
+interface RecordFacts {
+  codes: Array<{ normalized: string; strength: number }>;
+  names: string[];
+  /** The record's names and declared title values, normalized, for an exact name match. */
+  exactNames: Set<string>;
+  nameWords: Array<Set<string>>;
+  brandWords: Set<string>;
+}
+
+const factsByRecord = new WeakMap<object, Map<string, RecordFacts>>();
+
+/**
+ * A record's facts, worked out once per record and roles: a lookup checks each hit several
+ * times (exact match, partial match, near misses). Search hits aren't changed afterwards.
+ */
+function factsOf(source: Record<string, unknown> | undefined, roles: FieldRoles): RecordFacts {
+  if (!source) return recordFacts(source, roles);
+  const rolesKey = JSON.stringify([roles.titleFields, roles.idFields, roles.confirmed]);
+  let byRoles = factsByRecord.get(source);
+  if (!byRoles) factsByRecord.set(source, (byRoles = new Map()));
+  let facts = byRoles.get(rolesKey);
+  if (!facts) byRoles.set(rolesKey, (facts = recordFacts(source, roles)));
+  return facts;
+}
+
+function recordFacts(source: Record<string, unknown> | undefined, roles: FieldRoles): RecordFacts {
+  const names = namesOf(source, roles);
+  return {
+    codes: codeValues(source, roles).map((code) => ({ normalized: normalize(String(code.value)), strength: code.strength })),
+    names,
+    exactNames: new Set([...names, ...declaredTitleValues(source, roles)].map(normalize)),
+    nameWords: names.map((name) => new Set(contentWords(name))),
+    brandWords: brandWordsOf(source, roles),
+  };
 }
 
 /**
@@ -478,11 +515,10 @@ export function matchesRequestedRecord(
 
   if (codeStrength(wanted, hitId, fields, roles) > CODE.possible) return true;
 
-  const brandWords = brandWordsOf(fields, roles);
+  const { brandWords, nameWords: namesWords } = factsOf(fields, roles);
   const wantedWords = new Set(contentWords(requested));
 
-  for (const name of namesOf(fields, roles)) {
-    const nameWords = new Set(contentWords(name));
+  for (const nameWords of namesWords) {
     const recordWords = new Set([...nameWords, ...brandWords]);
     const namesTheItem = [...wantedWords].some((word) => nameWords.has(word) && !brandWords.has(word));
     if (namesTheItem && [...wantedWords].every((word) => recordWords.has(word))) return true;
@@ -498,7 +534,7 @@ type Hit = { id?: string; source?: Record<string, unknown>; shown?: Record<strin
 
 /** The record's name, as shown in a list of matches. */
 function nameOf(hit: Hit, roles: FieldRoles): string | undefined {
-  return namesOf(hit.shown ?? hit.source, roles)[0];
+  return factsOf(hit.shown ?? hit.source, roles).names[0];
 }
 
 /**
@@ -507,8 +543,7 @@ function nameOf(hit: Hit, roles: FieldRoles): string | undefined {
  */
 function exactStrength(requested: string, hit: Hit, roles: FieldRoles): number {
   const wanted = normalize(requested);
-  const byName = [...namesOf(hit.source, roles), ...declaredTitleValues(hit.source, roles)]
-    .some((name) => normalize(name) === wanted);
+  const byName = factsOf(hit.source, roles).exactNames.has(wanted);
   return Math.max(codeStrength(wanted, hit.id, hit.source, roles), byName ? CODE.field : CODE.none);
 }
 
@@ -557,7 +592,7 @@ function notFound(requested: string, hits: Hit[], roles: FieldRoles): OperationR
   const wanted = normalize(requested);
   const wantedWords = new Set(contentWords(requested));
   const sharesAWord = (hit: Hit) => {
-    const brandWords = brandWordsOf(hit.source, roles);
+    const { brandWords } = factsOf(hit.source, roles);
     const name = nameOf(hit, roles);
     return name !== undefined && wordsOf(name).some((word) => wantedWords.has(word) && !brandWords.has(word));
   };
