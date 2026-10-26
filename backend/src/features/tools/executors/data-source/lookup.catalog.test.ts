@@ -48,11 +48,11 @@ function phrasings(product: Product): Record<string, string> {
     'leading article': `the ${name}`,
     'lower case': name.toLowerCase(),
     'in quotes': `"${name}"`,
-    'and for &': name.replace('&', 'and'),
+    'and for &': name.replaceAll('&', 'and'),
     'hyphen as space': name.replace(/-/g, ' '),
     plural: plural(name),
     'id lower case': productId.toLowerCase(),
-    'id with a space': productId.replace('-', ' '),
+    'id with a space': productId.replaceAll('-', ' '),
   };
 }
 
