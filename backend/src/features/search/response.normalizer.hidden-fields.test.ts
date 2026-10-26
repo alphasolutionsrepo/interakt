@@ -46,6 +46,13 @@ describe('hidden searched fields', () => {
     expect(hit.hiddenSearchedFields).toBeUndefined();
   });
 
+  it('reads an empty field list as the default shown fields, as the query builder does', () => {
+    const hit = normalize({ name: 'Crew Neck Sweater', price: 40, sku: 'ABC-123' }, { includeHiddenSearchedFields: true, includeFields: [] });
+
+    expect(hit.source).toEqual({ name: 'Crew Neck Sweater', price: 40 });
+    expect(hit.hiddenSearchedFields).toEqual({ sku: 'ABC-123' });
+  });
+
   it('keeps a searched field the request asks to show in source', () => {
     const hit = normalize({ name: 'Crew Neck Sweater', sku: 'ABC-123' },
       { includeHiddenSearchedFields: true, includeFields: ['name', 'sku'] });

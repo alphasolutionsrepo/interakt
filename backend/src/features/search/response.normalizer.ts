@@ -125,7 +125,8 @@ function normalizeHit(hit: ProviderHit, maxScore?: number): SearchHit {
  * shown, so with none shown there is nothing to move.
  */
 function separateHiddenSearchedFields(hits: SearchHit[], request: SearchRequest, context: SearchContext): void {
-    const shown = new Set(request.includeFields ?? context.defaultResponseFields);
+    // As the query builders read it: an empty field list means the default shown fields
+    const shown = new Set(request.includeFields?.length ? request.includeFields : context.defaultResponseFields);
     if (shown.size === 0) return;
     const hidden = context.searchableFields.map(f => f.fieldName).filter(name => !shown.has(name));
     for (const hit of hits) {
