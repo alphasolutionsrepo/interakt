@@ -180,6 +180,9 @@ interface LookupInput {
   id?: string;
 }
 
+/** A chunk id: chunks are keyed by UUID. */
+const CHUNK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Retrieve a specific chunk by ID from a file_store data source.
  */
@@ -194,6 +197,9 @@ export async function executeFileStoreLookup(
   if (!chunkId) {
     return { success: false, error: 'Missing required input field: "id"' };
   }
+
+  // Chunk ids are UUIDs: anything else (a document name, say) can't be one
+  if (!CHUNK_ID.test(chunkId)) return noRecordFound(chunkId);
 
   try {
     const chunk = await kbRepository.getChunkById(chunkId);
