@@ -300,6 +300,22 @@ describe('managed lookup fallback', () => {
     });
   });
 
+  it('answers not found, without hidden fields, when the matched item is gone by the time it is fetched', async () => {
+    getDataSourceById.mockResolvedValueOnce({
+      schema: { fields: [{ name: 'name', type: 'text', role: 'title' }, { name: 'sku', type: 'keyword' }] },
+    } as never);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { name: 'Crew Neck Sweater', sku: 'ABC-123' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'ABC-123' });
+
+    expect(getDocumentByIdFromIndex).toHaveBeenLastCalledWith('idx', 'p1');
+    expect(result).toEqual({
+      success: true,
+      data: { found: false, requested: 'ABC-123', message: 'No record matches "ABC-123".' },
+    });
+  });
+
   it('reads the data source only when the key fetch misses', async () => {
     getDataSourceById.mockClear();
     getDocumentByIdFromIndex.mockResolvedValueOnce({ id: 'k1', fields: { name: 'Desk Lamp' } });
