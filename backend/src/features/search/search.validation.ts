@@ -131,7 +131,7 @@ export const searchRequestSchema = z.object({
     // Field selection
     includeFields: z.array(z.string()).optional(),
     excludeFields: z.array(z.string()).optional(),
-    includeSearchedFields: z.boolean().optional(),
+    includeHiddenSearchedFields: z.boolean().optional(),
 
     // Highlighting
     highlight: highlightConfigSchema.optional(),

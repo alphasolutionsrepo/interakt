@@ -1,4 +1,4 @@
-// src/features/search/search.service.searched-fields.test.ts
+// src/features/search/search.service.hidden-searched-fields.test.ts
 
 /**
  * search() validates each request before the engine sees it. A request option the validation
@@ -33,11 +33,11 @@ vi.mock('./providers', () => {
 import { searchById } from './search.service';
 
 describe('search request options', () => {
-  it('passes a request for the searched fields on to the engine', async () => {
-    await searchById('idx', { query: 'ABC-123', includeSearchedFields: true });
+  it('passes a request for hidden searched fields on to the engine', async () => {
+    await searchById('idx', { query: 'ABC-123', includeHiddenSearchedFields: true });
 
     expect(engineSearch).toHaveBeenCalledWith(
-      expect.objectContaining({ request: expect.objectContaining({ includeSearchedFields: true }) }),
+      expect.objectContaining({ request: expect.objectContaining({ includeHiddenSearchedFields: true }) }),
     );
   });
 });

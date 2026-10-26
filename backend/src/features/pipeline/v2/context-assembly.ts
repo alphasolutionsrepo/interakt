@@ -609,16 +609,6 @@ export function createProductionEpisodicMemoryLoader(): EpisodicMemoryLoader {
 // ============================================================================
 
 /**
- * Build the planner's view of the queryable data, grouped by data source.
- *
- * Grouped by source rather than by tool because several tools usually read the same index —
- * search, inspect and enumerate over one catalog — and repeating the field list once per
- * tool would triple the prompt for no added information.
- *
- * Best-effort throughout: this enriches planning, and a failure to load a schema must not
- * fail the turn. Losing it costs plan quality, not the answer.
- */
-/**
  * Tell the planner which lookups also find an item by name. A search-index lookup falls back
  * to a search and keeps only the item asked for (lookup.ts); a file-store lookup takes a chunk
  * id only, so a title sent to it can only come back empty. If the type can't be read, the
@@ -649,6 +639,16 @@ async function markLookupsThatFindByName(
   );
 }
 
+/**
+ * Build the planner's view of the queryable data, grouped by data source.
+ *
+ * Grouped by source rather than by tool because several tools usually read the same index —
+ * search, inspect and enumerate over one catalog — and repeating the field list once per
+ * tool would triple the prompt for no added information.
+ *
+ * Best-effort throughout: this enriches planning, and a failure to load a schema must not
+ * fail the turn. Losing it costs plan quality, not the answer.
+ */
 async function loadDataContext(
   toolDefinitions: ToolDefinitionV2[],
   loader: DataSchemaLoader | undefined,

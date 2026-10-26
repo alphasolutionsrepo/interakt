@@ -8,18 +8,13 @@
 import { describe, it, expect, vi } from 'vitest';
 
 // A key fetch finds the record unless a test says otherwise (each starts with a miss on the
-// requested value; a later fetch is the matched record being read as responses show it, which
-// here is every field the last search returned for it).
-const { getDocumentByIdFromIndex, searchById } = vi.hoisted(() => {
-  const searchById = vi.fn();
-  type Found = { id: string; fields: Record<string, unknown> } | null;
-  const getDocumentByIdFromIndex = vi.fn(async (_index: string, key: string): Promise<Found> => {
-    const last = await searchById.mock.results.at(-1)?.value;
-    const hit = (last?.hits ?? []).find((h: { id: string }) => h.id === key);
-    return { id: key, fields: hit ? hit.source : { id: key } };
-  });
-  return { getDocumentByIdFromIndex, searchById };
-});
+// requested value)
+const { getDocumentByIdFromIndex, searchById } = vi.hoisted(() => ({
+  getDocumentByIdFromIndex: vi.fn(
+    async (_index: string, key: string): Promise<{ id: string; fields: Record<string, unknown> } | null> => ({ id: key, fields: { id: key } }),
+  ),
+  searchById: vi.fn(),
+}));
 vi.mock('@/features/search/search.service', () => ({ getDocumentByIdFromIndex, searchById }));
 const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
@@ -53,6 +48,11 @@ describe('matchesRequestedRecord', () => {
     expect(
       matchesRequestedRecord('Haven & Hart Denim Bomber', 'x', { name: 'Haven & Hart Streetwear Denim Jacket' }),
     ).toBe(false);
+  });
+
+  it('reads whole words of a field name, so transparentCode is not a parent field', () => {
+    expect(matchesRequestedRecord('GJ-100', 'x', { title: 'Glass Jar', transparentCode: 'GJ-100' })).toBe(true);
+    expect(matchesRequestedRecord('GJ-100', 'x', { title: 'Glass Jar', parentCode: 'GJ-100' })).toBe(false);
   });
 
   it('ignores fields that do not identify or name the record', () => {
@@ -158,7 +158,7 @@ describe('managed lookup fallback', () => {
     // Looking past the top hit needs more than one candidate from the engine
     expect(searchById).toHaveBeenCalledWith(
       'idx',
-      { query: 'Vesper & Co Crew Neck Sweater', pageSize: 5, includeSearchedFields: true },
+      { query: 'Vesper & Co Crew Neck Sweater', pageSize: 5, includeHiddenSearchedFields: true },
       { triggerType: 'ai_tool' },
     );
   });
@@ -282,35 +282,51 @@ describe('managed lookup fallback', () => {
     const result = await executeDataSourceLookup('ds', {}, { id: 12345 });
 
     expect(result).toMatchObject({ success: true, data: { id: 'p1' } });
-    // The key fetch, before the matched record is read again
-    expect(getDocumentByIdFromIndex.mock.calls.at(-2)).toEqual(['idx', '12345']);
+    expect(getDocumentByIdFromIndex).toHaveBeenLastCalledWith('idx', '12345');
   });
 
-  it('matches on a field kept out of responses, and returns only the fields responses show', async () => {
-    getDocumentByIdFromIndex
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'p1', fields: { name: 'Crew Neck Sweater' } });
-    searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { name: 'Crew Neck Sweater', sku: 'ABC-123' } }] });
+  describe('searched fields kept out of responses', () => {
+    it('matches on a hidden sku, and returns only the fields responses show', async () => {
+      getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+      searchById.mockResolvedValueOnce({
+        hits: [{ id: 'p1', source: { name: 'Crew Neck Sweater' }, hiddenSearchedFields: { sku: 'ABC-123' } }],
+      });
 
-    const result = await executeDataSourceLookup('ds', {}, { id: 'ABC-123' });
+      const result = await executeDataSourceLookup('ds', {}, { id: 'ABC-123' });
 
-    expect(searchById).toHaveBeenLastCalledWith('idx', expect.objectContaining({ includeSearchedFields: true }), expect.anything());
-    expect(result).toEqual({
-      success: true,
-      data: { id: 'p1', document: { name: 'Crew Neck Sweater' }, matchedBy: 'search_fallback' },
+      expect(result).toEqual({
+        success: true,
+        data: { id: 'p1', document: { name: 'Crew Neck Sweater' }, matchedBy: 'search_fallback' },
+      });
     });
-  });
 
-  it('answers not found, without hidden fields, when the matched item is gone by the time it is fetched', async () => {
-    getDocumentByIdFromIndex.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
-    searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { name: 'Crew Neck Sweater', sku: 'ABC-123' } }] });
+    it('lists matches by a shown title, never by a hidden internal name', async () => {
+      getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+      searchById.mockResolvedValueOnce({
+        hits: [
+          { id: 'a', source: { title: 'Crew Neck Sweater' }, hiddenSearchedFields: { name: 'INT crew v2' } },
+          { id: 'b', source: { title: 'Crew Neck Sweater' }, hiddenSearchedFields: { name: 'INT crew v3' } },
+        ],
+      });
 
-    const result = await executeDataSourceLookup('ds', {}, { id: 'ABC-123' });
+      const result = await executeDataSourceLookup('ds', {}, { id: 'Crew Neck Sweater' });
 
-    expect(getDocumentByIdFromIndex).toHaveBeenLastCalledWith('idx', 'p1');
-    expect(result).toEqual({
-      success: true,
-      data: { found: false, requested: 'ABC-123', message: 'No record matches "ABC-123".' },
+      expect(result).toMatchObject({
+        data: { found: false, matches: [{ id: 'a', name: 'Crew Neck Sweater' }, { id: 'b', name: 'Crew Neck Sweater' }] },
+      });
+      expect(JSON.stringify(result)).not.toContain('INT crew');
+    });
+
+    it('offers near items by shown names only, even when only a hidden field is called name', async () => {
+      getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+      searchById.mockResolvedValueOnce({
+        hits: [{ id: 'a', source: { shortTitle: 'Crew Neck Sweater' }, hiddenSearchedFields: { name: 'INT crew v2' } }],
+      });
+
+      const result = await executeDataSourceLookup('ds', {}, { id: 'Crew Neck Cardigan' });
+
+      expect(result).toMatchObject({ data: { found: false, closestMatches: [{ id: 'a', name: 'Crew Neck Sweater' }] } });
+      expect(JSON.stringify(result)).not.toContain('INT crew');
     });
   });
 

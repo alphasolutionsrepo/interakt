@@ -487,7 +487,8 @@ function buildSourceConfig(
         config.includes = context.defaultResponseFields;
     }
 
-    if (request.includeSearchedFields) {
+    // With no shown fields nothing is narrowed, so there is nothing hidden to add
+    if (request.includeHiddenSearchedFields && config.includes.length > 0) {
         const searched = context.searchableFields.map(f => f.fieldName);
         config.includes = [...new Set([...config.includes, ...searched])];
     }

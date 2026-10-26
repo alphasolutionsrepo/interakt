@@ -24,9 +24,9 @@ const context = {
 const source = (request: Partial<SearchRequest>) =>
     buildLexicalSearchBody({ query: 'ABC-123', ...request } as SearchRequest, context)._source;
 
-describe('searched fields in the response', () => {
+describe('hidden searched fields in the response', () => {
     it('returns the shown fields plus the searched fields, never the embedding, when asked', () => {
-        expect(source({ includeSearchedFields: true })).toEqual({
+        expect(source({ includeHiddenSearchedFields: true })).toEqual({
             includes: ['name', 'price', 'sku'],
             excludes: ['content_embedding'],
         });
@@ -34,5 +34,14 @@ describe('searched fields in the response', () => {
 
     it('returns only the shown fields otherwise', () => {
         expect(source({})).toEqual({ includes: ['name', 'price'], excludes: ['content_embedding'] });
+    });
+
+    it('adds nothing when no fields are shown, so the response is as before', () => {
+        const body = buildLexicalSearchBody(
+            { query: 'ABC-123', includeHiddenSearchedFields: true } as SearchRequest,
+            { ...context, defaultResponseFields: [] },
+        );
+
+        expect(body._source).toEqual({ includes: [], excludes: ['content_embedding'] });
     });
 });

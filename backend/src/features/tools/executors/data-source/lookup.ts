@@ -160,14 +160,19 @@ async function lookupFromManagedIndex(
   // Read only now: a key that exists needs no schema
   const schema = await loadSchemaOnMiss();
   const roles = rolesOf(schema);
-  // The hits carry the fields the search looked in, so a sku kept out of responses can still be
-  // matched; the record itself is then fetched as responses show it.
+  // The matcher also reads the searched fields kept out of responses, so a sku hidden from
+  // responses still identifies its item; what is returned or listed comes from source only.
   const response = await searchService.searchById(
     searchIndexId,
-    { query: documentId, pageSize: FALLBACK_CANDIDATES, includeSearchedFields: true },
+    { query: documentId, pageSize: FALLBACK_CANDIDATES, includeHiddenSearchedFields: true },
     { triggerType: 'ai_tool' },
   );
-  const resolved = resolveMatch(documentId, response.hits, roles);
+  const hits: Hit[] = response.hits.map((hit) => ({
+    id: hit.id,
+    source: { ...hit.source, ...hit.hiddenSearchedFields },
+    shown: hit.source,
+  }));
+  const resolved = resolveMatch(documentId, hits, roles);
   if (resolved.several) return severalMatch(documentId, resolved.several, roles);
   const match = resolved.one;
   if (match) {
@@ -176,19 +181,17 @@ async function lookupFromManagedIndex(
       query: documentId,
       matchedId: match.id,
     });
-    const shown = await searchService.getDocumentByIdFromIndex(searchIndexId, match.id);
-    if (!shown) return noRecordFound(documentId);
     return {
       success: true,
       data: {
         id: match.id,
-        document: shown.fields,
+        document: match.shown,
         matchedBy: 'search_fallback',
       },
     };
   }
 
-  return notFound(documentId, response.hits, roles);
+  return notFound(documentId, hits, roles);
 }
 
 // ============================================================================
@@ -268,9 +271,26 @@ const isNameField = (field: string) => NAME_FIELDS.has(field.toLowerCase().repla
 /** When a record has none of those: a field whose name ends in name or title (HotelName, itemTitle). */
 const LOOSE_NAME_FIELD = /(name|title)$/i;
 /** Fields about a related item (brandName, categoryId, ...), which don't identify this record. */
-const RELATED_FIELD = /brand|category|categories|vendor|manufacturer|supplier|seller|parent|collection|store|author|related/i;
+const RELATED_WORDS = new Set([
+  'brand', 'category', 'categories', 'vendor', 'manufacturer', 'supplier', 'seller', 'parent', 'collection',
+  'store', 'author', 'related',
+]);
 /** Fields naming the record's brand, which a request often puts next to the name. */
-const BRAND_FIELD = /brand|vendor|manufacturer/i;
+const BRAND_WORDS = new Set(['brand', 'vendor', 'manufacturer']);
+
+/** The words of a field name (storeName, parent_sku, Category-Id), so transparentCover isn't "parent". */
+function fieldNameWords(field: string): string[] {
+  return field
+    .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z\d]+/)
+    .filter(Boolean);
+}
+const hasFieldWord = (field: string, words: Set<string>) =>
+  fieldNameWords(field).some((word) => words.has(word) || words.has(singular(word)));
+const isRelatedField = (field: string) => hasFieldWord(field, RELATED_WORDS);
+const isBrandField = (field: string) => hasFieldWord(field, BRAND_WORDS);
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -305,7 +325,7 @@ function scalarEntries(fields: Record<string, unknown> | undefined): Entry[] {
 
 /** A record's own fields: those that aren't about a related item (brand, category, ...). */
 function ownEntries(entries: Entry[]): Entry[] {
-  return entries.filter(([name]) => !RELATED_FIELD.test(name));
+  return entries.filter(([name]) => !isRelatedField(name));
 }
 
 const isScalar = (value: unknown): value is string | number => typeof value === 'string' || typeof value === 'number';
@@ -361,7 +381,7 @@ function codeValues(
     else if (typeof value === 'string' && /\d/.test(value)) codes.push({ value, strength: CODE.possible });
   };
   for (const [field, value] of Object.entries(source ?? {})) {
-    if (RELATED_FIELD.test(field)) continue;
+    if (isRelatedField(field)) continue;
     if (!Array.isArray(value)) {
       add(field, value, false);
       continue;
@@ -395,7 +415,7 @@ function brandWordsOf(source: Record<string, unknown> | undefined, roles: FieldR
   if (roles.confirmed) return new Set();
   return new Set(
     scalarEntries(source)
-      .filter(([name]) => BRAND_FIELD.test(name) && !IDENTIFIER_FIELD.test(name))
+      .filter(([name]) => isBrandField(name) && !IDENTIFIER_FIELD.test(name))
       .flatMap(([, value]) => wordsOf(String(value))),
   );
 }
@@ -465,11 +485,12 @@ export function matchesRequestedRecord(
   return false;
 }
 
-type Hit = { id?: string; source?: Record<string, unknown> };
+/** A search hit: source is what the matcher reads, shown (when different) what may be returned. */
+type Hit = { id?: string; source?: Record<string, unknown>; shown?: Record<string, unknown> };
 
 /** The record's name, as shown in a list of matches. */
 function nameOf(hit: Hit, roles: FieldRoles): string | undefined {
-  return namesOf(hit.source, roles)[0];
+  return namesOf(hit.shown ?? hit.source, roles)[0];
 }
 
 /**

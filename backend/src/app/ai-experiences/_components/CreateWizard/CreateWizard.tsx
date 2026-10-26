@@ -134,7 +134,7 @@ function generateSystemInstructions(
 
     const capabilities: string[] = [];
     if (hasSearch) capabilities.push('search for relevant results');
-    if (hasLookup) capabilities.push('look up specific items by ID');
+    if (hasLookup) capabilities.push('look up specific items');
     if (hasInspect) capabilities.push('inspect available data fields');
     if (hasEnumerate) capabilities.push('discover available filter values');
 

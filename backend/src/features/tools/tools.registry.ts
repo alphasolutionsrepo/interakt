@@ -335,14 +335,14 @@ export function getOperationCapability(
   return getOperationsForDataSource(dataSourceType).find((cap) => cap.operation === operation);
 }
 
-/**
- * Get a standalone executor capability by type.
- */
 /** Whether a lookup on this data source type also finds an item by its name. */
 export function lookupFindsByName(dataSourceType: string): boolean {
   return getOperationCapability(dataSourceType as DataSourceType, 'lookup')?.findsByName === true;
 }
 
+/**
+ * Get a standalone executor capability by type.
+ */
 export function getStandaloneExecutor(
   executorType: Exclude<ExecutorType, 'data_source'>,
 ): StandaloneExecutorCapability | undefined {

@@ -806,14 +806,14 @@ function triggerPostTurnTasks(
 // PRODUCTION DEPENDENCY FACTORY
 // ============================================================================
 
-/**
- * Create all production dependencies for the V2 pipeline.
- */
 async function loadDataSource(id: string) {
   const dataSourceService = await import('@/features/data-source/data-source.service');
   return dataSourceService.getDataSourceById(id);
 }
 
+/**
+ * Create all production dependencies for the V2 pipeline.
+ */
 export function createProductionV2Deps(): V2PipelineDeps {
   // Lazy imports to avoid circular dependencies
   const chatFn: ChatFn = async (messages, options) => {
