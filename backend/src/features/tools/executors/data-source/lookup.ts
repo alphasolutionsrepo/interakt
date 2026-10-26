@@ -66,16 +66,15 @@ export async function executeDataSourceLookup(
     // executeTool, which retries transient errors and labels the call failed.
     if (source.kind === 'file_store') return executeFileStoreLookup(dataSourceId, config, input);
 
-    const schema = await loadSchema(dataSourceId);
-    const fields = schema?.fields ?? [];
-    const roles = rolesOf(schema);
-
     // Managed indexes fetch by document key — provider-agnostic (ES _id / Azure key).
     if (source.kind === 'managed') {
-      return lookupFromManagedIndex(source.searchIndexId, documentId, roles);
+      return lookupFromManagedIndex(source.searchIndexId, documentId, async () => rolesOf(await loadSchema(dataSourceId)));
     }
 
     // External sources still look up via a filterable id field.
+    const schema = await loadSchema(dataSourceId);
+    const fields = schema?.fields ?? [];
+    const roles = rolesOf(schema);
     const idField = lookupConfig.idField ?? resolveIdField(fields);
     return lookupFromExternalSource(source, idField, documentId, fields, roles);
   } catch (error) {
@@ -135,7 +134,7 @@ function resolveIdField(fields: DataSourceField[]): string {
 async function lookupFromManagedIndex(
   searchIndexId: string,
   documentId: string,
-  roles: FieldRoles,
+  loadRoles: () => Promise<FieldRoles>,
 ): Promise<OperationResult> {
   // Fetch by document key via the index's engine provider (ES _id / Azure key).
   // No filterable field or role:'id' needed — works identically for both providers.
@@ -161,6 +160,8 @@ async function lookupFromManagedIndex(
     { query: documentId, pageSize: FALLBACK_CANDIDATES },
     { triggerType: 'ai_tool' },
   );
+  // Read only now: a key that exists needs no roles
+  const roles = await loadRoles();
   const resolved = resolveMatch(documentId, response.hits, roles);
   if (resolved.several) return severalMatch(documentId, resolved.several, roles);
   const match = resolved.one;
@@ -415,7 +416,8 @@ function declaredTitleValues(source: Record<string, unknown> | undefined, roles:
 
 /**
  * Whether a search hit is the record that was asked for:
- * - its id or one of its codes equals the requested value, or
+ * - its id or one of its certain codes equals the requested value (a value that only might be
+ *   a code, such as compatibleWith: "iPhone 15", is offered as a near miss instead), or
  * - its name (with its brand) has every requested word and the request is more than
  *   the brand ("Crew Neck Sweater" finds "Vesper & Co Crew Neck Sweater"; "Haven & Hart
  *   Denim Jacket" finds "Streetwear Denim Jacket" by Haven & Hart), or
@@ -433,7 +435,7 @@ export function matchesRequestedRecord(
   const wanted = normalize(requested);
   if (!wanted) return false;
 
-  if (isIdentifiedBy(wanted, hitId, fields, roles)) return true;
+  if (isIdentifiedBy(wanted, hitId, fields, roles, true)) return true;
 
   const brandWords = brandWordsOf(fields, roles);
   const wantedWords = new Set(contentWords(requested));
@@ -504,21 +506,23 @@ const CLOSEST_MATCHES = 3;
  * No record matches. That is an answer, not a failure: there is no document, so no product
  * card is shown, and the planner counts it as zero results. The search hits that were checked
  * and rejected come back as closestMatches (id and name only), so a near miss (a reworded name,
- * an extra word) isn't a dead end. Only hits whose name shares a word with the request, besides
- * the brand and filler words, count as close. They are not the item asked for.
+ * an extra word, a value it only mentions) isn't a dead end. Hits that hold the value in a field
+ * not known to hold codes come first, then hits whose name shares a word with the request,
+ * besides the brand and filler words. They are not the item asked for.
  */
 function notFound(requested: string, hits: Hit[], roles: FieldRoles): OperationResult {
+  const wanted = normalize(requested);
   const wantedWords = new Set(contentWords(requested));
-  const closestMatches = hits
-    .map((hit) => {
-      const brandWords = brandWordsOf(hit.source, roles);
-      const name = nameOf(hit, roles);
-      const close = name !== undefined
-        && wordsOf(name).some((word) => wantedWords.has(word) && !brandWords.has(word));
-      return close ? { id: hit.id, name } : null;
-    })
-    .filter((match) => match !== null)
-    .slice(0, CLOSEST_MATCHES);
+  const sharesAWord = (hit: Hit) => {
+    const brandWords = brandWordsOf(hit.source, roles);
+    const name = nameOf(hit, roles);
+    return name !== undefined && wordsOf(name).some((word) => wantedWords.has(word) && !brandWords.has(word));
+  };
+  // Hits that hold the value as a possible code come first, then those that share a word
+  const mentions = hits.filter((hit) => isIdentifiedBy(wanted, hit.id, hit.source, roles));
+  const closestMatches = [...mentions, ...hits.filter((hit) => !mentions.includes(hit) && sharesAWord(hit))]
+    .slice(0, CLOSEST_MATCHES)
+    .map((hit) => ({ id: hit.id, name: nameOf(hit, roles) }));
   if (closestMatches.length === 0) {
     return { success: true, data: { found: false, requested, message: `No record matches "${requested}".` } };
   }

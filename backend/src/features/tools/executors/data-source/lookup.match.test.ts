@@ -93,11 +93,15 @@ describe('matchesRequestedRecord', () => {
     expect(matchesRequestedRecord('Acme', 'x', { HotelName: 'Fancy Stay', brandName: 'Acme' })).toBe(false);
   });
 
-  it('matches a code held in any field, or in a list, by its whole value', () => {
-    expect(matchesRequestedRecord('978-0134494166', 'b1', { title: 'Clean Architecture', isbn: '978-0134494166' })).toBe(true);
-    expect(matchesRequestedRecord('HB-2231', 'x', { name: 'Hand Blender', partNo: 'HB-2231' })).toBe(true);
+  it('matches a code in an identifier field, also in a list, by its whole value', () => {
+    expect(matchesRequestedRecord('HB-2231', 'x', { name: 'Hand Blender', partNumber: 'HB-2231' })).toBe(true);
     expect(matchesRequestedRecord('SKU-2', 'x', { name: 'Desk Lamp', variants: [{ sku: 'SKU-1' }, { sku: 'SKU-2' }] })).toBe(true);
-    expect(matchesRequestedRecord('X100', 'x', { name: 'Camera', models: ['X100', 'X200'] })).toBe(true);
+  });
+
+  it('does not take a code in a field not known to hold one as the item', () => {
+    // isbn, partNo, models, compatibleWith: only a declared id field says so for certain
+    expect(matchesRequestedRecord('978-0134494166', 'b1', { title: 'Clean Architecture', isbn: '978-0134494166' })).toBe(false);
+    expect(matchesRequestedRecord('X100', 'x', { name: 'Camera', models: ['X100', 'X200'] })).toBe(false);
   });
 
   it('does not take a plain word from another field, or part of a code, as the item', () => {
@@ -201,10 +205,34 @@ describe('managed lookup fallback', () => {
 
     const result = await executeDataSourceLookup('ds', {}, { id: 'iPhone 15' });
 
-    expect(result.data).toMatchObject({
-      found: false,
-      matches: [{ id: 'phone', name: 'Apple iPhone 15 128GB' }, { id: 'case', name: 'Clear Case' }],
+    expect(result).toMatchObject({ success: true, data: { id: 'phone' } });
+  });
+
+  it('offers, but does not return, an item that only mentions the value', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'case', source: { name: 'Clear Case', compatibleWith: 'iPhone 15' } },
+        { id: 'book', source: { title: 'Clean Architecture', isbn: '978-0134494166' } },
+      ],
     });
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'book', source: { title: 'Clean Architecture', isbn: '978-0134494166' } }] });
+
+    const accessory = await executeDataSourceLookup('ds', {}, { id: 'iPhone 15' });
+    const book = await executeDataSourceLookup('ds', {}, { id: '978-0134494166' });
+
+    expect(accessory.data).toMatchObject({ found: false, closestMatches: [{ id: 'case', name: 'Clear Case' }] });
+    expect(book.data).toMatchObject({ found: false, closestMatches: [{ id: 'book', name: 'Clean Architecture' }] });
+  });
+
+  it('reads the data source only when the key fetch misses', async () => {
+    getDataSourceById.mockClear();
+    getDocumentByIdFromIndex.mockResolvedValueOnce({ id: 'k1', fields: { name: 'Desk Lamp' } });
+
+    await executeDataSourceLookup('ds', {}, { id: 'k1' });
+
+    expect(getDataSourceById).not.toHaveBeenCalled();
   });
 
   it('still finds the item whose identifier field holds the code, over one that mentions it', async () => {
