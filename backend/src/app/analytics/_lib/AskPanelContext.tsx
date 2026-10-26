@@ -36,7 +36,9 @@ export function AskPanelProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const chat = useAnalyticsChat();
   const { send } = chat;
-  const pageSection = pathname.startsWith('/analytics/chat') ? undefined : sectionForPath(pathname).label;
+  // Questions name the analytics section they were asked from; elsewhere (the full chat, the home page) none
+  const inSection = pathname.startsWith('/analytics/') && !pathname.startsWith('/analytics/chat');
+  const pageSection = inSection ? sectionForPath(pathname).label : undefined;
 
   const ask = useCallback((question: string) => void send(question, { pageSection }), [send, pageSection]);
   const open = useCallback(

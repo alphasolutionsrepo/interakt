@@ -53,7 +53,11 @@
       "playground": "Playground",
       "developer": "Developer",
       "administration": "Administration",
-      "platform": "Platform"
+      "platform": "Platform",
+      "monitor": "Monitor",
+      "build": "Build",
+      "test": "Test",
+      "admin": "Admin"
     },
     "items": {
       "dashboard": "Dashboard",
@@ -108,7 +112,8 @@
       "mcpConnections": "MCP Connections",
       "createMcpConnection": "Create MCP Connection",
       "allMcpConnections": "All MCP Connections",
-      "dropinWidget": "Drop-in Widget"
+      "dropinWidget": "Drop-in Widget",
+      "aiModels": "AI models"
     }
   },
   "analytics": {

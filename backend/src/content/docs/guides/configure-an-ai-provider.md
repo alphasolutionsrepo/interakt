@@ -10,7 +10,7 @@ The fastest path is the [Initial Setup wizard](../getting-started/initial-setup)
 
 ## Where to go
 
-Sidebar → **Administration → Platform → AI Providers**.
+Sidebar → **Administration → Admin → AI Providers**.
 
 ## OpenAI (cloud, paid — the recommended default)
 
@@ -103,7 +103,7 @@ Recommended for most teams:
 Two ways:
 
 - **Test Connection** in the provider's row actions — does a minimal ping.
-- **Playground → AI Services** — actually run a generation, chat, or embedding against the provider.
+- **Test → AI models** — actually run a generation, chat, or embedding against the provider.
 
 If a provider feels broken, test in the Playground first. It exposes real responses with latency.
 

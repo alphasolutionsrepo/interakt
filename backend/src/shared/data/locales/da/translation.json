@@ -53,7 +53,11 @@
       "playground": "Legeplads",
       "developer": "Developer",
       "administration": "Administration",
-      "platform": "Platform"
+      "platform": "Platform",
+      "monitor": "Overvågning",
+      "build": "Byg",
+      "test": "Test",
+      "admin": "Administration"
     },
     "items": {
       "dashboard": "Dashboard",
@@ -109,7 +113,8 @@
       "mcpConnections": "MCP Forbindelser",
       "createMcpConnection": "Opret MCP Forbindelse",
       "allMcpConnections": "Alle MCP Forbindelser",
-      "dropinWidget": "Drop-in Widget"
+      "dropinWidget": "Drop-in Widget",
+      "aiModels": "AI-modeller"
     }
   },
   "analytics": {

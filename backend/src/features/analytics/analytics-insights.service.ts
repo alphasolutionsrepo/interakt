@@ -172,6 +172,42 @@ export async function hideFinding(findingId: string, experienceId: string | unde
   return hiddenUntil;
 }
 
+// Home page tips share the table under their own scope; dismissing one is for good
+const TIPS_SCOPE = 'home-tips';
+const FOR_GOOD_DAYS = 365 * 50;
+
+/** Tips dismissed on the home page */
+export async function listDismissedTips(): Promise<Set<string>> {
+  const { analyticsDB } = await import('@/db/index');
+  if (!analyticsDB) return new Set();
+  const { analyticsHiddenFindings } = await import('@/db/analytics-schema');
+  try {
+    const rows = await analyticsDB
+      .select({ findingId: analyticsHiddenFindings.findingId })
+      .from(analyticsHiddenFindings)
+      .where(and(eq(analyticsHiddenFindings.scope, TIPS_SCOPE), gt(analyticsHiddenFindings.hiddenUntil, new Date())));
+    return new Set(rows.map((r) => r.findingId));
+  } catch (error) {
+    logger.error('Failed to read dismissed tips', error as Error);
+    return new Set();
+  }
+}
+
+/** Dismiss a home page tip for good (for every admin) */
+export async function dismissTip(tipId: string): Promise<void> {
+  const { analyticsDB } = await import('@/db/index');
+  if (!analyticsDB) throw new Error('Analytics database is not configured');
+  const { analyticsHiddenFindings } = await import('@/db/analytics-schema');
+  const hiddenUntil = new Date(Date.now() + FOR_GOOD_DAYS * 24 * 60 * 60 * 1000);
+  await analyticsDB
+    .insert(analyticsHiddenFindings)
+    .values({ scope: TIPS_SCOPE, findingId: tipId, hiddenUntil })
+    .onConflictDoUpdate({
+      target: [analyticsHiddenFindings.scope, analyticsHiddenFindings.findingId],
+      set: { hiddenUntil, hiddenAt: new Date() },
+    });
+}
+
 /** Show a hidden finding again */
 export async function unhideFinding(findingId: string, experienceId?: string): Promise<void> {
   const { analyticsDB } = await import('@/db/index');

@@ -15,7 +15,7 @@ If you don't know which synonyms you need, check **Analytics → Overview → Tr
 
 ## 1. Open the text analysis tab
 
-Sidebar → **Capabilities → Search Indexes** → pick your index → **Edit** → **Text Analysis** tab.
+Sidebar → **Build → Search Indexes** → pick your index → **Edit** → **Text Analysis** tab.
 
 ## 2. Add a synonym
 
@@ -91,7 +91,7 @@ Search keeps working against the existing index while the rebuild runs.
 
 ## 6. Verify
 
-Sidebar → **Playground → Index Search**. Pick your index. Search for a synonym you added:
+Sidebar → **Test → Search**. Pick your index. Search for a synonym you added:
 
 - If you added `laptop, notebook`, search for *"laptop"* and confirm "notebook" records appear in the results.
 - Search for *"notebook"* and confirm "laptop" records also appear.

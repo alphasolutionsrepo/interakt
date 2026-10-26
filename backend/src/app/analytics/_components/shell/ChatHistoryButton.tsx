@@ -21,7 +21,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/components/
 
 const SHOWN = 8;
 
-export function ChatHistoryButton() {
+/** `onOpen` runs after an earlier conversation is picked, e.g. to show the drawer it opens in */
+export function ChatHistoryButton({ onOpen }: { onOpen?: () => void } = {}) {
   const { chat } = useAskPanel();
   const [open, setOpen] = useState(false);
 
@@ -40,6 +41,7 @@ export function ChatHistoryButton() {
             currentSessionId={chat.sessionId}
             onOpen={(id) => {
               chat.openSession(id);
+              onOpen?.();
               setOpen(false);
             }}
             onDeleted={(id) => {

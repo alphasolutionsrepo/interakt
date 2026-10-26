@@ -9,7 +9,7 @@ Each field in your data has a set of switches that decide how it behaves in sear
 This page covers what every switch on the **Fields** screen does and when you'd use it.
 
 ## Where to find this screen
-Sidebar → **Capabilities → Search Indexes** → pick an index → **Configure Mappings** (or click **Fields** in the index detail header).
+Sidebar → **Build → Search Indexes** → pick an index → **Configure Mappings** (or click **Fields** in the index detail header).
 
 ## What the screen does
 

@@ -38,6 +38,57 @@ export interface FailedTurnsResult {
   recent: FailedTurn[];
 }
 
+/** Conversation turns and failed turns per day, days starting at midnight in `timeZone`; days without turns are left out */
+export async function getTurnsByDay(
+  range: DateRange,
+  timeZone: string,
+  experienceId?: string,
+): Promise<Array<{ day: Date; turns: number; failed: number }>> {
+  const { analyticsDB } = await import('@/db/index');
+  if (!analyticsDB) return [];
+  const { otelSpans } = await import('@/db/analytics-schema');
+
+  const outcome = sql`${otelSpans.attributes}->>'alpha.v2.outcome'`;
+  const day = sql<Date>`date_trunc('day', ${otelSpans.startTime} AT TIME ZONE ${timeZone}) AT TIME ZONE ${timeZone}`;
+  const rows = await analyticsDB
+    .select({
+      day: sql<Date>`${day} AS turn_day`,
+      turns: sql<number>`COUNT(*)::int`,
+      failed: sql<number>`COUNT(*) FILTER (WHERE ${otelSpans.statusCode} = 'ERROR' OR COALESCE(${outcome}, '') <> 'success')::int`,
+    })
+    .from(otelSpans)
+    .where(
+      and(
+        eq(otelSpans.operationName, 'pipeline.v2.turn'),
+        gte(otelSpans.startTime, range.from),
+        lte(otelSpans.startTime, range.to),
+        experienceId ? eq(otelSpans.experienceId, experienceId) : undefined,
+      ),
+    )
+    // Grouped by the alias: the same expression written twice would bind the time zone twice
+    .groupBy(sql.raw('turn_day'))
+    .orderBy(sql.raw('turn_day'));
+
+  return rows.map((r) => ({ day: new Date(r.day), turns: r.turns, failed: r.failed }));
+}
+
+/** Chat turns and search requests that started in the last `minutes` minutes */
+export async function countRecentRequests(minutes = 5): Promise<number> {
+  const { analyticsDB } = await import('@/db/index');
+  if (!analyticsDB) return 0;
+  const { otelSpans } = await import('@/db/analytics-schema');
+  const [row] = await analyticsDB
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(otelSpans)
+    .where(
+      and(
+        gte(otelSpans.startTime, new Date(Date.now() - minutes * 60_000)),
+        or(sql`${otelSpans.operationName} LIKE 'chat.%'`, sql`${otelSpans.operationName} LIKE 'search_experience.%'`),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
 export async function getFailedTurns(range: DateRange, experienceId?: string, limit = 20): Promise<FailedTurnsResult> {
   const empty: FailedTurnsResult = { totalTurns: 0, failedTurns: 0, byReason: {}, recent: [] };
   const { analyticsDB } = await import('@/db/index');

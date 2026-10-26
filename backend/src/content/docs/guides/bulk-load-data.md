@@ -7,7 +7,7 @@ sidebar_position: 2
 Once an index exists, you need to put data in it. This guide covers the upload screen, the supported formats, what to check before uploading, and what to do when something goes wrong.
 
 ## Where to find the upload screen
-Sidebar → **Capabilities → Search Indexes** → open your index → **Upload** button in the header.
+Sidebar → **Build → Search Indexes** → open your index → **Upload** button in the header.
 
 ## Supported formats
 
@@ -75,7 +75,7 @@ Click any row to see per-document errors if there were any.
 
 1. Index status badge should show **Ready**.
 2. Document count on the index detail page should reflect the new total.
-3. Sidebar → **Playground → Index Search** → pick the index → search for a literal term from your data.
+3. Sidebar → **Test → Search** → pick the index → search for a literal term from your data.
 
 If the count looks right and a sample query returns hits, you're good.
 
@@ -360,7 +360,7 @@ It's a `POST` rather than a `DELETE` because request bodies on `DELETE` are unre
 
 ## Managing documents from the admin UI
 
-Sidebar → **Capabilities → Search Indexes** → open your index → **Documents** button in the header.
+Sidebar → **Build → Search Indexes** → open your index → **Documents** button in the header.
 
 From there you can:
 

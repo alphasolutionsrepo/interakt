@@ -21,7 +21,7 @@ import { ChatHistoryButton } from './ChatHistoryButton';
 import { Button } from '@/shared/ui/components/button';
 import { cn } from '@/lib/utils';
 
-export function AskPanel({ section }: { section: AnalyticsSection }) {
+export function AskPanel({ section, overlay = false }: { section: AnalyticsSection; overlay?: boolean }) {
   const { isOpen, close, chat } = useAskPanel();
   const { experienceId, experienceName, periodLabel } = useAnalyticsContext();
 
@@ -35,9 +35,11 @@ export function AskPanel({ section }: { section: AnalyticsSection }) {
         // Below 1280px a docked panel squeezes the section too much, so it opens over the
         // page. From 1280px it docks beside the section, so the filters stay in reach while
         // reading an answer. Docked, it fits under the app bar and the content padding (7rem).
+        // On pages without a docking layout (the home page) it always opens over the page.
         'fixed inset-y-0 right-0 z-40 w-full max-w-[440px] shadow-xl',
-        'min-[1280px]:sticky min-[1280px]:top-0 min-[1280px]:z-auto min-[1280px]:h-[calc(100vh-7rem)] min-[1280px]:w-[360px] min-[1280px]:max-w-none min-[1280px]:shrink-0 min-[1280px]:shadow-none',
-        'min-[1600px]:w-[400px]',
+        !overlay &&
+          'min-[1280px]:sticky min-[1280px]:top-0 min-[1280px]:z-auto min-[1280px]:h-[calc(100vh-7rem)] min-[1280px]:w-[360px] min-[1280px]:max-w-none min-[1280px]:shrink-0 min-[1280px]:shadow-none',
+        !overlay && 'min-[1600px]:w-[400px]',
       )}
     >
       <div className="flex items-start justify-between gap-2 border-b px-4 py-3">

@@ -98,7 +98,7 @@ npm run infra:up     # Postgres (pgvector) and Elasticsearch in Docker
 npm run dev          # migrates, seeds, creates the admin user → http://localhost:3000
 ```
 
-Sign in and open **Platform → Initial Setup**. Connect an AI provider (Ollama is free and local), then load the **Fashion Catalog** demo: a populated index plus ready-made search and chat experiences with access tokens. Point the reference app in [`demo-site/`](demo-site/) at it, or embed the widget below.
+Sign in and open **Admin → Initial Setup**. Connect an AI provider (Ollama is free and local), then load the **Fashion Catalog** demo: a populated index plus ready-made search and chat experiences with access tokens. Point the reference app in [`demo-site/`](demo-site/) at it, or embed the widget below.
 
 The full walkthrough, scripts and bring-your-own-database notes are in [CONTRIBUTING.md](CONTRIBUTING.md#local-development). Hosting notes are in [backend/docker/](backend/docker/README.md).
 

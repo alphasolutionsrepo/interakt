@@ -84,11 +84,22 @@ const AnalyticsContext = createContext<AnalyticsContextValue | null>(null);
 // PROVIDER
 // ============================================================================
 
-export function AnalyticsProvider({ children }: { children: ReactNode }) {
+export function AnalyticsProvider({
+  children,
+  fixedPeriod,
+}: {
+  children: ReactNode;
+  /**
+   * A period that doesn't change, for pages outside Analytics (the home page asks
+   * about the last 7 days). The selection is then neither read from nor written to
+   * the URL and session, so Analytics keeps its own.
+   */
+  fixedPeriod?: Period;
+}) {
   const [experienceId, setExperienceId] = useState<string | undefined>(undefined);
   const [experienceName, setExperienceName] = useState('All Experiences');
   const [experienceType, setExperienceType] = useState<ExperienceType | undefined>(undefined);
-  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD);
+  const [period, setPeriod] = useState<Period>(fixedPeriod ?? DEFAULT_PERIOD);
   const [keepWhenMissing, setKeepWhenMissing] = useState(false);
   const [timeZone, setTimeZone] = useState('UTC');
 
@@ -105,13 +116,16 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   // and type are filled in by ExperienceSelector once the experience list has loaded.
   const [restored, setRestored] = useState(false);
   useEffect(() => {
+    setTimeZone(browserTimeZone());
+    if (fixedPeriod) return;
     const params = new URLSearchParams(window.location.search);
     const id = params.has(EXPERIENCE_PARAM) ? params.get(EXPERIENCE_PARAM) : readStored(EXPERIENCE_STORAGE_KEY);
     if (id) setExperience(id);
     const restoredPeriod = periodFromParams(params) ?? parsePeriod(readStored(PERIOD_STORAGE_KEY));
     if (restoredPeriod) setPeriod(restoredPeriod);
-    setTimeZone(browserTimeZone());
     setRestored(true);
+    // The fixed period is decided once, by the page that mounts the provider
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setExperience]);
 
   // Keep the URL and session storage in sync with the selection, including after switching analytics tabs

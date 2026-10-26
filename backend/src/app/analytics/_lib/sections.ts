@@ -73,6 +73,18 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
   },
 ];
 
+/** The home page's Ask chat: not an analytics section, but asked about the same data */
+export const HOME_SECTION: AnalyticsSection = {
+  href: '/dashboard',
+  label: 'Home',
+  description: 'How your experiences are doing',
+  suggestions: [
+    'What needs attention right now?',
+    'What changed most compared with the week before?',
+    'Which experience is doing worst?',
+  ],
+};
+
 /** The section for a path, falling back to Overview */
 export function sectionForPath(pathname: string): AnalyticsSection {
   return ANALYTICS_SECTIONS.find((s) => pathname === s.href || pathname.startsWith(`${s.href}/`)) ?? ANALYTICS_SECTIONS[0];

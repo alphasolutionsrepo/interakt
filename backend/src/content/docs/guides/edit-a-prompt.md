@@ -30,7 +30,7 @@ All chat experiences use the same five templates — there is no longer a separa
 
 ## 2. Open the template
 
-Sidebar → **Capabilities → Prompt Templates**.
+Sidebar → **Build → Prompt Templates**.
 
 The list is grouped by pipeline step. Find the step you identified and click the current default version (the one marked "System Default").
 

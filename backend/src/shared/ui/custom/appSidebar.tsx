@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -26,7 +27,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { sidebarGroups } from "@/shared/data/SideBar-Items"
+import { sidebarFooterItems, sidebarGroups } from "@/shared/data/SideBar-Items"
 
 /**
  * Check if a sidebar item should be considered active.
@@ -157,10 +158,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent className="px-2">
         {sidebarGroups.map((group) => (
             <SidebarGroup key={group.name} className="py-1">
-              {/* Group label - hidden when collapsed to icon */}
-              <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden flex items-center text-[11px] font-bold text-sidebar-foreground/70 uppercase tracking-wider px-3 py-1.5">
-                <span>{t(group.name)}</span>
-              </SidebarGroupLabel>
+              {/* Group label - hidden when collapsed to icon, and for a group that needs none */}
+              {!group.hideLabel && (
+                <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden flex items-center text-[11px] font-bold text-sidebar-foreground/70 uppercase tracking-wider px-3 py-1.5">
+                  <span>{t(group.name)}</span>
+                </SidebarGroupLabel>
+              )}
               <SidebarGroupContent>
                 <SidebarMenu className="space-y-0.5 pl-2">
                       {group.items.map((item) => {
@@ -285,6 +288,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarGroup>
         ))}
       </SidebarContent>
+
+      {/* Help, apart from the work pages */}
+      <SidebarFooter className="border-t border-sidebar-border px-2 py-2">
+        <SidebarMenu className="pl-2">
+          {sidebarFooterItems.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton
+                asChild
+                tooltip={t(item.title)}
+                isActive={isUrlActive(pathname, item.url)}
+                className="rounded-xl hover:bg-sidebar-accent transition-all duration-200 data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:font-semibold"
+              >
+                <a href={item.url} className="flex items-center gap-2">
+                  <item.icon className="size-4 ml-1" />
+                  <span className="font-semibold text-sm">{t(item.title)}</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   )
 }

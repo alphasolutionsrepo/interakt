@@ -36,6 +36,7 @@ import {
 } from './index';
 import { READABLE_INSIGHT_TYPES, getProactiveInsights, getStoredInsight, hideFinding, unhideFinding } from './analytics-insights.service';
 import { PeriodError, readRequestedPeriod, readTimeZone } from './analytics-period';
+import { invalidateHomeCache } from '@/features/dashboard/home.service';
 
 const logger = createLogger('analytics-api');
 
@@ -448,6 +449,7 @@ export async function handleHideFinding(request: NextRequest) {
     if (authError) return authError;
     const body = hideFindingSchema.parse(await request.json().catch(() => ({})));
     const hiddenUntil = await hideFinding(body.findingId, body.experienceId, body.days);
+    invalidateHomeCache();
     return successResponse({ findingId: body.findingId, hiddenUntil: hiddenUntil.toISOString() });
   } catch (error) {
     if (error instanceof z.ZodError) return errorResponse(`Invalid request: ${error.message}`);
@@ -466,6 +468,7 @@ export async function handleUnhideFinding(request: NextRequest) {
       experienceId: sp.get('experienceId') ?? undefined,
     });
     await unhideFinding(params.findingId, params.experienceId);
+    invalidateHomeCache();
     return successResponse({ findingId: params.findingId });
   } catch (error) {
     if (error instanceof z.ZodError) return errorResponse(`Invalid request: ${error.message}`);

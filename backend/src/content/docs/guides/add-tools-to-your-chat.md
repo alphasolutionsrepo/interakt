@@ -51,7 +51,7 @@ Use this to give the chat access to your own systems — order lookup, account c
 
 ### Step 1 — Save the credential as a secret
 
-Sidebar → **Platform → Secrets Vault** → **New Secret**.
+Sidebar → **Admin → Secrets Vault** → **New Secret**.
 
 - **Name** — `orders_api_key`.
 - **Value** — paste your API key.
@@ -63,7 +63,7 @@ See [Secrets](../concepts/secrets) for details.
 
 ### Step 2 — Create the tool
 
-Sidebar → **Capabilities → Tools** → **Create Tool**.
+Sidebar → **Build → Tools** → **Create Tool**.
 
 1. **Pick the executor type** — HTTP API.
 2. **Basic info:**
@@ -159,7 +159,7 @@ The same flow applies to AI Responder tools (sub-AI calls with their own instruc
 
 ## Bringing in MCP server tools
 
-MCP servers aren't tools — they're **Connections** that expose many tools at once. Set up the connection once in **Capabilities → MCP Connections**, then attach it to any chat experience from that experience's detail page. See [MCP Connections](../concepts/mcp-connections) for the full flow.
+MCP servers aren't tools — they're **Connections** that expose many tools at once. Set up the connection once in **Build → MCP Connections**, then attach it to any chat experience from that experience's detail page. See [MCP Connections](../concepts/mcp-connections) for the full flow.
 
 ## Common gotchas
 

@@ -83,7 +83,7 @@ const CHANGE_COLOR = { good: 'text-viz-good', bad: 'text-viz-critical', neutral:
 const CHANGE_WORD = { up: 'Up', down: 'Down', flat: 'No change' } as const;
 
 /** "↗ 12% vs prev.": the arrow carries direction and, by colour, whether that's good; the words say both */
-function ChangeNote({ change, comparedWith }: { change: Change; comparedWith?: string }) {
+export function ChangeNote({ change, comparedWith }: { change: Change; comparedWith?: string }) {
   const Icon = CHANGE_ICON[change.direction];
   const against = comparedWith ? `the previous period (${comparedWith})` : 'the previous period';
   const verdict = change.sentiment === 'good' ? ', better' : change.sentiment === 'bad' ? ', worse' : '';

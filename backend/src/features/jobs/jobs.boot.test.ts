@@ -6,8 +6,8 @@
  * restarts, and one they set themselves is never replaced.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PgBoss } from 'pg-boss';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { setDefaultScheduleOnce } from './jobs.boot';
 
