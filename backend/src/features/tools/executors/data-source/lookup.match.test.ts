@@ -263,6 +263,16 @@ describe('managed lookup fallback', () => {
     expect(book.data).toMatchObject({ found: false, closestMatches: [{ id: 'book', name: 'Clean Architecture' }] });
   });
 
+  it('takes a numeric id as text', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'p1', source: { name: 'Thing', sku: '12345' } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 12345 });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'p1' } });
+    expect(getDocumentByIdFromIndex).toHaveBeenLastCalledWith('idx', '12345');
+  });
+
   it('reads the data source only when the key fetch misses', async () => {
     getDataSourceById.mockClear();
     getDocumentByIdFromIndex.mockResolvedValueOnce({ id: 'k1', fields: { name: 'Desk Lamp' } });

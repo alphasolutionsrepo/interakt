@@ -13,7 +13,7 @@
 import { embed } from '@/features/embedding/embedding.service';
 import * as kbRepository from '@/features/knowledge-base/knowledge-base.repository';
 import { createLogger } from '@/shared/logger/logger';
-import type { OperationResult } from './shared';
+import { noRecordFound, type OperationResult } from './shared';
 
 const logger = createLogger('file-store-executor');
 
@@ -189,7 +189,7 @@ export async function executeFileStoreLookup(
   input: Record<string, unknown>,
 ): Promise<OperationResult> {
   const lookupInput = input as unknown as LookupInput;
-  const chunkId = typeof lookupInput.id === 'string' ? lookupInput.id.trim() : '';
+  const chunkId = lookupInput.id === undefined || lookupInput.id === null ? '' : String(lookupInput.id).trim();
 
   if (!chunkId) {
     return { success: false, error: 'Missing required input field: "id"' };
@@ -198,14 +198,8 @@ export async function executeFileStoreLookup(
   try {
     const chunk = await kbRepository.getChunkById(chunkId);
 
-    if (!chunk) {
-      return { success: false, error: `Chunk not found: ${chunkId}` };
-    }
-
-    // Verify the chunk belongs to this data source (authorization guard)
-    if (chunk.dataSourceId !== dataSourceId) {
-      return { success: false, error: `Chunk not found: ${chunkId}` };
-    }
+    // A chunk of another data source is answered like a missing one (authorization guard)
+    if (!chunk || chunk.dataSourceId !== dataSourceId) return noRecordFound(chunkId);
 
     return {
       success: true,

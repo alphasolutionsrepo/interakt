@@ -14,6 +14,7 @@ import { executeFileStoreLookup } from './file-store';
 import {
   resolveDataSource,
   logger,
+  noRecordFound,
   type DataSourceSchema,
   type DataSourceField,
   type ResolvedExternalSource,
@@ -55,7 +56,8 @@ export async function executeDataSourceLookup(
       return { success: false, error: 'dataSourceId is required for lookup operations' };
     }
 
-    const documentId = lookupInput.id;
+    // A numeric id (a SKU typed as a number) is looked up as text
+    const documentId = lookupInput.id === undefined || lookupInput.id === null ? '' : String(lookupInput.id);
     if (!documentId) {
       return { success: false, error: 'An "id" parameter is required to look up a document' };
     }
@@ -530,9 +532,7 @@ function notFound(requested: string, hits: Hit[], roles: FieldRoles): OperationR
   const closestMatches = [...mentions, ...hits.filter((hit) => !mentions.includes(hit) && sharesAWord(hit))]
     .slice(0, CLOSEST_MATCHES)
     .map((hit) => ({ id: hit.id, name: nameOf(hit, roles) }));
-  if (closestMatches.length === 0) {
-    return { success: true, data: { found: false, requested, message: `No record matches "${requested}".` } };
-  }
+  if (closestMatches.length === 0) return noRecordFound(requested);
   return {
     success: true,
     data: {
