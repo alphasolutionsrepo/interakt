@@ -342,8 +342,16 @@ export interface FieldRoles {
   confirmed?: boolean;
 }
 
-/** The values at a field path ("name", "variants.sku"), across lists. */
+/**
+ * The values at a field path ("name", "variants.sku"), across lists. A dotted field can also be
+ * a key of its own ("variants.sku": [...]), as an index stores it or as hidden searched fields
+ * come back.
+ */
 function valuesAt(source: Record<string, unknown> | undefined, path: string): Array<string | number> {
+  if (source && path.includes('.') && path in source) {
+    const value = source[path];
+    return (Array.isArray(value) ? value : [value]).filter(isScalar);
+  }
   let current: unknown[] = [source];
   for (const key of path.split('.')) {
     current = current

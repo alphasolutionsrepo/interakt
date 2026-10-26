@@ -605,6 +605,18 @@ describe('with field roles from the data source', () => {
     expect(result).toMatchObject({ success: true, data: { id: 'lamp' } });
   });
 
+  it('finds a code in a declared id field kept out of responses, under its dotted name', async () => {
+    withSchema([{ name: 'name', role: 'title' }, { name: 'specs.sku', role: 'id' }], true);
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [{ id: 'lamp', source: { name: 'Desk Lamp' }, hiddenSearchedFields: { 'specs.sku': 'LMP-9' } }],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'LMP-9' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'lamp', document: { name: 'Desk Lamp' } } });
+  });
+
   it('uses only the declared fields once roles are confirmed', async () => {
     const lamp = { id: 'lamp', source: { name: 'Desk Lamp', compatibleWith: 'LMP-1' } };
     withSchema([{ name: 'label', role: 'title' }], true);

@@ -314,6 +314,35 @@ describe('D3: Response Synthesis', () => {
       expect(presetPayload).toBeUndefined();
     });
 
+    it('keeps a later search on the same source as cards after a lookup miss', () => {
+      const { preset, presetPayload, debug } = _selectPreset(makeInput({
+        toolSlugToDisplayConfig: { 'product-find': PRODUCT_DISPLAY_CONFIG, 'product-search': PRODUCT_DISPLAY_CONFIG },
+        actionResults: [
+          makeActionResult('product-find', {
+            result: { success: true, data: { found: false, requested: 'x', closestMatches: [{ id: 'p9', name: 'Near' }] } },
+          }),
+          makeActionResult('product-search', {
+            result: { success: true, data: [{ id: '1', imageUrl: 'a.jpg' }, { id: '2', imageUrl: 'b.jpg' }], resultCount: 2 },
+          }),
+        ],
+      }));
+      expect(preset).toBe('item_grid');
+      expect(presetPayload!.items.map((item) => item.id)).toEqual(['1', '2']);
+      expect(debug.visualGroupCount).toBe(1);
+    });
+
+    it('still falls back to text when two tools both have items to show', () => {
+      const { preset, debug } = _selectPreset(makeInput({
+        toolSlugToDisplayConfig: { 'product-find': PRODUCT_DISPLAY_CONFIG, 'product-search': PRODUCT_DISPLAY_CONFIG },
+        actionResults: [
+          makeActionResult('product-find', { result: { success: true, data: { id: 'p9', document: { title: 'Found' } } } }),
+          makeActionResult('product-search', { result: { success: true, data: [{ id: '1' }, { id: '2' }], resultCount: 2 } }),
+        ],
+      }));
+      expect(preset).toBe('rich_text');
+      expect(debug.reason).toBe('multiple_visual_groups_fallback');
+    });
+
     it('returns single_card for 1 result with displayConfig', () => {
       const { preset, presetPayload } = _selectPreset(makeInput({
         actionResults: [makeActionResult('product-search', {
