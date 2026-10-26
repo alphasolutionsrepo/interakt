@@ -261,7 +261,7 @@ const isNameField = (field: string) => NAME_FIELDS.has(field.toLowerCase().repla
 /** When a record has none of those: a field whose name ends in name or title (HotelName, itemTitle). */
 const LOOSE_NAME_FIELD = /(name|title)$/i;
 /** Fields about a related item (brandName, categoryId, ...), which don't identify this record. */
-const RELATED_FIELD = /brand|category|categories|vendor|manufacturer|supplier|seller|parent|collection|store|author/i;
+const RELATED_FIELD = /brand|category|categories|vendor|manufacturer|supplier|seller|parent|collection|store|author|related/i;
 /** Fields naming the record's brand, which a request often puts next to the name. */
 const BRAND_FIELD = /brand|vendor|manufacturer/i;
 
@@ -327,51 +327,57 @@ function valuesAt(source: Record<string, unknown> | undefined, path: string): Ar
 }
 
 /**
- * The record's codes, with whether each identifies it for certain: the values of its declared
- * id fields, also inside lists (variants.sku). Until roles are confirmed, also guessed ones: the
- * values of fields named like identifiers (sku, productCode, ...), which are certain, and any
- * other text with a digit in it (isbn, partNo, model, but also compatibleWith: "iPhone 15"),
- * which only might be. A plain number (price, reviewCount) is never guessed to be a code.
+ * How surely a code identifies its record, strongest first: the record's own key, a declared id
+ * field, a field on the record named like an identifier (sku, productCode), the same inside a
+ * list (variants[].sku), and any other text with a digit in it (isbn, partNo, but also
+ * compatibleWith: "iPhone 15"), which only might be a code: it is offered, never returned.
+ */
+const CODE = { key: 4, declared: 3, field: 2, listed: 1, possible: 0, none: -1 } as const;
+
+/**
+ * The record's codes and how surely each identifies it. Declared id fields always count; until
+ * roles are confirmed, so do guessed ones. A plain number (price, reviewCount) is never guessed
+ * to be a code, and fields about a related item don't count.
  */
 function codeValues(
   source: Record<string, unknown> | undefined,
   roles: FieldRoles,
-): Array<{ value: string | number; certain: boolean }> {
-  const codes = (roles.idFields ?? []).flatMap((field) => valuesAt(source, field)).map((value) => ({ value, certain: true }));
+): Array<{ value: string | number; strength: number }> {
+  const codes: Array<{ value: string | number; strength: number }> = (roles.idFields ?? [])
+    .flatMap((field) => valuesAt(source, field))
+    .map((value) => ({ value, strength: CODE.declared }));
   if (roles.confirmed) return codes;
 
-  const add = (field: string, value: unknown) => {
+  const add = (field: string, value: unknown, inList: boolean) => {
     if (!isScalar(value)) return;
-    if (IDENTIFIER_FIELD.test(field)) codes.push({ value, certain: true });
-    else if (typeof value === 'string' && /\d/.test(value)) codes.push({ value, certain: false });
+    if (IDENTIFIER_FIELD.test(field)) codes.push({ value, strength: inList ? CODE.listed : CODE.field });
+    else if (typeof value === 'string' && /\d/.test(value)) codes.push({ value, strength: CODE.possible });
   };
   for (const [field, value] of Object.entries(source ?? {})) {
     if (RELATED_FIELD.test(field)) continue;
     if (!Array.isArray(value)) {
-      add(field, value);
+      add(field, value, false);
       continue;
     }
     for (const item of value) {
-      if (item && typeof item === 'object') Object.entries(item).forEach(([key, inner]) => add(key, inner));
-      else add(field, item);
+      if (item && typeof item === 'object') Object.entries(item).forEach(([key, inner]) => add(key, inner, true));
+      else add(field, item, true);
     }
   }
   return codes;
 }
 
-/**
- * Whether the record's id, or one of its codes, is the whole requested value. With `certainOnly`,
- * only the id and certain codes count, not other text that happens to hold the value.
- */
-function isIdentifiedBy(
+/** How surely the requested value identifies the record (CODE.none when it isn't one of its codes). */
+function codeStrength(
   wanted: string,
   hitId: string | undefined,
   source: Record<string, unknown> | undefined,
   roles: FieldRoles,
-  certainOnly = false,
-): boolean {
-  if (hitId !== undefined && normalize(String(hitId)) === wanted) return true;
-  return codeValues(source, roles).some((code) => (code.certain || !certainOnly) && normalize(String(code.value)) === wanted);
+): number {
+  if (hitId !== undefined && normalize(String(hitId)) === wanted) return CODE.key;
+  return codeValues(source, roles)
+    .filter((code) => normalize(String(code.value)) === wanted)
+    .reduce((best, code) => Math.max(best, code.strength), CODE.none);
 }
 
 /**
@@ -435,7 +441,7 @@ export function matchesRequestedRecord(
   const wanted = normalize(requested);
   if (!wanted) return false;
 
-  if (isIdentifiedBy(wanted, hitId, fields, roles, true)) return true;
+  if (codeStrength(wanted, hitId, fields, roles) > CODE.possible) return true;
 
   const brandWords = brandWordsOf(fields, roles);
   const wantedWords = new Set(contentWords(requested));
@@ -460,25 +466,26 @@ function nameOf(hit: Hit, roles: FieldRoles): string | undefined {
 }
 
 /**
- * Whether a hit is exactly the request: same id or certain code, or the same full name (the
- * whole name, or one declared title field on its own).
+ * How exactly a hit is the request: by a code (see CODE), or by its full name (the whole name, or
+ * one declared title field on its own), which counts like an identifier field on the record.
  */
-function isExactMatch(requested: string, hit: Hit, roles: FieldRoles): boolean {
+function exactStrength(requested: string, hit: Hit, roles: FieldRoles): number {
   const wanted = normalize(requested);
-  return isIdentifiedBy(wanted, hit.id, hit.source, roles, true)
-    || [...namesOf(hit.source, roles), ...declaredTitleValues(hit.source, roles)].some((name) => normalize(name) === wanted);
+  const byName = [...namesOf(hit.source, roles), ...declaredTitleValues(hit.source, roles)]
+    .some((name) => normalize(name) === wanted);
+  return Math.max(codeStrength(wanted, hit.id, hit.source, roles), byName ? CODE.field : CODE.none);
 }
 
 /**
- * The one hit that is the record asked for, or the hits when several fit: the record with that
- * id wins, then an exact match (certain code or full name) over partial ones; two exact matches
- * (records sharing a name) or two partial ones are several.
+ * The one hit that is the record asked for, or the hits when several fit. The most exact match
+ * wins (the record's key, then a declared id, then its own sku or full name, then a sku in its
+ * list of variants); a tie is several. With no exact match, partial name matches: one is the
+ * record, two or more are several.
  */
 function resolveMatch(requested: string, hits: Hit[], roles: FieldRoles): { one?: Hit; several?: Hit[] } {
-  const wanted = normalize(requested);
-  const byId = hits.filter((hit) => hit.id !== undefined && normalize(String(hit.id)) === wanted);
-  if (byId.length === 1) return { one: byId[0] };
-  const exact = hits.filter((hit) => isExactMatch(requested, hit, roles));
+  const strengths = hits.map((hit) => exactStrength(requested, hit, roles));
+  const best = Math.max(CODE.none, ...strengths);
+  const exact = best > CODE.possible ? hits.filter((_, i) => strengths[i] === best) : [];
   const fitting = exact.length > 0
     ? exact
     : hits.filter((hit) => matchesRequestedRecord(requested, hit.id, hit.source, roles));
@@ -519,7 +526,7 @@ function notFound(requested: string, hits: Hit[], roles: FieldRoles): OperationR
     return name !== undefined && wordsOf(name).some((word) => wantedWords.has(word) && !brandWords.has(word));
   };
   // Hits that hold the value as a possible code come first, then those that share a word
-  const mentions = hits.filter((hit) => isIdentifiedBy(wanted, hit.id, hit.source, roles));
+  const mentions = hits.filter((hit) => codeStrength(wanted, hit.id, hit.source, roles) > CODE.none);
   const closestMatches = [...mentions, ...hits.filter((hit) => !mentions.includes(hit) && sharesAWord(hit))]
     .slice(0, CLOSEST_MATCHES)
     .map((hit) => ({ id: hit.id, name: nameOf(hit, roles) }));

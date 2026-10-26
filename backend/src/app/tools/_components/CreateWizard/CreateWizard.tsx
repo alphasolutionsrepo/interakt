@@ -62,13 +62,6 @@ const EXECUTOR_INPUT_SCHEMAS: Record<string, object> = {
     },
     required: ['field'],
   },
-  'data_source:lookup': {
-    type: 'object',
-    properties: {
-      id: { type: 'string', description: 'The unique identifier of the document' },
-    },
-    required: ['id'],
-  },
   http: {
     type: 'object',
     properties: { query: { type: 'string', description: 'The search or query string to send to the API' } },

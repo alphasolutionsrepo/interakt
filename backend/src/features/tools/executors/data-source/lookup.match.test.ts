@@ -208,6 +208,43 @@ describe('managed lookup fallback', () => {
     expect(result).toMatchObject({ success: true, data: { id: 'phone' } });
   });
 
+  it("returns the item that has the SKU, not one that lists it among related items", async () => {
+    const b = { id: 'b', source: { name: 'Product B', sku: 'B-200' } };
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'a', source: { name: 'Product A', sku: 'A-100', relatedProducts: [{ sku: 'B-200' }] } }, b] });
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'a', source: { name: 'Product A', relatedProductSku: 'B-200' } }, b] });
+
+    const listed = await executeDataSourceLookup('ds', {}, { id: 'B-200' });
+    const pointed = await executeDataSourceLookup('ds', {}, { id: 'B-200' });
+
+    expect(listed).toMatchObject({ success: true, data: { id: 'b' } });
+    expect(pointed).toMatchObject({ success: true, data: { id: 'b' } });
+  });
+
+  it('prefers the item whose own SKU it is over one that holds it in a list', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({
+      hits: [
+        { id: 'kit', source: { name: 'Starter Kit', bundle: [{ sku: 'B-200' }, { sku: 'C-300' }] } },
+        { id: 'b', source: { name: 'Product B', sku: 'B-200' } },
+      ],
+    });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'B-200' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'b' } });
+  });
+
+  it('still finds an item by a SKU inside its own list of variants', async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'lamp', source: { name: 'Desk Lamp', variants: [{ sku: 'LMP-1' }, { sku: 'LMP-2' }] } }] });
+
+    const result = await executeDataSourceLookup('ds', {}, { id: 'LMP-2' });
+
+    expect(result).toMatchObject({ success: true, data: { id: 'lamp' } });
+  });
+
   it('offers, but does not return, an item that only mentions the value', async () => {
     getDocumentByIdFromIndex.mockResolvedValueOnce(null);
     searchById.mockResolvedValueOnce({
