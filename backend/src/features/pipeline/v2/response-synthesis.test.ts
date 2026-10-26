@@ -331,6 +331,19 @@ describe('D3: Response Synthesis', () => {
       expect(debug.visualGroupCount).toBe(1);
     });
 
+    it('shows one card when a comparison finds only one side', () => {
+      const dayCreams = Array.from({ length: 8 }, (_, i) => ({ id: `d${i}`, title: `Day Cream ${i}` }));
+      const { preset, presetPayload } = _selectPreset(makeInput({
+        userMessage: 'Compare Day Cream vs Night Cream',
+        actionResults: [
+          makeActionResult('product-search', { result: { success: true, data: { results: dayCreams, totalCount: 8 } } }),
+          makeActionResult('product-search', { result: { success: true, data: { results: [], totalCount: 0 } } }),
+        ],
+      }));
+      expect(preset).toBe('single_card');
+      expect(presetPayload!.items.map((item) => item.id)).toEqual(['d0']);
+    });
+
     it('still falls back to text when two tools both have items to show', () => {
       const { preset, debug } = _selectPreset(makeInput({
         toolSlugToDisplayConfig: { 'product-find': PRODUCT_DISPLAY_CONFIG, 'product-search': PRODUCT_DISPLAY_CONFIG },

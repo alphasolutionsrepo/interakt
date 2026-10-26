@@ -193,18 +193,11 @@ function selectPreset(input: SynthesisInput): {
     return { preset: 'rich_text', debug: { ...baseDebug, reason: 'no_successful_results' } };
   }
 
-  // Group successful results by toolSlug, keeping only tools with a displayConfig. A result
-  // with nothing to show (a Find Record miss, an empty search) is no group: it would otherwise
-  // turn another tool's cards into text.
+  // Group successful results by toolSlug, keeping only tools with a displayConfig
   const visualGroups = new Map<string, { config: ToolDisplayConfig; actions: ActionResult[] }>();
-  let emptyResults = 0;
   for (const action of successfulResults) {
     const config = displayConfigs[action.toolSlug];
     if (!config) continue;
-    if (extractActionItems(action).length === 0) {
-      emptyResults++;
-      continue;
-    }
 
     const existing = visualGroups.get(action.toolSlug);
     if (existing) {
@@ -214,11 +207,22 @@ function selectPreset(input: SynthesisInput): {
     }
   }
 
+  // A tool with nothing to show (a Find Record miss) is no group: it would otherwise turn
+  // another tool's cards into text. Its calls stay together otherwise, as extractItems counts
+  // one search per thing asked for.
+  let emptyGroups = 0;
+  for (const [slug, group] of visualGroups) {
+    if (group.actions.every((action) => extractActionItems(action).length === 0)) {
+      visualGroups.delete(slug);
+      emptyGroups++;
+    }
+  }
+
   baseDebug.visualGroupCount = visualGroups.size;
 
   // 0 visual groups → rich_text
   if (visualGroups.size === 0) {
-    const reason = emptyResults > 0 ? 'no_items_extracted' : 'no_tools_with_display_config';
+    const reason = emptyGroups > 0 ? 'no_items_extracted' : 'no_tools_with_display_config';
     return { preset: 'rich_text', debug: { ...baseDebug, reason } };
   }
 

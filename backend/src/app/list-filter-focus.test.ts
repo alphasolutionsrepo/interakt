@@ -1,7 +1,7 @@
 // src/app/list-filter-focus.test.ts
 
 /**
- * The Experiences, Indexes, Data Sources and Tools lists keep their current rows on screen while a
+ * The Experiences, Indexes, Data Sources, Tools and MCP Connections lists keep their current rows on screen while a
  * new filter loads. Without it the page swaps to its loading skeleton, which unmounts the
  * search box, so it loses focus after every keystroke (#53).
  */
@@ -24,11 +24,12 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { useAIExperiences } from './ai-experiences/_lib/hooks/useAIExperiences';
 import { useDataSources } from './data-sources/_lib/hooks/useDataSources';
+import { useMcpConnections } from './mcp-connections/_lib/hooks/useMcpConnections';
 import { useSearchExperiences } from './search-experiences/_lib/hooks/useSearchExperiences';
 import { useSearchIndexes } from './search-indexes/_lib/hooks/useSearchIndexes';
 import { useTools } from './tools/_lib/hooks/useTools';
 
-const LIST_HOOKS = { useAIExperiences, useDataSources, useSearchExperiences, useSearchIndexes, useTools };
+const LIST_HOOKS = { useAIExperiences, useDataSources, useMcpConnections, useSearchExperiences, useSearchIndexes, useTools };
 
 describe('list pages keep their rows while a filter loads', () => {
   beforeEach(() => useQuery.mockClear());
