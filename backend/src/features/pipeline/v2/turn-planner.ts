@@ -442,7 +442,10 @@ function buildToolWorkflow(tools: ToolSummary[], knowsTheSchema: boolean): strin
   const inspect = byOperation('inspect');
   const enumerate = byOperation('enumerate');
   const search = tools.find((t) => t.operation === 'search' || t.operation === 'query');
-  const lookup = byOperation('lookup');
+  const lookups = tools.filter((t) => t.operation === 'lookup');
+  const lookupsByName = lookups.filter((t) => t.findsByName);
+  const lookupsById = lookups.filter((t) => !t.findsByName);
+  const slugList = (list: ToolSummary[]) => list.map((t) => `\`${t.slug}\``).join(' or ');
   const standalone = tools.filter((t) => !t.operation);
 
   const lines: string[] = ['## Sequencing your tools'];
@@ -454,7 +457,8 @@ function buildToolWorkflow(tools: ToolSummary[], knowsTheSchema: boolean): strin
   // told. Observed live, repeatedly.
   if (knowsTheSchema && search) {
     lines.push(
-      `Start with \`${search.slug}\`, using terms extracted from the user's intent rather than`
+      `${lookupsByName.length > 0 ? 'Unless the user asks about one specific item, start' : 'Start'}`
+      + ` with \`${search.slug}\`, using terms extracted from the user's intent rather than`
       + ' their raw sentence. The field list above already gives you each field\'s capabilities'
       + ' and the values seen in the data, so you do not need a discovery step to find them.',
     );
@@ -484,8 +488,16 @@ function buildToolWorkflow(tools: ToolSummary[], knowsTheSchema: boolean): strin
     lines.push(`Use \`${search.slug}\` with terms extracted from the user's intent, not their raw sentence.`);
   }
 
-  if (lookup) {
-    lines.push(`Use \`${lookup.slug}\` only when you already have a specific record id.`);
+  // A search-index lookup also finds an item by name; a file-store lookup only by id, so a
+  // title sent to it comes back empty (context-assembly sets findsByName).
+  if (lookupsByName.length > 0) {
+    lines.push(
+      `When the user asks about one specific item, use ${slugList(lookupsByName)} directly,`
+      + ' with its id, SKU or name as the user gave it.',
+    );
+  }
+  if (lookupsById.length > 0) {
+    lines.push(`Use ${slugList(lookupsById)} only when you already have a specific record id.`);
   }
   if (standalone.length > 0) {
     lines.push(

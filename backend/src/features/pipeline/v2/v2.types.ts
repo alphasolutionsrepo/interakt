@@ -99,6 +99,11 @@ export interface ToolSummary {
   operation: string | null;
   /** Executor type (data_source, http, web_search, etc.) */
   executorType: string;
+  /**
+   * Lookups only: the tool also finds an item by its name (search indexes). Unset means
+   * by id only (uploaded files), or the source type couldn't be read.
+   */
+  findsByName?: boolean;
 }
 
 /**

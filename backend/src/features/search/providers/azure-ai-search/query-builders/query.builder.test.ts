@@ -134,3 +134,43 @@ describe('searchable field types', () => {
         expect(options.highlightPostTag).toBe('</em>');
     });
 });
+
+describe('hidden searched fields in the response', () => {
+    // sku is searched but kept out of responses; price is shown; rating is neither
+    const context: SearchContext = {
+        ...buildContext([
+            { fieldName: 'name', fieldType: 'text' },
+            { fieldName: 'sku', fieldType: 'keyword' },
+            { fieldName: 'rating', fieldType: 'number' },
+        ]),
+        defaultResponseFields: ['name', 'price'],
+    };
+    const select = (request: Partial<SearchRequest>) =>
+        buildAzureSearchOptions({
+            context,
+            request: { query: 'ABC-123', ...request } as SearchRequest,
+            searchType: 'lexical',
+        } as ProviderSearchRequest).select;
+
+    it('returns the shown fields plus the fields Azure searched, when asked', () => {
+        expect(select({ includeHiddenSearchedFields: true })).toEqual(['id', 'name', 'price', 'sku']);
+    });
+
+    it('returns only the shown fields otherwise', () => {
+        expect(select({})).toEqual(['id', 'name', 'price']);
+    });
+
+    it('adds nothing for an explicit empty field list, as without the request', () => {
+        expect(select({ includeHiddenSearchedFields: true, includeFields: [] })).toEqual(select({ includeFields: [] }));
+    });
+
+    it('adds nothing when no fields are shown, so Azure returns every retrievable field as before', () => {
+        const options = buildAzureSearchOptions({
+            context: { ...context, defaultResponseFields: [] },
+            request: { query: 'ABC-123', includeHiddenSearchedFields: true } as SearchRequest,
+            searchType: 'lexical',
+        } as ProviderSearchRequest);
+
+        expect(options.select).toBeUndefined();
+    });
+});

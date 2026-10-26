@@ -55,6 +55,35 @@ describe('ResultCaptureStep — remembering what a tool just found', () => {
         });
     });
 
+    it('indexes the items a several-match lookup lists, so "the second one" refers to them', async () => {
+        const ctx = context({
+            success: true,
+            resultCount: 2,
+            data: { found: false, requested: 'Crew Neck Sweater', matches: [{ id: 'p1', name: 'Vesper' }, { id: 'p2', name: 'Haven' }] },
+        });
+        ctx.turnContext.resultMemoryIndex = [{ ordinal: 1, toolSlug: 'catalog-search', resultId: 'old-1', snapshot: {} }];
+
+        const result = await new ResultCaptureStep().execute(ctx, deps);
+
+        expect(result.context.turnContext.resultMemoryIndex.map((e) => e.resultId)).toEqual(['p1', 'p2']);
+    });
+
+    it('keeps the list the user was looking at when a not-found lookup offers near misses', async () => {
+        const ctx = context({
+            success: true,
+            resultCount: 0,
+            data: { found: false, requested: 'x', closestMatches: [{ id: 'p7', name: 'Streetwear Denim Jacket' }] },
+        });
+        ctx.turnContext.resultMemoryIndex = [
+            { ordinal: 1, toolSlug: 'catalog-search', resultId: 'j1', snapshot: {} },
+            { ordinal: 2, toolSlug: 'catalog-search', resultId: 'j2', snapshot: {} },
+        ];
+
+        const result = await new ResultCaptureStep().execute(ctx, deps);
+
+        expect(result.context.turnContext.resultMemoryIndex.map((e) => e.resultId)).toEqual(['j1', 'j2']);
+    });
+
     it('still indexes array-shaped results unchanged', async () => {
         const step = new ResultCaptureStep();
         const ctx = context({

@@ -38,6 +38,12 @@ export interface SearchRequest {
     /** Fields to include in response (defaults to includeInResponse fields) */
     includeFields?: string[];
 
+    /**
+     * Also return the searched fields kept out of responses, in each hit's hiddenSearchedFields,
+     * so the caller can tell why a hit matched. source stays as responses show it.
+     */
+    includeHiddenSearchedFields?: boolean;
+
     /** Fields to exclude from response */
     excludeFields?: string[];
 
@@ -209,6 +215,12 @@ export interface SearchHit {
 
     /** Document source fields */
     source: Record<string, unknown>;
+
+    /**
+     * Searched fields kept out of responses, only when the request sets
+     * includeHiddenSearchedFields. For matching, never for showing.
+     */
+    hiddenSearchedFields?: Record<string, unknown>;
 
     /** Highlighted fields */
     highlights?: Record<string, string[]>;

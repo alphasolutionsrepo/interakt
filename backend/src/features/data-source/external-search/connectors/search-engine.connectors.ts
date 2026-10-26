@@ -10,7 +10,7 @@
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { callAzureAISearch } from '../engines/azure-ai-search';
 import { callElasticsearchSearch } from '../engines/elasticsearch';
-import { translateFilters, translateSort } from '../external-query';
+import { ELASTICSEARCH_DOCUMENT_ID, translateFilters, translateSort } from '../external-query';
 import type {
   ExternalConnection,
   ExternalFacet,
@@ -55,7 +55,8 @@ function searchableFields(fields: DataSourceField[] | undefined): string | undef
 export const elasticsearchConnector: ExternalSearchConnector = {
   provider: 'elasticsearch',
   displayName: 'Elasticsearch',
-  capabilities: { facets: true, paging: true, sort: true, highlights: true },
+  // Hits carry Elasticsearch's _id, which often isn't a field of the document.
+  capabilities: { facets: true, paging: true, sort: true, highlights: true, documentIdField: ELASTICSEARCH_DOCUMENT_ID },
 
   async search(connection: ExternalConnection, request: ExternalSearchRequest, fields?: DataSourceField[]) {
     const filters = translateFilters('elasticsearch', request.filters, fields);

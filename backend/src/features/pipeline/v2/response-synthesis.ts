@@ -207,11 +207,23 @@ function selectPreset(input: SynthesisInput): {
     }
   }
 
+  // A tool with nothing to show (a Find Record miss) is no group: it would otherwise turn
+  // another tool's cards into text. Its calls stay together otherwise, as extractItems counts
+  // one search per thing asked for.
+  let emptyGroups = 0;
+  for (const [slug, group] of visualGroups) {
+    if (group.actions.every((action) => extractActionItems(action).length === 0)) {
+      visualGroups.delete(slug);
+      emptyGroups++;
+    }
+  }
+
   baseDebug.visualGroupCount = visualGroups.size;
 
   // 0 visual groups → rich_text
   if (visualGroups.size === 0) {
-    return { preset: 'rich_text', debug: { ...baseDebug, reason: 'no_tools_with_display_config' } };
+    const reason = emptyGroups > 0 ? 'no_items_extracted' : 'no_tools_with_display_config';
+    return { preset: 'rich_text', debug: { ...baseDebug, reason } };
   }
 
   // 2+ visual groups → rich_text fallback (AI synthesizes across multiple sources)

@@ -401,6 +401,43 @@ describe('D1: Turn Planner', () => {
       expect(prompt).toContain('add-to-cart');
     });
 
+    it('sends a named item to a lookup that finds items by name', async () => {
+      const tools = makeTools().map((t) => (t.operation === 'lookup' ? { ...t, findsByName: true } : t));
+      const prompt = await _buildSystemPrompt(makeInput({ availableTools: tools }));
+
+      expect(prompt).toContain(
+        'When the user asks about one specific item, use `product-lookup` directly, with its id, SKU or name as the user gave it.',
+      );
+      expect(prompt).not.toContain('only when you already have a specific record id');
+    });
+
+    it('keeps an id-only lookup for record ids', async () => {
+      const prompt = await _buildSystemPrompt(makeInput());
+
+      expect(prompt).toContain('Use `product-lookup` only when you already have a specific record id.');
+      expect(prompt).not.toContain('When the user asks about one specific item');
+    });
+
+    it('names every lookup, each with its own rule', async () => {
+      const tools: ToolSummary[] = [
+        ...makeTools(),
+        { slug: 'catalog-find', name: 'Catalog Find', description: 'Find', operation: 'lookup', executorType: 'data_source', findsByName: true },
+      ];
+      const prompt = await _buildSystemPrompt(makeInput({ availableTools: tools }));
+
+      expect(prompt).toContain('use `catalog-find` directly');
+      expect(prompt).toContain('Use `product-lookup` only when you already have a specific record id.');
+    });
+
+    it('starts with search unless one specific item is asked about, when a lookup finds by name', async () => {
+      const tools = makeTools().map((t) => (t.operation === 'lookup' ? { ...t, findsByName: true } : t));
+      const withName = await _buildSystemPrompt(makeInput({ availableTools: tools, dataContext: 'fields' }));
+      const idOnly = await _buildSystemPrompt(makeInput({ dataContext: 'fields' }));
+
+      expect(withName).toContain('Unless the user asks about one specific item, start with `product-search`');
+      expect(idOnly).toContain('Start with `product-search`');
+    });
+
     it('includes business domain when provided', async () => {
       const prompt = await _buildSystemPrompt(makeInput({ businessDomain: 'E-commerce' }));
       expect(prompt).toContain('E-commerce');

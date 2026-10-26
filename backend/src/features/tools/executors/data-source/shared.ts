@@ -155,3 +155,11 @@ export function formatDataSourceField(field: DataSourceField) {
 // ============================================================================
 
 export type OperationResult = Omit<ToolExecutionResult, 'durationMs'>;
+
+/**
+ * A Find Record that finds no record. That is an answer, not a failure: there is no document, so
+ * no card is shown, and the planner counts it as zero results. The same for every source type.
+ */
+export function noRecordFound(requested: string): OperationResult {
+  return { success: true, data: { found: false, requested, message: `No record matches "${requested}".` } };
+}

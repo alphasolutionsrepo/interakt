@@ -23,6 +23,7 @@ import type {
     SearchContext,
 } from './search.types';
 import { SEARCH_DEFAULTS } from './search.types';
+import { separateHiddenSearchedFields } from './hidden-searched-fields';
 import type { SearchType } from '@/shared/constants/search-index.constants';
 
 // ============================================================================
@@ -43,6 +44,7 @@ export function normalizeSearchResponse(
 
     // Normalize hits
     const hits = normalizeHits(providerResponse.hits, providerResponse.maxScore);
+    separateHiddenSearchedFields(hits, request, context);
 
     // Calculate pagination
     const pagination = calculatePagination(

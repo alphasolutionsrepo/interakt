@@ -142,6 +142,21 @@ describe('translateSort — azure-ai-search', () => {
 // ============================================================================
 
 describe('translateFilters — elasticsearch', () => {
+  it("filters on Elasticsearch's own _id, which no schema lists", () => {
+    const fields = [field({ name: 'productId', providerType: 'keyword' })];
+    const result = translateFilters('elasticsearch', [filter('_id', 'eq', '1UQ9eqEB')], fields);
+
+    expect(result).toEqual({ esClauses: [{ term: { _id: '1UQ9eqEB' } }], unapplied: [] });
+  });
+
+  it('still reports other operators on _id as fields the schema does not have', () => {
+    const fields = [field({ name: 'productId', providerType: 'keyword' })];
+    const result = translateFilters('elasticsearch', [filter('_id', 'contains', '1UQ')], fields);
+
+    expect(result.esClauses ?? []).toEqual([]);
+    expect(result.unapplied).toMatchObject([{ field: '_id', operator: 'contains' }]);
+  });
+
   it('targets the keyword sub-field when filtering an analyzed text field', () => {
     const fields = [field({ name: 'title', providerType: 'text', filterField: 'title.keyword' })];
     const result = translateFilters('elasticsearch', [filter('title', 'eq', 'Cashmere Sweater')], fields);

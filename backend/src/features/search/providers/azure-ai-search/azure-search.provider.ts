@@ -48,6 +48,9 @@ function isOrderByError(error: unknown): boolean {
     );
 }
 
+/** The characters an Azure AI Search document key may contain. */
+const AZURE_DOCUMENT_KEY = /^[A-Za-z0-9_\-=]+$/;
+
 /**
  * Detect Azure failures caused by a non-searchable field appearing in the highlight
  * or searchFields list — e.g. "Field 'priceAmount' is not marked as 'searchable'".
@@ -396,6 +399,12 @@ export class AzureSearchProvider implements SearchProvider {
         documentId: string,
         sourceFields?: string[]
     ): Promise<GetDocumentResult> {
+        // Azure keys hold only letters, digits, _, - and =; it answers 400, not 404, for any
+        // other key (a product name, say). Such an id can't be a document, so Find Record goes
+        // on to search for it by name.
+        if (!AZURE_DOCUMENT_KEY.test(documentId)) {
+            return { found: false };
+        }
         try {
             const client = getSearchClient(indexName);
             const options = sourceFields ? { selectedFields: sourceFields } : {};
@@ -412,6 +421,11 @@ export class AzureSearchProvider implements SearchProvider {
                 source,
             };
         } catch (error) {
+            // No document with that key is an answer, not a failure (as on Elasticsearch):
+            // Find Record then tries a search for it by name.
+            if ((error as { statusCode?: number } | null)?.statusCode === 404) {
+                return { found: false };
+            }
             const message = error instanceof Error ? error.message : 'Get document failed';
             logger.error('Azure getDocument failed', { indexName, documentId, error: message });
             return { found: false, error: message };

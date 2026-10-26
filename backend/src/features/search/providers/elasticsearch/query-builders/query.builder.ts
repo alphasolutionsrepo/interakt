@@ -24,6 +24,7 @@ import type {
 import { SEARCH_DEFAULTS } from '../../../search.types';
 import type { ESQuery } from './filter.builder';
 import { buildFilterQuery } from './filter.builder';
+import { withHiddenSearchedFields } from '../../../hidden-searched-fields';
 
 // ============================================================================
 // TYPES
@@ -486,6 +487,8 @@ function buildSourceConfig(
         // Use default response fields from context
         config.includes = context.defaultResponseFields;
     }
+
+    config.includes = withHiddenSearchedFields(config.includes, context.searchableFields.map(f => f.fieldName), request);
 
     // Exclude specified fields
     if (request.excludeFields && request.excludeFields.length > 0) {
