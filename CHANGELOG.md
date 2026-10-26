@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- The filter box on the AI Experiences, Search Experiences, Search Indexes, Data Sources and Tools lists no longer loses focus while the list reloads.
+- The filter box on the AI Experiences, Search Experiences, Search Indexes, Data Sources, Tools and MCP Connections lists no longer loses focus while the list reloads.
 - Find Record on an Azure AI Search index goes on to search by name when the id isn't a document key, as on Elasticsearch.
 
 ### Removed
