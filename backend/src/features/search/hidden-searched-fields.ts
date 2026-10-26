@@ -82,8 +82,14 @@ function takePath(value: unknown, path: string[]): unknown[] {
     }
     const taken = takePath(record[key], rest);
     const inner = record[key];
-    if (inner && typeof inner === 'object' && !Array.isArray(inner) && Object.keys(inner).length === 0) {
+    // An object, or a list whose every item, left with nothing shown goes too: variants: [{}, {}]
+    // isn't what responses show.
+    if (Array.isArray(inner) ? inner.length > 0 && inner.every(isEmptyObject) : isEmptyObject(inner)) {
         delete record[key];
     }
     return taken;
+}
+
+function isEmptyObject(value: unknown): boolean {
+    return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
 }

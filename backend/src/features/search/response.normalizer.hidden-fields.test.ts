@@ -81,6 +81,18 @@ describe('hidden searched fields', () => {
       expect(hit.hiddenSearchedFields).toEqual({ 'variants.sku': ['T-1', 'T-2'] });
     });
 
+    it('drops a list whose items had only the hidden field, as responses show it', () => {
+      const listed = { ...nested, searchableFields: [{ fieldName: 'variants.sku', fieldType: 'keyword', boostValue: 1 }] } as unknown as SearchContext;
+      const hit = normalize(
+        { name: 'Tote', variants: [{ sku: 'T-1' }, { sku: 'T-2' }] },
+        { includeHiddenSearchedFields: true },
+        listed,
+      );
+
+      expect(hit.source).toEqual({ name: 'Tote' });
+      expect(hit.hiddenSearchedFields).toEqual({ 'variants.sku': ['T-1', 'T-2'] });
+    });
+
     it('stays when the field above it is shown', () => {
       const hit = normalize({ name: 'Sweater', specs: { sku: 'ABC-1' } }, { includeHiddenSearchedFields: true, includeFields: ['name', 'specs'] }, nested);
 
