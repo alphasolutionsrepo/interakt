@@ -6,13 +6,14 @@
  * finds the document through a search instead of returning the engine error.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 
 const search = vi.fn();
 vi.mock('@/features/search/search.service', () => ({}));
 const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn(async () => ({ schema: null }) as unknown) }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
-vi.mock('@/features/data-source/external-search/external-search.service', () => ({ getConnector: () => ({ search }) }));
+const capabilities: { documentIdField?: string } = {};
+vi.mock('@/features/data-source/external-search/external-search.service', () => ({ getConnector: () => ({ search, capabilities }) }));
 vi.mock('./shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./shared')>()),
   resolveDataSource: vi.fn(async () => ({ kind: 'external', provider: 'sitecore-search', dataSourceId: 'ds' })),
@@ -153,5 +154,38 @@ describe('external lookup and the data source schema', () => {
 
     expect(search.mock.lastCall?.[1]).toMatchObject({ filters: [{ field: 'id', operator: 'eq', value: 'p1' }] });
     expect(result).toMatchObject({ success: true, data: { id: 'p1' } });
+  });
+});
+
+describe("external lookup by the engine's own id", () => {
+  afterEach(() => {
+    delete capabilities.documentIdField;
+  });
+
+  it('finds an id from a list of matches that is the engine id, not a field (Elasticsearch _id)', async () => {
+    capabilities.documentIdField = '_id';
+    const sweater = { productId: 'P-200', name: 'Crew Neck Sweater', color: 'Grey' };
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: '1UQ9eqEB', score: 1, source: sweater }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', { idField: 'productId' }, { id: '1UQ9eqEB' });
+
+    expect(result).toEqual({ success: true, data: { id: '1UQ9eqEB', document: sweater } });
+    expect(search.mock.calls.at(-2)?.[1]).toMatchObject({ filters: [{ field: 'productId', operator: 'eq', value: '1UQ9eqEB' }] });
+    expect(search.mock.lastCall?.[1]).toMatchObject({ filters: [{ field: '_id', operator: 'eq', value: '1UQ9eqEB' }] });
+  });
+
+  it('goes on to search by name when neither id finds a record', async () => {
+    capabilities.documentIdField = '_id';
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'x1', score: 1, source: { name: 'Denim Jacket' } }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', { idField: 'productId' }, { id: 'Denim Jacket' });
+
+    expect(result).toEqual({ success: true, data: { id: 'x1', document: { name: 'Denim Jacket' }, matchedBy: 'search_fallback' } });
+    expect(search.mock.lastCall?.[1]).toEqual({ query: 'Denim Jacket', offset: 0, limit: 5 });
   });
 });

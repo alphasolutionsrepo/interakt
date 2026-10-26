@@ -29,7 +29,7 @@ vi.mock('@/features/secrets/secrets.service', () => ({ resolveSecret: vi.fn() })
 vi.mock('@/features/search/search.service', () => ({ getDocumentByIdFromIndex, searchById }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
 vi.mock('@/features/data-source/external-search/external-search.service', () => ({
-  getConnector: () => ({ search: connectorSearch }),
+  getConnector: () => ({ search: connectorSearch, capabilities: {} }),
 }));
 vi.mock('./shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./shared')>()),

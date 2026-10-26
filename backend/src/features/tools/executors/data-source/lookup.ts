@@ -10,6 +10,7 @@
 import * as searchService from '@/features/search/search.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
+import type { ExternalSearchConnector, ExternalSearchHit } from '@/features/data-source/external-search/external-search.types';
 import { executeFileStoreLookup } from './file-store';
 import {
   resolveDataSource,
@@ -198,6 +199,34 @@ async function lookupFromManagedIndex(
 // EXTERNAL SOURCE LOOKUP
 // ============================================================================
 
+/**
+ * The record whose `field` equals the id, or undefined. The filter can fail outright, e.g. an
+ * engine where the id attribute isn't filterable; the search fallback still finds the document
+ * then. An engine error on that fallback search rejects, as on managed indexes, so executeTool
+ * retries a transient one and labels a lasting one failed.
+ */
+async function findByField(
+  connector: ExternalSearchConnector,
+  source: ResolvedExternalSource,
+  field: string,
+  documentId: string,
+  fields: DataSourceField[],
+): Promise<ExternalSearchHit | undefined> {
+  const result = await connector
+    .search(source, { query: '*', offset: 0, limit: 1, filters: [{ field, operator: 'eq', value: documentId }] }, fields)
+    .catch((error: unknown) => {
+      logger.info('External lookup by id failed — falling back to search', {
+        dataSourceId: source.dataSourceId,
+        field,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+  // An id filter the engine could not apply would return an arbitrary document,
+  // so only trust a hit when the filter was applied.
+  return result && result.unappliedFilters.length === 0 ? result.hits[0] : undefined;
+}
+
 async function lookupFromExternalSource(
   source: ResolvedExternalSource,
   idField: string,
@@ -210,26 +239,13 @@ async function lookupFromExternalSource(
     return { success: false, error: `Lookup for provider '${source.provider}' is not yet implemented` };
   }
 
-  // An engine error on the fallback search rejects, as on managed indexes, so executeTool
-  // retries a transient one and labels a lasting one failed.
-  // The id filter can fail outright, e.g. an engine where the id attribute isn't
-  // filterable. The search fallback below still finds the document then.
-  const result = await connector
-    .search(
-      source,
-      { query: '*', offset: 0, limit: 1, filters: [{ field: idField, operator: 'eq', value: documentId }] },
-      fields,
-    )
-    .catch((error: unknown) => {
-      logger.info('External lookup by id failed — falling back to search', {
-        dataSourceId: source.dataSourceId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    });
-  // An id filter the engine could not apply would return an arbitrary document,
-  // so only trust a hit when the filter was applied.
-  const hit = result && result.unappliedFilters.length === 0 ? result.hits[0] : undefined;
+  // The id field, then the engine's own id when its hits carry one that isn't a field
+  // (Elasticsearch's _id): the id a search or a list of matches gave finds its record.
+  const { documentIdField } = connector.capabilities;
+  const hit = await findByField(connector, source, idField, documentId, fields)
+    ?? (documentIdField && documentIdField !== idField
+      ? await findByField(connector, source, documentIdField, documentId, fields)
+      : undefined);
   if (hit) return { success: true, data: { id: hit.id, document: hit.source } };
 
   // Fallback, as for managed indexes: the "id" is often a name or title the planner
