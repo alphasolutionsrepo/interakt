@@ -24,6 +24,7 @@ import type {
 import { SEARCH_DEFAULTS } from '../../../search.types';
 import type { ESQuery } from './filter.builder';
 import { buildFilterQuery } from './filter.builder';
+import { withHiddenSearchedFields } from '../../../hidden-searched-fields';
 
 // ============================================================================
 // TYPES
@@ -487,11 +488,7 @@ function buildSourceConfig(
         config.includes = context.defaultResponseFields;
     }
 
-    // With no shown fields nothing is narrowed, so there is nothing hidden to add
-    if (request.includeHiddenSearchedFields && config.includes.length > 0) {
-        const searched = context.searchableFields.map(f => f.fieldName);
-        config.includes = [...new Set([...config.includes, ...searched])];
-    }
+    config.includes = withHiddenSearchedFields(config.includes, context.searchableFields.map(f => f.fieldName), request);
 
     // Exclude specified fields
     if (request.excludeFields && request.excludeFields.length > 0) {

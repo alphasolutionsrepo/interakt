@@ -300,6 +300,20 @@ describe('managed lookup fallback', () => {
       });
     });
 
+    it('matches on a hidden sku under a dotted name', async () => {
+      getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+      searchById.mockResolvedValueOnce({
+        hits: [
+          { id: 'p1', source: { name: 'Canvas Tote' }, hiddenSearchedFields: { 'specs.sku': 'HC-1001' } },
+          { id: 'p2', source: { name: 'Strap', fitsModel: 'HC-1001' } },
+        ],
+      });
+
+      const result = await executeDataSourceLookup('ds', {}, { id: 'HC-1001' });
+
+      expect(result).toEqual({ success: true, data: { id: 'p1', document: { name: 'Canvas Tote' }, matchedBy: 'search_fallback' } });
+    });
+
     it('lists matches by a shown title, never by a hidden internal name', async () => {
       getDocumentByIdFromIndex.mockResolvedValueOnce(null);
       searchById.mockResolvedValueOnce({

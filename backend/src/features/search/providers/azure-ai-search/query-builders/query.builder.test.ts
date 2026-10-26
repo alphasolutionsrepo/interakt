@@ -160,6 +160,10 @@ describe('hidden searched fields in the response', () => {
         expect(select({})).toEqual(['id', 'name', 'price']);
     });
 
+    it('adds nothing for an explicit empty field list, as without the request', () => {
+        expect(select({ includeHiddenSearchedFields: true, includeFields: [] })).toEqual(select({ includeFields: [] }));
+    });
+
     it('adds nothing when no fields are shown, so Azure returns every retrievable field as before', () => {
         const options = buildAzureSearchOptions({
             context: { ...context, defaultResponseFields: [] },

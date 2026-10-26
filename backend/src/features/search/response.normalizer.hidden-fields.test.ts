@@ -46,11 +46,47 @@ describe('hidden searched fields', () => {
     expect(hit.hiddenSearchedFields).toBeUndefined();
   });
 
-  it('reads an empty field list as the default shown fields, as the query builder does', () => {
-    const hit = normalize({ name: 'Crew Neck Sweater', price: 40, sku: 'ABC-123' }, { includeHiddenSearchedFields: true, includeFields: [] });
+  it('leaves a hit as without the request when it names an empty field list', () => {
+    const source = { name: 'Crew Neck Sweater', price: 40, sku: 'ABC-123' };
+    const withRequest = normalize(source, { includeHiddenSearchedFields: true, includeFields: [] });
 
-    expect(hit.source).toEqual({ name: 'Crew Neck Sweater', price: 40 });
-    expect(hit.hiddenSearchedFields).toEqual({ sku: 'ABC-123' });
+    expect(withRequest).toEqual(normalize(source, { includeFields: [] }));
+  });
+
+  describe('a dotted searched field', () => {
+    const nested = {
+      ...context,
+      searchableFields: [...context.searchableFields, { fieldName: 'specs.sku', fieldType: 'keyword', boostValue: 1 }],
+    } as unknown as SearchContext;
+
+    it('is moved out whether the engine returns it flat or nested', () => {
+      const flat = normalize({ name: 'Sweater', 'specs.sku': 'ABC-1' }, { includeHiddenSearchedFields: true }, nested);
+      const deep = normalize({ name: 'Sweater', specs: { sku: 'ABC-1' } }, { includeHiddenSearchedFields: true }, nested);
+
+      expect(flat.source).toEqual({ name: 'Sweater' });
+      expect(flat.hiddenSearchedFields).toEqual({ 'specs.sku': 'ABC-1' });
+      expect(deep.source).toEqual({ name: 'Sweater' });
+      expect(deep.hiddenSearchedFields).toEqual({ 'specs.sku': 'ABC-1' });
+    });
+
+    it('is moved out of every item of a list, keeping the rest of each item', () => {
+      const listed = { ...nested, searchableFields: [{ fieldName: 'variants.sku', fieldType: 'keyword', boostValue: 1 }] } as unknown as SearchContext;
+      const hit = normalize(
+        { name: 'Tote', variants: [{ sku: 'T-1', color: 'black' }, { sku: 'T-2', color: 'olive' }] },
+        { includeHiddenSearchedFields: true },
+        listed,
+      );
+
+      expect(hit.source).toEqual({ name: 'Tote', variants: [{ color: 'black' }, { color: 'olive' }] });
+      expect(hit.hiddenSearchedFields).toEqual({ 'variants.sku': ['T-1', 'T-2'] });
+    });
+
+    it('stays when the field above it is shown', () => {
+      const hit = normalize({ name: 'Sweater', specs: { sku: 'ABC-1' } }, { includeHiddenSearchedFields: true, includeFields: ['name', 'specs'] }, nested);
+
+      expect(hit.source).toEqual({ name: 'Sweater', specs: { sku: 'ABC-1' } });
+      expect(hit.hiddenSearchedFields).toBeUndefined();
+    });
   });
 
   it('keeps a searched field the request asks to show in source', () => {

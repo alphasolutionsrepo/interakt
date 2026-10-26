@@ -36,6 +36,10 @@ describe('hidden searched fields in the response', () => {
         expect(source({})).toEqual({ includes: ['name', 'price'], excludes: ['content_embedding'] });
     });
 
+    it('adds nothing for an explicit empty field list, as without the request', () => {
+        expect(source({ includeHiddenSearchedFields: true, includeFields: [] })).toEqual(source({ includeFields: [] }));
+    });
+
     it('adds nothing when no fields are shown, so the response is as before', () => {
         const body = buildLexicalSearchBody(
             { query: 'ABC-123', includeHiddenSearchedFields: true } as SearchRequest,

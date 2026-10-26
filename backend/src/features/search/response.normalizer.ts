@@ -23,6 +23,7 @@ import type {
     SearchContext,
 } from './search.types';
 import { SEARCH_DEFAULTS } from './search.types';
+import { separateHiddenSearchedFields } from './hidden-searched-fields';
 import type { SearchType } from '@/shared/constants/search-index.constants';
 
 // ============================================================================
@@ -43,7 +44,7 @@ export function normalizeSearchResponse(
 
     // Normalize hits
     const hits = normalizeHits(providerResponse.hits, providerResponse.maxScore);
-    if (request.includeHiddenSearchedFields) separateHiddenSearchedFields(hits, request, context);
+    separateHiddenSearchedFields(hits, request, context);
 
     // Calculate pagination
     const pagination = calculatePagination(
@@ -117,30 +118,6 @@ function normalizeHit(hit: ProviderHit, maxScore?: number): SearchHit {
     }
 
     return normalizedHit;
-}
-
-/**
- * Move the searched fields kept out of responses from each hit's source to hiddenSearchedFields,
- * so source stays as responses show it. The query builders add them only when some fields are
- * shown, so with none shown there is nothing to move.
- */
-function separateHiddenSearchedFields(hits: SearchHit[], request: SearchRequest, context: SearchContext): void {
-    // As the query builders read it: an empty field list means the default shown fields
-    const shown = new Set(request.includeFields?.length ? request.includeFields : context.defaultResponseFields);
-    if (shown.size === 0) return;
-    const hidden = context.searchableFields.map(f => f.fieldName).filter(name => !shown.has(name));
-    for (const hit of hits) {
-        const found = hidden.filter(name => name in hit.source);
-        if (found.length === 0) continue;
-        const source = { ...hit.source };
-        const hiddenSearchedFields: Record<string, unknown> = {};
-        for (const name of found) {
-            hiddenSearchedFields[name] = source[name];
-            delete source[name];
-        }
-        hit.source = source;
-        hit.hiddenSearchedFields = hiddenSearchedFields;
-    }
 }
 
 /**

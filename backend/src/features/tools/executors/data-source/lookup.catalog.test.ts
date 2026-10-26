@@ -7,11 +7,22 @@
  * first; ranking hides the second, so it is checked here against the whole catalog.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// The production path (executeDataSourceLookup) on a managed index whose key fetch misses, so
+// the record is chosen from the search hits each test hands it
+const { searchById } = vi.hoisted(() => ({ searchById: vi.fn() }));
+vi.mock('@/features/search/search.service', () => ({ getDocumentByIdFromIndex: vi.fn(async () => null), searchById }));
+vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
+vi.mock('@/features/data-source/external-search/external-search.service', () => ({}));
+vi.mock('./shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./shared')>()),
+  resolveDataSource: vi.fn(async () => ({ kind: 'managed', searchIndexId: 'idx' })),
+}));
 
 import catalog from '../../../../../setup/data/fashion_catalog.json';
 
-import { matchesRequestedRecord } from './lookup';
+import { executeDataSourceLookup, matchesRequestedRecord } from './lookup';
 
 interface Product extends Record<string, unknown> {
   productId: string;
@@ -45,8 +56,15 @@ function phrasings(product: Product): Record<string, string> {
   };
 }
 
+const matched = new Map<string, Product[]>();
+/** Every catalog product the matching rules accept for a request (kept, as tests ask again). */
+function matchingProducts(request: string): Product[] {
+  if (!matched.has(request)) matched.set(request, products.filter((p) => matchesRequestedRecord(request, p.productId, p)));
+  return matched.get(request)!;
+}
+
 function matchingNames(request: string): string[] {
-  return [...new Set(products.filter((p) => matchesRequestedRecord(request, p.productId, p)).map((p) => p.name))];
+  return [...new Set(matchingProducts(request).map((p) => p.name))];
 }
 
 describe('Find Record matching on the demo catalog', () => {
@@ -73,6 +91,24 @@ describe('Find Record matching on the demo catalog', () => {
     );
     expect(wrong).toEqual([]);
   }, 30_000); // every phrasing of every product against the whole catalog: ~440k checks
+
+  it('returns the product, or asks which one when products share its name, through the production path', async () => {
+    const wrong: string[] = [];
+    for (const product of products) {
+      for (const [kind, request] of Object.entries(phrasings(product))) {
+        // The worst search: the product plus the other products the rules accept, top 5
+        const others = matchingProducts(request).filter((p) => p !== product).slice(0, 4);
+        searchById.mockResolvedValueOnce({ hits: [product, ...others].map((p) => ({ id: p.productId, source: p })) });
+        const { data } = (await executeDataSourceLookup('ds', {}, { id: request })) as {
+          data: { id?: string; matches?: Array<{ id: string; name?: string }> };
+        };
+        const fine = data.id === product.productId
+          || (data.matches?.some((m) => m.id === product.productId) && data.matches.every((m) => m.name === product.name));
+        if (!fine) wrong.push(`${kind}: "${request}" -> ${JSON.stringify(data).slice(0, 120)}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  }, 30_000);
 
   it('finds nothing for a product type the brand does not make', () => {
     const wrong = products.flatMap((product) => {

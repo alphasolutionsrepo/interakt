@@ -377,7 +377,7 @@ function codeValues(
 
   const add = (field: string, value: unknown, inList: boolean) => {
     if (!isScalar(value)) return;
-    if (IDENTIFIER_FIELD.test(field)) codes.push({ value, strength: inList ? CODE.listed : CODE.field });
+    if (IDENTIFIER_FIELD.test(field.split('.').pop() ?? field)) codes.push({ value, strength: inList ? CODE.listed : CODE.field });
     else if (typeof value === 'string' && /\d/.test(value)) codes.push({ value, strength: CODE.possible });
   };
   for (const [field, value] of Object.entries(source ?? {})) {
