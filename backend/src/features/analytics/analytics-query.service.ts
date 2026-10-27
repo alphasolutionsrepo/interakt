@@ -592,6 +592,8 @@ export async function getSearchTypeBreakdown(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
+    // Match the overview totals: internal lookups aren't searches anyone made
+    conditions.push(ne(searchEvents.triggerType, 'system'));
 
     const results = await analyticsDB
       .select({
@@ -633,6 +635,8 @@ export async function getPerformanceMetrics(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
+    // Match the overview totals: internal lookups aren't searches anyone made
+    conditions.push(ne(searchEvents.triggerType, 'system'));
 
     const results = await analyticsDB
       .select({

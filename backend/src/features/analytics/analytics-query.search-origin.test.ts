@@ -20,7 +20,14 @@ vi.mock('@/db/index', () => ({
 
 import { searchEvents } from '@/db/analytics-schema';
 
-import { getOverviewMetrics, getPopularQueries, getSearchTrends, getZeroResultQueries } from './analytics-query.service';
+import {
+  getOverviewMetrics,
+  getPerformanceMetrics,
+  getPopularQueries,
+  getSearchTrends,
+  getSearchTypeBreakdown,
+  getZeroResultQueries,
+} from './analytics-query.service';
 
 function searchEvent(triggerType: string, query: string, totalResults: number) {
   return {
@@ -69,6 +76,14 @@ describe('search origin', () => {
     expect(overview.zeroResultRate).toBe(0.5);
     expect(overview.uniqueQueries).toBe(3);
     expect(overview.searchesByTrigger).toEqual({ user: 2, ai_tool: 2, ai_rag: 0, system: 2 });
+  });
+
+  it('leaves internal lookups out of the search types chart and the timings', async () => {
+    await testDb.db.insert(searchEvents).values({ ...searchEvent('system', '*', 0), durationMs: 1000 });
+
+    const types = await getSearchTypeBreakdown('24h');
+    expect(types.lexical + types.semantic + types.hybrid).toBe(4);
+    expect((await getPerformanceMetrics('24h')).avgDurationMs).toBe(20);
   });
 
   it('leaves internal lookups out of the trend chart, matching the totals', async () => {

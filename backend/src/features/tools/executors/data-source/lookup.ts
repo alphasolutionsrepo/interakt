@@ -163,10 +163,12 @@ async function lookupFromManagedIndex(
   const roles = rolesOf(schema);
   // The matcher also reads the searched fields kept out of responses, so a sku hidden from
   // responses still identifies its item; what is returned or listed comes from source only.
+  // Tagged 'system': this search resolves the item asked for and isn't one the assistant chose
+  // to make, so search analytics leave it out (its hits say nothing about whether it was found).
   const response = await searchService.searchById(
     searchIndexId,
     { query: documentId, pageSize: FALLBACK_CANDIDATES, includeHiddenSearchedFields: true },
-    { triggerType: 'ai_tool' },
+    { triggerType: 'system' },
   );
   const hits: Hit[] = response.hits.map((hit) => ({
     id: hit.id,

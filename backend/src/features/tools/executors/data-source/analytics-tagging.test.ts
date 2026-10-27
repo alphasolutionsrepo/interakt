@@ -4,7 +4,7 @@
  * Searches run by tools are not visitor searches. Search analytics (popular
  * queries, zero results, user vs AI breakdown) depend on each call being tagged
  * with the right trigger: the model's tool searches as 'ai_tool', internal
- * facet-value lookups as 'system'.
+ * facet-value lookups and Find Record's search for the item asked for as 'system'.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const searchById = vi.fn();
 vi.mock('@/features/search/search.service', () => ({
   searchById: (...args: unknown[]) => searchById(...args),
+  getDocumentByIdFromIndex: async () => null,
   getExperienceContext: () => undefined,
   getAnalyticsSourceContext: () => undefined,
 }));
@@ -30,6 +31,7 @@ vi.mock('./shared', async (importOriginal) => ({
 
 import { executeDataSourceSearch } from './search';
 import { executeDataSourceEnumerate } from './enumerate';
+import { executeDataSourceLookup } from './lookup';
 
 beforeEach(() => {
   searchById.mockReset();
@@ -50,5 +52,10 @@ describe('analytics tagging of tool searches', () => {
   it('records a facet-value lookup as system', async () => {
     await executeDataSourceEnumerate('ds', {}, { field: 'brand' });
     expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: '*' }), { triggerType: 'system' });
+  });
+
+  it("records Find Record's search for the item asked for as system", async () => {
+    await executeDataSourceLookup('ds', {}, { id: 'Linen Shirt' });
+    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: 'Linen Shirt' }), { triggerType: 'system' });
   });
 });
