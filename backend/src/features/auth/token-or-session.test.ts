@@ -29,15 +29,20 @@ describe('authenticateTokenOrSession', () => {
   });
 
   it('treats the experience token as real traffic, in either header', async () => {
-    expect(await authenticateTokenOrSession(request({ Authorization: 'Bearer t1' }), experience())).toEqual({ caller: 'api' });
-    expect(await authenticateTokenOrSession(request({ 'X-Access-Token': 't1' }), experience())).toEqual({ caller: 'api' });
-    expect(authMock).not.toHaveBeenCalled();
+    authMock.mockResolvedValue(null);
+    expect(await authenticateTokenOrSession(request({ Authorization: 'Bearer t1' }), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
+    expect(await authenticateTokenOrSession(request({ 'X-Access-Token': 't1' }), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
+  });
+
+  it("records the token caller as a test when the admin's session comes with it (the Widget playground)", async () => {
+    authMock.mockResolvedValue({ user: { id: 'u' } });
+    expect(await authenticateTokenOrSession(request({ 'X-Access-Token': 't1' }), experience())).toEqual({ caller: 'api', analyticsSource: 'admin_test' });
   });
 
   it('falls back to an admin session when there is no matching token', async () => {
     authMock.mockResolvedValue({ user: { id: 'u' } });
-    expect(await authenticateTokenOrSession(request({}), experience())).toEqual({ caller: 'admin' });
-    expect(await authenticateTokenOrSession(request({ Authorization: 'Bearer wrong' }), experience())).toEqual({ caller: 'admin' });
+    expect(await authenticateTokenOrSession(request({}), experience())).toEqual({ caller: 'admin', analyticsSource: 'admin_test' });
+    expect(await authenticateTokenOrSession(request({ Authorization: 'Bearer wrong' }), experience())).toEqual({ caller: 'admin', analyticsSource: 'admin_test' });
   });
 
   it('rejects a request with neither, leaving the 401 to the route', async () => {
@@ -52,7 +57,7 @@ describe('authenticateTokenOrSession', () => {
     expect(other.refused?.status).toBe(403);
 
     const shop = { 'X-Access-Token': 't1', Origin: 'https://shop.example' };
-    expect(await authenticateTokenOrSession(request(shop), settings)).toEqual({ caller: 'api' });
+    expect(await authenticateTokenOrSession(request(shop), settings)).toMatchObject({ caller: 'api' });
     expect((await authenticateTokenOrSession(request(shop), settings)).refused?.status).toBe(429);
   });
 
@@ -60,7 +65,7 @@ describe('authenticateTokenOrSession', () => {
     authMock.mockResolvedValue({ user: { id: 'u' } });
     const settings = experience({ allowedOrigins: ['https://shop.example'], perMinute: 1 });
     for (let i = 0; i < 3; i++) {
-      expect(await authenticateTokenOrSession(request({ Origin: 'https://other.example' }), settings)).toEqual({ caller: 'admin' });
+      expect(await authenticateTokenOrSession(request({ Origin: 'https://other.example' }), settings)).toMatchObject({ caller: 'admin' });
     }
   });
 });

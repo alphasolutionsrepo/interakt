@@ -165,18 +165,10 @@ export async function runAnalyticsProcessing(
 
       const stepStart = Date.now();
       // Fetch pipeline spans (v2.turn + v2.turn_planner — have outcomes, reasoning)
-      const allSpans = await fetchSpans(analyticsDB, range, options.experienceId);
-      // Filter out playground/admin_test spans — only cluster real API data
-      const spans = allSpans.filter(s => {
-        const source = getAttrStr(s, 'alpha.analytics.source');
-        return !source || source === 'api';
-      });
+      // Live traffic only: the fetches leave out admin test chats and the playgrounds
+      const spans = await fetchSpans(analyticsDB, range, options.experienceId);
       // Fetch chat spans (have user_message — needed for intent clustering)
-      const allChatSpans = await fetchSpansByOperation(analyticsDB!, range, 'chat.ai_experience.turn', options.experienceId);
-      const chatSpans = allChatSpans.filter(s => {
-        const source = getAttrStr(s, 'alpha.analytics.source');
-        return !source || source === 'api';
-      });
+      const chatSpans = await fetchSpansByOperation(analyticsDB!, range, 'chat.ai_experience.turn', options.experienceId);
       // Fetch tool + search spans (have input_params, result_count, search.query)
       const toolSpans = await fetchToolSpans(analyticsDB!, range, options.experienceId);
 
@@ -514,6 +506,8 @@ async function fetchSpans(
     gte(otelSpans.startTime, range.from),
     lte(otelSpans.startTime, range.to),
     sql`(${otelSpans.operationName} = 'pipeline.v2.turn' OR ${otelSpans.operationName} = 'pipeline.v2.turn_planner')`,
+    // The source is on the chat turn span, not these: check the whole trace
+    notTestTraffic(otelSpans),
   ];
 
   if (experienceId) {
@@ -551,6 +545,7 @@ async function fetchSpansByOperation(
     gte(otelSpans.startTime, range.from),
     lte(otelSpans.startTime, range.to),
     eq(otelSpans.operationName, operationName),
+    notTestTraffic(otelSpans),
   ];
 
   if (experienceId) {
@@ -585,7 +580,7 @@ async function fetchToolSpans(
     gte(otelSpans.startTime, range.from),
     lte(otelSpans.startTime, range.to),
     sql`(${otelSpans.operationName} LIKE 'tool.%' OR ${otelSpans.operationName} LIKE 'search.%')`,
-    // Like the pipeline and chat spans above: only live traffic is clustered
+    // Only live traffic is clustered
     notTestTraffic(otelSpans),
   ];
 

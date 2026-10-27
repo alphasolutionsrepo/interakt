@@ -25,8 +25,8 @@ export type ExperienceCaller = 'api' | 'admin';
  * request had neither a matching token nor a session and the route answers 401.
  */
 export type TokenOrSessionResult =
-  | { caller: ExperienceCaller; refused?: undefined }
-  | { caller: null; refused?: NextResponse };
+  | { caller: ExperienceCaller; analyticsSource: 'api' | 'admin_test'; refused?: undefined }
+  | { caller: null; analyticsSource?: undefined; refused?: NextResponse };
 
 export async function authenticateTokenOrSession(
   request: NextRequest,
@@ -35,9 +35,13 @@ export async function authenticateTokenOrSession(
   const token = readAccessToken(request);
   if (token && experience.accessToken && token === experience.accessToken) {
     const refused = checkPublicAccess(request, experience);
-    return refused ? { caller: null, refused } : { caller: 'api' };
+    if (refused) return { caller: null, refused };
+    // The real widget in the admin's own Widget playground sends the token and, being on the
+    // admin's origin, the admin's session cookie; a visitor on another site never sends it.
+    const session = await auth();
+    return { caller: 'api', analyticsSource: session?.user ? 'admin_test' : 'api' };
   }
 
   const session = await auth();
-  return session?.user ? { caller: 'admin' } : { caller: null };
+  return session?.user ? { caller: 'admin', analyticsSource: 'admin_test' } : { caller: null };
 }
