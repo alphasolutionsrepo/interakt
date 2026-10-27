@@ -11,7 +11,7 @@ import 'server-only';
 
 import { and, count, eq, gte, lte, like, sql, avg } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { getDateRange, type TimeRange } from './analytics-query.service';
+import { getDateRange, notTestTraffic, type TimeRange } from './analytics-query.service';
 import { getAnalyticsConfig } from './analytics-config';
 
 const logger = createLogger('conversation-analytics');
@@ -84,6 +84,7 @@ export async function getConversationMetrics(
     gte(otelSpans.startTime, range.from),
     lte(otelSpans.startTime, range.to),
     like(otelSpans.operationName, 'chat.%'),
+    notTestTraffic(otelSpans),
   ];
 
   if (experienceId) {
@@ -163,6 +164,7 @@ export async function getRetryAnalysis(
     gte(otelSpans.startTime, range.from),
     lte(otelSpans.startTime, range.to),
     like(otelSpans.operationName, 'tool.%'),
+    notTestTraffic(otelSpans),
   ];
 
   if (experienceId) {

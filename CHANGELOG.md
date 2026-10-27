@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The filter box on the AI Experiences, Search Experiences, Search Indexes, Data Sources, Tools and MCP Connections lists no longer loses focus while the list reloads.
 - Find Record on an Azure AI Search index goes on to search by name when the id isn't a document key, as on Elasticsearch.
 - Find Record on an external Elasticsearch source also finds a record by the id its search results and lists of matches give (Elasticsearch's own document id).
-- Searches made from an admin test chat, the playground or a tool's Test panel are no longer counted as live traffic.
+- Searches, AI calls and tool runs made from an admin test chat, the playgrounds or a tool's Test panel are no longer counted as live traffic: Analytics leaves them out of searches, conversations, AI usage, tool usage and insights.
 
 ### Removed
 

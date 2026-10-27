@@ -436,6 +436,8 @@ async function flushAIEvents(): Promise<void> {
           batchSize: e.batchSize,
           estimatedCostUsd,
           requestMetadata: e.metadata as Record<string, unknown>,
+          // Reports count live traffic as source 'api'; admin test chats and the playground stay apart
+          source: e.source,
         };
       })
     );

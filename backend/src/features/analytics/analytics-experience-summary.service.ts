@@ -66,6 +66,7 @@ export async function getExperienceSummaries(
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           isNotNull(otelSpans.experienceId),
+          notTestTraffic(otelSpans),
         )
       )
       .groupBy(otelSpans.experienceId, otelSpans.experienceType);

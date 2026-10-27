@@ -21,7 +21,7 @@ import 'server-only';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
-import { getDateRange, inExperienceTrace, type TimeRange } from './analytics-query.service';
+import { getDateRange, inExperienceTrace, notTestTraffic, type TimeRange } from './analytics-query.service';
 import { textAvailability } from './insight-text';
 import { clusterIntents, type IntentClusteringResult } from './intent-clustering';
 import { detectProactiveInsights } from './proactive-insights.service';
@@ -585,6 +585,8 @@ async function fetchToolSpans(
     gte(otelSpans.startTime, range.from),
     lte(otelSpans.startTime, range.to),
     sql`(${otelSpans.operationName} LIKE 'tool.%' OR ${otelSpans.operationName} LIKE 'search.%')`,
+    // Like the pipeline and chat spans above: only live traffic is clustered
+    notTestTraffic(otelSpans),
   ];
 
   // tool.* spans (and most search.* spans) carry no experienceId — match them by the

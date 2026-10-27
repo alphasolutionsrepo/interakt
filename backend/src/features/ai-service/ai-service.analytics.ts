@@ -9,6 +9,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import type { AIUsageMetrics } from './ai-service.types';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 
 const logger = createLogger('ai-service-analytics');
 
@@ -61,8 +62,11 @@ export async function trackUsage(metrics: AIUsageMetrics): Promise<void> {
         ...(metrics.feature && { feature: metrics.feature }),
     });
 
-    // Add to queue for batch writing
-    analyticsQueue.push(metrics);
+    // Add to queue for batch writing. The batch is written later, outside this request, so the
+    // request's source (live, admin test chat, playground) is read now. The AI Provider
+    // playground marks its calls with feature 'playground'.
+    const source = metrics.source ?? getAnalyticsSourceContext() ?? (metrics.feature === 'playground' ? 'playground' : undefined);
+    analyticsQueue.push({ ...metrics, source });
 
     // Start flush timer if not already running
     startFlushTimer();
@@ -113,6 +117,7 @@ export async function flushAnalytics(): Promise<void> {
                 errorCode: metrics.errorCode,
                 errorMessage: metrics.errorMessage,
                 metadata: metrics.metadata,
+                source: metrics.source,
             });
         }
 

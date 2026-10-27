@@ -318,12 +318,14 @@ export async function getOverviewMetrics(
           eq(otelSpans.operationName, 'pipeline.v2.turn'),
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
+          notTestTraffic(otelSpans),
         ));
       aiData = { total: Number(aiSpanRows[0]?.total ?? 0), avgDuration: Number(aiSpanRows[0]?.avgDuration ?? 0) };
     } else {
       const aiConditions = [
         gte(aiUsageEvents.timestamp, range.from),
         lte(aiUsageEvents.timestamp, range.to),
+        eq(aiUsageEvents.source, 'api'),
       ];
       const aiMetrics = await analyticsDB
         .select({
@@ -736,6 +738,7 @@ export async function getAIUsageMetrics(
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           inExperienceTrace(otelSpans, experienceId, range),
+          notTestTraffic(otelSpans),
         ));
 
       const row = results[0];
@@ -759,6 +762,7 @@ export async function getAIUsageMetrics(
     const conditions = [
       gte(aiUsageEvents.timestamp, range.from),
       lte(aiUsageEvents.timestamp, range.to),
+      eq(aiUsageEvents.source, 'api'),
     ];
 
     const results = await analyticsDB
@@ -851,6 +855,7 @@ export async function getToolUsageMetrics(
         gte(otelSpans.startTime, range.from),
         lte(otelSpans.startTime, range.to),
         inExperienceTrace(otelSpans, experienceId, range),
+        notTestTraffic(otelSpans),
       );
 
       const [overallResults, byToolResults, byCategoryResults] = await Promise.all([
@@ -884,6 +889,8 @@ export async function getToolUsageMetrics(
     const conditions = [
       gte(aiToolExecutions.timestamp, range.from),
       lte(aiToolExecutions.timestamp, range.to),
+      // The source is kept in metadata (no column); rows from before it was recorded count as live
+      sql`COALESCE(${aiToolExecutions.metadata}->>'source', 'api') = 'api'`,
     ];
 
     // Overall metrics

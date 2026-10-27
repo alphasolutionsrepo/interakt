@@ -20,6 +20,8 @@ import type { SearchIndexComplete } from '@/features/search-index';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { generateEmbedding } from '@/features/ai-service';
 import { trackSearch, type TriggerType } from '@/features/analytics';
+import { getAnalyticsSourceContext, withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import type { AnalyticsSource } from '@/features/analytics/analytics.types';
 import { ATTR } from '@/features/telemetry';
 import { traceSearch } from './search.tracing';
 import type {
@@ -124,19 +126,12 @@ export interface SearchOptions {
 // ANALYTICS SOURCE CONTEXT (request-scoped via AsyncLocalStorage)
 // ============================================================================
 
-type AnalyticsSourceType = 'api' | 'playground' | 'admin_test';
+type AnalyticsSourceType = AnalyticsSource;
 
-const analyticsSourceStore = new AsyncLocalStorage<AnalyticsSourceType>();
+// The source context lives with analytics (its owner); kept here too for existing callers
+export { withAnalyticsSource, getAnalyticsSourceContext };
+
 const experienceContextStore = new AsyncLocalStorage<{ experienceId: string; experienceSlug?: string }>();
-
-/**
- * Run a function with a specific analytics source context.
- * All search operations within this context will be tagged with the given source.
- * Used by the pipeline to propagate source without threading through every layer.
- */
-export function withAnalyticsSource<T>(source: AnalyticsSourceType, fn: () => T): T {
-    return analyticsSourceStore.run(source, fn);
-}
 
 /**
  * Run a function with an experience context.
@@ -155,16 +150,8 @@ export function getExperienceContext(): { experienceId: string; experienceSlug?:
     return experienceContextStore.getStore();
 }
 
-/**
- * Get the current analytics source (if any).
- * Used by external search executors, which track searches themselves.
- */
-export function getAnalyticsSourceContext(): AnalyticsSourceType | undefined {
-    return analyticsSourceStore.getStore();
-}
-
 function getAnalyticsSource(options?: SearchOptions): AnalyticsSourceType {
-    return options?.source ?? analyticsSourceStore.getStore() ?? 'api';
+    return options?.source ?? getAnalyticsSourceContext() ?? 'api';
 }
 
 // ============================================================================

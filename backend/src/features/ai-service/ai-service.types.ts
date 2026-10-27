@@ -410,6 +410,8 @@ export interface AIUsageMetrics {
     sessionId?: string;
     feature?: string;
     metadata?: Record<string, unknown>;
+    /** Where the call came from (live traffic, an admin test chat, the playground) */
+    source?: 'api' | 'playground' | 'admin_test';
 }
 
 // ============================================================================

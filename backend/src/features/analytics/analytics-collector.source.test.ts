@@ -17,12 +17,12 @@ vi.mock('@/db/index', () => ({
   },
   db: {},
 }));
-vi.mock('./analytics-config', () => ({ analyticsFlags: { canTrackSearch: () => true } }));
+vi.mock('./analytics-config', () => ({ analyticsFlags: { canTrackSearch: () => true, canTrackAI: () => true } }));
 vi.mock('./analytics-retention', () => ({ startRetentionCleanup: vi.fn(), stopRetentionCleanup: vi.fn() }));
 
-import { searchEvents } from '@/db/analytics-schema';
+import { aiUsageEvents, searchEvents } from '@/db/analytics-schema';
 
-import { clearQueues, forceFlush, stopAnalyticsCollector, trackSearch } from './analytics-collector';
+import { clearQueues, forceFlush, stopAnalyticsCollector, trackAI, trackSearch } from './analytics-collector';
 
 function search(queryText: string, source?: 'api' | 'admin_test' | 'playground') {
   trackSearch({
@@ -64,5 +64,31 @@ describe('search event source', () => {
       'wool coat': 'playground',
       'denim jacket': 'api',
     });
+  });
+});
+
+describe('AI usage source', () => {
+  it('stores the source an AI call was tracked with', async () => {
+    const call = (modelKey: string, source?: 'admin_test' | 'playground') =>
+      trackAI({
+        requestId: crypto.randomUUID(),
+        ...(source && { source }),
+        operation: 'chat',
+        providerId: crypto.randomUUID(),
+        providerKey: 'ollama',
+        modelKey,
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        durationMs: 100,
+        success: true,
+      });
+    call('tested', 'admin_test');
+    call('playground', 'playground');
+    call('live');
+    await forceFlush();
+
+    const rows = await testDb.db.select({ model: aiUsageEvents.modelKey, source: aiUsageEvents.source }).from(aiUsageEvents);
+    expect(Object.fromEntries(rows.map((r) => [r.model, r.source]))).toEqual({ tested: 'admin_test', playground: 'playground', live: 'api' });
   });
 });

@@ -61,10 +61,11 @@ vi.mock('@/db/index', () => ({
   },
 }));
 
-import { otelSpans, searchEvents } from '@/db/analytics-schema';
+import { aiToolExecutions, aiUsageEvents, otelSpans, searchEvents } from '@/db/analytics-schema';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 
 import { getExperienceSummaries } from './analytics-experience-summary.service';
+import { getConversationMetrics } from './conversation-analytics.service';
 import { getAIUsageMetrics, getOverviewMetrics, getToolUsageMetrics } from './analytics-query.service';
 
 // Fresh ids per test file run: the index lookup is cached per experience id
@@ -243,6 +244,40 @@ describe('searches counted from tool calls (experiences without stored searches)
     for (const experienceId of [lookups, tested]) {
       expect(await getOverviewMetrics('24h', experienceId)).toMatchObject({ totalSearches: 0, searchesFromToolCalls: false });
     }
+  });
+});
+
+describe('test chats in conversations, AI usage and tool usage', () => {
+  /** A conversation as the chat pipeline records it, with its source on the chat turn span */
+  function chat(experienceId: string, tokens: number, source: string) {
+    const turn = conversation(experienceId, tokens, 'catalog-search');
+    return [...turn, span(turn[0].traceId, 'chat.ai_experience.turn', { [ATTR.ANALYTICS_SOURCE]: source }, experienceId)];
+  }
+
+  it("for one experience, counts only live chats, on every view", async () => {
+    const experience = id();
+    await testDb.db.insert(otelSpans).values([...chat(experience, 100, 'api'), ...chat(experience, 1000, 'admin_test'), ...chat(experience, 1000, 'playground')]);
+
+    expect((await getAIUsageMetrics('24h', experience)).totalTokens).toBe(100);
+    expect((await getToolUsageMetrics('24h', experience)).totalExecutions).toBe(1);
+    expect((await getOverviewMetrics('24h', experience)).totalAIRequests).toBe(1);
+    expect((await getConversationMetrics('24h', experience)).totalConversations).toBe(1);
+    expect((await getExperienceSummaries('24h')).find((s) => s.id === experience)?.volume).toBe(1);
+  });
+
+  it('for all experiences, counts only live AI calls and tool runs (tool runs recorded before the source count as live)', async () => {
+    const aiCall = (source: string, totalTokens: number) => ({
+      requestId: id(), operation: 'chat', providerId: id(), providerKey: 'ollama', modelKey: 'm', totalTokens, durationMs: 10, success: true, source,
+    });
+    const toolRun = (metadata: Record<string, unknown>) => ({
+      aiRequestId: id(), toolName: 'catalog-search', toolCategory: 'retrieval', durationMs: 10, success: true, metadata,
+    });
+    await testDb.db.insert(aiUsageEvents).values([aiCall('api', 100), aiCall('admin_test', 1000), aiCall('playground', 1000)]);
+    await testDb.db.insert(aiToolExecutions).values([toolRun({ source: 'api' }), toolRun({ source: 'admin_test' }), toolRun({})]);
+
+    expect((await getAIUsageMetrics('24h')).totalTokens).toBe(100);
+    expect((await getOverviewMetrics('24h')).totalAIRequests).toBe(1);
+    expect((await getToolUsageMetrics('24h')).totalExecutions).toBe(2);
   });
 });
 
