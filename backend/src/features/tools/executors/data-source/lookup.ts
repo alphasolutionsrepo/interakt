@@ -90,7 +90,7 @@ export async function executeDataSourceLookup(
     const schema = await loadSchema(dataSourceId);
     const fields = schema?.fields ?? [];
     const roles = rolesOf(schema, lookupConfig, 'external');
-    return lookupFromExternalSource(source, idFieldsToTry(roles, lookupConfig, fields, documentId), documentId, fields, roles);
+    return lookupFromExternalSource(source, idFieldsToTry(roles, lookupConfig, fields), documentId, fields, roles);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Data source lookup failed', error as Error, { dataSourceId });
@@ -148,14 +148,14 @@ function rolesOf(
 }
 
 /**
- * The fields an external lookup filters on, in order: the chosen code fields, then the tool's
- * hand-set idField or the schema's id field, so an id Find Record itself listed (in matches) is
- * found again. A request with spaces is a name, not a code: it skips the code fields (one engine
- * call each) and goes on to search, which still matches a code value in the hits.
+ * The fields an external lookup filters on, in order: the chosen code fields, whatever the request
+ * looks like (a code such as "AB 123" has spaces, and a keyword code field isn't searched), then
+ * the tool's hand-set idField or the schema's id field, so an id Find Record itself listed (in
+ * matches) is found again.
  */
-function idFieldsToTry(roles: FieldRoles, config: LookupFieldsConfig, fields: DataSourceField[], documentId: string): string[] {
+function idFieldsToTry(roles: FieldRoles, config: LookupFieldsConfig, fields: DataSourceField[]): string[] {
   const fallback = config.idField || resolveIdField(fields);
-  if (!roles.codesChosen || /\s/.test(documentId.trim())) return [fallback];
+  if (!roles.codesChosen) return [fallback];
   return roles.idFields!.includes(fallback) ? roles.idFields! : [...roles.idFields!, fallback];
 }
 

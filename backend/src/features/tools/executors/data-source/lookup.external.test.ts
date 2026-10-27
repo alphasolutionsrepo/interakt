@@ -239,15 +239,30 @@ describe("external lookup with the tool's chosen code fields", () => {
     expect(result).toMatchObject({ success: true, data: { id: 'P-9', matchedBy: 'search_fallback' } });
   });
 
-  it('skips the code fields for a request with spaces (a name): one id filter, then search', async () => {
+  it('tries the chosen code fields for a request with spaces too, as codes such as "AB 123" have them', async () => {
     getDataSourceById.mockResolvedValueOnce({ schema });
     search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'P-7', score: 1, source: { name: 'Steel Bracket', gtin: 'AB 123' } }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', { codeFields: ['sku', 'gtin'] }, { id: 'AB 123' });
+
+    expect(filteredOn()).toEqual(['sku', 'gtin']);
+    expect(result).toMatchObject({ success: true, data: { id: 'P-7' } });
+    expect(result).not.toMatchObject({ data: { matchedBy: 'search_fallback' } });
+  });
+
+  it('searches a name after the code fields and the id field find nothing', async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
       .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
       .mockResolvedValueOnce({ hits: [{ id: 'P-9', score: 1, source: { name: 'Denim Jacket' } }], unappliedFilters: [] });
 
     const result = await executeDataSourceLookup('ds', { codeFields: ['sku', 'gtin'] }, { id: 'Denim Jacket' });
 
-    expect(filteredOn()).toEqual(['productId']);
+    expect(filteredOn()).toEqual(['sku', 'gtin', 'productId']);
     expect(result).toMatchObject({ success: true, data: { id: 'P-9', matchedBy: 'search_fallback' } });
   });
 
