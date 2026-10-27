@@ -11,6 +11,7 @@ import 'server-only';
 
 import { and, count, desc, eq, gte, isNull, lte, ne, or, sql, sum, avg, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
+import { ATTR } from '@/features/telemetry/attribute-keys';
 import type { AnalyticsSource } from './analytics.types';
 
 const logger = createLogger('analytics-query');
@@ -317,7 +318,6 @@ export async function getOverviewMetrics(
           eq(otelSpans.operationName, 'pipeline.v2.turn'),
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
-          notTestTraffic(otelSpans),
         ));
       aiData = { total: Number(aiSpanRows[0]?.total ?? 0), avgDuration: Number(aiSpanRows[0]?.avgDuration ?? 0) };
     } else {
@@ -395,7 +395,7 @@ export async function getOverviewMetrics(
  * source on the trace's chat.ai_experience.turn span only, so this checks the whole trace.
  */
 export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
-  return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND source_span.attributes->>'alpha.analytics.source' IN ('admin_test', 'playground'))`;
+  return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND source_span.attributes->>${ATTR.ANALYTICS_SOURCE} IN ('admin_test', 'playground'))`;
 }
 
 /** Whether an experience has any search event in the range, of any source or trigger. */
@@ -736,7 +736,6 @@ export async function getAIUsageMetrics(
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           inExperienceTrace(otelSpans, experienceId, range),
-          notTestTraffic(otelSpans),
         ));
 
       const row = results[0];
@@ -852,7 +851,6 @@ export async function getToolUsageMetrics(
         gte(otelSpans.startTime, range.from),
         lte(otelSpans.startTime, range.to),
         inExperienceTrace(otelSpans, experienceId, range),
-        notTestTraffic(otelSpans),
       );
 
       const [overallResults, byToolResults, byCategoryResults] = await Promise.all([

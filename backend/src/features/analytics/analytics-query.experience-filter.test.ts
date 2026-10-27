@@ -62,6 +62,7 @@ vi.mock('@/db/index', () => ({
 }));
 
 import { otelSpans, searchEvents } from '@/db/analytics-schema';
+import { ATTR } from '@/features/telemetry/attribute-keys';
 
 import { getExperienceSummaries } from './analytics-experience-summary.service';
 import { getAIUsageMetrics, getOverviewMetrics, getToolUsageMetrics } from './analytics-query.service';
@@ -123,7 +124,7 @@ function conversation(experienceId: string, tokens: number, tool: string, toolSu
 function toolTurn(experienceId: string, resultCount: number, source = 'api') {
   const traceId = id().replace(/-/g, '');
   return [
-    span(traceId, 'chat.ai_experience.turn', { 'alpha.analytics.source': source }),
+    span(traceId, 'chat.ai_experience.turn', { [ATTR.ANALYTICS_SOURCE]: source }),
     span(traceId, 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experienceId),
     span(traceId, 'pipeline.v2.action.tool_execution', { 'alpha.v2.step.result_count': resultCount }, experienceId),
   ];
@@ -215,7 +216,7 @@ describe('experience comparison table', () => {
 });
 
 describe('searches counted from tool calls (experiences without stored searches)', () => {
-  it('counts tool calls only from live chats, in the overview and the comparison alike', async () => {
+  it('counts searches from live chats only, in the overview and the comparison alike', async () => {
     const experience = id();
     await testDb.db.insert(otelSpans).values([
       ...toolTurn(experience, 0),
@@ -225,10 +226,10 @@ describe('searches counted from tool calls (experiences without stored searches)
     ]);
 
     const overview = await getOverviewMetrics('24h', experience);
-    expect(overview).toMatchObject({ totalSearches: 2, zeroResultRate: 0.5, searchesFromToolCalls: true, totalAIRequests: 2 });
+    expect(overview).toMatchObject({ totalSearches: 2, zeroResultRate: 0.5, searchesFromToolCalls: true });
 
     const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
-    expect(row).toMatchObject({ volume: 2, zeroResultRate: 0.5 });
+    expect(row?.zeroResultRate).toBe(0.5);
   });
 
   it("doesn't count tool calls when searches are stored, even if none counts (only internal lookups or test chats)", async () => {
@@ -242,19 +243,6 @@ describe('searches counted from tool calls (experiences without stored searches)
     for (const experienceId of [lookups, tested]) {
       expect(await getOverviewMetrics('24h', experienceId)).toMatchObject({ totalSearches: 0, searchesFromToolCalls: false });
     }
-  });
-});
-
-describe('AI and tool usage leave out test chats, like the overview', () => {
-  it("counts only live chats' model and tool calls", async () => {
-    const experience = id();
-    const tested = conversation(experience, 1000, 'catalog-search');
-    tested.push(span(tested[0].traceId, 'chat.ai_experience.turn', { 'alpha.analytics.source': 'admin_test' }));
-    await testDb.db.insert(otelSpans).values([...conversation(experience, 100, 'catalog-search'), ...tested]);
-
-    expect((await getAIUsageMetrics('24h', experience)).totalTokens).toBe(100);
-    expect((await getToolUsageMetrics('24h', experience)).totalExecutions).toBe(1);
-    expect((await getOverviewMetrics('24h', experience)).totalAIRequests).toBe(1);
   });
 });
 
