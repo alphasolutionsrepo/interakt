@@ -778,10 +778,12 @@ interface FailedSearchesProps {
   data?: Array<{ query: string; occurrenceCount: number; lastSeen: string }>;
   /** Shown instead of the list when there is nothing meaningful to list */
   emptyMessage?: string;
+  /** Searches by the assistant failed too: an empty list then isn't "all successful" */
+  assistantFailed?: boolean;
   isLoading?: boolean;
 }
 
-function FailedSearches({ data, emptyMessage, isLoading }: FailedSearchesProps) {
+function FailedSearches({ data, emptyMessage, assistantFailed, isLoading }: FailedSearchesProps) {
   if (isLoading) {
     return (
       <Card className="rounded-2xl border-border/60 shadow-sm">
@@ -792,7 +794,7 @@ function FailedSearches({ data, emptyMessage, isLoading }: FailedSearchesProps) 
             </div>
             <CardTitle className="text-lg font-semibold">Failed Searches</CardTitle>
           </div>
-          <p className="ml-12 text-sm text-muted-foreground">Queries that returned no results</p>
+          <p className="ml-12 text-sm text-muted-foreground">Queries visitors typed that returned no results</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -816,12 +818,17 @@ function FailedSearches({ data, emptyMessage, isLoading }: FailedSearchesProps) 
           </div>
           <CardTitle className="text-lg font-semibold">Failed Searches</CardTitle>
         </div>
-        <p className="ml-12 text-sm text-muted-foreground">Queries that returned no results</p>
+        <p className="ml-12 text-sm text-muted-foreground">Queries visitors typed that returned no results</p>
       </CardHeader>
       <CardContent>
         {emptyMessage ? (
           <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
             {emptyMessage}
+          </div>
+        ) : queries.length === 0 && assistantFailed ? (
+          <div className="flex h-[200px] flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground">
+            <p>No failed visitor searches.</p>
+            <p>The assistant&apos;s searches that found nothing are under Assistant Searches.</p>
           </div>
         ) : queries.length === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2">
@@ -1343,6 +1350,7 @@ export default function AnalyticsOverviewPage() {
         <FailedSearches
           data={data?.zeroResults}
           emptyMessage={totalSearches === 0 ? 'No searches in this period' : searchesFromToolCalls ? 'Not available for external searches' : undefined}
+          assistantFailed={(data?.assistantQueries ?? []).some((q) => q.zeroResultCount > 0)}
           isLoading={isLoading}
         />
       </div>
