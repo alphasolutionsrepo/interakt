@@ -15,6 +15,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@/app': path.resolve(__dirname, 'src/app'),
+      '@/components/ui': path.resolve(__dirname, 'src/shared/ui/components'),
+      '@/components/custom': path.resolve(__dirname, 'src/shared/ui/custom'),
+      '@/lib/utils': path.resolve(__dirname, 'src/shared/utils/index.ts'),
+      '@/hooks': path.resolve(__dirname, 'src/shared/hooks'),
       '@/features': path.resolve(__dirname, 'src/features'),
       '@/shared': path.resolve(__dirname, 'src/shared'),
       '@/config': path.resolve(__dirname, 'config'),

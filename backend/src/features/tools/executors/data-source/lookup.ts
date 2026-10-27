@@ -8,10 +8,21 @@
  */
 
 import * as searchService from '@/features/search/search.service';
+import { ATTR, addSpanAttributes } from '@/features/telemetry';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
 import type { ExternalSearchConnector, ExternalSearchHit } from '@/features/data-source/external-search/external-search.types';
 import { executeFileStoreLookup } from './file-store';
+import {
+  IDENTIFIER_FIELD,
+  LOOSE_NAME_FIELD,
+  chosenLookupFields,
+  isBrandField,
+  isNameField,
+  isRelatedField,
+  singular,
+  type LookupFieldsConfig,
+} from './lookup-field-rules';
 import {
   resolveDataSource,
   logger,
@@ -34,7 +45,7 @@ interface LookupInput {
 // CONFIG TYPE
 // ============================================================================
 
-interface LookupConfig {
+interface LookupConfig extends LookupFieldsConfig {
   idField?: string;
   includeFields?: string[];
   excludeFields?: string[];
@@ -71,15 +82,15 @@ export async function executeDataSourceLookup(
 
     // Managed indexes fetch by document key — provider-agnostic (ES _id / Azure key).
     if (source.kind === 'managed') {
-      return lookupFromManagedIndex(source.searchIndexId, documentId, () => loadSchema(dataSourceId));
+      return lookupFromManagedIndex(source.searchIndexId, documentId, async () =>
+        rolesOf(await loadSchema(dataSourceId), lookupConfig, 'managed'));
     }
 
-    // External sources still look up via a filterable id field.
+    // External sources look up via filterable id fields: the tool's code fields, else the schema's.
     const schema = await loadSchema(dataSourceId);
     const fields = schema?.fields ?? [];
-    const roles = rolesOf(schema);
-    const idField = lookupConfig.idField ?? resolveIdField(fields);
-    return lookupFromExternalSource(source, idField, documentId, fields, roles);
+    const roles = rolesOf(schema, lookupConfig, 'external');
+    return lookupFromExternalSource(source, idFieldsToTry(roles, lookupConfig, fields), documentId, fields, roles);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Data source lookup failed', error as Error, { dataSourceId });
@@ -106,14 +117,46 @@ async function loadSchema(dataSourceId: string): Promise<DataSourceSchema | null
   }
 }
 
-/** The fields the schema says name and identify a record, and whether an admin confirmed them. */
-function rolesOf(schema: DataSourceSchema | null): FieldRoles {
+/**
+ * The fields that name and identify a record: the tool's chosen name and code fields, each list
+ * on its own (a chosen list replaces the guesses for its side only), else the schema's title and
+ * id roles. On a managed index the chosen fields are trusted: deleting one is blocked while a
+ * tool uses it. On an external source the index can change outside Interakt, so a chosen field
+ * the schema no longer has is skipped.
+ */
+function rolesOf(
+  schema: DataSourceSchema | null,
+  config: LookupFieldsConfig,
+  kind: 'managed' | 'external',
+): FieldRoles {
   const fields = schema?.fields ?? [];
+  const chosen = chosenLookupFields(config);
+  const inSchema = (name: string) =>
+    kind === 'managed' || !schema || fields.some((f) => f.name === name || name.startsWith(`${f.name}.`));
+  const nameFields = chosen.nameFields.filter(inSchema);
+  const codeFields = chosen.codeFields.filter(inSchema);
+  const goneFields = [...chosen.nameFields, ...chosen.codeFields].filter((name) => !inSchema(name));
+  // Shown in the trace even when the lookup then finds nothing
+  if (goneFields.length > 0) addSpanAttributes({ [ATTR.TOOL_LOOKUP_MISSING_FIELDS]: goneFields.join(',') });
   return {
-    titleFields: fields.filter((f) => f.role === 'title').map((f) => f.name),
-    idFields: fields.filter((f) => f.role === 'id').map((f) => f.name),
-    confirmed: schema?.rolesConfirmed === true,
+    titleFields: nameFields.length > 0 ? nameFields : fields.filter((f) => f.role === 'title').map((f) => f.name),
+    idFields: codeFields.length > 0 ? codeFields : fields.filter((f) => f.role === 'id').map((f) => f.name),
+    namesChosen: nameFields.length > 0,
+    codesChosen: codeFields.length > 0,
+    goneFields,
   };
+}
+
+/**
+ * The fields an external lookup filters on, in order: the chosen code fields, whatever the request
+ * looks like (a code such as "AB 123" has spaces, and a keyword code field isn't searched), then
+ * the tool's hand-set idField or the schema's id field, so an id Find Record itself listed (in
+ * matches) is found again.
+ */
+function idFieldsToTry(roles: FieldRoles, config: LookupFieldsConfig, fields: DataSourceField[]): string[] {
+  const fallback = config.idField || resolveIdField(fields);
+  if (!roles.codesChosen) return [fallback];
+  return roles.idFields!.includes(fallback) ? roles.idFields! : [...roles.idFields!, fallback];
 }
 
 /**
@@ -137,7 +180,7 @@ function resolveIdField(fields: DataSourceField[]): string {
 async function lookupFromManagedIndex(
   searchIndexId: string,
   documentId: string,
-  loadSchemaOnMiss: () => Promise<DataSourceSchema | null>,
+  loadRolesOnMiss: () => Promise<FieldRoles>,
 ): Promise<OperationResult> {
   // Fetch by document key via the index's engine provider (ES _id / Azure key).
   // No filterable field or role:'id' needed — works identically for both providers.
@@ -159,8 +202,7 @@ async function lookupFromManagedIndex(
   // the top hit for an unknown id is usually an unrelated item. A failed search is a failed
   // lookup, not "no such record".
   // Read only now: a key that exists needs no schema
-  const schema = await loadSchemaOnMiss();
-  const roles = rolesOf(schema);
+  const roles = await loadRolesOnMiss();
   // The matcher also reads the searched fields kept out of responses, so a sku hidden from
   // responses still identifies its item; what is returned or listed comes from source only.
   const response = await searchService.searchById(
@@ -182,6 +224,7 @@ async function lookupFromManagedIndex(
       query: documentId,
       matchedId: match.id,
     });
+    noteMissingChosenFields(match.source, roles);
     return {
       success: true,
       data: {
@@ -229,7 +272,7 @@ async function findByField(
 
 async function lookupFromExternalSource(
   source: ResolvedExternalSource,
-  idField: string,
+  idFields: string[],
   documentId: string,
   fields: DataSourceField[],
   roles: FieldRoles,
@@ -239,14 +282,24 @@ async function lookupFromExternalSource(
     return { success: false, error: `Lookup for provider '${source.provider}' is not yet implemented` };
   }
 
-  // The id field, then the engine's own id when its hits carry one that isn't a field
+  // The id fields in turn, then the engine's own id when its hits carry one that isn't a field
   // (Elasticsearch's _id): the id a search or a list of matches gave finds its record.
   const { documentIdField } = connector.capabilities;
-  const hit = await findByField(connector, source, idField, documentId, fields)
-    ?? (documentIdField && documentIdField !== idField
-      ? await findByField(connector, source, documentIdField, documentId, fields)
-      : undefined);
-  if (hit) return { success: true, data: { id: hit.id, document: hit.source } };
+  const tried = documentIdField && !idFields.includes(documentIdField) ? [...idFields, documentIdField] : idFields;
+  let hit: ExternalSearchHit | undefined;
+  let foundBy: string | undefined;
+  for (const field of tried) {
+    hit = await findByField(connector, source, field, documentId, fields);
+    if (hit) {
+      foundBy = field;
+      break;
+    }
+  }
+  if (hit) {
+    // The filter matched on foundBy, even when the engine leaves that field out of the hit
+    noteMissingChosenFields(hit.source, roles, foundBy);
+    return { success: true, data: { id: hit.id, document: hit.source } };
+  }
 
   // Fallback, as for managed indexes: the "id" is often a name or title the planner
   // took from an earlier answer. Only a hit that is the record asked for is returned.
@@ -260,10 +313,23 @@ async function lookupFromExternalSource(
       query: documentId,
       matchedId: match.id,
     });
+    noteMissingChosenFields(match.source, roles);
     return { success: true, data: { id: match.id, document: match.source, matchedBy: 'search_fallback' } };
   }
 
   return notFound(documentId, searched.hits, roles);
+}
+
+/**
+ * Note in the trace which of the tool's chosen fields the found record has no value in, or the
+ * index no longer has, so a field renamed or emptied in the index shows up. A record fetched by
+ * its key isn't checked: the key found it, and a key fetch returns only the fields responses show.
+ */
+function noteMissingChosenFields(record: Record<string, unknown> | undefined, roles: FieldRoles, foundBy?: string): void {
+  const fields = [...(roles.namesChosen ? roles.titleFields ?? [] : []), ...(roles.codesChosen ? roles.idFields ?? [] : [])];
+  const empty = fields.filter((field) => field !== foundBy && valuesAt(record, field).length === 0);
+  const missing = [...new Set([...(roles.goneFields ?? []), ...empty])];
+  if (missing.length > 0) addSpanAttributes({ [ATTR.TOOL_LOOKUP_MISSING_FIELDS]: missing.join(',') });
 }
 
 // ============================================================================
@@ -273,55 +339,9 @@ async function lookupFromExternalSource(
 /** How many search hits the fallback checks for the record asked for. */
 const FALLBACK_CANDIDATES = 5;
 
-/** Fields that identify a record exactly: id, sku, productCode, item_number, ... */
-const IDENTIFIER_FIELD = /(^|_|-)(id|sku|code|key|slug|handle|number|ref|ean|upc|gtin|mpn)$|(Id|ID|Sku|SKU|Code|Key|Slug|Handle|Number|Ref)$/;
-/**
- * Guessed name fields, for a record whose schema declares none: exact names, so colorName or
- * fileName don't count as the record's name.
- */
-const NAME_FIELDS = new Set([
-  'name', 'title', 'label', 'heading', 'displayname', 'productname', 'producttitle', 'itemname',
-  'documenttitle', 'pagetitle',
-]);
-const isNameField = (field: string) => NAME_FIELDS.has(field.toLowerCase().replace(/[_\-\s]/g, ''));
-/** When a record has none of those: a field whose name ends in name or title (HotelName, itemTitle). */
-const LOOSE_NAME_FIELD = /(name|title)$/i;
-/** Fields about a related item (brandName, categoryId, ...), which don't identify this record. */
-const RELATED_WORDS = new Set([
-  'brand', 'category', 'categories', 'vendor', 'manufacturer', 'supplier', 'seller', 'parent', 'collection',
-  'store', 'author', 'related',
-]);
-/** Fields naming the record's brand, which a request often puts next to the name. */
-const BRAND_WORDS = new Set(['brand', 'vendor', 'manufacturer']);
-
-/** The words of a field name (storeName, parent_sku, Category-Id), so transparentCover isn't "parent". */
-function fieldNameWords(field: string): string[] {
-  return field
-    .replace(/([a-z\d])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    .toLowerCase()
-    .split(/[^a-z\d]+/)
-    .filter(Boolean);
-}
-const hasFieldWord = (field: string, words: Set<string>) =>
-  fieldNameWords(field).some((word) => words.has(word) || words.has(singular(word)));
-const isRelatedField = (field: string) => hasFieldWord(field, RELATED_WORDS);
-const isBrandField = (field: string) => hasFieldWord(field, BRAND_WORDS);
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-}
-
-/**
- * A word without its plural ending, so "sweaters" and "sweater" compare equal. Words ending in
- * -ies, -y or -ie all end in "i", so "batteries" meets "battery" and "hoodies" meets "hoodie".
- */
-function singular(word: string): string {
-  if (word.length <= 3 || word.endsWith('ss')) return word;
-  if (/(ss|x|z|ch|sh)es$/.test(word)) return word.slice(0, -2);
-  if (word.length > 4 && word.endsWith('ies')) return `${word.slice(0, -3)}i`;
-  const one = word.endsWith('s') ? word.slice(0, -1) : word;
-  return one.length > 3 ? one.replace(/([^aeiou])y$/, '$1i').replace(/ie$/, 'i') : one;
 }
 
 function wordsOf(text: string): string[] {
@@ -352,15 +372,18 @@ function ownEntries(entries: Entry[]): Entry[] {
 const isScalar = (value: unknown): value is string | number => typeof value === 'string' || typeof value === 'number';
 
 /**
- * Which fields name and identify a record, from the data source's schema: the fields with the
- * 'title' role (one or more; read together as one name) and the 'id' role. Until an admin
- * confirms them (`rolesConfirmed`), the lookup also falls back to guessing from field names,
- * so sources set up before roles could be confirmed keep working.
+ * Which fields name and identify a record: titleFields (one or more, read together as one name)
+ * and idFields. When a tool chose them (namesChosen / codesChosen) only those count for that
+ * side; otherwise they are the schema's title/id roles and the matcher also works the side out
+ * from field names, so tools set up before fields could be chosen keep working.
  */
 export interface FieldRoles {
   titleFields?: string[];
   idFields?: string[];
-  confirmed?: boolean;
+  namesChosen?: boolean;
+  codesChosen?: boolean;
+  /** Chosen fields an external index no longer has, skipped */
+  goneFields?: string[];
 }
 
 /**
@@ -392,7 +415,7 @@ const CODE = { key: 4, declared: 3, field: 2, listed: 1, possible: 0, none: -1 }
 
 /**
  * The record's codes and how surely each identifies it. Declared id fields always count; until
- * roles are confirmed, so do guessed ones. A plain number (price, reviewCount) is never guessed
+ * the tool chose its code fields, so do guessed ones. A plain number (price, reviewCount) is never guessed
  * to be a code, and fields about a related item don't count.
  */
 function codeValues(
@@ -402,7 +425,7 @@ function codeValues(
   const codes: Array<{ value: string | number; strength: number }> = (roles.idFields ?? [])
     .flatMap((field) => valuesAt(source, field))
     .map((value) => ({ value, strength: CODE.declared }));
-  if (roles.confirmed) return codes;
+  if (roles.codesChosen) return codes;
 
   const add = (field: string, value: unknown, inList: boolean) => {
     if (!isScalar(value)) return;
@@ -458,7 +481,7 @@ const factsByRecord = new WeakMap<object, Map<string, RecordFacts>>();
  */
 function factsOf(source: Record<string, unknown> | undefined, roles: FieldRoles): RecordFacts {
   if (!source) return recordFacts(source, roles);
-  const rolesKey = JSON.stringify([roles.titleFields, roles.idFields, roles.confirmed]);
+  const rolesKey = JSON.stringify([roles.titleFields, roles.idFields, roles.namesChosen, roles.codesChosen]);
   let byRoles = factsByRecord.get(source);
   if (!byRoles) factsByRecord.set(source, (byRoles = new Map()));
   let facts = byRoles.get(rolesKey);
@@ -473,16 +496,16 @@ function recordFacts(source: Record<string, unknown> | undefined, roles: FieldRo
     names,
     exactNames: new Set([...names, ...declaredTitleValues(source, roles)].map(normalize)),
     nameWords: names.map((name) => new Set(contentWords(name))),
-    brandWords: brandWordsOf(source, roles),
+    brandWords: brandWordsOf(source),
   };
 }
 
 /**
- * The words of a record's brand, which a request often puts next to the name. Guessed from
- * field names until roles are confirmed; after that a brand counts only as part of the title.
+ * The words of a record's brand, which a request often puts next to the name, from fields named
+ * like a brand. Also with chosen name fields: the brand doesn't choose the name, it only lets a
+ * request add it ("Vesper & Co Crew Neck Sweater" for name "Crew Neck Sweater").
  */
-function brandWordsOf(source: Record<string, unknown> | undefined, roles: FieldRoles): Set<string> {
-  if (roles.confirmed) return new Set();
+function brandWordsOf(source: Record<string, unknown> | undefined): Set<string> {
   return new Set(
     scalarEntries(source)
       .filter(([name]) => isBrandField(name) && !IDENTIFIER_FIELD.test(name))
@@ -491,15 +514,15 @@ function brandWordsOf(source: Record<string, unknown> | undefined, roles: FieldR
 }
 
 /**
- * The record's names. Its declared title fields read together as one name ("Robert Martin" and
- * "Clean Architecture"). Without them, and only until roles are confirmed, the first of: its own
+ * The record's names. Its title fields read together as one name ("Robert Martin" and "Clean
+ * Architecture"). Without them, and unless the tool chose its name fields, the first of: its own
  * known name fields, its own fields ending in name/title, and, for a record that is itself a
  * store, brand or author, any such field.
  */
 function namesOf(source: Record<string, unknown> | undefined, roles: FieldRoles): string[] {
   const declared = declaredTitleValues(source, roles);
   if (declared.length > 0) return [declared.join(' ')];
-  if (roles.confirmed) return [];
+  if (roles.namesChosen) return [];
 
   const entries = scalarEntries(source);
   const own = ownEntries(entries);

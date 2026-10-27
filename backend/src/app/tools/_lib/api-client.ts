@@ -1,5 +1,7 @@
 // app/tools/_lib/api-client.ts
 
+import type { LookupFieldCandidate, LookupFieldRules } from '@/features/tools/executors/data-source/lookup-field-rules';
+
 export class ApiError extends Error {
   status: number;
   details?: unknown;
@@ -70,6 +72,8 @@ export interface ToolWithUsage {
   createdAt: string;
   updatedAt: string;
   experienceCount?: number;
+  /** Why the tool can't be added to an AI experience yet (a Find Record tool not set up) */
+  notReadyReason?: string;
 }
 
 export interface ToolListResponse {
@@ -167,6 +171,23 @@ export interface ScaffoldToolsResponse {
 // API CLIENT
 // ============================================================================
 
+/** A Find Record tool's name and code fields against its data source (GET /api/tools/:id/lookup-fields). */
+export type { LookupFieldCandidate, LookupFieldRules };
+
+export interface LookupFieldsStatus {
+  candidates: LookupFieldCandidate[];
+  rules: LookupFieldRules;
+  chosen: { nameFields: string[]; codeFields: string[] };
+  /** Has name or code fields (or a hand-set idField), so it can be added to an AI experience */
+  configured: boolean;
+  /** Chosen fields the data source no longer has */
+  missing: string[];
+  /** Saved fields that can't work any more (the index changed since) */
+  errors: Array<{ field: string; message: string }>;
+  warnings: Array<{ field: string; message: string }>;
+  suggested: { nameFields: string[]; codeFields: string[] };
+}
+
 export const toolsApi = {
   list: async (params?: ListToolsParams): Promise<ToolListResponse> => {
     const p = new URLSearchParams();
@@ -231,6 +252,12 @@ export const toolsApi = {
     if (excludeId) p.set('excludeId', excludeId);
     const response = await fetch(`/api/tools/check-slug?${p.toString()}`);
     return handleResponse<{ available: boolean }>(response);
+  },
+
+  /** A Find Record tool's fields status; null for tools that don't take name or code fields */
+  getLookupFields: async (id: string): Promise<LookupFieldsStatus | null> => {
+    const response = await fetch(`/api/tools/${id}/lookup-fields`);
+    return handleResponse<LookupFieldsStatus | null>(response);
   },
 
   getExperiences: async (id: string): Promise<{ id: string; name: string; slug: string; isActive: boolean }[]> => {

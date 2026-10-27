@@ -31,7 +31,8 @@ import { Separator } from '@/components/ui/separator';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { ToolTypeChip, resolveToolChipConfig } from '../../_components/ToolTypeChip';
-import { useTool } from '../../_lib/hooks/useTools';
+import { LookupFieldsWarnings } from '../../_components/LookupFieldsSection';
+import { useLookupFields, useTool } from '../../_lib/hooks/useTools';
 
 // ============================================================================
 // CONFIG DISPLAY
@@ -68,6 +69,13 @@ function ConfigDisplay({ tool }: { tool: { executorType: string; operation: stri
         {config.includeHighlights === false && (
           <ConfigRow label="Highlights" value="Disabled" />
         )}
+        {Array.isArray(config.nameFields) && config.nameFields.length > 0 && (
+          <ConfigRow label="Name Fields" value={(config.nameFields as string[]).join(', ')} />
+        )}
+        {Array.isArray(config.codeFields) && config.codeFields.length > 0 && (
+          <ConfigRow label="Code Fields" value={(config.codeFields as string[]).join(', ')} />
+        )}
+        {typeof config.idField === 'string' && config.idField && <ConfigRow label="ID Field" value={config.idField} />}
       </div>
     );
   }
@@ -285,6 +293,7 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const router = useRouter();
   const { tool, isLoading, isError, updateTool, deleteTool, isUpdating, isDeleting, experiences } = useTool(id);
+  const { status: lookupFields } = useLookupFields(tool?.operation === 'lookup' ? id : undefined, tool?.dataSourceId);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [schemaOpen, setSchemaOpen] = useState(false);
 
@@ -410,8 +419,15 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
             <CardTitle className="text-base font-semibold">Configuration</CardTitle>
             <CardDescription>Type-specific settings for this tool.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <ConfigDisplay tool={tool} />
+            {lookupFields && !lookupFields.configured && (
+              <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+                Needs setup: choose the fields Find Record matches on (Edit) before adding this tool to an AI
+                experience. Experiences that already use it keep working.
+              </p>
+            )}
+            {lookupFields && <LookupFieldsWarnings status={lookupFields} />}
           </CardContent>
         </Card>
 

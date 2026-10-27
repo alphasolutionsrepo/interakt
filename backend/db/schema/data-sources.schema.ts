@@ -236,11 +236,10 @@ export interface DataSourceSchema {
    */
   discoveredFrom?: 'mapping' | 'sample';
   /**
-   * An admin confirmed the fields' title and id roles. Find Record then uses only those
-   * fields to name and identify a record, and stops guessing from field names. Until then the
-   * roles are discovery's suggestions and Find Record falls back to guessing.
+   * For a sampled schema: the fields the latest sample showed. The schema keeps curated fields
+   * a sample missed (they may only be rare), so this tells them apart.
    */
-  rolesConfirmed?: boolean;
+  latestSampleFields?: string[];
 }
 
 // ============================================================================

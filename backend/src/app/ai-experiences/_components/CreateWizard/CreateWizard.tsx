@@ -24,6 +24,7 @@ import { useCreateAIExperience, useAIExperienceSlugAvailability } from '../../_l
 
 import { mcpConnectionsApi } from '@/app/mcp-connections/_lib/api-client';
 import { useMcpConnections } from '@/app/mcp-connections/_lib/hooks/useMcpConnections';
+import { ToolNotReadyNote } from '@/app/tools/_components/ToolNotReadyNote';
 import { ToolTypeChip } from '@/app/tools/_components/ToolTypeChip';
 import { useAllActiveTools } from '@/app/tools/_lib/hooks/useTools';
 import { Badge } from '@/components/ui/badge';
@@ -59,6 +60,8 @@ interface ToolInfo {
   operation: string | null;
   description: string | null;
   aiDescription?: string;
+  /** Set when the tool can't be added to an experience yet */
+  notReadyReason?: string;
 }
 
 interface WizardData {
@@ -392,9 +395,13 @@ function Step2_Tools({ data, onChange, allTools }: {
           ) : (
             filtered.map((tool) => {
               const isSelected = data.selectedToolIds.includes(tool.id);
+              // A tool that isn't ready can still be deselected if it was picked before
+              const blocked = !!tool.notReadyReason && !isSelected;
               return (
-                <button key={tool.id} type="button" onClick={() => toggleTool(tool.id)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${isSelected ? 'border-primary/40 bg-primary/5' : 'border-border/60 bg-muted/20 hover:bg-muted/40'}`}>
+                <div key={tool.id} role="button" tabIndex={blocked ? -1 : 0} aria-disabled={blocked}
+                  onClick={() => !blocked && toggleTool(tool.id)}
+                  onKeyDown={(e) => { if (!blocked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleTool(tool.id); } }}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${blocked ? 'border-border/40 bg-muted/10 cursor-not-allowed' : isSelected ? 'border-primary/40 bg-primary/5 cursor-pointer' : 'border-border/60 bg-muted/20 hover:bg-muted/40 cursor-pointer'}`}>
                   <div className={`size-4 shrink-0 rounded flex items-center justify-center border transition-colors ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
                     {isSelected && <Check className="size-3" />}
                   </div>
@@ -403,9 +410,10 @@ function Step2_Tools({ data, onChange, allTools }: {
                       <p className="font-medium text-sm">{tool.name}</p>
                       <ToolTypeChip executorType={tool.executorType} operation={tool.operation} size="sm" />
                     </div>
-                    {tool.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{tool.description}</p>}
+                    {tool.description && <p className={`text-xs text-muted-foreground line-clamp-1 mt-0.5 ${blocked ? 'opacity-60' : ''}`}>{tool.description}</p>}
+                    {tool.notReadyReason && <ToolNotReadyNote toolId={tool.id} reason={tool.notReadyReason} />}
                   </div>
-                </button>
+                </div>
               );
             })
           )}
