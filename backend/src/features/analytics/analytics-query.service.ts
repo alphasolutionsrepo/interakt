@@ -355,8 +355,8 @@ export async function getOverviewMetrics(
     let searchesFromToolCalls = false;
 
     // Fallback: for AI experiences with external search (no searchEvents), use OTel tool execution spans.
-    // Any stored search (a test chat's too) means searches are tracked, so no fallback; lookups
-    // don't count, as they say nothing about the experience's searches.
+    // Any stored search (a test chat's too) means searches are tracked, so no fallback. Only
+    // Search tool calls count, by the same rule as stored searches.
     if (totalSearches === 0 && experienceId && !(await hasAnySearchEvents(range, experienceId))) {
       const { otelSpans } = await import('@/db/analytics-schema');
       const toolSpanRows = await analyticsDB
@@ -372,6 +372,7 @@ export async function getOverviewMetrics(
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           notTestTraffic(otelSpans),
+          searchToolCall(otelSpans),
         ));
       const otelSearch = toolSpanRows[0];
       if (otelSearch && Number(otelSearch.total) > 0) {
@@ -408,6 +409,14 @@ export async function getOverviewMetrics(
  */
 export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
   return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND source_span.attributes->>${ATTR.ANALYTICS_SOURCE} IN ('admin_test', 'playground'))`;
+}
+
+/**
+ * Tool calls that ran a Search tool: the tool-call counterpart of countedSearch. Calls traced
+ * before the span recorded the tool's kind count, as they did then.
+ */
+export function searchToolCall(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  return sql`(${otelSpans.attributes}->>'alpha.v2.step.tool_executor' IS NULL OR (${otelSpans.attributes}->>'alpha.v2.step.tool_executor' = 'data_source' AND ${otelSpans.attributes}->>'alpha.v2.step.tool_operation' = 'search'))`;
 }
 
 /** Whether an experience has any counted search in the range, of any source. */

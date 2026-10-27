@@ -11,7 +11,7 @@ import 'server-only';
 
 import { sql, count, eq, gte, lte, and, isNotNull, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { buildSearchConditions, countedSearch, getDateRange, notTestTraffic, type TimeRange } from './analytics-query.service';
+import { buildSearchConditions, countedSearch, getDateRange, notTestTraffic, searchToolCall, type TimeRange } from './analytics-query.service';
 
 const logger = createLogger('analytics-experience-summary');
 
@@ -87,6 +87,7 @@ export async function getExperienceSummaries(
           lte(otelSpans.startTime, range.to),
           isNotNull(otelSpans.experienceId),
           notTestTraffic(otelSpans),
+          searchToolCall(otelSpans),
         )
       )
       .groupBy(otelSpans.experienceId);

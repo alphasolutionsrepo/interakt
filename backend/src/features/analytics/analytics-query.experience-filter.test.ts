@@ -125,12 +125,15 @@ function conversation(experienceId: string, tokens: number, tool: string, toolSu
  * One assistant turn that made a single tool call, from a visitor or an admin test chat. As the
  * chat pipeline records it: the source on the chat turn span, not the pipeline's.
  */
-function toolTurn(experienceId: string, resultCount: number, source = 'api') {
+function toolTurn(experienceId: string, resultCount: number, source = 'api', tool?: { executor: string; operation?: string }) {
   const traceId = id().replace(/-/g, '');
+  const kind = tool
+    ? { 'alpha.v2.step.tool_executor': tool.executor, ...(tool.operation ? { 'alpha.v2.step.tool_operation': tool.operation } : {}) }
+    : {};
   return [
     span(traceId, 'chat.ai_experience.turn', { [ATTR.ANALYTICS_SOURCE]: source }),
     span(traceId, 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experienceId),
-    span(traceId, 'pipeline.v2.action.tool_execution', { 'alpha.v2.step.result_count': resultCount }, experienceId),
+    span(traceId, 'pipeline.v2.action.tool_execution', { 'alpha.v2.step.result_count': resultCount, ...kind }, experienceId),
   ];
 }
 
@@ -242,6 +245,22 @@ describe('searches counted from tool calls (experiences without stored searches)
     await testDb.db.insert(otelSpans).values([...toolTurn(experience, 0), ...toolTurn(experience, 2)]);
 
     expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalSearches: 2, searchesFromToolCalls: true });
+  });
+
+  it('counts only Search tool calls, not Find Record, List Values or other tools, in the overview and the comparison alike', async () => {
+    const experience = id();
+    await testDb.db.insert(otelSpans).values([
+      ...toolTurn(experience, 0, 'api', { executor: 'data_source', operation: 'search' }),
+      ...toolTurn(experience, 4, 'api', { executor: 'data_source', operation: 'search' }),
+      ...toolTurn(experience, 0, 'api', { executor: 'data_source', operation: 'lookup' }),
+      ...toolTurn(experience, 0, 'api', { executor: 'data_source', operation: 'lookup' }),
+      ...toolTurn(experience, 3, 'api', { executor: 'data_source', operation: 'enumerate' }),
+      ...toolTurn(experience, 1, 'api', { executor: 'http' }),
+    ]);
+
+    expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalSearches: 2, zeroResultRate: 0.5, searchesFromToolCalls: true });
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row?.zeroResultRate).toBe(0.5);
   });
 
   it("doesn't count tool calls when searches are stored, even if none counts (only test chats')", async () => {

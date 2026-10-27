@@ -275,18 +275,22 @@ export async function executeFileStoreLookup(
 // HELPERS
 // ============================================================================
 
-/** The passages close enough in meaning, or null when the search by meaning failed. */
+/**
+ * The passages close enough in meaning, or null when the query couldn't be embedded. A database
+ * error isn't an embedding failure: it fails the search and is logged.
+ */
 async function tryVectorSearch(
   dataSourceId: string,
   query: string,
   limit: number,
   maxDistance: number,
 ): Promise<Array<Awaited<ReturnType<typeof kbRepository.searchChunks>>[number]> | null> {
+  let queryVector: Awaited<ReturnType<typeof embed>>;
   try {
-    const queryVector = await embed(query, { feature: 'knowledge_search' });
-    if (!queryVector) return null;
-    return await kbRepository.searchChunks(dataSourceId, queryVector, limit, maxDistance);
+    queryVector = await embed(query, { feature: 'knowledge_search' });
   } catch {
     return null;
   }
+  if (!queryVector) return null;
+  return kbRepository.searchChunks(dataSourceId, queryVector, limit, maxDistance);
 }
