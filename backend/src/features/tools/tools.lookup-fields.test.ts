@@ -209,6 +209,12 @@ describe("a Find Record tool's fields, as its pages read them (GET /api/tools/:i
     expect((status?.candidates as Array<{ name: string }>).map((c) => c.name)).toEqual(['title', 'sku', 'partNo']);
   });
 
+  it('shows a saved field that stopped working since (the index made it unfilterable)', async () => {
+    const status = await get({ operation: 'lookup', executorConfig: { codeFields: ['partNo'] } });
+
+    expect(status?.errors).toEqual([expect.objectContaining({ field: 'partNo', message: expect.stringContaining("can't be filtered on") })]);
+  });
+
   it('is empty for tools that take no name or code fields', async () => {
     expect(await get({ operation: 'search', executorConfig: {} })).toBeNull();
   });

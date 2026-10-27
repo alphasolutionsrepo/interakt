@@ -180,6 +180,8 @@ export interface LookupFieldsStatus {
   configured: boolean;
   /** Chosen fields the data source no longer has */
   missing: string[];
+  /** Saved fields that can't work any more (the index changed since) */
+  errors: Array<{ field: string; message: string }>;
   warnings: Array<{ field: string; message: string }>;
   suggested: { nameFields: string[]; codeFields: string[] };
 }

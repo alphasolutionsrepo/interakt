@@ -245,6 +245,7 @@ export function checkLookupFields(
 /** Chosen fields the data source no longer has (removed or renamed in the index). */
 export function missingLookupFields(config: LookupFieldsConfig | undefined, candidates: LookupFieldCandidate[]): string[] {
   const { nameFields, codeFields } = chosenLookupFields(config);
-  const idField = typeof config?.idField === 'string' && config.idField ? [config.idField] : [];
+  // An idField such as _id is the engine's own document id, not a field of the schema
+  const idField = typeof config?.idField === 'string' && config.idField && !config.idField.startsWith('_') ? [config.idField] : [];
   return [...new Set([...nameFields, ...codeFields, ...idField])].filter((name) => !candidateFor(name, candidates));
 }

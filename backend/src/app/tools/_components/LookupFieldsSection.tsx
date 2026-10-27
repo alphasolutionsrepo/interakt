@@ -133,7 +133,7 @@ export function LookupFieldsSection({ status, value, onChange }: Props) {
  */
 export function LookupFieldsWarnings({ status, chosen }: { status: LookupFieldsStatus; chosen?: LookupFieldsConfig }) {
   const known = status.candidates.length > 0;
-  const checked = chosen && known ? checkLookupFields(chosen, status.candidates, status.rules) : { errors: [], warnings: status.warnings };
+  const checked = chosen && known ? checkLookupFields(chosen, status.candidates, status.rules) : status;
   const missing = chosen && known ? missingLookupFields(chosen, status.candidates) : status.missing;
   const lines = [
     ...missing.map((name) => `"${name}" is no longer in the index (removed or renamed?). Choose another field.`),

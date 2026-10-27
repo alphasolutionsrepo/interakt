@@ -131,7 +131,7 @@ export async function lookupFieldsStatus(dataSourceId: string | null | undefined
     chosen,
     configured: hasChosenLookupFields(config),
     missing: context.candidates.length > 0 ? missingLookupFields(config, context.candidates) : [],
-    warnings: checkLookupFields(chosen, context.candidates, context.rules).warnings,
+    ...checkLookupFields(chosen, context.candidates, context.rules),
     suggested: suggestLookupFields(context.candidates, context.rules),
   };
 }

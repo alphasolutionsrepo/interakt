@@ -140,6 +140,10 @@ describe('set up and missing fields', () => {
     expect(hasChosenLookupFields({ idField: 'productId' })).toBe(true);
   });
 
+  it("doesn't list a hand-set idField that is the engine's own id (_id)", () => {
+    expect(missingLookupFields({ idField: '_id' }, demoIndex)).toEqual([]);
+  });
+
   it('lists chosen fields the source no longer has', () => {
     expect(missingLookupFields({ nameFields: ['name', 'subtitle'], codeFields: ['variants.sku'], idField: 'handle' }, demoIndex)).toEqual([
       'subtitle',
