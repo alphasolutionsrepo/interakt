@@ -359,7 +359,6 @@ export async function getOverviewMetrics(
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           notTestTraffic(otelSpans),
-          reportsResults(otelSpans),
         ));
       const otelSearch = toolSpanRows[0];
       if (otelSearch && Number(otelSearch.total) > 0) {
@@ -397,14 +396,6 @@ export async function getOverviewMetrics(
  */
 export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
   return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND source_span.attributes->>'alpha.analytics.source' IN ('admin_test', 'playground'))`;
-}
-
-/**
- * Tool calls that report how many results they found: searches. Find Record and tools that
- * return no result list record -1.
- */
-export function reportsResults(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
-  return sql`COALESCE((${otelSpans.attributes}->>'alpha.v2.step.result_count')::int, -1) >= 0`;
 }
 
 /** Whether an experience has any search event in the range, of any source or trigger. */
@@ -745,6 +736,7 @@ export async function getAIUsageMetrics(
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           inExperienceTrace(otelSpans, experienceId, range),
+          notTestTraffic(otelSpans),
         ));
 
       const row = results[0];
@@ -860,6 +852,7 @@ export async function getToolUsageMetrics(
         gte(otelSpans.startTime, range.from),
         lte(otelSpans.startTime, range.to),
         inExperienceTrace(otelSpans, experienceId, range),
+        notTestTraffic(otelSpans),
       );
 
       const [overallResults, byToolResults, byCategoryResults] = await Promise.all([
