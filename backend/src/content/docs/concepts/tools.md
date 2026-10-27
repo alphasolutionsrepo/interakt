@@ -35,11 +35,19 @@ Each data source can have up to four tools — one per **operation**:
 | Operation | What it does | When the AI uses it |
 |---|---|---|
 | **search** | Full-text + vector query against the data source. | "What products do you have for cold weather?" — the obvious one. |
-| **lookup** | Fetches one specific record by ID. | "Tell me about product SKU-12345" — the AI already has the ID. |
+| **lookup** (Find Record) | Fetches one specific record by its ID, a code such as a SKU, or its name. | "Tell me about the Linen Shirt" or "What is SKU-12345?" — one item the user names. |
 | **inspect** | Returns the schema of the data source — what fields exist, what types they are. | The AI uses this to figure out what it *can* ask before searching. |
 | **enumerate** | Lists the distinct values of a facetable field. | "What brands do you carry?" — returns the list of distinct brand values. |
 
 A well-tooled AI experience usually has all four. **Inspect** and **enumerate** are essential for letting the AI figure out the shape of your data — without them, it has to guess.
+
+#### Find Record: name and code fields
+On a search index, a Find Record tool knows which fields name an item and which hold a code that identifies it. Set them on the tool's **Edit** page:
+
+- **Name fields** are read together, in order, as the item's name (for example `brand` then `name`).
+- **Code fields** hold values such as a SKU or a product ID; a request equal to one of them finds its item. On an external index, only fields the index can filter on can be code fields.
+
+**Create Tools** fills them in from the index's fields. Find Record matches only on the chosen fields; a list left empty is worked out from field names. A Find Record tool needs at least one field before it can be added to an AI experience. If a chosen field leaves the index, the tool's page says so and Find Record carries on with the remaining fields; deleting a field a Find Record tool uses is blocked.
 
 ### HTTP API
 Hits an arbitrary HTTP endpoint with templated headers, query params, and body. Used to call your own systems — order lookup, account status, inventory check, anything you have an API for.
@@ -100,7 +108,7 @@ A miniature playground — run the tool with sample input and see the response. 
 
 - For **search** tools: input a query.
 - For **enumerate** tools: input a field name.
-- For **lookup** tools: input a document ID.
+- For **lookup** tools: input a document ID, a code or a name.
 - For **inspect** tools: no input.
 
 Click **Run**. See the status, latency, and response body.

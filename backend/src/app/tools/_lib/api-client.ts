@@ -167,6 +167,19 @@ export interface ScaffoldToolsResponse {
 // API CLIENT
 // ============================================================================
 
+/** A Find Record tool's name and code fields against its data source (GET /api/tools/:id/lookup-fields). */
+export interface LookupFieldsStatus {
+  candidates: Array<{ name: string; type?: string; searchable?: boolean; filterable?: boolean; hasPaths?: boolean; nullRate?: number }>;
+  rules: { findsThroughSearch: boolean; codesNeedFilter: boolean };
+  chosen: { nameFields: string[]; codeFields: string[] };
+  /** Has name or code fields (or a hand-set idField), so it can be added to an AI experience */
+  configured: boolean;
+  /** Chosen fields the data source no longer has */
+  missing: string[];
+  warnings: Array<{ field: string; message: string }>;
+  suggested: { nameFields: string[]; codeFields: string[] };
+}
+
 export const toolsApi = {
   list: async (params?: ListToolsParams): Promise<ToolListResponse> => {
     const p = new URLSearchParams();
@@ -231,6 +244,12 @@ export const toolsApi = {
     if (excludeId) p.set('excludeId', excludeId);
     const response = await fetch(`/api/tools/check-slug?${p.toString()}`);
     return handleResponse<{ available: boolean }>(response);
+  },
+
+  /** A Find Record tool's fields status; null for tools that don't take name or code fields */
+  getLookupFields: async (id: string): Promise<LookupFieldsStatus | null> => {
+    const response = await fetch(`/api/tools/${id}/lookup-fields`);
+    return handleResponse<LookupFieldsStatus | null>(response);
   },
 
   getExperiences: async (id: string): Promise<{ id: string; name: string; slug: string; isActive: boolean }[]> => {

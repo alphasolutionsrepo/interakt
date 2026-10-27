@@ -13,7 +13,8 @@ import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ToolTypeChip, resolveToolChipConfig } from '../../../_components/ToolTypeChip';
 import { Step2_Config } from '../../../_components/CreateWizard/Step2_Config';
 import { DisplayConfigEditor } from '../../../_components/DisplayConfigEditor';
-import { useTool } from '../../../_lib/hooks/useTools';
+import { LookupFieldsSection } from '../../../_components/LookupFieldsSection';
+import { useLookupFields, useTool } from '../../../_lib/hooks/useTools';
 import { useMinDelayAction } from '@/shared/hooks';
 import type { ExecutorType, ToolDisplayConfig } from '../../../_lib/api-client';
 import { dataSourcesApi } from '@/app/data-sources/_lib/api-client';
@@ -22,6 +23,8 @@ export default function EditToolPage({ params }: { params: Promise<{ id: string 
   const { id } = use(params);
   const router = useRouter();
   const { tool, isLoading, updateTool } = useTool(id);
+  // Find Record on a search index: its own name/code section instead of the search form
+  const { status: lookupFields } = useLookupFields(tool?.operation === 'lookup' ? id : undefined, tool?.dataSourceId);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -217,13 +220,19 @@ export default function EditToolPage({ params }: { params: Promise<{ id: string 
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Step2_Config
-              executorType={(tool.executorType ?? 'data_source') as ExecutorType}
-              value={config}
-              onChange={setConfig}
-              errors={errors}
-              onSchemaImport={(schema) => setOutputSchema(JSON.stringify(schema, null, 2))}
-            />
+            {lookupFields ? (
+              // The create wizard's data source form rebuilds the config from search options when
+              // a source is picked, which would drop a Find Record tool's fields
+              <LookupFieldsSection status={lookupFields} value={config} onChange={setConfig} />
+            ) : (
+              <Step2_Config
+                executorType={(tool.executorType ?? 'data_source') as ExecutorType}
+                value={config}
+                onChange={setConfig}
+                errors={errors}
+                onSchemaImport={(schema) => setOutputSchema(JSON.stringify(schema, null, 2))}
+              />
+            )}
           </CardContent>
         </Card>
 

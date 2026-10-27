@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useHealthCheck } from '@/app/data-sources/_lib/hooks/useHealthCheck';
 import { toast } from 'sonner';
 import { toolsApi, ApiError } from '../api-client';
 import type { CreateToolPayload, UpdateToolPayload, ListToolsParams } from '../api-client';
@@ -17,6 +18,7 @@ export const toolKeys = {
   details: () => [...toolKeys.all, 'detail'] as const,
   detail: (id: string) => [...toolKeys.details(), id] as const,
   experiences: (id: string) => [...toolKeys.all, 'experiences', id] as const,
+  lookupFields: (id: string) => [...toolKeys.all, 'lookup-fields', id] as const,
   allActive: () => [...toolKeys.all, 'all-active'] as const,
   slugCheck: (slug: string, excludeId?: string) => [...toolKeys.all, 'slug-check', slug, excludeId] as const,
 };
@@ -90,6 +92,7 @@ export function useTool(id: string | undefined) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: toolKeys.detail(id!) });
       queryClient.invalidateQueries({ queryKey: toolKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: toolKeys.lookupFields(id!) });
       toast.success('Tool updated successfully');
     },
     onError: (error: ApiError) => {
@@ -185,4 +188,20 @@ export function useToolSlugAvailability(slug: string, excludeId?: string, enable
     isChecking: query.isLoading,
     isDebouncing: slug !== debouncedSlug,
   };
+}
+
+/**
+ * A Find Record tool's name and code fields against its data source. Runs the data source's
+ * health check (throttled to once a minute, as on the data source page) so a field renamed or
+ * removed in an external index shows up here.
+ */
+export function useLookupFields(toolId: string | undefined, dataSourceId: string | null | undefined) {
+  const { result: healthResult, isChecking } = useHealthCheck(dataSourceId ?? undefined);
+  const query = useQuery({
+    queryKey: [...toolKeys.lookupFields(toolId!), healthResult?.checkedAt ?? null],
+    queryFn: () => toolsApi.getLookupFields(toolId!),
+    enabled: !!toolId,
+    placeholderData: keepPreviousData,
+  });
+  return { status: query.data ?? null, isLoading: query.isLoading, isChecking };
 }
