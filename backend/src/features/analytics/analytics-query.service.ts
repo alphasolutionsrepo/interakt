@@ -9,8 +9,7 @@
 
 import 'server-only';
 
-import { and, count, desc, eq, gte, isNull, lte, ne, notExists, or, sql, sum, avg } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { and, count, desc, eq, gte, isNull, lte, ne, or, sql, sum, avg, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
 import type { AnalyticsSource } from './analytics.types';
 
@@ -318,6 +317,7 @@ export async function getOverviewMetrics(
           eq(otelSpans.operationName, 'pipeline.v2.turn'),
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
+          notTestTraffic(otelSpans),
         ));
       aiData = { total: Number(aiSpanRows[0]?.total ?? 0), avgDuration: Number(aiSpanRows[0]?.avgDuration ?? 0) };
     } else {
@@ -346,7 +346,6 @@ export async function getOverviewMetrics(
     // Any stored search event (a test chat's, or an internal lookup's) means searches are tracked, so no fallback.
     if (totalSearches === 0 && experienceId && !(await hasAnySearchEvents(range, experienceId))) {
       const { otelSpans } = await import('@/db/analytics-schema');
-      const turns = alias(otelSpans, 'turns');
       const toolSpanRows = await analyticsDB
         .select({
           total: count(),
@@ -359,16 +358,8 @@ export async function getOverviewMetrics(
           eq(otelSpans.operationName, 'pipeline.v2.action.tool_execution'),
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
-          // Leave out tool calls from admin test chats and the playground (the source is on the turn span)
-          notExists(
-            analyticsDB
-              .select({ one: sql`1` })
-              .from(turns)
-              .where(and(
-                eq(turns.traceId, otelSpans.traceId),
-                sql`${turns.attributes}->>'alpha.analytics.source' IN ('admin_test', 'playground')`,
-              ))
-          ),
+          notTestTraffic(otelSpans),
+          reportsResults(otelSpans),
         ));
       const otelSearch = toolSpanRows[0];
       if (otelSearch && Number(otelSearch.total) > 0) {
@@ -398,6 +389,22 @@ export async function getOverviewMetrics(
     logger.error('Failed to get overview metrics', error as Error);
     return getEmptyOverviewMetrics();
   }
+}
+
+/**
+ * Leaves out spans from admin test chats and the playground. The chat pipeline records the
+ * source on the trace's chat.ai_experience.turn span only, so this checks the whole trace.
+ */
+export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND source_span.attributes->>'alpha.analytics.source' IN ('admin_test', 'playground'))`;
+}
+
+/**
+ * Tool calls that report how many results they found: searches. Find Record and tools that
+ * return no result list record -1.
+ */
+export function reportsResults(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  return sql`COALESCE((${otelSpans.attributes}->>'alpha.v2.step.result_count')::int, -1) >= 0`;
 }
 
 /** Whether an experience has any search event in the range, of any source or trigger. */

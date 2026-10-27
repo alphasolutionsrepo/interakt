@@ -72,6 +72,16 @@ describe("a chat experience's searches", () => {
     expect((await get(handleGetPopularQueries, '&origin=assistant')).sort()).toEqual(['linen shirt', 'wool coat']);
   });
 
+  it('refuses an unknown origin on the endpoints; the analytics assistant then lists all', async () => {
+    const response = await handleGetPopularQueries(
+      new NextRequest(`http://localhost/api/analytics/search/popular?experienceId=${experienceId}&origin=bots`),
+    );
+    const listed = await executeAnalyticsTool('get_popular_queries', { timeRange: '24h', experienceId, origin: 'bots' });
+
+    expect(response.status).toBe(400);
+    expect((listed.rawData as Array<{ query: string }>).map((q) => q.query).sort()).toEqual(['linen shirt', 'wool coat']);
+  });
+
   it('are found by the analytics assistant, which can ask for visitor searches only', async () => {
     const all = await executeAnalyticsTool('get_popular_queries', { timeRange: '24h', experienceId });
     const visitors = await executeAnalyticsTool('get_popular_queries', { timeRange: '24h', experienceId, origin: 'visitor' });

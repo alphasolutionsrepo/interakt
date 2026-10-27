@@ -116,11 +116,15 @@ function conversation(experienceId: string, tokens: number, tool: string, toolSu
   ];
 }
 
-/** One assistant turn that made a single tool call, from a visitor (api) or an admin test chat */
-function toolTurn(experienceId: string, resultCount: number, source?: string) {
+/**
+ * One assistant turn that made a single tool call, from a visitor or an admin test chat. As the
+ * chat pipeline records it: the source on the chat turn span, not the pipeline's.
+ */
+function toolTurn(experienceId: string, resultCount: number, source = 'api') {
   const traceId = id().replace(/-/g, '');
   return [
-    span(traceId, 'pipeline.v2.turn', source ? { 'alpha.analytics.source': source } : {}, experienceId),
+    span(traceId, 'chat.ai_experience.turn', { 'alpha.analytics.source': source }),
+    span(traceId, 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experienceId),
     span(traceId, 'pipeline.v2.action.tool_execution', { 'alpha.v2.step.result_count': resultCount }, experienceId),
   ];
 }
@@ -211,12 +215,21 @@ describe('experience comparison table', () => {
 });
 
 describe('searches counted from tool calls (experiences without stored searches)', () => {
-  it('counts tool calls only from live chats, not admin test chats', async () => {
+  it('counts tool calls only from live chats, and only searches (Find Record reports no result count)', async () => {
     const experience = id();
-    await testDb.db.insert(otelSpans).values([...toolTurn(experience, 0), ...toolTurn(experience, 3, 'admin_test'), ...toolTurn(experience, 3, 'playground')]);
+    await testDb.db.insert(otelSpans).values([
+      ...toolTurn(experience, 0),
+      ...toolTurn(experience, -1),
+      ...toolTurn(experience, 3, 'admin_test'),
+      ...toolTurn(experience, 3, 'playground'),
+    ]);
 
     const overview = await getOverviewMetrics('24h', experience);
-    expect(overview).toMatchObject({ totalSearches: 1, zeroResultRate: 1, searchesFromToolCalls: true });
+    expect(overview).toMatchObject({ totalSearches: 1, zeroResultRate: 1, searchesFromToolCalls: true, totalAIRequests: 2 });
+
+    // The comparison table's row for the experience agrees
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row).toMatchObject({ volume: 2, zeroResultRate: 1 });
   });
 
   it("doesn't count tool calls when searches are stored, even if none counts (only internal lookups or test chats)", async () => {
