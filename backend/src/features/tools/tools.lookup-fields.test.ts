@@ -139,6 +139,18 @@ describe('Generate tools', () => {
   });
 });
 
+describe('Generate tools when the fields can\'t be read', () => {
+  it('still creates every tool, Find Record without fields', async () => {
+    indexFields.getFieldsBySearchIndexId.mockRejectedValue(new Error('db down'));
+
+    await createToolsForDataSource('ds', 'Catalog', 'catalog', 'search_index', null);
+
+    const created = repo.createTool.mock.calls.map(([data]) => data);
+    expect(created.length).toBeGreaterThan(1);
+    expect(created.find((d) => d.operation === 'lookup')?.executorConfig).not.toHaveProperty('nameFields');
+  });
+});
+
 describe('Generate tools on an external source', () => {
   it('pre-fills Find Record with a name field and a code field it can filter on', async () => {
     await createToolsForDataSource('ext', 'Shop', 'shop', 'search_index_external', null);
@@ -202,14 +214,15 @@ describe("a Find Record tool's fields, as its pages read them (GET /api/tools/:i
   });
 
   it("warns about a chosen field the latest sample of a sampled index didn't show", async () => {
-    const seen = { sampleSize: 25, nullRate: 0, distinctInSample: 25, profiledAt: '2026-10-26T10:00:00Z' };
+    // No profiles: sampling can be switched off, and the fields seen are still recorded
     dataSources.getDataSourceById.mockResolvedValue({
       ...externalSource,
       schema: {
         discoveredFrom: 'sample',
+        latestSampleFields: ['title'],
         fields: [
-          { name: 'title', type: 'text', isSearchable: true, profile: seen },
-          { name: 'productName', type: 'text', isSearchable: true, profile: { ...seen, profiledAt: '2026-10-01T10:00:00Z' } },
+          { name: 'title', type: 'text', isSearchable: true },
+          { name: 'productName', type: 'text', isSearchable: true },
         ],
       },
     });

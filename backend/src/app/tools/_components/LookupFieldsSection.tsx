@@ -17,6 +17,11 @@ import type { LookupFieldsStatus } from '../_lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  checkLookupFields,
+  missingLookupFields,
+  type LookupFieldsConfig,
+} from '@/features/tools/executors/data-source/lookup-field-rules';
 import { MultiSelect } from '@/shared/ui/components/multi-select';
 
 
@@ -116,16 +121,24 @@ export function LookupFieldsSection({ status, value, onChange }: Props) {
         </Button>
       )}
 
-      <LookupFieldsWarnings status={status} />
+      <LookupFieldsWarnings status={status} chosen={value as LookupFieldsConfig} />
     </div>
   );
 }
 
-/** Chosen fields gone from the index, and fields that only weakly work. Also shown on the tool page. */
-export function LookupFieldsWarnings({ status }: { status: LookupFieldsStatus }) {
+/**
+ * Chosen fields gone from the index, and fields that won't work or only weakly work. The Edit
+ * page passes the fields being chosen, so they are checked as they are picked; the tool page
+ * shows the saved ones.
+ */
+export function LookupFieldsWarnings({ status, chosen }: { status: LookupFieldsStatus; chosen?: LookupFieldsConfig }) {
+  const known = status.candidates.length > 0;
+  const checked = chosen && known ? checkLookupFields(chosen, status.candidates, status.rules) : { errors: [], warnings: status.warnings };
+  const missing = chosen && known ? missingLookupFields(chosen, status.candidates) : status.missing;
   const lines = [
-    ...status.missing.map((name) => `"${name}" is no longer in the index (removed or renamed?). Choose another field.`),
-    ...status.warnings.map((w) => w.message),
+    ...missing.map((name) => `"${name}" is no longer in the index (removed or renamed?). Choose another field.`),
+    ...checked.errors.map((e) => e.message),
+    ...checked.warnings.map((w) => w.message),
   ];
   if (lines.length === 0) return null;
   return (

@@ -1,5 +1,7 @@
 // app/tools/_lib/api-client.ts
 
+import type { LookupFieldCandidate, LookupFieldRules } from '@/features/tools/executors/data-source/lookup-field-rules';
+
 export class ApiError extends Error {
   status: number;
   details?: unknown;
@@ -168,9 +170,11 @@ export interface ScaffoldToolsResponse {
 // ============================================================================
 
 /** A Find Record tool's name and code fields against its data source (GET /api/tools/:id/lookup-fields). */
+export type { LookupFieldCandidate, LookupFieldRules };
+
 export interface LookupFieldsStatus {
-  candidates: Array<{ name: string; type?: string; searchable?: boolean; filterable?: boolean; hasPaths?: boolean; nullRate?: number }>;
-  rules: { findsThroughSearch: boolean; codesNeedFilter: boolean };
+  candidates: LookupFieldCandidate[];
+  rules: LookupFieldRules;
   chosen: { nameFields: string[]; codeFields: string[] };
   /** Has name or code fields (or a hand-set idField), so it can be added to an AI experience */
   configured: boolean;

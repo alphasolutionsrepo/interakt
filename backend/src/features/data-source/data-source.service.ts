@@ -244,7 +244,11 @@ function mergeSampledSchema(previous: DataSourceField[], discovered: DataSourceS
     };
   });
 
-  return { ...discovered, fields: [...fields, ...discovered.fields.filter((f) => !known.has(f.name))] };
+  return {
+    ...discovered,
+    fields: [...fields, ...discovered.fields.filter((f) => !known.has(f.name))],
+    latestSampleFields: discovered.fields.map((f) => f.name),
+  };
 }
 
 /**

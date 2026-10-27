@@ -150,9 +150,10 @@ export async function createToolsForDataSource(
     );
 
     // Find Record starts with the name and code fields the data source's fields suggest; the
-    // admin reviews them on the tool. Nothing found: the tool needs them before it is used.
+    // admin reviews them on the tool. Nothing found, or the fields can't be read: the tool needs
+    // them before it is used, and the other tools are still created.
     const executorConfig = capability.operation === 'lookup' && dataSourceType !== 'file_store'
-      ? { ...capability.defaultConfig, ...nonEmpty(await suggestLookupFieldsFor(dataSourceId)) }
+      ? { ...capability.defaultConfig, ...nonEmpty(await suggestLookupFieldsFor(dataSourceId).catch(() => NO_SUGGESTION)) }
       : capability.defaultConfig;
 
     const tool = await repository.createTool({
@@ -381,6 +382,8 @@ export async function getToolExperienceCount(toolId: string) {
 }
 
 /** The lists that have something in them, so an empty suggestion stores nothing. */
+const NO_SUGGESTION = { nameFields: [], codeFields: [] };
+
 function nonEmpty(lists: { nameFields: string[]; codeFields: string[] }): Record<string, string[]> {
   return Object.fromEntries(Object.entries(lists).filter(([, list]) => list.length > 0));
 }

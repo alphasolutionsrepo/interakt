@@ -201,6 +201,7 @@ const dataSourceSchemaSchema = z.object({
   lastDiscoveredAt: z.string().optional(),
   capabilities: dataSourceCapabilitiesSchema.optional(),
   discoveredFrom: z.enum(['mapping', 'sample']).optional(),
+  latestSampleFields: z.array(z.string()).optional(),
 });
 
 // ============================================================================
