@@ -120,10 +120,12 @@ export function suggestLookupFields(
 ): { nameFields: string[]; codeFields: string[] } {
   const usable = candidates.filter((f) => f.type !== 'vector');
   const own = usable.filter((f) => !isRelatedField(f.name) && !IDENTIFIER_FIELD.test(f.name));
-  const name =
-    usable.find((f) => f.role === 'title') ??
-    own.find((f) => isNameField(f.name)) ??
-    own.find((f) => LOOSE_NAME_FIELD.test(f.name));
+  // The first that fits: a weak declared title gives way to a known name field
+  const name = [
+    ...usable.filter((f) => f.role === 'title'),
+    ...own.filter((f) => isNameField(f.name)),
+    ...own.filter((f) => LOOSE_NAME_FIELD.test(f.name)),
+  ].find((f) => fits(f, 'name', rules));
   const codeFields = usable
     .filter((f) => !isRelatedField(f.name))
     .filter((f) => f.role === 'id' || SUGGESTED_CODE_FIELD.test(lastSegment(f.name))
@@ -131,7 +133,7 @@ export function suggestLookupFields(
     .filter((f) => fits(f, 'code', rules))
     .map((f) => f.name)
     .slice(0, 3);
-  return { nameFields: name && fits(name, 'name', rules) ? [name.name] : [], codeFields };
+  return { nameFields: name ? [name.name] : [], codeFields };
 }
 
 /** How a source finds an item, which decides what a usable field is. */

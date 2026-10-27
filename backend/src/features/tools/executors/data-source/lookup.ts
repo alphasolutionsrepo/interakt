@@ -135,11 +135,15 @@ function rolesOf(
     kind === 'managed' || !schema || fields.some((f) => f.name === name || name.startsWith(`${f.name}.`));
   const nameFields = chosen.nameFields.filter(inSchema);
   const codeFields = chosen.codeFields.filter(inSchema);
+  const goneFields = [...chosen.nameFields, ...chosen.codeFields].filter((name) => !inSchema(name));
+  // Shown in the trace even when the lookup then finds nothing
+  if (goneFields.length > 0) addSpanAttributes({ [ATTR.TOOL_LOOKUP_MISSING_FIELDS]: goneFields.join(',') });
   return {
     titleFields: nameFields.length > 0 ? nameFields : fields.filter((f) => f.role === 'title').map((f) => f.name),
     idFields: codeFields.length > 0 ? codeFields : fields.filter((f) => f.role === 'id').map((f) => f.name),
     namesChosen: nameFields.length > 0,
     codesChosen: codeFields.length > 0,
+    goneFields,
   };
 }
 
@@ -282,12 +286,17 @@ async function lookupFromExternalSource(
   const { documentIdField } = connector.capabilities;
   const tried = documentIdField && !idFields.includes(documentIdField) ? [...idFields, documentIdField] : idFields;
   let hit: ExternalSearchHit | undefined;
+  let foundBy: string | undefined;
   for (const field of tried) {
     hit = await findByField(connector, source, field, documentId, fields);
-    if (hit) break;
+    if (hit) {
+      foundBy = field;
+      break;
+    }
   }
   if (hit) {
-    noteMissingChosenFields(hit.source, roles);
+    // The filter matched on foundBy, even when the engine leaves that field out of the hit
+    noteMissingChosenFields(hit.source, roles, foundBy);
     return { success: true, data: { id: hit.id, document: hit.source } };
   }
 
@@ -311,13 +320,14 @@ async function lookupFromExternalSource(
 }
 
 /**
- * Note in the trace which of the tool's chosen fields the found record has no value in, so a
- * field renamed or emptied in the index shows up. A record fetched by its key isn't checked:
- * the key found it, and a key fetch returns only the fields responses show.
+ * Note in the trace which of the tool's chosen fields the found record has no value in, or the
+ * index no longer has, so a field renamed or emptied in the index shows up. A record fetched by
+ * its key isn't checked: the key found it, and a key fetch returns only the fields responses show.
  */
-function noteMissingChosenFields(record: Record<string, unknown> | undefined, roles: FieldRoles): void {
+function noteMissingChosenFields(record: Record<string, unknown> | undefined, roles: FieldRoles, foundBy?: string): void {
   const fields = [...(roles.namesChosen ? roles.titleFields ?? [] : []), ...(roles.codesChosen ? roles.idFields ?? [] : [])];
-  const missing = fields.filter((field) => valuesAt(record, field).length === 0);
+  const empty = fields.filter((field) => field !== foundBy && valuesAt(record, field).length === 0);
+  const missing = [...new Set([...(roles.goneFields ?? []), ...empty])];
   if (missing.length > 0) addSpanAttributes({ [ATTR.TOOL_LOOKUP_MISSING_FIELDS]: missing.join(',') });
 }
 
@@ -371,6 +381,8 @@ export interface FieldRoles {
   idFields?: string[];
   namesChosen?: boolean;
   codesChosen?: boolean;
+  /** Chosen fields an external index no longer has, skipped */
+  goneFields?: string[];
 }
 
 /**

@@ -124,7 +124,7 @@ export function LookupFieldsSection({ status, value, onChange }: Props) {
 /** Chosen fields gone from the index, and fields that only weakly work. Also shown on the tool page. */
 export function LookupFieldsWarnings({ status }: { status: LookupFieldsStatus }) {
   const lines = [
-    ...status.missing.map((name) => `"${name}" is no longer in the index (removed or renamed?). Find Record skips it.`),
+    ...status.missing.map((name) => `"${name}" is no longer in the index (removed or renamed?). Choose another field.`),
     ...status.warnings.map((w) => w.message),
   ];
   if (lines.length === 0) return null;

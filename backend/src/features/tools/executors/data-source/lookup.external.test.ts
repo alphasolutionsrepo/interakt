@@ -10,6 +10,11 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 const search = vi.fn();
 vi.mock('@/features/search/search.service', () => ({}));
+const { addSpanAttributes } = vi.hoisted(() => ({ addSpanAttributes: vi.fn() }));
+vi.mock('@/features/telemetry', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/telemetry')>()),
+  addSpanAttributes,
+}));
 const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn(async () => ({ schema: null }) as unknown) }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
 const capabilities: { documentIdField?: string } = {};
@@ -201,7 +206,9 @@ describe("external lookup with the tool's chosen code fields", () => {
   };
   beforeEach(() => {
     search.mockClear();
+    addSpanAttributes.mockClear();
   });
+  const notedMissing = () => addSpanAttributes.mock.calls.map(([attrs]) => attrs['alpha.tool.lookup.missing_fields']).filter(Boolean);
   const filteredOn = () => search.mock.calls.map(([, request]) => request.filters?.[0]?.field).filter(Boolean);
 
   it('tries each code field in turn, skipping one the index no longer has', async () => {
@@ -240,5 +247,35 @@ describe("external lookup with the tool's chosen code fields", () => {
     await executeDataSourceLookup('ds', { codeFields: ['sku'], idField: 'gtin' }, { id: 'G-3' });
 
     expect(filteredOn()).toEqual(['sku', 'gtin']);
+  });
+
+  it('notes a chosen field the found record has no value in, but not the field it was found by', async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    // The engine matched the gtin filter but leaves gtin out of the hit
+    search.mockResolvedValueOnce({ hits: [{ id: 'P-7', score: 1, source: { productId: 'P-7' } }], unappliedFilters: [] });
+
+    await executeDataSourceLookup('ds', { nameFields: ['name'], codeFields: ['gtin'] }, { id: '0400000000017' });
+
+    expect(notedMissing()).toEqual(['name']);
+  });
+
+  it("goes back to the schema's fields when every chosen one has left the index, and says so in the trace", async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    search.mockResolvedValueOnce({ hits: [{ id: 'P-1', score: 1, source: { productId: 'P-1', name: 'Wool Coat' } }], unappliedFilters: [] });
+
+    await executeDataSourceLookup('ds', { codeFields: ['retired'] }, { id: 'P-1' });
+
+    expect(filteredOn()).toEqual(['productId']);
+    expect(notedMissing()[0]).toBe('retired');
+  });
+
+  it("uses the chosen code fields as they are when the index's fields haven't been read yet", async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema: null });
+    search.mockResolvedValueOnce({ hits: [{ id: 'P-2', score: 1, source: { sku: 'SKU-2' } }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', { codeFields: ['sku'] }, { id: 'SKU-2' });
+
+    expect(filteredOn()).toEqual(['sku']);
+    expect(result).toMatchObject({ success: true, data: { id: 'P-2' } });
   });
 });

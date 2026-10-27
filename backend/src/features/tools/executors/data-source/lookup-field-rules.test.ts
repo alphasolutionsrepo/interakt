@@ -47,6 +47,15 @@ describe('suggested fields', () => {
     expect(checkLookupFields({ codeFields: ['sku'] }, fields, external)).toEqual({ errors: [], warnings: [] });
   });
 
+  it('passes over a declared title that is mostly empty for a name field that fits', () => {
+    const fields: LookupFieldCandidate[] = [
+      { name: 'headline', type: 'text', searchable: true, role: 'title', nullRate: 0.9 },
+      { name: 'name', type: 'text', searchable: true, nullRate: 0 },
+    ];
+
+    expect(suggestLookupFields(fields, external).nameFields).toEqual(['name']);
+  });
+
   it('suggests nothing when no field looks like a name or a code', () => {
     expect(suggestLookupFields([{ name: 'price', type: 'number' }], managed)).toEqual({ nameFields: [], codeFields: [] });
   });

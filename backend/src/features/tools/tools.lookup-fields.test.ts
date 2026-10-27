@@ -110,6 +110,12 @@ describe('saving a Find Record tool', () => {
     await expect(updateTool('t1', { executorConfig: { nameFields: ['gone', 'nope'] } } as never)).rejects.toThrow('nope');
   });
 
+  it('refuses name or code fields on a Find Record tool for uploaded files', async () => {
+    dataSources.getDataSourceById.mockResolvedValue({ id: 'files', type: 'file_store', config: {}, schema: null });
+
+    await expect(createTool(lookupInput('files', { nameFields: ['title'] }))).rejects.toThrow('only apply to Find Record on a search index');
+  });
+
   it('asks for a health check when an external source has no fields yet', async () => {
     dataSources.getDataSourceById.mockResolvedValue({ ...externalSource, schema: null });
 
