@@ -196,7 +196,8 @@ export function useToolSlugAvailability(slug: string, excludeId?: string, enable
  * removed in an external index shows up here.
  */
 export function useLookupFields(toolId: string | undefined, dataSourceId: string | null | undefined) {
-  const { result: healthResult, isChecking } = useHealthCheck(dataSourceId ?? undefined);
+  // Only for a Find Record tool: other data source tools have no fields to keep current
+  const { result: healthResult, isChecking } = useHealthCheck(toolId ? dataSourceId ?? undefined : undefined);
   const query = useQuery({
     queryKey: [...toolKeys.lookupFields(toolId!), healthResult?.checkedAt ?? null],
     queryFn: () => toolsApi.getLookupFields(toolId!),

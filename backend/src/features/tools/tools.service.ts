@@ -397,3 +397,17 @@ export async function notReadyToAssign(tool: Pick<Tool, 'name' | 'operation' | '
   if (!(await lookupFieldsContext(tool.dataSourceId))) return undefined;
   return `Find Record tool "${tool.name}" isn't set up: choose its name or code fields on the tool first`;
 }
+
+/** The tools that can be added to an AI experience, and why each of the others can't. */
+export async function splitReadyToAssign<T extends Pick<Tool, 'name' | 'operation' | 'dataSourceId' | 'executorConfig'>>(
+  tools: T[],
+): Promise<{ ready: T[]; notReady: string[] }> {
+  const ready: T[] = [];
+  const notReady: string[] = [];
+  for (const tool of tools) {
+    const reason = await notReadyToAssign(tool);
+    if (reason) notReady.push(reason);
+    else ready.push(tool);
+  }
+  return { ready, notReady };
+}

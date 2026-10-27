@@ -6,7 +6,7 @@
  * finds the document through a search instead of returning the engine error.
  */
 
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 const search = vi.fn();
 vi.mock('@/features/search/search.service', () => ({}));
@@ -187,5 +187,58 @@ describe("external lookup by the engine's own id", () => {
 
     expect(result).toEqual({ success: true, data: { id: 'x1', document: { name: 'Denim Jacket' }, matchedBy: 'search_fallback' } });
     expect(search.mock.lastCall?.[1]).toEqual({ query: 'Denim Jacket', offset: 0, limit: 5 });
+  });
+});
+
+describe("external lookup with the tool's chosen code fields", () => {
+  const schema = {
+    fields: [
+      { name: 'productId', type: 'keyword', role: 'id' },
+      { name: 'sku', type: 'keyword' },
+      { name: 'gtin', type: 'keyword' },
+      { name: 'name', type: 'text' },
+    ],
+  };
+  beforeEach(() => {
+    search.mockClear();
+  });
+  const filteredOn = () => search.mock.calls.map(([, request]) => request.filters?.[0]?.field).filter(Boolean);
+
+  it('tries each code field in turn, skipping one the index no longer has', async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    const shirt = { productId: 'P-7', gtin: '0400000000017', name: 'Linen Shirt' };
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'P-7', score: 1, source: shirt }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', { codeFields: ['sku', 'retired', 'gtin'] }, { id: '0400000000017' });
+
+    expect(result).toEqual({ success: true, data: { id: 'P-7', document: shirt } });
+    expect(filteredOn()).toEqual(['sku', 'gtin']);
+  });
+
+  it("then the schema's id field, then a search by name", async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'P-9', score: 1, source: { name: 'Denim Jacket' } }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', { codeFields: ['sku'] }, { id: 'Denim Jacket' });
+
+    expect(filteredOn()).toEqual(['sku', 'productId']);
+    expect(search.mock.lastCall?.[1]).toEqual({ query: 'Denim Jacket', offset: 0, limit: 5 });
+    expect(result).toMatchObject({ success: true, data: { id: 'P-9', matchedBy: 'search_fallback' } });
+  });
+
+  it('tries a hand-set idField after the code fields', async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'P-3', score: 1, source: { gtin: 'G-3' } }], unappliedFilters: [] });
+
+    await executeDataSourceLookup('ds', { codeFields: ['sku'], idField: 'gtin' }, { id: 'G-3' });
+
+    expect(filteredOn()).toEqual(['sku', 'gtin']);
   });
 });

@@ -45,9 +45,9 @@ A well-tooled AI experience usually has all four. **Inspect** and **enumerate** 
 On a search index, a Find Record tool knows which fields name an item and which hold a code that identifies it. Set them on the tool's **Edit** page:
 
 - **Name fields** are read together, in order, as the item's name (for example `brand` then `name`).
-- **Code fields** hold values such as a SKU or a product ID; a request equal to one of them finds its item. On an external index, only fields the index can filter on can be code fields.
+- **Code fields** hold values such as a SKU or a product ID; a request equal to one of them finds its item. On an external index, code fields are fields the index can filter on; on a managed index, fields that are searchable or shown in responses.
 
-**Create Tools** fills them in from the index's fields. Find Record matches only on the chosen fields; a list left empty is worked out from field names. A Find Record tool needs at least one field before it can be added to an AI experience. If a chosen field leaves the index, the tool's page says so and Find Record carries on with the remaining fields; deleting a field a Find Record tool uses is blocked.
+**Create Tools** fills them in from the index's fields. Find Record matches only on the chosen fields; a list left empty is worked out from field names. A Find Record tool needs at least one field before it can be added to an AI experience. If a chosen field leaves the index, the tool's page says so (for an index whose fields are read from sample items, such as Sitecore Search, it notes a field the latest sample didn't show) and Find Record carries on with the remaining fields; deleting a field a Find Record tool uses is blocked.
 
 ### HTTP API
 Hits an arbitrary HTTP endpoint with templated headers, query params, and body. Used to call your own systems — order lookup, account status, inventory check, anything you have an API for.

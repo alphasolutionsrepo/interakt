@@ -56,13 +56,19 @@ export async function lookupFieldsContext(dataSourceId: string | null | undefine
         filterable: f.isFacetable,
         hasPaths: PATH_TYPES.has(f.fieldType),
         role: roles.get(f.fieldName) ?? null,
+        shownInResponses: f.includeInResponse,
       })),
       rules: { findsThroughSearch: true, codesNeedFilter: false },
     };
   }
 
   if (dataSource.type === 'search_index_external') {
-    const fields = (dataSource.schema as DataSourceSchema | null)?.fields ?? [];
+    const schema = dataSource.schema as DataSourceSchema | null;
+    const fields = schema?.fields ?? [];
+    // Each discovery stamps the fields it saw; a sampled schema keeps the ones it didn't
+    const latestSample = schema?.discoveredFrom === 'sample'
+      ? fields.reduce((latest, f) => ((f.profile?.profiledAt ?? '') > latest ? f.profile!.profiledAt : latest), '')
+      : '';
     return {
       candidates: fields.map((f) => ({
         name: f.name,
@@ -72,6 +78,7 @@ export async function lookupFieldsContext(dataSourceId: string | null | undefine
         hasPaths: PATH_TYPES.has(f.type),
         role: f.role ?? null,
         nullRate: f.profile?.nullRate,
+        notInLatestSample: latestSample !== '' && (f.profile?.profiledAt ?? '') < latestSample,
       })),
       rules: { findsThroughSearch: true, codesNeedFilter: true },
     };

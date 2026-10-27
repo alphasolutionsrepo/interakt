@@ -78,6 +78,25 @@ describe('checking chosen fields', () => {
     });
   });
 
+  it("warns that an external path's filtering can't be checked, and about a field the latest sample didn't show", () => {
+    const fields: LookupFieldCandidate[] = [
+      { name: 'variants', type: 'object', filterable: false, hasPaths: true },
+      { name: 'productName', type: 'text', searchable: true, notInLatestSample: true },
+    ];
+
+    const { errors, warnings } = checkLookupFields({ nameFields: ['productName'], codeFields: ['variants.sku'] }, fields, external);
+
+    expect(errors).toEqual([]);
+    expect(warnings.map((w) => w.field)).toEqual(['productName', 'variants.sku']);
+    expect(warnings.find((w) => w.field === 'variants.sku')?.message).toContain("can't tell whether variants.sku can be filtered on");
+  });
+
+  it("refuses a managed index field that is neither searched nor in responses", () => {
+    const fields: LookupFieldCandidate[] = [{ name: 'internalCode', type: 'keyword', searchable: false, shownInResponses: false }];
+
+    expect(checkLookupFields({ codeFields: ['internalCode'] }, fields, managed).errors[0].message).toContain("can't match on it");
+  });
+
   it('warns about a name field empty on most sampled items', () => {
     const fields: LookupFieldCandidate[] = [{ name: 'subtitle', type: 'text', searchable: true, nullRate: 0.8 }];
 

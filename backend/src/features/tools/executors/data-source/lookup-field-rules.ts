@@ -13,8 +13,9 @@ export interface LookupFieldsConfig {
   nameFields?: string[];
   codeFields?: string[];
   /**
-   * Hand-set before nameFields/codeFields existed: the field an external lookup filters on first.
-   * It keeps doing only that (code detection stays on), so tools that set it work as before.
+   * Hand-set before nameFields/codeFields existed: the field an external lookup filters on, after
+   * any chosen code fields. It keeps doing only that (code detection stays on), so tools that set
+   * it work as before.
    */
   idField?: string;
 }
@@ -32,6 +33,12 @@ export interface LookupFieldCandidate {
   role?: string | null;
   /** Share of sampled records without a value, when known */
   nullRate?: number;
+  /** Shown in search responses (managed index), when known */
+  shownInResponses?: boolean;
+  /** A schema read from sampled records keeps fields the latest sample didn't have */
+  notInLatestSample?: boolean;
+  /** A path under a json/object field (variants.sku), whose own settings aren't known */
+  isPath?: boolean;
 }
 
 /** Fields that identify a record exactly: id, sku, productCode, item_number, ... */
@@ -143,6 +150,10 @@ export interface LookupFieldProblem {
 /** What blocks a field (errors) or only weakens it (warnings) as a name or code field. */
 function problemsWith(field: LookupFieldCandidate, as: 'name' | 'code', rules: LookupFieldRules): string[] {
   if (field.type === 'vector') return [`${field.name} holds vectors, not text`];
+  // Neither searched nor in the hits, so no item Find Record gets can ever match on it
+  if (rules.findsThroughSearch && field.searchable === false && field.shownInResponses === false) {
+    return [`${field.name} isn't searchable or shown in responses, so Find Record can't match on it`];
+  }
   if (as === 'code' && rules.codesNeedFilter && field.filterable === false) {
     return [`${field.name} can't be filtered on, so Find Record can't fetch an item by it`];
   }
@@ -163,6 +174,12 @@ function weaknessesOf(field: LookupFieldCandidate, as: 'name' | 'code', rules: L
   if (as === 'name' && field.nullRate !== undefined && field.nullRate > 0.5) {
     notes.push(`${field.name} is empty on ${Math.round(field.nullRate * 100)}% of sampled items, which can't be found by name`);
   }
+  if (as === 'code' && rules.codesNeedFilter && field.isPath) {
+    notes.push(`Find Record can't tell whether ${field.name} can be filtered on; it fetches an item by it only if it can`);
+  }
+  if (field.notInLatestSample) {
+    notes.push(`${field.name} wasn't in the latest sample of items from the index; check it's still there`);
+  }
   return notes;
 }
 
@@ -171,7 +188,7 @@ function candidateFor(name: string, candidates: LookupFieldCandidate[]): LookupF
   const exact = candidates.find((f) => f.name === name);
   if (exact) return exact;
   const parent = candidates.find((f) => f.hasPaths && name.startsWith(`${f.name}.`));
-  return parent && { ...parent, name, filterable: undefined };
+  return parent && { ...parent, name, filterable: undefined, shownInResponses: undefined, isPath: true };
 }
 
 /**

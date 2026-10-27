@@ -97,7 +97,7 @@ export function LookupFieldsSection({ status, value, onChange }: Props) {
           A request equal to one of these values finds its item.
           {status.rules.codesNeedFilter ? ' Only fields the index can filter on are listed.' : ''} Leave empty to let
           Find Record work codes out.
-          {idField ? ` This tool also looks items up by its id field "${idField}" first.` : ''}
+          {idField ? ` This tool also looks items up by its id field "${idField}", after any code fields.` : ''}
         </p>
       </div>
 
