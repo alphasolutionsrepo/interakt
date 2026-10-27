@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Analytics: Popular and Failed Searches list only searches typed by visitors. Total searches, the failed-search rate, the trend chart and a search experience's row in the experience comparison count only visitor searches and the AI's Search tool searches, not the lookups that Find Record, List Values and query understanding run.
 - Analytics: every search records what started it (a visitor, an AI tool or an AI step) and which tool or step ran it; the recent searches feed shows them by name. Searches stored before as internal lookups are relabelled.
 - Analytics: Search tool searches on a file store are recorded like those on any other source.
+- Analytics: a search that failed is recorded as failed, not as one that found nothing, so it no longer appears in Failed Searches.
 - Analytics: each AI usage record keeps what the call was for (indexing, search, chat steps, memory, the topic guardrail and so on).
 
 ### Fixed

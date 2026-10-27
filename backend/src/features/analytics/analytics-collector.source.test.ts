@@ -92,3 +92,24 @@ describe('AI usage source', () => {
     expect(Object.fromEntries(rows.map((r) => [r.model, r.source]))).toEqual({ tested: 'admin_test', playground: 'playground', live: 'api' });
   });
 });
+
+describe('search outcome', () => {
+  it('stores a failed search as failed, not as one that found nothing, and a step with the search', async () => {
+    const outcome = (queryText: string, success: boolean, totalResults: number) => trackSearch({
+      requestId: crypto.randomUUID(), triggerType: 'ai_tool', triggerStep: 'search', searchType: 'hybrid', indexIds: ['ds'],
+      queryText, totalResults, resultsReturned: totalResults, durationMs: 5, success,
+    });
+    outcome('return policy', true, 0);
+    outcome('warranty', false, 0);
+    outcome('   ', false, 0); // a blank query isn't a search: not recorded
+    await forceFlush();
+
+    const rows = await testDb.db
+      .select({ q: searchEvents.queryText, zero: searchEvents.isZeroResult, success: searchEvents.success, step: searchEvents.triggerStep })
+      .from(searchEvents);
+    expect(rows.sort((a, b) => a.q.localeCompare(b.q))).toEqual([
+      { q: 'return policy', zero: true, success: true, step: 'search' },
+      { q: 'warranty', zero: false, success: false, step: 'search' },
+    ]);
+  });
+});

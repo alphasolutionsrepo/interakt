@@ -39,6 +39,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import type { SpanListItem, SpanDetail } from '../_lib/api-client';
 import { useTraceSpans } from '../_lib/hooks/useTraces';
+import { isSearchQueryEmbedding } from '../_lib/trace-embedding';
 import { traceContent, traceMessage } from '../_lib/trace-message';
 import { EmptyMessage, NotStored } from './NotStored';
 import { SearchRequestBody } from './SearchRequestDetail';
@@ -317,8 +318,8 @@ function buildV2Narrative(sorted: SpanDetail[]): TimelineStep[] {
       // Build search embedding map
       const searchEmbeddingMap = new Map<string, SpanDetail>();
       for (const emb of childEmbeddings) {
-        const feature = emb.attributes?.['alpha.ai.embedding_feature'];
-        if (feature === 'embedding_service' || feature === 'session_message') continue;
+        const feature = getAttr(emb, 'alpha.ai.embedding_feature');
+        if (!isSearchQueryEmbedding(feature)) continue;
         const embStart = new Date(emb.startTime).getTime();
         for (const search of childSearches) {
           const sStart = new Date(search.startTime).getTime();
@@ -597,13 +598,13 @@ function EmbeddingChip({ span, index }: { span: SpanDetail; index?: number }) {
   const model = getAttr(span, 'alpha.ai.model_key');
   const feature = getAttr(span, 'alpha.ai.embedding_feature');
 
-  const label = feature === 'search_query'
+  const label = feature === 'search_query' || feature === 'knowledge_search'
     ? 'Search query vectorized'
     : feature === 'session_message' || feature === 'embedding_service'
     ? 'Session message embedded'
     : 'Vector embedding';
 
-  const detail = feature === 'search_query'
+  const detail = feature === 'search_query' || feature === 'knowledge_search'
     ? 'Query converted to vector for hybrid search'
     : feature === 'session_message' || feature === 'embedding_service'
     ? 'Message stored for semantic memory retrieval'

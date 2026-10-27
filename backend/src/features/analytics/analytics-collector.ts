@@ -152,7 +152,8 @@ export function trackSearch(event: SearchEventData, experienceId?: string): void
       queryNormalized,
       queryLength: event.queryText.length,
       queryWordCount: countWords(event.queryText),
-      isZeroResult: event.totalResults === 0,
+      // Only a search that ran can have found nothing; a failed one is recorded as failed
+      isZeroResult: event.success && event.totalResults === 0,
       hasFilters: event.hasFilters ?? (event.filterCount ?? 0) > 0,
       filterCount: event.filterCount ?? 0,
       pageNumber: event.pageNumber ?? 1,
