@@ -275,11 +275,26 @@ describe('where the traffic is recorded as coming from', () => {
     expect(new Set(seen as unknown[])).toEqual(new Set(['api']));
   });
 
-  it.each(traffic)("$name: the token with the admin's session (the Widget playground) is a test", async (route) => {
+  const own = (route: Route, marker: boolean) => ({
+    'X-Access-Token': route.token, Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin',
+    ...(marker && { 'X-Interakt-Test': '1' }),
+  });
+
+  it.each(traffic)("$name: the token with the test marker and the admin's login (the Widget playground) is a test", async (route) => {
     mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
-    const own = { 'X-Access-Token': route.token, Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin' };
-    const seen = await sourceOf(route, own);
+    const seen = await sourceOf(route, own(route, true));
     expect(new Set(seen as unknown[])).toEqual(new Set(['admin_test']));
+  });
+
+  it.each(traffic.filter((r) => !r.slugRoute))("$name: the login without the marker (an admin on a live widget) is live", async (route) => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    const seen = await sourceOf(route, own(route, false));
+    expect(new Set(seen as unknown[])).toEqual(new Set(['api']));
+  });
+
+  it.each(traffic.filter((r) => !r.slugRoute))('$name: the marker without a login (a visitor) is live', async (route) => {
+    const seen = await sourceOf(route, { 'X-Access-Token': route.token, Origin: SHOP, 'X-Interakt-Test': '1' });
+    expect(new Set(seen as unknown[])).toEqual(new Set(['api']));
   });
 
   it.each(traffic.filter((r) => r.slugRoute))('$name: an admin without the token (the playground) is a test', async (route) => {

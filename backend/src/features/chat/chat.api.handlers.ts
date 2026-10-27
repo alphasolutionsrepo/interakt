@@ -71,7 +71,7 @@ export async function handleSummarize(request: NextRequest): Promise<Response> {
 
     // The summary's model call records where it came from (the stream starts inside this;
     // the admin's own Widget playground is test traffic)
-    const source = await analyticsSourceOfTokenCaller();
+    const source = await analyticsSourceOfTokenCaller(request);
     const stream = withAnalyticsSource(source, () => createSummaryStream(experience, validated as SummarizeAPIRequest));
 
     const corsHeaders = createCorsHeaders(experience, origin);

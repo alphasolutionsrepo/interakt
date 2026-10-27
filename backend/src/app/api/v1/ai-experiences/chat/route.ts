@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   const authResult = await authenticateAIAccessToken(request);
   if (authResult.response) return authResult.response;
   const { experience } = authResult;
-  const analyticsSource = await analyticsSourceOfTokenCaller();
+  const analyticsSource = await analyticsSourceOfTokenCaller(request);
 
   // ── Stream pipeline ────────────────────────────────────────────────────────
   const encoder = new TextEncoder();

@@ -85,10 +85,12 @@ describe("a chat experience's searches", () => {
   it('are found by the analytics assistant, which can ask for visitor searches only', async () => {
     const all = await executeAnalyticsTool('get_popular_queries', { timeRange: '24h', experienceId });
     const visitors = await executeAnalyticsTool('get_popular_queries', { timeRange: '24h', experienceId, origin: 'visitor' });
+    const assistant = await executeAnalyticsTool('get_popular_queries', { timeRange: '24h', experienceId, origin: 'assistant' });
     const failed = await executeAnalyticsTool('get_zero_result_queries', { timeRange: '24h', experienceId });
 
     expect((all.rawData as Array<{ query: string }>).map((q) => q.query).sort()).toEqual(['linen shirt', 'wool coat']);
     expect(visitors.rawData).toEqual([]);
+    expect((assistant.rawData as Array<{ query: string }>).map((q) => q.query).sort()).toEqual(['linen shirt', 'wool coat']);
     expect((failed.rawData as Array<{ query: string }>).map((q) => q.query)).toEqual(['wool coat']);
   });
 

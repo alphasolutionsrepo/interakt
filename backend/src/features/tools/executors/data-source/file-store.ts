@@ -114,14 +114,24 @@ async function searchFileStore(
   try {
     // Strategy: semantic first, merge keyword results for any gap
     let relaxed = false;
-    let vectorResults = await tryVectorSearch(dataSourceId, query, limit, strictDistance);
+    const strict = await tryVectorSearch(dataSourceId, query, limit, strictDistance);
+    let vectorResults = strict ?? [];
     const keywordResults = await kbRepository.keywordSearchChunks(dataSourceId, query, limit);
 
     // Nothing at all cleared the bar — widen it once rather than reporting an empty corpus.
-    if (vectorResults.length === 0 && keywordResults.length === 0) {
+    if (strict && vectorResults.length === 0 && keywordResults.length === 0) {
       const wider = Math.max(strictDistance, FALLBACK_MAX_DISTANCE);
-      vectorResults = await tryVectorSearch(dataSourceId, query, limit, wider);
+      vectorResults = (await tryVectorSearch(dataSourceId, query, limit, wider)) ?? [];
       relaxed = vectorResults.length > 0;
+    }
+
+    // The search by meaning failed and the words matched nothing: that's a failed search, not
+    // "nothing on this subject".
+    if (!strict && keywordResults.length === 0) {
+      return {
+        success: false,
+        error: 'The knowledge base could not be searched by meaning (the embedding failed), and no passage matched the words.',
+      };
     }
 
     // Merge: vector results first (ranked by similarity), then non-duplicate keyword results
@@ -262,17 +272,18 @@ export async function executeFileStoreLookup(
 // HELPERS
 // ============================================================================
 
+/** The passages close enough in meaning, or null when the search by meaning failed. */
 async function tryVectorSearch(
   dataSourceId: string,
   query: string,
   limit: number,
   maxDistance: number,
-): Promise<Array<Awaited<ReturnType<typeof kbRepository.searchChunks>>[number]>> {
+): Promise<Array<Awaited<ReturnType<typeof kbRepository.searchChunks>>[number]> | null> {
   try {
     const queryVector = await embed(query, { feature: 'knowledge_search' });
-    if (!queryVector) return [];
-    return kbRepository.searchChunks(dataSourceId, queryVector, limit, maxDistance);
+    if (!queryVector) return null;
+    return await kbRepository.searchChunks(dataSourceId, queryVector, limit, maxDistance);
   } catch {
-    return [];
+    return null;
   }
 }

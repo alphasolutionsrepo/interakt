@@ -34,9 +34,21 @@ describe('authenticateTokenOrSession', () => {
     expect(await authenticateTokenOrSession(request({ 'X-Access-Token': 't1' }), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
   });
 
-  it("records the token caller as a test when the admin's session comes with it (the Widget playground)", async () => {
+  it("records the token caller as a test only with the test marker and the admin's login (the Widget playground)", async () => {
     authMock.mockResolvedValue({ user: { id: 'u' } });
-    expect(await authenticateTokenOrSession(request({ 'X-Access-Token': 't1' }), experience())).toEqual({ caller: 'api', analyticsSource: 'admin_test' });
+    const playground = { 'X-Access-Token': 't1', 'X-Interakt-Test': '1' };
+    expect(await authenticateTokenOrSession(request(playground), experience())).toEqual({ caller: 'api', analyticsSource: 'admin_test' });
+    // A signed-in admin using a live widget sends the login but no marker
+    expect(await authenticateTokenOrSession(request({ 'X-Access-Token': 't1' }), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
+
+    // A visitor can send the marker but not the login
+    authMock.mockResolvedValue(null);
+    expect(await authenticateTokenOrSession(request(playground), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
+  });
+
+  it("doesn't look up a login for a token caller without the marker", async () => {
+    await authenticateTokenOrSession(request({ 'X-Access-Token': 't1' }), experience());
+    expect(authMock).not.toHaveBeenCalled();
   });
 
   it('falls back to an admin session when there is no matching token', async () => {

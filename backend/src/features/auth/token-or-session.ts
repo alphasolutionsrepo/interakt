@@ -36,19 +36,24 @@ export async function authenticateTokenOrSession(
   if (token && experience.accessToken && token === experience.accessToken) {
     const refused = checkPublicAccess(request, experience);
     if (refused) return { caller: null, refused };
-    return { caller: 'api', analyticsSource: await analyticsSourceOfTokenCaller() };
+    return { caller: 'api', analyticsSource: await analyticsSourceOfTokenCaller(request) };
   }
 
   const session = await auth();
   return session?.user ? { caller: 'admin', analyticsSource: 'admin_test' } : { caller: null };
 }
 
+/** Marks a request from the admin's Widget playground (the widget's testMode). */
+export const TEST_MARKER_HEADER = 'x-interakt-test';
+
 /**
- * Where a request with a valid access token came from. The real widget in the admin's own
- * Widget playground sends the token and, being on the admin's origin, the admin's session
- * cookie, so it is test traffic; a visitor on another site never sends that cookie.
+ * Where a request with a valid access token came from. The real widget in the admin's Widget
+ * playground sends a test marker and, being on the admin's origin, the admin's login: only both
+ * together make it a test. A visitor can send the marker but not the login, and a signed-in
+ * admin using a live widget sends the login but not the marker; both are live traffic.
  */
-export async function analyticsSourceOfTokenCaller(): Promise<'api' | 'admin_test'> {
+export async function analyticsSourceOfTokenCaller(request: NextRequest): Promise<'api' | 'admin_test'> {
+  if (request.headers.get(TEST_MARKER_HEADER) !== '1') return 'api';
   const session = await auth();
   return session?.user ? 'admin_test' : 'api';
 }

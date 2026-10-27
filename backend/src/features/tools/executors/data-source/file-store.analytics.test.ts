@@ -47,4 +47,16 @@ describe('file-store search analytics', () => {
       [0, false, 'db down'],
     ]);
   });
+
+  it('records a search whose embedding failed and whose words matched nothing as failed', async () => {
+    trackSearch.mockClear();
+    const { embed } = await import('@/features/embedding/embedding.service');
+    vi.mocked(embed).mockResolvedValueOnce(null);
+    vi.mocked(kbRepository.keywordSearchChunks).mockResolvedValueOnce([]);
+
+    const result = await executeFileStoreSearch('ds', {}, { query: 'warranty' });
+
+    expect(result.success).toBe(false);
+    expect(trackSearch).toHaveBeenCalledWith(expect.objectContaining({ success: false, totalResults: 0 }), 'exp');
+  });
 });

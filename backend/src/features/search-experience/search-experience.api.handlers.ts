@@ -65,7 +65,7 @@ export async function handlePublicSearch(request: NextRequest): Promise<NextResp
 
     // 3–6. Search every source the experience uses and merge the results
     // (the admin's own Widget playground is test traffic, its AI calls too)
-    const source = await analyticsSourceOfTokenCaller();
+    const source = await analyticsSourceOfTokenCaller(request);
     const { results, sourcesSearched, failedSources } = await withAnalyticsSource(source, () =>
       executeExperienceSearch(experience, validated, { source }));
 
