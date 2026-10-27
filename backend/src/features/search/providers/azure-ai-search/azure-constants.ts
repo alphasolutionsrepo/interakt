@@ -7,6 +7,13 @@
  */
 
 /**
+ * Name of the vector field the document indexer writes embeddings to.
+ * Must match EMBEDDING_FIELD_NAME in document-indexer.service.ts and the
+ * Elasticsearch constant of the same name.
+ */
+export const EMBEDDING_FIELD_NAME = 'content_embedding';
+
+/**
  * Mapping from app field types to Azure Edm types.
  */
 export const FIELD_TYPE_TO_EDM: Record<string, string> = {
