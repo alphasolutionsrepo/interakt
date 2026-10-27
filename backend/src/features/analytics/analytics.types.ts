@@ -12,9 +12,23 @@
 // ============================================================================
 
 /**
- * How a search was triggered
+ * What started a search: a visitor ('user'), the AI choosing one of its tools ('ai_tool'), or a
+ * fixed step of an AI feature ('ai_step', such as a search experience's query understanding)
  */
-export type TriggerType = 'user' | 'ai_tool' | 'ai_rag' | 'system';
+export type TriggerType = 'user' | 'ai_tool' | 'ai_step';
+
+/**
+ * Which tool or AI step ran a search, saved as is so a new tool needs no change here. Only a
+ * visitor's own search and the Search tool's ('search') count as searches in reports.
+ */
+export type TriggerStep =
+  | 'search' // the Search tool
+  | 'lookup' // Find Record
+  | 'enumerate' // List Values
+  | 'parameter_context' // a chat loading a field's values before the AI fills in a Search tool's filters
+  | 'query_interpretation' // a search experience's query understanding
+  | 'field_values_legacy' // a field's values loaded before the step was recorded
+  | (string & {});
 
 /**
  * Search algorithm type
@@ -27,15 +41,40 @@ export type SearchType = 'lexical' | 'semantic' | 'hybrid';
 export type AIOperation = 'text' | 'chat' | 'embedding';
 
 /**
- * AI feature context
+ * What an AI call was made for, stored on its AI usage row and its trace span as is (the trace
+ * view matches some of these names, so existing ones keep their spelling). Every embedding call
+ * names one.
  */
 export type AIFeature =
-  | 'chat'
-  | 'summarize'
-  | 'search_embedding'
-  | 'reindex_embedding'
-  | 'autocomplete'
-  | 'api';
+  // Search
+  | 'search_query' // a search query's embedding
+  | 'search_query_understanding' // a search experience's query understanding
+  | 'search_experience_summary' // a search experience's AI summary
+  | 'document_indexing' // embedding documents while indexing
+  | 'custom_instructions_generation'
+  // Knowledge base (file stores)
+  | 'knowledge_base' // embedding uploaded files
+  | 'knowledge_search' // a file-store search's embedding
+  // Chat
+  | 'ai-experience-chat'
+  | 'turn-planner'
+  | 'param-extraction'
+  | 'response-synthesis'
+  | 'lightweight-synthesis'
+  | 'ai_responder_tool'
+  | 'conversation_summary'
+  | 'topic_gate' // the topic guardrail
+  | 'topic-gate-expansion'
+  | 'topic-gate-general-expansion'
+  | 'session_message' // saving chat messages for recall (the trace view matches this name)
+  | 'episodic_memory' // recalling earlier conversations
+  | 'memory_extraction'
+  | 'memory_retrieval' // the memory retrieval tool
+  // Analytics
+  | 'intent-clustering'
+  | 'intent-cluster-labeling'
+  // Admin
+  | 'playground'; // the AI Provider playground
 
 /**
  * Tool category for AI tool executions
@@ -76,6 +115,7 @@ export interface SearchEventData {
 
   // Trigger context
   triggerType: TriggerType;
+  triggerStep?: TriggerStep; // empty for a visitor's own search
   triggerSourceId?: string; // e.g., chat message ID if AI-triggered
   aiRequestId?: string; // Link to AI request if triggered by AI
 
@@ -194,6 +234,9 @@ export interface ToolExecutionData {
   toolName: string;
   toolCategory: ToolCategory;
   toolVersion?: string;
+
+  /** Where the run came from; defaults to 'api' (live traffic) */
+  source?: AnalyticsSource;
 
   // Execution details
   inputSummary?: Record<string, unknown>;

@@ -107,6 +107,7 @@ export function withToolAnalytics(
       // reliability view needs to show.
       try {
         const { trackToolExecution } = await import('@/features/analytics');
+        const { getAnalyticsSourceContext } = await import('@/features/analytics/analytics-source-context');
         const durationMs = Date.now() - start;
         const toolDef = toolDefBySlug.get(toolSlug);
         const errorMessage = thrown
@@ -118,6 +119,7 @@ export function withToolAnalytics(
           sessionId: turnContext.sessionId,
           toolName: toolSlug,
           toolCategory: toolCategoryFor(toolDef?.executorType),
+          source: getAnalyticsSourceContext() ?? 'api',
           inputSummary: summariseInput(parameters),
           outputSummary: {
             resultCount: result?.resultCount ?? 0,

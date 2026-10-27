@@ -10,7 +10,10 @@
  * when the resolved data source is of type 'file_store'.
  */
 
+import { trackSearch } from '@/features/analytics';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { embed } from '@/features/embedding/embedding.service';
+import { getExperienceContext } from '@/features/search/search.service';
 import * as kbRepository from '@/features/knowledge-base/knowledge-base.repository';
 import { createLogger } from '@/shared/logger/logger';
 import { noRecordFound, type OperationResult } from './shared';
@@ -55,8 +58,41 @@ interface SearchInput {
 /**
  * Semantic + keyword hybrid search over knowledge chunks.
  * Returns top-K relevant chunks with source document attribution.
+ * Recorded like every other Search tool search, so reports see it.
  */
 export async function executeFileStoreSearch(
+  dataSourceId: string,
+  config: Record<string, unknown>,
+  input: Record<string, unknown>,
+): Promise<OperationResult> {
+  const startTime = Date.now();
+  const result = await searchFileStore(dataSourceId, config, input);
+  const query = typeof input.query === 'string' ? input.query.trim() : '';
+  // A call without a query searched nothing: it isn't recorded as a search
+  if (!query) return result;
+  const data = result.data as { totalCount?: number } | undefined;
+  const ctx = getExperienceContext();
+  trackSearch({
+    requestId: crypto.randomUUID(),
+    triggerType: 'ai_tool',
+    triggerStep: 'search',
+    source: getAnalyticsSourceContext(),
+    searchType: 'hybrid',
+    // A file store is identified by its data source, as external sources are.
+    indexIds: [dataSourceId],
+    experienceId: ctx?.experienceId,
+    experienceSlug: ctx?.experienceSlug,
+    queryText: query,
+    totalResults: data?.totalCount ?? 0,
+    resultsReturned: data?.totalCount ?? 0,
+    durationMs: Date.now() - startTime,
+    success: result.success,
+    errorMessage: result.success ? undefined : result.error,
+  }, ctx?.experienceId);
+  return result;
+}
+
+async function searchFileStore(
   dataSourceId: string,
   config: Record<string, unknown>,
   input: Record<string, unknown>,
@@ -81,14 +117,24 @@ export async function executeFileStoreSearch(
   try {
     // Strategy: semantic first, merge keyword results for any gap
     let relaxed = false;
-    let vectorResults = await tryVectorSearch(dataSourceId, query, limit, strictDistance);
+    const strict = await tryVectorSearch(dataSourceId, query, limit, strictDistance);
+    let vectorResults = strict ?? [];
     const keywordResults = await kbRepository.keywordSearchChunks(dataSourceId, query, limit);
 
     // Nothing at all cleared the bar — widen it once rather than reporting an empty corpus.
-    if (vectorResults.length === 0 && keywordResults.length === 0) {
+    if (strict && vectorResults.length === 0 && keywordResults.length === 0) {
       const wider = Math.max(strictDistance, FALLBACK_MAX_DISTANCE);
-      vectorResults = await tryVectorSearch(dataSourceId, query, limit, wider);
+      vectorResults = (await tryVectorSearch(dataSourceId, query, limit, wider)) ?? [];
       relaxed = vectorResults.length > 0;
+    }
+
+    // The search by meaning failed and the words matched nothing: that's a failed search, not
+    // "nothing on this subject".
+    if (!strict && keywordResults.length === 0) {
+      return {
+        success: false,
+        error: 'The knowledge base could not be searched by meaning (the embedding failed), and no passage matched the words.',
+      };
     }
 
     // Merge: vector results first (ranked by similarity), then non-duplicate keyword results
@@ -229,17 +275,22 @@ export async function executeFileStoreLookup(
 // HELPERS
 // ============================================================================
 
+/**
+ * The passages close enough in meaning, or null when the query couldn't be embedded. A database
+ * error isn't an embedding failure: it fails the search and is logged.
+ */
 async function tryVectorSearch(
   dataSourceId: string,
   query: string,
   limit: number,
   maxDistance: number,
-): Promise<Array<Awaited<ReturnType<typeof kbRepository.searchChunks>>[number]>> {
+): Promise<Array<Awaited<ReturnType<typeof kbRepository.searchChunks>>[number]> | null> {
+  let queryVector: Awaited<ReturnType<typeof embed>>;
   try {
-    const queryVector = await embed(query, { feature: 'knowledge_search' } as any);
-    if (!queryVector) return [];
-    return kbRepository.searchChunks(dataSourceId, queryVector, limit, maxDistance);
+    queryVector = await embed(query, { feature: 'knowledge_search' });
   } catch {
-    return [];
+    return null;
   }
+  if (!queryVector) return null;
+  return kbRepository.searchChunks(dataSourceId, queryVector, limit, maxDistance);
 }

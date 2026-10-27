@@ -75,6 +75,7 @@ export {
   // Helpers
   getDateRange,
   getGranularityForRange,
+  SEARCH_ORIGINS,
 } from './analytics-query.service';
 
 export type {
@@ -89,6 +90,7 @@ export type {
   PerformanceMetrics,
   AIUsageMetrics,
   ToolUsageMetrics,
+  SearchOrigin,
 } from './analytics-query.service';
 
 // ============================================================================
@@ -208,6 +210,7 @@ export type {
 
   // Enum types
   TriggerType,
+  TriggerStep,
   SearchType,
   AIOperation,
   AIFeature,

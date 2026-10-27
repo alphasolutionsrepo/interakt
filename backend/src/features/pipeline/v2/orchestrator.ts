@@ -14,6 +14,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import { withSpan , ATTR } from '@/features/telemetry';
+import type { AIFeature } from '@/features/analytics/analytics.types';
 import { withExperienceContext } from '@/features/search/search.service';
 import { assembleContext } from './context-assembly';
 import { planTurn } from './turn-planner';
@@ -116,7 +117,7 @@ const PIPELINE_TIMEOUT = Symbol('v2-pipeline-timeout');
  * ChatResult.usage uses { inputTokens, outputTokens, totalTokens }.
  * Pipeline TokenUsage uses { promptTokens, completionTokens, totalTokens }.
  */
-function trackUsage(chatFn: ChatFn, usage: TokenUsage, experienceId: string, feature: string): ChatFn {
+function trackUsage(chatFn: ChatFn, usage: TokenUsage, experienceId: string, feature: AIFeature): ChatFn {
   return async (messages, options) => {
     const result: ChatResult = await chatFn(messages, {
       ...options,
@@ -180,9 +181,9 @@ export async function runV2Pipeline(
   // Wrap all chat functions to accumulate token usage + inject experienceId/feature
   const trackedDeps: V2PipelineDeps = {
     ...deps,
-    turnPlanner: { chat: trackUsage(deps.turnPlanner.chat, usage, experienceId, 'v2.turn-planner') },
-    executionLoop: { ...deps.executionLoop, chat: trackUsage(deps.executionLoop.chat, usage, experienceId, 'v2.param-extraction') },
-    synthesis: { chat: trackUsage(deps.synthesis.chat, usage, experienceId, 'v2.response-synthesis') },
+    turnPlanner: { chat: trackUsage(deps.turnPlanner.chat, usage, experienceId, 'turn-planner') },
+    executionLoop: { ...deps.executionLoop, chat: trackUsage(deps.executionLoop.chat, usage, experienceId, 'param-extraction') },
+    synthesis: { chat: trackUsage(deps.synthesis.chat, usage, experienceId, 'response-synthesis') },
   };
 
   // ── S2: Context Assembly ───────────────────────────────────────────────
@@ -900,7 +901,7 @@ export function createProductionV2Deps(): V2PipelineDeps {
         async retrieveRelevantMemories(userId, expId, userMessage, maxMemories) {
           const { embed } = await import('@/features/embedding/embedding.service');
           const memoriesRepo = await import('@/features/user-memories/user-memories.repository');
-          const queryVector = await embed(userMessage, { feature: 'episodic_memory' } as any);
+          const queryVector = await embed(userMessage, { feature: 'episodic_memory' });
           if (!queryVector) return [];
           const memories = await memoriesRepo.searchMemories(userId, expId, queryVector, maxMemories, 0.45);
           if (memories.length > 0) {

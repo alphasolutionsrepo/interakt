@@ -137,6 +137,8 @@ describe('setupTopicGateEmbeddings', () => {
     expect(config.generalTermEmbeddings).toHaveLength(2);
     expect(config.generalThreshold).toBe(0.40);
     expect(config.lastExpandedAt).toBeDefined();
+    // AI usage names what the embedding calls were for
+    expect(mockEmbedBatch).toHaveBeenCalledWith(expect.any(Array), { feature: 'topic_gate' });
   });
 
   it('filters out terms with failed embeddings from both clusters', async () => {
@@ -192,6 +194,7 @@ describe('evaluateDualCluster', () => {
 
     expect(result.classification).toBe('domain');
     expect(result.domainSimilarity).toBeGreaterThan(0.35);
+    expect(mockEmbed).toHaveBeenCalledWith('how to wash jeans properly', { feature: 'topic_gate' });
   });
 
   it('classifies as general when only general cluster matches', async () => {

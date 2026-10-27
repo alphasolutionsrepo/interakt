@@ -9,6 +9,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import type { AIUsageMetrics } from './ai-service.types';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 
 const logger = createLogger('ai-service-analytics');
 
@@ -61,8 +62,10 @@ export async function trackUsage(metrics: AIUsageMetrics): Promise<void> {
         ...(metrics.feature && { feature: metrics.feature }),
     });
 
-    // Add to queue for batch writing
-    analyticsQueue.push(metrics);
+    // Add to queue for batch writing. The batch is written later, outside this request, so the
+    // request's source (live, admin test chat, playground) is read now.
+    const source = metrics.source ?? getAnalyticsSourceContext();
+    analyticsQueue.push({ ...metrics, source });
 
     // Start flush timer if not already running
     startFlushTimer();
@@ -85,21 +88,14 @@ export async function flushAnalytics(): Promise<void> {
     try {
         // Import analytics collector to write to analytics DB
         const { trackAI } = await import('@/features/analytics');
-        type AIFeature = 'chat' | 'summarize' | 'search_embedding' | 'reindex_embedding' | 'autocomplete' | 'api';
 
         // Send each event to the analytics collector (fire-and-forget)
         for (const metrics of batch) {
-            // Map feature string to AIFeature type if valid
-            const validFeatures: AIFeature[] = ['chat', 'summarize', 'search_embedding', 'reindex_embedding', 'autocomplete', 'api'];
-            const feature = metrics.feature && validFeatures.includes(metrics.feature as AIFeature)
-                ? (metrics.feature as AIFeature)
-                : undefined;
-
             trackAI({
                 requestId: metrics.requestId,
                 sessionId: metrics.sessionId,
                 operation: metrics.operation,
-                feature,
+                feature: metrics.feature,
                 providerId: metrics.providerId,
                 providerKey: metrics.providerKey,
                 modelId: metrics.modelId,
@@ -113,6 +109,7 @@ export async function flushAnalytics(): Promise<void> {
                 errorCode: metrics.errorCode,
                 errorMessage: metrics.errorMessage,
                 metadata: metrics.metadata,
+                source: metrics.source,
             });
         }
 

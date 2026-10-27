@@ -178,7 +178,7 @@ function SearchApp({ config, apiBaseUrl }: SearchAppProps) {
 
     try {
       const [searchResult, suggestionsList] = await Promise.all([
-        performSearch(apiBaseUrl, config.accessToken, searchParams) as Promise<SearchResponse>,
+        performSearch(apiBaseUrl, config.accessToken, searchParams, config.testMode) as Promise<SearchResponse>,
         performAutocomplete(apiBaseUrl, config.accessToken, q).catch(() => []),
       ]);
 
@@ -250,6 +250,7 @@ function SearchApp({ config, apiBaseUrl }: SearchAppProps) {
         config.accessToken,
         payload,
         ac.signal,
+        config.testMode,
       )) {
         // Bail if the query has moved on.
         if (lastQueryRef.current !== q) return;

@@ -11,6 +11,8 @@ vi.mock('@/features/analytics', () => ({
   trackToolExecution: (...args: unknown[]) => trackToolExecution(...args),
 }));
 
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+
 import { withToolAnalytics, toolCategoryFor, summariseInput } from './tool-analytics';
 import type { TurnContext, ToolDefinitionV2 } from './v2.types';
 
@@ -165,5 +167,17 @@ describe('withToolAnalytics', () => {
     const event = trackToolExecution.mock.calls[0][0];
     expect(event.toolCategory).toBe('action');
     expect(event.metadata.executorType).toBe('unknown');
+  });
+});
+
+describe('where a tool call came from', () => {
+  it('records the source of the chat it ran in (an admin test chat), and live traffic otherwise', async () => {
+    const inner = vi.fn(async () => ({ success: true, data: { results: [] }, resultCount: 0 }));
+    const wrapped = withToolAnalytics(inner, turnContext(), 'turn-req-1');
+
+    await withAnalyticsSource('admin_test', () => wrapped('tool-1', 'catalog-search', {}));
+    await wrapped('tool-1', 'catalog-search', {});
+
+    expect(trackToolExecution.mock.calls.map(([event]) => event.source)).toEqual(['admin_test', 'api']);
   });
 });

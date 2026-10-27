@@ -26,7 +26,7 @@ import type { AIExperienceWithTools } from '@/features/ai-experience/ai-experien
 import { guardrailDecision, resolveExecutionPolicy, type ExecutionPolicy } from '@/features/ai-experience/execution-policy';
 import type { ClassificationResult } from '@/features/guardrails/message-classification.types';
 import { classifyMessage } from '@/features/guardrails/message-classifier';
-import { withAnalyticsSource } from '@/features/search/search.service';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { withSpan } from '@/features/telemetry';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 

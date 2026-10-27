@@ -62,6 +62,7 @@ import { RecentSearchesFeed } from '../_components/RecentSearchesFeed';
 import { ExperienceSelector } from '../_components/ExperienceSelector';
 import { TimeRangeSelector } from '../_components/TimeRangeSelector';
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
+import { qualityAvgResults } from '../_lib/quality-avg-results';
 import { getThresholds } from '@/features/analytics/analytics-thresholds';
 
 // ============================================================================
@@ -677,22 +678,37 @@ function SearchTypesChart({ data, isLoading }: SearchTypesChartProps) {
 // ============================================================================
 
 interface PopularQueriesProps {
-  data?: Array<{ query: string; searchCount: number; avgResults: number }>;
+  data?: Array<{ query: string; searchCount: number; zeroResultCount?: number; avgResults: number }>;
   isLoading?: boolean;
+  title?: string;
+  description?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  /** Show how many times each query returned nothing */
+  showZeroResults?: boolean;
+  /** Shown instead of "No search data yet" when the list is empty */
+  emptyMessage?: string;
 }
 
-function PopularQueries({ data, isLoading }: PopularQueriesProps) {
+function PopularQueries({
+  data,
+  isLoading,
+  title = 'Popular Searches',
+  description = 'Most searched queries typed by visitors, with the average number of results',
+  icon: Icon = Search,
+  showZeroResults = false,
+  emptyMessage = 'No search data yet',
+}: PopularQueriesProps) {
   if (isLoading) {
     return (
       <Card className="rounded-2xl border-border/60 shadow-sm">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-blue-500/15 p-2.5">
-              <Search className="size-5 text-blue-500" />
+              <Icon className="size-5 text-blue-500" />
             </div>
-            <CardTitle className="text-lg font-semibold">Popular Searches</CardTitle>
+            <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           </div>
-          <p className="ml-12 text-sm text-muted-foreground">Most searched queries, with the average number of results</p>
+          <p className="ml-12 text-sm text-muted-foreground">{description}</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -712,16 +728,16 @@ function PopularQueries({ data, isLoading }: PopularQueriesProps) {
       <CardHeader className="pb-2">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-blue-500/15 p-2.5">
-            <Search className="size-5 text-blue-500" />
+            <Icon className="size-5 text-blue-500" />
           </div>
-          <CardTitle className="text-lg font-semibold">Popular Searches</CardTitle>
+          <CardTitle className="text-lg font-semibold">{title}</CardTitle>
         </div>
-        <p className="ml-12 text-sm text-muted-foreground">Most searched queries, with the average number of results</p>
+        <p className="ml-12 text-sm text-muted-foreground">{description}</p>
       </CardHeader>
       <CardContent>
         {queries.length === 0 ? (
-          <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-            No search data yet
+          <div className="flex h-[200px] items-center justify-center text-center text-sm text-muted-foreground">
+            {emptyMessage}
           </div>
         ) : (
           <div className="space-y-2">
@@ -737,6 +753,11 @@ function PopularQueries({ data, isLoading }: PopularQueriesProps) {
                   <span className="font-medium">{displayQuery(item.query)}</span>
                 </div>
                 <div className="flex items-center gap-4">
+                  {showZeroResults && !!item.zeroResultCount && (
+                    <span className="text-sm text-red-600 dark:text-red-400">
+                      {formatNumber(item.zeroResultCount)} with no results
+                    </span>
+                  )}
                   <span className="text-sm text-muted-foreground">
                     {formatNumber(item.avgResults)} avg results
                   </span>
@@ -761,10 +782,12 @@ interface FailedSearchesProps {
   data?: Array<{ query: string; occurrenceCount: number; lastSeen: string }>;
   /** Shown instead of the list when there is nothing meaningful to list */
   emptyMessage?: string;
+  /** Searches by the assistant failed too: an empty list then isn't "all successful" */
+  assistantFailed?: boolean;
   isLoading?: boolean;
 }
 
-function FailedSearches({ data, emptyMessage, isLoading }: FailedSearchesProps) {
+function FailedSearches({ data, emptyMessage, assistantFailed, isLoading }: FailedSearchesProps) {
   if (isLoading) {
     return (
       <Card className="rounded-2xl border-border/60 shadow-sm">
@@ -775,7 +798,7 @@ function FailedSearches({ data, emptyMessage, isLoading }: FailedSearchesProps) 
             </div>
             <CardTitle className="text-lg font-semibold">Failed Searches</CardTitle>
           </div>
-          <p className="ml-12 text-sm text-muted-foreground">Queries that returned no results</p>
+          <p className="ml-12 text-sm text-muted-foreground">Queries visitors typed that returned no results</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -799,12 +822,17 @@ function FailedSearches({ data, emptyMessage, isLoading }: FailedSearchesProps) 
           </div>
           <CardTitle className="text-lg font-semibold">Failed Searches</CardTitle>
         </div>
-        <p className="ml-12 text-sm text-muted-foreground">Queries that returned no results</p>
+        <p className="ml-12 text-sm text-muted-foreground">Queries visitors typed that returned no results</p>
       </CardHeader>
       <CardContent>
         {emptyMessage ? (
           <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
             {emptyMessage}
+          </div>
+        ) : queries.length === 0 && assistantFailed ? (
+          <div className="flex h-[200px] flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground">
+            <p>No failed visitor searches.</p>
+            <p>Some of the assistant&apos;s searches found nothing.</p>
           </div>
         ) : queries.length === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2">
@@ -1017,16 +1045,16 @@ export default function AnalyticsOverviewPage() {
   // Calculate metrics
   const totalSearches = safeNumber(data?.overview?.totalSearches);
   const zeroResultRate = safeNumber(data?.overview?.zeroResultRate);
-  const failedSearches = Math.round(totalSearches * zeroResultRate);
+  const failedSearches = safeNumber(data?.overview?.zeroResultSearches);
   const successRate = 1 - zeroResultRate;
   const avgDuration = safeNumber(data?.overview?.avgSearchDurationMs);
 
   // Quality score (when specific experience selected) — average results across the top
-  // queries, weighted by how often each was searched
-  const popularSearchCount = (data?.popularQueries ?? []).reduce((sum, q) => sum + q.searchCount, 0);
-  const avgResults = popularSearchCount > 0
-    ? data!.popularQueries.reduce((sum, q) => sum + q.avgResults * q.searchCount, 0) / popularSearchCount
-    : 0;
+  // queries. Visitor and assistant queries both count, as they do in the totals: a chat
+  // experience's searches are mostly the assistant's.
+  const avgResults = qualityAvgResults([...(data?.popularQueries ?? []), ...(data?.assistantQueries ?? [])]);
+  const topVisitorQuery = data?.popularQueries?.[0];
+  const topAssistantQuery = data?.assistantQueries?.[0];
   const qualityScore = calculateQualityScore(zeroResultRate, avgResults, avgDuration);
   const isAllExperiences = !experienceId;
   const isSearchExperience = experienceType === 'search';
@@ -1243,7 +1271,7 @@ export default function AnalyticsOverviewPage() {
       <div className="space-y-6">
         <SectionHeader
           title="Search Volume & Usage"
-          description="Includes searches typed by users, searches made by AI assistants, and automatic browse requests"
+          description="Totals include searches typed by visitors and searches made by AI assistants. Popular and failed searches list only what visitors typed."
         />
         {searchesFromToolCalls && (
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
@@ -1266,7 +1294,7 @@ export default function AnalyticsOverviewPage() {
           <MetricCard
             title="Failed Searches"
             value={formatNumber(failedSearches)}
-            subtitle={totalSearches > 0 ? `returned no results (${formatPercent(zeroResultRate)} of searches)` : 'returned no results'}
+            subtitle={totalSearches > 0 ? `returned no results (${formatPercent(zeroResultRate)} of searches that ran)` : 'returned no results'}
             icon={SearchX}
             iconBgColor="bg-red-100 dark:bg-red-900"
             iconColor="text-red-600 dark:text-red-400"
@@ -1285,11 +1313,19 @@ export default function AnalyticsOverviewPage() {
           />
           <MetricCard
             title="Most Popular Search"
-            value={data?.popularQueries?.[0] ? displayQuery(data.popularQueries[0].query) : '—'}
+            value={
+              topVisitorQuery
+                ? displayQuery(topVisitorQuery.query)
+                : topAssistantQuery
+                  ? displayQuery(topAssistantQuery.query)
+                  : '—'
+            }
             subtitle={
-              data?.popularQueries?.[0]
-                ? `searched ${pluralize(data.popularQueries[0].searchCount, 'time')}`
-                : 'No searches in this period'
+              topVisitorQuery
+                ? `searched ${pluralize(topVisitorQuery.searchCount, 'time')}`
+                : topAssistantQuery
+                  ? `searched ${pluralize(topAssistantQuery.searchCount, 'time')} by the assistant`
+                  : 'No searches in this period'
             }
             icon={Star}
             iconBgColor="bg-amber-100 dark:bg-amber-900"
@@ -1310,13 +1346,34 @@ export default function AnalyticsOverviewPage() {
 
       {/* Tables Row */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <PopularQueries data={data?.popularQueries} isLoading={isLoading} />
+        <PopularQueries
+          data={data?.popularQueries}
+          isLoading={isLoading}
+          emptyMessage={
+            showAI && !searchesFromToolCalls && (data?.assistantQueries?.length ?? 0) > 0
+              ? "No visitor searches yet. The assistant's searches are under Assistant Searches."
+              : undefined
+          }
+        />
         <FailedSearches
           data={data?.zeroResults}
           emptyMessage={totalSearches === 0 ? 'No searches in this period' : searchesFromToolCalls ? 'Not available for external searches' : undefined}
+          assistantFailed={data?.assistantHasFailedSearches ?? false}
           isLoading={isLoading}
         />
       </div>
+
+      {/* What AI assistants searched for, kept apart from what visitors typed */}
+      {showAI && !searchesFromToolCalls && (
+        <PopularQueries
+          data={data?.assistantQueries}
+          isLoading={isLoading}
+          title="Assistant Searches"
+          description="What AI assistants searched for while answering visitors, with how often each query found nothing"
+          icon={Bot}
+          showZeroResults
+        />
+      )}
 
       {/* AI & Tools (hidden for search-only experiences) */}
       {showAI && (

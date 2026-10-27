@@ -21,6 +21,9 @@ import {
   type Tracer,
   type Span,
 } from '@opentelemetry/api';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
+
+import { ATTR } from './attribute-keys';
 import { isTelemetryEnabled } from './telemetry.config';
 import type { SpanOptions, StreamSpanOptions } from './telemetry.types';
 
@@ -54,6 +57,16 @@ export function getTracer(name: string = DEFAULT_TRACER_NAME, version?: string):
 // Use ROOT_CONTEXT so this span is never parented to an active request span
 const NOOP_SPAN = trace.getTracer('noop').startSpan('noop', {}, ROOT_CONTEXT);
 NOOP_SPAN.end();
+
+/**
+ * A span's attributes, plus where the work came from (an admin test chat, the playground) when
+ * it runs inside one, so reports can leave out every trace of test traffic.
+ */
+function withSource(attributes: SpanOptions['attributes']): SpanOptions['attributes'] {
+  const source = getAnalyticsSourceContext();
+  if (!source || attributes?.[ATTR.ANALYTICS_SOURCE] !== undefined) return attributes;
+  return { ...attributes, [ATTR.ANALYTICS_SOURCE]: source };
+}
 
 // ============================================================================
 // withSpan — Wrap an async function in a span
@@ -90,7 +103,7 @@ export async function withSpan<T>(
     options.name,
     {
       kind: options.kind ?? SpanKind.INTERNAL,
-      attributes: options.attributes,
+      attributes: withSource(options.attributes),
     },
     async (span) => {
       try {
@@ -122,7 +135,7 @@ export function withSpanSync<T>(options: SpanOptions, fn: (span: Span) => T): T 
   const tracer = getTracer();
   const span = tracer.startSpan(options.name, {
     kind: options.kind ?? SpanKind.INTERNAL,
-    attributes: options.attributes,
+    attributes: withSource(options.attributes),
   });
 
   try {
@@ -176,7 +189,7 @@ export async function* withStreamSpan<T>(
   const tracer = getTracer();
   const span = tracer.startSpan(options.name, {
     kind: options.kind ?? SpanKind.INTERNAL,
-    attributes: options.attributes,
+    attributes: withSource(options.attributes),
   });
 
   // Make this span the active context for the generator's execution

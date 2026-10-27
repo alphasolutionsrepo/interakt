@@ -14,11 +14,13 @@ import {
   getOverviewMetrics,
   getSearchTrends,
   getPopularQueries,
+  SEARCH_ORIGINS,
   getZeroResultQueries,
   getSearchTypeBreakdown,
   getPerformanceMetrics,
   getRecentSearchEvents,
   getQuerySearchEvents,
+  type SearchOrigin,
   type TimeRange,
 } from './index';
 import { getConversationDetail } from './conversation-analytics.service';
@@ -34,6 +36,18 @@ interface CacheEntry {
 
 const toolResultCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** The model's `origin` argument when it is one we know; anything else means both ('all'). */
+function originOf(args: Record<string, unknown>): SearchOrigin {
+  return (SEARCH_ORIGINS as readonly unknown[]).includes(args.origin) ? (args.origin as SearchOrigin) : 'all';
+}
+
+/** Says so when an `origin` the model gave wasn't recognised, so it doesn't present all searches as one kind. */
+function originNote(args: Record<string, unknown>): string {
+  return args.origin === undefined || originOf(args) === args.origin
+    ? ''
+    : `Note: origin "${String(args.origin)}" isn't one of ${SEARCH_ORIGINS.join(', ')}; these are all searches, visitors' and assistants' together.\n\n`;
+}
 
 function getCacheKey(toolName: string, args: Record<string, unknown>): string {
   return `${toolName}:${JSON.stringify(args)}`;
@@ -159,6 +173,11 @@ NOTE: For semantic intent grouping (clustered themes), use get_customer_intent_a
           type: 'number',
           description: 'Maximum number of queries to return (default 20)',
         },
+        origin: {
+          type: 'string',
+          enum: ['visitor', 'assistant', 'all'],
+          description: "Whose searches: 'visitor' (typed by visitors), 'assistant' (made by an AI assistant while answering), or 'all' (both, the default)",
+        },
       },
       required: [],
     },
@@ -197,6 +216,11 @@ NOT FOR: Understanding why a specific popular query sometimes fails (use get_que
         limit: {
           type: 'number',
           description: 'Maximum number of queries to return (default 50)',
+        },
+        origin: {
+          type: 'string',
+          enum: ['visitor', 'assistant', 'all'],
+          description: "Whose searches: 'visitor' (typed by visitors), 'assistant' (made by an AI assistant while answering), or 'all' (both, the default)",
         },
       },
       required: [],
@@ -582,7 +606,7 @@ WHAT IT RETURNS:
 INTELLIGENT INTERPRETATION:
 - Compare searches that returned results vs zero results
 - Look for patterns: Did zero results happen with filters? With certain search types?
-- triggerType shows if it was user, AI tool, or AI RAG initiated
+- trigger shows who ran it: user (a visitor), ai_tool (the AI's Search tool), or a lookup named by its tool or step (ai_tool:lookup = Find Record, ai_tool:enumerate = List Values, ai_step:parameter_context, ai_step:query_interpretation, ai_step:field_values_legacy); lookups aren't counted as searches
 - hasFilters=true with isZeroResult=true might indicate filters are too restrictive
 - After showing results, suggest: "Would you like me to look for patterns in why some searches failed?"`,
     parameters: {
@@ -770,15 +794,15 @@ export async function executeAnalyticsTool(
       }
 
       case 'get_popular_queries': {
-        const data = await getPopularQueries(timeRange, experienceId, limit || 20);
-        formatted = formatPopularQueriesForAI(data);
+        const data = await getPopularQueries(timeRange, experienceId, limit || 20, undefined, originOf(args));
+        formatted = originNote(args) + formatPopularQueriesForAI(data);
         raw = data;
         break;
       }
 
       case 'get_zero_result_queries': {
-        const data = await getZeroResultQueries(timeRange, experienceId, limit || 50);
-        formatted = formatZeroResultsForAI(data);
+        const data = await getZeroResultQueries(timeRange, experienceId, limit || 50, undefined, originOf(args));
+        formatted = originNote(args) + formatZeroResultsForAI(data);
         raw = data;
         break;
       }
@@ -925,14 +949,13 @@ function formatOverviewForAI(data: Awaited<ReturnType<typeof getOverviewMetrics>
   return `Search Analytics Overview:
 - Total Searches: ${data.totalSearches.toLocaleString()}
 - Unique Queries: ${data.uniqueQueries.toLocaleString()}
-- Zero Result Rate: ${(data.zeroResultRate * 100).toFixed(1)}%
+- Zero Result Rate: ${(data.zeroResultRate * 100).toFixed(1)}% of the searches that ran
 - Average Search Latency: ${data.avgSearchDurationMs.toFixed(0)}ms
 
 Searches by Trigger:
-- User-initiated: ${data.searchesByTrigger.user.toLocaleString()}
-- AI Tool: ${data.searchesByTrigger.ai_tool.toLocaleString()}
-- AI RAG: ${data.searchesByTrigger.ai_rag.toLocaleString()}
-- System: ${data.searchesByTrigger.system.toLocaleString()}
+- Visitor searches: ${data.searchesByTrigger.user.toLocaleString()}
+- Assistant searches (Search tool): ${data.searchesByTrigger.ai_tool.toLocaleString()}
+- Lookups by Find Record, List Values and query understanding (not in Total Searches): ${data.searchesByTrigger.lookups.toLocaleString()}
 
 Total AI Requests: ${data.totalAIRequests.toLocaleString()}
 Average AI Latency: ${data.avgAIDurationMs.toFixed(0)}ms`;
@@ -1039,6 +1062,11 @@ ${
 }`;
 }
 
+/** Who ran a search, with the tool or step when it isn't a search (Find Record, List Values, AI steps) */
+function triggerOf(event: { triggerType: string; triggerStep: string | null }): string {
+  return event.triggerStep && event.triggerStep !== 'search' ? `${event.triggerType}:${event.triggerStep}` : event.triggerType;
+}
+
 function formatRecentSearchesForAI(
   data: Awaited<ReturnType<typeof getRecentSearchEvents>>
 ): string {
@@ -1050,7 +1078,7 @@ function formatRecentSearchesForAI(
 
   for (const event of data) {
     const status = event.success ? '✓' : '✗';
-    result += `${status} [${event.triggerType}] "${event.query}"
+    result += `${status} [${triggerOf(event)}] "${event.query}"
    - ${event.totalResults} results, ${event.durationMs}ms, ${event.searchType}
    - ${new Date(event.timestamp).toLocaleString()}\n`;
   }
@@ -1084,15 +1112,16 @@ function formatQuerySearchEventsForAI(
     }
   }
 
-  // Group by trigger type
+  // Group by who ran it (a lookup apart from searches)
   const byTriggerType: Record<string, { total: number; zeroResults: number }> = {};
   for (const event of data) {
-    if (!byTriggerType[event.triggerType]) {
-      byTriggerType[event.triggerType] = { total: 0, zeroResults: 0 };
+    const trigger = triggerOf(event);
+    if (!byTriggerType[trigger]) {
+      byTriggerType[trigger] = { total: 0, zeroResults: 0 };
     }
-    byTriggerType[event.triggerType].total++;
+    byTriggerType[trigger].total++;
     if (event.isZeroResult) {
-      byTriggerType[event.triggerType].zeroResults++;
+      byTriggerType[trigger].zeroResults++;
     }
   }
 
@@ -1128,7 +1157,7 @@ By Search Type:
     result += `\nSample Zero-Result Events:\n`;
     for (const event of zeroResultEvents) {
       const filterInfo = event.hasFilters ? ` [filters: ${event.filterFields?.join(', ') || 'yes'}]` : '';
-      result += `- ${new Date(event.timestamp).toLocaleString()}: ${event.searchType}, ${event.triggerType}${filterInfo}\n`;
+      result += `- ${new Date(event.timestamp).toLocaleString()}: ${event.searchType}, ${triggerOf(event)}${filterInfo}\n`;
     }
   }
 

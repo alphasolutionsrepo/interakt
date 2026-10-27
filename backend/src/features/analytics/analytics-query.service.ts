@@ -9,7 +9,8 @@
 
 import 'server-only';
 
-import { and, count, desc, eq, gte, isNull, lte, ne, or, sql, sum, avg } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, lt, lte, or, sql, sum, avg, type SQL } from 'drizzle-orm';
+import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
 import type { AnalyticsSource } from './analytics.types';
 
@@ -31,16 +32,20 @@ export interface OverviewMetrics {
   totalSearches: number;
   totalAIRequests: number;
   uniqueQueries: number;
+  /** Searches that ran and found nothing */
+  zeroResultSearches: number;
+  /** Share of the searches that ran (failed ones left out) that found nothing */
   zeroResultRate: number;
   avgSearchDurationMs: number;
   avgAIDurationMs: number;
   /** True when search counts come from AI tool-call spans (the experience searches an external index, so no search events exist) */
   searchesFromToolCalls: boolean;
+  /** Counted searches by who made them, and the lookups recorded but not counted */
   searchesByTrigger: {
     user: number;
     ai_tool: number;
-    ai_rag: number;
-    system: number;
+    /** Find Record, List Values and query understanding: recorded, not counted as searches */
+    lookups: number;
   };
 }
 
@@ -55,6 +60,8 @@ export interface SearchTrendPoint {
 export interface PopularQueryResult {
   query: string;
   searchCount: number;
+  /** Searches of this query that ran (failed ones left out): what avgResults averages over */
+  ranCount: number;
   zeroResultCount: number;
   avgResults: number;
   clickThroughRate: number | null;
@@ -190,6 +197,16 @@ export async function buildSearchConditions(
 }
 
 /**
+ * The one rule for what reports count as a search: a visitor's own, or one by the AI's Search
+ * tool. Searches other tools and AI steps run (Find Record, List Values, query understanding)
+ * are recorded with their step but not counted. Rows from before the step was recorded have none
+ * and count.
+ */
+export function countedSearch(searchEvents: typeof import('@/db/analytics-schema').searchEvents): SQL {
+  return or(isNull(searchEvents.triggerStep), eq(searchEvents.triggerStep, 'search'))!;
+}
+
+/**
  * Match search events belonging to an experience: by experienceId directly, or by the
  * experience's associated index IDs for historical events where experienceId was not yet
  * tracked. The index fallback only applies to untagged events — events tagged with a
@@ -278,16 +295,18 @@ export async function getOverviewMetrics(
     const { aiUsageEvents } = await import('@/db/analytics-schema');
     const { searchEvents, conditions: searchConditions } = await buildSearchConditions(range, experienceId);
 
-    // Search metrics
+    // Search metrics. Lookups (Find Record, List Values, query understanding) are counted under
+    // searchesByTrigger.lookups only: they aren't searches.
+    const counted = countedSearch(searchEvents);
     const searchMetrics = await analyticsDB
       .select({
-        total: count(),
-        zeroResults: count(sql`CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END`),
-        avgDuration: avg(searchEvents.durationMs),
-        userSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'user' THEN 1 END`),
-        aiToolSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'ai_tool' THEN 1 END`),
-        aiRagSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'ai_rag' THEN 1 END`),
-        systemSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'system' THEN 1 END`),
+        total: count(sql`CASE WHEN ${counted} THEN 1 END`),
+        ran: count(sql`CASE WHEN ${searchEvents.success} AND ${counted} THEN 1 END`),
+        zeroResults: count(sql`CASE WHEN ${searchEvents.isZeroResult} = true AND ${counted} THEN 1 END`),
+        avgDuration: sql<number | null>`AVG(CASE WHEN ${counted} THEN ${searchEvents.durationMs} END)`,
+        userSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'user' AND ${counted} THEN 1 END`),
+        aiToolSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'ai_tool' AND ${counted} THEN 1 END`),
+        lookups: count(sql`CASE WHEN NOT ${counted} THEN 1 END`),
       })
       .from(searchEvents)
       .where(and(...searchConditions));
@@ -298,7 +317,7 @@ export async function getOverviewMetrics(
         uniqueQueries: count(sql`DISTINCT ${searchEvents.queryNormalized}`),
       })
       .from(searchEvents)
-      .where(and(...searchConditions));
+      .where(and(...searchConditions, countedSearch(searchEvents)));
 
     // AI metrics — use otelSpans when filtering by experience (aiUsageEvents has no experienceId)
     let aiData: { total: number; avgDuration: number };
@@ -315,12 +334,14 @@ export async function getOverviewMetrics(
           eq(otelSpans.operationName, 'pipeline.v2.turn'),
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
+          notTestTraffic(otelSpans),
         ));
       aiData = { total: Number(aiSpanRows[0]?.total ?? 0), avgDuration: Number(aiSpanRows[0]?.avgDuration ?? 0) };
     } else {
       const aiConditions = [
         gte(aiUsageEvents.timestamp, range.from),
         lte(aiUsageEvents.timestamp, range.to),
+        eq(aiUsageEvents.source, 'api'),
       ];
       const aiMetrics = await analyticsDB
         .select({
@@ -335,16 +356,22 @@ export async function getOverviewMetrics(
     const metrics = searchMetrics[0];
     const uniqueQueries = uniqueQueriesResult[0]?.uniqueQueries ?? 0;
     let totalSearches = Number(metrics?.total ?? 0);
+    let ranSearches = Number(metrics?.ran ?? 0);
     let zeroResults = Number(metrics?.zeroResults ?? 0);
     let avgSearchDurationMs = Number(metrics?.avgDuration ?? 0);
     let searchesFromToolCalls = false;
 
-    // Fallback: for AI experiences with external search (no searchEvents), use OTel tool execution spans
-    if (totalSearches === 0 && experienceId) {
+    // Searches an experience made before its searches were stored (file-store searches weren't,
+    // before) are counted from its Search tool calls: those traced before its first stored search,
+    // of any source. Calls after it are stored, so nothing is counted twice. Only Search tool
+    // calls count, by the same rule as stored searches.
+    const firstStored = experienceId ? await firstStoredSearchAt(range, experienceId) : null;
+    if (experienceId && (!firstStored || firstStored > range.from)) {
       const { otelSpans } = await import('@/db/analytics-schema');
       const toolSpanRows = await analyticsDB
         .select({
           total: count(),
+          ran: sql<number>`COUNT(CASE WHEN ${toolCallRan(otelSpans)} THEN 1 END)::int`,
           zeroResults: sql<number>`COUNT(CASE WHEN (${otelSpans.attributes}->>'alpha.v2.step.result_count')::int = 0 THEN 1 END)::int`,
           avgDuration: sql<number>`COALESCE(AVG((${otelSpans.attributes}->>'alpha.v2.action_step.duration_ms')::int), 0)`,
         })
@@ -353,13 +380,17 @@ export async function getOverviewMetrics(
           eq(otelSpans.experienceId, experienceId),
           eq(otelSpans.operationName, 'pipeline.v2.action.tool_execution'),
           gte(otelSpans.startTime, range.from),
-          lte(otelSpans.startTime, range.to),
+          firstStored ? lt(otelSpans.startTime, firstStored) : lte(otelSpans.startTime, range.to),
+          notTestTraffic(otelSpans),
+          searchToolCall(otelSpans),
         ));
       const otelSearch = toolSpanRows[0];
-      if (otelSearch && Number(otelSearch.total) > 0) {
-        totalSearches = Number(otelSearch.total);
-        zeroResults = Number(otelSearch.zeroResults);
-        avgSearchDurationMs = Number(otelSearch.avgDuration);
+      const fromCalls = Number(otelSearch?.total ?? 0);
+      if (fromCalls > 0) {
+        avgSearchDurationMs = (avgSearchDurationMs * totalSearches + Number(otelSearch.avgDuration) * fromCalls) / (totalSearches + fromCalls);
+        totalSearches += fromCalls;
+        ranSearches += Number(otelSearch.ran);
+        zeroResults += Number(otelSearch.zeroResults);
         searchesFromToolCalls = true;
       }
     }
@@ -368,15 +399,15 @@ export async function getOverviewMetrics(
       totalSearches,
       totalAIRequests: aiData.total,
       uniqueQueries: Number(uniqueQueries),
-      zeroResultRate: totalSearches > 0 ? zeroResults / totalSearches : 0,
+      zeroResultSearches: zeroResults,
+      zeroResultRate: ranSearches > 0 ? zeroResults / ranSearches : 0,
       avgSearchDurationMs,
       avgAIDurationMs: aiData.avgDuration,
       searchesFromToolCalls,
       searchesByTrigger: {
         user: Number(metrics?.userSearches ?? 0),
         ai_tool: Number(metrics?.aiToolSearches ?? 0),
-        ai_rag: Number(metrics?.aiRagSearches ?? 0),
-        system: Number(metrics?.systemSearches ?? 0),
+        lookups: Number(metrics?.lookups ?? 0),
       },
     };
   } catch (error) {
@@ -385,16 +416,58 @@ export async function getOverviewMetrics(
   }
 }
 
+/**
+ * A test-traffic span, written out rather than with bound values so it matches the condition of
+ * idx_otel_spans_test_traffic (db/analytics-schema/otel-spans.schema.ts).
+ */
+const TEST_TRAFFIC_SPAN = sql.raw(`source_span.attributes->>'${ATTR.ANALYTICS_SOURCE}' IN ('admin_test', 'playground')`);
+
+/**
+ * Leaves out spans from admin test chats and the playground. The chat pipeline records the
+ * source on the trace's chat.ai_experience.turn span only, so this checks the whole trace.
+ * The partial index on test-traffic spans keeps the check from reading every span ever stored.
+ */
+export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND ${TEST_TRAFFIC_SPAN})`;
+}
+
+/**
+ * Tool calls that ran a Search tool: the tool-call counterpart of countedSearch. Calls traced
+ * before the span recorded the tool's kind count, as they did then.
+ */
+export function searchToolCall(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  const executor = sql`${otelSpans.attributes}->>${ATTR.V2_STEP_TOOL_EXECUTOR}`;
+  return sql`(${executor} IS NULL OR (${executor} = 'data_source' AND ${otelSpans.attributes}->>${ATTR.V2_STEP_TOOL_OPERATION} = 'search'))`;
+}
+
+/** Tool calls that ran: a failed call found nothing because it didn't run. Older spans count. */
+export function toolCallRan(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  return sql`COALESCE(${otelSpans.attributes}->>'alpha.v2.step.tool_success', 'true') <> 'false'`;
+}
+
+/** When an experience's first counted search was stored, of any source, up to the range's end. */
+async function firstStoredSearchAt(range: DateRange, experienceId: string): Promise<Date | null> {
+  const { analyticsDB } = await import('@/db/index');
+  if (!analyticsDB) return null;
+  const { searchEvents, conditions } = await buildSearchConditions({ from: new Date(0), to: range.to }, experienceId, 'all');
+  const [row] = await analyticsDB
+    .select({ first: sql<string | null>`MIN(${searchEvents.timestamp})` })
+    .from(searchEvents)
+    .where(and(...conditions, countedSearch(searchEvents)));
+  return row?.first ? new Date(row.first) : null;
+}
+
 function getEmptyOverviewMetrics(): OverviewMetrics {
   return {
     totalSearches: 0,
     totalAIRequests: 0,
     uniqueQueries: 0,
+    zeroResultSearches: 0,
     zeroResultRate: 0,
     avgSearchDurationMs: 0,
     avgAIDurationMs: 0,
     searchesFromToolCalls: false,
-    searchesByTrigger: { user: 0, ai_tool: 0, ai_rag: 0, system: 0 },
+    searchesByTrigger: { user: 0, ai_tool: 0, lookups: 0 },
   };
 }
 
@@ -416,6 +489,8 @@ export async function getSearchTrends(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
+    // Match the overview totals: lookups aren't searches
+    conditions.push(countedSearch(searchEvents));
 
     // Determine time bucket expression based on granularity
     let timeBucketExpr;
@@ -460,13 +535,30 @@ export async function getSearchTrends(
 }
 
 /**
+ * Who made a search: a visitor typing it, an AI assistant searching to answer one, or either
+ * ('all'). Lookups (Find Record, List Values, query understanding) are none of them.
+ */
+export const SEARCH_ORIGINS = ['visitor', 'assistant', 'all'] as const;
+export type SearchOrigin = (typeof SEARCH_ORIGINS)[number];
+
+function searchOriginCondition(
+  searchEvents: typeof import('@/db/analytics-schema').searchEvents,
+  origin: SearchOrigin,
+) {
+  const counted = countedSearch(searchEvents);
+  if (origin === 'all') return counted;
+  return and(eq(searchEvents.triggerType, origin === 'visitor' ? 'user' : 'ai_tool'), counted)!;
+}
+
+/**
  * Get popular queries
  */
 export async function getPopularQueries(
   timeRange: TimeRange,
   experienceId?: string,
   limit: number = 20,
-  customRange?: DateRange
+  customRange?: DateRange,
+  origin: SearchOrigin = 'all',
 ): Promise<PopularQueryResult[]> {
   const range = getDateRange(timeRange, customRange);
 
@@ -477,15 +569,16 @@ export async function getPopularQueries(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
-    // Internal lookups (facet values, vocabularies) are not queries anyone asked
-    conditions.push(ne(searchEvents.triggerType, 'system'));
+    conditions.push(searchOriginCondition(searchEvents, origin));
 
     const results = await analyticsDB
       .select({
         query: searchEvents.queryNormalized,
         searchCount: count(),
+        ranCount: count(sql`CASE WHEN ${searchEvents.success} THEN 1 END`),
         zeroResultCount: count(sql`CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END`),
-        avgResults: avg(searchEvents.totalResults),
+        // A failed search found nothing because it didn't run: it isn't averaged in as 0 results
+        avgResults: sql<string | null>`AVG(CASE WHEN ${searchEvents.success} THEN ${searchEvents.totalResults} END)`,
       })
       .from(searchEvents)
       .where(and(...conditions))
@@ -496,6 +589,7 @@ export async function getPopularQueries(
     return results.map((row) => ({
       query: row.query,
       searchCount: Number(row.searchCount),
+      ranCount: Number(row.ranCount),
       zeroResultCount: Number(row.zeroResultCount),
       avgResults: Number(row.avgResults ?? 0),
       clickThroughRate: null, // Would need click data
@@ -513,7 +607,8 @@ export async function getZeroResultQueries(
   timeRange: TimeRange,
   experienceId?: string,
   limit: number = 50,
-  customRange?: DateRange
+  customRange?: DateRange,
+  origin: SearchOrigin = 'all',
 ): Promise<ZeroResultQueryResult[]> {
   const range = getDateRange(timeRange, customRange);
 
@@ -525,7 +620,7 @@ export async function getZeroResultQueries(
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
     conditions.push(eq(searchEvents.isZeroResult, true));
-    conditions.push(ne(searchEvents.triggerType, 'system'));
+    conditions.push(searchOriginCondition(searchEvents, origin));
 
     const results = await analyticsDB
       .select({
@@ -570,6 +665,8 @@ export async function getSearchTypeBreakdown(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
+    // Match the overview totals: lookups aren't searches
+    conditions.push(countedSearch(searchEvents));
 
     const results = await analyticsDB
       .select({
@@ -611,6 +708,8 @@ export async function getPerformanceMetrics(
     }
 
     const { searchEvents, conditions } = await buildSearchConditions(range, experienceId);
+    // Match the overview totals: lookups aren't searches
+    conditions.push(countedSearch(searchEvents));
 
     const results = await analyticsDB
       .select({
@@ -690,6 +789,7 @@ export async function getAIUsageMetrics(
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
           inExperienceTrace(otelSpans, experienceId, range),
+          notTestTraffic(otelSpans),
         ));
 
       const row = results[0];
@@ -713,6 +813,7 @@ export async function getAIUsageMetrics(
     const conditions = [
       gte(aiUsageEvents.timestamp, range.from),
       lte(aiUsageEvents.timestamp, range.to),
+      eq(aiUsageEvents.source, 'api'),
     ];
 
     const results = await analyticsDB
@@ -805,6 +906,7 @@ export async function getToolUsageMetrics(
         gte(otelSpans.startTime, range.from),
         lte(otelSpans.startTime, range.to),
         inExperienceTrace(otelSpans, experienceId, range),
+        notTestTraffic(otelSpans),
       );
 
       const [overallResults, byToolResults, byCategoryResults] = await Promise.all([
@@ -838,6 +940,7 @@ export async function getToolUsageMetrics(
     const conditions = [
       gte(aiToolExecutions.timestamp, range.from),
       lte(aiToolExecutions.timestamp, range.to),
+      eq(aiToolExecutions.source, 'api'),
     ];
 
     // Overall metrics
@@ -914,6 +1017,7 @@ export async function getRecentSearchEvents(
     query: string;
     searchType: string;
     triggerType: string;
+    triggerStep: string | null;
     totalResults: number;
     durationMs: number;
     success: boolean;
@@ -939,6 +1043,7 @@ export async function getRecentSearchEvents(
         query: searchEvents.queryText,
         searchType: searchEvents.searchType,
         triggerType: searchEvents.triggerType,
+        triggerStep: searchEvents.triggerStep,
         totalResults: searchEvents.totalResults,
         durationMs: searchEvents.durationMs,
         success: searchEvents.success,
@@ -954,6 +1059,7 @@ export async function getRecentSearchEvents(
       query: row.query,
       searchType: row.searchType,
       triggerType: row.triggerType,
+      triggerStep: row.triggerStep,
       totalResults: row.totalResults,
       durationMs: row.durationMs,
       success: row.success,
@@ -980,6 +1086,7 @@ export async function getQuerySearchEvents(
     query: string;
     searchType: string;
     triggerType: string;
+    triggerStep: string | null;
     totalResults: number;
     isZeroResult: boolean;
     durationMs: number;
@@ -1006,6 +1113,7 @@ export async function getQuerySearchEvents(
         query: searchEvents.queryText,
         searchType: searchEvents.searchType,
         triggerType: searchEvents.triggerType,
+        triggerStep: searchEvents.triggerStep,
         totalResults: searchEvents.totalResults,
         isZeroResult: searchEvents.isZeroResult,
         durationMs: searchEvents.durationMs,
@@ -1024,6 +1132,7 @@ export async function getQuerySearchEvents(
       query: row.query,
       searchType: row.searchType,
       triggerType: row.triggerType,
+      triggerStep: row.triggerStep,
       totalResults: row.totalResults,
       isZeroResult: row.isZeroResult,
       durationMs: row.durationMs,

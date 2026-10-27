@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/sha
 import { Skeleton } from '@/shared/ui/components/skeleton';
 import { Badge } from '@/shared/ui/components/badge';
 import { ScrollArea } from '@/shared/ui/components/scroll-area';
-import { Search, Bot, Server, CheckCircle, XCircle } from 'lucide-react';
+import { Search, Bot, CheckCircle, XCircle } from 'lucide-react';
 import type { RecentSearchEvent } from '../_lib/hooks/useAnalytics';
 
 interface RecentSearchesFeedProps {
@@ -21,16 +21,23 @@ function formatTime(timestamp: string): string {
   return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
-function getTriggerLabel(triggerType: string): string {
+/** Names a step the way the admin knows it: the tool attached to the experience, or the AI feature */
+const STEP_LABELS: Record<string, string> = {
+  lookup: 'Find Record',
+  enumerate: 'List Values',
+  parameter_context: 'Filter values',
+  query_interpretation: 'Query understanding',
+  field_values_legacy: 'Field values (earlier)',
+};
+
+function getTriggerLabel(triggerType: string, triggerStep: string | null): string {
   switch (triggerType) {
     case 'user':
       return 'User search';
     case 'ai_tool':
-      return 'AI tool search';
-    case 'ai_rag':
-      return 'AI context lookup';
-    case 'system':
-      return 'Automatic';
+      return !triggerStep || triggerStep === 'search' ? 'AI tool search' : `AI tool: ${STEP_LABELS[triggerStep] ?? triggerStep}`;
+    case 'ai_step':
+      return `AI step: ${STEP_LABELS[triggerStep ?? ''] ?? triggerStep ?? 'unknown'}`;
     default:
       return triggerType;
   }
@@ -44,13 +51,9 @@ function isBrowseQuery(query: string): boolean {
 
 function getTriggerIcon(triggerType: string) {
   switch (triggerType) {
-    case 'user':
-      return <Search className="h-3 w-3" />;
     case 'ai_tool':
-    case 'ai_rag':
+    case 'ai_step':
       return <Bot className="h-3 w-3" />;
-    case 'system':
-      return <Server className="h-3 w-3" />;
     default:
       return <Search className="h-3 w-3" />;
   }
@@ -61,10 +64,8 @@ function getTriggerColor(triggerType: string) {
     case 'user':
       return 'bg-blue-500/10 text-blue-500';
     case 'ai_tool':
-    case 'ai_rag':
+    case 'ai_step':
       return 'bg-purple-500/10 text-purple-500';
-    case 'system':
-      return 'bg-gray-500/10 text-gray-500';
     default:
       return 'bg-gray-500/10 text-gray-500';
   }
@@ -144,7 +145,7 @@ export function RecentSearchesFeed({ data, isLoading }: RecentSearchesFeedProps)
                       className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${getTriggerColor(event.triggerType)}`}
                     >
                       {getTriggerIcon(event.triggerType)}
-                      {getTriggerLabel(event.triggerType)}
+                      {getTriggerLabel(event.triggerType, event.triggerStep)}
                     </span>
                     <Badge variant="outline" className={`text-xs ${getSearchTypeBadge(event.searchType)}`}>
                       {event.searchType}

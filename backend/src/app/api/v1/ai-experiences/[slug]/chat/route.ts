@@ -60,11 +60,10 @@ export async function POST(
 
   // ── Authenticate ───────────────────────────────────────────────────────────
   // Access token (external/demo-site clients) or dashboard session (admin test panel)
-  const { caller, refused } = await authenticateTokenOrSession(request, aiExperienceAccess(experience));
+  const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, aiExperienceAccess(experience));
   if (!caller) {
     return refused ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const analyticsSource: 'api' | 'admin_test' = caller === 'admin' ? 'admin_test' : 'api';
 
   // ── Stream pipeline ────────────────────────────────────────────────────────
   const encoder = new TextEncoder();

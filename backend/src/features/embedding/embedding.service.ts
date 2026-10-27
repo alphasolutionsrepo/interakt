@@ -30,15 +30,12 @@ const logger = createLogger('embedding-service');
  */
 export async function embed(
   text: string,
-  options?: EmbeddingOptions,
+  options: EmbeddingOptions,
 ): Promise<number[] | null> {
   if (!text.trim()) return null;
 
   try {
-    return await generateEmbedding(text, {
-      feature: 'embedding_service',
-      ...options,
-    });
+    return await generateEmbedding(text, options);
   } catch (error) {
     logger.error('Failed to generate embedding', error as Error);
     return null;
@@ -51,15 +48,12 @@ export async function embed(
  */
 export async function embedBatch(
   texts: string[],
-  options?: EmbeddingOptions,
+  options: EmbeddingOptions,
 ): Promise<Array<number[] | null>> {
   if (texts.length === 0) return [];
 
   try {
-    const result = await generateEmbeddings(texts, {
-      feature: 'embedding_service',
-      ...options,
-    });
+    const result = await generateEmbeddings(texts, options);
     // Map results back by index, filling nulls for any gaps
     const vectors: Array<number[] | null> = new Array(texts.length).fill(null);
     for (const entry of result.embeddings) {

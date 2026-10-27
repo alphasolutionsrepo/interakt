@@ -36,10 +36,14 @@ export function resolveApiBase(override?: string): string {
   return base.slice(0, end);
 }
 
-function buildHeaders(accessToken: string, contentType = 'application/json'): HeadersInit {
+/** Marks a request from the admin's Widget playground; the server also needs the admin's login. */
+export const TEST_MARKER_HEADER = 'X-Interakt-Test';
+
+function buildHeaders(accessToken: string, testMode = false): HeadersInit {
   return {
-    'Content-Type': contentType,
+    'Content-Type': 'application/json',
     'X-Access-Token': accessToken,
+    ...(testMode && { [TEST_MARKER_HEADER]: '1' }),
   };
 }
 
@@ -82,11 +86,14 @@ export async function performSearch(
   apiBaseUrl: string,
   accessToken: string,
   params: SearchParams,
+  testMode = false,
 ): Promise<SearchResponse> {
   const response = await fetch(`${apiBaseUrl}/api/v1/search`, {
     method: 'POST',
-    headers: buildHeaders(accessToken),
-    credentials: 'omit',
+    headers: buildHeaders(accessToken, testMode),
+    // Same origin only: in the admin's Widget playground the login goes with the test marker,
+    // so the server records a test; a visitor on another site sends no cookie.
+    credentials: 'same-origin',
     body: JSON.stringify(params),
   });
 
@@ -147,14 +154,17 @@ export async function* streamSummarize(
   accessToken: string,
   params: SummarizeParams,
   signal?: AbortSignal,
+  testMode = false,
 ): AsyncGenerator<string, void, void> {
   const response = await fetch(`${apiBaseUrl}/api/v1/summarize`, {
     method: 'POST',
     headers: {
-      ...buildHeaders(accessToken),
+      ...buildHeaders(accessToken, testMode),
       Accept: 'text/event-stream',
     },
-    credentials: 'omit',
+    // Same origin only: in the admin's Widget playground the login goes with the test marker,
+    // so the server records a test; a visitor on another site sends no cookie.
+    credentials: 'same-origin',
     body: JSON.stringify(params),
     signal,
   });
@@ -207,6 +217,8 @@ export interface ChatStreamOptions {
   message: string;
   sessionId?: string;
   signal?: AbortSignal;
+  /** The admin's Widget playground (see BaseConfig.testMode) */
+  testMode?: boolean;
 }
 
 /**
@@ -220,15 +232,17 @@ export interface ChatStreamOptions {
 export async function* streamChat(
   options: ChatStreamOptions,
 ): AsyncGenerator<ChatStreamEvent, void, void> {
-  const { apiBaseUrl, accessToken, message, sessionId, signal } = options;
+  const { apiBaseUrl, accessToken, message, sessionId, signal, testMode } = options;
 
   const response = await fetch(`${apiBaseUrl}/api/v1/ai-experiences/chat`, {
     method: 'POST',
     headers: {
-      ...buildHeaders(accessToken),
+      ...buildHeaders(accessToken, testMode),
       Accept: 'text/event-stream',
     },
-    credentials: 'omit',
+    // Same origin only: in the admin's Widget playground the login goes with the test marker,
+    // so the server records a test; a visitor on another site sends no cookie.
+    credentials: 'same-origin',
     body: JSON.stringify({ message, sessionId }),
     signal,
   });

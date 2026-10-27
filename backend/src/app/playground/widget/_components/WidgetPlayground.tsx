@@ -79,6 +79,8 @@ function buildIframeDoc(spec: AppliedSpec, origin: string): string {
   const initConfig: Record<string, unknown> = {
     containerId,
     accessToken: spec.accessToken,
+    // Its chats, searches and summaries are tests, not visitor traffic (with the admin's login)
+    testMode: true,
     theme: spec.embed.widgetTheme,
     primaryColor: spec.embed.primaryColor,
     backgroundColor: spec.embed.backgroundColor,

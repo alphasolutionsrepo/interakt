@@ -107,7 +107,8 @@ function normalizeFieldType(fieldType: string): FieldConstraint['fieldType'] {
  */
 async function fetchFacetValues(searchIndexId: string, field: string): Promise<string[]> {
     try {
-        // Vocabulary lookup for interpretation, not a visitor search: tagged 'system'.
+        // Query understanding loads the field's values before asking the AI: a fixed AI step, not a
+        // visitor search, so search reports don't count it.
         const response = await searchService.searchById(searchIndexId, {
             query: '*',
             searchType: 'lexical',
@@ -119,7 +120,7 @@ async function fetchFacetValues(searchIndexId: string, field: string): Promise<s
                 orderBy: 'count',
                 orderDirection: 'desc',
             }],
-        }, { triggerType: 'system' });
+        }, { triggerType: 'ai_step', triggerStep: 'query_interpretation' });
         return response.facets?.find(f => f.field === field)?.buckets.map(b => String(b.key)) ?? [];
     } catch (err) {
         // A field whose values cannot be listed is still filterable; the model just

@@ -8,6 +8,7 @@
  * (that's handled by ZeroResultRetryStep).
  */
 
+import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
 import type { ActionStep, ActionStepContext, ActionStepDeps, ActionStepResult } from './action-step.types';
 
@@ -47,6 +48,9 @@ export class ToolExecutionStep implements ActionStep {
         'alpha.v2.step.input_params': JSON.stringify(params),
         'alpha.v2.step.result_count': toolResult.resultCount ?? -1,
         'alpha.v2.step.tool_success': toolResult.success,
+        // Reports count a tool call as a search only when it ran a Search tool
+        [ATTR.V2_STEP_TOOL_EXECUTOR]: ctx.toolDef.executorType,
+        ...(ctx.toolDef.operation ? { [ATTR.V2_STEP_TOOL_OPERATION]: ctx.toolDef.operation } : {}),
       };
       if (toolResult.error) {
         spanAttributes['alpha.v2.step.error'] = toolResult.error;

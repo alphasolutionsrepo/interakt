@@ -582,7 +582,7 @@ export function createProductionEpisodicMemoryLoader(): EpisodicMemoryLoader {
       const { embed } = await import('@/features/embedding/embedding.service');
       const memoriesRepository = await import('@/features/user-memories/user-memories.repository');
 
-      const queryVector = await embed(userMessage, { feature: 'episodic_memory' } as any);
+      const queryVector = await embed(userMessage, { feature: 'episodic_memory' });
       if (!queryVector) return [];
 
       const memories = await memoriesRepository.searchMemories(

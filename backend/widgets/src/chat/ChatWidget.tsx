@@ -281,6 +281,7 @@ function ChatApp({
         message: text,
         sessionId: sessionId.value,
         signal: ac.signal,
+        testMode: config.testMode,
       })) {
         if (event.type === 'content' && typeof event.text === 'string') {
           gotContent = true;
