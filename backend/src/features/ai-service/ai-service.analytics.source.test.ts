@@ -33,12 +33,14 @@ const call = (modelKey: string): AIUsageMetrics => ({
 describe('AI usage source', () => {
   it('keeps the source of the request a call ran in, through the later batch write', async () => {
     await withAnalyticsSource('admin_test', () => trackUsage(call('tested')));
-    await trackUsage({ ...call('provider playground'), feature: 'playground' });
+    await withAnalyticsSource('playground', () => trackUsage(call('provider playground')));
     await trackUsage(call('live'));
+    // The source comes from the request, never from the feature's name
+    await trackUsage({ ...call('named playground'), feature: 'playground' });
     await flushAnalytics();
 
     const sources = Object.fromEntries(trackAI.mock.calls.map(([event]) => [event.modelKey, event.source]));
-    expect(sources).toEqual({ tested: 'admin_test', 'provider playground': 'playground', live: undefined });
+    expect(sources).toEqual({ tested: 'admin_test', 'provider playground': 'playground', live: undefined, 'named playground': undefined });
   });
 });
 

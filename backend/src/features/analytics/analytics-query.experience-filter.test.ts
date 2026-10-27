@@ -305,15 +305,15 @@ describe('test chats in conversations, AI usage and tool usage', () => {
     expect((await getExperienceSummaries('24h')).find((s) => s.id === experience)?.volume).toBe(1);
   });
 
-  it('for all experiences, counts only live AI calls and tool runs (tool runs recorded before the source count as live)', async () => {
+  it('for all experiences, counts only live AI calls and tool runs (tool runs without a source count as live)', async () => {
     const aiCall = (source: string, totalTokens: number) => ({
       requestId: id(), operation: 'chat', providerId: id(), providerKey: 'ollama', modelKey: 'm', totalTokens, durationMs: 10, success: true, source,
     });
-    const toolRun = (metadata: Record<string, unknown>) => ({
-      aiRequestId: id(), toolName: 'catalog-search', toolCategory: 'retrieval', durationMs: 10, success: true, metadata,
+    const toolRun = (source?: string) => ({
+      aiRequestId: id(), toolName: 'catalog-search', toolCategory: 'retrieval', durationMs: 10, success: true, ...(source ? { source } : {}),
     });
     await testDb.db.insert(aiUsageEvents).values([aiCall('api', 100), aiCall('admin_test', 1000), aiCall('playground', 1000)]);
-    await testDb.db.insert(aiToolExecutions).values([toolRun({ source: 'api' }), toolRun({ source: 'admin_test' }), toolRun({})]);
+    await testDb.db.insert(aiToolExecutions).values([toolRun('api'), toolRun('admin_test'), toolRun()]);
 
     expect((await getAIUsageMetrics('24h')).totalTokens).toBe(100);
     expect((await getOverviewMetrics('24h')).totalAIRequests).toBe(1);

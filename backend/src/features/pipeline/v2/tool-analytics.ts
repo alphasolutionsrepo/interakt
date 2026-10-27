@@ -119,6 +119,7 @@ export function withToolAnalytics(
           sessionId: turnContext.sessionId,
           toolName: toolSlug,
           toolCategory: toolCategoryFor(toolDef?.executorType),
+          source: getAnalyticsSourceContext() ?? 'api',
           inputSummary: summariseInput(parameters),
           outputSummary: {
             resultCount: result?.resultCount ?? 0,
@@ -129,8 +130,6 @@ export function withToolAnalytics(
           ...(errorMessage ? { errorMessage } : {}),
           metadata: {
             experienceId: turnContext.experienceId,
-            // ai_tool_executions has no source column: reports read it from here
-            source: getAnalyticsSourceContext() ?? 'api',
             executorType: toolDef?.executorType ?? 'unknown',
             ...(toolDef?.operation ? { operation: toolDef.operation } : {}),
           },

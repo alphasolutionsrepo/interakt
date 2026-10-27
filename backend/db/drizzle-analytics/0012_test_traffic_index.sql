@@ -1,0 +1,1 @@
+CREATE INDEX "idx_otel_spans_test_traffic" ON "otel_spans" USING btree ("trace_id") WHERE "otel_spans"."attributes"->>'alpha.analytics.source' IN ('admin_test', 'playground');

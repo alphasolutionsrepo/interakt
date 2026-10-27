@@ -63,9 +63,8 @@ export async function trackUsage(metrics: AIUsageMetrics): Promise<void> {
     });
 
     // Add to queue for batch writing. The batch is written later, outside this request, so the
-    // request's source (live, admin test chat, playground) is read now. The AI Provider
-    // playground marks its calls with feature 'playground'.
-    const source = metrics.source ?? getAnalyticsSourceContext() ?? (metrics.feature === 'playground' ? 'playground' : undefined);
+    // request's source (live, admin test chat, playground) is read now.
+    const source = metrics.source ?? getAnalyticsSourceContext();
     analyticsQueue.push({ ...metrics, source });
 
     // Start flush timer if not already running

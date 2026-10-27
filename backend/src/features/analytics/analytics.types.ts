@@ -235,6 +235,9 @@ export interface ToolExecutionData {
   toolCategory: ToolCategory;
   toolVersion?: string;
 
+  /** Where the run came from; defaults to 'api' (live traffic) */
+  source?: AnalyticsSource;
+
   // Execution details
   inputSummary?: Record<string, unknown>;
   outputSummary?: Record<string, unknown>;

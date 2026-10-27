@@ -178,6 +178,6 @@ describe('where a tool call came from', () => {
     await withAnalyticsSource('admin_test', () => wrapped('tool-1', 'catalog-search', {}));
     await wrapped('tool-1', 'catalog-search', {});
 
-    expect(trackToolExecution.mock.calls.map(([event]) => event.metadata.source)).toEqual(['admin_test', 'api']);
+    expect(trackToolExecution.mock.calls.map(([event]) => event.source)).toEqual(['admin_test', 'api']);
   });
 });

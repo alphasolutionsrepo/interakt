@@ -217,6 +217,7 @@ export function trackToolExecution(event: ToolExecutionData): void {
       ...event,
       id: event.id ?? generateId(),
       timestamp: new Date(),
+      source: event.source ?? 'api',
       toolVersion: event.toolVersion ?? '1.0',
     };
 
@@ -483,6 +484,7 @@ async function flushToolEvents(): Promise<void> {
         toolName: e.toolName,
         toolCategory: e.toolCategory,
         toolVersion: e.toolVersion,
+        source: e.source,
         inputSummary: e.inputSummary,
         outputSummary: e.outputSummary,
         durationMs: e.durationMs,

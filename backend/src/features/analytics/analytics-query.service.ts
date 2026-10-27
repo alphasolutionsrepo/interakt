@@ -11,7 +11,6 @@ import 'server-only';
 
 import { and, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { ATTR } from '@/features/telemetry/attribute-keys';
 import type { AnalyticsSource } from './analytics.types';
 
 const logger = createLogger('analytics-query');
@@ -406,9 +405,11 @@ export async function getOverviewMetrics(
 /**
  * Leaves out spans from admin test chats and the playground. The chat pipeline records the
  * source on the trace's chat.ai_experience.turn span only, so this checks the whole trace.
+ * The condition is written out (not a bound value) so it matches idx_otel_spans_test_traffic,
+ * which keeps the check from reading every span ever stored.
  */
 export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
-  return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND source_span.attributes->>${ATTR.ANALYTICS_SOURCE} IN ('admin_test', 'playground'))`;
+  return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND source_span.attributes->>'alpha.analytics.source' IN ('admin_test', 'playground'))`;
 }
 
 /**
@@ -546,7 +547,8 @@ export async function getPopularQueries(
         query: searchEvents.queryNormalized,
         searchCount: count(),
         zeroResultCount: count(sql`CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END`),
-        avgResults: avg(searchEvents.totalResults),
+        // A failed search found nothing because it didn't run: it isn't averaged in as 0 results
+        avgResults: sql<string | null>`AVG(CASE WHEN ${searchEvents.success} THEN ${searchEvents.totalResults} END)`,
       })
       .from(searchEvents)
       .where(and(...conditions))
@@ -907,8 +909,7 @@ export async function getToolUsageMetrics(
     const conditions = [
       gte(aiToolExecutions.timestamp, range.from),
       lte(aiToolExecutions.timestamp, range.to),
-      // The source is kept in metadata (no column); rows from before it was recorded count as live
-      sql`COALESCE(${aiToolExecutions.metadata}->>'source', 'api') = 'api'`,
+      eq(aiToolExecutions.source, 'api'),
     ];
 
     // Overall metrics

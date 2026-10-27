@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Analytics: every search records what started it (a visitor, an AI tool or an AI step) and which tool or step ran it; the recent searches feed shows them by name. Searches stored before as internal lookups are relabelled.
 - Analytics: Search tool searches on a file store are recorded like those on any other source.
 - Analytics: a search that failed is recorded as failed, not as one that found nothing, so it no longer appears in Failed Searches.
+- Analytics: average results in Popular Searches and the quality score count only searches that ran, not failed ones.
 - Analytics: each AI usage record keeps what the call was for (indexing, search, chat steps, memory, the topic guardrail and so on).
 
 ### Fixed

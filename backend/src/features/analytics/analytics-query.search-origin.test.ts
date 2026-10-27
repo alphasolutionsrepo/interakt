@@ -122,6 +122,16 @@ describe('search origin', () => {
     ]);
   });
 
+  it('averages results over the searches that ran, not failed ones', async () => {
+    await testDb.db.insert(searchEvents).values([
+      searchEvent('user', 'linen shirt', 8),
+      { ...searchEvent('user', 'linen shirt', 0), success: false, isZeroResult: false },
+    ]);
+
+    const linen = (await getPopularQueries('24h', undefined, 20, undefined, 'visitor')).find((q) => q.query === 'linen shirt');
+    expect(linen).toMatchObject({ searchCount: 3, avgResults: 6 });
+  });
+
   it('lists both, without lookups, when no origin is asked for (the API and the analytics assistant)', async () => {
     expect((await getPopularQueries('24h')).map((q) => q.query).sort()).toEqual(['linen shirt', 'wedding dress', 'wool coat']);
     expect((await getZeroResultQueries('24h')).map((q) => q.query).sort()).toEqual(['wedding dress', 'wool coat']);
