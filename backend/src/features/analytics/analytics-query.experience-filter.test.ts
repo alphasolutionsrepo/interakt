@@ -95,8 +95,8 @@ function searchEvent(
 }
 
 let spanCount = 0;
-function span(traceId: string, operationName: string, attributes: Record<string, unknown>, experienceId: string | null = null) {
-  const start = new Date(Date.now() - 10 * 60_000);
+function span(traceId: string, operationName: string, attributes: Record<string, unknown>, experienceId: string | null = null, minutesAgo = 10) {
+  const start = new Date(Date.now() - minutesAgo * 60_000);
   return {
     traceId,
     spanId: (++spanCount).toString(16).padStart(16, '0'),
@@ -125,7 +125,7 @@ function conversation(experienceId: string, tokens: number, tool: string, toolSu
  * One assistant turn that made a single tool call, from a visitor or an admin test chat. As the
  * chat pipeline records it: the source on the chat turn span, not the pipeline's.
  */
-function toolTurn(experienceId: string, resultCount: number, source = 'api', tool?: { executor: string; operation?: string; success?: boolean }) {
+function toolTurn(experienceId: string, resultCount: number, source = 'api', tool?: { executor: string; operation?: string; success?: boolean }, minutesAgo = 10) {
   const traceId = id().replace(/-/g, '');
   const kind = tool
     ? {
@@ -135,9 +135,9 @@ function toolTurn(experienceId: string, resultCount: number, source = 'api', too
     }
     : {};
   return [
-    span(traceId, 'chat.ai_experience.turn', { [ATTR.ANALYTICS_SOURCE]: source }),
-    span(traceId, 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experienceId),
-    span(traceId, 'pipeline.v2.action.tool_execution', { 'alpha.v2.step.result_count': resultCount, ...kind }, experienceId),
+    span(traceId, 'chat.ai_experience.turn', { [ATTR.ANALYTICS_SOURCE]: source }, null, minutesAgo),
+    span(traceId, 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experienceId, minutesAgo),
+    span(traceId, 'pipeline.v2.action.tool_execution', { 'alpha.v2.step.result_count': resultCount, ...kind }, experienceId, minutesAgo),
   ];
 }
 
@@ -279,6 +279,28 @@ describe('searches counted from tool calls (experiences without stored searches)
     expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalSearches: 3, zeroResultSearches: 1, zeroResultRate: 0.5 });
     const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
     expect(row?.zeroResultRate).toBe(0.5);
+  });
+
+  it("keeps the Search tool calls traced before an experience's first stored search, even a test chat's", async () => {
+    // A file-store assistant: its searches were traced, not stored, until an admin tested it
+    const experience = id();
+    await testDb.db.insert(otelSpans).values([...toolTurn(experience, 0, 'api', undefined, 120), ...toolTurn(experience, 3, 'api', undefined, 120)]);
+    await testDb.db.insert(searchEvents).values(searchEvent(experience, [], 10, 'ai_tool', 'admin_test', 'search'));
+
+    expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalSearches: 2, zeroResultRate: 0.5, searchesFromToolCalls: true });
+  });
+
+  it('adds the Search tool calls traced before the first stored search to the stored ones, counting none twice', async () => {
+    const experience = id();
+    await testDb.db.insert(otelSpans).values([
+      ...toolTurn(experience, 0, 'api', undefined, 120),
+      ...toolTurn(experience, 3, 'api', undefined, 120),
+      // traced and stored after storing began: counted once, from the stored row
+      ...toolTurn(experience, 4, 'api', { executor: 'data_source', operation: 'search' }, 5),
+    ]);
+    await testDb.db.insert(searchEvents).values(searchEvent(experience, [], 10, 'ai_tool', 'api', 'search'));
+
+    expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalSearches: 3, searchesFromToolCalls: true });
   });
 
   it("doesn't count tool calls when searches are stored, even if none counts (only test chats')", async () => {

@@ -9,7 +9,7 @@
 
 import 'server-only';
 
-import { and, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, lt, lte, or, sql, sum, avg, type SQL } from 'drizzle-orm';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
 import type { AnalyticsSource } from './analytics.types';
@@ -361,10 +361,12 @@ export async function getOverviewMetrics(
     let avgSearchDurationMs = Number(metrics?.avgDuration ?? 0);
     let searchesFromToolCalls = false;
 
-    // Fallback: for AI experiences with external search (no searchEvents), use OTel tool execution spans.
-    // Any stored search (a test chat's too) means searches are tracked, so no fallback. Only
-    // Search tool calls count, by the same rule as stored searches.
-    if (totalSearches === 0 && experienceId && !(await hasAnySearchEvents(range, experienceId))) {
+    // Searches an experience made before its searches were stored (file-store searches weren't,
+    // before) are counted from its Search tool calls: those traced before its first stored search,
+    // of any source. Calls after it are stored, so nothing is counted twice. Only Search tool
+    // calls count, by the same rule as stored searches.
+    const firstStored = experienceId ? await firstStoredSearchAt(range, experienceId) : null;
+    if (experienceId && (!firstStored || firstStored > range.from)) {
       const { otelSpans } = await import('@/db/analytics-schema');
       const toolSpanRows = await analyticsDB
         .select({
@@ -378,16 +380,17 @@ export async function getOverviewMetrics(
           eq(otelSpans.experienceId, experienceId),
           eq(otelSpans.operationName, 'pipeline.v2.action.tool_execution'),
           gte(otelSpans.startTime, range.from),
-          lte(otelSpans.startTime, range.to),
+          firstStored ? lt(otelSpans.startTime, firstStored) : lte(otelSpans.startTime, range.to),
           notTestTraffic(otelSpans),
           searchToolCall(otelSpans),
         ));
       const otelSearch = toolSpanRows[0];
-      if (otelSearch && Number(otelSearch.total) > 0) {
-        totalSearches = Number(otelSearch.total);
-        ranSearches = Number(otelSearch.ran);
-        zeroResults = Number(otelSearch.zeroResults);
-        avgSearchDurationMs = Number(otelSearch.avgDuration);
+      const fromCalls = Number(otelSearch?.total ?? 0);
+      if (fromCalls > 0) {
+        avgSearchDurationMs = (avgSearchDurationMs * totalSearches + Number(otelSearch.avgDuration) * fromCalls) / (totalSearches + fromCalls);
+        totalSearches += fromCalls;
+        ranSearches += Number(otelSearch.ran);
+        zeroResults += Number(otelSearch.zeroResults);
         searchesFromToolCalls = true;
       }
     }
@@ -442,13 +445,16 @@ export function toolCallRan(otelSpans: typeof import('@/db/analytics-schema').ot
   return sql`COALESCE(${otelSpans.attributes}->>'alpha.v2.step.tool_success', 'true') <> 'false'`;
 }
 
-/** Whether an experience has any counted search in the range, of any source. */
-async function hasAnySearchEvents(range: DateRange, experienceId: string): Promise<boolean> {
+/** When an experience's first counted search was stored, of any source, up to the range's end. */
+async function firstStoredSearchAt(range: DateRange, experienceId: string): Promise<Date | null> {
   const { analyticsDB } = await import('@/db/index');
-  if (!analyticsDB) return false;
-  const { searchEvents, conditions } = await buildSearchConditions(range, experienceId, 'all');
-  const rows = await analyticsDB.select({ id: searchEvents.id }).from(searchEvents).where(and(...conditions, countedSearch(searchEvents))).limit(1);
-  return rows.length > 0;
+  if (!analyticsDB) return null;
+  const { searchEvents, conditions } = await buildSearchConditions({ from: new Date(0), to: range.to }, experienceId, 'all');
+  const [row] = await analyticsDB
+    .select({ first: sql<string | null>`MIN(${searchEvents.timestamp})` })
+    .from(searchEvents)
+    .where(and(...conditions, countedSearch(searchEvents)));
+  return row?.first ? new Date(row.first) : null;
 }
 
 function getEmptyOverviewMetrics(): OverviewMetrics {
