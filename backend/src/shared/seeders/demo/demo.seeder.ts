@@ -45,7 +45,7 @@ import {
   type MappingEntryInput,
 } from '@/features/search-index/search-index-fields.service';
 import { createSearchIndex, getSearchIndexByName, deleteSearchIndex } from '@/features/search-index/search-index.service';
-import { createToolsForDataSource, getToolsByDataSourceId, updateTool, deleteTool } from '@/features/tools/tools.service';
+import { createToolsForDataSource, getToolsByDataSourceId, notReadyToAssign, updateTool, deleteTool } from '@/features/tools/tools.service';
 import { createLogger } from '@/shared/logger/logger';
 import {
   calculateChecksum,
@@ -586,7 +586,14 @@ async function seedChatExperience(manifest: LoadedDemoManifest['manifest'], data
   // Resolve enabled tool operations → tool ids for this data source.
   const tools = await getToolsByDataSourceId(dataSourceId);
   const enabledOps = new Set(cfg.tools.enabled);
-  const toolIds = tools.filter((t) => t.operation && enabledOps.has(t.operation)).map((t) => t.id);
+  const toolIds: string[] = [];
+  for (const tool of tools.filter((t) => t.operation && enabledOps.has(t.operation))) {
+    // A reused Find Record tool from before fields could be chosen may have none: leave it out
+    // rather than fail the seed; the admin sets it up on the tool and adds it.
+    const notReady = await notReadyToAssign(tool);
+    if (notReady) logger.warn('Leaving a tool out of the chat experience', { reason: notReady });
+    else toolIds.push(tool.id);
+  }
 
   const blockMsg = 'Your message was blocked by content policy.';
   const guard = cfg.guardrails ?? {};

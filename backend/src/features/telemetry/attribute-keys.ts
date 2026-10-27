@@ -76,6 +76,7 @@ export const ATTR = {
   TOOL_TOTAL_COUNT: 'alpha.tool.total_count',    // total matching documents
   TOOL_RESULT_SIZE_CHARS: 'alpha.tool.result_size_chars',  // chars of JSON-stringified result fed back to the LLM
   TOOL_RESULT_EST_TOKENS: 'alpha.tool.result_est_tokens',  // rough token estimate (chars/4); surfaces MCP/RAG bloat
+  TOOL_LOOKUP_MISSING_FIELDS: 'alpha.tool.lookup.missing_fields', // Find Record's chosen fields the found record has no value in (comma-separated names)
 
   // === Chat Turn ===
   CHAT_USER_MESSAGE: 'alpha.chat.user_message',

@@ -59,7 +59,7 @@ export async function handleCreateAIExperience(request: NextRequest) {
   } catch (error) {
     const err = error as Error;
     logger.error('Failed to create AI experience', err);
-    if (err.message.includes('already exists') || err.message.includes('not found') || err.message.includes('not active')) {
+    if (err.message.includes('already exists') || err.message.includes('not found') || err.message.includes('not active') || err.message.includes("isn't set up")) {
       return apiResponse.badRequest(err.message);
     }
     return apiResponse.error(err);
@@ -225,7 +225,7 @@ export async function handleAssignTool(
   } catch (error) {
     const err = error as Error;
     logger.error('Failed to assign tool', err);
-    if (err.message.includes('not found') || err.message.includes('already assigned')) {
+    if (err.message.includes('not found') || err.message.includes('already assigned') || err.message.includes("isn't set up")) {
       return apiResponse.badRequest(err.message);
     }
     return apiResponse.error(err);
