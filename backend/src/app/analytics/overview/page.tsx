@@ -684,6 +684,8 @@ interface PopularQueriesProps {
   icon?: React.ComponentType<{ className?: string }>;
   /** Show how many times each query returned nothing */
   showZeroResults?: boolean;
+  /** Shown instead of "No search data yet" when the list is empty */
+  emptyMessage?: string;
 }
 
 function PopularQueries({
@@ -693,6 +695,7 @@ function PopularQueries({
   description = 'Most searched queries typed by visitors, with the average number of results',
   icon: Icon = Search,
   showZeroResults = false,
+  emptyMessage = 'No search data yet',
 }: PopularQueriesProps) {
   if (isLoading) {
     return (
@@ -732,8 +735,8 @@ function PopularQueries({
       </CardHeader>
       <CardContent>
         {queries.length === 0 ? (
-          <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-            No search data yet
+          <div className="flex h-[200px] items-center justify-center text-center text-sm text-muted-foreground">
+            {emptyMessage}
           </div>
         ) : (
           <div className="space-y-2">
@@ -1346,7 +1349,15 @@ export default function AnalyticsOverviewPage() {
 
       {/* Tables Row */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <PopularQueries data={data?.popularQueries} isLoading={isLoading} />
+        <PopularQueries
+          data={data?.popularQueries}
+          isLoading={isLoading}
+          emptyMessage={
+            showAI && !searchesFromToolCalls && (data?.assistantQueries?.length ?? 0) > 0
+              ? "No visitor searches yet. The assistant's searches are under Assistant Searches."
+              : undefined
+          }
+        />
         <FailedSearches
           data={data?.zeroResults}
           emptyMessage={totalSearches === 0 ? 'No searches in this period' : searchesFromToolCalls ? 'Not available for external searches' : undefined}
