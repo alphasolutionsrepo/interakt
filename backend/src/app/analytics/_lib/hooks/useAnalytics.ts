@@ -10,6 +10,7 @@ export interface OverviewMetrics {
   totalSearches: number;
   totalAIRequests: number;
   uniqueQueries: number;
+  zeroResultSearches: number;
   zeroResultRate: number;
   avgSearchDurationMs: number;
   avgAIDurationMs: number;
@@ -32,6 +33,8 @@ export interface SearchTrendPoint {
 export interface PopularQuery {
   query: string;
   searchCount: number;
+  /** Searches of this query that ran (failed ones left out) */
+  ranCount: number;
   zeroResultCount: number;
   avgResults: number;
   clickThroughRate: number | null;

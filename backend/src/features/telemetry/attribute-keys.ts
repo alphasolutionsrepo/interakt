@@ -77,6 +77,10 @@ export const ATTR = {
   TOOL_TOTAL_COUNT: 'alpha.tool.total_count',    // total matching documents
   TOOL_RESULT_SIZE_CHARS: 'alpha.tool.result_size_chars',  // chars of JSON-stringified result fed back to the LLM
   TOOL_RESULT_EST_TOKENS: 'alpha.tool.result_est_tokens',  // rough token estimate (chars/4); surfaces MCP/RAG bloat
+  // The tool a chat's tool-call step ran (pipeline.v2.action.tool_execution): reports count a
+  // call as a search only for executor 'data_source' with operation 'search'
+  V2_STEP_TOOL_EXECUTOR: 'alpha.v2.step.tool_executor',
+  V2_STEP_TOOL_OPERATION: 'alpha.v2.step.tool_operation',
   TOOL_LOOKUP_MISSING_FIELDS: 'alpha.tool.lookup.missing_fields', // Find Record's chosen fields the found record has no value in (comma-separated names)
 
   // === Chat Turn ===

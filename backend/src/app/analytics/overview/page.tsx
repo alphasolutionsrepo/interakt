@@ -62,6 +62,7 @@ import { RecentSearchesFeed } from '../_components/RecentSearchesFeed';
 import { ExperienceSelector } from '../_components/ExperienceSelector';
 import { TimeRangeSelector } from '../_components/TimeRangeSelector';
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
+import { qualityAvgResults } from '../_lib/quality-avg-results';
 import { getThresholds } from '@/features/analytics/analytics-thresholds';
 
 // ============================================================================
@@ -1044,18 +1045,14 @@ export default function AnalyticsOverviewPage() {
   // Calculate metrics
   const totalSearches = safeNumber(data?.overview?.totalSearches);
   const zeroResultRate = safeNumber(data?.overview?.zeroResultRate);
-  const failedSearches = Math.round(totalSearches * zeroResultRate);
+  const failedSearches = safeNumber(data?.overview?.zeroResultSearches);
   const successRate = 1 - zeroResultRate;
   const avgDuration = safeNumber(data?.overview?.avgSearchDurationMs);
 
   // Quality score (when specific experience selected) — average results across the top
-  // queries, weighted by how often each was searched. Visitor and assistant queries both
-  // count, as they do in the totals: a chat experience's searches are mostly the assistant's.
-  const topQueries = [...(data?.popularQueries ?? []), ...(data?.assistantQueries ?? [])];
-  const popularSearchCount = topQueries.reduce((sum, q) => sum + q.searchCount, 0);
-  const avgResults = popularSearchCount > 0
-    ? topQueries.reduce((sum, q) => sum + q.avgResults * q.searchCount, 0) / popularSearchCount
-    : 0;
+  // queries. Visitor and assistant queries both count, as they do in the totals: a chat
+  // experience's searches are mostly the assistant's.
+  const avgResults = qualityAvgResults([...(data?.popularQueries ?? []), ...(data?.assistantQueries ?? [])]);
   const topVisitorQuery = data?.popularQueries?.[0];
   const topAssistantQuery = data?.assistantQueries?.[0];
   const qualityScore = calculateQualityScore(zeroResultRate, avgResults, avgDuration);
@@ -1297,7 +1294,7 @@ export default function AnalyticsOverviewPage() {
           <MetricCard
             title="Failed Searches"
             value={formatNumber(failedSearches)}
-            subtitle={totalSearches > 0 ? `returned no results (${formatPercent(zeroResultRate)} of searches)` : 'returned no results'}
+            subtitle={totalSearches > 0 ? `returned no results (${formatPercent(zeroResultRate)} of searches that ran)` : 'returned no results'}
             icon={SearchX}
             iconBgColor="bg-red-100 dark:bg-red-900"
             iconColor="text-red-600 dark:text-red-400"

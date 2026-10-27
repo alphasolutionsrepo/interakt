@@ -122,6 +122,13 @@ describe('search origin', () => {
     ]);
   });
 
+  it('rates zero results over the searches that ran, leaving failed ones out of both sides', async () => {
+    await testDb.db.insert(searchEvents).values({ ...searchEvent('user', 'linen shirt', 0), success: false, isZeroResult: false });
+
+    // Counted: linen shirt, wool coat (none), wedding dress x2 (one none), and the failed one
+    expect(await getOverviewMetrics('24h')).toMatchObject({ totalSearches: 5, zeroResultSearches: 2, zeroResultRate: 0.5 });
+  });
+
   it('averages results over the searches that ran, not failed ones', async () => {
     await testDb.db.insert(searchEvents).values([
       searchEvent('user', 'linen shirt', 8),
@@ -129,7 +136,7 @@ describe('search origin', () => {
     ]);
 
     const linen = (await getPopularQueries('24h', undefined, 20, undefined, 'visitor')).find((q) => q.query === 'linen shirt');
-    expect(linen).toMatchObject({ searchCount: 3, avgResults: 6 });
+    expect(linen).toMatchObject({ searchCount: 3, ranCount: 2, avgResults: 6 });
   });
 
   it('lists both, without lookups, when no origin is asked for (the API and the analytics assistant)', async () => {

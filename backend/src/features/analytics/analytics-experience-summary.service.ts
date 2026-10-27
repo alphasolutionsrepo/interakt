@@ -11,7 +11,7 @@ import 'server-only';
 
 import { sql, count, eq, gte, lte, and, isNotNull, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { buildSearchConditions, countedSearch, getDateRange, notTestTraffic, searchToolCall, type TimeRange } from './analytics-query.service';
+import { buildSearchConditions, countedSearch, getDateRange, notTestTraffic, searchToolCall, toolCallRan, type TimeRange } from './analytics-query.service';
 
 const logger = createLogger('analytics-experience-summary');
 
@@ -77,6 +77,7 @@ export async function getExperienceSummaries(
       .select({
         experienceId: otelSpans.experienceId,
         totalSearches: sql<number>`COUNT(*)::int`,
+        ranSearches: sql<number>`COUNT(CASE WHEN ${toolCallRan(otelSpans)} THEN 1 END)::int`,
         zeroResults: sql<number>`COUNT(CASE WHEN (${otelSpans.attributes}->>'alpha.v2.step.result_count')::int = 0 THEN 1 END)::int`,
       })
       .from(otelSpans)
@@ -92,11 +93,11 @@ export async function getExperienceSummaries(
       )
       .groupBy(otelSpans.experienceId);
 
-    const zeroResultMap = new Map<string, { total: number; zero: number }>();
+    const zeroResultMap = new Map<string, { ran: number; zero: number }>();
     for (const row of toolRows) {
       if (row.experienceId) {
         zeroResultMap.set(row.experienceId, {
-          total: row.totalSearches,
+          ran: row.ranSearches,
           zero: row.zeroResults,
         });
       }
@@ -139,13 +140,14 @@ export async function getExperienceSummaries(
           const [row] = await analyticsDB
             .select({
               totalSearches: count(),
+              ranSearches: sql<number>`COUNT(CASE WHEN ${searchEvents.success} THEN 1 END)::int`,
               zeroResults: sql<number>`COUNT(CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END)::int`,
               avgDurationMs: sql<number>`COALESCE(AVG(${searchEvents.durationMs}), 0)::int`,
             })
             .from(searchEvents)
             // As in the overview, lookups aren't counted as searches
             .where(and(...conditions, countedSearch(searchEvents)));
-          return { experienceId, ...row, totalSearches: Number(row?.totalSearches ?? 0) };
+          return { experienceId, ...row, totalSearches: Number(row?.totalSearches ?? 0), ranSearches: Number(row?.ranSearches ?? 0) };
         }),
       )
     ).filter((r) => r.totalSearches > 0);
@@ -174,7 +176,7 @@ export async function getExperienceSummaries(
         volume: row.totalConversations,
         deleted: !nameInfo,
         successRate: row.totalTurns > 0 ? row.successCount / row.totalTurns : 0,
-        zeroResultRate: zeroInfo && zeroInfo.total > 0 ? zeroInfo.zero / zeroInfo.total : 0,
+        zeroResultRate: zeroInfo && zeroInfo.ran > 0 ? zeroInfo.zero / zeroInfo.ran : 0,
         avgLatencyMs: row.avgDurationMs,
       });
     }
@@ -193,11 +195,12 @@ export async function getExperienceSummaries(
         type: 'search',
         volume: row.totalSearches,
         deleted: !nameInfo,
-        successRate: row.totalSearches > 0
-          ? (row.totalSearches - row.zeroResults) / row.totalSearches
+        // Of the searches that ran: a failed search found nothing because it didn't run
+        successRate: row.ranSearches > 0
+          ? (row.ranSearches - row.zeroResults) / row.ranSearches
           : 0,
-        zeroResultRate: row.totalSearches > 0
-          ? row.zeroResults / row.totalSearches
+        zeroResultRate: row.ranSearches > 0
+          ? row.zeroResults / row.ranSearches
           : 0,
         avgLatencyMs: row.avgDurationMs,
       });

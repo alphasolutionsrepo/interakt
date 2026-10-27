@@ -949,7 +949,7 @@ function formatOverviewForAI(data: Awaited<ReturnType<typeof getOverviewMetrics>
   return `Search Analytics Overview:
 - Total Searches: ${data.totalSearches.toLocaleString()}
 - Unique Queries: ${data.uniqueQueries.toLocaleString()}
-- Zero Result Rate: ${(data.zeroResultRate * 100).toFixed(1)}%
+- Zero Result Rate: ${(data.zeroResultRate * 100).toFixed(1)}% of the searches that ran
 - Average Search Latency: ${data.avgSearchDurationMs.toFixed(0)}ms
 
 Searches by Trigger:

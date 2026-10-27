@@ -10,6 +10,7 @@
 import 'server-only';
 
 import { and, count, desc, eq, gte, isNull, lte, or, sql, sum, avg, type SQL } from 'drizzle-orm';
+import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
 import type { AnalyticsSource } from './analytics.types';
 
@@ -31,6 +32,9 @@ export interface OverviewMetrics {
   totalSearches: number;
   totalAIRequests: number;
   uniqueQueries: number;
+  /** Searches that ran and found nothing */
+  zeroResultSearches: number;
+  /** Share of the searches that ran (failed ones left out) that found nothing */
   zeroResultRate: number;
   avgSearchDurationMs: number;
   avgAIDurationMs: number;
@@ -56,6 +60,8 @@ export interface SearchTrendPoint {
 export interface PopularQueryResult {
   query: string;
   searchCount: number;
+  /** Searches of this query that ran (failed ones left out): what avgResults averages over */
+  ranCount: number;
   zeroResultCount: number;
   avgResults: number;
   clickThroughRate: number | null;
@@ -295,6 +301,7 @@ export async function getOverviewMetrics(
     const searchMetrics = await analyticsDB
       .select({
         total: count(sql`CASE WHEN ${counted} THEN 1 END`),
+        ran: count(sql`CASE WHEN ${searchEvents.success} AND ${counted} THEN 1 END`),
         zeroResults: count(sql`CASE WHEN ${searchEvents.isZeroResult} = true AND ${counted} THEN 1 END`),
         avgDuration: sql<number | null>`AVG(CASE WHEN ${counted} THEN ${searchEvents.durationMs} END)`,
         userSearches: count(sql`CASE WHEN ${searchEvents.triggerType} = 'user' AND ${counted} THEN 1 END`),
@@ -349,6 +356,7 @@ export async function getOverviewMetrics(
     const metrics = searchMetrics[0];
     const uniqueQueries = uniqueQueriesResult[0]?.uniqueQueries ?? 0;
     let totalSearches = Number(metrics?.total ?? 0);
+    let ranSearches = Number(metrics?.ran ?? 0);
     let zeroResults = Number(metrics?.zeroResults ?? 0);
     let avgSearchDurationMs = Number(metrics?.avgDuration ?? 0);
     let searchesFromToolCalls = false;
@@ -361,6 +369,7 @@ export async function getOverviewMetrics(
       const toolSpanRows = await analyticsDB
         .select({
           total: count(),
+          ran: sql<number>`COUNT(CASE WHEN ${toolCallRan(otelSpans)} THEN 1 END)::int`,
           zeroResults: sql<number>`COUNT(CASE WHEN (${otelSpans.attributes}->>'alpha.v2.step.result_count')::int = 0 THEN 1 END)::int`,
           avgDuration: sql<number>`COALESCE(AVG((${otelSpans.attributes}->>'alpha.v2.action_step.duration_ms')::int), 0)`,
         })
@@ -376,6 +385,7 @@ export async function getOverviewMetrics(
       const otelSearch = toolSpanRows[0];
       if (otelSearch && Number(otelSearch.total) > 0) {
         totalSearches = Number(otelSearch.total);
+        ranSearches = Number(otelSearch.ran);
         zeroResults = Number(otelSearch.zeroResults);
         avgSearchDurationMs = Number(otelSearch.avgDuration);
         searchesFromToolCalls = true;
@@ -386,7 +396,8 @@ export async function getOverviewMetrics(
       totalSearches,
       totalAIRequests: aiData.total,
       uniqueQueries: Number(uniqueQueries),
-      zeroResultRate: totalSearches > 0 ? zeroResults / totalSearches : 0,
+      zeroResultSearches: zeroResults,
+      zeroResultRate: ranSearches > 0 ? zeroResults / ranSearches : 0,
       avgSearchDurationMs,
       avgAIDurationMs: aiData.avgDuration,
       searchesFromToolCalls,
@@ -403,13 +414,18 @@ export async function getOverviewMetrics(
 }
 
 /**
+ * A test-traffic span, written out rather than with bound values so it matches the condition of
+ * idx_otel_spans_test_traffic (db/analytics-schema/otel-spans.schema.ts).
+ */
+const TEST_TRAFFIC_SPAN = sql.raw(`source_span.attributes->>'${ATTR.ANALYTICS_SOURCE}' IN ('admin_test', 'playground')`);
+
+/**
  * Leaves out spans from admin test chats and the playground. The chat pipeline records the
  * source on the trace's chat.ai_experience.turn span only, so this checks the whole trace.
- * The condition is written out (not a bound value) so it matches idx_otel_spans_test_traffic,
- * which keeps the check from reading every span ever stored.
+ * The partial index on test-traffic spans keeps the check from reading every span ever stored.
  */
 export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
-  return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND source_span.attributes->>'alpha.analytics.source' IN ('admin_test', 'playground'))`;
+  return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND ${TEST_TRAFFIC_SPAN})`;
 }
 
 /**
@@ -417,7 +433,13 @@ export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema')
  * before the span recorded the tool's kind count, as they did then.
  */
 export function searchToolCall(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
-  return sql`(${otelSpans.attributes}->>'alpha.v2.step.tool_executor' IS NULL OR (${otelSpans.attributes}->>'alpha.v2.step.tool_executor' = 'data_source' AND ${otelSpans.attributes}->>'alpha.v2.step.tool_operation' = 'search'))`;
+  const executor = sql`${otelSpans.attributes}->>${ATTR.V2_STEP_TOOL_EXECUTOR}`;
+  return sql`(${executor} IS NULL OR (${executor} = 'data_source' AND ${otelSpans.attributes}->>${ATTR.V2_STEP_TOOL_OPERATION} = 'search'))`;
+}
+
+/** Tool calls that ran: a failed call found nothing because it didn't run. Older spans count. */
+export function toolCallRan(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  return sql`COALESCE(${otelSpans.attributes}->>'alpha.v2.step.tool_success', 'true') <> 'false'`;
 }
 
 /** Whether an experience has any counted search in the range, of any source. */
@@ -434,6 +456,7 @@ function getEmptyOverviewMetrics(): OverviewMetrics {
     totalSearches: 0,
     totalAIRequests: 0,
     uniqueQueries: 0,
+    zeroResultSearches: 0,
     zeroResultRate: 0,
     avgSearchDurationMs: 0,
     avgAIDurationMs: 0,
@@ -546,6 +569,7 @@ export async function getPopularQueries(
       .select({
         query: searchEvents.queryNormalized,
         searchCount: count(),
+        ranCount: count(sql`CASE WHEN ${searchEvents.success} THEN 1 END`),
         zeroResultCount: count(sql`CASE WHEN ${searchEvents.isZeroResult} = true THEN 1 END`),
         // A failed search found nothing because it didn't run: it isn't averaged in as 0 results
         avgResults: sql<string | null>`AVG(CASE WHEN ${searchEvents.success} THEN ${searchEvents.totalResults} END)`,
@@ -559,6 +583,7 @@ export async function getPopularQueries(
     return results.map((row) => ({
       query: row.query,
       searchCount: Number(row.searchCount),
+      ranCount: Number(row.ranCount),
       zeroResultCount: Number(row.zeroResultCount),
       avgResults: Number(row.avgResults ?? 0),
       clickThroughRate: null, // Would need click data

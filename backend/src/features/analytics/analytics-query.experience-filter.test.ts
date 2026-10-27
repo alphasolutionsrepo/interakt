@@ -125,10 +125,14 @@ function conversation(experienceId: string, tokens: number, tool: string, toolSu
  * One assistant turn that made a single tool call, from a visitor or an admin test chat. As the
  * chat pipeline records it: the source on the chat turn span, not the pipeline's.
  */
-function toolTurn(experienceId: string, resultCount: number, source = 'api', tool?: { executor: string; operation?: string }) {
+function toolTurn(experienceId: string, resultCount: number, source = 'api', tool?: { executor: string; operation?: string; success?: boolean }) {
   const traceId = id().replace(/-/g, '');
   const kind = tool
-    ? { 'alpha.v2.step.tool_executor': tool.executor, ...(tool.operation ? { 'alpha.v2.step.tool_operation': tool.operation } : {}) }
+    ? {
+      'alpha.v2.step.tool_executor': tool.executor,
+      ...(tool.operation ? { 'alpha.v2.step.tool_operation': tool.operation } : {}),
+      ...(tool.success === undefined ? {} : { 'alpha.v2.step.tool_success': tool.success }),
+    }
     : {};
   return [
     span(traceId, 'chat.ai_experience.turn', { [ATTR.ANALYTICS_SOURCE]: source }),
@@ -259,6 +263,20 @@ describe('searches counted from tool calls (experiences without stored searches)
     ]);
 
     expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalSearches: 2, zeroResultRate: 0.5, searchesFromToolCalls: true });
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row?.zeroResultRate).toBe(0.5);
+  });
+
+  it('rates zero results over the Search tool calls that ran, in the overview and the comparison alike', async () => {
+    const experience = id();
+    const search = { executor: 'data_source', operation: 'search' };
+    await testDb.db.insert(otelSpans).values([
+      ...toolTurn(experience, 0, 'api', { ...search, success: true }),
+      ...toolTurn(experience, 3, 'api', { ...search, success: true }),
+      ...toolTurn(experience, -1, 'api', { ...search, success: false }),
+    ]);
+
+    expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalSearches: 3, zeroResultSearches: 1, zeroResultRate: 0.5 });
     const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
     expect(row?.zeroResultRate).toBe(0.5);
   });
