@@ -235,6 +235,11 @@ export interface DataSourceSchema {
    * operator curated outranks a later rediscovery.
    */
   discoveredFrom?: 'mapping' | 'sample';
+  /**
+   * For a sampled schema: the fields the latest sample showed. The schema keeps curated fields
+   * a sample missed (they may only be rare), so this tells them apart.
+   */
+  latestSampleFields?: string[];
 }
 
 // ============================================================================
