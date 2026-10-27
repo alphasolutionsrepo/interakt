@@ -31,6 +31,23 @@ interface Props {
   onChange: (config: Record<string, unknown>) => void;
 }
 
+/**
+ * What a tool's Edit page shows for its config. A Find Record tool never gets the create
+ * wizard's data source form while its fields are loading or failed to load: picking a source
+ * there rebuilds the config and drops the chosen fields. The form stays for other tools and
+ * for a Find Record tool with no fields to choose (status null, e.g. uploaded files).
+ */
+export function lookupConfigView(
+  operation: string | null | undefined,
+  lookup: { status: LookupFieldsStatus | null; isLoading: boolean; isError: boolean },
+): 'fields' | 'loading' | 'error' | 'form' {
+  if (operation !== 'lookup') return 'form';
+  if (lookup.status) return 'fields';
+  if (lookup.isError) return 'error';
+  if (lookup.isLoading) return 'loading';
+  return 'form';
+}
+
 const listOf = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []);
 
 export function LookupFieldsSection({ status, value, onChange }: Props) {
@@ -54,8 +71,9 @@ export function LookupFieldsSection({ status, value, onChange }: Props) {
   const pathParents = status.candidates.filter((f) => f.hasPaths).map((f) => f.name);
 
   const set = (key: 'nameFields' | 'codeFields', list: string[]) => onChange({ ...value, [key]: list });
-  const suggestion = status.suggested.nameFields.length + status.suggested.codeFields.length > 0;
   const notSetUp = nameFields.length === 0 && codeFields.length === 0 && !idField;
+  // Applying the suggestion replaces both lists, so it is offered only while none is chosen
+  const suggestion = notSetUp && status.suggested.nameFields.length + status.suggested.codeFields.length > 0;
 
   return (
     <div className="space-y-5">
@@ -137,7 +155,8 @@ export function LookupFieldsWarnings({ status, chosen }: { status: LookupFieldsS
   const missing = chosen && known ? missingLookupFields(chosen, status.candidates) : status.missing;
   const lines = [
     ...missing.map((name) => `"${name}" is no longer in the index (removed or renamed?). Choose another field.`),
-    ...checked.errors.map((e) => e.message),
+    // A missing field is also an error ("isn't a field"): say it once
+    ...checked.errors.filter((e) => !missing.includes(e.field)).map((e) => e.message),
     ...checked.warnings.map((w) => w.message),
   ];
   if (lines.length === 0) return null;

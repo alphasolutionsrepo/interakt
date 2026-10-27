@@ -13,7 +13,7 @@ import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ToolTypeChip, resolveToolChipConfig } from '../../../_components/ToolTypeChip';
 import { Step2_Config } from '../../../_components/CreateWizard/Step2_Config';
 import { DisplayConfigEditor } from '../../../_components/DisplayConfigEditor';
-import { LookupFieldsSection } from '../../../_components/LookupFieldsSection';
+import { LookupFieldsSection, lookupConfigView } from '../../../_components/LookupFieldsSection';
 import { useLookupFields, useTool } from '../../../_lib/hooks/useTools';
 import { useMinDelayAction } from '@/shared/hooks';
 import type { ExecutorType, ToolDisplayConfig } from '../../../_lib/api-client';
@@ -24,7 +24,9 @@ export default function EditToolPage({ params }: { params: Promise<{ id: string 
   const router = useRouter();
   const { tool, isLoading, updateTool } = useTool(id);
   // Find Record on a search index: its own name/code section instead of the search form
-  const { status: lookupFields } = useLookupFields(tool?.operation === 'lookup' ? id : undefined, tool?.dataSourceId);
+  const lookup = useLookupFields(tool?.operation === 'lookup' ? id : undefined, tool?.dataSourceId);
+  const lookupFields = lookup.status;
+  const configView = lookupConfigView(tool?.operation, lookup);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -220,10 +222,14 @@ export default function EditToolPage({ params }: { params: Promise<{ id: string 
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {lookupFields ? (
-              // The create wizard's data source form rebuilds the config from search options when
-              // a source is picked, which would drop a Find Record tool's fields
+            {configView === 'fields' && lookupFields ? (
               <LookupFieldsSection status={lookupFields} value={config} onChange={setConfig} />
+            ) : configView === 'loading' ? (
+              <p className="text-sm text-muted-foreground">Loading the data source&apos;s fields…</p>
+            ) : configView === 'error' ? (
+              <p className="text-sm text-destructive">
+                Couldn&apos;t load the data source&apos;s fields. Reload the page to edit this tool&apos;s configuration.
+              </p>
             ) : (
               <Step2_Config
                 executorType={(tool.executorType ?? 'data_source') as ExecutorType}

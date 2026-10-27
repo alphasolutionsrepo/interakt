@@ -14,6 +14,8 @@ const repo = vi.hoisted(() => ({
   getToolById: vi.fn(),
   updateTool: vi.fn(async (id: string, data: Record<string, unknown>) => ({ id, ...data })),
   getToolsByDataSourceId: vi.fn(async () => []),
+  getAllActiveTools: vi.fn(async () => []),
+  listTools: vi.fn(),
 }));
 vi.mock('./tools.repository', () => repo);
 const dataSources = vi.hoisted(() => ({ getDataSourceById: vi.fn() }));
@@ -33,7 +35,7 @@ vi.mock('@/shared/cache/cache-manager', () => ({
   },
 }));
 
-import { handleGetLookupFields } from './tools.api.handlers';
+import { handleGetAllActiveTools, handleGetLookupFields, handleListTools } from './tools.api.handlers';
 import { createTool, createToolsForDataSource, notReadyToAssign, splitReadyToAssign, updateTool } from './tools.service';
 
 const managedSource = { id: 'ds', type: 'search_index', config: { searchIndexId: 'idx' }, schema: null };
@@ -93,6 +95,16 @@ describe('saving a Find Record tool', () => {
 
     await expect(updateTool('t2', { executorConfig: { maxResults: 'ten' } } as never)).rejects.toThrow('Invalid config: maxResults');
     await expect(updateTool('t2', { executorConfig: { maxResults: 20 } } as never)).resolves.toBeDefined();
+  });
+
+  it.each([0, 2.5])('still saves a tool stored with maxResults %s when that setting is unchanged', async (maxResults) => {
+    repo.getToolById.mockResolvedValue({
+      id: 't2', executorType: 'data_source', operation: 'search', dataSourceId: 'ds', slug: 'search', executorConfig: { maxResults },
+    });
+
+    await expect(updateTool('t2', { name: 'Renamed', executorConfig: { maxResults } } as never)).resolves.toBeDefined();
+    await expect(updateTool('t2', { executorConfig: { maxResults, searchType: 'fuzzy' } } as never)).rejects.toThrow('searchType');
+    await expect(updateTool('t2', { executorConfig: { maxResults: 3.5 } } as never)).rejects.toThrow('maxResults');
   });
 
   it("refuses a managed index field that is neither searched nor in responses, which can't ever match", async () => {
@@ -179,6 +191,29 @@ describe('adding Find Record to an experience', () => {
     expect(notReady).toEqual([expect.stringContaining('"Catalog Find Record" isn\'t set up')]);
   });
 
+  it('marks the tools the experience pickers must show disabled (GET /api/tools/all)', async () => {
+    const search = { ...(find(null) as object), id: 's', name: 'Catalog Search', operation: 'search' };
+    const ready = { ...(find({ codeFields: ['productId'] }) as object), id: 'r' };
+    const notSetUp = { ...(find(null) as object), id: 'n' };
+    repo.getAllActiveTools.mockResolvedValue([search, ready, notSetUp] as never);
+
+    const body = await (await handleGetAllActiveTools()).json();
+    const reasons = Object.fromEntries(body.data.map((t: { id: string; notReadyReason?: string }) => [t.id, t.notReadyReason]));
+
+    expect(reasons).toEqual({ s: undefined, r: undefined, n: expect.stringContaining("isn't set up") });
+  });
+
+  it('marks them on the Tools list too, for its "Needs setup" badge (GET /api/tools)', async () => {
+    const ready = { ...(find({ nameFields: ['name'] }) as object), id: 'r' };
+    const notSetUp = { ...(find(null) as object), id: 'n' };
+    repo.listTools.mockResolvedValue({ tools: [ready, notSetUp], pagination: { page: 1, pageSize: 20, totalPages: 1, totalItems: 2 } } as never);
+
+    const body = await (await handleListTools(new NextRequest('http://localhost/api/tools'))).json();
+    const reasons = Object.fromEntries(body.data.map((t: { id: string; notReadyReason?: string }) => [t.id, t.notReadyReason]));
+
+    expect(reasons).toEqual({ r: undefined, n: expect.stringContaining("isn't set up") });
+  });
+
   it('is never held back for other tools or uploaded-file Find Record', async () => {
     dataSources.getDataSourceById.mockResolvedValue({ id: 'files', type: 'file_store', config: {}, schema: null });
 
@@ -213,6 +248,19 @@ describe("a Find Record tool's fields, as its pages read them (GET /api/tools/:i
     const status = await get({ operation: 'lookup', executorConfig: { codeFields: ['partNo'] } });
 
     expect(status?.errors).toEqual([expect.objectContaining({ field: 'partNo', message: expect.stringContaining("can't be filtered on") })]);
+  });
+
+  it('labels a managed index field filterable when it is a facet or set filterable', async () => {
+    indexFields.getFieldsBySearchIndexId.mockResolvedValue([
+      { fieldName: 'brand', fieldType: 'keyword', isSearchable: true, isFacetable: true },
+      { fieldName: 'sku', fieldType: 'keyword', isSearchable: true, isFacetable: false, providerFieldSettings: { isFilterable: true } },
+      { fieldName: 'name', fieldType: 'text', isSearchable: true, isFacetable: false },
+    ]);
+    const status = await get({ operation: 'lookup', dataSourceId: 'ds', executorConfig: { nameFields: ['name'] } });
+
+    const filterable = (status?.candidates as Array<{ name: string; filterable: boolean }>).map((c) => [c.name, c.filterable]);
+    expect(filterable).toEqual([['brand', true], ['sku', true], ['name', false]]);
+    expect(status).toMatchObject({ chosen: { nameFields: ['name'], codeFields: [] }, configured: true, missing: [] });
   });
 
   it('is empty for tools that take no name or code fields', async () => {

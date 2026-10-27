@@ -13,6 +13,7 @@ import { useState } from 'react';
 
 import type { AIExperienceToolAssignment, AssignToolPayload, UpdateToolAssignmentPayload } from '../_lib/api-client';
 
+import { ToolNotReadyNote } from '@/app/tools/_components/ToolNotReadyNote';
 import { ToolTypeChip } from '@/app/tools/_components/ToolTypeChip';
 import { useAllActiveTools } from '@/app/tools/_lib/hooks/useTools';
 import { Badge } from '@/components/ui/badge';
@@ -106,12 +107,13 @@ function ToolPickerDialog({ open, onOpenChange, assignedToolIds, onAssign, isAss
                   {tool.description && (
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{tool.description}</p>
                   )}
+                  {tool.notReadyReason && <ToolNotReadyNote toolId={tool.id} reason={tool.notReadyReason} />}
                 </div>
                 <Button
                   size="sm"
                   className="rounded-xl shrink-0"
                   onClick={() => handleAssign(tool.id)}
-                  disabled={isAssigning || assigningId === tool.id}
+                  disabled={isAssigning || assigningId === tool.id || !!tool.notReadyReason}
                 >
                   {assigningId === tool.id ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
                   Assign

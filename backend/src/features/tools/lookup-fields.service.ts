@@ -53,7 +53,8 @@ export async function lookupFieldsContext(dataSourceId: string | null | undefine
         name: f.fieldName,
         type: f.fieldType,
         searchable: f.isSearchable,
-        filterable: f.isFacetable,
+        // As the Azure field mapper builds the index: a facet or a field set filterable (an id)
+        filterable: f.isFacetable || f.providerFieldSettings?.isFilterable === true,
         hasPaths: PATH_TYPES.has(f.fieldType),
         role: roles.get(f.fieldName) ?? null,
         shownInResponses: f.includeInResponse,

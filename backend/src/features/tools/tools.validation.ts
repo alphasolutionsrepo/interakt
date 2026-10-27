@@ -85,13 +85,25 @@ const DATA_SOURCE_CONFIG_SCHEMAS = {
   lookup: dataSourceLookupConfigSchema,
 } as const;
 
-/** Why a data source tool's config is invalid for its operation, or undefined when it is valid. */
-export function dataSourceConfigProblem(operation: string | null | undefined, config: unknown): string | undefined {
+/**
+ * Why a data source tool's config is invalid for its operation, or undefined when it is valid.
+ * With `previous` (the stored config), a setting saved unchanged isn't checked again, so a tool
+ * stored before a rule existed can still be saved.
+ */
+export function dataSourceConfigProblem(
+  operation: string | null | undefined,
+  config: unknown,
+  previous?: Record<string, unknown> | null,
+): string | undefined {
   const schema = DATA_SOURCE_CONFIG_SCHEMAS[operation as keyof typeof DATA_SOURCE_CONFIG_SCHEMAS];
   if (!schema || config === undefined || config === null) return undefined;
   const result = schema.passthrough().safeParse(config);
   if (result.success) return undefined;
-  const issue = result.error.issues[0];
+  const unchanged = (key: unknown) =>
+    previous != null && typeof key === 'string' && key in previous &&
+    JSON.stringify(previous[key]) === JSON.stringify((config as Record<string, unknown>)[key]);
+  const issue = result.error.issues.find((i) => !unchanged(i.path[0]));
+  if (!issue) return undefined;
   return `${issue.path.join('.') || 'executorConfig'}: ${issue.message}`;
 }
 

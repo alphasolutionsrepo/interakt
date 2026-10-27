@@ -45,8 +45,8 @@ async function clearListCache() {
 
 /**
  * Check a tool's executor config against its operation before it is stored: the config's shape,
- * and a Find Record tool's name and code fields against its data source (only the fields this
- * save adds). Throws "Invalid config: ..." (a 400).
+ * and a Find Record tool's name and code fields against its data source. On an edit only what this
+ * save changes is checked (settings changed, fields added). Throws "Invalid config: ..." (a 400).
  */
 async function checkExecutorConfig(
   operation: string | null | undefined,
@@ -54,7 +54,7 @@ async function checkExecutorConfig(
   config: Record<string, unknown> | undefined,
   previous?: Record<string, unknown> | null,
 ): Promise<void> {
-  const problem = dataSourceConfigProblem(operation, config);
+  const problem = dataSourceConfigProblem(operation, config, previous);
   if (problem) throw new Error(`Invalid config: ${problem}`);
   if (operation === 'lookup') await checkLookupFieldsForSave(dataSourceId, config, previous ?? undefined);
 }
@@ -288,17 +288,21 @@ export async function getToolBySlug(slug: string) {
 export async function listTools(query: ListToolsQuery): Promise<ToolListResponse> {
   const result = await repository.listTools(query);
   return {
-    tools: result.tools as ToolWithUsage[],
+    tools: (await withNotReadyReasons(result.tools)) as ToolWithUsage[],
     pagination: result.pagination,
   };
 }
 
+/**
+ * Active tools for the experience tool pickers, which show a tool with `notReadyReason`
+ * disabled with the reason.
+ */
 export async function getAllActiveTools() {
   const cacheKey = 'all-active';
-  const cached = cache.get<Tool[]>(cacheKey);
+  const cached = cache.get<Array<Tool & { notReadyReason?: string }>>(cacheKey);
   if (cached) return cached;
 
-  const result = await repository.getAllActiveTools();
+  const result = await withNotReadyReasons(await repository.getAllActiveTools());
   cache.set(cacheKey, result);
   return result;
 }
@@ -399,6 +403,16 @@ export async function notReadyToAssign(tool: Pick<Tool, 'name' | 'operation' | '
   }
   if (!(await lookupFieldsContext(tool.dataSourceId))) return undefined;
   return `Find Record tool "${tool.name}" isn't set up: choose its name or code fields on the tool first`;
+}
+
+/** The tools, each one that can't be added to an AI experience yet with `notReadyReason`. */
+async function withNotReadyReasons<T extends Pick<Tool, 'name' | 'operation' | 'dataSourceId' | 'executorConfig'>>(
+  tools: T[],
+): Promise<Array<T & { notReadyReason?: string }>> {
+  return Promise.all(tools.map(async (tool) => {
+    const notReadyReason = await notReadyToAssign(tool);
+    return notReadyReason ? { ...tool, notReadyReason } : tool;
+  }));
 }
 
 /** The tools that can be added to an AI experience, and why each of the others can't. */

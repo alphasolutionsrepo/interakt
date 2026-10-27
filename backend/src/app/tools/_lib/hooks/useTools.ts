@@ -196,13 +196,18 @@ export function useToolSlugAvailability(slug: string, excludeId?: string, enable
  * removed in an external index shows up here.
  */
 export function useLookupFields(toolId: string | undefined, dataSourceId: string | null | undefined) {
-  // Only for a Find Record tool: other data source tools have no fields to keep current
-  const { result: healthResult, isChecking } = useHealthCheck(toolId ? dataSourceId ?? undefined : undefined);
   const query = useQuery({
-    queryKey: [...toolKeys.lookupFields(toolId!), healthResult?.checkedAt ?? null],
+    queryKey: toolKeys.lookupFields(toolId!),
     queryFn: () => toolsApi.getLookupFields(toolId!),
     enabled: !!toolId,
     placeholderData: keepPreviousData,
   });
-  return { status: query.data ?? null, isLoading: query.isLoading, isChecking };
+  // Only a Find Record tool on a search index has fields to keep current; for one on uploaded
+  // files or a database the status is null and the check would be wasted
+  const { result: healthResult, isChecking } = useHealthCheck(toolId && query.data ? dataSourceId ?? undefined : undefined);
+  const { refetch } = query;
+  useEffect(() => {
+    if (healthResult?.checkedAt) void refetch();
+  }, [healthResult?.checkedAt, refetch]);
+  return { status: query.data ?? null, isLoading: query.isLoading, isError: query.isError, isChecking };
 }
