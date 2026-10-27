@@ -15,6 +15,7 @@ import {
   getOverviewMetrics,
   getSearchTrends,
   getPopularQueries,
+  SEARCH_ORIGINS,
   getZeroResultQueries,
   getSearchTypeBreakdown,
   getPerformanceMetrics,
@@ -50,6 +51,11 @@ const analyticsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+/** Popular and failed searches can be narrowed to visitor or assistant searches; 'all' is both. */
+const searchOriginQuerySchema = analyticsQuerySchema.extend({
+  origin: z.enum(SEARCH_ORIGINS).default('all'),
+});
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -74,6 +80,7 @@ function parseQueryParams(request: NextRequest) {
     from: searchParams.get('from') ?? undefined,
     to: searchParams.get('to') ?? undefined,
     limit: searchParams.get('limit') ?? '20',
+    origin: searchParams.get('origin') ?? undefined,
   };
 }
 
@@ -165,7 +172,7 @@ export async function handleGetPopularQueries(request: NextRequest) {
     if (authError) return authError;
 
     const rawParams = parseQueryParams(request);
-    const params = analyticsQuerySchema.parse(rawParams);
+    const params = searchOriginQuerySchema.parse(rawParams);
 
     const customRange =
       params.timeRange === 'custom' && params.from && params.to
@@ -176,7 +183,8 @@ export async function handleGetPopularQueries(request: NextRequest) {
       params.timeRange as TimeRange,
       params.experienceId,
       params.limit,
-      customRange
+      customRange,
+      params.origin,
     );
 
     return successResponse(queries);
@@ -199,7 +207,7 @@ export async function handleGetZeroResultQueries(request: NextRequest) {
     if (authError) return authError;
 
     const rawParams = parseQueryParams(request);
-    const params = analyticsQuerySchema.parse(rawParams);
+    const params = searchOriginQuerySchema.parse(rawParams);
 
     const customRange =
       params.timeRange === 'custom' && params.from && params.to
@@ -210,7 +218,8 @@ export async function handleGetZeroResultQueries(request: NextRequest) {
       params.timeRange as TimeRange,
       params.experienceId,
       params.limit,
-      customRange
+      customRange,
+      params.origin,
     );
 
     return successResponse(queries);
@@ -423,9 +432,9 @@ export async function handleGetDashboard(request: NextRequest) {
     ] = await Promise.all([
       getOverviewMetrics(timeRange, experienceId, customRange),
       getSearchTrends(timeRange, experienceId, customRange),
-      getPopularQueries(timeRange, experienceId, 10, customRange),
+      getPopularQueries(timeRange, experienceId, 10, customRange, 'visitor'),
       getPopularQueries(timeRange, experienceId, 10, customRange, 'assistant'),
-      getZeroResultQueries(timeRange, experienceId, 10, customRange),
+      getZeroResultQueries(timeRange, experienceId, 10, customRange, 'visitor'),
       getSearchTypeBreakdown(timeRange, experienceId, customRange),
       getPerformanceMetrics(timeRange, experienceId, customRange),
       getAIUsageMetrics(timeRange, experienceId, customRange),

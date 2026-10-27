@@ -78,16 +78,24 @@ describe('search origin', () => {
   });
 
   it('lists visitor and assistant searches separately', async () => {
-    expect((await getPopularQueries('24h')).map((q) => q.query).sort()).toEqual(['linen shirt', 'wool coat']);
+    expect((await getPopularQueries('24h', undefined, 20, undefined, 'visitor')).map((q) => q.query).sort()).toEqual([
+      'linen shirt',
+      'wool coat',
+    ]);
     expect(await getPopularQueries('24h', undefined, 20, undefined, 'assistant')).toEqual([
       expect.objectContaining({ query: 'wedding dress', searchCount: 2, zeroResultCount: 1 }),
     ]);
   });
 
-  it('lists only what visitors typed as failed searches by default', async () => {
-    expect((await getZeroResultQueries('24h')).map((q) => q.query)).toEqual(['wool coat']);
+  it('lists visitor and assistant failed searches separately', async () => {
+    expect((await getZeroResultQueries('24h', undefined, 50, undefined, 'visitor')).map((q) => q.query)).toEqual(['wool coat']);
     expect((await getZeroResultQueries('24h', undefined, 50, undefined, 'assistant')).map((q) => q.query)).toEqual([
       'wedding dress',
     ]);
+  });
+
+  it('lists both, without internal lookups, when no origin is asked for (the API and the analytics assistant)', async () => {
+    expect((await getPopularQueries('24h')).map((q) => q.query).sort()).toEqual(['linen shirt', 'wedding dress', 'wool coat']);
+    expect((await getZeroResultQueries('24h')).map((q) => q.query).sort()).toEqual(['wedding dress', 'wool coat']);
   });
 });

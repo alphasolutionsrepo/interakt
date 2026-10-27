@@ -14,6 +14,7 @@ import {
   getOverviewMetrics,
   getSearchTrends,
   getPopularQueries,
+  SEARCH_ORIGINS,
   getZeroResultQueries,
   getSearchTypeBreakdown,
   getPerformanceMetrics,
@@ -21,6 +22,7 @@ import {
   getQuerySearchEvents,
   type TimeRange,
 } from './index';
+import type { SearchOrigin } from './index';
 import { getConversationDetail } from './conversation-analytics.service';
 
 // ============================================================================
@@ -34,6 +36,11 @@ interface CacheEntry {
 
 const toolResultCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** The model's `origin` argument when it is one we know; anything else means both ('all'). */
+function originOf(args: Record<string, unknown>): SearchOrigin {
+  return (SEARCH_ORIGINS as readonly unknown[]).includes(args.origin) ? (args.origin as SearchOrigin) : 'all';
+}
 
 function getCacheKey(toolName: string, args: Record<string, unknown>): string {
   return `${toolName}:${JSON.stringify(args)}`;
@@ -159,6 +166,11 @@ NOTE: For semantic intent grouping (clustered themes), use get_customer_intent_a
           type: 'number',
           description: 'Maximum number of queries to return (default 20)',
         },
+        origin: {
+          type: 'string',
+          enum: ['visitor', 'assistant', 'all'],
+          description: "Whose searches: 'visitor' (typed by visitors), 'assistant' (made by an AI assistant while answering), or 'all' (both, the default)",
+        },
       },
       required: [],
     },
@@ -197,6 +209,11 @@ NOT FOR: Understanding why a specific popular query sometimes fails (use get_que
         limit: {
           type: 'number',
           description: 'Maximum number of queries to return (default 50)',
+        },
+        origin: {
+          type: 'string',
+          enum: ['visitor', 'assistant', 'all'],
+          description: "Whose searches: 'visitor' (typed by visitors), 'assistant' (made by an AI assistant while answering), or 'all' (both, the default)",
         },
       },
       required: [],
@@ -770,14 +787,14 @@ export async function executeAnalyticsTool(
       }
 
       case 'get_popular_queries': {
-        const data = await getPopularQueries(timeRange, experienceId, limit || 20);
+        const data = await getPopularQueries(timeRange, experienceId, limit || 20, undefined, originOf(args));
         formatted = formatPopularQueriesForAI(data);
         raw = data;
         break;
       }
 
       case 'get_zero_result_queries': {
-        const data = await getZeroResultQueries(timeRange, experienceId, limit || 50);
+        const data = await getZeroResultQueries(timeRange, experienceId, limit || 50, undefined, originOf(args));
         formatted = formatZeroResultsForAI(data);
         raw = data;
         break;

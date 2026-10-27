@@ -464,15 +464,17 @@ export async function getSearchTrends(
 }
 
 /**
- * Who made a search: a visitor typing it, or an AI assistant searching to answer one.
- * Internal lookups (facet values, vocabularies) are neither.
+ * Who made a search: a visitor typing it, an AI assistant searching to answer one, or either
+ * ('all'). Internal lookups (facet values, vocabularies) are none of them.
  */
-export type SearchOrigin = 'visitor' | 'assistant';
+export const SEARCH_ORIGINS = ['visitor', 'assistant', 'all'] as const;
+export type SearchOrigin = (typeof SEARCH_ORIGINS)[number];
 
 function searchOriginCondition(
   searchEvents: typeof import('@/db/analytics-schema').searchEvents,
   origin: SearchOrigin,
 ) {
+  if (origin === 'all') return ne(searchEvents.triggerType, 'system');
   return origin === 'visitor'
     ? eq(searchEvents.triggerType, 'user')
     : or(eq(searchEvents.triggerType, 'ai_tool'), eq(searchEvents.triggerType, 'ai_rag'))!;
@@ -486,7 +488,7 @@ export async function getPopularQueries(
   experienceId?: string,
   limit: number = 20,
   customRange?: DateRange,
-  origin: SearchOrigin = 'visitor',
+  origin: SearchOrigin = 'all',
 ): Promise<PopularQueryResult[]> {
   const range = getDateRange(timeRange, customRange);
 
@@ -533,7 +535,7 @@ export async function getZeroResultQueries(
   experienceId?: string,
   limit: number = 50,
   customRange?: DateRange,
-  origin: SearchOrigin = 'visitor',
+  origin: SearchOrigin = 'all',
 ): Promise<ZeroResultQueryResult[]> {
   const range = getDateRange(timeRange, customRange);
 
