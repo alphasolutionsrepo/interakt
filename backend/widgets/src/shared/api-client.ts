@@ -86,7 +86,9 @@ export async function performSearch(
   const response = await fetch(`${apiBaseUrl}/api/v1/search`, {
     method: 'POST',
     headers: buildHeaders(accessToken),
-    credentials: 'omit',
+    // Same origin only: the admin's own Widget playground sends its session, so the
+    // server records it as test traffic; a visitor on another site sends no cookie.
+    credentials: 'same-origin',
     body: JSON.stringify(params),
   });
 
@@ -154,7 +156,9 @@ export async function* streamSummarize(
       ...buildHeaders(accessToken),
       Accept: 'text/event-stream',
     },
-    credentials: 'omit',
+    // Same origin only: the admin's own Widget playground sends its session, so the
+    // server records it as test traffic; a visitor on another site sends no cookie.
+    credentials: 'same-origin',
     body: JSON.stringify(params),
     signal,
   });
@@ -228,7 +232,9 @@ export async function* streamChat(
       ...buildHeaders(accessToken),
       Accept: 'text/event-stream',
     },
-    credentials: 'omit',
+    // Same origin only: the admin's own Widget playground sends its session, so the
+    // server records it as test traffic; a visitor on another site sends no cookie.
+    credentials: 'same-origin',
     body: JSON.stringify({ message, sessionId }),
     signal,
   });

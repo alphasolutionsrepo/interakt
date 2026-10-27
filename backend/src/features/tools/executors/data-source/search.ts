@@ -10,6 +10,7 @@
 import * as searchService from '@/features/search/search.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { trackSearch } from '@/features/analytics';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
 import { executeFileStoreSearch } from './file-store';
 import type { UnappliedClause } from '@/features/data-source/external-search/external-query';
@@ -229,7 +230,7 @@ async function executeExternalSearch(
 
   // Fire-and-forget analytics tracking for external searches
   const durationMs = Date.now() - startTime;
-  const { getExperienceContext, getAnalyticsSourceContext } = await import('@/features/search/search.service');
+  const { getExperienceContext } = await import('@/features/search/search.service');
   const ctx = getExperienceContext();
   const resultData = result.data as { results?: unknown[]; totalCount?: number } | undefined;
 

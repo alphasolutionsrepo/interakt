@@ -14,6 +14,8 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
 import { SearchError } from '@/features/search/search.types';
 import {
   authenticateAccessToken,
@@ -62,7 +64,10 @@ export async function handlePublicSearch(request: NextRequest): Promise<NextResp
     const validated = publicSearchRequestSchema.parse(body) as PublicSearchRequest;
 
     // 3–6. Search every source the experience uses and merge the results
-    const { results, sourcesSearched, failedSources } = await executeExperienceSearch(experience, validated, { source: 'api' });
+    // (the admin's own Widget playground is test traffic, its AI calls too)
+    const source = await analyticsSourceOfTokenCaller();
+    const { results, sourcesSearched, failedSources } = await withAnalyticsSource(source, () =>
+      executeExperienceSearch(experience, validated, { source }));
 
     // 7. Build response
     const response: PublicSearchResponse = {

@@ -18,6 +18,7 @@ import { authenticateAIAccessToken } from '@/features/ai-experience/access-token
 import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
 import { auth } from '@/features/auth/auth.api.handlers';
 import { readAccessToken } from '@/features/auth/public-access';
+import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
 import { runChatPipeline } from '@/features/pipeline/chat-pipeline';
 import type { PipelineStreamEvent } from '@/features/pipeline/pipeline.types';
 import { flushTelemetry } from '@/features/telemetry';
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
   const authResult = await authenticateAIAccessToken(request);
   if (authResult.response) return authResult.response;
   const { experience } = authResult;
+  const analyticsSource = await analyticsSourceOfTokenCaller();
 
   // ── Stream pipeline ────────────────────────────────────────────────────────
   const encoder = new TextEncoder();
@@ -74,6 +76,7 @@ export async function POST(request: NextRequest) {
           experience,
           message,
           sessionId: clientSessionId || undefined,
+          analyticsSource,
           onEvent: (event) => controller.enqueue(sseEvent(event)),
         });
       } catch (err) {

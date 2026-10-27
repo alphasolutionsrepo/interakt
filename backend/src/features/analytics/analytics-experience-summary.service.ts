@@ -110,6 +110,9 @@ export async function getExperienceSummaries(
       .where(
         and(
           eq(searchEvents.source, 'api'),
+          // A search experience's own searches; an AI experience's tool searches would make it
+          // a search row whenever its chats in range were all tests
+          eq(searchEvents.triggerType, 'user'),
           gte(searchEvents.timestamp, range.from),
           lte(searchEvents.timestamp, range.to),
           isNotNull(searchEvents.experienceId),

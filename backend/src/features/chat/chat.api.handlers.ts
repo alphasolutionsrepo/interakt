@@ -11,6 +11,8 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/shared/logger/logger';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
 import {
   authenticateAccessToken,
   createCorsHeaders,
@@ -67,7 +69,10 @@ export async function handleSummarize(request: NextRequest): Promise<Response> {
     const body = await request.json();
     const validated = summarizeAPIRequestSchema.parse(body);
 
-    const stream = createSummaryStream(experience, validated as SummarizeAPIRequest);
+    // The summary's model call records where it came from (the stream starts inside this;
+    // the admin's own Widget playground is test traffic)
+    const source = await analyticsSourceOfTokenCaller();
+    const stream = withAnalyticsSource(source, () => createSummaryStream(experience, validated as SummarizeAPIRequest));
 
     const corsHeaders = createCorsHeaders(experience, origin);
     return new Response(stream, {

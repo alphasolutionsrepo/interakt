@@ -8,7 +8,7 @@ import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import * as service from './tools.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { executeTool } from './tools.executor';
-import { withAnalyticsSource } from '@/features/search/search.service';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import {
   createToolSchema,
   updateToolSchema,

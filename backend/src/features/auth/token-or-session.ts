@@ -36,12 +36,19 @@ export async function authenticateTokenOrSession(
   if (token && experience.accessToken && token === experience.accessToken) {
     const refused = checkPublicAccess(request, experience);
     if (refused) return { caller: null, refused };
-    // The real widget in the admin's own Widget playground sends the token and, being on the
-    // admin's origin, the admin's session cookie; a visitor on another site never sends it.
-    const session = await auth();
-    return { caller: 'api', analyticsSource: session?.user ? 'admin_test' : 'api' };
+    return { caller: 'api', analyticsSource: await analyticsSourceOfTokenCaller() };
   }
 
   const session = await auth();
   return session?.user ? { caller: 'admin', analyticsSource: 'admin_test' } : { caller: null };
+}
+
+/**
+ * Where a request with a valid access token came from. The real widget in the admin's own
+ * Widget playground sends the token and, being on the admin's origin, the admin's session
+ * cookie, so it is test traffic; a visitor on another site never sends that cookie.
+ */
+export async function analyticsSourceOfTokenCaller(): Promise<'api' | 'admin_test'> {
+  const session = await auth();
+  return session?.user ? 'admin_test' : 'api';
 }

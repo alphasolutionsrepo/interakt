@@ -10,7 +10,6 @@ import { describe, it, expect, vi } from 'vitest';
 const { trackSearch } = vi.hoisted(() => ({ trackSearch: vi.fn() }));
 vi.mock('@/features/search/search.service', () => ({
   getExperienceContext: () => ({ experienceId: 'exp' }),
-  getAnalyticsSourceContext: () => 'admin_test',
 }));
 vi.mock('@/features/analytics', () => ({ trackSearch }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
@@ -25,11 +24,13 @@ vi.mock('./shared', async (importOriginal) => ({
   resolveDataSource: vi.fn(async () => ({ kind: 'external', provider: 'sitecore-search', dataSourceId: 'ds' })),
 }));
 
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { executeDataSourceSearch } from './search';
 
 describe('external tool search analytics', () => {
   it('records the turn’s analytics source', async () => {
-    await executeDataSourceSearch('ds', {}, { query: 'linen shirts' });
+    // The source the chat pipeline sets for an admin test chat
+    await withAnalyticsSource('admin_test', () => executeDataSourceSearch('ds', {}, { query: 'linen shirts' }));
 
     expect(trackSearch).toHaveBeenCalledWith(
       expect.objectContaining({ triggerType: 'ai_tool', source: 'admin_test', experienceId: 'exp' }),

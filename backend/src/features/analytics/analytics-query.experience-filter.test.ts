@@ -247,6 +247,20 @@ describe('searches counted from tool calls (experiences without stored searches)
   });
 });
 
+describe('experience comparison: an AI experience tested only', () => {
+  it("isn't listed as a search experience for its tool searches", async () => {
+    const [tested, searched] = [id(), id()];
+    // Tool searches stored as live: those recorded before searches stored their source
+    await testDb.db.insert(searchEvents).values([searchEvent(tested, [], 10, 'ai_tool'), searchEvent(searched, [])]);
+    await testDb.db.insert(otelSpans).values(toolTurn(tested, 2, 'admin_test'));
+
+    const rows = await getExperienceSummaries('24h');
+
+    expect(rows.find((s) => s.id === tested)).toBeUndefined();
+    expect(rows.find((s) => s.id === searched)).toMatchObject({ type: 'search', volume: 1 });
+  });
+});
+
 describe('test chats in conversations, AI usage and tool usage', () => {
   /** A conversation as the chat pipeline records it, with its source on the chat turn span */
   function chat(experienceId: string, tokens: number, source: string) {

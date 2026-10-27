@@ -20,7 +20,7 @@ import type { SearchIndexComplete } from '@/features/search-index';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { generateEmbedding } from '@/features/ai-service';
 import { trackSearch, type TriggerType } from '@/features/analytics';
-import { getAnalyticsSourceContext, withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import type { AnalyticsSource } from '@/features/analytics/analytics.types';
 import { ATTR } from '@/features/telemetry';
 import { traceSearch } from './search.tracing';
@@ -127,9 +127,6 @@ export interface SearchOptions {
 // ============================================================================
 
 type AnalyticsSourceType = AnalyticsSource;
-
-// The source context lives with analytics (its owner); kept here too for existing callers
-export { withAnalyticsSource, getAnalyticsSourceContext };
 
 const experienceContextStore = new AsyncLocalStorage<{ experienceId: string; experienceSlug?: string }>();
 

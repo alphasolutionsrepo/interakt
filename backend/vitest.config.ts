@@ -15,6 +15,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // UI aliases from tsconfig, so pages and components can be rendered in tests
+      '@/lib/utils': path.resolve(__dirname, 'src/shared/utils/index.ts'),
+      '@/components/ui': path.resolve(__dirname, 'src/shared/ui/components'),
+      '@/components/custom': path.resolve(__dirname, 'src/shared/ui/custom'),
+      '@/hooks': path.resolve(__dirname, 'src/shared/hooks'),
       '@/features': path.resolve(__dirname, 'src/features'),
       '@/shared': path.resolve(__dirname, 'src/shared'),
       '@/config': path.resolve(__dirname, 'config'),

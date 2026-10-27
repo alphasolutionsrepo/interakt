@@ -15,7 +15,7 @@ vi.mock('@/features/data-source/data-source.service', () => ({}));
 
 const seen = vi.hoisted(() => ({ source: undefined as string | undefined }));
 vi.mock('./tools.executor', async () => {
-  const { getAnalyticsSourceContext } = await import('@/features/search/search.service');
+  const { getAnalyticsSourceContext } = await import('@/features/analytics/analytics-source-context');
   return {
     executeTool: vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1));
@@ -25,7 +25,7 @@ vi.mock('./tools.executor', async () => {
   };
 });
 
-import { getAnalyticsSourceContext } from '@/features/search/search.service';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { handleTestTool } from './tools.api.handlers';
 
 describe('tool Test panel', () => {
