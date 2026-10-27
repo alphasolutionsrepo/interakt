@@ -80,6 +80,10 @@ describe("a chat experience's searches", () => {
 
     expect(response.status).toBe(400);
     expect((listed.rawData as Array<{ query: string }>).map((q) => q.query).sort()).toEqual(['linen shirt', 'wool coat']);
+    // and says so, so the answer isn't presented as one kind of search
+    expect(String(listed.data)).toContain('origin "bots" isn\'t one of visitor, assistant, all');
+    const known = await executeAnalyticsTool('get_zero_result_queries', { timeRange: '24h', experienceId, origin: 'assistant' });
+    expect(String(known.data)).not.toContain('Note: origin');
   });
 
   it('are found by the analytics assistant, which can ask for visitor searches only', async () => {

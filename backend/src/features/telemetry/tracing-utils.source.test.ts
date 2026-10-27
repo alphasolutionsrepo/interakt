@@ -14,7 +14,7 @@ vi.mock('./telemetry.config', () => ({ isTelemetryEnabled: () => true }));
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 
 import { ATTR } from './attribute-keys';
-import { withSpan } from './tracing-utils';
+import { withSpan, withSpanSync, withStreamSpan } from './tracing-utils';
 
 const exporter = new InMemorySpanExporter();
 trace.setGlobalTracerProvider(new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }));
@@ -31,5 +31,19 @@ describe('span source', () => {
     expect(sourceOf('tool.execute')).toBe('admin_test');
     expect(sourceOf('live')).toBeUndefined();
     expect(sourceOf('explicit')).toBe('playground');
+  });
+
+  it('stamps spans from the sync and streaming helpers too, as callers use them inside the request', async () => {
+    withAnalyticsSource('playground', () => withSpanSync({ name: 'sync' }, () => 'ok'));
+    await withAnalyticsSource('admin_test', async () => {
+      const chunks: string[] = [];
+      for await (const chunk of withStreamSpan({ name: 'stream' }, async function* () { yield 'a'; yield 'b'; })) chunks.push(chunk);
+      expect(chunks).toEqual(['a', 'b']);
+    });
+    withSpanSync({ name: 'sync live' }, () => 'ok');
+
+    expect(sourceOf('sync')).toBe('playground');
+    expect(sourceOf('stream')).toBe('admin_test');
+    expect(sourceOf('sync live')).toBeUndefined();
   });
 });

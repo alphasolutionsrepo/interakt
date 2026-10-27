@@ -42,6 +42,13 @@ function originOf(args: Record<string, unknown>): SearchOrigin {
   return (SEARCH_ORIGINS as readonly unknown[]).includes(args.origin) ? (args.origin as SearchOrigin) : 'all';
 }
 
+/** Says so when an `origin` the model gave wasn't recognised, so it doesn't present all searches as one kind. */
+function originNote(args: Record<string, unknown>): string {
+  return args.origin === undefined || originOf(args) === args.origin
+    ? ''
+    : `Note: origin "${String(args.origin)}" isn't one of ${SEARCH_ORIGINS.join(', ')}; these are all searches, visitors' and assistants' together.\n\n`;
+}
+
 function getCacheKey(toolName: string, args: Record<string, unknown>): string {
   return `${toolName}:${JSON.stringify(args)}`;
 }
@@ -788,14 +795,14 @@ export async function executeAnalyticsTool(
 
       case 'get_popular_queries': {
         const data = await getPopularQueries(timeRange, experienceId, limit || 20, undefined, originOf(args));
-        formatted = formatPopularQueriesForAI(data);
+        formatted = originNote(args) + formatPopularQueriesForAI(data);
         raw = data;
         break;
       }
 
       case 'get_zero_result_queries': {
         const data = await getZeroResultQueries(timeRange, experienceId, limit || 50, undefined, originOf(args));
-        formatted = formatZeroResultsForAI(data);
+        formatted = originNote(args) + formatZeroResultsForAI(data);
         raw = data;
         break;
       }
