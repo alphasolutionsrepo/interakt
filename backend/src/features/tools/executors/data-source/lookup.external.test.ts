@@ -278,4 +278,23 @@ describe("external lookup with the tool's chosen code fields", () => {
     expect(filteredOn()).toEqual(['sku']);
     expect(result).toMatchObject({ success: true, data: { id: 'P-2' } });
   });
+
+  it('filters on a code field that is a path under an object field (variants.sku)', async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema: { fields: [...schema.fields, { name: 'variants', type: 'object' }] } });
+    search.mockResolvedValueOnce({ hits: [{ id: 'P-5', score: 1, source: { variants: [{ sku: 'V-5' }] } }], unappliedFilters: [] });
+
+    const result = await executeDataSourceLookup('ds', { codeFields: ['variants.sku'] }, { id: 'V-5' });
+
+    expect(filteredOn()).toEqual(['variants.sku']);
+    expect(result).toMatchObject({ success: true, data: { id: 'P-5' } });
+  });
+
+  it("filters on the schema's id field when only name fields are chosen", async () => {
+    getDataSourceById.mockResolvedValueOnce({ schema });
+    search.mockResolvedValueOnce({ hits: [{ id: 'P-1', score: 1, source: { productId: 'P-1', name: 'Wool Coat' } }], unappliedFilters: [] });
+
+    await executeDataSourceLookup('ds', { nameFields: ['name'] }, { id: 'P-1' });
+
+    expect(filteredOn()).toEqual(['productId']);
+  });
 });

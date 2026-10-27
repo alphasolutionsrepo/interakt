@@ -67,6 +67,15 @@ const BRAND_WORDS = new Set(['brand', 'vendor', 'manufacturer']);
  */
 const SUGGESTED_CODE_FIELD = /(^|_|-)(id|sku|ean|upc|gtin|mpn|isbn|barcode)$|(Id|ID|Sku|SKU)$/;
 const SUGGESTED_CODE_NAMES = new Set(['code', 'productcode', 'itemcode', 'partnumber', 'partno', 'productnumber', 'itemnumber']);
+/** Codes people quote for a product, suggested before a generic id */
+const PRODUCT_CODE_FIELD = /(^|_|-)(sku|ean|upc|gtin|mpn|isbn|barcode)$|(Sku|SKU)$/;
+
+/** Which code field to suggest first: the schema's declared id, then product codes, then other ids. */
+function codeRank(field: LookupFieldCandidate): number {
+  if (field.role === 'id') return 0;
+  const name = lastSegment(field.name);
+  return PRODUCT_CODE_FIELD.test(name) || SUGGESTED_CODE_NAMES.has(name.toLowerCase().replace(/[_\-\s]/g, '')) ? 1 : 2;
+}
 
 /**
  * A word without its plural ending, so "sweaters" and "sweater" compare equal. Words ending in
@@ -131,6 +140,7 @@ export function suggestLookupFields(
     .filter((f) => f.role === 'id' || SUGGESTED_CODE_FIELD.test(lastSegment(f.name))
       || SUGGESTED_CODE_NAMES.has(lastSegment(f.name).toLowerCase().replace(/[_\-\s]/g, '')))
     .filter((f) => fits(f, 'code', rules))
+    .sort((a, b) => codeRank(a) - codeRank(b))
     .map((f) => f.name)
     .slice(0, 3);
   return { nameFields: name ? [name.name] : [], codeFields };

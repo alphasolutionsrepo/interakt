@@ -56,6 +56,19 @@ describe('suggested fields', () => {
     expect(suggestLookupFields(fields, external).nameFields).toEqual(['name']);
   });
 
+  it("suggests the declared id and product codes first, whatever the index's field order", () => {
+    const fields: LookupFieldCandidate[] = [
+      { name: 'categoryCodeId', type: 'keyword', filterable: true },
+      { name: 'storeId', type: 'keyword', filterable: true },
+      { name: 'warehouseId', type: 'keyword', filterable: true },
+      { name: 'listingId', type: 'keyword', filterable: true },
+      { name: 'sku', type: 'keyword', filterable: true },
+      { name: 'handle', type: 'keyword', filterable: true, role: 'id' },
+    ];
+
+    expect(suggestLookupFields(fields, external).codeFields).toEqual(['handle', 'sku', 'warehouseId']);
+  });
+
   it('suggests nothing when no field looks like a name or a code', () => {
     expect(suggestLookupFields([{ name: 'price', type: 'number' }], managed)).toEqual({ nameFields: [], codeFields: [] });
   });

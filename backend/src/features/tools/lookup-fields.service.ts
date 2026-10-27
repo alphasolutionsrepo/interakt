@@ -107,7 +107,9 @@ export async function checkLookupFieldsForSave(
   const context = await lookupFieldsContext(dataSourceId);
   if (!context) throw new Error('Invalid config: name and code fields only apply to Find Record on a search index');
   if (context.candidates.length === 0) {
-    throw new Error('Invalid config: the data source has no fields yet. Run a health check on the data source first');
+    throw new Error(context.rules.codesNeedFilter
+      ? 'Invalid config: the data source has no fields yet. Run a health check on the data source first'
+      : 'Invalid config: the search index has no fields yet. Add its fields first');
   }
   const { errors, warnings } = checkLookupFields(config, context.candidates, context.rules, added);
   if (errors.length > 0) throw new Error(`Invalid config: ${errors.map((e) => e.message).join('; ')}`);

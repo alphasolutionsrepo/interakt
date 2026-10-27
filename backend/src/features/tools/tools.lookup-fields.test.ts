@@ -116,6 +116,12 @@ describe('saving a Find Record tool', () => {
     await expect(createTool(lookupInput('files', { nameFields: ['title'] }))).rejects.toThrow('only apply to Find Record on a search index');
   });
 
+  it('asks for the index fields first when a managed index has none', async () => {
+    indexFields.getFieldsBySearchIndexId.mockResolvedValue([]);
+
+    await expect(createTool(lookupInput('ds', { nameFields: ['name'] }))).rejects.toThrow('the search index has no fields yet. Add its fields first');
+  });
+
   it('asks for a health check when an external source has no fields yet', async () => {
     dataSources.getDataSourceById.mockResolvedValue({ ...externalSource, schema: null });
 
@@ -130,6 +136,15 @@ describe('Generate tools', () => {
     const lookup = repo.createTool.mock.calls.map(([data]) => data).find((d) => d.operation === 'lookup');
     expect(lookup?.executorConfig).toEqual(expect.objectContaining({ nameFields: ['name'] }));
     expect(lookup?.executorConfig).not.toHaveProperty('codeFields');
+  });
+});
+
+describe('Generate tools on an external source', () => {
+  it('pre-fills Find Record with a name field and a code field it can filter on', async () => {
+    await createToolsForDataSource('ext', 'Shop', 'shop', 'search_index_external', null);
+
+    const lookup = repo.createTool.mock.calls.map(([data]) => data).find((d) => d.operation === 'lookup');
+    expect(lookup?.executorConfig).toEqual(expect.objectContaining({ nameFields: ['title'], codeFields: ['sku'] }));
   });
 });
 
