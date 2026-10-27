@@ -67,6 +67,9 @@ export async function executeFileStoreSearch(
 ): Promise<OperationResult> {
   const startTime = Date.now();
   const result = await searchFileStore(dataSourceId, config, input);
+  const query = typeof input.query === 'string' ? input.query.trim() : '';
+  // A call without a query searched nothing: it isn't recorded as a search
+  if (!query) return result;
   const data = result.data as { totalCount?: number } | undefined;
   const ctx = getExperienceContext();
   trackSearch({
@@ -79,7 +82,7 @@ export async function executeFileStoreSearch(
     indexIds: [dataSourceId],
     experienceId: ctx?.experienceId,
     experienceSlug: ctx?.experienceSlug,
-    queryText: typeof input.query === 'string' ? input.query.trim() : '',
+    queryText: query,
     totalResults: data?.totalCount ?? 0,
     resultsReturned: data?.totalCount ?? 0,
     durationMs: Date.now() - startTime,

@@ -59,4 +59,27 @@ describe('file-store search analytics', () => {
     expect(result.success).toBe(false);
     expect(trackSearch).toHaveBeenCalledWith(expect.objectContaining({ success: false, totalResults: 0 }), 'exp');
   });
+
+  it('returns and records the passages the words matched when the search by meaning failed', async () => {
+    trackSearch.mockClear();
+    const { embed } = await import('@/features/embedding/embedding.service');
+    vi.mocked(embed).mockResolvedValueOnce(null);
+    vi.mocked(kbRepository.keywordSearchChunks).mockResolvedValueOnce([
+      { id: 'c2', content: 'Warranty: two years', chunkIndex: 1, documentId: 'd1', documentName: 'policy.pdf' },
+      { id: 'c3', content: 'Warranty claims', chunkIndex: 2, documentId: 'd1', documentName: 'policy.pdf' },
+    ] as Awaited<ReturnType<typeof kbRepository.keywordSearchChunks>>);
+
+    const result = await executeFileStoreSearch('ds', {}, { query: 'warranty' });
+
+    expect(result).toMatchObject({ success: true, data: { totalCount: 2 } });
+    expect(trackSearch).toHaveBeenCalledWith(expect.objectContaining({ success: true, totalResults: 2 }), 'exp');
+  });
+
+  it("doesn't record a call without a query, which searched nothing", async () => {
+    trackSearch.mockClear();
+
+    expect((await executeFileStoreSearch('ds', {}, {})).success).toBe(false);
+    expect((await executeFileStoreSearch('ds', {}, { query: '   ' })).success).toBe(false);
+    expect(trackSearch).not.toHaveBeenCalled();
+  });
 });
