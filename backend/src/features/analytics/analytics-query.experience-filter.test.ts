@@ -69,12 +69,12 @@ import { getAIUsageMetrics, getOverviewMetrics, getToolUsageMetrics } from './an
 // Fresh ids per test file run: the index lookup is cached per experience id
 const id = () => crypto.randomUUID();
 
-function searchEvent(experienceId: string | null, indexIds: string[], minutesAgo = 10) {
+function searchEvent(experienceId: string | null, indexIds: string[], minutesAgo = 10, triggerType = 'user', source = 'api') {
   return {
     requestId: id(),
     timestamp: new Date(Date.now() - minutesAgo * 60_000),
-    source: 'api',
-    triggerType: 'user',
+    source,
+    triggerType,
     searchType: 'lexical',
     indexIds,
     experienceId,
@@ -113,6 +113,15 @@ function conversation(experienceId: string, tokens: number, tool: string, toolSu
     span(traceId, 'ai.chat', { 'alpha.ai.operation': 'chat', 'alpha.ai.total_tokens': tokens, 'alpha.ai.input_tokens': tokens - 10, 'alpha.ai.output_tokens': 10 }),
     span(traceId, 'ai.generate_embeddings', { 'alpha.ai.operation': 'embedding' }),
     span(traceId, 'tool.execute', { 'alpha.tool.slug': tool, 'alpha.tool.type': 'data_source:search', 'alpha.tool.success': String(toolSuccess) }),
+  ];
+}
+
+/** One assistant turn that made a single tool call, from a visitor (api) or an admin test chat */
+function toolTurn(experienceId: string, resultCount: number, source?: string) {
+  const traceId = id().replace(/-/g, '');
+  return [
+    span(traceId, 'pipeline.v2.turn', source ? { 'alpha.analytics.source': source } : {}, experienceId),
+    span(traceId, 'pipeline.v2.action.tool_execution', { 'alpha.v2.step.result_count': resultCount }, experienceId),
   ];
 }
 
@@ -198,5 +207,44 @@ describe('experience comparison table', () => {
       expect(rows[experienceId].volume).toBe((await getOverviewMetrics('24h', experienceId)).totalSearches);
     }
     expect(rows[a].volume).toBe(2);
+  });
+});
+
+describe('searches counted from tool calls (experiences without stored searches)', () => {
+  it('counts tool calls only from live chats, not admin test chats', async () => {
+    const experience = id();
+    await testDb.db.insert(otelSpans).values([...toolTurn(experience, 0), ...toolTurn(experience, 3, 'admin_test'), ...toolTurn(experience, 3, 'playground')]);
+
+    const overview = await getOverviewMetrics('24h', experience);
+    expect(overview).toMatchObject({ totalSearches: 1, zeroResultRate: 1, searchesFromToolCalls: true });
+  });
+
+  it("doesn't count tool calls when searches are stored, even if none counts (only internal lookups or test chats)", async () => {
+    const [lookups, tested] = [id(), id()];
+    await testDb.db.insert(searchEvents).values([
+      searchEvent(lookups, [], 10, 'system'),
+      searchEvent(tested, [], 10, 'ai_tool', 'admin_test'),
+    ]);
+    await testDb.db.insert(otelSpans).values([...toolTurn(lookups, -1), ...toolTurn(tested, 2, 'admin_test')]);
+
+    for (const experienceId of [lookups, tested]) {
+      expect(await getOverviewMetrics('24h', experienceId)).toMatchObject({ totalSearches: 0, searchesFromToolCalls: false });
+    }
+  });
+});
+
+describe('experience comparison and internal lookups', () => {
+  it("leaves a search experience's internal lookups out, matching the overview", async () => {
+    const [experience, index] = [id(), id()];
+    experienceIndexes[experience] = [index];
+    await testDb.db.insert(searchEvents).values([
+      searchEvent(experience, [index]),
+      searchEvent(experience, [index]),
+      searchEvent(experience, [index], 10, 'system'),
+    ]);
+
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row?.volume).toBe(2);
+    expect(row?.volume).toBe((await getOverviewMetrics('24h', experience)).totalSearches);
   });
 });

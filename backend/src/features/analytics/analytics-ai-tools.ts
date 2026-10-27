@@ -949,7 +949,7 @@ Searches by Trigger:
 - User-initiated: ${data.searchesByTrigger.user.toLocaleString()}
 - AI Tool: ${data.searchesByTrigger.ai_tool.toLocaleString()}
 - AI RAG: ${data.searchesByTrigger.ai_rag.toLocaleString()}
-- System: ${data.searchesByTrigger.system.toLocaleString()}
+- Internal lookups (not in Total Searches): ${data.searchesByTrigger.system.toLocaleString()}
 
 Total AI Requests: ${data.totalAIRequests.toLocaleString()}
 Average AI Latency: ${data.avgAIDurationMs.toFixed(0)}ms`;

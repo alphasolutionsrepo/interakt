@@ -828,7 +828,7 @@ function FailedSearches({ data, emptyMessage, assistantFailed, isLoading }: Fail
         ) : queries.length === 0 && assistantFailed ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-1 text-center text-sm text-muted-foreground">
             <p>No failed visitor searches.</p>
-            <p>The assistant&apos;s searches that found nothing are under Assistant Searches.</p>
+            <p>Some of the assistant&apos;s searches found nothing.</p>
           </div>
         ) : queries.length === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2">
@@ -1350,7 +1350,7 @@ export default function AnalyticsOverviewPage() {
         <FailedSearches
           data={data?.zeroResults}
           emptyMessage={totalSearches === 0 ? 'No searches in this period' : searchesFromToolCalls ? 'Not available for external searches' : undefined}
-          assistantFailed={(data?.assistantQueries ?? []).some((q) => q.zeroResultCount > 0)}
+          assistantFailed={data?.assistantHasFailedSearches ?? false}
           isLoading={isLoading}
         />
       </div>

@@ -9,7 +9,8 @@
 
 import 'server-only';
 
-import { and, count, desc, eq, gte, isNull, lte, ne, or, sql, sum, avg } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, lte, ne, notExists, or, sql, sum, avg } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { createLogger } from '@/shared/logger/logger';
 import type { AnalyticsSource } from './analytics.types';
 
@@ -341,9 +342,11 @@ export async function getOverviewMetrics(
     let avgSearchDurationMs = Number(metrics?.avgDuration ?? 0);
     let searchesFromToolCalls = false;
 
-    // Fallback: for AI experiences with external search (no searchEvents), use OTel tool execution spans
-    if (totalSearches === 0 && experienceId) {
+    // Fallback: for AI experiences with external search (no searchEvents), use OTel tool execution spans.
+    // Any stored search event (a test chat's, or an internal lookup's) means searches are tracked, so no fallback.
+    if (totalSearches === 0 && experienceId && !(await hasAnySearchEvents(range, experienceId))) {
       const { otelSpans } = await import('@/db/analytics-schema');
+      const turns = alias(otelSpans, 'turns');
       const toolSpanRows = await analyticsDB
         .select({
           total: count(),
@@ -356,6 +359,16 @@ export async function getOverviewMetrics(
           eq(otelSpans.operationName, 'pipeline.v2.action.tool_execution'),
           gte(otelSpans.startTime, range.from),
           lte(otelSpans.startTime, range.to),
+          // Leave out tool calls from admin test chats and the playground (the source is on the turn span)
+          notExists(
+            analyticsDB
+              .select({ one: sql`1` })
+              .from(turns)
+              .where(and(
+                eq(turns.traceId, otelSpans.traceId),
+                sql`${turns.attributes}->>'alpha.analytics.source' IN ('admin_test', 'playground')`,
+              ))
+          ),
         ));
       const otelSearch = toolSpanRows[0];
       if (otelSearch && Number(otelSearch.total) > 0) {
@@ -385,6 +398,15 @@ export async function getOverviewMetrics(
     logger.error('Failed to get overview metrics', error as Error);
     return getEmptyOverviewMetrics();
   }
+}
+
+/** Whether an experience has any search event in the range, of any source or trigger. */
+async function hasAnySearchEvents(range: DateRange, experienceId: string): Promise<boolean> {
+  const { analyticsDB } = await import('@/db/index');
+  if (!analyticsDB) return false;
+  const { searchEvents, conditions } = await buildSearchConditions(range, experienceId, 'all');
+  const rows = await analyticsDB.select({ id: searchEvents.id }).from(searchEvents).where(and(...conditions)).limit(1);
+  return rows.length > 0;
 }
 
 function getEmptyOverviewMetrics(): OverviewMetrics {

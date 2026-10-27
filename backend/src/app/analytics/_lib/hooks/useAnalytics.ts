@@ -101,6 +101,8 @@ export interface DashboardData {
   /** What AI assistants searched for while answering visitors */
   assistantQueries: PopularQuery[];
   zeroResults: ZeroResultQuery[];
+  /** Whether any of the assistant's searches found nothing */
+  assistantHasFailedSearches: boolean;
   searchTypes: SearchTypeBreakdown;
   performance: PerformanceMetrics;
   aiUsage: AIUsageMetrics;

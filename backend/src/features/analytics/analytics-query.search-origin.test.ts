@@ -81,6 +81,8 @@ describe('search origin', () => {
   it('leaves internal lookups out of the search types chart and the timings', async () => {
     await testDb.db.insert(searchEvents).values({ ...searchEvent('system', '*', 0), durationMs: 1000 });
 
+    expect((await getOverviewMetrics('24h')).avgSearchDurationMs).toBe(20);
+
     const types = await getSearchTypeBreakdown('24h');
     expect(types.lexical + types.semantic + types.hybrid).toBe(4);
     expect((await getPerformanceMetrics('24h')).avgDurationMs).toBe(20);
@@ -100,6 +102,14 @@ describe('search origin', () => {
     expect(await getPopularQueries('24h', undefined, 20, undefined, 'assistant')).toEqual([
       expect.objectContaining({ query: 'wedding dress', searchCount: 2, zeroResultCount: 1 }),
     ]);
+  });
+
+  it("lists a RAG search (the assistant's) under assistant searches, not visitor ones", async () => {
+    await testDb.db.insert(searchEvents).values(searchEvent('ai_rag', 'return policy', 0));
+
+    expect((await getPopularQueries('24h', undefined, 20, undefined, 'assistant')).map((q) => q.query)).toContain('return policy');
+    expect((await getZeroResultQueries('24h', undefined, 20, undefined, 'assistant')).map((q) => q.query)).toContain('return policy');
+    expect((await getPopularQueries('24h', undefined, 20, undefined, 'visitor')).map((q) => q.query)).not.toContain('return policy');
   });
 
   it('lists visitor and assistant failed searches separately', async () => {

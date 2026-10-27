@@ -81,4 +81,13 @@ describe("a chat experience's searches", () => {
     expect(visitors.rawData).toEqual([]);
     expect((failed.rawData as Array<{ query: string }>).map((q) => q.query)).toEqual(['wool coat']);
   });
+
+  it("are counted in the analytics assistant's overview, with internal lookups shown apart", async () => {
+    await testDb.db.insert(searchEvents).values({ ...assistantSearch('*', 0), triggerType: 'system' });
+
+    const overview = String((await executeAnalyticsTool('get_search_overview', { timeRange: '24h', experienceId })).data);
+
+    expect(overview).toContain('Total Searches: 2');
+    expect(overview).toContain('Internal lookups (not in Total Searches): 1');
+  });
 });
