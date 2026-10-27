@@ -265,13 +265,6 @@ describe('updateDataSourceSchema', () => {
     const result = updateDataSourceSchema.safeParse({ isActive: false });
     expect(result.success).toBe(true);
   });
-
-  it('keeps the confirmed-roles flag when a schema is saved', () => {
-    const result = updateDataSourceSchema.safeParse({
-      schema: { rolesConfirmed: true, fields: [{ name: 'storeName', displayName: 'Store', type: 'text', role: 'title' }] },
-    });
-    expect(result.success && result.data.schema?.rolesConfirmed).toBe(true);
-  });
 });
 
 // ============================================================================

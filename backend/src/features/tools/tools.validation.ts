@@ -66,9 +66,46 @@ const dataSourceEnumerateConfigSchema = z.object({
 
 const dataSourceLookupConfigSchema = z.object({
   idField: z.string().min(1).optional(),
+  /** Fields read together as the item's name; empty = Find Record works the name out */
+  nameFields: z.array(z.string().min(1)).max(10).optional(),
+  /** Fields holding a code that identifies the item; empty = Find Record works codes out */
+  codeFields: z.array(z.string().min(1)).max(10).optional(),
   includeFields: z.array(z.string()).optional(),
   excludeFields: z.array(z.string()).optional(),
 });
+
+/**
+ * The executor config of a data source tool, checked against its operation. Keys the schema
+ * doesn't list are kept (the create wizard adds its own), so only known keys are checked.
+ */
+const DATA_SOURCE_CONFIG_SCHEMAS = {
+  search: dataSourceSearchConfigSchema,
+  inspect: dataSourceInspectConfigSchema,
+  enumerate: dataSourceEnumerateConfigSchema,
+  lookup: dataSourceLookupConfigSchema,
+} as const;
+
+/**
+ * Why a data source tool's config is invalid for its operation, or undefined when it is valid.
+ * With `previous` (the stored config), a setting saved unchanged isn't checked again, so a tool
+ * stored before a rule existed can still be saved.
+ */
+export function dataSourceConfigProblem(
+  operation: string | null | undefined,
+  config: unknown,
+  previous?: Record<string, unknown> | null,
+): string | undefined {
+  const schema = DATA_SOURCE_CONFIG_SCHEMAS[operation as keyof typeof DATA_SOURCE_CONFIG_SCHEMAS];
+  if (!schema || config === undefined || config === null) return undefined;
+  const result = schema.passthrough().safeParse(config);
+  if (result.success) return undefined;
+  const unchanged = (key: unknown) =>
+    previous != null && typeof key === 'string' && key in previous &&
+    JSON.stringify(previous[key]) === JSON.stringify((config as Record<string, unknown>)[key]);
+  const issue = result.error.issues.find((i) => !unchanged(i.path[0]));
+  if (!issue) return undefined;
+  return `${issue.path.join('.') || 'executorConfig'}: ${issue.message}`;
+}
 
 const httpExecutorConfigSchema = z.object({
   baseUrl: z.string().url(),
@@ -171,12 +208,9 @@ const dataSourceToolSchema = baseCreateSchema.extend({
   executorType: z.literal('data_source'),
   dataSourceId: z.string().uuid('Valid data source ID is required'),
   operation: z.enum(DATA_SOURCE_OPERATIONS),
-  executorConfig: z.union([
-    dataSourceSearchConfigSchema,
-    dataSourceInspectConfigSchema,
-    dataSourceEnumerateConfigSchema,
-    dataSourceLookupConfigSchema,
-  ]).optional(),
+  // Checked against the operation by the tools service (dataSourceConfigProblem): a union here
+  // took the first schema that fit (search, all optional) and dropped every other key.
+  executorConfig: z.record(z.unknown()).optional(),
 });
 
 /** HTTP tool: generic REST API or web search */

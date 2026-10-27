@@ -43,6 +43,7 @@ import {
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { NeedsSetupBadge } from '../_components/ToolNotReadyNote';
 import { ToolTypeChip, resolveToolChipConfig } from '../_components/ToolTypeChip';
 import { useTools } from '../_lib/hooks/useTools';
 import type { ToolWithUsage, ExecutorType } from '../_lib/api-client';
@@ -187,6 +188,7 @@ function ToolCard({ tool, onView, onEdit, onDelete }: {
         {/* Badges */}
         <div className="flex flex-wrap items-center gap-2 mb-5">
           <ToolTypeChip executorType={tool.executorType} operation={tool.operation} />
+          {tool.notReadyReason && <NeedsSetupBadge reason={tool.notReadyReason} />}
           {tool.isActive ? (
             <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 rounded-lg px-2.5 py-1 text-xs font-semibold">
               <CircleCheck className="mr-1.5 size-3.5" /> Active
@@ -289,7 +291,10 @@ function TableView({ tools, onView, onEdit, onDelete, emptyAction }: {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <ToolTypeChip executorType={tool.executorType} operation={tool.operation} />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ToolTypeChip executorType={tool.executorType} operation={tool.operation} />
+                      {tool.notReadyReason && <NeedsSetupBadge reason={tool.notReadyReason} />}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     {tool.isActive ? (

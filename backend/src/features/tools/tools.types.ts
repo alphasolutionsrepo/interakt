@@ -56,6 +56,8 @@ export interface ToolWithUsage {
   createdAt: Date;
   updatedAt: Date;
   experienceCount?: number;
+  /** Why the tool can't be added to an AI experience yet (a Find Record tool not set up) */
+  notReadyReason?: string;
 }
 
 /**

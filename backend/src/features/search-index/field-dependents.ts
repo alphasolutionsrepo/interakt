@@ -112,6 +112,12 @@ const CLAUSE_ARRAY_KEYS = ['defaultSort', 'defaultFilters'] as const;
  */
 const FIELD_LIST_KEYS = ['includeFields', 'excludeFields', 'responseFields'] as const;
 
+/**
+ * Find Record's chosen name and code fields. A path under the field (variants.sku under
+ * variants) depends on it too.
+ */
+const LOOKUP_FIELD_KEYS = { nameFields: 'its name fields (Find Record)', codeFields: 'its code fields (Find Record)' } as const;
+
 // ============================================================================
 // EXECUTOR CONFIG SCANNING
 // ============================================================================
@@ -161,6 +167,13 @@ function describeExecutorConfigUses(
         const list = config[key];
         if (Array.isArray(list) && list.includes(fieldName)) {
             uses.push(key);
+        }
+    }
+
+    for (const [key, label] of Object.entries(LOOKUP_FIELD_KEYS)) {
+        const list = config[key];
+        if (Array.isArray(list) && list.some((f) => f === fieldName || (typeof f === 'string' && f.startsWith(`${fieldName}.`)))) {
+            uses.push(label);
         }
     }
 

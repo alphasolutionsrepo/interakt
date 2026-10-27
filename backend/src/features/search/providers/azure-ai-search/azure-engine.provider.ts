@@ -12,7 +12,7 @@ import 'server-only';
 import { createLogger } from '@/shared/logger/logger';
 import { AzureFieldMapper } from './azure-field-mapper';
 import { AZURE_AI_SEARCH_CAPABILITIES } from './azure-capabilities';
-import { AZURE_INDEX_DEFAULTS, SORTABLE_EDM_TYPES } from './azure-constants';
+import { AZURE_INDEX_DEFAULTS, EMBEDDING_FIELD_NAME, SORTABLE_EDM_TYPES } from './azure-constants';
 import {
     getIndexClient,
     getSearchClient,
@@ -353,18 +353,34 @@ export class AzureEngineProvider implements SearchEngineProvider {
         try {
             const client = getIndexClient();
             const indexDef = await client.getIndex(indexName);
+            const fields: any[] = indexDef.fields ?? [];
+
+            // Surface the embedding field's dimensions so the indexer can tell an index
+            // that already has the field from one that is missing it. Only the field
+            // the indexer writes to counts: another vector field under a different
+            // name would not make document writes succeed. The SDK exposes the REST
+            // "dimensions" property as vectorSearchDimensions (the same name
+            // mapVectorField writes on create).
+            const embeddingField = fields.find((f) => f.name === EMBEDDING_FIELD_NAME);
+            const embeddingDimensions =
+                typeof embeddingField?.vectorSearchDimensions === 'number'
+                    ? embeddingField.vectorSearchDimensions
+                    : undefined;
+
             return {
                 success: true,
                 mapping: {
-                    fields: indexDef.fields?.map((f: any) => ({
+                    fields: fields.map((f) => ({
                         name: f.name,
                         type: f.type,
                         searchable: f.searchable,
                         filterable: f.filterable,
                         facetable: f.facetable,
                         sortable: f.sortable,
-                    })) ?? [],
+                        vectorSearchDimensions: f.vectorSearchDimensions,
+                    })),
                 },
+                embeddingDimensions,
             };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to get index mapping';

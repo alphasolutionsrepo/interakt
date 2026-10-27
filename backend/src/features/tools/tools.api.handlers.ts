@@ -9,6 +9,8 @@ import * as service from './tools.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { executeTool } from './tools.executor';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import { lookupFieldsStatus } from './lookup-fields.service';
+import type { LookupFieldsConfig } from './executors/data-source/lookup-field-rules';
 import {
   createToolSchema,
   updateToolSchema,
@@ -243,6 +245,34 @@ export async function handleGetToolExperiences(
   } catch (error) {
     const err = error as Error;
     logger.error('Failed to get tool experiences', err);
+    return apiResponse.error(err);
+  }
+}
+
+/**
+ * GET /api/tools/:id/lookup-fields — a Find Record tool's name and code fields against its data
+ * source: the fields it can choose from, chosen fields gone from the index, warnings and a
+ * suggestion. `data: null` for tools that don't take them (not Find Record, or uploaded files).
+ */
+export async function handleGetLookupFields(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) return apiResponse.unauthorized();
+
+    const { id } = await context.params;
+    const tool = await service.getToolById(id);
+    if (!tool) {
+      return apiResponse.notFound('Tool not found');
+    }
+    if (tool.operation !== 'lookup') return apiResponse.success(null);
+
+    return apiResponse.success(await lookupFieldsStatus(tool.dataSourceId, tool.executorConfig as LookupFieldsConfig | null ?? undefined));
+  } catch (error) {
+    const err = error as Error;
+    logger.error('Failed to get lookup fields', err);
     return apiResponse.error(err);
   }
 }

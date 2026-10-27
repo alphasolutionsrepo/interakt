@@ -264,6 +264,16 @@ describe('findFieldDependents — tool executor config', () => {
         expect(dependents[0].detail).toContain('defaultField');
     });
 
+    it("flags Find Record's chosen name and code fields, and paths under a field", () => {
+        const find = tool({ executorConfig: { nameFields: ['brand', 'name'], codeFields: ['variants.sku'] } });
+        const uses = (fieldName: string) =>
+            findFieldDependents(input({ field: field({ fieldName }), tools: [find] })).dependents.map((d) => d.detail);
+
+        expect(uses('name').join(' ')).toContain('its name fields (Find Record)');
+        expect(uses('variants').join(' ')).toContain('its code fields (Find Record)');
+        expect(uses('price')).toEqual([]);
+    });
+
     it('flags projection lists, including responseFields', () => {
         // responseFields is read by the search executor but not declared on the
         // schema's ExecutorConfig union — the scan works off raw keys for exactly

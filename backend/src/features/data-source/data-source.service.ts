@@ -193,32 +193,8 @@ export async function performHealthCheck(id: string): Promise<HealthCheckResult>
  * A field that disappeared from the index does not come back: its description goes with it,
  * because advertising a field the index no longer has is how the planner ends up filtering
  * on something that cannot match.
- *
- * Roles an admin confirmed (`rolesConfirmed`) are kept too, with the flag, so Find Record goes
- * on using them instead of discovery's guesses.
  */
 export function mergeOperatorFieldEdits(
-  stored: DataSourceSchema | null | undefined,
-  discovered: DataSourceSchema,
-): DataSourceSchema {
-  const merged = mergeFieldEdits(stored, discovered);
-  return stored?.rolesConfirmed ? keepConfirmedRoles(stored, merged) : merged;
-}
-
-/**
- * Confirmed roles outrank discovery's: each field keeps its stored role, and a field new to the
- * index gets none until an admin gives it one.
- */
-function keepConfirmedRoles(stored: DataSourceSchema, merged: DataSourceSchema): DataSourceSchema {
-  const roles = new Map(stored.fields.map((f) => [f.name, f.role ?? null]));
-  return {
-    ...merged,
-    rolesConfirmed: true,
-    fields: merged.fields.map((field) => ({ ...field, role: roles.get(field.name) ?? null })),
-  };
-}
-
-function mergeFieldEdits(
   stored: DataSourceSchema | null | undefined,
   discovered: DataSourceSchema,
 ): DataSourceSchema {
@@ -268,7 +244,11 @@ function mergeSampledSchema(previous: DataSourceField[], discovered: DataSourceS
     };
   });
 
-  return { ...discovered, fields: [...fields, ...discovered.fields.filter((f) => !known.has(f.name))] };
+  return {
+    ...discovered,
+    fields: [...fields, ...discovered.fields.filter((f) => !known.has(f.name))],
+    latestSampleFields: discovered.fields.map((f) => f.name),
+  };
 }
 
 /**
