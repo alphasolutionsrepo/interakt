@@ -17,12 +17,12 @@ vi.mock('@/db/index', () => ({
   },
   db: {},
 }));
-vi.mock('./analytics-config', () => ({ analyticsFlags: { canTrackSearch: () => true, canTrackAI: () => true } }));
+vi.mock('./analytics-config', () => ({ analyticsFlags: { canTrackSearch: () => true, canTrackAI: () => true, canTrackTools: () => true } }));
 vi.mock('./analytics-retention', () => ({ startRetentionCleanup: vi.fn(), stopRetentionCleanup: vi.fn() }));
 
-import { aiUsageEvents, searchEvents } from '@/db/analytics-schema';
+import { aiToolExecutions, aiUsageEvents, searchEvents } from '@/db/analytics-schema';
 
-import { clearQueues, forceFlush, stopAnalyticsCollector, trackAI, trackSearch } from './analytics-collector';
+import { clearQueues, forceFlush, stopAnalyticsCollector, trackAI, trackSearch, trackToolExecution } from './analytics-collector';
 
 function search(queryText: string, source?: 'api' | 'admin_test' | 'playground') {
   trackSearch({
@@ -111,5 +111,20 @@ describe('search outcome', () => {
       { q: 'return policy', zero: true, success: true, step: 'search' },
       { q: 'warranty', zero: false, success: false, step: 'search' },
     ]);
+  });
+});
+
+describe('tool run source', () => {
+  it('stores the source a tool run was tracked with; a run without one is live', async () => {
+    const run = (toolName: string, source?: 'api' | 'admin_test' | 'playground') => trackToolExecution({
+      aiRequestId: crypto.randomUUID(), toolName, toolCategory: 'retrieval', durationMs: 5, success: true, ...(source && { source }),
+    });
+    run('tested', 'admin_test');
+    run('played', 'playground');
+    run('live');
+    await forceFlush();
+
+    const rows = await testDb.db.select({ tool: aiToolExecutions.toolName, source: aiToolExecutions.source }).from(aiToolExecutions);
+    expect(Object.fromEntries(rows.map((r) => [r.tool, r.source]))).toEqual({ tested: 'admin_test', played: 'playground', live: 'api' });
   });
 });
