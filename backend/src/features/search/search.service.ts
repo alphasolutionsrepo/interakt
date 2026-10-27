@@ -19,7 +19,7 @@ import type { SearchType } from '@/shared/constants/search-index.constants';
 import type { SearchIndexComplete } from '@/features/search-index';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { generateEmbedding } from '@/features/ai-service';
-import { trackSearch, type TriggerType } from '@/features/analytics';
+import { trackSearch, type TriggerStep, type TriggerType } from '@/features/analytics';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import type { AnalyticsSource } from '@/features/analytics/analytics.types';
 import { ATTR } from '@/features/telemetry';
@@ -106,6 +106,8 @@ export interface SearchOptions {
     sessionId?: string;
     /** How the search was triggered */
     triggerType?: TriggerType;
+    /** Which tool or AI step ran the search; empty for a visitor's own */
+    triggerStep?: TriggerStep;
     /** Source ID if triggered by AI (e.g., chat message ID) */
     triggerSourceId?: string;
     /** AI request ID if triggered by AI tool */
@@ -200,6 +202,7 @@ export async function search(
                 searchType,
                 indexName: context.indexName,
                 triggerType: options?.triggerType,
+                triggerStep: options?.triggerStep,
             },
             async (span) => {
                 // 5. Generate query embedding if needed
@@ -266,6 +269,7 @@ export async function search(
             sessionId: options?.sessionId,
             source: getAnalyticsSource(options),
             triggerType: options?.triggerType ?? 'user',
+            triggerStep: options?.triggerStep,
             triggerSourceId: options?.triggerSourceId,
             aiRequestId: options?.aiRequestId,
             searchType,
@@ -303,6 +307,7 @@ export async function search(
             sessionId: options?.sessionId,
             source: getAnalyticsSource(options),
             triggerType: options?.triggerType ?? 'user',
+            triggerStep: options?.triggerStep,
             triggerSourceId: options?.triggerSourceId,
             aiRequestId: options?.aiRequestId,
             searchType,

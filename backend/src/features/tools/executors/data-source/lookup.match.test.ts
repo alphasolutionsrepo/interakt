@@ -178,7 +178,7 @@ describe('managed lookup fallback', () => {
     expect(searchById).toHaveBeenCalledWith(
       'idx',
       { query: 'Vesper & Co Crew Neck Sweater', pageSize: 5, includeHiddenSearchedFields: true },
-      { triggerType: 'system' },
+      { triggerType: 'ai_tool', triggerStep: 'lookup' },
     );
   });
 

@@ -49,7 +49,8 @@ export const ATTR = {
   SEARCH_RETURNED: 'alpha.search.results_returned',
   SUMMARY_CANCELLED: 'alpha.summary.cancelled', // the client went away before the summary finished
   SEARCH_HAS_FILTERS: 'alpha.search.has_filters',
-  SEARCH_TRIGGER: 'alpha.search.trigger_type', // 'user' | 'ai_tool' | 'ai_rag'
+  SEARCH_TRIGGER: 'alpha.search.trigger_type', // 'user' | 'ai_tool' | 'ai_step'
+  SEARCH_TRIGGER_STEP: 'alpha.search.trigger_step', // the tool or AI step that ran it
   SEARCH_ES_TOOK_MS: 'alpha.search.es_took_ms',
   SEARCH_SOURCE_COUNT: 'alpha.search.source_count', // indexes + external indexes searched
   SEARCH_FAILED_SOURCES: 'alpha.search.failed_sources', // sources that failed while others answered

@@ -17,7 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Per-client rate limits identify a client by the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` places from the end.
 - Find Record returns an item only when its ID, SKU or name matches the request. When several items fit, it returns `found: false` with `matches` so the answer can ask which one; when none fits, `found: false` with up to three `closestMatches`. Neither shows a product card, and the test chat and tool analytics no longer show them as failures. On a managed index with keyword or hybrid search, a SKU or name that is searchable but kept out of responses still identifies its item, and only the fields responses show are returned. Find Record tools on a search index describe name lookups; existing tools still on the generated description are updated, and descriptions an admin wrote are kept. Experience instructions the create wizard wrote now say "look up specific items" instead of "look up specific items by ID" where the experience has Find Record on a search index.
 - Index search requests (`/api/search/index/:id`, `/api/search/name/:name`) accept `includeHiddenSearchedFields`: each hit then also carries the searched fields kept out of responses, in `hiddenSearchedFields`, apart from `source`.
-- Analytics: Popular and Failed Searches list only searches typed by visitors. Total searches, the failed-search rate, the trend chart and a search experience's row in the experience comparison no longer count internal lookups such as loading filter values.
+- Analytics: Popular and Failed Searches list only searches typed by visitors. Total searches, the failed-search rate, the trend chart and a search experience's row in the experience comparison count only visitor searches and the AI's Search tool searches, not the lookups that Find Record, List Values and query understanding run.
+- Analytics: every search records what started it (a visitor, an AI tool or an AI step) and which tool or step ran it; the recent searches feed shows them by name. Searches stored before as internal lookups are relabelled.
+- Analytics: Search tool searches on a file store are recorded like those on any other source.
+- Analytics: each AI usage record keeps what the call was for (indexing, search, chat steps, memory, the topic guardrail and so on).
 
 ### Fixed
 

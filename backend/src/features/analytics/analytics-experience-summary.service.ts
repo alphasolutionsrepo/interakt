@@ -9,9 +9,9 @@
 
 import 'server-only';
 
-import { sql, count, eq, gte, lte, and, isNotNull, ne, type SQL } from 'drizzle-orm';
+import { sql, count, eq, gte, lte, and, isNotNull, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { buildSearchConditions, getDateRange, notTestTraffic, type TimeRange } from './analytics-query.service';
+import { buildSearchConditions, countedSearch, getDateRange, notTestTraffic, type TimeRange } from './analytics-query.service';
 
 const logger = createLogger('analytics-experience-summary');
 
@@ -142,8 +142,8 @@ export async function getExperienceSummaries(
               avgDurationMs: sql<number>`COALESCE(AVG(${searchEvents.durationMs}), 0)::int`,
             })
             .from(searchEvents)
-            // As in the overview, internal lookups aren't counted as searches
-            .where(and(...conditions, ne(searchEvents.triggerType, 'system')));
+            // As in the overview, lookups aren't counted as searches
+            .where(and(...conditions, countedSearch(searchEvents)));
           return { experienceId, ...row, totalSearches: Number(row?.totalSearches ?? 0) };
         }),
       )

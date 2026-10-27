@@ -2,7 +2,8 @@
 
 /**
  * AI calls are written in batches after the request, so the source of the request they ran in
- * (an admin test chat, the playground) is read when each call is recorded.
+ * (an admin test chat, the playground) is read when each call is recorded. What each call was
+ * for (its feature) is stored as the caller named it.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -38,5 +39,17 @@ describe('AI usage source', () => {
 
     const sources = Object.fromEntries(trackAI.mock.calls.map(([event]) => [event.modelKey, event.source]));
     expect(sources).toEqual({ tested: 'admin_test', 'provider playground': 'playground', live: undefined });
+  });
+});
+
+describe('AI usage feature', () => {
+  it('stores what each call was for, as the caller named it', async () => {
+    trackAI.mockClear();
+    await trackUsage({ ...call('indexing'), operation: 'embedding', feature: 'document_indexing' });
+    await trackUsage({ ...call('planner'), feature: 'turn-planner' });
+    await flushAnalytics();
+
+    const features = Object.fromEntries(trackAI.mock.calls.map(([event]) => [event.modelKey, event.feature]));
+    expect(features).toEqual({ indexing: 'document_indexing', planner: 'turn-planner' });
   });
 });

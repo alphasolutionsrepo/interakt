@@ -161,7 +161,7 @@ export async function extractMemoriesFromSession(
 
   // Embed all candidates in parallel
   const embeddings = await Promise.all(
-    candidates.map(m => embed(m.content, { feature: 'memory_extraction' } as any)),
+    candidates.map(m => embed(m.content, { feature: 'memory_extraction' })),
   );
 
   // Build insert rows

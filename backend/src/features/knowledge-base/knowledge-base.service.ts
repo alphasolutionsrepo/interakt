@@ -77,7 +77,7 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Upload
     }
 
     // 3. Embed all chunks in one batch call
-    const embeddings = await embedBatch(chunks, { feature: 'knowledge_base' } as any);
+    const embeddings = await embedBatch(chunks, { feature: 'knowledge_base' });
 
     // 4. Build chunk rows
     const chunkRows: NewKnowledgeChunk[] = chunks.map((text, i) => ({

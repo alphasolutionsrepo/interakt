@@ -71,12 +71,15 @@ import { getAIUsageMetrics, getOverviewMetrics, getToolUsageMetrics } from './an
 // Fresh ids per test file run: the index lookup is cached per experience id
 const id = () => crypto.randomUUID();
 
-function searchEvent(experienceId: string | null, indexIds: string[], minutesAgo = 10, triggerType = 'user', source = 'api') {
+function searchEvent(
+  experienceId: string | null, indexIds: string[], minutesAgo = 10, triggerType = 'user', source = 'api', triggerStep: string | null = null,
+) {
   return {
     requestId: id(),
     timestamp: new Date(Date.now() - minutesAgo * 60_000),
     source,
     triggerType,
+    triggerStep,
     searchType: 'lexical',
     indexIds,
     experienceId,
@@ -233,18 +236,22 @@ describe('searches counted from tool calls (experiences without stored searches)
     expect(row?.zeroResultRate).toBe(0.5);
   });
 
-  it("doesn't count tool calls when searches are stored, even if none counts (only internal lookups or test chats)", async () => {
-    const [lookups, tested] = [id(), id()];
-    await testDb.db.insert(searchEvents).values([
-      searchEvent(lookups, [], 10, 'system'),
-      searchEvent(tested, [], 10, 'ai_tool', 'admin_test'),
-    ]);
-    await testDb.db.insert(otelSpans).values([...toolTurn(lookups, -1), ...toolTurn(tested, 2, 'admin_test')]);
+  it('counts tool calls when the only stored searches are lookups (Find Record), which say nothing of its searches', async () => {
+    const experience = id();
+    await testDb.db.insert(searchEvents).values(searchEvent(experience, [], 10, 'ai_tool', 'api', 'lookup'));
+    await testDb.db.insert(otelSpans).values([...toolTurn(experience, 0), ...toolTurn(experience, 2)]);
 
-    for (const experienceId of [lookups, tested]) {
-      expect(await getOverviewMetrics('24h', experienceId)).toMatchObject({ totalSearches: 0, searchesFromToolCalls: false });
-    }
+    expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalSearches: 2, searchesFromToolCalls: true });
   });
+
+  it("doesn't count tool calls when searches are stored, even if none counts (only test chats')", async () => {
+    const tested = id();
+    await testDb.db.insert(searchEvents).values(searchEvent(tested, [], 10, 'ai_tool', 'admin_test', 'search'));
+    await testDb.db.insert(otelSpans).values(toolTurn(tested, 2, 'admin_test'));
+
+    expect(await getOverviewMetrics('24h', tested)).toMatchObject({ totalSearches: 0, searchesFromToolCalls: false });
+  });
+
 });
 
 describe('experience comparison: an AI experience tested only', () => {
@@ -295,14 +302,14 @@ describe('test chats in conversations, AI usage and tool usage', () => {
   });
 });
 
-describe('experience comparison and internal lookups', () => {
-  it("leaves a search experience's internal lookups out, matching the overview", async () => {
+describe('experience comparison and lookups', () => {
+  it("leaves a search experience's query understanding lookups out, matching the overview", async () => {
     const [experience, index] = [id(), id()];
     experienceIndexes[experience] = [index];
     await testDb.db.insert(searchEvents).values([
       searchEvent(experience, [index]),
       searchEvent(experience, [index]),
-      searchEvent(experience, [index], 10, 'system'),
+      searchEvent(experience, [index], 10, 'ai_step', 'api', 'query_interpretation'),
     ]);
 
     const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);

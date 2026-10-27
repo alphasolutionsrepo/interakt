@@ -102,8 +102,7 @@ async function executeManagedSearch(
   const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
-  // A tool search, not a visitor's: recorded as ai_tool so chat traffic doesn't
-  // count towards search analytics (popular queries, zero results).
+  // The AI's Search tool, not a visitor's search: reports list it under Assistant Searches.
   const response = await searchService.searchById(
     source.searchIndexId,
     {
@@ -112,7 +111,7 @@ async function executeManagedSearch(
       filters: merged.filters.length > 0 ? merged.filters : undefined,
       sort: sorting.sort.length > 0 ? sorting.sort : undefined,
     },
-    { triggerType: 'ai_tool' },
+    { triggerType: 'ai_tool', triggerStep: 'search' },
   );
 
   return {
@@ -237,6 +236,7 @@ async function executeExternalSearch(
   trackSearch({
     requestId: crypto.randomUUID(),
     triggerType: 'ai_tool',
+    triggerStep: 'search',
     // An admin test chat runs the turn as 'admin_test'; without this it counts as live traffic.
     source: getAnalyticsSourceContext(),
     searchType: 'lexical',

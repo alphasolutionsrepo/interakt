@@ -105,7 +105,7 @@ async function enumerateFromManagedIndex(
     return { success: false, error: `Field "${field}" is not facetable/filterable` };
   }
 
-  // A facet-value lookup, not a search anyone typed: 'system' keeps it out of search analytics.
+  // Recorded as the List Values tool's search: it loads a field's values, so search reports don't count it.
   const response = await searchService.searchById(searchIndexId, {
     query: '*',
     searchType: 'lexical',
@@ -117,7 +117,7 @@ async function enumerateFromManagedIndex(
       orderBy: 'count',
       orderDirection: 'desc',
     }],
-  }, { triggerType: 'system' });
+  }, { triggerType: 'ai_tool', triggerStep: 'enumerate' });
 
   const facet = response.facets?.find(f => f.field === field);
   const valueMappings = indexField.filterValueMappings ?? {};

@@ -2,7 +2,7 @@
 
 /**
  * Who made a search: visitor searches and the assistant's own searches are reported
- * apart, and internal lookups (facet values, vocabularies) aren't counted as searches.
+ * apart, and lookups (Find Record, List Values, query understanding) aren't counted as searches.
  * Runs the queries on real Postgres (PGlite) with the analytics migrations applied.
  */
 
@@ -29,12 +29,13 @@ import {
   getZeroResultQueries,
 } from './analytics-query.service';
 
-function searchEvent(triggerType: string, query: string, totalResults: number) {
+function searchEvent(triggerType: string, query: string, totalResults: number, triggerStep: string | null = null) {
   return {
     requestId: crypto.randomUUID(),
     timestamp: new Date(Date.now() - 10 * 60_000),
     source: 'api',
     triggerType,
+    triggerStep,
     searchType: 'lexical',
     indexIds: ['idx'],
     experienceId: null,
@@ -58,10 +59,12 @@ beforeEach(async () => {
   await testDb.db.insert(searchEvents).values([
     searchEvent('user', 'linen shirt', 4),
     searchEvent('user', 'wool coat', 0),
-    searchEvent('ai_tool', 'wedding dress', 0),
-    searchEvent('ai_tool', 'wedding dress', 2),
-    searchEvent('system', '*', 0),
-    searchEvent('system', '*', 0),
+    searchEvent('ai_tool', 'wedding dress', 0, 'search'),
+    searchEvent('ai_tool', 'wedding dress', 2, 'search'),
+    // Lookups: Find Record, List Values and a search experience's query understanding
+    searchEvent('ai_tool', 'SKU-123', 0, 'lookup'),
+    searchEvent('ai_tool', '*', 0, 'enumerate'),
+    searchEvent('ai_step', '*', 0, 'query_interpretation'),
   ]);
 });
 afterAll(async () => {
@@ -69,17 +72,17 @@ afterAll(async () => {
 });
 
 describe('search origin', () => {
-  it('leaves internal lookups out of the overview totals', async () => {
+  it('leaves lookups out of the overview totals, and counts them apart', async () => {
     const overview = await getOverviewMetrics('24h');
 
     expect(overview.totalSearches).toBe(4);
     expect(overview.zeroResultRate).toBe(0.5);
     expect(overview.uniqueQueries).toBe(3);
-    expect(overview.searchesByTrigger).toEqual({ user: 2, ai_tool: 2, ai_rag: 0, system: 2 });
+    expect(overview.searchesByTrigger).toEqual({ user: 2, ai_tool: 2, lookups: 3 });
   });
 
-  it('leaves internal lookups out of the search types chart and the timings', async () => {
-    await testDb.db.insert(searchEvents).values({ ...searchEvent('system', '*', 0), durationMs: 1000 });
+  it('leaves lookups out of the search types chart and the timings', async () => {
+    await testDb.db.insert(searchEvents).values({ ...searchEvent('ai_tool', '*', 0, 'enumerate'), durationMs: 1000 });
 
     expect((await getOverviewMetrics('24h')).avgSearchDurationMs).toBe(20);
 
@@ -88,7 +91,7 @@ describe('search origin', () => {
     expect((await getPerformanceMetrics('24h')).avgDurationMs).toBe(20);
   });
 
-  it('leaves internal lookups out of the trend chart, matching the totals', async () => {
+  it('leaves lookups out of the trend chart, matching the totals', async () => {
     const trends = await getSearchTrends('24h');
 
     expect(trends.reduce((sum, point) => sum + point.totalSearches, 0)).toBe(4);
@@ -104,8 +107,8 @@ describe('search origin', () => {
     ]);
   });
 
-  it("lists a RAG search (the assistant's) under assistant searches, not visitor ones", async () => {
-    await testDb.db.insert(searchEvents).values(searchEvent('ai_rag', 'return policy', 0));
+  it('lists an assistant search recorded before its step was (no step) under assistant searches', async () => {
+    await testDb.db.insert(searchEvents).values(searchEvent('ai_tool', 'return policy', 0));
 
     expect((await getPopularQueries('24h', undefined, 20, undefined, 'assistant')).map((q) => q.query)).toContain('return policy');
     expect((await getZeroResultQueries('24h', undefined, 20, undefined, 'assistant')).map((q) => q.query)).toContain('return policy');
@@ -119,7 +122,7 @@ describe('search origin', () => {
     ]);
   });
 
-  it('lists both, without internal lookups, when no origin is asked for (the API and the analytics assistant)', async () => {
+  it('lists both, without lookups, when no origin is asked for (the API and the analytics assistant)', async () => {
     expect((await getPopularQueries('24h')).map((q) => q.query).sort()).toEqual(['linen shirt', 'wedding dress', 'wool coat']);
     expect((await getZeroResultQueries('24h')).map((q) => q.query).sort()).toEqual(['wedding dress', 'wool coat']);
   });

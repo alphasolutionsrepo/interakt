@@ -3,8 +3,9 @@
 /**
  * Searches run by tools are not visitor searches. Search analytics (popular
  * queries, zero results, user vs AI breakdown) depend on each call being tagged
- * with the right trigger: the model's tool searches as 'ai_tool', internal
- * facet-value lookups and Find Record's search for the item asked for as 'system'.
+ * with what started it and which tool ran it: every tool search is 'ai_tool', with the
+ * tool's step ('search', 'enumerate' for List Values, 'lookup' for Find Record), so reports
+ * count only the Search tool's.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -46,16 +47,16 @@ beforeEach(() => {
 describe('analytics tagging of tool searches', () => {
   it('records a tool search on a managed index as ai_tool', async () => {
     await executeDataSourceSearch('ds', {}, { query: 'linen shirts' });
-    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: 'linen shirts' }), { triggerType: 'ai_tool' });
+    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: 'linen shirts' }), { triggerType: 'ai_tool', triggerStep: 'search' });
   });
 
-  it('records a facet-value lookup as system', async () => {
+  it('records a List Values lookup as the AI tool it is, with its step', async () => {
     await executeDataSourceEnumerate('ds', {}, { field: 'brand' });
-    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: '*' }), { triggerType: 'system' });
+    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: '*' }), { triggerType: 'ai_tool', triggerStep: 'enumerate' });
   });
 
-  it("records Find Record's search for the item asked for as system", async () => {
+  it("records Find Record's search for the item asked for as the AI tool it is, with its step", async () => {
     await executeDataSourceLookup('ds', {}, { id: 'Linen Shirt' });
-    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: 'Linen Shirt' }), { triggerType: 'system' });
+    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: 'Linen Shirt' }), { triggerType: 'ai_tool', triggerStep: 'lookup' });
   });
 });

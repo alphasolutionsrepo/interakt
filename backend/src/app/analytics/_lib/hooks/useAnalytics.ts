@@ -17,8 +17,7 @@ export interface OverviewMetrics {
   searchesByTrigger: {
     user: number;
     ai_tool: number;
-    ai_rag: number;
-    system: number;
+    lookups: number;
   };
 }
 
@@ -89,6 +88,7 @@ export interface RecentSearchEvent {
   query: string;
   searchType: string;
   triggerType: string;
+  triggerStep: string | null;
   totalResults: number;
   durationMs: number;
   success: boolean;

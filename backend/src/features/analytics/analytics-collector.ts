@@ -343,6 +343,7 @@ async function flushSearchEvents(): Promise<void> {
         // Reports count live traffic as source 'api'; admin test chats and the playground stay apart
         source: e.source,
         triggerType: e.triggerType,
+        triggerStep: e.triggerStep,
         triggerSourceId: e.triggerSourceId,
         aiRequestId: e.aiRequestId,
         searchType: e.searchType,

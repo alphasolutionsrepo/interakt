@@ -98,8 +98,7 @@ interface OverviewMetrics {
   searchesByTrigger: {
     user: number;
     ai_tool: number;
-    ai_rag: number;
-    system: number;
+    lookups: number;
   };
 }
 
@@ -128,7 +127,7 @@ function OverviewMetricsRenderer({ data }: { data: OverviewMetrics }) {
     {
       label: 'AI Requests',
       value: formatNumber(data.totalAIRequests),
-      subtext: `${formatNumber(data.searchesByTrigger.ai_tool + data.searchesByTrigger.ai_rag)} AI-triggered`,
+      subtext: `${formatNumber(data.searchesByTrigger.ai_tool)} by the assistant`,
       icon: Bot,
       color: 'text-purple-500',
       bgColor: 'bg-purple-500/10',
@@ -1030,6 +1029,7 @@ interface RecentSearch {
   query: string;
   searchType: string;
   triggerType: string;
+  triggerStep?: string | null;
   totalResults: number;
   durationMs: number;
   success: boolean;
@@ -1067,7 +1067,7 @@ function RecentSearchesRenderer({ data }: { data: RecentSearch[] }) {
             {search.totalResults} results
           </span>
           <Badge variant="outline" className="shrink-0 text-xs">
-            {search.triggerType}
+            {search.triggerType}{search.triggerStep && search.triggerStep !== 'search' ? ` · ${search.triggerStep}` : ''}
           </Badge>
         </div>
       ))}
@@ -1085,6 +1085,7 @@ interface QuerySearchEvent {
   query: string;
   searchType: string;
   triggerType: string;
+  triggerStep?: string | null;
   totalResults: number;
   isZeroResult: boolean;
   durationMs: number;
@@ -1149,7 +1150,7 @@ function QuerySearchEventsRenderer({ data }: { data: QuerySearchEvent[] }) {
               {new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
             </span>
             <Badge variant="outline" className="shrink-0 text-[10px] px-1 py-0">
-              {event.triggerType}
+              {event.triggerType}{event.triggerStep && event.triggerStep !== 'search' ? ` · ${event.triggerStep}` : ''}
             </Badge>
             <Badge variant="outline" className="shrink-0 text-[10px] px-1 py-0">
               {event.searchType}

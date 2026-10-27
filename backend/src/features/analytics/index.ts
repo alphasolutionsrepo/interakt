@@ -210,6 +210,7 @@ export type {
 
   // Enum types
   TriggerType,
+  TriggerStep,
   SearchType,
   AIOperation,
   AIFeature,

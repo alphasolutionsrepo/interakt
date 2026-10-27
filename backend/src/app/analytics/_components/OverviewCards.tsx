@@ -69,7 +69,7 @@ export function OverviewCards({ data, isLoading }: OverviewCardsProps) {
     {
       title: 'AI Requests',
       value: formatNumber(data.totalAIRequests),
-      subtext: `User: ${formatNumber(data.searchesByTrigger.user)}, AI: ${formatNumber(data.searchesByTrigger.ai_tool + data.searchesByTrigger.ai_rag)}`,
+      subtext: `User: ${formatNumber(data.searchesByTrigger.user)}, AI: ${formatNumber(data.searchesByTrigger.ai_tool)}`,
       icon: Bot,
       iconColor: 'text-purple-500',
     },

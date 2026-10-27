@@ -9,6 +9,8 @@
  * NOTE: Provider/Model configuration types come from ai-providers feature.
  */
 
+import type { AIFeature } from '@/features/analytics/analytics.types';
+
 // ============================================================================
 // OPERATION TYPES (Enum-like constants)
 // ============================================================================
@@ -41,8 +43,8 @@ export interface AIServiceOptions {
     userId?: string;
     /** Session ID for analytics */
     sessionId?: string;
-    /** Feature identifier for analytics (e.g., 'search_indexing', 'chat') */
-    feature?: string;
+    /** What the call is for, stored on its AI usage row */
+    feature?: AIFeature;
     /** Experience ID for per-experience telemetry detail level resolution */
     experienceId?: string;
 }
@@ -310,6 +312,8 @@ export interface ChatStreamChunk {
 // ============================================================================
 
 export interface EmbeddingOptions extends AIServiceOptions {
+    /** What the embedding is for: every embedding call names one */
+    feature: AIFeature;
     /** Expected dimensions (for validation) */
     dimensions?: number;
     /** Batch size for processing (default: 100) */
@@ -408,7 +412,7 @@ export interface AIUsageMetrics {
     errorMessage?: string;
     userId?: string;
     sessionId?: string;
-    feature?: string;
+    feature?: AIFeature;
     metadata?: Record<string, unknown>;
     /** Where the call came from (live traffic, an admin test chat, the playground) */
     source?: 'api' | 'playground' | 'admin_test';

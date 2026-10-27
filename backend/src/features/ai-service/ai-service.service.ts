@@ -699,7 +699,7 @@ export async function* streamChat(
  */
 export async function generateEmbeddings(
     texts: string[],
-    options?: EmbeddingOptions
+    options: EmbeddingOptions
 ): Promise<EmbeddingBatchResult> {
     const requestId = uuidv4();
     const startTime = Date.now();
@@ -867,7 +867,7 @@ export async function generateEmbeddings(
  */
 export async function generateEmbedding(
     text: string,
-    options?: EmbeddingOptions
+    options: EmbeddingOptions
 ): Promise<number[]> {
     const result = await generateEmbeddings([text], options);
     return result.embeddings[0].vector;

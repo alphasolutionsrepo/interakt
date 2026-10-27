@@ -10,7 +10,10 @@
  * when the resolved data source is of type 'file_store'.
  */
 
+import { trackSearch } from '@/features/analytics';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { embed } from '@/features/embedding/embedding.service';
+import { getExperienceContext } from '@/features/search/search.service';
 import * as kbRepository from '@/features/knowledge-base/knowledge-base.repository';
 import { createLogger } from '@/shared/logger/logger';
 import { noRecordFound, type OperationResult } from './shared';
@@ -55,8 +58,38 @@ interface SearchInput {
 /**
  * Semantic + keyword hybrid search over knowledge chunks.
  * Returns top-K relevant chunks with source document attribution.
+ * Recorded like every other Search tool search, so reports see it.
  */
 export async function executeFileStoreSearch(
+  dataSourceId: string,
+  config: Record<string, unknown>,
+  input: Record<string, unknown>,
+): Promise<OperationResult> {
+  const startTime = Date.now();
+  const result = await searchFileStore(dataSourceId, config, input);
+  const data = result.data as { totalCount?: number } | undefined;
+  const ctx = getExperienceContext();
+  trackSearch({
+    requestId: crypto.randomUUID(),
+    triggerType: 'ai_tool',
+    triggerStep: 'search',
+    source: getAnalyticsSourceContext(),
+    searchType: 'hybrid',
+    // A file store is identified by its data source, as external sources are.
+    indexIds: [dataSourceId],
+    experienceId: ctx?.experienceId,
+    experienceSlug: ctx?.experienceSlug,
+    queryText: typeof input.query === 'string' ? input.query.trim() : '',
+    totalResults: data?.totalCount ?? 0,
+    resultsReturned: data?.totalCount ?? 0,
+    durationMs: Date.now() - startTime,
+    success: result.success,
+    errorMessage: result.success ? undefined : result.error,
+  }, ctx?.experienceId);
+  return result;
+}
+
+async function searchFileStore(
   dataSourceId: string,
   config: Record<string, unknown>,
   input: Record<string, unknown>,
@@ -236,7 +269,7 @@ async function tryVectorSearch(
   maxDistance: number,
 ): Promise<Array<Awaited<ReturnType<typeof kbRepository.searchChunks>>[number]>> {
   try {
-    const queryVector = await embed(query, { feature: 'knowledge_search' } as any);
+    const queryVector = await embed(query, { feature: 'knowledge_search' });
     if (!queryVector) return [];
     return kbRepository.searchChunks(dataSourceId, queryVector, limit, maxDistance);
   } catch {

@@ -109,7 +109,10 @@ export const searchEvents = pgTable(
     source: varchar('source', { length: 20 }).notNull().default('api'), // 'api', 'playground', 'admin_test'
 
     // Trigger context - KEY FOR DISTINGUISHING USER VS AI
-    triggerType: varchar('trigger_type', { length: 20 }).notNull(), // 'user', 'ai_tool', 'ai_rag', 'system'
+    triggerType: varchar('trigger_type', { length: 20 }).notNull(), // 'user', 'ai_tool', 'ai_step'
+    // Which tool or AI step ran the search ('search', 'lookup', 'enumerate', 'query_interpretation');
+    // empty for a visitor's own search. Reports decide from it what counts as a search.
+    triggerStep: varchar('trigger_step', { length: 50 }),
     triggerSourceId: varchar('trigger_source_id', { length: 255 }), // chat_message_id if AI-triggered
     aiRequestId: uuid('ai_request_id'), // FK to ai_usage_events if AI-triggered
 

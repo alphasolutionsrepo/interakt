@@ -20,9 +20,9 @@ import {
   getPerformanceMetrics,
   getRecentSearchEvents,
   getQuerySearchEvents,
+  type SearchOrigin,
   type TimeRange,
 } from './index';
-import type { SearchOrigin } from './index';
 import { getConversationDetail } from './conversation-analytics.service';
 
 // ============================================================================
@@ -946,10 +946,9 @@ function formatOverviewForAI(data: Awaited<ReturnType<typeof getOverviewMetrics>
 - Average Search Latency: ${data.avgSearchDurationMs.toFixed(0)}ms
 
 Searches by Trigger:
-- User-initiated: ${data.searchesByTrigger.user.toLocaleString()}
-- AI Tool: ${data.searchesByTrigger.ai_tool.toLocaleString()}
-- AI RAG: ${data.searchesByTrigger.ai_rag.toLocaleString()}
-- Internal lookups (not in Total Searches): ${data.searchesByTrigger.system.toLocaleString()}
+- Visitor searches: ${data.searchesByTrigger.user.toLocaleString()}
+- Assistant searches (Search tool): ${data.searchesByTrigger.ai_tool.toLocaleString()}
+- Lookups by Find Record, List Values and query understanding (not in Total Searches): ${data.searchesByTrigger.lookups.toLocaleString()}
 
 Total AI Requests: ${data.totalAIRequests.toLocaleString()}
 Average AI Latency: ${data.avgAIDurationMs.toFixed(0)}ms`;

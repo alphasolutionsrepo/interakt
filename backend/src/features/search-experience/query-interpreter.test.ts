@@ -34,6 +34,7 @@ vi.mock('@/features/search/search.service', () => ({
 
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
+import * as searchService from '@/features/search/search.service';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
@@ -255,5 +256,28 @@ describe('invalidateQueryInterpreterCache', () => {
             query: QUERY, clientFilters: undefined, searchIndexId: cleared, aiConfig: config, experienceId: 'exp-1',
         });
         expect(aiService.chat).toHaveBeenCalledTimes(3);
+    });
+});
+
+describe('loading a field’s values for the model', () => {
+    it('is recorded as query understanding, an AI step, not a visitor search', async () => {
+        vi.mocked(searchIndexService.getSearchIndexById).mockResolvedValue(
+            { id: 'idx', fields: [...INDEX_FIELDS, { fieldName: 'colour', fieldType: 'keyword', isIndexed: true, isFacetable: true }] } as unknown as Awaited<
+                ReturnType<typeof searchIndexService.getSearchIndexById>
+            >,
+        );
+        vi.mocked(searchService.searchById).mockResolvedValue(
+            { facets: [{ field: 'colour', buckets: [{ key: 'Red', count: 3 }] }] } as unknown as Awaited<ReturnType<typeof searchService.searchById>>,
+        );
+
+        await applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId: freshIndexId(), aiConfig: aiConfig(), experienceId: 'exp-1',
+        });
+
+        expect(searchService.searchById).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({ query: '*' }),
+            { triggerType: 'ai_step', triggerStep: 'query_interpretation' },
+        );
     });
 });

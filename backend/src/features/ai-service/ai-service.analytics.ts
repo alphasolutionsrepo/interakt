@@ -89,21 +89,14 @@ export async function flushAnalytics(): Promise<void> {
     try {
         // Import analytics collector to write to analytics DB
         const { trackAI } = await import('@/features/analytics');
-        type AIFeature = 'chat' | 'summarize' | 'search_embedding' | 'reindex_embedding' | 'autocomplete' | 'api';
 
         // Send each event to the analytics collector (fire-and-forget)
         for (const metrics of batch) {
-            // Map feature string to AIFeature type if valid
-            const validFeatures: AIFeature[] = ['chat', 'summarize', 'search_embedding', 'reindex_embedding', 'autocomplete', 'api'];
-            const feature = metrics.feature && validFeatures.includes(metrics.feature as AIFeature)
-                ? (metrics.feature as AIFeature)
-                : undefined;
-
             trackAI({
                 requestId: metrics.requestId,
                 sessionId: metrics.sessionId,
                 operation: metrics.operation,
-                feature,
+                feature: metrics.feature,
                 providerId: metrics.providerId,
                 providerKey: metrics.providerKey,
                 modelId: metrics.modelId,
