@@ -37,12 +37,14 @@ describe('suggested fields', () => {
     const fields: LookupFieldCandidate[] = [
       { name: 'name', type: 'text', searchable: true },
       { name: 'storeName', type: 'text', searchable: true, role: 'title' },
-      { name: 'sku', type: 'keyword', filterable: true },
+      { name: 'sku', type: 'keyword', searchable: false, filterable: true },
       { name: 'ean', type: 'text', filterable: false },
       { name: 'categoryId', type: 'keyword', filterable: true },
     ];
 
     expect(suggestLookupFields(fields, external)).toEqual({ nameFields: ['storeName'], codeFields: ['sku'] });
+    // Fetched by filter, so not being searchable doesn't matter for an external code field
+    expect(checkLookupFields({ codeFields: ['sku'] }, fields, external)).toEqual({ errors: [], warnings: [] });
   });
 
   it('suggests nothing when no field looks like a name or a code', () => {

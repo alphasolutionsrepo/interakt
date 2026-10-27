@@ -155,7 +155,9 @@ const fits = (field: LookupFieldCandidate, as: 'name' | 'code', rules: LookupFie
 
 function weaknessesOf(field: LookupFieldCandidate, as: 'name' | 'code', rules: LookupFieldRules): string[] {
   const notes: string[] = [];
-  if (rules.findsThroughSearch && field.searchable === false) {
+  // An external source fetches by code with a filter, so a code field there needn't be searchable
+  const foundBySearch = as === 'name' || !rules.codesNeedFilter;
+  if (rules.findsThroughSearch && foundBySearch && field.searchable === false) {
     notes.push(`${field.name} isn't searchable, so Find Record only matches it on items its search finds through other fields`);
   }
   if (as === 'name' && field.nullRate !== undefined && field.nullRate > 0.5) {
