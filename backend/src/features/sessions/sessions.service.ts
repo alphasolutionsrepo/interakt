@@ -320,7 +320,7 @@ function embedMessageAsync(messageId: string, role: string, content: string): vo
 
   const text = prepareMessageText(role, content);
 
-  embed(text, { feature: 'session_messages' })
+  embed(text, { feature: 'session_message' })
     .then((vector) => {
       if (vector) {
         return repository.updateMessageEmbedding(messageId, vector);

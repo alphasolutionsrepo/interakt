@@ -25,7 +25,9 @@ function formatTime(timestamp: string): string {
 const STEP_LABELS: Record<string, string> = {
   lookup: 'Find Record',
   enumerate: 'List Values',
+  parameter_context: 'Filter values',
   query_interpretation: 'Query understanding',
+  field_values_legacy: 'Field values (earlier)',
 };
 
 function getTriggerLabel(triggerType: string, triggerStep: string | null): string {

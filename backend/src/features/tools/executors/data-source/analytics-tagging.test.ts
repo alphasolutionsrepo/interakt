@@ -55,6 +55,11 @@ describe('analytics tagging of tool searches', () => {
     expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: '*' }), { triggerType: 'ai_tool', triggerStep: 'enumerate' });
   });
 
+  it('records a field-values load for a fixed AI step with that step, not as List Values', async () => {
+    await executeDataSourceEnumerate('ds', {}, { field: 'brand' }, { triggerType: 'ai_step', triggerStep: 'parameter_context' });
+    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: '*' }), { triggerType: 'ai_step', triggerStep: 'parameter_context' });
+  });
+
   it("records Find Record's search for the item asked for as the AI tool it is, with its step", async () => {
     await executeDataSourceLookup('ds', {}, { id: 'Linen Shirt' });
     expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: 'Linen Shirt' }), { triggerType: 'ai_tool', triggerStep: 'lookup' });

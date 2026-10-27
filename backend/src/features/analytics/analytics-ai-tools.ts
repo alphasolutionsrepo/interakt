@@ -599,7 +599,7 @@ WHAT IT RETURNS:
 INTELLIGENT INTERPRETATION:
 - Compare searches that returned results vs zero results
 - Look for patterns: Did zero results happen with filters? With certain search types?
-- triggerType shows if it was user, AI tool, or AI RAG initiated
+- trigger shows who ran it: user (a visitor), ai_tool (the AI's Search tool), or a lookup named by its tool or step (ai_tool:lookup = Find Record, ai_tool:enumerate = List Values, ai_step:parameter_context, ai_step:query_interpretation, ai_step:field_values_legacy); lookups aren't counted as searches
 - hasFilters=true with isZeroResult=true might indicate filters are too restrictive
 - After showing results, suggest: "Would you like me to look for patterns in why some searches failed?"`,
     parameters: {
@@ -1055,6 +1055,11 @@ ${
 }`;
 }
 
+/** Who ran a search, with the tool or step when it isn't a search (Find Record, List Values, AI steps) */
+function triggerOf(event: { triggerType: string; triggerStep: string | null }): string {
+  return event.triggerStep && event.triggerStep !== 'search' ? `${event.triggerType}:${event.triggerStep}` : event.triggerType;
+}
+
 function formatRecentSearchesForAI(
   data: Awaited<ReturnType<typeof getRecentSearchEvents>>
 ): string {
@@ -1066,7 +1071,7 @@ function formatRecentSearchesForAI(
 
   for (const event of data) {
     const status = event.success ? '✓' : '✗';
-    result += `${status} [${event.triggerType}] "${event.query}"
+    result += `${status} [${triggerOf(event)}] "${event.query}"
    - ${event.totalResults} results, ${event.durationMs}ms, ${event.searchType}
    - ${new Date(event.timestamp).toLocaleString()}\n`;
   }
@@ -1100,15 +1105,16 @@ function formatQuerySearchEventsForAI(
     }
   }
 
-  // Group by trigger type
+  // Group by who ran it (a lookup apart from searches)
   const byTriggerType: Record<string, { total: number; zeroResults: number }> = {};
   for (const event of data) {
-    if (!byTriggerType[event.triggerType]) {
-      byTriggerType[event.triggerType] = { total: 0, zeroResults: 0 };
+    const trigger = triggerOf(event);
+    if (!byTriggerType[trigger]) {
+      byTriggerType[trigger] = { total: 0, zeroResults: 0 };
     }
-    byTriggerType[event.triggerType].total++;
+    byTriggerType[trigger].total++;
     if (event.isZeroResult) {
-      byTriggerType[event.triggerType].zeroResults++;
+      byTriggerType[trigger].zeroResults++;
     }
   }
 
@@ -1144,7 +1150,7 @@ By Search Type:
     result += `\nSample Zero-Result Events:\n`;
     for (const event of zeroResultEvents) {
       const filterInfo = event.hasFilters ? ` [filters: ${event.filterFields?.join(', ') || 'yes'}]` : '';
-      result += `- ${new Date(event.timestamp).toLocaleString()}: ${event.searchType}, ${event.triggerType}${filterInfo}\n`;
+      result += `- ${new Date(event.timestamp).toLocaleString()}: ${event.searchType}, ${triggerOf(event)}${filterInfo}\n`;
     }
   }
 

@@ -251,6 +251,8 @@ class DataSourceSearchProvider implements ParameterContextProvider {
           dataSourceId,
           { maxValues: 100 },
           { field, maxValues: 100 },
+          // A fixed step before the AI fills in the Search tool's filters, not the List Values tool
+          { triggerType: 'ai_step', triggerStep: 'parameter_context' },
         );
 
         if (enumResult.success && enumResult.data) {

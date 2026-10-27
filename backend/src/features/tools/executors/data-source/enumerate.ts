@@ -8,6 +8,7 @@
  * (e.g., "what categories exist?", "what brands are available?").
  */
 
+import type { TriggerStep, TriggerType } from '@/features/analytics';
 import * as searchService from '@/features/search/search.service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
@@ -43,10 +44,22 @@ interface EnumerateConfig {
 // MAIN ENTRY POINT
 // ============================================================================
 
+/**
+ * What ran the enumeration, recorded on its search: the List Values tool by default, or a
+ * fixed AI step that loads a field's values (the chat's filter values).
+ */
+export interface EnumerateTrigger {
+  triggerType: TriggerType;
+  triggerStep: TriggerStep;
+}
+
+const LIST_VALUES_TOOL: EnumerateTrigger = { triggerType: 'ai_tool', triggerStep: 'enumerate' };
+
 export async function executeDataSourceEnumerate(
   dataSourceId: string,
   config: Record<string, unknown>,
   input: Record<string, unknown>,
+  trigger: EnumerateTrigger = LIST_VALUES_TOOL,
 ): Promise<OperationResult> {
   const enumConfig = config as unknown as EnumerateConfig;
   const enumInput = input as unknown as EnumerateInput;
@@ -71,7 +84,7 @@ export async function executeDataSourceEnumerate(
 
     // For managed indexes, use facet aggregation via search service
     if (source.kind === 'managed') {
-      return enumerateFromManagedIndex(source.searchIndexId, field, maxValues);
+      return enumerateFromManagedIndex(source.searchIndexId, field, maxValues, trigger);
     }
 
     // For external data sources, query the provider directly
@@ -91,6 +104,7 @@ async function enumerateFromManagedIndex(
   searchIndexId: string,
   field: string,
   maxValues: number,
+  trigger: EnumerateTrigger,
 ): Promise<OperationResult> {
   const index = await searchIndexService.getSearchIndexById(searchIndexId);
   if (!index) {
@@ -105,7 +119,8 @@ async function enumerateFromManagedIndex(
     return { success: false, error: `Field "${field}" is not facetable/filterable` };
   }
 
-  // Recorded as the List Values tool's search: it loads a field's values, so search reports don't count it.
+  // Recorded with what ran it (List Values, or a fixed AI step): it loads a field's values, so search
+  // reports don't count it.
   const response = await searchService.searchById(searchIndexId, {
     query: '*',
     searchType: 'lexical',
@@ -117,7 +132,7 @@ async function enumerateFromManagedIndex(
       orderBy: 'count',
       orderDirection: 'desc',
     }],
-  }, { triggerType: 'ai_tool', triggerStep: 'enumerate' });
+  }, trigger);
 
   const facet = response.facets?.find(f => f.field === field);
   const valueMappings = indexField.filterValueMappings ?? {};

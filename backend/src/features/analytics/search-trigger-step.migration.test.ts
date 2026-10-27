@@ -2,8 +2,8 @@
 
 /**
  * Searches stored as 'system' before each search recorded its step are relabelled by the
- * migration that adds the step: with an experience they came from the List Values tool in a
- * chat, without one from a search experience's query understanding.
+ * migration that adds the step. Every one loaded a field's values (List Values, a chat's filter
+ * values, query understanding, a List Values Test-panel run); which ran it wasn't recorded.
  */
 
 import { readFileSync } from 'fs';
@@ -34,7 +34,7 @@ function oldSearch(triggerType: string, experienceId: string | null) {
 }
 
 describe('relabelling old system searches', () => {
-  it('names the tool or AI step that ran each one, and leaves other searches alone', async () => {
+  it('labels each one as a field-values load from before, and leaves other searches alone', async () => {
     const chat = crypto.randomUUID();
     await testDb.db.insert(searchEvents).values([oldSearch('system', chat), oldSearch('system', null), oldSearch('user', null)]);
 
@@ -48,8 +48,8 @@ describe('relabelling old system searches', () => {
       .select({ experienceId: searchEvents.experienceId, triggerType: searchEvents.triggerType, triggerStep: searchEvents.triggerStep })
       .from(searchEvents);
     expect(rows).toEqual(expect.arrayContaining([
-      { experienceId: chat, triggerType: 'ai_tool', triggerStep: 'enumerate' },
-      { experienceId: null, triggerType: 'ai_step', triggerStep: 'query_interpretation' },
+      { experienceId: chat, triggerType: 'ai_step', triggerStep: 'field_values_legacy' },
+      { experienceId: null, triggerType: 'ai_step', triggerStep: 'field_values_legacy' },
       { experienceId: null, triggerType: 'user', triggerStep: null },
     ]));
     expect(await testDb.db.select().from(searchEvents).where(eq(searchEvents.triggerType, 'system'))).toEqual([]);

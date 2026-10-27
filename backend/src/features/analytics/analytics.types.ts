@@ -21,7 +21,14 @@ export type TriggerType = 'user' | 'ai_tool' | 'ai_step';
  * Which tool or AI step ran a search, saved as is so a new tool needs no change here. Only a
  * visitor's own search and the Search tool's ('search') count as searches in reports.
  */
-export type TriggerStep = 'search' | 'lookup' | 'enumerate' | 'query_interpretation' | (string & {});
+export type TriggerStep =
+  | 'search' // the Search tool
+  | 'lookup' // Find Record
+  | 'enumerate' // List Values
+  | 'parameter_context' // a chat loading a field's values before the AI fills in a Search tool's filters
+  | 'query_interpretation' // a search experience's query understanding
+  | 'field_values_legacy' // a field's values loaded before the step was recorded
+  | (string & {});
 
 /**
  * Search algorithm type
@@ -59,7 +66,7 @@ export type AIFeature =
   | 'topic_gate' // the topic guardrail
   | 'topic-gate-expansion'
   | 'topic-gate-general-expansion'
-  | 'session_messages' // saving chat messages for recall
+  | 'session_message' // saving chat messages for recall (the trace view matches this name)
   | 'episodic_memory' // recalling earlier conversations
   | 'memory_extraction'
   | 'memory_retrieval' // the memory retrieval tool

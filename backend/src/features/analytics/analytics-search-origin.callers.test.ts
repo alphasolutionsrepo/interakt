@@ -100,4 +100,17 @@ describe("a chat experience's searches", () => {
     expect(overview).toContain('Total Searches: 2');
     expect(overview).toContain('Lookups by Find Record, List Values and query understanding (not in Total Searches): 1');
   });
+
+  it('are told apart from lookups by the analytics assistant, read from what was stored', async () => {
+    await testDb.db.insert(searchEvents).values({ ...assistantSearch('SKU-123', 0), triggerStep: 'lookup' });
+
+    const recent = await executeAnalyticsTool('get_recent_searches', { timeRange: '24h', experienceId });
+    const events = await executeAnalyticsTool('get_query_search_events', { timeRange: '24h', experienceId, queryText: 'SKU-123' });
+
+    expect((recent.rawData as Array<{ query: string; triggerStep: string | null }>).find((e) => e.query === 'SKU-123')?.triggerStep).toBe('lookup');
+    expect(String(recent.data)).toContain('[ai_tool:lookup] "SKU-123"');
+    expect(String(recent.data)).toContain('[ai_tool] "linen shirt"');
+    expect((events.rawData as Array<{ triggerStep: string | null }>)[0]?.triggerStep).toBe('lookup');
+    expect(String(events.data)).toContain('- ai_tool:lookup: 1 searches');
+  });
 });

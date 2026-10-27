@@ -27,6 +27,8 @@ describe('recent searches feed', () => {
         event('ai_tool', 'lookup', 'SKU-123'),
         event('ai_tool', 'enumerate', 'colours'),
         event('ai_step', 'query_interpretation', 'sizes'),
+        event('ai_step', 'parameter_context', 'brands'),
+        event('ai_step', 'field_values_legacy', 'fits'),
       ],
     }));
 
@@ -35,5 +37,7 @@ describe('recent searches feed', () => {
     expect(html).toContain('AI tool: Find Record');
     expect(html).toContain('AI tool: List Values');
     expect(html).toContain('AI step: Query understanding');
+    expect(html).toContain('AI step: Filter values');
+    expect(html).toContain('AI step: Field values (earlier)');
   });
 });
