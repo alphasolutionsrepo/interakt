@@ -20,6 +20,7 @@
  * on healthy turns and burn the budget.
  */
 
+import { singleRecordCount } from './result-count';
 import type { ActionResult, ExecutionLoopResult } from './v2.types';
 
 // ============================================================================
@@ -72,9 +73,10 @@ function countResults(action: ActionResult): number {
       const value = (data as Record<string, unknown>)[key];
       if (Array.isArray(value)) return value.length;
     }
-    // Single-document shapes (lookup): found:false must not read as a result.
-    if ('found' in data) return (data as { found?: boolean }).found ? 1 : 0;
-    if ('document' in data || 'item' in data) return 1;
+    // Single-document shapes (lookup): found:false must not read as a result; several matches
+    // do, since the answer asks which one.
+    const single = singleRecordCount(data);
+    if (single !== undefined) return single;
   }
 
   return action.result.resultCount ?? 0;

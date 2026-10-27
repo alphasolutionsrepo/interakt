@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
@@ -41,6 +41,9 @@ export function useAIExperiences(params?: ListAIExperiencesParams) {
   const query = useQuery({
     queryKey: aiExperienceKeys.list(params as Record<string, unknown>),
     queryFn: () => aiExperiencesApi.list(params),
+    // Keep the current list on screen while a new filter loads, so the page
+    // doesn't swap to its skeleton and unmount the search box.
+    placeholderData: keepPreviousData,
   });
 
   const deleteMutation = useMutation({

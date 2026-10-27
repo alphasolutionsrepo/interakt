@@ -91,6 +91,8 @@ export async function createAIExperience(input: CreateAIExperienceDTO, userId: s
       if (!tool.isActive) {
         throw new Error(`Tool "${tool.name}" is not active`);
       }
+      const notReady = await toolsService.notReadyToAssign(tool);
+      if (notReady) throw new Error(notReady);
     }
   }
 
@@ -265,6 +267,8 @@ export async function assignTool(experienceId: string, input: AssignToolDTO, use
   if (!tool) {
     throw new Error(`Tool with ID "${input.toolId}" not found`);
   }
+  const notReady = await toolsService.notReadyToAssign(tool);
+  if (notReady) throw new Error(notReady);
 
   const existing = await repository.getToolAssignment(experienceId, input.toolId);
   if (existing) {

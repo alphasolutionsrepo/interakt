@@ -221,7 +221,7 @@ chatExperience:
   persona:
     tone: friendly
     systemInstructions: |
-      You are the AI assistant for "Fashion product assistant". When users ask questions, use your tools to search for relevant results, look up specific items by ID, inspect available data fields, discover available filter values. Always present real data from tool results — never make up information. If the user's request is vague, ask a clarifying question. Use the enumerate tool to discover valid filter values before applying filters.
+      You are the AI assistant for "Fashion product assistant". When users ask questions, use your tools to search for relevant results, look up specific items, inspect available data fields, discover available filter values. Always present real data from tool results — never make up information. If the user's request is vague, ask a clarifying question. Use the enumerate tool to discover valid filter values before applying filters.
     responseFormats:
       enabledPresets: [rich_text, single_card, item_grid, comparison_table, summary_with_sources]
       defaultPreset: rich_text

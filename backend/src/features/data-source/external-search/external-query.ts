@@ -246,6 +246,9 @@ function esTarget(
   return { field: field?.filterField ?? name, fieldType: 'keyword' };
 }
 
+/** Elasticsearch's own document id: in no schema, but every index can be filtered on it. */
+export const ELASTICSEARCH_DOCUMENT_ID = '_id';
+
 function translateElasticsearchFilters(
   filters: FilterClause[],
   lookup: FieldLookup,
@@ -254,6 +257,11 @@ function translateElasticsearchFilters(
   const esClauses: ESQuery[] = [];
 
   for (const filter of filters) {
+    const value = filter.value;
+    if (filter.field === ELASTICSEARCH_DOCUMENT_ID && filter.operator === 'eq' && (typeof value === 'string' || typeof value === 'number')) {
+      esClauses.push({ term: { [ELASTICSEARCH_DOCUMENT_ID]: String(value) } });
+      continue;
+    }
     if (BOOLEAN_OPERATORS.has(filter.operator)) {
       unapplied.push({
         field: filter.field,

@@ -16,7 +16,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { searchIndexesApi, ApiError } from '../api-client';
 import type {
@@ -84,6 +84,9 @@ export function useSearchIndexes(params?: UseSearchIndexesParams) {
     const query = useQuery({
         queryKey: searchIndexKeys.list(params as Record<string, unknown>),
         queryFn: () => searchIndexesApi.list(params),
+        // Keep the current list on screen while a new filter loads, so the page
+        // doesn't swap to its skeleton and unmount the search box.
+        placeholderData: keepPreviousData,
     });
 
     const createMutation = useMutation({

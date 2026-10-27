@@ -304,6 +304,59 @@ describe('D3: Response Synthesis', () => {
       expect(preset).toBe('rich_text');
     });
 
+    it('shows no card for a lookup miss, even with closest matches', () => {
+      const { preset, presetPayload, debug } = _selectPreset(makeInput({
+        actionResults: [makeActionResult('product-search', {
+          result: { success: true, data: { found: false, requested: 'x', closestMatches: [{ id: 'p1', name: 'Product' }] } },
+        })],
+      }));
+      expect(preset).toBe('rich_text');
+      expect(presetPayload).toBeUndefined();
+      expect(debug.reason).toBe('no_items_extracted');
+    });
+
+    it('keeps a later search on the same source as cards after a lookup miss', () => {
+      const { preset, presetPayload, debug } = _selectPreset(makeInput({
+        toolSlugToDisplayConfig: { 'product-find': PRODUCT_DISPLAY_CONFIG, 'product-search': PRODUCT_DISPLAY_CONFIG },
+        actionResults: [
+          makeActionResult('product-find', {
+            result: { success: true, data: { found: false, requested: 'x', closestMatches: [{ id: 'p9', name: 'Near' }] } },
+          }),
+          makeActionResult('product-search', {
+            result: { success: true, data: [{ id: '1', imageUrl: 'a.jpg' }, { id: '2', imageUrl: 'b.jpg' }], resultCount: 2 },
+          }),
+        ],
+      }));
+      expect(preset).toBe('item_grid');
+      expect(presetPayload!.items.map((item) => item.id)).toEqual(['1', '2']);
+      expect(debug.visualGroupCount).toBe(1);
+    });
+
+    it('shows one card when a comparison finds only one side', () => {
+      const dayCreams = Array.from({ length: 8 }, (_, i) => ({ id: `d${i}`, title: `Day Cream ${i}` }));
+      const { preset, presetPayload } = _selectPreset(makeInput({
+        userMessage: 'Compare Day Cream vs Night Cream',
+        actionResults: [
+          makeActionResult('product-search', { result: { success: true, data: { results: dayCreams, totalCount: 8 } } }),
+          makeActionResult('product-search', { result: { success: true, data: { results: [], totalCount: 0 } } }),
+        ],
+      }));
+      expect(preset).toBe('single_card');
+      expect(presetPayload!.items.map((item) => item.id)).toEqual(['d0']);
+    });
+
+    it('still falls back to text when two tools both have items to show', () => {
+      const { preset, debug } = _selectPreset(makeInput({
+        toolSlugToDisplayConfig: { 'product-find': PRODUCT_DISPLAY_CONFIG, 'product-search': PRODUCT_DISPLAY_CONFIG },
+        actionResults: [
+          makeActionResult('product-find', { result: { success: true, data: { id: 'p9', document: { title: 'Found' } } } }),
+          makeActionResult('product-search', { result: { success: true, data: [{ id: '1' }, { id: '2' }], resultCount: 2 } }),
+        ],
+      }));
+      expect(preset).toBe('rich_text');
+      expect(debug.reason).toBe('multiple_visual_groups_fallback');
+    });
+
     it('returns single_card for 1 result with displayConfig', () => {
       const { preset, presetPayload } = _selectPreset(makeInput({
         actionResults: [makeActionResult('product-search', {
@@ -471,6 +524,52 @@ describe('relaxed constraints reach the answer', () => {
     const systemPrompt = JSON.stringify(chat.mock.calls[0]);
     expect(systemPrompt).toContain('the search was widened');
     expect(systemPrompt).toContain('Say so');
+  });
+
+  it('passes a lookup miss and its closest matches to the answer, with no product card', async () => {
+    const chat = vi.fn().mockResolvedValue(makeChatResult('Did you mean the Casual Crew Neck Sweater?'));
+    const emit = vi.fn();
+    const miss = {
+      found: false,
+      requested: 'Vesper crew neck sweater in navy',
+      message: 'No record matches "Vesper crew neck sweater in navy". closestMatches lists the nearest items found; none of them is the item asked for.',
+      closestMatches: [{ id: 'p1', name: 'Vesper & Co Casual Crew Neck Sweater' }],
+    };
+
+    await synthesizeResponse(
+      makeInput({ actionResults: [makeActionResult('product-search', { result: { success: true, data: miss } })] }),
+      { chat } as SynthesisDeps,
+      emit,
+    );
+
+    const prompt = JSON.stringify(chat.mock.calls[0]);
+    expect(prompt).toContain('Vesper & Co Casual Crew Neck Sweater');
+    expect(prompt).toContain('none of them is the item asked for');
+    const presets = emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'preset');
+    expect(presets.every((e) => (e as { preset?: string }).preset === 'rich_text')).toBe(true);
+  });
+
+  it('passes several matches to the answer, with no product card', async () => {
+    const chat = vi.fn().mockResolvedValue(makeChatResult('Which one do you mean?'));
+    const emit = vi.fn();
+    const several = {
+      found: false,
+      requested: 'Crew Neck Sweater',
+      message: 'Several records match "Crew Neck Sweater". matches lists them; ask the user which one they mean.',
+      matches: [{ id: 'p1', name: 'Echo Style Minimalist Crew Neck Sweater' }, { id: 'p2', name: 'Atlas Apparel Athleisure Crew Neck Sweater' }],
+    };
+
+    await synthesizeResponse(
+      makeInput({ actionResults: [makeActionResult('product-search', { result: { success: true, data: several } })] }),
+      { chat } as SynthesisDeps,
+      emit,
+    );
+
+    const prompt = JSON.stringify(chat.mock.calls[0]);
+    expect(prompt).toContain('Atlas Apparel Athleisure Crew Neck Sweater');
+    expect(prompt).toContain('ask the user which one they mean');
+    const presets = emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'preset');
+    expect(presets.every((e) => (e as { preset?: string }).preset === 'rich_text')).toBe(true);
   });
 
   it('says nothing about relaxation on an ordinary result', async () => {

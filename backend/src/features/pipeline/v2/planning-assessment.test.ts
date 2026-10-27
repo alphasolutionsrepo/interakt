@@ -69,6 +69,22 @@ describe('assessRound', () => {
     expect(a.resultCount).toBe(0);
   });
 
+  it('reads a lookup miss with closest matches as no result', () => {
+    // The near misses are offered for the answer, not results the round produced.
+    const data = { found: false, requested: 'x', closestMatches: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] };
+    const a = assessRound(round([action({ data })]), 1);
+    expect(a.verdict).toBe('empty');
+    expect(a.resultCount).toBe(0);
+  });
+
+  it('reads several matches as an answer to give, not a reason to plan again', () => {
+    // The lookup asks the user which one; planning again would replace that question with a guess.
+    const data = { found: false, requested: 'x', matches: [{ id: 'a', name: 'A' }, { id: 'b', name: 'A' }] };
+    const a = assessRound(round([action({ data })]), 2);
+    expect(a.verdict).toBe('usable');
+    expect(a.shouldReplan).toBe(false);
+  });
+
   it('reads found:true as one result', () => {
     const a = assessRound(round([action({ data: { found: true, id: 'x', data: {} } })]), 1);
     expect(a.verdict).toBe('usable');

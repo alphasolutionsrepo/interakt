@@ -238,7 +238,7 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
       if (ops.has('search')) {
         workflow.push(`${ops.has('inspect') && ops.has('enumerate') ? '3. Then search' : ops.has('inspect') || ops.has('enumerate') ? '2. Then search' : 'Search'} with precise filters and relevant keywords rather than sending the user's raw message as the query.`);
       }
-      if (ops.has('lookup')) workflow.push('- Use the lookup tool when you have a specific document ID and need its full details.');
+      if (ops.has('lookup')) workflow.push('- For one specific item, use the lookup tool: by id, SKU or name on a search index, by id for uploaded files.');
       workflow.push('');
       workflow.push('**Important:**');
       workflow.push("- If the user's request is vague, ask a clarifying question before searching.");

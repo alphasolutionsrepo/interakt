@@ -33,6 +33,9 @@ export type DataSourceOperation = 'search' | 'inspect' | 'enumerate' | 'lookup' 
 /** Data source types from the schema */
 export type DataSourceType = 'search_index' | 'search_index_external' | 'file_store' | 'database';
 
+/** Search-index lookups match an id, a SKU or a name (lookup.ts search fallback). */
+const LOOKUP_ID_OR_NAME = "The item's ID, SKU or full name, as the user gave it";
+
 /** Describes a single operation that can be performed on a data source type */
 export interface OperationCapability {
   /** The operation identifier */
@@ -47,6 +50,13 @@ export interface OperationCapability {
   aiDescriptionTemplate: string;
   /** Whether input schema can be auto-generated from data source schema */
   supportsAutoSchema: boolean;
+  /**
+   * Descriptions for input fields that mean something different on this data source type
+   * than the executor's shared schema says (e.g. a lookup's `id` that also takes a name).
+   */
+  inputDescriptions?: Record<string, string>;
+  /** Lookups only: also finds an item by its name, not just by its id. */
+  findsByName?: boolean;
   /** Default executor config for this operation */
   defaultConfig: Record<string, unknown>;
 }
@@ -119,9 +129,13 @@ export const DATA_SOURCE_CAPABILITIES: Record<DataSourceType, OperationCapabilit
       description: 'Retrieve a specific document by its unique identifier',
       slugSuffix: 'find',
       aiDescriptionTemplate:
-        'Look up a specific item by ID from "{dataSourceName}". ' +
-        'Use this when you have a specific document ID and need its full details.',
+        'Look up one specific item in "{dataSourceName}" by its ID, SKU or full name. ' +
+        'Use this when the user asks about that item, not similar ones. ' +
+        'When several items fit, returns found: false with matches; ask the user which one. ' +
+        'When none fits, returns found: false with closestMatches.',
       supportsAutoSchema: false,
+      inputDescriptions: { id: LOOKUP_ID_OR_NAME },
+      findsByName: true,
       defaultConfig: {},
     },
   ],
@@ -169,8 +183,13 @@ export const DATA_SOURCE_CAPABILITIES: Record<DataSourceType, OperationCapabilit
       description: 'Retrieve a specific document by ID from the external index',
       slugSuffix: 'find',
       aiDescriptionTemplate:
-        'Look up a specific document by ID from the external "{dataSourceName}" index.',
+        'Look up one specific item in the external "{dataSourceName}" index by its ID, SKU or full name. ' +
+        'Use this when the user asks about that item, not similar ones. ' +
+        'When several items fit, returns found: false with matches; ask the user which one. ' +
+        'When none fits, returns found: false with closestMatches.',
       supportsAutoSchema: false,
+      inputDescriptions: { id: LOOKUP_ID_OR_NAME },
+      findsByName: true,
       defaultConfig: {},
     },
   ],
@@ -314,6 +333,11 @@ export function getOperationCapability(
   operation: DataSourceOperation,
 ): OperationCapability | undefined {
   return getOperationsForDataSource(dataSourceType).find((cap) => cap.operation === operation);
+}
+
+/** Whether a lookup on this data source type also finds an item by its name. */
+export function lookupFindsByName(dataSourceType: string): boolean {
+  return getOperationCapability(dataSourceType as DataSourceType, 'lookup')?.findsByName === true;
 }
 
 /**

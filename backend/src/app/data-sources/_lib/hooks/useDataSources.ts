@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { dataSourcesApi, ApiError } from '../api-client';
 import type { CreateDataSourcePayload, UpdateDataSourcePayload, ListDataSourcesParams } from '../api-client';
@@ -42,6 +42,9 @@ export function useDataSources(params?: ListDataSourcesParams) {
   const query = useQuery({
     queryKey: dataSourceKeys.list(params as Record<string, unknown>),
     queryFn: () => dataSourcesApi.list(params),
+    // Keep the current list on screen while a new filter loads, so the page
+    // doesn't swap to its skeleton and unmount the search box.
+    placeholderData: keepPreviousData,
   });
 
   const deleteMutation = useMutation({

@@ -109,4 +109,8 @@ describe('mergeOperatorFieldEdits — schema inferred from a sample', () => {
   it('keeps fields this sample missed and adds new ones', () => {
     expect(merged.fields.map((f) => f.name)).toEqual(['name', 'keywords', 'rare', 'added']);
   });
+
+  it('records which fields this sample showed, so a kept one it missed can be flagged', () => {
+    expect(merged.latestSampleFields).toEqual(['name', 'keywords', 'added']);
+  });
 });

@@ -50,7 +50,7 @@ export function generateToolDescription(
   const fields = schema?.fields ?? [];
 
   const aiDescription = buildAiDescription(dataSourceName, dataSourceType, operation, fields);
-  const inputSchema = buildInputSchema(operation, fields);
+  const inputSchema = buildInputSchema(operation, fields, getOperationCapability(dataSourceType, operation)?.inputDescriptions);
 
   return { aiDescription, inputSchema };
 }
@@ -222,6 +222,7 @@ function getOperatorsForFieldType(type: string): string[] {
 function buildInputSchema(
   operation: DataSourceOperation,
   fields: DataSourceField[],
+  inputDescriptions?: Record<string, string>,
 ): Record<string, unknown> {
   const schemaKey = `data_source:${operation}`;
   const baseSchema = EXECUTOR_INPUT_SCHEMAS[schemaKey] as Record<string, unknown> | undefined;
@@ -232,6 +233,12 @@ function buildInputSchema(
 
   // Deep clone the base schema
   const schema = JSON.parse(JSON.stringify(baseSchema)) as Record<string, unknown>;
+
+  // What a field means on this data source type, where it differs from the shared schema
+  const properties = schema.properties as Record<string, Record<string, unknown>> | undefined;
+  for (const [name, description] of Object.entries(inputDescriptions ?? {})) {
+    if (properties?.[name]) properties[name].description = description;
+  }
 
   // Enrich search schema with field-specific filter info
   if (operation === 'search' && fields.length > 0) {

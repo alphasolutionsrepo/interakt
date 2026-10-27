@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  dataSourceConfigProblem,
   createToolSchema,
   updateToolSchema,
   listToolsQuerySchema,
@@ -40,6 +41,21 @@ describe('createToolSchema', () => {
     it('accepts valid data_source search config', () => {
       const result = createToolSchema.safeParse(validSearch);
       expect(result.success).toBe(true);
+    });
+
+    it("keeps a Find Record tool's name and code fields (a union of config schemas used to drop them)", () => {
+      const result = createToolSchema.safeParse({
+        ...validSearch,
+        operation: 'lookup',
+        executorConfig: { nameFields: ['name'], codeFields: ['sku'], idField: 'productId' },
+      });
+      expect(result.success && result.data.executorConfig).toEqual({ nameFields: ['name'], codeFields: ['sku'], idField: 'productId' });
+    });
+
+    it('says what is wrong with a config for its operation', () => {
+      expect(dataSourceConfigProblem('lookup', { nameFields: 'name' })).toContain('nameFields');
+      expect(dataSourceConfigProblem('search', { maxResults: 0 })).toContain('maxResults');
+      expect(dataSourceConfigProblem('search', { maxResults: 5, responseFields: ['name'] })).toBeUndefined();
     });
 
     it('requires dataSourceId as uuid', () => {

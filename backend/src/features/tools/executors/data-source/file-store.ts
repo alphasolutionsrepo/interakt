@@ -13,7 +13,7 @@
 import { embed } from '@/features/embedding/embedding.service';
 import * as kbRepository from '@/features/knowledge-base/knowledge-base.repository';
 import { createLogger } from '@/shared/logger/logger';
-import type { OperationResult } from './shared';
+import { noRecordFound, type OperationResult } from './shared';
 
 const logger = createLogger('file-store-executor');
 
@@ -180,6 +180,9 @@ interface LookupInput {
   id?: string;
 }
 
+/** A chunk id: chunks are keyed by UUID. */
+const CHUNK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Retrieve a specific chunk by ID from a file_store data source.
  */
@@ -189,23 +192,20 @@ export async function executeFileStoreLookup(
   input: Record<string, unknown>,
 ): Promise<OperationResult> {
   const lookupInput = input as unknown as LookupInput;
-  const chunkId = typeof lookupInput.id === 'string' ? lookupInput.id.trim() : '';
+  const chunkId = lookupInput.id === undefined || lookupInput.id === null ? '' : String(lookupInput.id).trim();
 
   if (!chunkId) {
     return { success: false, error: 'Missing required input field: "id"' };
   }
 
+  // Chunk ids are UUIDs: anything else (a document name, say) can't be one
+  if (!CHUNK_ID.test(chunkId)) return noRecordFound(chunkId);
+
   try {
     const chunk = await kbRepository.getChunkById(chunkId);
 
-    if (!chunk) {
-      return { success: false, error: `Chunk not found: ${chunkId}` };
-    }
-
-    // Verify the chunk belongs to this data source (authorization guard)
-    if (chunk.dataSourceId !== dataSourceId) {
-      return { success: false, error: `Chunk not found: ${chunkId}` };
-    }
+    // A chunk of another data source is answered like a missing one (authorization guard)
+    if (!chunk || chunk.dataSourceId !== dataSourceId) return noRecordFound(chunkId);
 
     return {
       success: true,

@@ -83,6 +83,11 @@ export interface ExternalConnectorCapabilities {
   paging: boolean;
   sort: boolean;
   highlights: boolean;
+  /**
+   * The field an `eq` filter finds a hit by the id this connector gives it, when that id isn't
+   * a field of the document (Elasticsearch's `_id`). Find Record looks an id up there too.
+   */
+  documentIdField?: string;
 }
 
 export interface ExternalSearchConnector {
