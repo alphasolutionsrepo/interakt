@@ -7,7 +7,7 @@ sidebar_position: 17
 The **Secrets Vault** is a place to store credentials — API keys, passwords, tokens — that you don't want hard-coded into tool configurations or visible in the admin UI. You save a secret once, give it a name, and refer to it elsewhere using `{{secret:name}}`. Interakt encrypts it at rest and resolves the placeholder at the moment a tool runs.
 
 ## Where to find this screen
-Sidebar → **Platform → Secrets Vault**.
+Sidebar → **Admin → Secrets Vault**.
 
 ## What the screen does
 

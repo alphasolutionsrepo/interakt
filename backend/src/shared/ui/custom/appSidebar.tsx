@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -26,7 +27,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { sidebarGroups } from "@/shared/data/SideBar-Items"
+import { sidebarFooterItems, sidebarGroups } from "@/shared/data/SideBar-Items"
 
 /**
  * Check if a sidebar item should be considered active.
@@ -69,11 +70,14 @@ function isUrlActive(pathname: string, itemUrl: string, allSubItemUrls?: string[
 }
 
 /**
- * Check if a parent item with sub-items should be considered active
+ * Check if a parent item with sub-items should be considered active: on any of its
+ * sub-items' pages, or any other page under its own URL (Analytics' settings and
+ * full chat pages aren't listed, but belong to it)
  */
-function isParentActive(pathname: string, subItems: Array<{ url: string }>): boolean {
-  return subItems.some(subItem =>
-    pathname === subItem.url || pathname.startsWith(subItem.url + "/")
+function isParentActive(pathname: string, subItems: Array<{ url: string }>, parentUrl?: string): boolean {
+  return (
+    subItems.some(subItem => pathname === subItem.url || pathname.startsWith(subItem.url + "/")) ||
+    (!!parentUrl && parentUrl !== "/" && pathname.startsWith(parentUrl + "/"))
   )
 }
 
@@ -86,9 +90,7 @@ function computeOpenStates(currentPath: string) {
     const isMainGroup = group.name === "sidebar.groups.main"
     const hasActiveItem = group.items.some(item => {
       if (item.subItems) {
-        const isActive = item.subItems.some(subItem =>
-          currentPath === subItem.url || currentPath.startsWith(subItem.url + "/")
-        )
+        const isActive = isParentActive(currentPath, item.subItems, item.url)
         if (isActive) {
           items.add(item.title)
         }
@@ -156,10 +158,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent className="px-2">
         {sidebarGroups.map((group) => (
             <SidebarGroup key={group.name} className="py-1">
-              {/* Group label - hidden when collapsed to icon */}
-              <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden flex items-center text-[11px] font-bold text-sidebar-foreground/70 uppercase tracking-wider px-3 py-1.5">
-                <span>{t(group.name)}</span>
-              </SidebarGroupLabel>
+              {/* Group label - hidden when collapsed to icon, and for a group that needs none */}
+              {!group.hideLabel && (
+                <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden flex items-center text-[11px] font-bold text-sidebar-foreground/70 uppercase tracking-wider px-3 py-1.5">
+                  <span>{t(group.name)}</span>
+                </SidebarGroupLabel>
+              )}
               <SidebarGroupContent>
                 <SidebarMenu className="space-y-0.5 pl-2">
                       {group.items.map((item) => {
@@ -171,7 +175,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                           // Collect all sub-item URLs for smart active detection
                           const allSubItemUrls = item.subItems.map(si => si.url)
                           // Check if parent should show as active (any child page is active)
-                          const parentIsActive = isParentActive(pathname, item.subItems)
+                          const parentIsActive = isParentActive(pathname, item.subItems, item.url)
 
                           // Find the listing page URL (usually the one without /create)
                           const listingUrl = item.subItems.find(si => !si.url.includes('/create'))?.url || item.subItems[0].url
@@ -284,6 +288,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarGroup>
         ))}
       </SidebarContent>
+
+      {/* Help, apart from the work pages */}
+      <SidebarFooter className="border-t border-sidebar-border px-2 py-2">
+        <SidebarMenu className="pl-2">
+          {sidebarFooterItems.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton
+                asChild
+                tooltip={t(item.title)}
+                isActive={isUrlActive(pathname, item.url)}
+                className="rounded-xl hover:bg-sidebar-accent transition-all duration-200 data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:font-semibold"
+              >
+                <a href={item.url} className="flex items-center gap-2">
+                  <item.icon className="size-4 ml-1" />
+                  <span className="font-semibold text-sm">{t(item.title)}</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   )
 }

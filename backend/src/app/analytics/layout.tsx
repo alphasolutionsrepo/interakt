@@ -2,6 +2,8 @@
 
 import { Metadata } from 'next';
 import { AnalyticsProvider } from './_lib/AnalyticsContext';
+import { AskPanelProvider } from './_lib/AskPanelContext';
+import { AnalyticsShell } from './_components/shell/AnalyticsShell';
 
 export const metadata: Metadata = {
   title: 'Analytics | Interakt',
@@ -13,5 +15,11 @@ export default function AnalyticsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <AnalyticsProvider>{children}</AnalyticsProvider>;
+  return (
+    <AnalyticsProvider>
+      <AskPanelProvider>
+        <AnalyticsShell>{children}</AnalyticsShell>
+      </AskPanelProvider>
+    </AnalyticsProvider>
+  );
 }

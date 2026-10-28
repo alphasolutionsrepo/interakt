@@ -9,7 +9,7 @@ An **AI provider** is the service that runs the AI models Interakt uses — for 
 Interakt supports several providers. You can configure as many as you want and pick which one each experience or index uses.
 
 ## Where to find this screen
-Sidebar → **Administration → Platform → AI Providers**.
+Sidebar → **Administration → Admin → AI Providers**.
 
 (The Initial Setup wizard sets up your first provider; this screen is where you manage them after.)
 
@@ -89,7 +89,7 @@ You only need to register models you actually want available in the rest of the 
 
 ## Testing a provider
 
-Either the **Test Connection** option in the row actions, or via the [Playground → AI Service](playground). The test sends a small request and reports success / failure with latency.
+Either the **Test Connection** option in the row actions, or via the [Test → AI models](playground). The test sends a small request and reports success / failure with latency.
 
 This is the first thing to try when something feels broken — confirm the provider is reachable and authenticated, then look elsewhere.
 
@@ -137,4 +137,4 @@ Use Ollama for development and demos where data sensitivity or budget rules out 
 - [Secrets](secrets) — sometimes provider credentials are referenced through secrets.
 - [Search indexes](search-indexes) — picking an embedding model.
 - [Chat experiences](chat-experiences) — picking a chat model.
-- [Playground → AI Service](playground) — testing provider responses.
+- [Test → AI models](playground) — testing provider responses.

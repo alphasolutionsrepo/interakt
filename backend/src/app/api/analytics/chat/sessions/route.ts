@@ -3,7 +3,7 @@
 /**
  * Analytics Chat Sessions API
  *
- * GET  - List all sessions (with pagination)
+ * GET  - List sessions (with pagination; ?q= searches titles, experiences and messages)
  * POST - Create a new session
  */
 
@@ -25,6 +25,7 @@ const logger = createLogger('analytics-chat-sessions-api');
 const listQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(50),
   offset: z.coerce.number().min(0).default(0),
+  q: z.string().trim().max(200).optional(),
 });
 
 const createBodySchema = z.object({
@@ -43,11 +44,12 @@ export async function GET(request: NextRequest) {
     const query = listQuerySchema.parse({
       limit: searchParams.get('limit'),
       offset: searchParams.get('offset'),
+      q: searchParams.get('q') ?? undefined,
     });
 
     const [sessions, totalCount] = await Promise.all([
-      listAdminChatSessions(query),
-      getAdminChatSessionCount(),
+      listAdminChatSessions({ limit: query.limit, offset: query.offset, search: query.q }),
+      getAdminChatSessionCount(query.q),
     ]);
 
     return NextResponse.json({

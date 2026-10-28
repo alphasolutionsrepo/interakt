@@ -2,7 +2,13 @@
   "common": {
     "getStarted": "Get started",
     "documentation": "Documentation & Support",
-    "platformOnline": "Platform Online"
+    "platformOnline": "Platform Online",
+    "theme": {
+      "label": "Theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    }
   },
   "home": {
     "badge": {
@@ -18,7 +24,7 @@
         "description": "Connect data sources, configure field mappings, and manage searchable content with semantic and hybrid search capabilities."
       },
       "searchTuning": {
-        "title": "Search Tuning", 
+        "title": "Search Tuning",
         "description": "Fine-tune ranking algorithms, boost specific fields, and optimize search relevance for your users."
       },
       "aiChatFlows": {
@@ -47,7 +53,11 @@
       "playground": "Playground",
       "developer": "Developer",
       "administration": "Administration",
-      "platform": "Platform"
+      "platform": "Platform",
+      "monitor": "Monitor",
+      "build": "Build",
+      "test": "Test",
+      "admin": "Admin"
     },
     "items": {
       "dashboard": "Dashboard",
@@ -80,6 +90,9 @@
       "backgroundJobs": "Background Jobs",
       "cacheManagement": "Cache Management",
       "traces": "Traces",
+      "analyticsSearch": "Search",
+      "conversations": "Conversations",
+      "aiCost": "AI & cost",
       "aiServices": "AI Provider",
       "indexSearch": "Search",
       "unifiedSearch": "Experience Search",
@@ -99,7 +112,8 @@
       "mcpConnections": "MCP Connections",
       "createMcpConnection": "Create MCP Connection",
       "allMcpConnections": "All MCP Connections",
-      "dropinWidget": "Drop-in Widget"
+      "dropinWidget": "Drop-in Widget",
+      "aiModels": "AI models"
     }
   },
   "analytics": {
@@ -131,7 +145,7 @@
       },
       "quickOptions": {
         "analyticsOverview": "Analytics overview",
-        "topQueries": "Top queries today", 
+        "topQueries": "Top queries today",
         "searchPerformance": "Search performance",
         "noResultQueries": "No-result queries",
         "unusualPatterns": "Unusual patterns",
@@ -203,7 +217,7 @@
       "title": "Performance Analytics",
       "metrics": {
         "averageResponseTime": "Average Response Time",
-        "95thPercentile": "95th Percentile", 
+        "95thPercentile": "95th Percentile",
         "slowQueries": "Slow Queries",
         "errorRate": "Error Rate",
         "totalSearches": "Total Searches",
@@ -217,7 +231,7 @@
       },
       "levels": {
         "excellent": "EXCELLENT",
-        "good": "GOOD", 
+        "good": "GOOD",
         "fair": "FAIR",
         "poor": "POOR",
         "critical": "CRITICAL"
@@ -280,7 +294,7 @@
     },
     "databaseTypes": {
       "PostgreSQL": "PostgreSQL",
-      "AnalyticsDB": "Analytics DB", 
+      "AnalyticsDB": "Analytics DB",
       "Elasticsearch": "Elasticsearch"
     },
     "indexTypes": {

@@ -81,19 +81,19 @@ function MappingsPageSkeleton() {
             <PageHeaderSkeleton showBreadcrumb={true} showDescription={true} actionsCount={2} />
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[...Array(4)].map((_, i) => (
-                    <Card key={i} className="border-slate-200">
+                    <Card key={i} className="border-slate-200 dark:border-border">
                         <CardContent className="p-4">
-                            <div className="h-4 w-20 bg-slate-200 rounded animate-pulse mb-2" />
-                            <div className="h-8 w-12 bg-slate-200 rounded animate-pulse" />
+                            <div className="h-4 w-20 bg-slate-200 dark:bg-muted rounded animate-pulse mb-2" />
+                            <div className="h-8 w-12 bg-slate-200 dark:bg-muted rounded animate-pulse" />
                         </CardContent>
                     </Card>
                 ))}
             </div>
-            <Card className="border-slate-200">
+            <Card className="border-slate-200 dark:border-border">
                 <CardContent className="p-6">
                     <div className="space-y-3">
                         {[...Array(6)].map((_, i) => (
-                            <div key={i} className="h-12 bg-slate-100 rounded animate-pulse" />
+                            <div key={i} className="h-12 bg-slate-100 dark:bg-muted rounded animate-pulse" />
                         ))}
                     </div>
                 </CardContent>
@@ -753,12 +753,12 @@ export default function FieldMappingsPage() {
     if (isIndexError || !searchIndex) {
         return (
             <div className="p-6">
-                <Card className="border-red-200 bg-red-50">
+                <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
                     <CardContent className="p-6">
                         <div className="flex items-center gap-3">
                             <AlertCircle className="h-5 w-5 text-red-600" />
                             <div>
-                                <p className="font-medium text-red-800">Failed to load search index</p>
+                                <p className="font-medium text-red-800 dark:text-red-200">Failed to load search index</p>
                                 <p className="text-sm text-red-600">
                                     The search index could not be found or there was an error loading it.
                                 </p>
@@ -804,7 +804,7 @@ export default function FieldMappingsPage() {
                         {searchIndex.displayName}
                     </button>
                     <span>/</span>
-                    <span className="text-slate-900 font-medium">Fields</span>
+                    <span className="text-slate-900 dark:text-foreground font-medium">Fields</span>
                 </div>
 
                 {/* Title Row */}
@@ -820,19 +820,19 @@ export default function FieldMappingsPage() {
                         </Button>
                         <div>
                             <div className="flex items-center gap-3">
-                                <h1 className="text-2xl font-bold text-slate-900">
+                                <h1 className="text-2xl font-bold text-slate-900 dark:text-foreground">
                                     Fields
                                 </h1>
                                 <Badge variant="outline" className="text-xs">
                                     {searchTypeInfo?.label || searchIndex.searchType}
                                 </Badge>
                                 {hasUnsavedChanges && (
-                                    <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                                    <Badge className="bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800">
                                         Unsaved changes
                                     </Badge>
                                 )}
                                 {reindexNeeded && !hasUnsavedChanges && (
-                                    <Badge className="bg-orange-100 text-orange-700 border-orange-200">
+                                    <Badge className="bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800">
                                         <Database className="h-3 w-3 mr-1" />
                                         Reindex needed
                                     </Badge>
@@ -840,7 +840,7 @@ export default function FieldMappingsPage() {
                             </div>
                             <p className="text-slate-500 mt-1">
                                 Map source data fields to index fields for{' '}
-                                <span className="font-medium text-slate-700">
+                                <span className="font-medium text-slate-700 dark:text-muted-foreground">
                                     {searchIndex.displayName}
                                 </span>
                             </p>
@@ -909,11 +909,11 @@ export default function FieldMappingsPage() {
             </div>
 
             {/* Fields Table / JSON Editor */}
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-slate-200 dark:border-border shadow-sm">
                 <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                         <div>
-                            <CardTitle className="flex items-center gap-2 text-slate-900">
+                            <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-foreground">
                                 <Layers className="h-5 w-5" />
                                 Index Fields
                             </CardTitle>
@@ -947,7 +947,7 @@ export default function FieldMappingsPage() {
                                 </ToggleGroupItem>
                             </ToggleGroup>
 
-                            <div className="w-px h-5 bg-slate-200" />
+                            <div className="w-px h-5 bg-slate-200 dark:bg-muted" />
 
                             {/* Export / Import */}
                             <Button
@@ -987,7 +987,7 @@ export default function FieldMappingsPage() {
                                 </Button>
                             )}
                             {localSummary?.isReadyForIndexing && (
-                                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                                <Badge className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
                                     <CheckCircle2 className="h-3 w-3 mr-1" />
                                     Ready
                                 </Badge>
@@ -1030,7 +1030,7 @@ export default function FieldMappingsPage() {
                 <div className="sticky bottom-4 z-10">
                     <Card className={cn(
                         "shadow-lg",
-                        hasReindexRequired ? "border-amber-300 bg-amber-50/50" : "border-slate-300"
+                        hasReindexRequired ? "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/40" : "border-slate-300 dark:border-border"
                     )}>
                         <CardContent className="p-3">
                             <div className="flex items-center justify-between">

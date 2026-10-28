@@ -105,18 +105,18 @@ export interface FieldConfigSheetProps {
 
 function getFieldTypeBadgeColor(fieldType: string): string {
     const colors: Record<string, string> = {
-        text: 'bg-blue-50 text-blue-700 border-blue-200',
-        keyword: 'bg-violet-50 text-violet-700 border-violet-200',
-        number: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        boolean: 'bg-amber-50 text-amber-700 border-amber-200',
-        datetime: 'bg-pink-50 text-pink-700 border-pink-200',
-        date: 'bg-pink-50 text-pink-700 border-pink-200',
-        json: 'bg-slate-100 text-slate-700 border-slate-300',
-        array: 'bg-orange-50 text-orange-700 border-orange-200',
-        object: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-        vector: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        text: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+        keyword: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800',
+        number: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+        boolean: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        datetime: 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800',
+        date: 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800',
+        json: 'bg-slate-100 dark:bg-muted text-slate-700 dark:text-muted-foreground border-slate-300 dark:border-border',
+        array: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800',
+        object: 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800',
+        vector: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
     };
-    return colors[fieldType.toLowerCase()] || 'bg-slate-50 text-slate-600 border-slate-200';
+    return colors[fieldType.toLowerCase()] || 'bg-slate-50 dark:bg-muted/40 text-slate-600 border-slate-200 dark:border-border';
 }
 
 // ============================================================================
@@ -378,7 +378,7 @@ export function FieldConfigSheet({
                                                 </SelectContent>
                                             </Select>
                                         ) : sourceFieldPath ? (
-                                            <div className="text-sm font-mono px-3 py-2 bg-slate-50 rounded-md border">
+                                            <div className="text-sm font-mono px-3 py-2 bg-slate-50 dark:bg-muted/40 rounded-md border">
                                                 {sourceFieldPath}
                                             </div>
                                         ) : (
@@ -547,9 +547,9 @@ export function FieldConfigSheet({
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+                                        <div className="text-xs text-blue-600 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-md px-3 py-2">
                                             Example: Extract unique colors from{' '}
-                                            <code className="bg-blue-100 px-1 rounded">
+                                            <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">
                                                 variants[].color
                                             </code>
                                         </div>
@@ -558,7 +558,7 @@ export function FieldConfigSheet({
 
                                 {/* Collect Info */}
                                 {config.mode === 'collect' && (
-                                    <div className="text-sm text-slate-600 bg-cyan-50 border border-cyan-200 rounded-md px-3 py-2">
+                                    <div className="text-sm text-slate-600 bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800 rounded-md px-3 py-2">
                                         <p>Collects unmapped source fields into this JSON field.</p>
                                         <p className="text-xs text-slate-500 mt-1">
                                             Configure which fields to collect in the Additional Data
@@ -649,7 +649,7 @@ export function FieldConfigSheet({
                                 {isVectorSearchEnabled &&
                                     isVectorSourceCompatible &&
                                     config.mode !== 'none' && (
-                                        <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+                                        <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-border">
                                             <div className="flex items-center gap-2">
                                                 <Brain className="h-4 w-4 text-indigo-600" />
                                                 <div>
@@ -680,9 +680,9 @@ export function FieldConfigSheet({
 
                                 {/* Reindex warning */}
                                 {hasReindexChanges && (
-                                    <Alert className="border-amber-200 bg-amber-50">
+                                    <Alert className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40">
                                         <AlertCircle className="h-4 w-4 text-amber-600" />
-                                        <AlertDescription className="text-amber-700 text-xs">
+                                        <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs">
                                             Changes to Searchable, Facetable, or Autocomplete require
                                             reindexing after save.
                                         </AlertDescription>
@@ -718,7 +718,7 @@ export function FieldConfigSheet({
                                             Searchable
                                             <Badge
                                                 variant="outline"
-                                                className="text-[10px] text-amber-600 border-amber-200"
+                                                className="text-[10px] text-amber-600 border-amber-200 dark:border-amber-800"
                                             >
                                                 reindex
                                             </Badge>
@@ -751,7 +751,7 @@ export function FieldConfigSheet({
                                             Facetable
                                             <Badge
                                                 variant="outline"
-                                                className="text-[10px] text-amber-600 border-amber-200"
+                                                className="text-[10px] text-amber-600 border-amber-200 dark:border-amber-800"
                                             >
                                                 reindex
                                             </Badge>
@@ -779,7 +779,7 @@ export function FieldConfigSheet({
                                                 Autocomplete
                                                 <Badge
                                                     variant="outline"
-                                                    className="text-[10px] text-amber-600 border-amber-200"
+                                                    className="text-[10px] text-amber-600 border-amber-200 dark:border-amber-800"
                                                 >
                                                     reindex
                                                 </Badge>

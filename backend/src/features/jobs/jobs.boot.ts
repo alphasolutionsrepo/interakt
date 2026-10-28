@@ -73,7 +73,11 @@ export async function ensureJobsStarted(): Promise<PgBoss | null> {
   }
 
   store.startPromise = (async () => {
-    const instance = new PgBoss({ connectionString, schema: JOBS_SCHEMA });
+    const instance = new PgBoss({
+      connectionString,
+      schema: JOBS_SCHEMA,
+      max: databaseConfig.jobs.poolMax,
+    });
 
     instance.on('error', err => logger.error('pg-boss error', err as Error));
 
@@ -81,11 +85,14 @@ export async function ensureJobsStarted(): Promise<PgBoss | null> {
 
     // Register every job type from the registry: create its queue (must exist
     // before send/work/schedule in pg-boss v10+) and attach its worker.
-    // Cron schedules are NOT set here — they're managed at runtime from the UI
-    // and persisted in pg-boss's own `schedule` table, so they survive restarts.
+    // Cron schedules are managed at runtime from the UI and persisted in pg-boss's
+    // own `schedule` table, so they survive restarts.
     for (const type of JOB_TYPES) {
-      await instance.createQueue(type.queue);
+      await instance.createQueue(type.queue, type.queueOptions);
+      // createQueue leaves an existing queue as it was; bring its settings up to date
+      if (type.queueOptions) await instance.updateQueue(type.queue, type.queueOptions);
       await instance.work(type.queue, { batchSize: type.batchSize ?? 1 }, type.worker);
+      if (type.defaultSchedule) await setDefaultScheduleOnce(instance, type.queue, type.defaultSchedule);
     }
 
     store.boss = instance;
@@ -106,6 +113,33 @@ export async function ensureJobsStarted(): Promise<PgBoss | null> {
     return null;
   } finally {
     store.startPromise = null;
+  }
+}
+
+/**
+ * A job type's default schedule is set the first time it boots, never again, so
+ * an admin who removes or changes it in the operator console keeps that choice
+ * across restarts. "Already set" is remembered as an empty marker queue, which
+ * needs no table of its own; the console only lists registered job types.
+ */
+export async function setDefaultScheduleOnce(
+  instance: PgBoss,
+  queue: string,
+  { cron, timezone }: { cron: string; timezone: string },
+) {
+  const marker = `${queue}.default-schedule-set`;
+  if (await instance.getQueue(marker)) return;
+  try {
+    // An install that already has a schedule (set earlier by hand or by an older boot) keeps it
+    if ((await instance.getSchedules(queue)).length === 0) {
+      await instance.schedule(queue, cron, { triggeredBy: 'schedule' }, { tz: timezone });
+      logger.info('Default schedule set', { queue, cron, timezone });
+    }
+    await instance.createQueue(marker);
+  } catch (err) {
+    // A bad cron or time zone in env must not stop the jobs engine from starting;
+    // without the marker, the next boot tries again
+    logger.error('Default schedule not set', err as Error, { queue, cron, timezone });
   }
 }
 

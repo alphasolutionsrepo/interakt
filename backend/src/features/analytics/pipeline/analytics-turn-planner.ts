@@ -11,6 +11,7 @@
 import 'server-only';
 
 import { createLogger } from '@/shared/logger/logger';
+import { describePeriod } from '../analytics-period';
 import type {
   ModuleResult,
   AnalyticsTurnContext,
@@ -31,7 +32,7 @@ export const ANALYTICS_TOOL_SUMMARIES: AnalyticsToolSummary[] = [
   { slug: 'get_catalog_health', description: 'Zero-result rates and content gaps (retry-deduplicated)', category: 'precomputed' },
   { slug: 'get_ai_effectiveness', description: 'AI success rate, failure modes, response presets', category: 'precomputed' },
   { slug: 'get_demand_signals', description: 'Trending brands, categories, and search terms', category: 'precomputed' },
-  { slug: 'get_cost_analysis', description: 'Token usage and per-conversation costs', category: 'precomputed' },
+  { slug: 'get_cost_analysis', description: 'Tokens per conversation: average, largest, retry waste (stored insight for 24h/7d/30d). For total spend or cost questions use get_ai_usage', category: 'precomputed' },
   { slug: 'get_proactive_insights', description: 'AI-detected issues, anomalies, and recommendations', category: 'precomputed' },
   { slug: 'get_guardrail_analytics', description: 'Query classification and guardrail filtering stats', category: 'precomputed' },
   // Live query (always fresh)
@@ -43,6 +44,10 @@ export const ANALYTICS_TOOL_SUMMARIES: AnalyticsToolSummary[] = [
   { slug: 'get_search_performance', description: 'Latency percentiles (p50, p95, p99)', category: 'live' },
   { slug: 'get_recent_searches', description: 'Most recent individual search events', category: 'live' },
   { slug: 'get_query_search_events', description: 'All events for a specific query (needs queryText in hints)', category: 'live', requiresParam: 'queryText' },
+  { slug: 'compare_periods', description: 'The period against the same days just before it: searches, no-result rate, speed, AI calls, tokens, cost. For "compared with last week", "did it get better", "why did it drop"', category: 'live' },
+  { slug: 'compare_experiences', description: 'Every experience side by side: volume, success rate, no-result rate, latency', category: 'live', availability: 'all-experiences' },
+  { slug: 'get_failed_conversations', description: 'Conversation turns that errored or failed, by reason, with trace ids for get_conversation_detail', category: 'live', availability: 'chat-experiences' },
+  { slug: 'get_ai_usage', description: 'What AI cost and how much it was used: estimated cost, model calls, tokens, and tool calls by tool, for exactly the period. Use for "how much did AI cost", "which tools are used most"', category: 'live' },
   // Special
   { slug: 'get_conversation_detail', description: 'Detailed span timeline for a trace (needs traceId in hints)', category: 'special', requiresParam: 'traceId' },
 ];
@@ -90,7 +95,26 @@ function buildPlanResponseFormat(tools: AnalyticsToolSummary[]) {
 // SYSTEM PROMPT
 // ============================================================================
 
-function buildPlannerPrompt(tools: AnalyticsToolSummary[], selectedTimeRange: string | null): string {
+/**
+ * The dates the planner works from: today in the viewer's time zone and the
+ * page's period, so "Oct 13" or "last week" can be turned into calendar days.
+ */
+export function describeDateContext(context: AnalyticsTurnContext, now: Date = new Date()): string | null {
+  if (!context.period) return null;
+  const tz = context.timeZone;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(now);
+  return [
+    `Today is ${weekday} ${today} in the user's time zone, ${tz}.`,
+    `The page shows ${describePeriod(context.period, tz)}. Every tool uses that period unless the user's message names a different one.`,
+    `When the message names a period ("Oct 13", "yesterday", "last week", "in September"), put its calendar days in hints as "from" and "to" (YYYY-MM-DD, both inclusive, in ${tz}), e.g. { "from": "2026-10-13", "to": "2026-10-13" }. "Last week" is the 7 days before today; "this week" is the last 7 days up to today. Never put "timeRange" in hints together with from/to.`,
+    `compare_periods compares a period with the same days just before it, which it works out itself: give it only the later period ("this week compared with the week before" → this week), or no dates to use the page's period.`,
+  ].join('\n');
+}
+
+function buildPlannerPrompt(tools: AnalyticsToolSummary[], context: AnalyticsTurnContext): string {
+  const selectedTimeRange = context.timeRange;
+  const dateContext = describeDateContext(context);
   const toolList = tools
     .map((t) => `- **${t.slug}**: ${t.description} [${t.category}]`)
     .join('\n');
@@ -104,12 +128,15 @@ ${toolList}
 1. Select 1-3 tools from the list. Use exact slugs.
 2. Tools marked [precomputed] require "Refresh Insights" to have been run.
 3. For greetings, "thanks", "what can you do?" → set directResponse=true, empty actions.
-4. ${selectedTimeRange
-    ? `The user has selected the time range '${selectedTimeRange}' on the page. Use it as timeRange for every tool unless the user's message explicitly names a different period (e.g. "today", "last 24 hours").`
-    : "Default timeRange: '7d' for precomputed tools, '24h' for live tools, unless user specifies."}
-5. hints must be a JSON string with tool parameters: { "timeRange": "7d", "limit": 10 }
+4. ${dateContext
+    ? dateContext
+    : selectedTimeRange
+      ? `The user has selected the time range '${selectedTimeRange}' on the page. Use it as timeRange for every tool unless the user's message explicitly names a different period (e.g. "today", "last 24 hours").`
+      : "Default timeRange: '7d' for precomputed tools, '24h' for live tools, unless user specifies."}
+5. hints must be a JSON string with tool parameters: ${dateContext ? '{ "limit": 10 }, or with dates { "from": "2026-10-13", "to": "2026-10-13" }' : '{ "timeRange": "7d", "limit": 10 }'}${context.pageSection ? `\n10. The user asked from the "${context.pageSection}" section of the analytics page. When the question is ambiguous ("why did this drop?"), prefer tools about that area.` : ''}
 6. For get_query_search_events, hints MUST include "queryText".
 7. For get_conversation_detail, hints MUST include "traceId".
+   For get_popular_queries and get_zero_result_queries, add "origin" to hints when the question is about who searched: "assistant" for what the AI assistant searched for, "visitor" for what visitors or customers typed. Leave it out for both.
 8. Prefer the most specific tool for the question:
    - "What are customers looking for?" → get_customer_intent_analysis
    - "What should I focus on?" / "Any issues?" → get_proactive_insights
@@ -118,7 +145,11 @@ ${toolList}
    - "Top queries?" / "Most searched?" → get_popular_queries
    - "Show me search performance" → get_search_performance
    - "Content gaps?" / "Missing content?" → get_catalog_health
-   - "How much is AI costing?" → get_cost_analysis
+   - "How much is AI costing?" / "Which tools are used most?" → get_ai_usage
+   - "Tokens per conversation?" → get_cost_analysis
+   - "Compared with last week?" / "Did it get better?" / "Why did it drop?" → compare_periods
+   - "Which experience is doing best/worst?" → compare_experiences
+   - "Which conversations failed?" / "What went wrong?" → get_failed_conversations
 9. If unsure, pick ONE tool that best matches. Do not call multiple tools unless the question clearly spans multiple areas.`;
 }
 
@@ -135,7 +166,7 @@ export async function planAnalyticsTurn(
   try {
     // Build messages
     const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: buildPlannerPrompt(context.availableTools, context.timeRange) },
+      { role: 'system', content: buildPlannerPrompt(context.availableTools, context) },
     ];
 
     // Add conversation summary if available
@@ -290,7 +321,10 @@ const KEYWORD_TOOL_MAP: Array<{ keywords: string[]; slug: string }> = [
   { keywords: ['catalog', 'content gap', 'missing', 'zero result', 'failing'], slug: 'get_catalog_health' },
   { keywords: ['ai help', 'effective', 'success rate', 'ai performance'], slug: 'get_ai_effectiveness' },
   { keywords: ['trending', 'demand', 'brand', 'category', 'popular brand'], slug: 'get_demand_signals' },
-  { keywords: ['cost', 'token', 'spending', 'expensive'], slug: 'get_cost_analysis' },
+  { keywords: ['cost', 'token', 'spending', 'expensive'], slug: 'get_ai_usage' },
+  { keywords: ['compared', 'compare to', 'compare with', 'previous', 'week before', 'got better', 'got worse'], slug: 'compare_periods' },
+  { keywords: ['which experience', 'experiences', 'side by side'], slug: 'compare_experiences' },
+  { keywords: ['failed conversation', 'failed turn', 'conversations failed', 'errors', 'went wrong'], slug: 'get_failed_conversations' },
   { keywords: ['focus', 'issue', 'problem', 'insight', 'attention', 'fix'], slug: 'get_proactive_insights' },
   { keywords: ['guardrail', 'block', 'filter', 'classification'], slug: 'get_guardrail_analytics' },
   { keywords: ['overview', 'summary', 'overall', 'health'], slug: 'get_search_overview' },

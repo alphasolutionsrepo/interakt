@@ -71,7 +71,7 @@ function DetailSkeleton() {
       {/* Stats skeleton */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => (
-          <Card key={i} className="border-slate-200">
+          <Card key={i} className="border-slate-200 dark:border-border">
             <CardContent className="pt-4 pb-4">
               <Skeleton className="h-16 w-full" />
             </CardContent>
@@ -81,7 +81,7 @@ function DetailSkeleton() {
 
       {/* Content skeleton */}
       <div className="grid md:grid-cols-2 gap-6">
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 dark:border-border">
           <CardHeader>
             <Skeleton className="h-5 w-32" />
           </CardHeader>
@@ -89,7 +89,7 @@ function DetailSkeleton() {
             <Skeleton className="h-20 w-full" />
           </CardContent>
         </Card>
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 dark:border-border">
           <CardHeader>
             <Skeleton className="h-5 w-32" />
           </CardHeader>

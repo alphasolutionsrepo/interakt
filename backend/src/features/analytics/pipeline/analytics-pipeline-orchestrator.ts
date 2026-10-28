@@ -15,6 +15,7 @@ import { assembleAnalyticsContext } from './analytics-context-assembly';
 import { planAnalyticsTurn } from './analytics-turn-planner';
 import { executeAnalyticsTools } from './analytics-execution';
 import { synthesizeAnalyticsResponse } from './analytics-synthesis';
+import { findUnsupportedFigures } from './analytics-grounding';
 import { persistAnalyticsTurn } from './analytics-persistence';
 import type {
   AnalyticsPipelineInput,
@@ -26,6 +27,13 @@ import type {
 
 const logger = createLogger('analytics-pipeline');
 
+/** The asker went away mid-turn; nothing more is worth doing or saving */
+class TurnCancelled extends Error {
+  constructor() {
+    super('Turn cancelled by the asker');
+  }
+}
+
 // ============================================================================
 // MAIN ORCHESTRATOR
 // ============================================================================
@@ -36,6 +44,9 @@ export async function runAnalyticsPipeline(
 ): Promise<AnalyticsPipelineResult> {
   const startTime = Date.now();
   const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  const stopIfCancelled = () => {
+    if (input.signal?.aborted) throw new TurnCancelled();
+  };
 
   // Create tracked chat functions that accumulate token usage
   const trackedChat: ChatFn = async (messages, options) => {
@@ -62,6 +73,8 @@ export async function runAnalyticsPipeline(
         ...options,
         ...(input.providerId && { providerId: input.providerId }),
         ...(input.modelId && { modelId: input.modelId }),
+        // Stop ends the answer mid-stream, so no more tokens are spent on it
+        signal: input.signal,
       } as Parameters<typeof aiService.streamChat>[1]
     );
   };
@@ -78,6 +91,9 @@ export async function runAnalyticsPipeline(
       experienceId: input.experienceId,
       experienceName: input.experienceName,
       timeRange: input.timeRange,
+      period: input.period,
+      timeZone: input.timeZone,
+      pageSection: input.pageSection,
       providerId: input.providerId,
       modelId: input.modelId,
     });
@@ -88,6 +104,7 @@ export async function runAnalyticsPipeline(
     }
 
     const context = contextResult.data;
+    stopIfCancelled();
 
     // ====================================================================
     // D1: Turn Planner
@@ -101,6 +118,7 @@ export async function runAnalyticsPipeline(
     }
 
     const plan = planResult.data;
+    stopIfCancelled();
 
     logger.info('Pipeline plan', {
       directResponse: plan.directResponse,
@@ -115,7 +133,9 @@ export async function runAnalyticsPipeline(
       plan,
       context.experienceId,
       context.timeRange,
-      emit
+      emit,
+      context.period,
+      context.timeZone
     );
 
     if (!executionResult.success || !executionResult.data) {
@@ -123,6 +143,7 @@ export async function runAnalyticsPipeline(
     }
 
     const { executedActions, analyticsData } = executionResult.data;
+    stopIfCancelled();
 
     // ====================================================================
     // D3: Synthesis
@@ -140,7 +161,21 @@ export async function runAnalyticsPipeline(
       throw new Error(`Synthesis failed: ${synthesisResult.summary}`);
     }
 
+    // A stopped answer ends early without an error; it is not checked or saved
+    stopIfCancelled();
     const { responseText, suggestedFollowUps } = synthesisResult.data;
+
+    // Figures in the answer must come from the data; flag any that don't
+    if (executedActions.length > 0) {
+      const unverifiedFigures = findUnsupportedFigures(
+        responseText,
+        executedActions.flatMap((a) => (a.result.success ? [a.result.data, a.result.rawData] : [])),
+      );
+      emit({ type: 'verification', unverifiedFigures });
+      if (unverifiedFigures.length > 0) {
+        logger.warn('Answer has figures not found in the tool data', { unverifiedFigures });
+      }
+    }
 
     // ====================================================================
     // D4: Persistence
@@ -199,6 +234,11 @@ export async function runAnalyticsPipeline(
       usage,
     };
   } catch (error) {
+    if (error instanceof TurnCancelled || input.signal?.aborted) {
+      // Nobody is listening any more: no error to show, and nothing saved
+      logger.info('Pipeline stopped by the asker', { durationMs: Date.now() - startTime });
+      return { sessionId: input.sessionId || '', responseText: '', toolsUsed: [], analyticsData: [], usage };
+    }
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Pipeline failed', { error: errorMessage });
 

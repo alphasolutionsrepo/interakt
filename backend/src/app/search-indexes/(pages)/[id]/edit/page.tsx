@@ -459,7 +459,7 @@ export default function EditSearchIndexPage() {
 
       {/* Reindex Warning Banner */}
       {requiresReindex && (
-        <Card className="border-amber-300/50 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm rounded-2xl">
+        <Card className="border-amber-300/50 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm rounded-2xl">
           <CardContent className="p-4 flex items-start gap-3">
             <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500/15 flex-shrink-0">
               <AlertTriangle className="size-5 text-amber-600" />
@@ -494,7 +494,7 @@ export default function EditSearchIndexPage() {
               <Languages className="size-4" />
               <span>Text Analysis</span>
               {requiresReindex && (
-                <Badge variant="outline" className="ml-1 text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 rounded-md">
+                <Badge variant="outline" className="ml-1 text-amber-600 border-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 rounded-md">
                   modified
                 </Badge>
               )}
@@ -660,7 +660,7 @@ export default function EditSearchIndexPage() {
           {/* Text Analysis Tab */}
           <TabsContent value="text-analysis" className="space-y-6">
             {/* Warning banner */}
-            <Card className="border-amber-300/30 bg-amber-50/30 dark:bg-amber-950/10 shadow-sm rounded-2xl">
+            <Card className="border-amber-300/30 dark:border-amber-700 bg-amber-50/30 dark:bg-amber-950/10 shadow-sm rounded-2xl">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/15 flex-shrink-0">
                   <AlertTriangle className="size-4 text-amber-600" />
@@ -684,7 +684,7 @@ export default function EditSearchIndexPage() {
                     <Label className="text-sm font-medium flex items-center gap-2">
                       Language
                       {dirtyFields.language && (
-                        <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 rounded-md">
+                        <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 rounded-md">
                           modified
                         </Badge>
                       )}
@@ -718,7 +718,7 @@ export default function EditSearchIndexPage() {
                   <Sparkles className="h-4 w-4 text-violet-500" />
                   Synonyms
                   {dirtyFields.synonyms && (
-                    <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 rounded-md">
+                    <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 rounded-md">
                       modified
                     </Badge>
                   )}
@@ -782,7 +782,7 @@ export default function EditSearchIndexPage() {
                     <X className="h-4 w-4 text-red-500" />
                     Custom Stop Words
                     {dirtyFields.stopWords && (
-                      <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 rounded-md">
+                      <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 rounded-md">
                         modified
                       </Badge>
                     )}
@@ -894,7 +894,7 @@ export default function EditSearchIndexPage() {
                         </p>
                       </div>
                     </div>
-                    <Card className="border-blue-300/30 bg-blue-50/30 dark:bg-blue-950/10 shadow-sm rounded-xl">
+                    <Card className="border-blue-300/30 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-950/10 shadow-sm rounded-xl">
                       <CardContent className="p-4 flex items-center gap-3">
                         <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/15 shrink-0">
                           <AlertCircle className="size-4 text-blue-600" />
@@ -997,7 +997,7 @@ export default function EditSearchIndexPage() {
                   </div>
 
                   {/* Warning card */}
-                  <Card className="border-amber-300/50 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm rounded-xl">
+                  <Card className="border-amber-300/50 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm rounded-xl">
                     <CardContent className="p-4 flex items-start gap-3">
                       <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/15 flex-shrink-0">
                         <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />

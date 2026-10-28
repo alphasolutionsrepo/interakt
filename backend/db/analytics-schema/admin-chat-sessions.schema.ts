@@ -53,6 +53,8 @@ export interface AdminChatAnalyticsData {
   tool: string;
   dataType: string;
   data: unknown;
+  /** The period the data covers, as shown on its card, e.g. "Oct 13, 2026" */
+  periodLabel?: string;
 }
 
 // ============================================================================

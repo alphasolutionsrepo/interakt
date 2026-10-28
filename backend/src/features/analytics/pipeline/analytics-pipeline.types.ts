@@ -31,6 +31,12 @@ export interface AnalyticsToolSummary {
   description: string;
   category: 'precomputed' | 'live' | 'special';
   requiresParam?: string; // e.g., 'queryText' or 'traceId'
+  /**
+   * Who the tool is for, when not everyone: 'chat-experiences' needs conversation
+   * data (not search experiences); 'all-experiences' compares experiences, so only
+   * when the conversation isn't scoped to one
+   */
+  availability?: 'chat-experiences' | 'all-experiences';
 }
 
 // ============================================================================
@@ -45,6 +51,16 @@ export interface AnalyticsTurnContext {
   experienceName: string | null;
   /** Time range selected on the analytics page; the default for every tool call */
   timeRange: string | null;
+  /**
+   * The exact period selected on the analytics page; when set, the default for
+   * every tool call (timeRange is then its nearest fixed range, for tools that
+   * only have those)
+   */
+  period: { from: Date; to: Date } | null;
+  /** The viewer's IANA time zone: what "today" and "Oct 13" mean */
+  timeZone: string;
+  /** The analytics section the question was asked from, e.g. "Search" */
+  pageSection: string | null;
   conversationHistory: AnalyticsTurnMessage[];
   conversationSummary: string | null;
   sessionFacts: Record<string, string>;
@@ -88,6 +104,8 @@ export interface AnalyticsActionResult {
   intent: string;
   parameters: Record<string, unknown>;
   result: ToolExecutionResult;
+  /** The period the result covers, in words, for its card */
+  periodLabel?: string;
   durationMs: number;
 }
 
@@ -110,8 +128,14 @@ export interface AnalyticsPipelineInput {
   experienceId?: string;
   experienceName?: string;
   timeRange?: string;
+  /** The page's exact period (ISO instants) */
+  period?: { from: string; to: string };
+  timeZone?: string;
+  pageSection?: string;
   providerId?: string;
   modelId?: number;
+  /** Aborted when the asker goes away (Stop, or closing the page): the turn stops and isn't saved */
+  signal?: AbortSignal;
 }
 
 export interface AnalyticsPipelineResult {

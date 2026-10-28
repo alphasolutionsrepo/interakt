@@ -26,7 +26,7 @@ export function SectionsList({ sections }: { sections: PromptSection[] }) {
         <div className="space-y-2">
           {sections.map((s) => (
             <div key={s.id} className="flex items-center gap-3 py-2">
-              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-200 text-xs">
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-200 dark:border-amber-800 text-xs">
                 {s.id}
               </Badge>
               <span className="text-sm">{s.label}</span>

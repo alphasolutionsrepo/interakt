@@ -9,7 +9,7 @@ The **Background Jobs** section runs long-running work outside the request/respo
 It's powered by a Postgres-backed queue, so there's no extra infrastructure to run — it uses the same database as everything else.
 
 ## Where to find it
-Sidebar → **Platform → Background Jobs**.
+Sidebar → **Monitor → Background Jobs**.
 
 ## Key idea: job types vs. jobs
 
@@ -57,9 +57,23 @@ A cron expression has five fields: `minute hour day-of-month month day-of-week`.
 | `*/15 * * * *` | every 15 minutes |
 | `0 6 * * 1` | every Monday at 06:00 |
 
-Each job type has **one** schedule; saving again replaces it, and **Remove schedule** clears it. Schedules are stored in the database and **survive restarts** — there's nothing to configure in environment variables.
+Each job type has **one** schedule; saving again replaces it, and **Remove schedule** clears it. Schedules are stored in the database and **survive restarts**.
 
 > Scheduled runs use the server's timezone (UTC by default).
+
+### Default schedule for Refresh AI insights
+
+**Refresh AI insights** runs every night at 02:00 UTC unless you set a different schedule. The nightly run refreshes the all-experiences view and then each experience with activity in the last 30 days, so the analytics overview's "What needs attention" list is current each morning.
+
+The default is set once, the first time the app starts with it. After that the schedule is yours: change it or remove it in the UI and it stays that way across restarts. To start without the nightly run at all, set `INSIGHTS_REFRESH_CRON=off` before the first start. To change the default time or zone, set `INSIGHTS_REFRESH_CRON` (a cron expression) and `INSIGHTS_REFRESH_TIMEZONE` (for example `Europe/Copenhagen`).
+
+A run refreshes every active experience in turn, so it may take a while. It is allowed up to 4 hours and is not retried if it fails; the next night's run picks up where it left off.
+
+### Default schedule for Health check
+
+**Health check** checks the database, search engine and AI providers every 10 minutes and keeps the result for a day. The dashboard's health line shows the latest result, so the page never waits on the checks itself; if no check has run in the last 30 minutes, the dashboard says the result is out of date.
+
+Like the insights refresh, the default is set once and then the schedule is yours. Set `HEALTH_CHECK_CRON` to a different cron expression (UTC) to change it, or to `off` before the first start to skip it. Without it, the dashboard shows "Health not checked yet"; **Monitor → Health Monitoring** still checks on demand.
 
 ## Notes
 

@@ -1,6 +1,7 @@
 // app/analytics/traces/_lib/api-client.ts
 
 import type { TraceListFacts } from '@/features/telemetry/telemetry.types';
+import { approximateTimeRange, periodParams, type Period } from '../../_lib/period';
 
 export type TimeRange = '1h' | '24h' | '7d' | '30d' | '90d';
 
@@ -45,6 +46,8 @@ export interface SpanMetrics {
   avgDurationMs: number;
   p95DurationMs: number;
   topOperations: Array<{ operation: string; count: number; avgDurationMs: number }>;
+  /** Request-level turns: what the list shows */
+  turns: { total: number; errors: number; avgDurationMs: number; p95DurationMs: number };
   asyncTasks: {
     total: number;
     errors: number;
@@ -55,6 +58,8 @@ export interface SpanMetrics {
 export interface SpanFilterOptions {
   statusCode?: string;
   search?: string;
+  /** One trace, whenever it happened */
+  traceId?: string;
   rootOnly?: boolean;
   experienceId?: string;
 }
@@ -93,16 +98,28 @@ async function deleteApi<T>(url: string): Promise<T> {
   return json.data;
 }
 
+/**
+ * The period as traces expects it: the nearest fixed range (its required
+ * parameter) plus the exact instants, which take priority on the server.
+ */
+function periodSearchParams(period: Period): URLSearchParams {
+  const { from, to } = periodParams(period);
+  return new URLSearchParams({ timeRange: approximateTimeRange(period), from, to });
+}
+
 export const tracesApi = {
   list: async (
-    timeRange: TimeRange,
+    period: Period,
     filters?: SpanFilterOptions,
     limit = 100,
     offset = 0
   ): Promise<SpanListResponse> => {
-    const p = new URLSearchParams({ timeRange, limit: String(limit), offset: String(offset) });
+    const p = periodSearchParams(period);
+    p.set('limit', String(limit));
+    p.set('offset', String(offset));
     if (filters?.statusCode) p.set('statusCode', filters.statusCode);
     if (filters?.search) p.set('search', filters.search);
+    if (filters?.traceId) p.set('traceId', filters.traceId);
     if (filters?.rootOnly) p.set('rootOnly', 'true');
     if (filters?.experienceId) p.set('experienceId', filters.experienceId);
 
@@ -122,8 +139,10 @@ export const tracesApi = {
     return json.data;
   },
 
-  getMetrics: async (timeRange: TimeRange): Promise<SpanMetrics> => {
-    const json = await fetchApi<{ data: SpanMetrics }>(`/api/telemetry/traces/metrics?timeRange=${timeRange}`);
+  getMetrics: async (period: Period, experienceId?: string): Promise<SpanMetrics> => {
+    const params = periodSearchParams(period);
+    if (experienceId) params.set('experienceId', experienceId);
+    const json = await fetchApi<{ data: SpanMetrics }>(`/api/telemetry/traces/metrics?${params}`);
     return json.data;
   },
 

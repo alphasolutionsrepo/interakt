@@ -9,7 +9,7 @@ The **Playground** is the admin-side test harness. It lets you try search querie
 It's the place to go when you've changed something and want to see if it worked, before you expose it to real users.
 
 ## Where to find it
-Sidebar → **Playground**.
+Sidebar → **Test**.
 
 Three sub-screens:
 
@@ -22,7 +22,7 @@ Three sub-screens:
 Tests AI provider connections end-to-end.
 
 ### Where to find it
-Sidebar → **Playground → AI Services**.
+Sidebar → **Test → AI models**.
 
 ### Tabs
 
@@ -52,7 +52,7 @@ Useful for verifying that the embedding model is returning sensible dimensions a
 Search a raw index directly. The same Elasticsearch / Azure query your tools and experiences run, but with no experience-layer filtering or display config applied — just the raw hits.
 
 ### Where to find it
-Sidebar → **Playground → Index Search**.
+Sidebar → **Test → Search**.
 
 ### Layout
 - **Index selector** — pick which index.
@@ -74,7 +74,7 @@ This is the lowest-level test surface — closest to the raw engine.
 Tests a search experience end-to-end. Same code path your users will exercise, but the request is authenticated by your admin session, not by an access token.
 
 ### Where to find it
-Sidebar → **Playground → Experience Search**.
+Sidebar → **Test → Search** (Experience Search tab).
 
 ### Layout
 - **Experience selector** — pick a search experience.

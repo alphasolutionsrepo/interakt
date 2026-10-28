@@ -9,7 +9,7 @@ A **prompt template** is the AI's instructions for one step of a chat conversati
 This is where prompt engineering lives in Interakt. Every change is versioned, every version is reviewable, and you can roll back if a change makes things worse.
 
 ## Where to find these screens
-Sidebar → **Capabilities → Prompt Templates**.
+Sidebar → **Build → Prompt Templates**.
 
 ## The list screen
 

@@ -54,6 +54,8 @@ export interface UpdateSessionInput {
 export interface ListSessionsOptions {
   limit?: number;
   offset?: number;
+  /** Only conversations whose title, experience or any message contains this text (case-insensitive) */
+  search?: string;
 }
 
 // ============================================================================
@@ -82,6 +84,24 @@ async function getDB() {
   }
   const { adminChatSessions } = await import('@/db/analytics-schema');
   return { db: analyticsDB, adminChatSessions };
+}
+
+type SessionsTable = Awaited<ReturnType<typeof getDB>>['adminChatSessions'];
+
+/** Match a conversation's title, experience name, or the text of any of its messages */
+function matchesSearch(table: SessionsTable, search: string | undefined) {
+  const text = search?.trim();
+  if (!text) return undefined;
+  // The search is plain text: % and _ match themselves, not any characters
+  const pattern = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return sql`(
+    ${table.title} ILIKE ${pattern}
+    OR ${table.experienceName} ILIKE ${pattern}
+    OR EXISTS (
+      SELECT 1 FROM json_array_elements(${table.messages}) AS message
+      WHERE message->>'content' ILIKE ${pattern}
+    )
+  )`;
 }
 
 // ============================================================================
@@ -136,7 +156,7 @@ export async function getSession(sessionId: string): Promise<AdminChatSession | 
  */
 export async function listSessions(options: ListSessionsOptions = {}): Promise<AdminChatSessionSummary[]> {
   const { db, adminChatSessions } = await getDB();
-  const { limit = 50, offset = 0 } = options;
+  const { limit = 50, offset = 0, search } = options;
 
   const sessions = await db
     .select({
@@ -149,6 +169,7 @@ export async function listSessions(options: ListSessionsOptions = {}): Promise<A
       createdAt: adminChatSessions.createdAt,
     })
     .from(adminChatSessions)
+    .where(matchesSearch(adminChatSessions, search))
     .orderBy(desc(adminChatSessions.lastMessageAt), desc(adminChatSessions.createdAt))
     .limit(limit)
     .offset(offset);
@@ -258,14 +279,15 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
 }
 
 /**
- * Get total session count
+ * Get total session count, of those matching `search` when given
  */
-export async function getSessionCount(): Promise<number> {
+export async function getSessionCount(search?: string): Promise<number> {
   const { db, adminChatSessions } = await getDB();
 
   const [result] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(adminChatSessions);
+    .select({ count: sql<number>`count(*)::int` })
+    .from(adminChatSessions)
+    .where(matchesSearch(adminChatSessions, search));
 
   return result?.count || 0;
 }

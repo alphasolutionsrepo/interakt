@@ -94,19 +94,19 @@ interface FieldInferenceReviewDialogProps {
 
 function getFieldTypeBadgeColor(fieldType: string): string {
     const colors: Record<string, string> = {
-        text: 'bg-blue-50 text-blue-700 border-blue-200',
-        keyword: 'bg-violet-50 text-violet-700 border-violet-200',
-        number: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        boolean: 'bg-amber-50 text-amber-700 border-amber-200',
-        datetime: 'bg-pink-50 text-pink-700 border-pink-200',
-        date: 'bg-pink-50 text-pink-700 border-pink-200',
-        json: 'bg-slate-100 text-slate-700 border-slate-300',
-        array: 'bg-orange-50 text-orange-700 border-orange-200',
-        image_url: 'bg-teal-50 text-teal-700 border-teal-200',
-        url: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-        email: 'bg-rose-50 text-rose-700 border-rose-200',
+        text: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+        keyword: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800',
+        number: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+        boolean: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        datetime: 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800',
+        date: 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800',
+        json: 'bg-slate-100 dark:bg-muted text-slate-700 dark:text-muted-foreground border-slate-300 dark:border-border',
+        array: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800',
+        image_url: 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800',
+        url: 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800',
+        email: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
     };
-    return colors[fieldType] || 'bg-slate-50 text-slate-600 border-slate-200';
+    return colors[fieldType] || 'bg-slate-50 dark:bg-muted/40 text-slate-600 border-slate-200 dark:border-border';
 }
 
 function formatSampleValue(value: unknown): string {
@@ -210,7 +210,7 @@ export function FieldInferenceReviewDialog({
                 <div className="flex-1 min-h-0 overflow-auto border-y">
                     <Table>
                         <TableHeader>
-                            <TableRow className="bg-slate-50/80">
+                            <TableRow className="bg-slate-50/80 dark:bg-muted/40">
                                 <TableHead className="w-10">
                                     <Checkbox
                                         checked={selectedCount === newFields.length && newFields.length > 0}
@@ -249,7 +249,7 @@ export function FieldInferenceReviewDialog({
                                         </TableCell>
 
                                         <TableCell>
-                                            <span className="font-mono text-sm text-slate-800">
+                                            <span className="font-mono text-sm text-slate-800 dark:text-foreground">
                                                 {field.fieldName}
                                             </span>
                                         </TableCell>
@@ -322,16 +322,16 @@ export function FieldInferenceReviewDialog({
 
                                         <TableCell>
                                             {field.alreadyExists ? (
-                                                <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500">
+                                                <Badge variant="outline" className="text-xs bg-slate-100 dark:bg-muted text-slate-500">
                                                     Exists
                                                 </Badge>
                                             ) : edit.included ? (
-                                                <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">
+                                                <Badge variant="outline" className="text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
                                                     <CheckCircle2 className="h-3 w-3 mr-0.5" />
                                                     New
                                                 </Badge>
                                             ) : (
-                                                <Badge variant="outline" className="text-xs bg-slate-50 text-slate-400">
+                                                <Badge variant="outline" className="text-xs bg-slate-50 dark:bg-muted/40 text-slate-400">
                                                     Skipped
                                                 </Badge>
                                             )}
@@ -350,8 +350,8 @@ export function FieldInferenceReviewDialog({
                         <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                         <span>
                             Types are auto-detected from sample values. Adjust any that look wrong
-                            &mdash; e.g. short strings may show as <code className="text-[10px] bg-slate-200 px-1 rounded">keyword</code> when
-                            they should be <code className="text-[10px] bg-slate-200 px-1 rounded">text</code> for full-text search.
+                            &mdash; e.g. short strings may show as <code className="text-[10px] bg-slate-200 dark:bg-muted px-1 rounded">keyword</code> when
+                            they should be <code className="text-[10px] bg-slate-200 dark:bg-muted px-1 rounded">text</code> for full-text search.
                         </span>
                     </div>
 

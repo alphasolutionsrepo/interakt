@@ -32,7 +32,7 @@ If your data is in a spreadsheet, export it to CSV — Interakt accepts CSV too.
 
 ## Step 1 — Create a search index
 
-Sidebar → **Capabilities → Search Indexes** → **New Index**.
+Sidebar → **Build → Search Indexes** → **New Index**.
 
 Fill in:
 
@@ -97,7 +97,7 @@ When it's done, the index status badge turns green ("Ready") and the document co
 
 ## Step 4 — Try it in the Playground before making it public
 
-Sidebar → **Playground → Index Search**.
+Sidebar → **Test → Search**.
 
 Pick your index from the dropdown and start typing queries. This is the same search engine your users will hit; it just bypasses access tokens because you're logged in as admin. Try:
 
@@ -154,7 +154,7 @@ The wizard no longer asks you to pick a pipeline mode. New experiences start on 
 
 Click **Next**.
 
-**Tools step:** pick the search/lookup/inspect/enumerate tools that were auto-created for your index. The chat needs these to fetch data when answering. (If you don't see them, go to **Capabilities → Tools** → check that they exist for your index, or to the index's data source detail page → **Create Tools**.)
+**Tools step:** pick the search/lookup/inspect/enumerate tools that were auto-created for your index. The chat needs these to fetch data when answering. (If you don't see them, go to **Build → Tools** → check that they exist for your index, or to the index's data source detail page → **Create Tools**.)
 
 **AI configuration step:**
 

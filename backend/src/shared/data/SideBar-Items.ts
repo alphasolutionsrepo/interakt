@@ -6,7 +6,6 @@ import {
     BookOpen,
     Home,
     Database,
-    MessageSquare,
     Activity,
     Cog,
     Plus,
@@ -26,11 +25,37 @@ import {
     Boxes,
     MessageCircle,
     Clock,
+    HeartPulse,
+    type LucideIcon,
 } from "lucide-react";
 
-export const sidebarGroups = [
+export interface SidebarItem {
+    /** Translation key */
+    title: string;
+    url: string;
+    icon: LucideIcon;
+    subItems?: SidebarItem[];
+}
+
+export interface SidebarGroupDef {
+    /** Translation key */
+    name: string;
+    icon: LucideIcon;
+    /** No heading above the group (e.g. a group of one) */
+    hideLabel?: boolean;
+    items: SidebarItem[];
+}
+
+/**
+ * The sidebar, in the order admins use it: the daily pages first (Dashboard,
+ * then Monitor), then what you build and test, then administration. Docs are
+ * help rather than configuration, so they sit at the bottom (sidebarFooterItems).
+ */
+export const sidebarGroups: SidebarGroupDef[] = [
     {
         name: "sidebar.groups.main",
+        // A single item needs no heading
+        hideLabel: true,
         icon: Home,
         items: [
             {
@@ -38,10 +63,55 @@ export const sidebarGroups = [
                 url: "/dashboard",
                 icon: Home,
             },
+        ]
+    },
+    {
+        name: "sidebar.groups.monitor",
+        icon: BarChart3,
+        items: [
             {
-                title: "sidebar.items.docs",
-                url: "/docs",
-                icon: BookOpen,
+                // The analytics sections, also reachable from the tabs inside Analytics.
+                // Its Settings tab is left out here: it's an admin page, not a view.
+                title: "sidebar.items.analytics",
+                url: "/analytics",
+                icon: Activity,
+                subItems: [
+                    {
+                        title: "sidebar.items.overview",
+                        url: "/analytics/overview",
+                        icon: Activity,
+                    },
+                    {
+                        title: "sidebar.items.analyticsSearch",
+                        url: "/analytics/search",
+                        icon: Search,
+                    },
+                    {
+                        title: "sidebar.items.conversations",
+                        url: "/analytics/conversations",
+                        icon: MessageCircle,
+                    },
+                    {
+                        title: "sidebar.items.aiCost",
+                        url: "/analytics/ai",
+                        icon: Cpu,
+                    },
+                    {
+                        title: "sidebar.items.traces",
+                        url: "/analytics/traces",
+                        icon: ListTree,
+                    },
+                ]
+            },
+            {
+                title: "sidebar.items.healthMonitoring",
+                url: "/health",
+                icon: HeartPulse,
+            },
+            {
+                title: "sidebar.items.backgroundJobs",
+                url: "/jobs",
+                icon: Clock,
             },
         ]
     },
@@ -62,7 +132,7 @@ export const sidebarGroups = [
         ]
     },
     {
-        name: "sidebar.groups.capabilities",
+        name: "sidebar.groups.build",
         icon: Boxes,
         items: [
             {
@@ -129,7 +199,7 @@ export const sidebarGroups = [
         ]
     },
     {
-        name: "sidebar.groups.playground",
+        name: "sidebar.groups.test",
         icon: TestTube,
         items: [
             {
@@ -138,40 +208,20 @@ export const sidebarGroups = [
                 icon: MessageCircle,
             },
             {
-                title: "sidebar.items.aiServices",
-                url: "/playground/ai-service",
-                icon: Bot,
-            },
-            {
                 title: "sidebar.items.indexSearch",
                 url: "/playground/search",
                 icon: Search,
             },
-        ]
-    },
-    {
-        name: "sidebar.groups.analytics",
-        icon: BarChart3,
-        items: [
             {
-                title: "sidebar.items.overview",
-                url: "/analytics/overview",
-                icon: Activity,
-            },
-            {
-                title: "sidebar.items.chat",
-                url: "/analytics/chat",
-                icon: MessageSquare,
-            },
-            {
-                title: "sidebar.items.traces",
-                url: "/analytics/traces",
-                icon: FileText,
+                // Tries the configured models directly; not to be confused with AI Providers under Admin
+                title: "sidebar.items.aiModels",
+                url: "/playground/ai-service",
+                icon: Bot,
             },
         ]
     },
     {
-        name: "sidebar.groups.platform",
+        name: "sidebar.groups.admin",
         icon: Shield,
         items: [
             {
@@ -202,16 +252,6 @@ export const sidebarGroups = [
                 ]
             },
             {
-                title: "sidebar.items.backgroundJobs",
-                url: "/jobs",
-                icon: Clock,
-            },
-            {
-                title: "sidebar.items.healthMonitoring",
-                url: "/health",
-                icon: Activity,
-            },
-            {
                 title: "sidebar.items.userManagement",
                 url: "/users",
                 icon: Users,
@@ -222,5 +262,14 @@ export const sidebarGroups = [
                 icon: Rocket,
             },
         ]
+    },
+];
+
+/** Pinned to the bottom of the sidebar, apart from the work pages */
+export const sidebarFooterItems: SidebarItem[] = [
+    {
+        title: "sidebar.items.docs",
+        url: "/docs",
+        icon: BookOpen,
     },
 ];

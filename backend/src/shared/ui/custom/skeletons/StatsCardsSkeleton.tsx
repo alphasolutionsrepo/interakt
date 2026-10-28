@@ -23,7 +23,7 @@ export function StatsCardsSkeleton({
             {Array.from({ length: count }).map((_, i) => (
                 <div
                     key={i}
-                    className="relative overflow-hidden rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
+                    className="relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-border bg-white dark:bg-card p-5 shadow-sm"
                 >
                     <div className="flex items-center gap-4">
                         {/* Icon */}

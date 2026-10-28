@@ -179,7 +179,7 @@ anything, or you're stuck with whatever default it picked. See
 
 ### 2.2 Create the index
 
-**Capabilities → Search Indexes → New**. Name it (e.g. `sanity-content`), type **hybrid** unless you
+**Build → Search Indexes → New**. Name it (e.g. `sanity-content`), type **hybrid** unless you
 have a reason not to, strategy *On Upload*. Note the **index UUID** from its admin URL — you'll need
 it for every ingestion call, and an ingestion key cannot tell you which index it belongs to.
 

@@ -32,10 +32,10 @@ describe('recent searches feed', () => {
       ],
     }));
 
-    expect(html).toContain('User search');
-    expect(html.match(/AI tool search/g)).toHaveLength(2);
-    expect(html).toContain('AI tool: Find Record');
-    expect(html).toContain('AI tool: List Values');
+    expect(html).toContain('Visitor');
+    expect(html.match(/>AI assistant</g)).toHaveLength(2);
+    expect(html).toContain('AI assistant: Find Record');
+    expect(html).toContain('AI assistant: List Values');
     expect(html).toContain('AI step: Query understanding');
     expect(html).toContain('AI step: Filter values');
     expect(html).toContain('AI step: Field values (earlier)');

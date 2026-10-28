@@ -250,7 +250,7 @@ export default function SearchBox() {
 
 > **The exact request/response shape evolves** (facets, pagination, AI summaries, highlights, and
 > the per-experience display configuration come back too). Get the current shape live from
-> **Playground → Experience Search** in the admin. Full reference: [Calling the search API](../../guides/call-the-search-api).
+> **Test → Search** (Experience Search tab) in the admin. Full reference: [Calling the search API](../../guides/call-the-search-api).
 
 ### Chat (streaming)
 

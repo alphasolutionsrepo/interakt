@@ -235,13 +235,13 @@ export function FieldMappingJsonImportDialog({
                             value={jsonText}
                             onChange={(e) => processJson(e.target.value)}
                             placeholder='Paste field mappings JSON here...'
-                            className="font-mono text-xs leading-relaxed min-h-[250px] resize-y bg-slate-50"
+                            className="font-mono text-xs leading-relaxed min-h-[250px] resize-y bg-slate-50 dark:bg-muted/40"
                             spellCheck={false}
                         />
                     </TabsContent>
 
                     <TabsContent value="upload" className="mt-3">
-                        <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                        <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-300 dark:border-border rounded-lg cursor-pointer bg-slate-50 dark:bg-muted/40 hover:bg-slate-100 transition-colors">
                             <div className="flex flex-col items-center gap-2 text-slate-500">
                                 <Upload className="h-8 w-8" />
                                 <span className="text-sm font-medium">Click to upload .json file</span>
@@ -264,7 +264,7 @@ export function FieldMappingJsonImportDialog({
 
                 {/* Errors */}
                 {parseError && (
-                    <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
                         <div className="flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 flex-shrink-0" />
                             <p className="font-medium">JSON Parse Error</p>
@@ -273,7 +273,7 @@ export function FieldMappingJsonImportDialog({
                     </div>
                 )}
                 {allErrors.length > 0 && !parseError && (
-                    <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
                         <div className="flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 flex-shrink-0" />
                             <p className="font-medium">{allErrors.length} error{allErrors.length !== 1 ? 's' : ''}</p>
@@ -287,27 +287,27 @@ export function FieldMappingJsonImportDialog({
                 {/* Preview */}
                 {isValid && diffSummary && (
                     <div className="space-y-2">
-                        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
-                            <div className="flex items-center gap-2 text-sm text-emerald-700">
+                        <div className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 p-3">
+                            <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
                                 <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
                                 <span className="font-medium">Valid configuration</span>
                             </div>
                             <div className="mt-2 flex items-center gap-3 flex-wrap text-xs text-emerald-600">
-                                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                                <Badge className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
                                     {diffSummary.matchedFields} of {diffSummary.totalFields} fields matched
                                 </Badge>
                                 {diffSummary.fieldsToCreate > 0 && (
-                                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                                    <Badge className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
                                         {diffSummary.fieldsToCreate} field{diffSummary.fieldsToCreate !== 1 ? 's' : ''} to create
                                     </Badge>
                                 )}
                                 {diffSummary.mappingChanges > 0 && (
-                                    <Badge className="bg-blue-100 text-blue-700 border-blue-200">
+                                    <Badge className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
                                         {diffSummary.mappingChanges} mapping change{diffSummary.mappingChanges !== 1 ? 's' : ''}
                                     </Badge>
                                 )}
                                 {diffSummary.attributeChanges > 0 && (
-                                    <Badge className="bg-blue-100 text-blue-700 border-blue-200">
+                                    <Badge className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
                                         {diffSummary.attributeChanges} attribute change{diffSummary.attributeChanges !== 1 ? 's' : ''}
                                     </Badge>
                                 )}
@@ -324,7 +324,7 @@ export function FieldMappingJsonImportDialog({
 
                         {/* Warnings */}
                         {conversionWarnings.length > 0 && (
-                            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                            <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-700 dark:text-amber-300">
                                 <div className="flex items-center gap-2">
                                     <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                                     <p className="font-medium">{conversionWarnings.length} warning{conversionWarnings.length !== 1 ? 's' : ''}</p>

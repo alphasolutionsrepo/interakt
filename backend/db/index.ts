@@ -34,31 +34,52 @@ const logger = {
 // ============================================================================
 
 /**
- * Main Database Client
+ * In development, Next reloads server modules on every code change. A client
+ * created at module level would then open a fresh pool per reload while the old
+ * pools stay connected, until Postgres refuses connections ("too many clients").
+ * Pinning the clients to globalThis makes every reload reuse the same pools.
  */
-const mainClient = postgres(
-  databaseConfig.connection.url,
-  {
-    max: databaseConfig.connection.pool.max,
-    idle_timeout: Math.floor(databaseConfig.connection.pool.idleTimeoutMillis / 1000), // Convert to seconds
-    connect_timeout: Math.floor(databaseConfig.connection.pool.connectionTimeoutMillis / 1000),
-    onnotice: () => { }, // Suppress notices in development
-  }
-);
+const globalDb = globalThis as typeof globalThis & {
+  __interaktDbClients?: { main: postgres.Sql; analytics: postgres.Sql | null };
+};
 
-/**
- * Analytics Database Client (if configured)
- */
-let analyticsClient: postgres.Sql | null = null;
-if (databaseConfig.analytics.url) {
-  analyticsClient = postgres(
-    databaseConfig.analytics.url,
+function createClients() {
+  /**
+   * Main Database Client
+   */
+  const main = postgres(
+    databaseConfig.connection.url,
     {
-      max: 5,
-      onnotice: () => { },
+      max: databaseConfig.connection.pool.max,
+      idle_timeout: Math.floor(databaseConfig.connection.pool.idleTimeoutMillis / 1000), // Convert to seconds
+      connect_timeout: Math.floor(databaseConfig.connection.pool.connectionTimeoutMillis / 1000),
+      onnotice: () => { }, // Suppress notices in development
     }
   );
+
+  /**
+   * Analytics Database Client (if configured)
+   */
+  const analytics = databaseConfig.analytics.url
+    ? postgres(
+      databaseConfig.analytics.url,
+      {
+        max: databaseConfig.analytics.poolMax,
+        idle_timeout: Math.floor(databaseConfig.connection.pool.idleTimeoutMillis / 1000),
+        connect_timeout: Math.floor(databaseConfig.connection.pool.connectionTimeoutMillis / 1000),
+        onnotice: () => { },
+      }
+    )
+    : null;
+
+  return { main, analytics };
 }
+
+const clients = globalDb.__interaktDbClients ?? createClients();
+if (process.env.NODE_ENV !== 'production') globalDb.__interaktDbClients = clients;
+
+const mainClient = clients.main;
+const analyticsClient = clients.analytics;
 
 // ============================================================================
 // DRIZZLE INSTANCES

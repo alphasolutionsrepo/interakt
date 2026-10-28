@@ -20,7 +20,7 @@ So Interakt persists the **connection** (URL, transport, auth) and reads the cat
 
 ## Where to find these screens
 
-Sidebar → **Capabilities → MCP Connections**.
+Sidebar → **Build → MCP Connections**.
 
 ## Creating a connection
 

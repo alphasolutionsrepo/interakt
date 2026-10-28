@@ -122,14 +122,39 @@ describe('period the answer describes', () => {
   });
 
   it('describes the period the data covers', () => {
-    expect(describeDataPeriods([action('30d', '30d')])).toMatch(/covers: the last 30 days/);
+    expect(describeDataPeriods([action('30d', '30d')])).toMatch(/get_cost_analysis: the last 30 days/);
   });
 
   it('says when a tool read a different period than requested', () => {
     const note = describeDataPeriods([action('1h', '24h')]);
-    expect(note).toMatch(/covers: the last 24 hours/);
+    expect(note).toMatch(/get_cost_analysis: the last 24 hours/);
     expect(note).toMatch(/no data for the last hour/);
-    expect(note).not.toMatch(/covers: the last hour/);
+    expect(note).not.toMatch(/get_cost_analysis: the last hour/);
+  });
+
+  it("names the exact period, in the viewer's time zone, when the tool read one", () => {
+    const period = { from: '2026-10-12T22:00:00.000Z', to: '2026-10-13T22:00:00.000Z' };
+    const exact: AnalyticsActionResult = {
+      toolSlug: 'get_search_overview',
+      intent: 'overview',
+      parameters: { ...period, timeRange: '24h' },
+      result: { success: true, data: 'ok', timeRange: '24h', period },
+      durationMs: 1,
+    };
+    const note = describeDataPeriods([exact], 'Europe/Copenhagen');
+    expect(note).toMatch(/get_search_overview: Oct 13, 2026/);
+    expect(note).toMatch(/times in Europe\/Copenhagen/);
+  });
+
+  it('says when stored insights cover a fixed range instead of the exact period asked for', () => {
+    const asked: AnalyticsActionResult = {
+      toolSlug: 'get_cost_analysis',
+      intent: 'cost',
+      parameters: { from: '2026-10-12T22:00:00.000Z', to: '2026-10-13T22:00:00.000Z', timeRange: '24h' },
+      result: { success: true, data: 'ok', timeRange: '24h' },
+      durationMs: 1,
+    };
+    expect(describeDataPeriods([asked], 'Europe/Copenhagen')).toMatch(/no data for Oct 13, 2026; its results cover the last 24 hours/);
   });
 
   it('adds nothing for results without a period or failed tools', () => {

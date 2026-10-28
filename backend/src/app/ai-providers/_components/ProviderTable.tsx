@@ -139,8 +139,8 @@ export function ProviderTable({
                     variant="outline"
                     className={`capitalize ${
                       provider.providerType === 'cloud'
-                        ? 'border-blue-200 bg-blue-50 text-blue-700'
-                        : 'border-green-200 bg-green-50 text-green-700'
+                        ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300'
+                        : 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300'
                     }`}
                   >
                     {provider.providerType}

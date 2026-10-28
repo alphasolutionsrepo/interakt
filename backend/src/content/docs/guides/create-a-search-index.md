@@ -14,7 +14,7 @@ This is the step-by-step for creating an index, configuring its fields, and load
 
 ## 1. Open the create wizard
 
-Sidebar → **Capabilities → Search Indexes** → **New Index**.
+Sidebar → **Build → Search Indexes** → **New Index**.
 
 ## 2. Fill in basic info
 
@@ -87,7 +87,7 @@ The index status badge turns green ("Ready") and the document count updates when
 
 ## 7. Verify
 
-Sidebar → **Playground → Index Search**. Pick your index. Try a few queries:
+Sidebar → **Test → Search**. Pick your index. Try a few queries:
 
 - A literal term from your data — should be the top result.
 - A vaguer phrase that doesn't appear word-for-word — with hybrid, semantic matches should fill the gaps.
@@ -98,7 +98,7 @@ If the results look right, you're ready to wrap this index in a [search experien
 ## Troubleshooting
 
 **Upload failed: "could not generate embeddings."**
-Your AI provider isn't reachable. Check Platform → AI Providers → Test Connection. If Ollama: confirm `ollama serve` is running and the embedding model is pulled.
+Your AI provider isn't reachable. Check Admin → AI Providers → Test Connection. If Ollama: confirm `ollama serve` is running and the embedding model is pulled.
 
 **Some documents failed to upload.**
 The Recent Uploads panel on the upload page shows which batch failed and why — usually a single malformed record. Fix it and re-upload that batch.
