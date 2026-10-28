@@ -218,3 +218,16 @@ describe('blank values on a number field', () => {
         expect(dropped).toHaveLength(1);
     });
 });
+
+describe('a list or object as a single value on a text field', () => {
+    it('drops the clause instead of comparing with the list as text', () => {
+        for (const value of [['en', 'fr'], { a: 1 }]) {
+            const { odata, dropped } = buildAzureFilterParts(
+                [{ field: 'locale', operator: 'eq', value } as FilterClause],
+                scalars,
+            );
+            expect(odata).toBeUndefined();
+            expect(dropped).toHaveLength(1);
+        }
+    });
+});
