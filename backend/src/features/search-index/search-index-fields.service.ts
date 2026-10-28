@@ -10,6 +10,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
+import { isFullTextSearchableFieldType } from '@/shared/constants/field-types';
 import * as repository from './search-index-fields.repository';
 import * as searchIndexRepository from './search-index.repository';
 import { clearIndexCache } from './search-index.cache';
@@ -50,6 +51,33 @@ const logger = createLogger('search-index-fields-service');
  */
 export function defaultIsSearchableForType(fieldType: string): boolean {
     return ['text', 'keyword'].includes(fieldType);
+}
+
+/**
+ * A field configuration the caller asked for is not valid for the field's type.
+ *
+ * Typed so the API can answer 400 rather than 500: the request was understood
+ * and refused, nothing went wrong on the server.
+ */
+export class InvalidFieldConfigError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'InvalidFieldConfigError';
+    }
+}
+
+/**
+ * Refuse to store `isSearchable: true` on a field type the engines cannot
+ * full-text search. The HTTP schema checks this on create; this is the check
+ * for the update path (whose schema has no field type) and for callers that
+ * reach the service below the schema, such as bulk and import.
+ */
+function assertSearchableAllowedForType(fieldType: string, isSearchable: boolean | undefined): void {
+    if (isSearchable === true && !isFullTextSearchableFieldType(fieldType)) {
+        throw new InvalidFieldConfigError(
+            `Full-text search is only supported for text-like fields; "${fieldType}" fields cannot be marked searchable`
+        );
+    }
 }
 
 /**
@@ -260,6 +288,8 @@ export async function createField(
         if (exists) {
             throw new Error(`Field "${input.fieldName}" already exists in this index`);
         }
+
+        assertSearchableAllowedForType(input.fieldType, input.isSearchable);
 
         const mappingConfig = input.mappingConfig ?? DEFAULT_MAPPING_CONFIG;
         const sourcePath = input.sourceFieldPath ?? null;
@@ -872,6 +902,8 @@ export async function updateField(
         if (!existing) {
             throw new Error(`Field with ID ${fieldId} not found`);
         }
+
+        assertSearchableAllowedForType(existing.fieldType, input.isSearchable);
 
         // Check for duplicate source field if changing mapping
         if (input.sourceFieldName !== undefined &&

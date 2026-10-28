@@ -37,7 +37,7 @@ vi.mock('./search-index.cache', () => ({
 import * as repository from './search-index-fields.repository';
 import * as searchIndexRepository from './search-index.repository';
 import { clearIndexCache } from './search-index.cache';
-import { createField, updateField, defaultIsSearchableForType } from './search-index-fields.service';
+import { createField, updateField, defaultIsSearchableForType, InvalidFieldConfigError } from './search-index-fields.service';
 
 const INDEX_ID = 'idx-1';
 
@@ -86,13 +86,16 @@ describe('createField', () => {
             .toBe(true);
     });
 
-    it('still honours an explicit true on a numeric field', async () => {
-        // The API contract is unchanged — the UI is what stops producing this payload.
-        expect(await persistedIsSearchable({
-            fieldName: 'priceAmount',
-            fieldType: 'number',
-            isSearchable: true,
-        })).toBe(true);
+    it('rejects an explicit true on a numeric field', async () => {
+        // Below the HTTP schema (bulk, import) this is the only guard. A stored
+        // searchable numeric field makes Elasticsearch fail every query on the index.
+        await expect(createField(
+            INDEX_ID,
+            { fieldName: 'priceAmount', fieldType: 'number', isSearchable: true },
+            'user-1',
+        )).rejects.toThrow(InvalidFieldConfigError);
+
+        expect(repository.createField).not.toHaveBeenCalled();
     });
 
     it('honours an explicit false on a text field', async () => {
@@ -128,6 +131,39 @@ describe('schema-change invalidation', () => {
         await updateField(1, { isFacetable: true }, 'user-1');
 
         expect(clearIndexCache).toHaveBeenCalledWith(INDEX_ID, 'test-index');
+    });
+});
+
+describe('updateField — isSearchable', () => {
+    // The update schema carries no field type, so the stored row's type is the
+    // only thing that can stop a date or number field being flagged searchable.
+    it('rejects marking a stored date field searchable', async () => {
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 2, searchIndexId: INDEX_ID, fieldName: 'birthDate', fieldType: 'date' } as Awaited<
+                ReturnType<typeof repository.getFieldById>
+            >,
+        );
+
+        // Typed so the handler answers 400, not 500
+        await expect(updateField(2, { isSearchable: true }, 'user-1'))
+            .rejects.toThrow(InvalidFieldConfigError);
+
+        expect(repository.updateField).not.toHaveBeenCalled();
+    });
+
+    it('still allows turning the flag off on a date field', async () => {
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 2, searchIndexId: INDEX_ID, fieldName: 'birthDate', fieldType: 'date' } as Awaited<
+                ReturnType<typeof repository.getFieldById>
+            >,
+        );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 2, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
+
+        await updateField(2, { isSearchable: false }, 'user-1');
+
+        expect(repository.updateField).toHaveBeenCalled();
     });
 });
 

@@ -25,6 +25,28 @@ export const FIELD_TYPES = [
 export type FieldType = typeof FIELD_TYPES[number];
 
 /**
+ * Types whose values are strings in the search engine and can therefore take
+ * part in a full-text query. Sending the query text to a number, date or
+ * boolean field makes Elasticsearch reject the whole request ("failed to create
+ * query: For input string") and Azure refuse the field in searchFields.
+ *
+ * `array` is included because tag-style string arrays are common and searched
+ * today; a numeric array is tolerated at query time by the lenient multi_match.
+ */
+export const FULL_TEXT_SEARCHABLE_FIELD_TYPES = [
+  'text',
+  'keyword',
+  'url',
+  'email',
+  'image_url',
+  'array',
+] as const;
+
+export function isFullTextSearchableFieldType(fieldType: string): boolean {
+  return (FULL_TEXT_SEARCHABLE_FIELD_TYPES as readonly string[]).includes(fieldType);
+}
+
+/**
  * Field type metadata for UI and documentation
  */
 export const FIELD_TYPE_INFO: Record<FieldType, {

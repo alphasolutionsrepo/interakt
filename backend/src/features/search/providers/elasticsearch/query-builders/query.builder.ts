@@ -268,13 +268,16 @@ function buildMultiMatchQuery(
         });
 
     const shouldClauses: ESQuery[] = [
-        // Best fields for exact/phrase matches (works on all field types)
+        // Best fields for exact/phrase matches (works on all field types).
+        // lenient: a field whose type cannot hold the query text (a number
+        // asked for "test") is skipped instead of failing the whole query.
         {
             multi_match: {
                 query: queryText,
                 fields: fields,
                 type: 'best_fields',
                 tie_breaker: 0.3,
+                lenient: true,
             },
         } as unknown as ESQuery,
         // Cross fields for distributed matches (works on all field types)
@@ -284,6 +287,7 @@ function buildMultiMatchQuery(
                 fields: fields,
                 type: 'cross_fields',
                 operator: 'and',
+                lenient: true,
             },
         } as unknown as ESQuery,
     ];

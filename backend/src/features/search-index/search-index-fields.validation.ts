@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import { FIELD_TYPES } from '@/shared/constants/field-types';
+import { FIELD_TYPES, isFullTextSearchableFieldType } from '@/shared/constants/field-types';
 import {
     MAPPING_MODES,
     GENERATOR_TYPES,
@@ -286,6 +286,19 @@ export const createSearchIndexFieldSchema = z.object({
     {
         message: 'Autocomplete is only supported for text fields',
         path: ['isAutocomplete'],
+    }
+).refine(
+    (data) => {
+        // A number, date or boolean field cannot be full-text searched: the
+        // engines reject the query outright rather than skipping the field.
+        if (data.isSearchable === true && !isFullTextSearchableFieldType(data.fieldType)) {
+            return false;
+        }
+        return true;
+    },
+    {
+        message: 'Full-text search is only supported for text-like fields (text, keyword, url, email, image_url, array)',
+        path: ['isSearchable'],
     }
 );
 
