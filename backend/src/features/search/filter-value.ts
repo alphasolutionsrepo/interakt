@@ -11,7 +11,10 @@
 export function asFieldType(value: unknown, fieldType: string | undefined): string | number | boolean | undefined {
   switch (fieldType) {
     case 'number': {
-      const n = typeof value === 'number' ? value : Number(String(value).trim());
+      if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+      // Number('') is 0: blank text is no number, not zero
+      const s = String(value).trim();
+      const n = s === '' ? NaN : Number(s);
       return Number.isFinite(n) ? n : undefined;
     }
     case 'boolean': {

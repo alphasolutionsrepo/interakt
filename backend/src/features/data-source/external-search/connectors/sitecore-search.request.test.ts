@@ -345,3 +345,25 @@ describe("filter values as their field's type", () => {
     ]);
   });
 });
+
+describe('fixed filters and field types', () => {
+  const types = new Map([['type', 'text'], ['price', 'number']]);
+
+  it("converts a fixed filter's value to its field's type", () => {
+    expect(buildFilter([{ field: 'price', operator: 'lte', value: '80' }], [], types).filter)
+      .toEqual({ type: 'and', filters: [{ type: 'lte', name: 'price', value: 80 }] });
+  });
+
+  // Saving can't check value types (fields are sampled after the source is saved),
+  // so a fixed filter must not start failing every search when it doesn't convert.
+  it('sends a fixed filter that does not fit its field type as written', () => {
+    const { filter, unapplied } = buildFilter([{ field: 'price', operator: 'lte', value: 'cheap' }], [], types);
+    expect(filter).toEqual({ type: 'and', filters: [{ type: 'lte', name: 'price', value: 'cheap' }] });
+    expect(unapplied).toEqual([]);
+  });
+
+  it('still refuses a fixed filter Sitecore has no operator for', () => {
+    expect(() => buildFilter([{ field: 'type', operator: 'contains', value: 'x' }], [], types))
+      .toThrow("Fixed filter on 'type' can't be used");
+  });
+});

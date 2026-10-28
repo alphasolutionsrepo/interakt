@@ -15,8 +15,6 @@
  *   { widgets: [{ rfk_id, total_item, content: [...], facet: [{ name, label, value: [{ id, text, count }] }] }] }
  */
 
-import { asFieldType } from '@/features/search/filter-value';
-import type { FilterClause, SortClause, RangeValue } from '@/features/search/search.types';
 import type {
   ExternalConnection,
   ExternalFacet,
@@ -24,6 +22,9 @@ import type {
   ExternalSearchHit,
   UnappliedClause,
 } from '../external-search.types';
+
+import { asFieldType } from '@/features/search/filter-value';
+import type { FilterClause, SortClause, RangeValue } from '@/features/search/search.types';
 
 // ============================================================================
 // SETTINGS
@@ -210,6 +211,14 @@ export function buildFilter(
   const translated: SitecoreFilter[] = fixed.map((clause) => {
     try {
       return translateFilter(clause, fieldTypes);
+    } catch (error) {
+      if (!(error instanceof UnsupportedFilter)) throw error;
+    }
+    // Saving checks a fixed filter without field types (they're sampled after the
+    // source is saved), so a value that isn't its field's type is sent as written
+    // rather than failing every search.
+    try {
+      return translateFilter(clause);
     } catch (error) {
       if (!(error instanceof UnsupportedFilter)) throw error;
       throw new Error(
