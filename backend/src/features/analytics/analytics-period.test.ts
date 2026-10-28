@@ -72,6 +72,16 @@ describe('calendar days in a time zone', () => {
     expect(() => calendarDaysIn('2026-10-14', '2026-10-13', 'UTC', now)).toThrow(PeriodError);
   });
 
+  it("refuses days that haven't started, instead of ending before they begin", () => {
+    const now = new Date('2026-10-27T12:00:00Z');
+    expect(() => calendarDaysIn('2026-10-30', '2026-10-30', 'Europe/Copenhagen', now)).toThrow(PeriodError);
+    // Today has started, so it runs up to now
+    expect(calendarDaysIn('2026-10-27', '2026-10-30', 'Europe/Copenhagen', now)).toEqual({
+      from: new Date('2026-10-26T23:00:00.000Z'),
+      to: now,
+    });
+  });
+
   it('describes periods in words', () => {
     const tz = 'Europe/Copenhagen';
     expect(describePeriod(calendarDaysIn('2026-10-13', '2026-10-13', tz, new Date('2027-01-01')), tz)).toBe('Oct 13, 2026');

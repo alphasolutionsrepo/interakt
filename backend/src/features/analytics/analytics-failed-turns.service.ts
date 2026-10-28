@@ -5,6 +5,7 @@
  * a successful outcome (e.g. the plan failed). Read from the per-turn spans, so
  * each comes with its trace id, which opens the full conversation in Traces or
  * through the chat's conversation-detail tool. No message text is returned.
+ * Admin test chats and the playground are left out, as in the other span reports.
  */
 
 import 'server-only';
@@ -12,7 +13,7 @@ import 'server-only';
 import { and, desc, eq, gte, lte, or, sql } from 'drizzle-orm';
 
 import { fetchExperienceNames } from './analytics-experience-summary.service';
-import type { DateRange } from './analytics-query.service';
+import { notTestTraffic, type DateRange } from './analytics-query.service';
 
 export interface FailedTurn {
   traceId: string;
@@ -63,6 +64,7 @@ export async function getTurnsByDay(
         gte(otelSpans.startTime, range.from),
         lte(otelSpans.startTime, range.to),
         experienceId ? eq(otelSpans.experienceId, experienceId) : undefined,
+        notTestTraffic(otelSpans),
       ),
     )
     // Grouped by the alias: the same expression written twice would bind the time zone twice
@@ -84,6 +86,7 @@ export async function countRecentRequests(minutes = 5): Promise<number> {
       and(
         gte(otelSpans.startTime, new Date(Date.now() - minutes * 60_000)),
         or(sql`${otelSpans.operationName} LIKE 'chat.%'`, sql`${otelSpans.operationName} LIKE 'search_experience.%'`),
+        notTestTraffic(otelSpans),
       ),
     );
   return row?.count ?? 0;
@@ -101,6 +104,7 @@ export async function getFailedTurns(range: DateRange, experienceId?: string, li
     gte(otelSpans.startTime, range.from),
     lte(otelSpans.startTime, range.to),
     experienceId ? eq(otelSpans.experienceId, experienceId) : undefined,
+    notTestTraffic(otelSpans),
   );
   const failed = or(eq(otelSpans.statusCode, 'ERROR'), sql`COALESCE(${outcome}, '') <> 'success'`);
 

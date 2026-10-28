@@ -34,6 +34,21 @@ describe('findUnsupportedFigures', () => {
     expect(findUnsupportedFigures(answer, output)).toEqual([]);
   });
 
+  it('reads only month names as dates, not words that start like one', () => {
+    expect(findUnsupportedFigures('Searches declined 15% this week.', output)).toEqual(['15%']);
+    expect(findUnsupportedFigures('They decreased 15, marked 20 and were counted separately 30 times; a novel 40.', output)).toEqual([
+      '15',
+      '20',
+      '30',
+      '40',
+    ]);
+    expect(findUnsupportedFigures('From September 28, Sept 5, 28 October 2026 and May 3 to June 30.', output)).toEqual([]);
+  });
+
+  it('checks figures in list items, not only in sentences', () => {
+    expect(findUnsupportedFigures('Top issues:\n- 81 searches found nothing\n- Why did 55 fail?', output)).toEqual(['81']);
+  });
+
   it('accepts a decline stated in words, and ignores digits that are part of a name', () => {
     const comparison = ['- Searches: 100 → 88 (-12%)', '- Share of searches with no results: 8.0% → 5.0% (-3.0 points)'];
     expect(findUnsupportedFigures('Searches fell 12%, and the no-result share dropped 3.0 points.', comparison)).toEqual([]);

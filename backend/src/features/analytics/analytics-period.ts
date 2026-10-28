@@ -97,6 +97,8 @@ export function calendarDaysIn(from: string, to: string, timeZone: string, now: 
   const next = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + 1));
   const end = startOfDayIn(next.toISOString().slice(0, 10), timeZone);
   if (start >= end) throw new PeriodError('from must not be after to');
+  // A day that hasn't started has no data, and capping `to` at now would put it before `from`
+  if (start > now) throw new PeriodError(`${from} hasn't started yet`);
   return { from: start, to: end > now ? now : end };
 }
 

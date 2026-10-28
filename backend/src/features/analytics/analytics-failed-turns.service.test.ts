@@ -22,8 +22,10 @@ vi.mock('@/db/index', () => ({
 
 import { otelSpans } from '@/db/analytics-schema';
 
+import { ATTR } from '@/features/telemetry/attribute-keys';
+
 import { formatFailedTurnsForAI } from './analytics-ai-tools';
-import { getFailedTurns } from './analytics-failed-turns.service';
+import { getFailedTurns, getTurnsByDay } from './analytics-failed-turns.service';
 
 const chat = crypto.randomUUID();
 const other = crypto.randomUUID();
@@ -84,6 +86,28 @@ describe('getFailedTurns', () => {
     const result = await getFailedTurns(period, other);
 
     expect(result).toMatchObject({ totalTurns: 1, failedTurns: 1, byReason: { plan_failed: 1 } });
+  });
+
+  it('leaves out admin test chats and the playground', async () => {
+    const tested = crypto.randomUUID();
+    // The pipeline records where a chat came from on the trace's chat turn span, not the pipeline turn
+    const source = (n: number, at: string, value: string) => ({
+      ...turn(n, at, { experienceId: tested }),
+      spanId: hex(n + 100).slice(-16),
+      operationName: 'chat.ai_experience.turn',
+      attributes: { [ATTR.ANALYTICS_SOURCE]: value },
+    });
+    await testDb.db.insert(otelSpans).values([
+      turn(11, '2026-10-02T10:00:00Z', { outcome: 'plan_failed', experienceId: tested }),
+      source(11, '2026-10-02T10:00:00Z', 'api'),
+      turn(12, '2026-10-02T11:00:00Z', { outcome: 'plan_failed', experienceId: tested }),
+      source(12, '2026-10-02T11:00:00Z', 'admin_test'),
+      turn(13, '2026-10-02T12:00:00Z', { outcome: 'plan_failed', experienceId: tested }),
+      source(13, '2026-10-02T12:00:00Z', 'playground'),
+    ]);
+
+    expect(await getFailedTurns(period, tested)).toMatchObject({ totalTurns: 1, failedTurns: 1, recent: [{ traceId: hex(11) }] });
+    expect(await getTurnsByDay(period, 'UTC', tested)).toEqual([{ day: new Date('2026-10-02T00:00:00Z'), turns: 1, failed: 1 }]);
   });
 
   it('gives the chat the count, the reasons and trace ids to look into', async () => {

@@ -14,10 +14,12 @@ interface Figure {
   kind: 'plain' | 'percent' | 'thousands' | 'millions' | 'billions';
 }
 
-const MONTHS = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
+// Whole month names only, so "declined 15%" or "marked 20" still have their figure checked
+const MONTH =
+  '\\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\b';
 // Dates and times are periods, not figures: "Oct 13", "13 Oct", "2026-10-13", "14:00"
 const DATE_OR_TIME = new RegExp(
-  `\\b(?:${MONTHS})[a-z]*\\.?\\s+\\d{1,2}(?:,\\s*\\d{4})?|\\b\\d{1,2}\\s+(?:${MONTHS})[a-z]*(?:\\s+\\d{4})?|\\b\\d{4}-\\d{2}-\\d{2}\\b|\\b\\d{1,2}:\\d{2}\\b`,
+  `${MONTH}\\.?\\s+\\d{1,2}(?:,\\s*\\d{4})?|\\b\\d{1,2}\\s+${MONTH}(?:\\s+\\d{4})?|\\b\\d{4}-\\d{2}-\\d{2}\\b|\\b\\d{1,2}:\\d{2}\\b`,
   'gi',
 );
 // Periods named by length are not figures either: "the last 30 days", "past 24 hours", "a 7-day period"
@@ -27,10 +29,10 @@ const PERIOD_LENGTH =
 const FIGURE = /(?<![A-Za-z_\d.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(%|k\b|m\b|thousand\b|million\b|billion\b)?/gi;
 
 function figuresIn(answer: string): Figure[] {
-  // Follow-up suggestions ("- How does …?") are questions, not claims
+  // Follow-up suggestions ("- How does …?") are questions, not claims; other list items are
   const claims = answer
     .split('\n')
-    .filter((line) => !/^\s*-\s+/.test(line))
+    .filter((line) => !/^\s*-\s+.*\?\s*$/.test(line))
     .join('\n')
     .replace(DATE_OR_TIME, ' ')
     .replace(PERIOD_LENGTH, ' ');
