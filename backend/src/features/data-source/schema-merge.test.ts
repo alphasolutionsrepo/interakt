@@ -119,3 +119,20 @@ describe('mergeOperatorFieldEdits — schema inferred from a sample', () => {
     expect(merged.latestSampleFields).toEqual(['name', 'keywords', 'added']);
   });
 });
+
+describe('mergeOperatorFieldEdits — a sample with no value for a typed field', () => {
+  it('keeps the value type an earlier sample saw', () => {
+    const stored = schema([
+      { name: 'year', displayName: 'Year', type: 'number', valueType: 'number', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+    ]);
+    // The facet is still listed, but none of this sample's items carry a value
+    const rediscovered: DataSourceSchema = {
+      discoveredFrom: 'sample',
+      fields: [
+        { name: 'year', displayName: 'Year', type: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+      ] as DataSourceSchema['fields'],
+    };
+
+    expect(mergeOperatorFieldEdits(stored, rediscovered).fields[0].valueType).toBe('number');
+  });
+});
