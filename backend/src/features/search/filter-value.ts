@@ -6,9 +6,11 @@
  * (Azure AI Search, Sitecore Search) need the one the field holds.
  *
  * @returns a number for a number field, true/false for a boolean field, text for
- *   any other field; undefined when the value can't be the field's type
+ *   any other field; undefined when the value can't be the field's type, or
+ *   isn't a single text, number or true/false value (null, a list, an object)
  */
 export function asFieldType(value: unknown, fieldType: string | undefined): string | number | boolean | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return undefined;
   switch (fieldType) {
     case 'number': {
       if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;

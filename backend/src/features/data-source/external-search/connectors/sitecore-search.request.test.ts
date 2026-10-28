@@ -380,6 +380,18 @@ describe("filter values as their field's type", () => {
       { field: 'price', operator: 'lte', reason: `"cheap" is not a number value for 'price'` },
     ]);
   });
+
+  it('reports null or a list for a text field as not applied, rather than sending it as text', () => {
+    const { filter, unapplied } = buildFilter([], [
+      { field: 'type', operator: 'eq', value: ['page', 'event'] },
+      { field: 'type', operator: 'eq', value: null },
+    ] as never, types);
+    expect(filter).toBeUndefined();
+    expect(unapplied).toEqual([
+      { field: 'type', operator: 'eq', reason: `["page","event"] is not a text value for 'type'` },
+      { field: 'type', operator: 'eq', reason: `null is not a text value for 'type'` },
+    ]);
+  });
 });
 
 describe('fixed filters and field types', () => {

@@ -47,10 +47,15 @@ describe('Ollama think', () => {
     expect(sent().think).toBe(false);
   });
 
-  it('passes a level through', async () => {
+  it.each([
+    ['minimal', 'low'],
+    ['low', 'low'],
+    ['medium', 'medium'],
+    ['high', 'high'],
+  ])("sends '%s' as think '%s'", async (effort, think) => {
     const sent = captureFetch(ollamaReply);
-    await new OllamaAdapter().chat(request, config({ reasoningEffort: 'high' }));
-    expect(sent().think).toBe('high');
+    await new OllamaAdapter().chat(request, config({ reasoningEffort: effort }));
+    expect(sent().think).toBe(think);
   });
 
   it('sends nothing when unset', async () => {

@@ -18,4 +18,13 @@ describe('asFieldType', () => {
     expect(asFieldType('cheap', 'number')).toBeUndefined();
     expect(asFieldType(Number.NaN, 'number')).toBeUndefined();
   });
+
+  it('refuses null, a list or an object for any field', () => {
+    for (const fieldType of ['text', 'number', 'boolean', undefined]) {
+      expect(asFieldType(null, fieldType)).toBeUndefined();
+      expect(asFieldType(['Red', 'Blue'], fieldType)).toBeUndefined();
+      expect(asFieldType([5], fieldType)).toBeUndefined();
+      expect(asFieldType({ a: 1 }, fieldType)).toBeUndefined();
+    }
+  });
 });
