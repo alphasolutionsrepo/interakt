@@ -25,6 +25,7 @@ import {
   buildSitecoreRequest,
   mapSitecoreResponse,
   sitecoreSettings,
+  type SitecoreFieldTypes,
   type SitecoreRequestInput,
 } from './sitecore-search.request';
 
@@ -121,7 +122,7 @@ export const sitecoreSearchConnector: ExternalSearchConnector = {
       facets: request.facets,
       sort: request.sort,
       fields: request.selectFields,
-      fieldTypes: fields ? new Map(fields.map((f) => [f.name, f.type])) : undefined,
+      fieldTypes: fields ? sitecoreFieldTypes(fields) : undefined,
     });
 
     const mapped = mapSitecoreResponse(call.json, connection.indexName, request.offset);
@@ -164,6 +165,18 @@ function humanize(name: string): string {
   return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** providerType of an attribute the sample carried no value for, so its type is a guess */
+const UNSAMPLED = 'unsampled';
+
+/**
+ * Field name → type, for sending filter values as their attribute's type. Only
+ * types seen in a sampled value: Sitecore rejects a value of the wrong type, so a
+ * guessed type would break a value that works as sent.
+ */
+export function sitecoreFieldTypes(fields: DataSourceField[]): SitecoreFieldTypes {
+  return new Map(fields.filter((f) => f.providerType !== UNSAMPLED).map((f) => [f.name, f.type]));
+}
+
 /**
  * Infer fields from sampled items.
  *
@@ -195,22 +208,29 @@ export function inferSitecoreFields(sample: SitecoreSample): DataSourceField[] {
     const seen = values.get(name)!;
     const first = seen[0];
     const isFacet = sample.facets.has(name);
+    // A list attribute's type is its items' type
+    const item = Array.isArray(first) ? first.find((v) => v !== null && v !== undefined && v !== '') : first;
 
     let type = 'text';
     let providerType = 'string';
-    if (typeof first === 'number') {
-      type = providerType = 'number';
-    } else if (typeof first === 'boolean') {
-      type = providerType = 'boolean';
+    if (typeof item === 'number') {
+      type = 'number';
+    } else if (typeof item === 'boolean') {
+      type = 'boolean';
+    }
+    if (item === undefined) {
+      providerType = UNSAMPLED;
     } else if (Array.isArray(first)) {
       providerType = 'array';
+    } else if (type !== 'text') {
+      providerType = type;
     }
 
     // Prose has spaces; ids and URLs don't, however long they are.
     const strings = seen.filter((v): v is string => typeof v === 'string');
     const prose = strings.filter((v) => /\s/.test(v.trim()));
     const role = inferFieldRole(name) ?? null;
-    const isFreeText = type === 'text' && providerType === 'string' && !isFacet
+    const isFreeText = type === 'text' && !Array.isArray(first) && !isFacet
       && role !== 'id' && role !== 'url'
       && (role === 'title' || role === 'description' || (strings.length > 0 && prose.length / strings.length >= 0.5));
 

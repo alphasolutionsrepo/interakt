@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import type { ExternalConnection } from '../external-search.types';
-import { inferSitecoreFields, sitecoreSearchConnector } from './sitecore-search.connector';
+import { inferSitecoreFields, sitecoreFieldTypes, sitecoreSearchConnector } from './sitecore-search.connector';
 import {
   sitecoreSettings,
   translateFilter,
@@ -274,6 +274,28 @@ describe('inferSitecoreFields', () => {
     expect(byName.id).toMatchObject({ isSearchable: false });
     expect(byName.breadcrumbs).toMatchObject({ providerType: 'array', isSearchable: false });
     expect(byName.id).toMatchObject({ isFilterable: true });
+  });
+});
+
+describe('field types for filter values', () => {
+  const fields = inferSitecoreFields({
+    items: [{ id: 'a', title: 'A page', year: 2024, sizes: [3, 4], labels: ['x'], code: '' }],
+    total: 1,
+    facets: new Map([['rating', 'Rating']]),
+  });
+  const types = sitecoreFieldTypes(fields);
+
+  it('takes a list attribute type from its items', () => {
+    expect(types.get('sizes')).toBe('number');
+    expect(types.get('labels')).toBe('text');
+    expect(types.get('year')).toBe('number');
+  });
+
+  // Sitecore rejects a value of the wrong type, so a guessed type would break a value that works as sent
+  it('leaves out attributes the sample had no value for', () => {
+    expect(types.has('rating')).toBe(false);
+    expect(types.has('code')).toBe(false);
+    expect(translateFilter({ field: 'rating', operator: 'eq', value: 2 }, types)).toEqual({ type: 'eq', name: 'rating', value: 2 });
   });
 });
 
