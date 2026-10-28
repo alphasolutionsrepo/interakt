@@ -207,3 +207,14 @@ describe('partial coercion inside in/nin', () => {
         expect(odata).toBe("keywords/all(t: t ne 'a' and t ne '10')");
     });
 });
+
+describe('blank values on a number field', () => {
+    it('drops the clause instead of comparing with 0', () => {
+        const { odata, dropped } = buildAzureFilterParts(
+            [{ field: 'price', operator: 'lte', value: '' } as FilterClause],
+            scalars,
+        );
+        expect(odata).toBeUndefined();
+        expect(dropped).toHaveLength(1);
+    });
+});

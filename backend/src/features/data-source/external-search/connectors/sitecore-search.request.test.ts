@@ -389,3 +389,29 @@ describe('fixed filters and field types', () => {
       .toThrow("Fixed filter on 'type' can't be used");
   });
 });
+
+describe('fixed filters through the connector', () => {
+  it("sends a fixed filter that doesn't fit its field type as written, and still searches", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 0, content: [] }] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const fields = inferSitecoreFields({ total: 1, items: [{ id: 'a', year: 2024 }], facets: new Map() });
+      const result = await sitecoreSearchConnector.search(
+        connection({ fixedFilters: [{ field: 'year', operator: 'gte', value: 'recent' }, { field: 'year', operator: 'lte', value: '2030' }] }),
+        { query: '', offset: 0, limit: 3 },
+        fields,
+      );
+      const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+      expect(sent.widget.items[0].search.filter.filters).toEqual([
+        { type: 'gte', name: 'year', value: 'recent' },
+        { type: 'lte', name: 'year', value: 2030 },
+      ]);
+      expect(result.hits).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
