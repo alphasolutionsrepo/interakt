@@ -464,7 +464,7 @@ export function ModelFormDialog({
                                         Reasoning
                                     </Label>
                                     <p className="text-xs text-slate-500">
-                                        For thinking models. &quot;Off&quot; answers directly; pick it when replies come back empty. Ollama has no Minimal level and uses Low
+                                        For thinking models. If replies come back empty, try a lower level; not every model accepts every level. Ollama has no Minimal level and uses Low
                                     </p>
                                 </div>
                                 <Select
