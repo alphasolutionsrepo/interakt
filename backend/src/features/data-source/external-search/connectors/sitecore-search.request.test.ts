@@ -297,6 +297,14 @@ describe('field types for filter values', () => {
     expect(types.has('code')).toBe(false);
     expect(translateFilter({ field: 'rating', operator: 'eq', value: 2 }, types)).toEqual({ type: 'eq', name: 'rating', value: 2 });
   });
+
+  it('sends values as given for a source sampled before value types were recorded', () => {
+    // Stored shape before valueType: an unsampled number facet was saved as text
+    const stored = [{ name: 'rating', displayName: 'Rating', type: 'text', providerType: 'string', isSearchable: false, isFacetable: true, isFilterable: true }];
+    const storedTypes = sitecoreFieldTypes(stored);
+    expect(storedTypes.size).toBe(0);
+    expect(translateFilter({ field: 'rating', operator: 'eq', value: 2 }, storedTypes)).toEqual({ type: 'eq', name: 'rating', value: 2 });
+  });
 });
 
 describe('sitecoreSearchConnector', () => {

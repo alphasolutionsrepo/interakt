@@ -202,6 +202,14 @@ export interface DataSourceField {
    */
   providerType?: string;
   /**
+   * Sampled sources (Sitecore Search): the type of the values discovery saw for this
+   * attribute, items' type for a list. Sitecore rejects a filter value of another type,
+   * so filter values are sent as this type. Absent when the sample had no value for the
+   * attribute, or on sources sampled before this field existed: values are then sent
+   * as given.
+   */
+  valueType?: 'text' | 'number' | 'boolean';
+  /**
    * The field name to use in filter and sort expressions when it differs from `name`.
    * Elasticsearch `text` fields are not exact-matchable, but usually carry a `keyword`
    * sub-field (`title.keyword`) that is. Absent means filter on `name` directly.

@@ -165,16 +165,14 @@ function humanize(name: string): string {
   return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** providerType of an attribute the sample carried no value for, so its type is a guess */
-const UNSAMPLED = 'unsampled';
-
 /**
  * Field name → type, for sending filter values as their attribute's type. Only
- * types seen in a sampled value: Sitecore rejects a value of the wrong type, so a
- * guessed type would break a value that works as sent.
+ * types seen in sampled values (valueType): Sitecore rejects a value of the wrong
+ * type, so a guessed type would break a value that works as sent. Sources sampled
+ * before valueType existed send values as given until they are rediscovered.
  */
 export function sitecoreFieldTypes(fields: DataSourceField[]): SitecoreFieldTypes {
-  return new Map(fields.filter((f) => f.providerType !== UNSAMPLED).map((f) => [f.name, f.type]));
+  return new Map(fields.flatMap((f) => (f.valueType ? [[f.name, f.valueType] as const] : [])));
 }
 
 /**
@@ -210,27 +208,24 @@ export function inferSitecoreFields(sample: SitecoreSample): DataSourceField[] {
     const isFacet = sample.facets.has(name);
     // A list attribute's type is its items' type
     const item = Array.isArray(first) ? first.find((v) => v !== null && v !== undefined && v !== '') : first;
+    const valueType = typeof item === 'number' ? 'number'
+      : typeof item === 'boolean' ? 'boolean'
+      : typeof item === 'string' ? 'text'
+      : undefined;
 
-    let type = 'text';
+    const type = valueType ?? 'text';
     let providerType = 'string';
-    if (typeof item === 'number') {
-      type = 'number';
-    } else if (typeof item === 'boolean') {
-      type = 'boolean';
-    }
-    if (item === undefined) {
-      providerType = UNSAMPLED;
-    } else if (Array.isArray(first)) {
+    if (Array.isArray(first)) {
       providerType = 'array';
-    } else if (type !== 'text') {
-      providerType = type;
+    } else if (typeof first === 'number' || typeof first === 'boolean') {
+      providerType = typeof first;
     }
 
     // Prose has spaces; ids and URLs don't, however long they are.
     const strings = seen.filter((v): v is string => typeof v === 'string');
     const prose = strings.filter((v) => /\s/.test(v.trim()));
     const role = inferFieldRole(name) ?? null;
-    const isFreeText = type === 'text' && !Array.isArray(first) && !isFacet
+    const isFreeText = type === 'text' && providerType === 'string' && !isFacet
       && role !== 'id' && role !== 'url'
       && (role === 'title' || role === 'description' || (strings.length > 0 && prose.length / strings.length >= 0.5));
 
@@ -239,6 +234,7 @@ export function inferSitecoreFields(sample: SitecoreSample): DataSourceField[] {
       displayName: sample.facets.get(name) ?? humanize(name),
       type,
       providerType,
+      ...(valueType && { valueType }),
       role,
       isSearchable: isFreeText,
       isFacetable: isFacet,

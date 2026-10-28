@@ -90,7 +90,7 @@ describe('mergeOperatorFieldEdits — schema inferred from a sample', () => {
     discoveredFrom: 'sample',
     fields: [
       { name: 'name', displayName: 'Name', type: 'text', role: 'title', isSearchable: true, isFacetable: false, isFilterable: false, profile: { sampleSize: 25, nullRate: 0, distinctInSample: 25 } },
-      { name: 'keywords', displayName: 'Keywords', type: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+      { name: 'keywords', displayName: 'Keywords', type: 'text', valueType: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
       { name: 'added', displayName: 'Added', type: 'number', role: null, isSearchable: false, isFacetable: false, isFilterable: false },
     ] as DataSourceSchema['fields'],
   };
@@ -104,6 +104,11 @@ describe('mergeOperatorFieldEdits — schema inferred from a sample', () => {
 
   it('refreshes what was measured', () => {
     expect(byName.name.profile?.sampleSize).toBe(25);
+  });
+
+  // A source sampled before value types were recorded gets them on rediscovery
+  it('adds the value type a new sample saw', () => {
+    expect(byName.keywords.valueType).toBe('text');
   });
 
   it('keeps fields this sample missed and adds new ones', () => {
