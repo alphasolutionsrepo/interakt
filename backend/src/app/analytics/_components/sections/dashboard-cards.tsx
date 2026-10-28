@@ -183,7 +183,8 @@ export function SearchActivityCard({
             data={chartData}
             series={[{ key: 'noResultRate', label: 'No-result rate', color: 'var(--viz-2)' }]}
             granularity={granularity}
-            formatValue={(v) => formatPercent(v, 0)}
+            // A decimal under 10%, or a low axis reads 0%, 0%, 1%, 1%
+            formatValue={(v) => formatPercent(v, v < 0.1 ? 1 : 0)}
             ariaLabel={`Share of searches with no results per ${bucketWord}`}
             height={120}
             allowDecimals
@@ -283,7 +284,7 @@ export function SearchMixCard({
   refreshing,
 }: {
   types?: { lexical: number; semantic: number; hybrid: number };
-  byTrigger?: { user: number; ai_tool: number; ai_rag: number; system: number };
+  byTrigger?: { user: number; ai_tool: number; lookups: number };
   loading: boolean;
   refreshing: boolean;
 }) {
@@ -294,8 +295,7 @@ export function SearchMixCard({
   ];
   const triggerItems: ShareItem[] = [
     { key: 'user', label: 'Visitors', value: byTrigger?.user ?? 0, color: 'var(--viz-1)' },
-    { key: 'ai', label: 'AI assistants', value: (byTrigger?.ai_tool ?? 0) + (byTrigger?.ai_rag ?? 0), color: 'var(--viz-2)' },
-    { key: 'system', label: 'Automatic lookups', value: byTrigger?.system ?? 0, color: 'var(--viz-3)' },
+    { key: 'ai', label: 'AI assistants', value: byTrigger?.ai_tool ?? 0, color: 'var(--viz-2)' },
   ];
   const typeTotal = typeItems.reduce((s, i) => s + i.value, 0);
   const triggerTotal = triggerItems.reduce((s, i) => s + i.value, 0);
@@ -318,6 +318,12 @@ export function SearchMixCard({
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Made by</p>
           {triggerTotal > 0 ? <ShareBar items={triggerItems} unit="searches" /> : <p className="text-sm text-muted-foreground">No data</p>}
+          {(byTrigger?.lookups ?? 0) > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Plus {pluralize(byTrigger!.lookups, 'lookup')} by Find Record, List Values and query understanding, not
+              counted as searches.
+            </p>
+          )}
         </div>
       </div>
     </ChartCard>
@@ -349,21 +355,30 @@ export function PopularQueriesCard({
   loading,
   refreshing,
   onAsk,
+  title = 'Popular searches',
+  description = 'Most searched queries typed by visitors, with how often each found nothing',
+  icon = Search,
+  emptyMessage = 'No searches in this period',
 }: {
   data?: PopularQuery[];
   loading: boolean;
   refreshing: boolean;
   onAsk?: (question: string) => void;
+  title?: string;
+  description?: string;
+  icon?: React.ElementType;
+  /** Shown instead of the list when it is empty */
+  emptyMessage?: string;
 }) {
   const rows = (data ?? []).slice(0, 8);
   return (
     <ChartCard
-      title="Popular searches"
-      description="Most searched queries, with how often each found nothing"
-      icon={Search}
+      title={title}
+      description={description}
+      icon={icon}
       loading={loading}
       refreshing={refreshing}
-      empty={rows.length === 0 ? 'No searches in this period' : undefined}
+      empty={rows.length === 0 ? emptyMessage : undefined}
     >
       <RankedList
         valueHeader="Searches"
@@ -393,12 +408,15 @@ export function PopularQueriesCard({
 export function FailedSearchesCard({
   data,
   emptyMessage,
+  assistantFailed = false,
   loading,
   refreshing,
   onAsk,
 }: {
   data?: ZeroResultQuery[];
   emptyMessage?: string;
+  /** Searches by the assistant failed too: an empty list then isn't "every search found results" */
+  assistantFailed?: boolean;
   loading: boolean;
   refreshing: boolean;
   onAsk?: (question: string) => void;
@@ -407,13 +425,18 @@ export function FailedSearchesCard({
   return (
     <ChartCard
       title="Failed searches"
-      description="Queries that returned no results"
+      description="Queries visitors typed that returned no results"
       icon={SearchX}
       loading={loading}
       refreshing={refreshing}
       empty={
         emptyMessage ??
-        (rows.length === 0 ? (
+        (rows.length === 0 && assistantFailed ? (
+          <span className="flex flex-col items-center gap-1 text-center">
+            <span>No failed visitor searches.</span>
+            <span>Some of the assistant&apos;s searches found nothing.</span>
+          </span>
+        ) : rows.length === 0 ? (
           <span className="flex items-center gap-2">
             <CheckCircle2 className="size-4 text-viz-good" aria-hidden /> Every search found results
           </span>

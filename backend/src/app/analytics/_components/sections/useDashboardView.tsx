@@ -13,6 +13,7 @@ import { getThresholds } from '@/features/analytics/analytics-thresholds';
 import { useAnalyticsContext } from '../../_lib/AnalyticsContext';
 import { useAnalyticsDashboard, usePreviousAnalyticsDashboard, type DashboardTotals } from '../../_lib/hooks/useAnalytics';
 import { formatSpan, previousPeriod } from '../../_lib/period';
+import { qualityAvgResults } from '../../_lib/quality-avg-results';
 import {
   StatTile,
   compareRates,
@@ -60,11 +61,9 @@ export function useDashboardView() {
     : avgDuration < t.latency.acceptable ? 'default'
     : 'warning';
 
-  // Quality score inputs — average results across the top queries, weighted by how often each was searched
-  const popularSearchCount = (data?.popularQueries ?? []).reduce((sum, q) => sum + q.searchCount, 0);
-  const avgResults = popularSearchCount > 0
-    ? data!.popularQueries.reduce((sum, q) => sum + q.avgResults * q.searchCount, 0) / popularSearchCount
-    : 0;
+  // Quality score inputs — average results across the top queries. Visitor and assistant queries
+  // both count, as they do in the totals: a chat experience's searches are mostly the assistant's.
+  const avgResults = qualityAvgResults([...(data?.popularQueries ?? []), ...(data?.assistantQueries ?? [])]);
 
   // Sparklines: only buckets that had searches, so a quiet hour doesn't read as 0% success
   const searched = activity.filter((r) => r.searches > 0);
@@ -88,7 +87,7 @@ export function useDashboardView() {
     activity,
     granularity,
     totalSearches,
-    failedSearches: Math.round(totalSearches * zeroResultRate),
+    failedSearches: safeNumber(data?.overview?.zeroResultSearches),
     zeroResultRate,
     successRate,
     avgDuration,
@@ -106,6 +105,8 @@ export function useDashboardView() {
     searchesFromToolCalls: data?.overview?.searchesFromToolCalls ?? false,
     // The most searched thing someone typed; browse requests (empty or "*") are counted separately
     topQuery: data?.popularQueries?.find((q) => !isBrowseQuery(q.query)),
+    // Shown in its place when only the assistant searched
+    topAssistantQuery: data?.assistantQueries?.find((q) => !isBrowseQuery(q.query)),
     browseRequests: (data?.popularQueries ?? []).filter((q) => isBrowseQuery(q.query)).reduce((sum, q) => sum + q.searchCount, 0),
     hasData: totalSearches > 0 || totalAIRequests > 0 || conversationTurns > 0,
   };
@@ -247,13 +248,15 @@ export function TopQueryTile({ view }: { view: DashboardView }) {
     <StatTile
       loading={view.isLoading}
       label="Most popular search"
-      value={view.topQuery ? view.topQuery.query : '—'}
+      value={view.topQuery ? view.topQuery.query : view.topAssistantQuery ? view.topAssistantQuery.query : '—'}
       hint={
         view.topQuery
           ? `Searched ${pluralize(view.topQuery.searchCount, 'time')}${view.browseRequests > 0 ? `, plus ${pluralize(view.browseRequests, 'browse request')}` : ''}`
-          : view.browseRequests > 0
-            ? `Only browse requests (${formatCompact(view.browseRequests)}), no typed searches`
-            : 'No searches in this period'
+          : view.topAssistantQuery
+            ? `Searched ${pluralize(view.topAssistantQuery.searchCount, 'time')} by the assistant`
+            : view.browseRequests > 0
+              ? `Only browse requests (${formatCompact(view.browseRequests)}), no typed searches`
+              : 'No searches in this period'
       }
     />
   );

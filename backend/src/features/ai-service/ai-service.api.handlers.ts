@@ -11,6 +11,7 @@ import { NextRequest } from 'next/server';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import * as aiService from './ai-service.service';
 import type { ChatMessage } from './ai-service.types';
 import { z } from 'zod';
@@ -88,11 +89,11 @@ export async function handleTextGeneration(request: NextRequest) {
     const { prompt, ...options } = validation.data;
 
     const startTime = Date.now();
-    const result = await aiService.generateText(prompt, {
+    const result = await withAnalyticsSource('playground', () => aiService.generateText(prompt, {
       ...options,
       userId,
       feature: 'playground',
-    });
+    }));
     const duration = Date.now() - startTime;
 
     logger.info('Text generation completed via API', {
@@ -160,11 +161,11 @@ export async function handleChat(request: NextRequest) {
     }
 
     const startTime = Date.now();
-    const result = await aiService.chat(messages as ChatMessage[], {
+    const result = await withAnalyticsSource('playground', () => aiService.chat(messages as ChatMessage[], {
       ...options,
       userId,
       feature: 'playground',
-    });
+    }));
     const duration = Date.now() - startTime;
 
     logger.info('Chat completion via API', {
@@ -238,7 +239,7 @@ export async function handleChatStream(request: NextRequest) {
     // Create a ReadableStream for SSE
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
-      async start(controller) {
+      start: (controller) => withAnalyticsSource('playground', async () => {
         try {
           const generator = aiService.streamChat(messages as ChatMessage[], {
             ...options,
@@ -265,7 +266,7 @@ export async function handleChatStream(request: NextRequest) {
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
           controller.close();
         }
-      },
+      }),
     });
 
     return new Response(stream, {
@@ -310,11 +311,11 @@ export async function handleEmbeddings(request: NextRequest) {
     const { texts, ...options } = validation.data;
 
     const startTime = Date.now();
-    const result = await aiService.generateEmbeddings(texts, {
+    const result = await withAnalyticsSource('playground', () => aiService.generateEmbeddings(texts, {
       ...options,
       userId,
       feature: 'playground',
-    });
+    }));
     const duration = Date.now() - startTime;
 
     logger.info('Embeddings generated via API', {

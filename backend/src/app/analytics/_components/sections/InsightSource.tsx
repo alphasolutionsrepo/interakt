@@ -56,7 +56,11 @@ export function InsightUnavailable({ result, loading }: { result?: StoredInsight
     );
   }
   if (result.status === 'no_data') {
-    return <Message icon={Info}>No conversations in this period.</Message>;
+    return (
+      <Message icon={Info}>
+        No visitor conversations in this period. Insights leave out test chats and the playground.
+      </Message>
+    );
   }
   return null;
 }

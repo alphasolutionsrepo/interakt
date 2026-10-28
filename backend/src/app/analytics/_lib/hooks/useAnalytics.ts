@@ -11,6 +11,7 @@ export interface OverviewMetrics {
   totalSearches: number;
   totalAIRequests: number;
   uniqueQueries: number;
+  zeroResultSearches: number;
   zeroResultRate: number;
   avgSearchDurationMs: number;
   avgAIDurationMs: number;
@@ -18,8 +19,7 @@ export interface OverviewMetrics {
   searchesByTrigger: {
     user: number;
     ai_tool: number;
-    ai_rag: number;
-    system: number;
+    lookups: number;
   };
 }
 
@@ -34,6 +34,8 @@ export interface SearchTrendPoint {
 export interface PopularQuery {
   query: string;
   searchCount: number;
+  /** Searches of this query that ran (failed ones left out) */
+  ranCount: number;
   zeroResultCount: number;
   avgResults: number;
   clickThroughRate: number | null;
@@ -90,6 +92,7 @@ export interface RecentSearchEvent {
   query: string;
   searchType: string;
   triggerType: string;
+  triggerStep: string | null;
   totalResults: number;
   durationMs: number;
   success: boolean;
@@ -99,7 +102,11 @@ export interface DashboardData {
   overview: OverviewMetrics;
   trends: SearchTrendPoint[];
   popularQueries: PopularQuery[];
+  /** What AI assistants searched for while answering visitors */
+  assistantQueries: PopularQuery[];
   zeroResults: ZeroResultQuery[];
+  /** Whether any of the assistant's searches found nothing */
+  assistantHasFailedSearches: boolean;
   searchTypes: SearchTypeBreakdown;
   performance: PerformanceMetrics;
   aiUsage: AIUsageMetrics;

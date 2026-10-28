@@ -264,7 +264,8 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
     getSearchTrends('custom', undefined, previous, timeZone),
     getTurnsByDay(current, timeZone),
     getTurnsByDay(previous, timeZone),
-    getZeroResultQueries('custom', undefined, 100, current),
+    // Visitors' and the assistant's: both are content gaps (internal lookups are left out)
+    getZeroResultQueries('custom', undefined, 100, current, 'all'),
     getSearchTypeBreakdown('custom', undefined, current),
     getProactiveInsights('7d'),
     getExperienceSummaries('custom', current),

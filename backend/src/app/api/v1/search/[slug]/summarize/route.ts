@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
 import { searchExperienceAccess } from '@/features/auth/public-access';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { runWithTelemetryLevel } from '@/features/telemetry';
 import { createSummaryStream } from '@/features/chat/summary-stream';
@@ -67,7 +68,7 @@ export async function POST(
 
     // 3. Authenticate: the experience's access token, or an admin session. Admin
     //    summaries are not traced unless the request asks for it (then in full).
-    const { caller, refused } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
+    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
     if (!caller) {
       return refused ?? NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
@@ -82,7 +83,8 @@ export async function POST(
     const trace = (body as { trace?: unknown })?.trace === true;
 
     // 5. Same summary stream as the public summarize API
-    const createStream = () => createSummaryStream(experience, validated as SummarizeAPIRequest);
+    // The summary's model call records where it came from (the stream starts inside this)
+    const createStream = () => withAnalyticsSource(analyticsSource, () => createSummaryStream(experience, validated as SummarizeAPIRequest));
 
     const stream = isAdmin
       ? runWithTelemetryLevel(trace ? 'full' : 'off', createStream)

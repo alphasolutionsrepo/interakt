@@ -19,7 +19,9 @@ import type { SearchType } from '@/shared/constants/search-index.constants';
 import type { SearchIndexComplete } from '@/features/search-index';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { generateEmbedding } from '@/features/ai-service';
-import { trackSearch, type TriggerType } from '@/features/analytics';
+import { trackSearch, type TriggerStep, type TriggerType } from '@/features/analytics';
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
+import type { AnalyticsSource } from '@/features/analytics/analytics.types';
 import { ATTR } from '@/features/telemetry';
 import { traceSearch } from './search.tracing';
 import type {
@@ -104,6 +106,8 @@ export interface SearchOptions {
     sessionId?: string;
     /** How the search was triggered */
     triggerType?: TriggerType;
+    /** Which tool or AI step ran the search; empty for a visitor's own */
+    triggerStep?: TriggerStep;
     /** Source ID if triggered by AI (e.g., chat message ID) */
     triggerSourceId?: string;
     /** AI request ID if triggered by AI tool */
@@ -124,19 +128,9 @@ export interface SearchOptions {
 // ANALYTICS SOURCE CONTEXT (request-scoped via AsyncLocalStorage)
 // ============================================================================
 
-type AnalyticsSourceType = 'api' | 'playground' | 'admin_test';
+type AnalyticsSourceType = AnalyticsSource;
 
-const analyticsSourceStore = new AsyncLocalStorage<AnalyticsSourceType>();
 const experienceContextStore = new AsyncLocalStorage<{ experienceId: string; experienceSlug?: string }>();
-
-/**
- * Run a function with a specific analytics source context.
- * All search operations within this context will be tagged with the given source.
- * Used by the pipeline to propagate source without threading through every layer.
- */
-export function withAnalyticsSource<T>(source: AnalyticsSourceType, fn: () => T): T {
-    return analyticsSourceStore.run(source, fn);
-}
 
 /**
  * Run a function with an experience context.
@@ -156,7 +150,7 @@ export function getExperienceContext(): { experienceId: string; experienceSlug?:
 }
 
 function getAnalyticsSource(options?: SearchOptions): AnalyticsSourceType {
-    return options?.source ?? analyticsSourceStore.getStore() ?? 'api';
+    return options?.source ?? getAnalyticsSourceContext() ?? 'api';
 }
 
 // ============================================================================
@@ -208,6 +202,7 @@ export async function search(
                 searchType,
                 indexName: context.indexName,
                 triggerType: options?.triggerType,
+                triggerStep: options?.triggerStep,
             },
             async (span) => {
                 // 5. Generate query embedding if needed
@@ -274,6 +269,7 @@ export async function search(
             sessionId: options?.sessionId,
             source: getAnalyticsSource(options),
             triggerType: options?.triggerType ?? 'user',
+            triggerStep: options?.triggerStep,
             triggerSourceId: options?.triggerSourceId,
             aiRequestId: options?.aiRequestId,
             searchType,
@@ -311,6 +307,7 @@ export async function search(
             sessionId: options?.sessionId,
             source: getAnalyticsSource(options),
             triggerType: options?.triggerType ?? 'user',
+            triggerStep: options?.triggerStep,
             triggerSourceId: options?.triggerSourceId,
             aiRequestId: options?.aiRequestId,
             searchType,

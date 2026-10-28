@@ -22,6 +22,7 @@ export function traceSearch<T>(
     searchType: string;
     indexName?: string;
     triggerType?: string;
+    triggerStep?: string;
   },
   fn: (span: Span) => Promise<T>
 ): Promise<T> {
@@ -38,6 +39,7 @@ export function traceSearch<T>(
         [ATTR.SEARCH_TYPE]: options.searchType,
         ...(options.indexName && { [ATTR.SEARCH_INDEX_NAME]: options.indexName }),
         ...(options.triggerType && { [ATTR.SEARCH_TRIGGER]: options.triggerType }),
+        ...(options.triggerStep && { [ATTR.SEARCH_TRIGGER_STEP]: options.triggerStep }),
       },
     },
     fn

@@ -1,5 +1,5 @@
 {
-  "id": "b770adf7-27a3-44b6-886b-0f917f276de9",
+  "id": "c1df34b6-ffa5-4c15-bc39-f67ede56a2fb",
   "prevId": "bc0b1f27-4db4-46c4-abac-63e2192e4159",
   "version": "7",
   "dialect": "postgresql",
@@ -1768,6 +1768,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "trigger_step": {
+          "name": "trigger_step",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "trigger_source_id": {
           "name": "trigger_source_id",
           "type": "varchar(255)",
@@ -3145,60 +3151,6 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.analytics_hidden_findings": {
-      "name": "analytics_hidden_findings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "scope": {
-          "name": "scope",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "finding_id": {
-          "name": "finding_id",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "hidden_until": {
-          "name": "hidden_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "hidden_at": {
-          "name": "hidden_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "uq_hidden_findings_scope": {
-          "name": "uq_hidden_findings_scope",
-          "nullsNotDistinct": false,
-          "columns": [
-            "scope",
-            "finding_id"
-          ]
-        }
-      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

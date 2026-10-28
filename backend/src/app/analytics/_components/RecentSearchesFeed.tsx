@@ -5,6 +5,7 @@
 import { CircleAlert, History } from 'lucide-react';
 
 import type { RecentSearchEvent } from '../_lib/hooks/useAnalytics';
+import { searchTriggerLabel } from '../_lib/search-trigger';
 
 import { isBrowseQuery } from './sections/dashboard-cards';
 import { ChartCard, formatCompact, formatMs } from './viz';
@@ -14,13 +15,6 @@ interface RecentSearchesFeedProps {
   isLoading?: boolean;
   refreshing?: boolean;
 }
-
-const TRIGGER_LABEL: Record<string, string> = {
-  user: 'Visitor',
-  ai_tool: 'AI assistant',
-  ai_rag: 'AI context lookup',
-  system: 'Automatic',
-};
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -60,7 +54,7 @@ export function RecentSearchesFeed({ data, isLoading, refreshing }: RecentSearch
                   <span className="ml-1.5 text-xs text-muted-foreground">{event.searchType}</span>
                 </td>
                 <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
-                  {TRIGGER_LABEL[event.triggerType] ?? event.triggerType}
+                  {searchTriggerLabel(event.triggerType, event.triggerStep)}
                 </td>
                 <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">
                   {event.totalResults === 0 ? (

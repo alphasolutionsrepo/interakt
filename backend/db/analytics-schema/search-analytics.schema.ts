@@ -109,7 +109,10 @@ export const searchEvents = pgTable(
     source: varchar('source', { length: 20 }).notNull().default('api'), // 'api', 'playground', 'admin_test'
 
     // Trigger context - KEY FOR DISTINGUISHING USER VS AI
-    triggerType: varchar('trigger_type', { length: 20 }).notNull(), // 'user', 'ai_tool', 'ai_rag', 'system'
+    triggerType: varchar('trigger_type', { length: 20 }).notNull(), // 'user', 'ai_tool', 'ai_step'
+    // Which tool or AI step ran the search ('search', 'lookup', 'enumerate', 'query_interpretation');
+    // empty for a visitor's own search. Reports decide from it what counts as a search.
+    triggerStep: varchar('trigger_step', { length: 50 }),
     triggerSourceId: varchar('trigger_source_id', { length: 255 }), // chat_message_id if AI-triggered
     aiRequestId: uuid('ai_request_id'), // FK to ai_usage_events if AI-triggered
 
@@ -244,6 +247,9 @@ export const aiToolExecutions = pgTable(
     toolCategory: varchar('tool_category', { length: 50 }).notNull(), // 'retrieval', 'action', 'navigation'
     toolVersion: varchar('tool_version', { length: 20 }).default('1.0'),
 
+    // Source (exclude test traffic from reports)
+    source: varchar('source', { length: 20 }).notNull().default('api'), // 'api', 'playground', 'admin_test'
+
     // Execution details
     inputSummary: json('input_summary').$type<Record<string, unknown>>(), // Sanitized input
     outputSummary: json('output_summary').$type<Record<string, unknown>>(), // Sanitized output
@@ -270,6 +276,7 @@ export const aiToolExecutions = pgTable(
     timestampIdx: index('idx_tool_exec_timestamp').on(table.timestamp),
     toolNameIdx: index('idx_tool_exec_tool_name').on(table.toolName),
     toolCategoryIdx: index('idx_tool_exec_category').on(table.toolCategory),
+    sourceIdx: index('idx_tool_exec_source').on(table.source),
     searchEventIdIdx: index('idx_tool_exec_search_event').on(table.searchEventId),
   })
 );

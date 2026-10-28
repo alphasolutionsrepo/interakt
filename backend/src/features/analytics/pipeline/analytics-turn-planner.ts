@@ -136,6 +136,7 @@ ${toolList}
 5. hints must be a JSON string with tool parameters: ${dateContext ? '{ "limit": 10 }, or with dates { "from": "2026-10-13", "to": "2026-10-13" }' : '{ "timeRange": "7d", "limit": 10 }'}${context.pageSection ? `\n10. The user asked from the "${context.pageSection}" section of the analytics page. When the question is ambiguous ("why did this drop?"), prefer tools about that area.` : ''}
 6. For get_query_search_events, hints MUST include "queryText".
 7. For get_conversation_detail, hints MUST include "traceId".
+   For get_popular_queries and get_zero_result_queries, add "origin" to hints when the question is about who searched: "assistant" for what the AI assistant searched for, "visitor" for what visitors or customers typed. Leave it out for both.
 8. Prefer the most specific tool for the question:
    - "What are customers looking for?" → get_customer_intent_analysis
    - "What should I focus on?" / "Any issues?" → get_proactive_insights

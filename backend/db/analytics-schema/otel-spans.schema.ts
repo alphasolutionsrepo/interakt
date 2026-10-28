@@ -18,6 +18,7 @@ import {
   text,
   index,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const otelSpans = pgTable(
   'otel_spans',
@@ -76,5 +77,11 @@ export const otelSpans = pgTable(
     index('idx_otel_spans_trace_start').on(table.traceId, table.startTime),
     // Composite: experience dashboard queries
     index('idx_otel_spans_exp_time').on(table.experienceId, table.startTime),
+    // Traces from admin test chats and the playgrounds, which reports leave out. Its condition
+    // must match notTestTraffic() exactly for the planner to use it ('alpha.analytics.source'
+    // is ATTR.ANALYTICS_SOURCE).
+    index('idx_otel_spans_test_traffic')
+      .on(table.traceId)
+      .where(sql`${table.attributes}->>'alpha.analytics.source' IN ('admin_test', 'playground')`),
   ]
 );

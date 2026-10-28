@@ -62,6 +62,7 @@ import { POST as summaryBySlug } from './search/[slug]/summarize/route';
 import { POST as searchByToken } from './search/route';
 import { POST as summaryByToken } from './summarize/route';
 
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import * as searchService from '@/features/search-experience/search-experience.service';
 import { rateLimiter } from '@/shared/api/rate-limit';
 
@@ -244,6 +245,62 @@ describe("the admin's widget preview", () => {
     expect(await settle(await widgetConfig(req('/api/v1/ai-experiences/widget-config', 'GET', forged)))).toBe(403);
     expect(await settle(await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', forged, { message: 'hi' })))).toBe(403);
     expect(mocks.runChatPipeline).not.toHaveBeenCalled();
+  });
+});
+
+describe('where the traffic is recorded as coming from', () => {
+  /** The source each route's work runs under: the chat's input, or the context its search or summary records with. */
+  async function sourceOf(route: Route, headers: Record<string, string>): Promise<unknown> {
+    let seen: unknown;
+    mocks.executeExperienceSearch.mockImplementation(async (_e: unknown, _r: unknown, options: { source?: string }) => {
+      seen = [getAnalyticsSourceContext(), options.source];
+      return { results: { hits: [], total: { value: 0 }, pagination: {}, facets: [] }, sourcesSearched: [], failedSources: [] };
+    });
+    // The summary's model call runs in the stream's start, as in summary-stream.ts
+    mocks.createSummaryStream.mockImplementation(() => new ReadableStream({
+      start: async (c) => { await Promise.resolve(); seen = [getAnalyticsSourceContext()]; c.close(); },
+    }));
+    mocks.runChatPipeline.mockImplementation(async (input: { analyticsSource?: string }) => {
+      seen = [input.analyticsSource];
+      return { sessionId: 's', responseText: 'ok', usage: {} };
+    });
+    expect(await settle(await route.call(headers))).toBe(200);
+    return seen;
+  }
+
+  const traffic = ROUTES.filter((r) => ['search by token', 'AI summary by token', 'chat by token', 'search by slug', 'AI summary by slug', 'chat by slug'].includes(r.name));
+
+  it.each(traffic)('$name: a visitor with the token is live traffic', async (route) => {
+    const seen = await sourceOf(route, { 'X-Access-Token': route.token, Origin: SHOP });
+    expect(new Set(seen as unknown[])).toEqual(new Set(['api']));
+  });
+
+  const own = (route: Route, marker: boolean) => ({
+    'X-Access-Token': route.token, Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin',
+    ...(marker && { 'X-Interakt-Test': '1' }),
+  });
+
+  it.each(traffic)("$name: the token with the test marker and the admin's login (the Widget playground) is a test", async (route) => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    const seen = await sourceOf(route, own(route, true));
+    expect(new Set(seen as unknown[])).toEqual(new Set(['admin_test']));
+  });
+
+  it.each(traffic.filter((r) => !r.slugRoute))("$name: the login without the marker (an admin on a live widget) is live", async (route) => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    const seen = await sourceOf(route, own(route, false));
+    expect(new Set(seen as unknown[])).toEqual(new Set(['api']));
+  });
+
+  it.each(traffic.filter((r) => !r.slugRoute))('$name: the marker without a login (a visitor) is live', async (route) => {
+    const seen = await sourceOf(route, { 'X-Access-Token': route.token, Origin: SHOP, 'X-Interakt-Test': '1' });
+    expect(new Set(seen as unknown[])).toEqual(new Set(['api']));
+  });
+
+  it.each(traffic.filter((r) => r.slugRoute))('$name: an admin without the token (the playground) is a test', async (route) => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    const seen = await sourceOf(route, {});
+    expect(new Set(seen as unknown[])).toEqual(new Set(['admin_test']));
   });
 });
 

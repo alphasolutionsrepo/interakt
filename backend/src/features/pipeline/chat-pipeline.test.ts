@@ -25,7 +25,6 @@ vi.mock('@/features/telemetry', async () => {
   return { ATTR, withSpan: (_options: unknown, fn: (s: typeof span) => unknown) => fn(span) };
 });
 vi.mock('@/features/search/search.service', () => ({
-  withAnalyticsSource: (_source: string, fn: () => unknown) => fn(),
   withExperienceContext: (_experienceId: string, fn: () => unknown) => fn(),
 }));
 vi.mock('@/features/ai-service/ai-service.service', () => ({ chat: mocks.chat }));
@@ -42,6 +41,8 @@ vi.mock('@/features/sessions/sessions.service', () => ({
 }));
 vi.mock('@/features/sessions/summarization.service', () => ({ summarizeSession: mocks.summarizeSession }));
 vi.mock('@/features/user-memories/memory-extraction.service', () => ({ extractMemoriesFromSession: mocks.extractMemoriesFromSession }));
+
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 
 import { runChatPipeline } from './chat-pipeline';
 
@@ -147,6 +148,30 @@ describe('runChatPipeline model choice', () => {
     for (const options of chatOptions()) {
       expect(options).toMatchObject(EXPERIENCE_MODEL);
     }
+  });
+
+  it("runs an admin test chat's model calls and tool runs as admin_test, so they're stored as test traffic", async () => {
+    const replies = [
+      JSON.stringify({
+        actions: [{ toolSlug: 'product-search', intent: 'Search for red shoes', hints: '{"query":"red shoes"}', dependsOnPrevious: false }],
+        reasoning: 'User wants to search', directResponse: false, needsClarification: false, clarificationQuestion: null, confidence: 0.95,
+      }),
+      JSON.stringify({ query: 'red shoes' }),
+      'I found some red shoes for you!',
+    ];
+    const seen: string[] = [];
+    mocks.chat.mockImplementation(async () => {
+      seen.push(`chat:${getAnalyticsSourceContext()}`);
+      return chatResult(replies.shift() ?? 'ok');
+    });
+    mocks.executeTool.mockImplementation(async () => {
+      seen.push(`tool:${getAnalyticsSourceContext()}`);
+      return { success: true, data: [{ id: 'p1', title: 'Red Shoes', price: 89 }], resultCount: 1 };
+    });
+
+    await runChatPipeline({ experience: makeExperience(), message: 'Search for red shoes', analyticsSource: 'admin_test', onEvent: vi.fn() });
+
+    expect(seen).toEqual(['chat:admin_test', 'chat:admin_test', 'tool:admin_test', 'chat:admin_test']);
   });
 
   it("uses the experience's model for memory extraction and the conversation summary after the turn", async () => {

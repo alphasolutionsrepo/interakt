@@ -25,8 +25,8 @@ export type ExperienceCaller = 'api' | 'admin';
  * request had neither a matching token nor a session and the route answers 401.
  */
 export type TokenOrSessionResult =
-  | { caller: ExperienceCaller; refused?: undefined }
-  | { caller: null; refused?: NextResponse };
+  | { caller: ExperienceCaller; analyticsSource: 'api' | 'admin_test'; refused?: undefined }
+  | { caller: null; analyticsSource?: undefined; refused?: NextResponse };
 
 export async function authenticateTokenOrSession(
   request: NextRequest,
@@ -35,9 +35,25 @@ export async function authenticateTokenOrSession(
   const token = readAccessToken(request);
   if (token && experience.accessToken && token === experience.accessToken) {
     const refused = checkPublicAccess(request, experience);
-    return refused ? { caller: null, refused } : { caller: 'api' };
+    if (refused) return { caller: null, refused };
+    return { caller: 'api', analyticsSource: await analyticsSourceOfTokenCaller(request) };
   }
 
   const session = await auth();
-  return session?.user ? { caller: 'admin' } : { caller: null };
+  return session?.user ? { caller: 'admin', analyticsSource: 'admin_test' } : { caller: null };
+}
+
+/** Marks a request from the admin's Widget playground (the widget's testMode). */
+export const TEST_MARKER_HEADER = 'x-interakt-test';
+
+/**
+ * Where a request with a valid access token came from. The real widget in the admin's Widget
+ * playground sends a test marker and, being on the admin's origin, the admin's login: only both
+ * together make it a test. A visitor can send the marker but not the login, and a signed-in
+ * admin using a live widget sends the login but not the marker; both are live traffic.
+ */
+export async function analyticsSourceOfTokenCaller(request: NextRequest): Promise<'api' | 'admin_test'> {
+  if (request.headers.get(TEST_MARKER_HEADER) !== '1') return 'api';
+  const session = await auth();
+  return session?.user ? 'admin_test' : 'api';
 }

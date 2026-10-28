@@ -49,7 +49,8 @@ export const ATTR = {
   SEARCH_RETURNED: 'alpha.search.results_returned',
   SUMMARY_CANCELLED: 'alpha.summary.cancelled', // the client went away before the summary finished
   SEARCH_HAS_FILTERS: 'alpha.search.has_filters',
-  SEARCH_TRIGGER: 'alpha.search.trigger_type', // 'user' | 'ai_tool' | 'ai_rag'
+  SEARCH_TRIGGER: 'alpha.search.trigger_type', // 'user' | 'ai_tool' | 'ai_step'
+  SEARCH_TRIGGER_STEP: 'alpha.search.trigger_step', // the tool or AI step that ran it
   SEARCH_ES_TOOK_MS: 'alpha.search.es_took_ms',
   SEARCH_SOURCE_COUNT: 'alpha.search.source_count', // indexes + external indexes searched
   SEARCH_FAILED_SOURCES: 'alpha.search.failed_sources', // sources that failed while others answered
@@ -76,6 +77,10 @@ export const ATTR = {
   TOOL_TOTAL_COUNT: 'alpha.tool.total_count',    // total matching documents
   TOOL_RESULT_SIZE_CHARS: 'alpha.tool.result_size_chars',  // chars of JSON-stringified result fed back to the LLM
   TOOL_RESULT_EST_TOKENS: 'alpha.tool.result_est_tokens',  // rough token estimate (chars/4); surfaces MCP/RAG bloat
+  // The tool a chat's tool-call step ran (pipeline.v2.action.tool_execution): reports count a
+  // call as a search only for executor 'data_source' with operation 'search'
+  V2_STEP_TOOL_EXECUTOR: 'alpha.v2.step.tool_executor',
+  V2_STEP_TOOL_OPERATION: 'alpha.v2.step.tool_operation',
   TOOL_LOOKUP_MISSING_FIELDS: 'alpha.tool.lookup.missing_fields', // Find Record's chosen fields the found record has no value in (comma-separated names)
 
   // === Chat Turn ===

@@ -132,7 +132,7 @@ async function tryVectorSearch(
 ): Promise<Array<{ id: string; role: string; content: string; turnIndex: number; distance: number }>> {
   try {
     // Generate query embedding
-    const queryVector = await embed(query);
+    const queryVector = await embed(query, { feature: 'memory_retrieval' });
     if (!queryVector) return [];
 
     const results = await sessionsRepo.searchMessagesByVector(

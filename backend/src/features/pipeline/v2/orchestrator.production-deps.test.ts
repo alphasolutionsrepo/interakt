@@ -71,6 +71,7 @@ describe('production tool executor', () => {
     const ctx = {
       action: { toolSlug: 'catalog-find', intent: 'find one item' },
       toolId: 'tool-1',
+      toolDef: { slug: 'find-product', executorType: 'data_source', operation: 'lookup' },
       validatedParams: { id: 'XYZ-999' },
     } as unknown as ActionStepContext;
     return new ToolExecutionStep().execute(ctx, deps);
@@ -82,6 +83,8 @@ describe('production tool executor', () => {
     expect(step.context.toolResult?.resultCount).toBe(0);
     expect(step.summary).toBe('0 result(s) returned');
     expect(step.spanAttributes?.['alpha.v2.step.result_count']).toBe(0);
+    // Reports leave lookups out of searches by this
+    expect(step.spanAttributes?.['alpha.v2.step.tool_operation']).toBe('lookup');
   });
 
   it('counts a lookup that several items fit by its matches, as planning does', async () => {

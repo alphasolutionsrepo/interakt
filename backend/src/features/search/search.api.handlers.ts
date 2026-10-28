@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getGlobalSearchConfig } from '@/features/global-settings';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { runWithTelemetryLevel } from '@/features/telemetry';
 import * as searchService from './search.service';
 import { searchRequestSchema } from './search.validation';
@@ -74,7 +75,8 @@ export async function handleSearchById(
         // Execute search - cast validated data to SearchRequest
         // (zod's inferred type differs slightly but query is validated as required)
         // Admin playground searches: untraced, or traced in full when asked for.
-        const result = await runWithTelemetryLevel(wantsTrace(body) ? 'full' : 'off', () =>
+        // Its embedding calls are playground traffic too.
+        const result = await runWithTelemetryLevel(wantsTrace(body) ? 'full' : 'off', () => withAnalyticsSource('playground', () =>
             searchService.searchById(
                 paramsValidation.data.id,
                 bodyValidation.data as SearchRequest,
@@ -84,7 +86,7 @@ export async function handleSearchById(
                     timeoutMs: globalConfig.timeout.timeoutMs,
                 }
             )
-        );
+        ));
 
         return apiResponse.success(result);
     } catch (error) {
@@ -127,7 +129,8 @@ export async function handleSearchByName(
 
         // Execute search - cast validated data to SearchRequest
         // Admin playground searches: untraced, or traced in full when asked for.
-        const result = await runWithTelemetryLevel(wantsTrace(body) ? 'full' : 'off', () =>
+        // Its embedding calls are playground traffic too.
+        const result = await runWithTelemetryLevel(wantsTrace(body) ? 'full' : 'off', () => withAnalyticsSource('playground', () =>
             searchService.searchByName(
                 paramsValidation.data.name,
                 bodyValidation.data as SearchRequest,
@@ -137,7 +140,7 @@ export async function handleSearchByName(
                     timeoutMs: globalConfig.timeout.timeoutMs,
                 }
             )
-        );
+        ));
 
         return apiResponse.success(result);
     } catch (error) {

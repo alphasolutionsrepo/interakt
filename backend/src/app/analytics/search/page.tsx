@@ -2,7 +2,7 @@
 
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Bot } from 'lucide-react';
 
 import { useAskPanel } from '../_lib/AskPanelContext';
 import { QualityScore, calculateQualityScore } from '../_components/QualityScore';
@@ -31,6 +31,8 @@ export default function AnalyticsSearchPage() {
   const view = useDashboardView();
   const askPanel = useAskPanel();
   const showQualityScore = !view.isAllExperiences && view.totalSearches > 0 && !view.searchesFromToolCalls;
+  // What AI assistants searched for, kept apart from what visitors typed
+  const showAssistantSearches = view.showAI && !view.searchesFromToolCalls;
 
   return (
     <div className="space-y-6">
@@ -58,7 +60,7 @@ export default function AnalyticsSearchPage() {
       )}
 
       <SectionHeader
-        description={`Counts searches typed by visitors, searches made by AI assistants, and automatic browse requests. ${view.periodLabel}`}
+        description={`Totals include searches typed by visitors and searches made by AI assistants. Popular and failed searches list only what visitors typed. ${view.periodLabel}`}
       />
       {view.searchesFromToolCalls && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
@@ -100,6 +102,11 @@ export default function AnalyticsSearchPage() {
           loading={view.isLoading}
           refreshing={view.refreshing}
           onAsk={askPanel.open}
+          emptyMessage={
+            showAssistantSearches && (view.data?.assistantQueries?.length ?? 0) > 0
+              ? "No visitor searches yet. The assistant's searches are under Assistant searches."
+              : undefined
+          }
         />
         <FailedSearchesCard
           data={view.data?.zeroResults}
@@ -110,11 +117,24 @@ export default function AnalyticsSearchPage() {
                 ? 'Not available for external searches'
                 : undefined
           }
+          assistantFailed={view.data?.assistantHasFailedSearches ?? false}
           loading={view.isLoading}
           refreshing={view.refreshing}
           onAsk={askPanel.open}
         />
       </div>
+
+      {showAssistantSearches && (
+        <PopularQueriesCard
+          data={view.data?.assistantQueries}
+          loading={view.isLoading}
+          refreshing={view.refreshing}
+          onAsk={askPanel.open}
+          title="Assistant searches"
+          description="What AI assistants searched for while answering visitors, with how often each query found nothing"
+          icon={Bot}
+        />
+      )}
 
       <RecentSearchesFeed data={view.data?.recentSearches} isLoading={view.isLoading} refreshing={view.refreshing} />
     </div>

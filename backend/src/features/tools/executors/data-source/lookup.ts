@@ -205,10 +205,12 @@ async function lookupFromManagedIndex(
   const roles = await loadRolesOnMiss();
   // The matcher also reads the searched fields kept out of responses, so a sku hidden from
   // responses still identifies its item; what is returned or listed comes from source only.
+  // Recorded as the Find Record tool's search: it resolves the item asked for, so search reports
+  // don't count it (its hits say nothing about whether the item was found).
   const response = await searchService.searchById(
     searchIndexId,
     { query: documentId, pageSize: FALLBACK_CANDIDATES, includeHiddenSearchedFields: true },
-    { triggerType: 'ai_tool' },
+    { triggerType: 'ai_tool', triggerStep: 'lookup' },
   );
   const hits: Hit[] = response.hits.map((hit) => ({
     id: hit.id,

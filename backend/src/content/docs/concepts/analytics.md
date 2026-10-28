@@ -37,6 +37,8 @@ Each section starts with headline figures. Each figure shows how it moved since 
 
 Charts have a **Table** view with the same data. On **Search activity**, click a day or drag across several to pick them; **Show this day** narrows the page to it, and **Ask about this day** asks the chat.
 
+On **Search**, totals count searches typed by visitors and searches the AI assistant made with its Search tool. **Popular searches** and **Failed searches** list only what visitors typed; **Assistant searches** lists what the assistant searched for, with how often each query found nothing. Lookups that Find Record, List Values and query understanding run aren't counted as searches, but **Latest searches** shows them, named by tool or step.
+
 **Conversations** and part of **AI & cost** come from the nightly insights, so they show the stored window nearest your period, and say when they were computed.
 
 ## Ask (analytics chat)
@@ -84,6 +86,7 @@ Traces may contain what visitors typed. If they type personal information into a
 - **Findings or Conversations look old.** They come from the nightly refresh. Use **Refresh now** on the Overview or in Settings for fresh ones.
 - **No data after a clean install.** Run the analytics warm-up from [Initial Setup](../getting-started/initial-setup), or wait for real traffic.
 - **A trace shows an old prompt.** Traces are point-in-time — they show what the AI saw then, not the current prompt template.
+- **My test chats don't show up.** Searches, chats and tool runs from an admin test chat, the playgrounds or a tool's Test panel aren't live traffic: they're left out of searches and insights. They still appear in **Traces**.
 - **A day looks split oddly.** Days follow your browser's time zone; someone in another zone sees the same data grouped by their days.
 
 ## Where to go next

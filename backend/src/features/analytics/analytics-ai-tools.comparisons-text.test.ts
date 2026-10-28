@@ -21,11 +21,12 @@ const overview = (totalSearches: number, zeroResultRate: number, avgSearchDurati
   totalSearches,
   totalAIRequests: 0,
   uniqueQueries: Math.round(totalSearches / 2),
+  zeroResultSearches: Math.round(totalSearches * zeroResultRate),
   zeroResultRate,
   avgSearchDurationMs,
   avgAIDurationMs: 0,
   searchesFromToolCalls: false,
-  searchesByTrigger: { user: totalSearches, ai_tool: 0, ai_rag: 0, system: 0 },
+  searchesByTrigger: { user: totalSearches, ai_tool: 0, lookups: 0 },
 });
 const ai = (totalRequests: number, totalTokens: number, estimatedCostUsd = 0) => ({
   totalRequests,

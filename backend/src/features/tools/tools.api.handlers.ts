@@ -8,6 +8,7 @@ import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import * as service from './tools.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { executeTool } from './tools.executor';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { lookupFieldsStatus } from './lookup-fields.service';
 import type { LookupFieldsConfig } from './executors/data-source/lookup-field-rules';
 import {
@@ -301,7 +302,8 @@ export async function handleTestTool(
       return apiResponse.validationError({ message: 'Request body must contain an "input" object' } as never);
     }
 
-    const result = await executeTool(id, body.input);
+    // A test run isn't live traffic
+    const result = await withAnalyticsSource('admin_test', () => executeTool(id, body.input!));
     return apiResponse.success(result, result.success ? 200 : 422);
   } catch (error) {
     const err = error as Error;

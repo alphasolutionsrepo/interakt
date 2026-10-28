@@ -133,7 +133,7 @@ describe('executeMemoryRetrieval', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(mockEmbed).toHaveBeenCalledWith('budget options');
+    expect(mockEmbed).toHaveBeenCalledWith('budget options', { feature: 'memory_retrieval' });
     expect(mockSearchMessagesByVector).toHaveBeenCalledWith(
       'session-1',
       fakeVector,

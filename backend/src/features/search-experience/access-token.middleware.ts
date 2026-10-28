@@ -153,7 +153,7 @@ export function createCorsHeaders(
   }
 
   headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Access-Token, Authorization');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Access-Token, Authorization, X-Interakt-Test');
   headers.set('Access-Control-Max-Age', '86400');
 
   return headers;
@@ -179,7 +179,7 @@ export function handleCorsPreflight(): NextResponse {
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Access-Token, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Access-Token, Authorization, X-Interakt-Test',
       'Access-Control-Max-Age': '86400',
     },
   });

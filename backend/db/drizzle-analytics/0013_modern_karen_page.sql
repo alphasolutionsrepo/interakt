@@ -1,4 +1,4 @@
-CREATE TABLE "analytics_hidden_findings" (
+CREATE TABLE IF NOT EXISTS "analytics_hidden_findings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"scope" varchar(64) NOT NULL,
 	"finding_id" varchar(100) NOT NULL,

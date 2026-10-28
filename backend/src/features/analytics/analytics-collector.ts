@@ -152,7 +152,8 @@ export function trackSearch(event: SearchEventData, experienceId?: string): void
       queryNormalized,
       queryLength: event.queryText.length,
       queryWordCount: countWords(event.queryText),
-      isZeroResult: event.totalResults === 0,
+      // Only a search that ran can have found nothing; a failed one is recorded as failed
+      isZeroResult: event.success && event.totalResults === 0,
       hasFilters: event.hasFilters ?? (event.filterCount ?? 0) > 0,
       filterCount: event.filterCount ?? 0,
       pageNumber: event.pageNumber ?? 1,
@@ -216,6 +217,7 @@ export function trackToolExecution(event: ToolExecutionData): void {
       ...event,
       id: event.id ?? generateId(),
       timestamp: new Date(),
+      source: event.source ?? 'api',
       toolVersion: event.toolVersion ?? '1.0',
     };
 
@@ -340,7 +342,10 @@ async function flushSearchEvents(): Promise<void> {
         requestId: e.requestId,
         sessionId: e.sessionId,
         timestamp: e.timestamp,
+        // Reports count live traffic as source 'api'; admin test chats and the playground stay apart
+        source: e.source,
         triggerType: e.triggerType,
+        triggerStep: e.triggerStep,
         triggerSourceId: e.triggerSourceId,
         aiRequestId: e.aiRequestId,
         searchType: e.searchType,
@@ -434,6 +439,8 @@ async function flushAIEvents(): Promise<void> {
           batchSize: e.batchSize,
           estimatedCostUsd,
           requestMetadata: e.metadata as Record<string, unknown>,
+          // Reports count live traffic as source 'api'; admin test chats and the playground stay apart
+          source: e.source,
         };
       })
     );
@@ -477,6 +484,7 @@ async function flushToolEvents(): Promise<void> {
         toolName: e.toolName,
         toolCategory: e.toolCategory,
         toolVersion: e.toolVersion,
+        source: e.source,
         inputSummary: e.inputSummary,
         outputSummary: e.outputSummary,
         durationMs: e.durationMs,

@@ -198,7 +198,10 @@ export function NeedsAttention() {
             refresh every night, or choose <strong className="font-medium text-foreground">Refresh now</strong>.
           </Message>
         ) : result.status === 'no_data' ? (
-          <Message icon={Info}>No activity in the {windowWords}, so there&apos;s nothing to review.</Message>
+          <Message icon={Info}>
+            No visitor conversations in the {windowWords}, so there&apos;s nothing to review. Insights come from live
+            chat traffic; test chats and the playground are left out.
+          </Message>
         ) : findings.length === 0 ? (
           <Message icon={CheckCircle2} iconClass="text-viz-good">
             {hidden.length > 0 ? `Nothing else needs attention in the ${windowWords}.` : `Nothing needs attention in the ${windowWords}.`}

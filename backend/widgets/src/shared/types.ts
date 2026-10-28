@@ -12,6 +12,11 @@ export interface BaseConfig {
   containerId: string;
   accessToken: string;
   apiBaseUrl?: string;
+  /**
+   * Set by the admin's Widget playground: requests carry a test marker, and with the admin's
+   * login the server records them as tests, not visitor traffic.
+   */
+  testMode?: boolean;
   theme?: Theme;
   /** Accent color (e.g. header, send button, launcher bubble). */
   primaryColor?: string;

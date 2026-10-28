@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ZodError, z } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
 import { searchExperienceAccess } from '@/features/auth/public-access';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { flushTelemetry, runWithTelemetryLevel } from '@/features/telemetry';
 import type { FacetResult, SearchErrorCode } from '@/features/search/search.types';
@@ -69,7 +70,7 @@ export async function POST(
     // 2. Authenticate: the experience's access token (real traffic) or an admin
     //    session (playground). Admin searches are recorded as 'admin_test', which
     //    analytics leaves out by default, and are not traced unless asked for.
-    const { caller, refused } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
+    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
     if (!caller) {
       return refused ?? NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
@@ -83,10 +84,11 @@ export async function POST(
     const validated = searchRequestSchema.parse(body);
 
     // 4. Search through the experience (same flow as the public search API)
-    const run = () => executeExperienceSearch(experience, validated as PublicSearchRequest, {
-      source: isAdmin ? 'admin_test' : 'api',
+    // Everything the search records (its AI calls too) carries where it came from
+    const run = () => withAnalyticsSource(analyticsSource, () => executeExperienceSearch(experience, validated as PublicSearchRequest, {
+      source: analyticsSource,
       includeHighlights: validated.includeHighlights,
-    });
+    }));
     // Admin searches: untraced, or traced in full when the admin asks for it.
     const { results, hitOrigins, failedSources, interpretation } = isAdmin
       ? await runWithTelemetryLevel(validated.trace ? 'full' : 'off', run)
