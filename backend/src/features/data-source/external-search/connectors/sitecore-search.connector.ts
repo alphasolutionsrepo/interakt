@@ -207,7 +207,7 @@ export function inferSitecoreFields(sample: SitecoreSample): DataSourceField[] {
     const first = seen[0];
     const isFacet = sample.facets.has(name);
     // A list attribute's type is its items' type
-    const item = Array.isArray(first) ? first.find((v) => v !== null && v !== undefined && v !== '') : first;
+    const item = seen.flatMap((v) => (Array.isArray(v) ? v : [v])).find((v) => v !== null && v !== undefined && v !== '');
     const valueType = typeof item === 'number' ? 'number'
       : typeof item === 'boolean' ? 'boolean'
       : typeof item === 'string' ? 'text'

@@ -289,6 +289,12 @@ describe('field types for filter values', () => {
     expect(types.get('sizes')).toBe('number');
     expect(types.get('labels')).toBe('text');
     expect(types.get('year')).toBe('number');
+    expect(fields.find((f) => f.name === 'sizes')).toMatchObject({ type: 'number', providerType: 'array', valueType: 'number' });
+  });
+
+  it('looks past an empty first list for the items type', () => {
+    const later = inferSitecoreFields({ items: [{ id: 'a', sizes: [] }, { id: 'b', sizes: [5] }], total: 2, facets: new Map() });
+    expect(sitecoreFieldTypes(later).get('sizes')).toBe('number');
   });
 
   // Sitecore rejects a value of the wrong type, so a guessed type would break a value that works as sent

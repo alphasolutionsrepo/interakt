@@ -29,6 +29,7 @@ import {
 import { Loader2, Sparkles, MessageSquare, FileText, Database, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AIProviderModelResponse } from '@/features/ai-providers';
+import { reasoningChoiceOf } from '../_lib/model-capabilities';
 
 // ============================================================================
 // Model Type Config
@@ -177,7 +178,7 @@ export function ModelFormDialog({
                     outputCostPerMillionTokens: model.outputCostPerMillionTokens || undefined,
                     usesCompletionTokens: capabilities.usesCompletionTokens === true,
                     noTemperature: capabilities.noTemperature === true,
-                    reasoningEffort: (capabilities.reasoningEffort as ModelFormData['reasoningEffort']) ?? 'default',
+                    reasoningEffort: reasoningChoiceOf(capabilities),
                 });
             } else {
                 reset({
