@@ -71,14 +71,19 @@ describe('search experience on a Sitecore source', () => {
     expect(sent()).toEqual({ type: 'and', filters: [{ type: 'eq', name: 'year', value: 2024 }] });
   });
 
-  it("refuses a value that can't be its field's type, without sending it", async () => {
+  it("refuses a value that can't be its field's type, saying why, and never sends that value", async () => {
     const sent = stubSitecore();
 
     const search = searchExternalSourceForExperience(
       SOURCE, storedFields.value, { query: 'x', filters: [{ field: 'open', operator: 'eq', value: 'Yes' }] }, EXPERIENCE,
     );
 
-    await expect(search).rejects.toSatisfy((e) => e instanceof SearchError && e.code === 'INVALID_FILTER');
+    await expect(search).rejects.toMatchObject({
+      code: 'INVALID_FILTER',
+      message: `This search source can't apply the filter (open: "Yes" is not a boolean value for 'open')`,
+    });
+    // Sitecore is asked without the filter, and that answer is refused rather than returned
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
     expect(sent()).toBeUndefined();
   });
 });

@@ -59,11 +59,11 @@ describe('the external search trace step', () => {
     result.unappliedFilters = [{ field: 'longDescription', reason: 'not filterable' }];
 
     await expect(search()).rejects.toMatchObject({ code: 'INVALID_FILTER' });
-    expect(steps).toEqual([{ name: 'search.external', failed: "This search source can't filter on longDescription", attributes: {} }]);
+    expect(steps).toEqual([{ name: 'search.external', failed: "This search source can't apply the filter (longDescription: not filterable)", attributes: {} }]);
     // Analytics records the refused search once, with no results
     expect(vi.mocked(trackSearch)).toHaveBeenCalledOnce();
     expect(vi.mocked(trackSearch).mock.calls[0][0]).toMatchObject({
-      success: false, totalResults: 0, resultsReturned: 0, errorMessage: 'filter not applied: longDescription',
+      success: false, totalResults: 0, resultsReturned: 0, errorMessage: 'filter not applied: longDescription: not filterable',
     });
   });
 

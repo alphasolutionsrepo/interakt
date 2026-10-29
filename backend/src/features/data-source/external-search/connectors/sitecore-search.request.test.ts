@@ -404,6 +404,19 @@ describe("filter values as their field's type", () => {
       { field: 'type', operator: 'eq', reason: `null is not a text value for 'type'` },
     ]);
   });
+
+  it('reports in/nin as not applied when one item, or a null item, can\'t be the field\'s type', () => {
+    // Dropping only the bad item would narrow `in` or widen `nin`
+    const { filter, unapplied } = buildFilter([], [
+      { field: 'price', operator: 'nin', value: ['10', 'cheap'] },
+      { field: 'type', operator: 'in', value: ['page', null] },
+    ] as never, types);
+    expect(filter).toBeUndefined();
+    expect(unapplied).toEqual([
+      { field: 'price', operator: 'nin', reason: `"cheap" is not a number value for 'price'` },
+      { field: 'type', operator: 'in', reason: `null is not a text value for 'type'` },
+    ]);
+  });
 });
 
 describe('fixed filters and field types', () => {
