@@ -231,3 +231,25 @@ describe('a list or object as a single value on a text field', () => {
         }
     });
 });
+
+describe('range', () => {
+    it('sends every bound as the field type', () => {
+        const { odata } = buildAzureFilterParts(
+            [{ field: 'price', operator: 'range', value: { gte: '10', lte: 80 } } as FilterClause],
+            scalars,
+        );
+        expect(odata).toBe('price ge 10 and price le 80');
+    });
+
+    it('drops the clause when a bound is blank or not a number, rather than widening the range', () => {
+        for (const lte of ['', 'cheap']) {
+            const { odata, dropped } = buildAzureFilterParts(
+                [{ field: 'price', operator: 'range', value: { gte: '10', lte } } as FilterClause],
+                scalars,
+            );
+            expect(odata).toBeUndefined();
+            expect(dropped).toHaveLength(1);
+            expect(dropped[0].reason).toContain(JSON.stringify(lte));
+        }
+    });
+});

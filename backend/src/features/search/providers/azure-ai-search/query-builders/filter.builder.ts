@@ -203,15 +203,21 @@ function buildFilterClause(
         case 'range': {
             const range = value as { gte?: number | string; lte?: number | string; gt?: number | string; lt?: number | string };
             const parts: string[] = [];
+            const failed: unknown[] = [];
             const push = (op: string, v: number | string | undefined) => {
                 if (v === undefined) return;
                 const operand = formatOperand(v, fieldType);
-                if (operand !== null) parts.push(`${field} ${op} ${operand}`);
+                if (operand === null) failed.push(v);
+                else parts.push(`${field} ${op} ${operand}`);
             };
             push('ge', range.gte);
             push('gt', range.gt);
             push('le', range.lte);
             push('lt', range.lt);
+            // Skipping one bound would widen the range, so a bound that can't convert drops the clause
+            if (failed.length > 0) {
+                return drop(`range bound not coercible to field type "${fieldType ?? 'unknown'}": ${failed.map((v) => JSON.stringify(v)).join(', ')}`);
+            }
             return parts.length > 0 ? parts.join(' and ') : drop('range has no usable bounds');
         }
 
