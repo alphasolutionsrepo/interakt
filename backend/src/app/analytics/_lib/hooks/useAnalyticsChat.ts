@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAnalyticsContext } from '../AnalyticsContext';
 import { resolvePeriod } from '../period';
+import { toApiError } from '@/shared/api/api-error';
 
 // ============================================================================
 // TYPES
@@ -157,13 +158,14 @@ export function useDeleteChatSession() {
     mutationFn: async (sessionId: string) => {
       const response = await fetch(`/api/analytics/chat/sessions/${sessionId}`, { method: 'DELETE' });
       // Already gone is as good as deleted
-      if (!response.ok && response.status !== 404) throw new Error('Failed to delete conversation');
+      if (!response.ok && response.status !== 404) throw await toApiError(response, 'Failed to delete conversation');
       return sessionId;
     },
     onSuccess: (sessionId) => {
       queryClient.removeQueries({ queryKey: ['admin-chat-session', sessionId] });
       queryClient.invalidateQueries({ queryKey: ['admin-chat-sessions'] });
     },
+    meta: { label: 'Delete conversation' },
   });
 }
 

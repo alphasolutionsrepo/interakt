@@ -22,8 +22,9 @@ import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
 import { runChatPipeline } from '@/features/pipeline/chat-pipeline';
 import type { PipelineStreamEvent } from '@/features/pipeline/pipeline.types';
 import { flushTelemetry } from '@/features/telemetry';
+import { publicRoute } from '@/shared/api/public-route';
 
-export async function POST(request: NextRequest) {
+async function post(request: NextRequest) {
   // ── No access token: a dashboard session is pointed at the slug route ──────
   if (!readAccessToken(request)) {
     // Fall back to dashboard session auth
@@ -108,3 +109,5 @@ export async function POST(request: NextRequest) {
     },
   });
 }
+
+export const POST = publicRoute(post);

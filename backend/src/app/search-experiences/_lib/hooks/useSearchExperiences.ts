@@ -16,7 +16,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { searchExperiencesApi, searchExperienceIndexesApi,
-  searchExperienceExternalSourcesApi, ApiError } from '../api-client';
+  searchExperienceExternalSourcesApi } from '../api-client';
 import type {
   CreateSearchExperienceDTO,
   UpdateSearchExperienceDTO,
@@ -85,9 +85,7 @@ export function useSearchExperiences(params?: UseSearchExperiencesParams) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.lists() });
       toast.success('Search experience created successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to create search experience');
-    },
+    meta: { label: 'Create search experience' },
   });
 
   const deleteMutation = useMutation({
@@ -96,9 +94,7 @@ export function useSearchExperiences(params?: UseSearchExperiencesParams) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.lists() });
       toast.success('Search experience deleted successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete search experience');
-    },
+    meta: { label: 'Delete search experience' },
   });
 
   return {
@@ -148,9 +144,7 @@ export function useSearchExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.lists() });
       toast.success('Search experience updated successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update search experience');
-    },
+    meta: { label: 'Update search experience' },
   });
 
   const deleteMutation = useMutation({
@@ -159,9 +153,7 @@ export function useSearchExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.lists() });
       toast.success('Search experience deleted successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete search experience');
-    },
+    meta: { label: 'Delete search experience' },
   });
 
   const regenerateTokenMutation = useMutation({
@@ -170,9 +162,7 @@ export function useSearchExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
       toast.success('Access token regenerated');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to regenerate access token');
-    },
+    meta: { label: 'Regenerate access token' },
   });
 
   // Index management mutations
@@ -182,9 +172,7 @@ export function useSearchExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
       toast.success('Index added successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to add index');
-    },
+    meta: { label: 'Add index' },
   });
 
   const updateIndexMutation = useMutation({
@@ -194,9 +182,7 @@ export function useSearchExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
       toast.success('Index updated successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update index');
-    },
+    meta: { label: 'Update index' },
   });
 
   const removeIndexMutation = useMutation({
@@ -205,9 +191,7 @@ export function useSearchExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
       toast.success('Index removed successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to remove index');
-    },
+    meta: { label: 'Remove index' },
   });
 
   const addExternalSourceMutation = useMutation({
@@ -216,9 +200,7 @@ export function useSearchExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
       toast.success('External index added');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to add external index');
-    },
+    meta: { label: 'Add external index' },
   });
 
   const removeExternalSourceMutation = useMutation({
@@ -227,9 +209,7 @@ export function useSearchExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
       toast.success('External index removed');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to remove external index');
-    },
+    meta: { label: 'Remove external index' },
   });
 
   return {

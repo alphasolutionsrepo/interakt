@@ -45,6 +45,8 @@ import {
     RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { reportActionError } from '@/shared/activity/report';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 import { useAIProviders, useModelsForPurpose } from '@/app/ai-providers/_lib/hooks/useAIProviders';
 import { VECTOR_SIMILARITY_INFO } from '@/features/search-index';
 
@@ -115,7 +117,7 @@ export function ChangeAIConfigDialog({
     const [selectedVectorSimilarity, setSelectedVectorSimilarity] = useState<'cosine' | 'euclidean' | 'dot_product'>(currentVectorSimilarity);
     const [confirmText, setConfirmText] = useState('');
     const [result, setResult] = useState<ChangeResult | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<unknown>(null);
 
     // Data fetching
     const { providers, isLoading: isLoadingProviders } = useAIProviders({ enabled: open });
@@ -237,8 +239,8 @@ export function ChangeAIConfigDialog({
             onSuccess?.();
             onOpenChange(false);
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Failed to change AI configuration';
-            setError(errorMessage);
+            reportActionError('Change AI configuration', err, { inline: true });
+            setError(err);
             setStep('error');
         }
     }, [isConfirmValid, selectedProviderId, selectedModelId, selectedDimensions, selectedVectorSimilarity, onChangeConfig, onSuccess, onOpenChange]);
@@ -611,18 +613,7 @@ export function ChangeAIConfigDialog({
                                 </div>
                             </div>
 
-                            <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl p-4">
-                                <p className="text-sm font-medium text-red-800 dark:text-red-300 mb-1">
-                                    Error Details
-                                </p>
-                                <p className="text-sm text-red-600 dark:text-red-400">
-                                    {error || 'An unknown error occurred'}
-                                </p>
-                            </div>
-
-                            <p className="text-sm text-slate-500 text-center">
-                                You can try again or check the server logs for more details.
-                            </p>
+                            <ProblemAlert error={error ?? new Error('Failed to change AI configuration')} />
                         </div>
                     )}
                 </div>

@@ -34,6 +34,7 @@ import {
   ProviderStatsBar,
   ProviderTable,
 } from './_components';
+import { reportActionError } from '@/shared/activity/report';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import type { AIProviderWithModelsResponse, CreateAIProviderInput, UpdateAIProviderInput } from '@/features/ai-providers';
@@ -175,11 +176,11 @@ export default function AIProvidersPage() {
       if (result.success) {
         toast.success(`Connected in ${result.responseTimeMs}ms`);
       } else {
-        toast.error(result.message || 'Connection failed');
+        reportActionError(`Connection test for ${provider.displayName}`, result.message || 'The provider could not be reached');
       }
       refetchProviders();
     } catch (error) {
-      toast.error('Connection test failed');
+      reportActionError(`Connection test for ${provider.displayName}`, error);
     } finally {
       setTestingId(null);
     }
@@ -196,7 +197,7 @@ export default function AIProvidersPage() {
       }
       refetchProviders();
     } catch (error) {
-      toast.error('Model discovery failed');
+      reportActionError(`Model discovery for ${provider.displayName}`, error);
     } finally {
       setDiscoveringId(null);
     }

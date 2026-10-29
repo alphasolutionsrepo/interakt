@@ -24,8 +24,9 @@ import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { runChatPipeline } from '@/features/pipeline/chat-pipeline';
 import type { PipelineStreamEvent } from '@/features/pipeline/pipeline.types';
 import { flushTelemetry } from '@/features/telemetry';
+import { publicRoute } from '@/shared/api/public-route';
 
-export async function POST(
+async function post(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> },
 ) {
@@ -114,3 +115,5 @@ export async function OPTIONS() {
   // Explicit 204 here prevents Next.js returning 405 Method Not Allowed for preflights.
   return new NextResponse(null, { status: 204 });
 }
+
+export const POST = publicRoute(post);

@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { secretsApi, ApiError } from '../api-client';
+import { secretsApi } from '../api-client';
 import type { CreateSecretPayload, UpdateSecretPayload } from '../api-client';
 
 export const secretKeys = {
@@ -25,9 +25,7 @@ export function useSecrets(search?: string) {
       queryClient.invalidateQueries({ queryKey: secretKeys.lists() });
       toast.success('Secret created successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to create secret');
-    },
+    meta: { label: 'Create secret' },
   });
 
   const updateMutation = useMutation({
@@ -37,9 +35,7 @@ export function useSecrets(search?: string) {
       queryClient.invalidateQueries({ queryKey: secretKeys.lists() });
       toast.success('Secret updated successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update secret');
-    },
+    meta: { label: 'Update secret' },
   });
 
   const deleteMutation = useMutation({
@@ -48,9 +44,7 @@ export function useSecrets(search?: string) {
       queryClient.invalidateQueries({ queryKey: secretKeys.lists() });
       toast.success('Secret deleted successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete secret');
-    },
+    meta: { label: 'Delete secret' },
   });
 
   return {

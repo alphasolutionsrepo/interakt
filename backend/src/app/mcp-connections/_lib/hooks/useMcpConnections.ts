@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { mcpConnectionsApi, ApiError } from '../api-client';
+import { reportActionError } from '@/shared/activity/report';
+import { mcpConnectionsApi } from '../api-client';
 import type {
   CreateMcpConnectionPayload,
   UpdateMcpConnectionPayload,
@@ -57,9 +58,7 @@ export function useMcpConnections(params?: ListMcpConnectionsParams) {
       queryClient.invalidateQueries({ queryKey: mcpKeys.lists() });
       toast.success('MCP connection deleted');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete connection');
-    },
+    meta: { label: 'Delete connection' },
   });
 
   return {
@@ -94,9 +93,7 @@ export function useMcpConnection(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: mcpKeys.lists() });
       toast.success('Connection updated');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update connection');
-    },
+    meta: { label: 'Update connection' },
   });
 
   const syncMutation = useMutation({
@@ -107,12 +104,10 @@ export function useMcpConnection(id: string | undefined) {
       if (result.status === 'healthy') {
         toast.success(`Discovered ${result.toolCount} tool${result.toolCount === 1 ? '' : 's'}`);
       } else {
-        toast.error(result.message);
+        reportActionError('Sync', result.message);
       }
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Sync failed');
-    },
+    meta: { label: 'Sync' },
   });
 
   const testMutation = useMutation({
@@ -121,12 +116,10 @@ export function useMcpConnection(id: string | undefined) {
       if (result.status === 'healthy') {
         toast.success(`Test passed — ${result.toolCount} tool${result.toolCount === 1 ? '' : 's'} reachable`);
       } else {
-        toast.error(result.message);
+        reportActionError('Test connection', result.message);
       }
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Test failed');
-    },
+    meta: { label: 'Test connection' },
   });
 
   return {
@@ -156,9 +149,7 @@ export function useCreateMcpConnection() {
       queryClient.invalidateQueries({ queryKey: mcpKeys.lists() });
       toast.success(`MCP connection "${created.name}" created`);
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to create connection');
-    },
+    meta: { label: 'Create connection' },
   });
 }
 
@@ -182,9 +173,7 @@ export function useExperienceMcpAttachments(experienceId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: mcpKeys.attachments(experienceId!) });
       toast.success('Connection attached');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to attach connection');
-    },
+    meta: { label: 'Attach connection' },
   });
 
   const updateAttachmentMutation = useMutation({
@@ -199,9 +188,7 @@ export function useExperienceMcpAttachments(experienceId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: mcpKeys.attachments(experienceId!) });
       toast.success('Attachment updated');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update attachment');
-    },
+    meta: { label: 'Update attachment' },
   });
 
   const detachMutation = useMutation({
@@ -210,9 +197,7 @@ export function useExperienceMcpAttachments(experienceId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: mcpKeys.attachments(experienceId!) });
       toast.success('Connection detached');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to detach connection');
-    },
+    meta: { label: 'Detach connection' },
   });
 
   return {

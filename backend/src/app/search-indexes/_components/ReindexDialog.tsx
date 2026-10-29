@@ -31,6 +31,8 @@ import {
     Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { reportActionError } from '@/shared/activity/report';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 // ============================================================================
 // TYPES
@@ -72,7 +74,7 @@ export function ReindexDialog({
 }: ReindexDialogProps) {
     const [state, setState] = useState<ReindexState>('confirming');
     const [result, setResult] = useState<ReindexResult | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<unknown>(null);
     const [startTime, setStartTime] = useState<number | null>(null);
 
     // Reset state when dialog opens
@@ -98,11 +100,11 @@ export function ReindexDialog({
             setState('success');
             onSuccess?.(reindexResult);
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Reindex failed';
-            setError(errorMessage);
+            reportActionError(`Reindex ${indexName}`, err, { inline: true });
+            setError(err);
             setState('error');
         }
-    }, [onReindex, onSuccess]);
+    }, [onReindex, onSuccess, indexName]);
 
     // Format duration
     const formatDuration = (ms: number) => {
@@ -261,18 +263,7 @@ export function ReindexDialog({
                                 </div>
                             </div>
 
-                            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                                <p className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
-                                    Error Details
-                                </p>
-                                <pre className="text-sm text-red-600 whitespace-pre-wrap break-words max-h-48 overflow-y-auto font-sans">
-                                    {error || 'An unknown error occurred'}
-                                </pre>
-                            </div>
-
-                            <p className="text-sm text-slate-500 text-center">
-                                You can try again or check the server logs for more details.
-                            </p>
+                            <ProblemAlert error={error ?? new Error('Reindex failed')} />
                         </div>
                     )}
                 </div>

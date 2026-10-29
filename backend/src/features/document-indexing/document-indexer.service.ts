@@ -80,6 +80,8 @@ export interface IndexingProgress {
     startedAt: Date | null;
     completedAt: Date | null;
     durationMs: number | null;
+    /** Why the whole batch failed (index setup, mappings), when it did */
+    errorMessage: string | null;
 }
 
 export interface IndexingResult {
@@ -184,6 +186,7 @@ export async function getIndexingProgress(batchId: string): Promise<IndexingProg
         startedAt: batch.startedAt,
         completedAt: batch.completedAt,
         durationMs: batch.durationMs,
+        errorMessage: batch.errorMessage ?? null,
     };
 }
 

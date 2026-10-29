@@ -31,6 +31,9 @@ import {
 import { cn } from '@/lib/utils';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { reportActionError } from '@/shared/activity/report';
+
+import { apiErrorFrom } from '@/shared/api/api-error';
 import { Markdown } from '@/shared/ui/custom/markdown';
 
 // ============================================================================
@@ -87,7 +90,7 @@ export function SummaryPanel({ experienceId, slug, trace = false }: SummaryPanel
 
       const json = await response.json();
       if (!response.ok) {
-        throw new Error(json.error || json.message || 'Search failed');
+        throw apiErrorFrom(json, response.status, 'Search failed');
       }
       return json.data as SearchResponse;
     },
@@ -95,9 +98,7 @@ export function SummaryPanel({ experienceId, slug, trace = false }: SummaryPanel
       setSearchResults(data);
       setSummary('');
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
-    },
+    meta: { label: 'Search' },
   });
 
   // Generate summary with streaming
@@ -184,7 +185,7 @@ export function SummaryPanel({ experienceId, slug, trace = false }: SummaryPanel
       if ((error as Error).name === 'AbortError') {
         toast.info('Summary generation stopped');
       } else {
-        toast.error((error as Error).message);
+        reportActionError('Generate summary', error);
       }
     } finally {
       setIsStreaming(false);

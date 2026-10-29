@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { dataSourcesApi, ApiError } from '../api-client';
+import { dataSourcesApi } from '../api-client';
 import type { CreateDataSourcePayload, UpdateDataSourcePayload, ListDataSourcesParams } from '../api-client';
 
 // ============================================================================
@@ -53,9 +53,7 @@ export function useDataSources(params?: ListDataSourcesParams) {
       queryClient.invalidateQueries({ queryKey: dataSourceKeys.lists() });
       toast.success('Data source deleted successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete data source');
-    },
+    meta: { label: 'Delete data source' },
   });
 
   return {
@@ -90,9 +88,7 @@ export function useDataSource(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: dataSourceKeys.lists() });
       toast.success('Data source updated successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update data source');
-    },
+    meta: { label: 'Update data source' },
   });
 
   const deleteMutation = useMutation({
@@ -101,9 +97,7 @@ export function useDataSource(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: dataSourceKeys.lists() });
       toast.success('Data source deleted successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete data source');
-    },
+    meta: { label: 'Delete data source' },
   });
 
   return {
@@ -130,9 +124,7 @@ export function useCreateDataSource() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: dataSourceKeys.lists() });
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to create data source');
-    },
+    meta: { label: 'Create data source' },
   });
 
   return {

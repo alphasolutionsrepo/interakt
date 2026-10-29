@@ -246,6 +246,13 @@
       "when": 1792799998829,
       "tag": "0034_lookup_persona_wording",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793286481199,
+      "tag": "0035_search_index_last_job",
+      "breakpoints": true
     }
   ]
 }

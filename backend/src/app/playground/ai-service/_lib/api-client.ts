@@ -1,5 +1,7 @@
 // app/playground/ai-service/_lib/api-client.ts
 
+import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+
 /**
  * AI Service Playground API Client
  * 
@@ -142,19 +144,7 @@ export interface EmbeddingsResponse {
 // ERROR HANDLING
 // ============================================================================
 
-export class ApiError extends Error {
-  status: number;
-  code?: string;
-  details?: unknown;
-
-  constructor(message: string, status: number, code?: string, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.code = code;
-    this.details = details;
-  }
-}
+export { ApiError };
 
 async function handleResponse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get('content-type');
@@ -172,12 +162,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
   const json = await response.json();
 
   if (!response.ok) {
-    throw new ApiError(
-      json.error || json.message || `HTTP ${response.status}`,
-      response.status,
-      json.code,
-      json.details
-    );
+    throw apiErrorFrom(json, response.status);
   }
 
   // Handle { success: true, data: {...} } format
@@ -239,10 +224,7 @@ export const aiServiceApi = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new ApiError(
-        errorData.error || `HTTP ${response.status}`,
-        response.status
-      );
+      throw apiErrorFrom(errorData, response.status);
     }
 
     const reader = response.body?.getReader();

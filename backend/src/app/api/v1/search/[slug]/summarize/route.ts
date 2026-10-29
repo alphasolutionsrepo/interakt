@@ -22,10 +22,11 @@ import { createSummaryStream } from '@/features/chat/summary-stream';
 import * as repository from '@/features/search-experience/search-experience.repository';
 import { summarizeAPIRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import type { SummarizeAPIRequest } from '@/features/search-experience/search-experience.types';
+import { publicRoute } from '@/shared/api/public-route';
 
 const logger = createLogger('summarize-api-slug');
 
-export async function POST(
+async function post(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
@@ -116,3 +117,5 @@ export async function POST(
     );
   }
 }
+
+export const POST = publicRoute(post);

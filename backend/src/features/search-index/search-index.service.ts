@@ -38,7 +38,10 @@ import type {
     SearchIndexFieldExportDTO,
     SearchIndexImportDTO,
  ChangeAIConfigDTO } from './search-index.validation';
-import type { SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
+import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
+import { currentRequestId } from '@/shared/api/request-id';
+import { NotFoundError } from '@/shared/errors/app-error';
+import { toAppError } from '@/shared/errors/to-app-error';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
@@ -589,7 +592,7 @@ export async function changeAIConfiguration(
         if (providerIndexExists) {
             const deleteResult = await provider.deleteIndex(existing.name);
             if (!deleteResult.success) {
-                throw new Error(`Failed to delete search index: ${deleteResult.error}`);
+                throw new Error(`Failed to delete search index: ${deleteResult.error}`, { cause: deleteResult.cause });
             }
             logger.info('Deleted search index for AI config change', {
                 indexId: id,
@@ -682,7 +685,7 @@ export async function deleteSearchIndex(
         if (await provider.indexExists(existing.name)) {
             const deleteResult = await provider.deleteIndex(existing.name);
             if (!deleteResult.success) {
-                throw new Error(`Failed to delete provider index "${existing.name}": ${deleteResult.error}`);
+                throw new Error(`Failed to delete provider index "${existing.name}": ${deleteResult.error}`, { cause: deleteResult.cause });
             }
         }
 
@@ -976,7 +979,7 @@ export async function triggerReindex(
 ): Promise<ReindexResult> {
     const searchIndex = await repository.getSearchIndexById(searchIndexId);
     if (!searchIndex) {
-        throw new Error(`Search index with ID ${searchIndexId} not found`);
+        throw new NotFoundError(`Search index with ID ${searchIndexId} not found`);
     }
 
     const provider = getSearchEngineProvider(searchIndex.searchProvider as SearchProviderType);
@@ -992,6 +995,8 @@ export async function triggerReindex(
 
     // Update status to indexing
     await repository.updateSearchIndexStatus(searchIndexId, 'indexing');
+    const startedAt = new Date().toISOString();
+    await recordLastJob(searchIndexId, { kind: 'reindex', status: 'running', startedAt });
 
     try {
         // Step 1: Fetch all existing documents (gracefully handle missing index)
@@ -1067,7 +1072,7 @@ export async function triggerReindex(
             const deleteResult = await provider.deleteIndex(indexName);
 
             if (!deleteResult.success) {
-                throw new Error(`Failed to delete index: ${deleteResult.error}`);
+                throw new Error(`Failed to delete index: ${deleteResult.error}`, { cause: deleteResult.cause });
             }
         }
 
@@ -1076,7 +1081,7 @@ export async function triggerReindex(
         const createResult = await provider.createIndex(indexName, indexConfig);
 
         if (!createResult.success) {
-            throw new Error(`Failed to create index: ${createResult.error}`);
+            throw new Error(`Failed to create index: ${createResult.error}`, { cause: createResult.cause });
         }
 
         // Step 6: Write the prepared documents back
@@ -1130,6 +1135,14 @@ export async function triggerReindex(
             triggeredBy: userId,
         });
 
+        await recordLastJob(searchIndexId, {
+            kind: 'reindex',
+            status: 'succeeded',
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            summary: `${documents.length} documents reindexed`,
+        });
+
         return {
             success: true,
             documentCount: documents.length,
@@ -1148,10 +1161,42 @@ export async function triggerReindex(
 
         // Update status to failed
         await repository.updateSearchIndexStatus(searchIndexId, 'error');
+        await recordLastJob(searchIndexId, {
+            kind: 'reindex',
+            status: 'failed',
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            error: jobError(error),
+        });
         await clearIndexCache(searchIndexId, indexName);
 
-        throw new Error(`Reindex failed: ${errorMessage}`);
+        throw new Error(`Reindex failed: ${errorMessage}`, { cause: error });
     }
+}
+
+/**
+ * Record the last reindex, recreate or upload on the index, for the index page.
+ * Never fails the job itself: the job's own outcome matters more than the record.
+ */
+export async function recordLastJob(searchIndexId: string, job: IndexLastJob): Promise<void> {
+    try {
+        await repository.setLastJob(searchIndexId, job);
+        await cache.delete(`index:${searchIndexId}`);
+    } catch (error) {
+        logger.warn('Could not record the last job', { searchIndexId, kind: job.kind, error: (error as Error).message });
+    }
+}
+
+/** A failed job's error in the shape the API returns: what happened, what to try, details */
+export function jobError(error: unknown): NonNullable<IndexLastJob['error']> {
+    const appError = toAppError(error);
+    return {
+        code: appError.code,
+        message: appError.message,
+        ...(appError.hint && { hint: appError.hint }),
+        ...(appError.details !== undefined && { details: appError.details }),
+        requestId: currentRequestId(),
+    };
 }
 
 export interface ReindexResult {
@@ -1174,10 +1219,10 @@ export interface ReindexResult {
 export async function recreateEmptyIndex(
     searchIndexId: string,
     userId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; cause?: unknown }> {
     const searchIndex = await repository.getSearchIndexById(searchIndexId);
     if (!searchIndex) {
-        throw new Error(`Search index with ID ${searchIndexId} not found`);
+        throw new NotFoundError(`Search index with ID ${searchIndexId} not found`);
     }
 
     const provider = getSearchEngineProvider(searchIndex.searchProvider as SearchProviderType);
@@ -1188,6 +1233,8 @@ export async function recreateEmptyIndex(
         indexName,
         triggeredBy: userId,
     });
+    const startedAt = new Date().toISOString();
+    await recordLastJob(searchIndexId, { kind: 'recreate', status: 'running', startedAt });
 
     try {
         // Delete if it somehow exists (stale/partial state)
@@ -1195,7 +1242,7 @@ export async function recreateEmptyIndex(
         if (exists) {
             const deleteResult = await provider.deleteIndex(indexName);
             if (!deleteResult.success) {
-                throw new Error(`Failed to delete existing index: ${deleteResult.error}`);
+                throw new Error(`Failed to delete existing index: ${deleteResult.error}`, { cause: deleteResult.cause });
             }
         }
 
@@ -1220,7 +1267,7 @@ export async function recreateEmptyIndex(
         // Create the index
         const createResult = await provider.createIndex(indexName, indexConfig);
         if (!createResult.success) {
-            throw new Error(`Failed to create index: ${createResult.error}`);
+            throw new Error(`Failed to create index: ${createResult.error}`, { cause: createResult.cause });
         }
 
         // Update status to ready (empty, but structurally valid)
@@ -1237,6 +1284,13 @@ export async function recreateEmptyIndex(
         await clearIndexCache(searchIndexId, indexName);
 
         logger.info('Empty index recreated successfully', { indexName, fieldCount: fields.length });
+        await recordLastJob(searchIndexId, {
+            kind: 'recreate',
+            status: 'succeeded',
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            summary: 'Empty index created',
+        });
 
         return { success: true };
     } catch (error) {
@@ -1247,8 +1301,15 @@ export async function recreateEmptyIndex(
             error: errorMessage,
         });
         await repository.updateSearchIndexStatus(searchIndexId, 'error');
+        await recordLastJob(searchIndexId, {
+            kind: 'recreate',
+            status: 'failed',
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            error: jobError(error),
+        });
         await clearIndexCache(searchIndexId, indexName);
-        return { success: false, error: errorMessage };
+        return { success: false, error: errorMessage, cause: error };
     }
 }
 

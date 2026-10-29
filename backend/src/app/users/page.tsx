@@ -78,15 +78,15 @@ export default function UsersPage() {
     isError,
     error,
     refetch,
-    createUser,
+    createUserAsync,
     isCreating,
-    updateUser,
+    updateUserAsync,
     isUpdating,
     activateUser,
     isActivating,
     deactivateUser,
     isDeactivating,
-    changePassword,
+    changePasswordAsync,
     isChangingPassword,
   } = useUsers();
 
@@ -123,24 +123,16 @@ export default function UsersPage() {
   }, [users, searchQuery, roleFilter, statusFilter]);
 
   // Handlers
+  // The dialogs show a failed save themselves, so these reject on failure
   const handleCreateUser = async (data: CreateUserDTO) => {
-    createUser(data, {
-      onSuccess: () => {
-        setIsCreateDialogOpen(false);
-      },
-    });
+    await createUserAsync(data);
+    setIsCreateDialogOpen(false);
   };
 
   const handleUpdateUser = async (data: UpdateUserDTO) => {
     if (!editingUser) return;
-    updateUser(
-      { id: editingUser.id, data },
-      {
-        onSuccess: () => {
-          setEditingUser(null);
-        },
-      }
-    );
+    await updateUserAsync({ id: editingUser.id, data });
+    setEditingUser(null);
   };
 
   const handleActivateUser = (user: UserResponse) => {
@@ -287,16 +279,10 @@ export default function UsersPage() {
         open={!!passwordUser}
         onOpenChange={(open) => !open && setPasswordUser(null)}
         user={passwordUser || undefined}
-        onSubmit={(data) => {
+        onSubmit={async (data) => {
           if (!passwordUser) return;
-          changePassword(
-            { id: passwordUser.id, data },
-            {
-              onSuccess: () => {
-                setPasswordUser(null);
-              },
-            }
-          );
+          await changePasswordAsync({ id: passwordUser.id, data });
+          setPasswordUser(null);
         }}
         isSubmitting={isChangingPassword}
       />

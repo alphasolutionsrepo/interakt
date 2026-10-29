@@ -45,6 +45,8 @@ import {
     AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+import { reportActionError } from '@/shared/activity/report';
 import { cn } from '@/lib/utils';
 import { ModelFormDialog } from './ModelFormDialog';
 import { aiModelsApi } from '../_lib/api-client';
@@ -239,8 +241,7 @@ export function ManageModelsDialog({
             toast.success(`Model "${deletingModel.displayName}" deleted`);
             onModelsChanged();
         } catch (error) {
-            toast.error('Failed to delete model');
-            console.error('Delete model error:', error);
+            reportActionError(`Delete model ${deletingModel.displayName}`, error);
         } finally {
             setIsDeleting(false);
             setDeletingModel(null);
@@ -255,8 +256,7 @@ export function ManageModelsDialog({
             toast.success(`Model ${available ? 'enabled' : 'disabled'}`);
             onModelsChanged();
         } catch (error) {
-            toast.error('Failed to update model');
-            console.error('Update model error:', error);
+            reportActionError(`${available ? 'Enable' : 'Disable'} model ${model.displayName}`, error);
         } finally {
             setUpdatingModelId(null);
         }
@@ -320,8 +320,8 @@ export function ManageModelsDialog({
             onModelsChanged();
             setModelFormOpen(false);
         } catch (error) {
-            toast.error(editingModel ? 'Failed to update model' : 'Failed to add model');
-            console.error('Model form error:', error);
+            // The form shows the error next to its fields
+            throw error;
         } finally {
             setIsSubmitting(false);
         }

@@ -36,6 +36,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportActionError } from '@/shared/activity/report';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 import { useIndexDocuments, useBatchStatus, useCancelBatch } from '../../_lib/hooks';
 import type { IndexingStatusResponse } from '../../_lib/api-client';
 
@@ -300,6 +302,11 @@ function IndexingProgress({
                         )}
                     </div>
 
+                    {/* Why the whole batch failed */}
+                    {isFailed && status.errorMessage && (
+                        <ProblemAlert title="Indexing failed" error={new Error(status.errorMessage)} className="mt-4" />
+                    )}
+
                     {/* Errors */}
                     {status.errors.length > 0 && (
                         <div className="mt-4">
@@ -462,7 +469,7 @@ export function DocumentUploadPanel({
                 });
             }
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'Indexing failed');
+            reportActionError('Index documents', error);
         }
     }, [parsedData, indexMutation, onComplete]);
 
@@ -474,7 +481,7 @@ export function DocumentUploadPanel({
             await cancelMutation.mutateAsync(activeBatchId);
             toast.info('Indexing cancelled');
         } catch (error) {
-            toast.error('Failed to cancel');
+            reportActionError('Cancel indexing', error);
         }
     }, [activeBatchId, cancelMutation]);
 

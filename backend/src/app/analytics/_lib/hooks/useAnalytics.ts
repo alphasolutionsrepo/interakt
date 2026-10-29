@@ -4,6 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { browserTimeZone, periodKey, periodParams, previousPeriod, type Period } from '../period';
+import { toApiError } from '@/shared/api/api-error';
 
 export type TimeRange = '1h' | '24h' | '7d' | '30d' | '90d';
 
@@ -236,18 +237,20 @@ export function useFindingVisibility(experienceId?: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ findingId, experienceId, days }),
       });
-      if (!response.ok) throw new Error('Failed to hide finding');
+      if (!response.ok) throw await toApiError(response, 'Failed to hide finding');
     },
     onSuccess,
+    meta: { label: 'Hide finding' },
   });
   const show = useMutation({
     mutationFn: async (findingId: string) => {
       const params = new URLSearchParams({ findingId });
       if (experienceId) params.set('experienceId', experienceId);
       const response = await fetch(`/api/analytics/insights/hidden?${params}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to show finding again');
+      if (!response.ok) throw await toApiError(response, 'Failed to show finding again');
     },
     onSuccess,
+    meta: { label: 'Show finding again' },
   });
   return { hide, show };
 }

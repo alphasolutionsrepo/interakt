@@ -54,6 +54,7 @@ import {
     Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportActionError } from '@/shared/activity/report';
 import { safeUrl, safeMailto } from '@/shared/utils/safe-url';
 import {
     useBrowseDocuments,
@@ -414,7 +415,7 @@ function BrowseDocuments({ searchIndexId }: { searchIndexId: string }) {
             setPendingDeleteId(null);
             setExpandedId(null);
         } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Failed to delete document');
+            reportActionError('Delete document', err);
         }
     };
 
@@ -666,7 +667,7 @@ function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
             setLookupId(null);
             setInputValue('');
         } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Failed to delete document');
+            reportActionError('Delete document', err);
         }
     };
 
@@ -805,7 +806,7 @@ function DeleteByFilter({ searchIndexId }: { searchIndexId: string }) {
             }
         } catch (err) {
             setPreview(null);
-            toast.error(err instanceof Error ? err.message : 'Preview failed');
+            reportActionError('Preview delete by filter', err);
         }
     };
 
@@ -819,7 +820,7 @@ function DeleteByFilter({ searchIndexId }: { searchIndexId: string }) {
             setConfirmOpen(false);
             setPreview(null);
         } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Delete failed');
+            reportActionError('Delete documents by filter', err);
         }
     };
 

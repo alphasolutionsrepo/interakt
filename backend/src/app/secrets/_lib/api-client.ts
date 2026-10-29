@@ -1,25 +1,13 @@
 // app/secrets/_lib/api-client.ts
 
-export class ApiError extends Error {
-  status: number;
-  details?: unknown;
+import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
 
-  constructor(message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.details = details;
-  }
-}
+export { ApiError };
 
 async function handleResponse<T>(response: Response): Promise<T> {
   const data = await response.json();
   if (!response.ok) {
-    throw new ApiError(
-      data.error || data.message || 'An error occurred',
-      response.status,
-      data.details
-    );
+    throw apiErrorFrom(data, response.status);
   }
   return data.data ?? data;
 }
@@ -51,7 +39,7 @@ export const secretsApi = {
     const response = await fetch(url);
     const json = await response.json();
     if (!response.ok) {
-      throw new ApiError(json.error || json.message || 'An error occurred', response.status);
+      throw apiErrorFrom(json, response.status);
     }
     return json.data ?? json;
   },

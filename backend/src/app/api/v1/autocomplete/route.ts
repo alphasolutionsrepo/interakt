@@ -38,11 +38,14 @@
 
 import { NextRequest } from 'next/server';
 import { handleAutocomplete } from '@/features/search-experience/search-experience.api.handlers';
+import { publicRoute } from '@/shared/api/public-route';
 
-export async function POST(request: NextRequest) {
+async function post(request: NextRequest) {
   return handleAutocomplete(request);
 }
 
 export async function OPTIONS(request: NextRequest) {
   return handleAutocomplete(request);
 }
+
+export const POST = publicRoute(post);

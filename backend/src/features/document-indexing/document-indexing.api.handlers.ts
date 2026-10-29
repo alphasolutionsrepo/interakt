@@ -7,7 +7,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { IndexLastJob } from '@/db/schema/search-index.schema';
+import { jobError, recordLastJob } from '@/features/search-index/search-index.service';
+import { currentRequestId } from '@/shared/api/request-id';
 import { apiResponse } from '@/shared/api/response';
+import { scrub } from '@/shared/errors/upstream';
 import { createLogger } from '@/shared/logger/logger';
 // Session resolution now happens inside resolveDocumentActor, which handles both
 // session and ingestion-key callers.
@@ -136,14 +140,23 @@ async function runDocumentIndexing(
         ...attribution.log,
     });
 
-    // Index documents
-    const result = await indexDocuments({
-        searchIndexId,
-        documents,
-        sourceFileName,
-        sourceSizeBytes: contentLength ? parseInt(contentLength, 10) : undefined,
-        ...attribution.audit,
-    });
+    // Index documents. The outcome is kept on the index so its page can show it later
+    const startedAt = new Date().toISOString();
+    await recordLastJob(searchIndexId, { kind: 'upload', status: 'running', startedAt });
+    let result: Awaited<ReturnType<typeof indexDocuments>>;
+    try {
+        result = await indexDocuments({
+            searchIndexId,
+            documents,
+            sourceFileName,
+            sourceSizeBytes: contentLength ? parseInt(contentLength, 10) : undefined,
+            ...attribution.audit,
+        });
+    } catch (error) {
+        await recordLastJob(searchIndexId, { kind: 'upload', status: 'failed', startedAt, finishedAt: new Date().toISOString(), error: jobError(error) });
+        throw error;
+    }
+    await recordLastJob(searchIndexId, uploadOutcome(result, startedAt, sourceFileName));
 
     // Build response message
     let message = result.success
@@ -193,6 +206,33 @@ async function runDocumentIndexing(
     });
 
     return apiResponse.success(response, result.success ? 200 : 207); // 207 = Multi-Status
+}
+
+/**
+ * How an upload ended, for the index page. Nothing indexed is a failure, with the
+ * reason the indexer gave (index setup, mappings) or the first document error.
+ */
+function uploadOutcome(
+    result: Awaited<ReturnType<typeof indexDocuments>>,
+    startedAt: string,
+    sourceFileName?: string
+): IndexLastJob {
+    const from = sourceFileName ? ` from ${sourceFileName}` : '';
+    const base = { kind: 'upload' as const, startedAt, finishedAt: new Date().toISOString() };
+    if (result.indexedDocuments > 0) {
+        const failed = result.failedDocuments > 0 ? `, ${result.failedDocuments} failed` : '';
+        return { ...base, status: 'succeeded', summary: `${result.indexedDocuments} of ${result.totalDocuments} documents indexed${from}${failed}` };
+    }
+    const reason = result.errors[0]?.error ?? 'No documents were indexed';
+    return {
+        ...base,
+        status: 'failed',
+        error: {
+            code: 'INDEXING_FAILED',
+            message: scrub(result.totalDocuments > 0 ? `None of the ${result.totalDocuments} documents${from} were indexed: ${reason}` : reason),
+            requestId: currentRequestId(),
+        },
+    };
 }
 
 // ============================================================================
@@ -286,6 +326,7 @@ export async function handleListBatches(
                 createdAt: b.createdAt.toISOString(),
                 completedAt: b.completedAt?.toISOString() || null,
                 durationMs: b.durationMs,
+                errorMessage: b.errorMessage ?? null,
             })),
         };
 
@@ -364,6 +405,7 @@ export async function handleGetBatchStatus(
                 estimatedRemainingMs,
             },
             errors: progress.errors.slice(0, 100), // Limit errors in response
+            errorMessage: progress.errorMessage,
         };
 
         return apiResponse.success(response);

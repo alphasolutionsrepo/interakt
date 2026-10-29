@@ -195,6 +195,8 @@ export interface IndexingStatusResponse {
         error: string;
         field?: string;
     }>;
+    /** Why the whole batch failed (index setup, mappings), when it did */
+    errorMessage?: string | null;
 }
 
 /**
@@ -352,5 +354,7 @@ export interface BatchListResponse {
         createdAt: string;
         completedAt: string | null;
         durationMs: number | null;
+        /** Why the whole batch failed, when it did */
+        errorMessage: string | null;
     }>;
 }

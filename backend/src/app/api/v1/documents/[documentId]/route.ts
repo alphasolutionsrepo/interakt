@@ -15,10 +15,11 @@ import { createLogger } from '@/shared/logger/logger';
 import { authenticateAccessToken, createCorsHeaders, handleCorsPreflight, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
 import * as searchService from '@/features/search/search.service';
 import { SearchError } from '@/features/search/search.types';
+import { publicRoute } from '@/shared/api/public-route';
 
 const logger = createLogger('document-api');
 
-export async function GET(
+async function get(
   request: NextRequest,
   { params }: { params: Promise<{ documentId: string }> }
 ) {
@@ -127,3 +128,5 @@ export async function GET(
 export async function OPTIONS() {
   return handleCorsPreflight();
 }
+
+export const GET = publicRoute(get);

@@ -26,6 +26,7 @@ import {
     Plus,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportActionError } from '@/shared/activity/report';
 import { cn } from '@/lib/utils';
 import { useSearchIndex } from '../../../_lib/hooks/useSearchIndexes';
 import {
@@ -454,10 +455,7 @@ export default function FieldMappingsPage() {
 
             setReviewDialogOpen(false);
         } catch (err) {
-            console.error('Failed to create fields:', err);
-            toast.error('Failed to create fields', {
-                description: err instanceof Error ? err.message : 'Unknown error',
-            });
+            reportActionError('Create fields', err);
         } finally {
             setIsCreatingFields(false);
         }
@@ -632,8 +630,8 @@ export default function FieldMappingsPage() {
             }
             refetchSummary();
         } catch (error) {
-            console.error('Failed to save imported mappings:', error);
-            toast.error('Import applied locally, but saving failed — click Save All to retry.');
+            // The import is applied on screen; Save All retries the save
+            reportActionError('Save imported field mappings', error);
         } finally {
             setIsSaving(false);
         }
@@ -680,8 +678,7 @@ export default function FieldMappingsPage() {
 
             refetchSummary();
         } catch (error) {
-            console.error('Failed to save mappings:', error);
-            toast.error('Failed to save changes');
+            reportActionError('Save field mappings', error);
         } finally {
             setIsSaving(false);
         }

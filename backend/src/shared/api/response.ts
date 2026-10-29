@@ -8,6 +8,15 @@
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 
+import { isPublicRequest } from './public-route';
+import { currentRequestId } from './request-id';
+
+import { type FieldError, INTERNAL_MESSAGE, codeForStatus } from '@/shared/errors/app-error';
+import { toAppError } from '@/shared/errors/to-app-error';
+import { createLogger } from '@/shared/logger/logger';
+
+const logger = createLogger('api');
+
 export interface APISuccessResponse<T = any> {
     success: true;
     data: T;
@@ -19,11 +28,48 @@ export interface APISuccessResponse<T = any> {
     };
 }
 
+/**
+ * Every error response has this shape. message says what happened in plain words,
+ * hint what to do, fields which form fields are wrong, details the technical part
+ * (the provider, its status and its own message, redacted). requestId is on the
+ * server log line for the error, so support can find it.
+ */
 export interface APIErrorResponse {
     success: false;
+    code: string;
+    message: string;
+    /** Same as message; kept for clients that read error */
     error: string;
+    hint?: string;
+    fields?: FieldError[];
     details?: any;
-    code?: string;
+    requestId: string;
+}
+
+interface ErrorBody {
+    code: string;
+    message: string;
+    hint?: string;
+    fields?: FieldError[];
+    details?: unknown;
+}
+
+function errorResponse(body: ErrorBody, status: number, requestId: string = currentRequestId()): NextResponse<APIErrorResponse> {
+    // Visitors of the widget and API clients don't get to see which service failed or how
+    const internal = isPublicRequest() && status >= 500;
+    return NextResponse.json(
+        {
+            success: false as const,
+            code: body.code,
+            message: body.message,
+            error: body.message,
+            ...(body.hint && !internal && { hint: body.hint }),
+            ...(body.fields?.length && { fields: body.fields }),
+            ...(body.details !== undefined && !internal && { details: body.details }),
+            requestId,
+        },
+        { status }
+    );
 }
 
 /**
@@ -63,28 +109,47 @@ function successWithPagination<T>(
 }
 
 /**
- * Error response
+ * Error response for anything thrown. Errors we recognise (AppError, the feature
+ * errors, provider errors) answer with their own status, message and hint; others
+ * get a generic message. A string is our own message and is shown as it is.
+ * status is used when the error doesn't carry one of its own.
  */
-function error(err: Error | string, status: number = 500): NextResponse<APIErrorResponse> {
-    const rawMessage = err instanceof Error ? err.message : err;
+function error(err: unknown, status: number = 500): NextResponse<APIErrorResponse> {
+    const requestId = currentRequestId();
 
-    // Never leak internal details (SQL, stack traces, etc.) to clients for 5xx errors
-    const clientMessage = status >= 500
-        ? 'Something went wrong. Please try again or contact support if the issue persists.'
-        : rawMessage;
-
-    if (status >= 500) {
-        const logErr = err instanceof Error ? err : new Error(rawMessage);
-        console.error('[api] Internal error:', logErr.message, logErr.stack);
+    if (typeof err === 'string') {
+        if (status >= 500) logger.error(err, undefined, { requestId });
+        return errorResponse({ code: codeForStatus(status), message: err }, status, requestId);
     }
 
-    return NextResponse.json(
+    const appError = toAppError(err);
+    const recognised = appError.code !== 'INTERNAL';
+    const finalStatus = recognised ? appError.status : status;
+    const message = recognised
+        ? appError.message
+        // The caller chose a 4xx for this error: its message is meant for the user
+        : finalStatus < 500 && err instanceof Error ? err.message : INTERNAL_MESSAGE;
+
+    if (finalStatus >= 500) {
+        logger.error('Request failed', err instanceof Error ? err : new Error(String(err)), {
+            requestId,
+            code: appError.code,
+            ...(appError.details !== undefined && { details: appError.details }),
+        });
+    } else {
+        logger.warn('Request rejected', { requestId, code: appError.code, message });
+    }
+
+    return errorResponse(
         {
-            success: false,
-            error: clientMessage,
-            code: status >= 500 ? 'INTERNAL_ERROR' : 'ERROR',
+            code: recognised ? appError.code : codeForStatus(finalStatus),
+            message,
+            hint: appError.hint,
+            fields: appError.fields,
+            details: appError.details,
         },
-        { status }
+        finalStatus,
+        requestId
     );
 }
 
@@ -92,17 +157,16 @@ function error(err: Error | string, status: number = 500): NextResponse<APIError
  * Validation error (Zod)
  */
 function validationError(zodError: ZodError): NextResponse<APIErrorResponse> {
-    return NextResponse.json(
+    return errorResponse(
         {
-            success: false,
-            error: 'Validation failed',
-            details: zodError.errors.map(err => ({
+            code: 'VALIDATION_ERROR',
+            message: 'Some values are not valid',
+            fields: zodError.errors.map(err => ({
                 field: err.path.join('.'),
                 message: err.message,
             })),
-            code: 'VALIDATION_ERROR',
         },
-        { status: 400 }
+        400
     );
 }
 
@@ -110,56 +174,28 @@ function validationError(zodError: ZodError): NextResponse<APIErrorResponse> {
  * Not found error
  */
 function notFound(message: string = 'Resource not found'): NextResponse<APIErrorResponse> {
-    return NextResponse.json(
-        {
-            success: false,
-            error: message,
-            code: 'NOT_FOUND',
-        },
-        { status: 404 }
-    );
+    return errorResponse({ code: 'NOT_FOUND', message }, 404);
 }
 
 /**
  * Bad request error
  */
 function badRequest(message: string): NextResponse<APIErrorResponse> {
-    return NextResponse.json(
-        {
-            success: false,
-            error: message,
-            code: 'BAD_REQUEST',
-        },
-        { status: 400 }
-    );
+    return errorResponse({ code: 'BAD_REQUEST', message }, 400);
 }
 
 /**
  * Unauthorized error
  */
 function unauthorized(message: string = 'Unauthorized'): NextResponse<APIErrorResponse> {
-    return NextResponse.json(
-        {
-            success: false,
-            error: message,
-            code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
-    );
+    return errorResponse({ code: 'UNAUTHORIZED', message }, 401);
 }
 
 /**
  * Forbidden error
  */
 function forbidden(message: string = 'Forbidden'): NextResponse<APIErrorResponse> {
-    return NextResponse.json(
-        {
-            success: false,
-            error: message,
-            code: 'FORBIDDEN',
-        },
-        { status: 403 }
-    );
+    return errorResponse({ code: 'FORBIDDEN', message }, 403);
 }
 
 /**
@@ -170,29 +206,14 @@ function forbidden(message: string = 'Forbidden'): NextResponse<APIErrorResponse
  * only showing the message.
  */
 function conflict(message: string, details?: any): NextResponse<APIErrorResponse> {
-    return NextResponse.json(
-        {
-            success: false,
-            error: message,
-            ...(details !== undefined && { details }),
-            code: 'CONFLICT',
-        },
-        { status: 409 }
-    );
+    return errorResponse({ code: 'CONFLICT', message, details }, 409);
 }
 
 /**
  * Internal server error
  */
 function internalError(message: string = 'Internal server error'): NextResponse<APIErrorResponse> {
-    return NextResponse.json(
-        {
-            success: false,
-            error: message,
-            code: 'INTERNAL_ERROR',
-        },
-        { status: 500 }
-    );
+    return errorResponse({ code: 'INTERNAL', message }, 500);
 }
 
 // Export all response builders

@@ -137,7 +137,7 @@ export async function indexExists(indexName: string): Promise<boolean> {
 export async function createIndex(
     indexName: string,
     options: CreateIndexOptions = {}
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; cause?: unknown }> {
     try {
         const es = getElasticsearchClient();
 
@@ -167,14 +167,14 @@ export async function createIndex(
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to create index';
         logger.error('Failed to create index', { indexName, error: message });
-        return { success: false, error: message };
+        return { success: false, error: message, cause: error };
     }
 }
 
 /**
  * Delete an index
  */
-export async function deleteIndex(indexName: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteIndex(indexName: string): Promise<{ success: boolean; error?: string; cause?: unknown }> {
     try {
         const es = getElasticsearchClient();
 
@@ -189,7 +189,7 @@ export async function deleteIndex(indexName: string): Promise<{ success: boolean
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to delete index';
         logger.error('Failed to delete index', { indexName, error: message });
-        return { success: false, error: message };
+        return { success: false, error: message, cause: error };
     }
 }
 

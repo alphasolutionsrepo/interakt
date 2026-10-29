@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Sparkles, ArrowRight, Check, RefreshCw, Info } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { reportActionError } from '@/shared/activity/report';
 
 // ============================================================================
 // TYPES
@@ -110,6 +111,9 @@ export function CustomInstructionsGenerator({
 
       return response.json();
     },
+    // Shown in the dialog below; recorded in the Activity panel here
+    meta: { label: 'Generate instructions', inlineError: true },
+    onError: (error) => reportActionError('Generate instructions', error, { inline: true }),
     onSuccess: (response) => {
       setGeneratedInstructions(response.data.instructions);
       if (currentInstructions) {

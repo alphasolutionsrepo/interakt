@@ -11,8 +11,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { authenticateAIAccessToken } from '@/features/ai-experience/access-token.middleware';
+import { publicRoute } from '@/shared/api/public-route';
 
-export async function GET(request: NextRequest) {
+async function get(request: NextRequest) {
   // ── Authenticate (token, allowed origins) ──────────────────────────────────
   // Every page with the widget loads this: a setup call, checked for allowed origins but not
   // counted towards any limit.
@@ -54,3 +55,5 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }
 
+
+export const GET = publicRoute(get);

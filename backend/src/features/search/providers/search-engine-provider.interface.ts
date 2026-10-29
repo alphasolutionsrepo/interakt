@@ -114,6 +114,8 @@ export interface IndexSettingsResult {
 export interface OperationResult {
     success: boolean;
     error?: string;
+    /** The error the provider threw, so callers can keep it as the cause */
+    cause?: unknown;
 }
 
 /**

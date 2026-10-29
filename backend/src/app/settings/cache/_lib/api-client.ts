@@ -5,6 +5,8 @@
  * Type-safe API calls for cache operations
  */
 
+import { toApiError } from '@/shared/api/api-error';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -58,10 +60,7 @@ export const CACHE_FEATURES: CacheFeatureInfo[] = [
 // ============================================================================
 
 async function handleResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
-  }
+  if (!response.ok) throw await toApiError(response);
   const json = await response.json();
   return json.data ?? json;
 }

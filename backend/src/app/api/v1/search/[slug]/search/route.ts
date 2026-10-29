@@ -24,6 +24,7 @@ import * as repository from '@/features/search-experience/search-experience.repo
 import { publicSearchRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import { executeExperienceSearch, NoSourcesError } from '@/features/search-experience/experience-search';
 import type { PublicSearchRequest } from '@/features/search-experience/search-experience.types';
+import { publicRoute } from '@/shared/api/public-route';
 
 // Extended schema: playground-only switches
 const searchRequestSchema = publicSearchRequestSchema.extend({
@@ -34,7 +35,7 @@ const searchRequestSchema = publicSearchRequestSchema.extend({
 
 const logger = createLogger('search-api-slug');
 
-export async function POST(
+async function post(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
@@ -220,3 +221,5 @@ function handleSearchError(error: unknown, slug: string): NextResponse {
     { status: 500 }
   );
 }
+
+export const POST = publicRoute(post);

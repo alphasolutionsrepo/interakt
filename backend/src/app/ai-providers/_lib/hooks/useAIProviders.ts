@@ -14,7 +14,8 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { aiProvidersApi, aiModelsApi, systemDefaultsApi, ApiError } from '../api-client';
+import { reportActionError } from '@/shared/activity/report';
+import { aiProvidersApi, aiModelsApi, systemDefaultsApi } from '../api-client';
 import type {
     AIProviderWithModelsResponse,
     AIModelWithProviderResponse,
@@ -76,9 +77,7 @@ export function useAIProviders(options?: { enabled?: boolean }) {
             queryClient.invalidateQueries({ queryKey: systemDefaultsKeys.all });
             toast.success('Provider enabled');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to enable provider');
-        },
+        meta: { label: 'Enable provider' },
     });
 
     // Disable mutation
@@ -89,9 +88,7 @@ export function useAIProviders(options?: { enabled?: boolean }) {
             queryClient.invalidateQueries({ queryKey: systemDefaultsKeys.all });
             toast.success('Provider disabled');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to disable provider');
-        },
+        meta: { label: 'Disable provider' },
     });
 
     // Delete mutation
@@ -102,9 +99,7 @@ export function useAIProviders(options?: { enabled?: boolean }) {
             queryClient.invalidateQueries({ queryKey: systemDefaultsKeys.all });
             toast.success('Provider deleted');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to delete provider');
-        },
+        meta: { label: 'Delete provider' },
     });
 
     return {
@@ -144,9 +139,7 @@ export function useAIProvider(id: string, options?: { enabled?: boolean }) {
             queryClient.invalidateQueries({ queryKey: aiProviderKeys.lists() });
             toast.success('Provider updated');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to update provider');
-        },
+        meta: { label: 'Update provider' },
     });
 
     // Test connection mutation
@@ -156,13 +149,11 @@ export function useAIProvider(id: string, options?: { enabled?: boolean }) {
             if (result.success) {
                 toast.success(`Connected successfully (${result.responseTimeMs}ms)`);
             } else {
-                toast.error(`Connection failed: ${result.message}`);
+                reportActionError('Connection test', result.message);
             }
             queryClient.invalidateQueries({ queryKey: aiProviderKeys.detail(id) });
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Connection test failed');
-        },
+        meta: { label: 'Connection test' },
     });
 
     // Discover models mutation (Ollama only)
@@ -178,9 +169,7 @@ export function useAIProvider(id: string, options?: { enabled?: boolean }) {
             queryClient.invalidateQueries({ queryKey: aiProviderKeys.lists() });
             queryClient.invalidateQueries({ queryKey: aiModelKeys.all });
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Model discovery failed');
-        },
+        meta: { label: 'Model discovery' },
     });
 
     return {
@@ -215,9 +204,7 @@ export function useCreateProvider() {
             queryClient.invalidateQueries({ queryKey: aiProviderKeys.all });
             toast.success('Provider created successfully');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to create provider');
-        },
+        meta: { label: 'Create provider', inlineError: true },
     });
 }
 
@@ -280,9 +267,7 @@ export function useSystemDefaults() {
             queryClient.invalidateQueries({ queryKey: systemDefaultsKeys.all });
             toast.success('System defaults updated');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to update system defaults');
-        },
+        meta: { label: 'Update system defaults' },
     });
 
     // Set for purpose mutation
@@ -296,9 +281,7 @@ export function useSystemDefaults() {
             queryClient.invalidateQueries({ queryKey: systemDefaultsKeys.all });
             toast.success('Default updated');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to update default');
-        },
+        meta: { label: 'Update default' },
     });
 
     return {

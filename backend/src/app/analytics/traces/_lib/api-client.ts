@@ -1,5 +1,6 @@
 // app/analytics/traces/_lib/api-client.ts
 
+import { apiErrorFrom, toApiError } from '@/shared/api/api-error';
 import type { TraceListFacts } from '@/features/telemetry/telemetry.types';
 import { approximateTimeRange, periodParams, type Period } from '../../_lib/period';
 
@@ -76,24 +77,20 @@ export interface SpanListResponse {
 
 async function fetchApi<T>(url: string): Promise<T> {
   const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
+  if (!response.ok) throw await toApiError(response);
   const json = await response.json();
   if (!json.success) {
-    throw new Error(json.error || 'Unknown error');
+    throw apiErrorFrom(json, response.status);
   }
   return json as T;
 }
 
 async function deleteApi<T>(url: string): Promise<T> {
   const response = await fetch(url, { method: 'DELETE' });
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
+  if (!response.ok) throw await toApiError(response);
   const json = await response.json();
   if (!json.success) {
-    throw new Error(json.error || 'Failed to delete');
+    throw apiErrorFrom(json, response.status);
   }
   return json.data;
 }

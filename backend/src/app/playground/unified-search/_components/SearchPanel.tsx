@@ -51,6 +51,8 @@ import {
 import { cn } from '@/lib/utils';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+
+import { apiErrorFrom } from '@/shared/api/api-error';
 import { AutocompleteInput } from '../../search/_components/AutocompleteInput';
 import { FilterBuilder } from '../../search/_components/FilterBuilder';
 import { FacetBuilder } from '../../search/_components/FacetBuilder';
@@ -189,11 +191,11 @@ export function SearchPanel({ experienceId, slug, accessToken, trace = false }: 
         body: JSON.stringify(body),
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || json.message || 'Search failed');
+      if (!response.ok) throw apiErrorFrom(json, response.status, 'Search failed');
       return json.data as SearchResponse;
     },
     onSuccess: (data) => setResults(data),
-    onError: (error: Error) => toast.error(error.message),
+    meta: { label: 'Search' },
   });
 
   const handleSearch = useCallback(

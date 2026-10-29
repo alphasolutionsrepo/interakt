@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useHealthCheck } from '@/app/data-sources/_lib/hooks/useHealthCheck';
 import { toast } from 'sonner';
-import { toolsApi, ApiError } from '../api-client';
+import { toolsApi } from '../api-client';
 import type { CreateToolPayload, UpdateToolPayload, ListToolsParams } from '../api-client';
 
 // ============================================================================
@@ -57,9 +57,7 @@ export function useTools(params?: ListToolsParams) {
       queryClient.invalidateQueries({ queryKey: toolKeys.lists() });
       toast.success('Tool deleted successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete tool');
-    },
+    meta: { label: 'Delete tool' },
   });
 
   return {
@@ -95,9 +93,7 @@ export function useTool(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: toolKeys.lookupFields(id!) });
       toast.success('Tool updated successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update tool');
-    },
+    meta: { label: 'Update tool' },
   });
 
   const deleteMutation = useMutation({
@@ -106,9 +102,7 @@ export function useTool(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: toolKeys.lists() });
       toast.success('Tool deleted successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete tool');
-    },
+    meta: { label: 'Delete tool' },
   });
 
   const experiencesQuery = useQuery({
@@ -147,9 +141,7 @@ export function useCreateTool() {
       queryClient.invalidateQueries({ queryKey: toolKeys.lists() });
       queryClient.invalidateQueries({ queryKey: toolKeys.allActive() });
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to create tool');
-    },
+    meta: { label: 'Create tool' },
   });
 
   return {

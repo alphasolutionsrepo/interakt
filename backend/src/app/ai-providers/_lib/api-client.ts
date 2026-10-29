@@ -1,5 +1,7 @@
 // app/ai-providers/_lib/api-client.ts
 
+import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+
 /**
  * AI Providers API Client
  * 
@@ -29,16 +31,7 @@ import type {
 // Error Handling
 // ============================================================================
 
-export class ApiError extends Error {
-    constructor(
-        public status: number,
-        message: string,
-        public code?: string
-    ) {
-        super(message);
-        this.name = 'ApiError';
-    }
-}
+export { ApiError };
 
 /**
  * Handle API response and extract data
@@ -48,7 +41,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
     if (!contentType?.includes('application/json')) {
         if (!response.ok) {
-            throw new ApiError(response.status, `HTTP ${response.status}: ${response.statusText}`);
+            throw new ApiError(`HTTP ${response.status}: ${response.statusText}`, response.status);
         }
         return response.text() as unknown as T;
     }
@@ -56,11 +49,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
     const json = await response.json();
 
     if (!response.ok) {
-        throw new ApiError(
-            response.status,
-            json.error || json.message || `HTTP ${response.status}`,
-            json.code
-        );
+        throw apiErrorFrom(json, response.status);
     }
 
     // Handle { success: true, data: {...} } format

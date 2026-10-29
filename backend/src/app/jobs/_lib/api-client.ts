@@ -1,5 +1,7 @@
 // app/jobs/_lib/api-client.ts
 
+import { apiErrorFrom } from '@/shared/api/api-error';
+
 export type JobState =
   | 'created'
   | 'retry'
@@ -54,7 +56,7 @@ export interface ListJobsParams {
 async function unwrap<T>(response: Response): Promise<T> {
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(json.error || json.message || 'Request failed');
+    throw apiErrorFrom(json, response.status);
   }
   return json.data ?? json;
 }

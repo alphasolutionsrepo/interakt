@@ -1,5 +1,7 @@
 // app/search-indexes/_lib/api-client.ts
 
+import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+
 /**
  * Search Index API Client
  * 
@@ -72,27 +74,13 @@ export interface SearchIndexImportResult {
 // ERROR HANDLING
 // ============================================================================
 
-export class ApiError extends Error {
-    status: number;
-    details?: unknown;
-
-    constructor(message: string, status: number, details?: unknown) {
-        super(message);
-        this.name = 'ApiError';
-        this.status = status;
-        this.details = details;
-    }
-}
+export { ApiError };
 
 async function handleResponse<T>(response: Response): Promise<T> {
     const data = await response.json();
     
     if (!response.ok) {
-        throw new ApiError(
-            data.error || data.message || 'An error occurred',
-            response.status,
-            data.details
-        );
+        throw apiErrorFrom(data, response.status);
     }
     
     return data.data ?? data;
@@ -348,11 +336,7 @@ export const searchIndexesApi = {
         const response = await fetch(`/api/search-indexes/${id}/export`);
         if (!response.ok) {
             const data = await response.json();
-            throw new ApiError(
-                data.error || data.message || 'Export failed',
-                response.status,
-                data.details
-            );
+            throw apiErrorFrom(data, response.status);
         }
         return response.blob();
     },
@@ -826,6 +810,8 @@ export interface IndexingStatusResponse {
         error: string;
         field?: string;
     }>;
+    /** Why the whole batch failed (index setup, mappings), when it did */
+    errorMessage?: string | null;
 }
 
 export interface BatchListItem {
@@ -838,6 +824,8 @@ export interface BatchListItem {
     createdAt: string;
     completedAt: string | null;
     durationMs: number | null;
+    /** Why the whole batch failed, when it did */
+    errorMessage?: string | null;
 }
 
 // ============================================================================

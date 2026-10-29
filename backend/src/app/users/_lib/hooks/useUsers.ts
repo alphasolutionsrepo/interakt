@@ -14,7 +14,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { usersApi, ApiError } from '../api-client';
+import { usersApi } from '../api-client';
 import type {
   CreateUserDTO,
   UpdateUserDTO,
@@ -57,9 +57,7 @@ export function useUsers(options?: { enabled?: boolean }) {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
       toast.success('User created successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to create user');
-    },
+    meta: { label: 'Create user', inlineError: true },
   });
 
   // Update mutation
@@ -70,9 +68,7 @@ export function useUsers(options?: { enabled?: boolean }) {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
       toast.success('User updated successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update user');
-    },
+    meta: { label: 'Update user', inlineError: true },
   });
 
   // Activate mutation
@@ -82,9 +78,7 @@ export function useUsers(options?: { enabled?: boolean }) {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
       toast.success('User activated successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to activate user');
-    },
+    meta: { label: 'Activate user' },
   });
 
   // Deactivate mutation
@@ -94,9 +88,7 @@ export function useUsers(options?: { enabled?: boolean }) {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
       toast.success('User deactivated successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to deactivate user');
-    },
+    meta: { label: 'Deactivate user' },
   });
 
   // Change password mutation
@@ -106,9 +98,7 @@ export function useUsers(options?: { enabled?: boolean }) {
     onSuccess: () => {
       toast.success('Password changed successfully');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to change password');
-    },
+    meta: { label: 'Change password', inlineError: true },
   });
 
   return {

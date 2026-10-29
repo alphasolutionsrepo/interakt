@@ -1,5 +1,7 @@
 // app/search-experiences/_lib/api-client.ts
 
+import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+
 /**
  * Search Experience API Client
  *
@@ -21,27 +23,13 @@ import type {
 // ERROR HANDLING
 // ============================================================================
 
-export class ApiError extends Error {
-  status: number;
-  details?: unknown;
-
-  constructor(message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.details = details;
-  }
-}
+export { ApiError };
 
 async function handleResponse<T>(response: Response): Promise<T> {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new ApiError(
-      data.error || data.message || 'An error occurred',
-      response.status,
-      data.details
-    );
+    throw apiErrorFrom(data, response.status);
   }
 
   return data.data ?? data;
@@ -93,11 +81,7 @@ export const searchExperiencesApi = {
     const json = await response.json();
 
     if (!response.ok) {
-      throw new ApiError(
-        json.error || json.message || 'An error occurred',
-        response.status,
-        json.details
-      );
+      throw apiErrorFrom(json, response.status);
     }
 
     // Transform API response format: { data: [...], pagination: {...} }

@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { promptTemplatesApi, ApiError } from '../api-client';
+import { promptTemplatesApi } from '../api-client';
 import type {
   ListTemplatesParams,
   CreateVersionPayload,
@@ -89,9 +89,7 @@ export function usePromptTemplate(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: promptTemplateKeys.defaults() });
       toast.success('New version created');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to create version');
-    },
+    meta: { label: 'Create version' },
   });
 
   const rollbackMutation = useMutation({
@@ -102,9 +100,7 @@ export function usePromptTemplate(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: promptTemplateKeys.defaults() });
       toast.success('Rolled back to selected version');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to rollback');
-    },
+    meta: { label: 'Rollback' },
   });
 
   return {
@@ -165,9 +161,7 @@ export function useExperienceOverrides(experienceId: string) {
       invalidate();
       toast.success('Prompt override assigned');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to assign override');
-    },
+    meta: { label: 'Assign override' },
   });
 
   const removeOverrideMutation = useMutation({
@@ -177,9 +171,7 @@ export function useExperienceOverrides(experienceId: string) {
       invalidate();
       toast.success('Reverted to the system default');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to remove override');
-    },
+    meta: { label: 'Remove override' },
   });
 
   return {

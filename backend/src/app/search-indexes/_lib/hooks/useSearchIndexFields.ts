@@ -12,7 +12,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { searchIndexFieldsApi, ApiError } from '../api-client';
+import { searchIndexFieldsApi } from '../api-client';
 import { searchIndexKeys } from './useSearchIndexes';
 import type {
     SearchIndexField,
@@ -113,9 +113,7 @@ export function useUpdateField(searchIndexId: string) {
 
             toast.success('Field updated successfully');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to update field');
-        },
+        meta: { label: 'Update field' },
     });
 }
 
@@ -164,9 +162,7 @@ export function useDeleteField(searchIndexId: string) {
 
             toast.success('Field deleted');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to delete field');
-        },
+        meta: { label: 'Delete field' },
     });
 }
 
@@ -205,9 +201,7 @@ export function useUpdateFieldMappingConfig(searchIndexId: string) {
 
             toast.success('Field configuration updated');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to update field configuration');
-        },
+        meta: { label: 'Update field configuration' },
     });
 }
 
@@ -224,6 +218,7 @@ export function useBulkUpdateMappings(searchIndexId: string) {
     return useMutation({
         mutationFn: (data: BulkUpdateFieldMappingsDTO) =>
             searchIndexFieldsApi.bulkUpdateMappings(searchIndexId, data),
+        meta: { label: 'Save field mappings' },
         onSuccess: (updatedFields) => {
             // Replace the entire fields list
             queryClient.setQueryData<SearchIndexField[]>(
@@ -263,9 +258,7 @@ export function useClearMappings(searchIndexId: string) {
 
             toast.success('Field mappings cleared');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to clear mappings');
-        },
+        meta: { label: 'Clear mappings' },
     });
 }
 
@@ -300,9 +293,7 @@ export function useUpdateAdditionalDataConfig(searchIndexId: string) {
 
             toast.success('Additional data configuration updated');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to update additional data configuration');
-        },
+        meta: { label: 'Update additional data configuration' },
     });
 }
 

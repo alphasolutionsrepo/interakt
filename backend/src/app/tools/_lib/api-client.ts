@@ -1,27 +1,14 @@
 // app/tools/_lib/api-client.ts
 
+import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
 import type { LookupFieldCandidate, LookupFieldRules } from '@/features/tools/executors/data-source/lookup-field-rules';
 
-export class ApiError extends Error {
-  status: number;
-  details?: unknown;
-
-  constructor(message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.details = details;
-  }
-}
+export { ApiError };
 
 async function handleResponse<T>(response: Response): Promise<T> {
   const data = await response.json();
   if (!response.ok) {
-    throw new ApiError(
-      data.error || data.message || 'An error occurred',
-      response.status,
-      data.details
-    );
+    throw apiErrorFrom(data, response.status);
   }
   return data.data ?? data;
 }
@@ -205,7 +192,7 @@ export const toolsApi = {
     const url = `/api/tools${p.toString() ? `?${p.toString()}` : ''}`;
     const response = await fetch(url);
     const json = await response.json();
-    if (!response.ok) throw new ApiError(json.error || json.message || 'An error occurred', response.status);
+    if (!response.ok) throw apiErrorFrom(json, response.status);
     return {
       tools: json.data ?? [],
       pagination: json.pagination,
@@ -243,7 +230,7 @@ export const toolsApi = {
   getAllActive: async (): Promise<ToolWithUsage[]> => {
     const response = await fetch('/api/tools/all');
     const json = await response.json();
-    if (!response.ok) throw new ApiError(json.error || json.message || 'An error occurred', response.status);
+    if (!response.ok) throw apiErrorFrom(json, response.status);
     return json.data ?? json;
   },
 
@@ -263,7 +250,7 @@ export const toolsApi = {
   getExperiences: async (id: string): Promise<{ id: string; name: string; slug: string; isActive: boolean }[]> => {
     const response = await fetch(`/api/tools/${id}/experiences`);
     const json = await response.json();
-    if (!response.ok) throw new ApiError(json.error || json.message || 'An error occurred', response.status);
+    if (!response.ok) throw apiErrorFrom(json, response.status);
     return json.data ?? json;
   },
 

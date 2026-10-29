@@ -552,14 +552,8 @@ export async function handleTriggerReindex(
             durationMs: result.durationMs,
         });
     } catch (error) {
-        const err = error as Error;
-        logger.error('Failed to trigger reindex', err);
-
-        if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
-        }
-
-        return apiResponse.error(err);
+        // apiResponse.error logs it and answers with the cause: not found, or what the search service said
+        return apiResponse.error(error);
     }
 }
 
@@ -588,7 +582,7 @@ export async function handleRecreateEmptyIndex(
         const result = await service.recreateEmptyIndex(validation.data.id, userId);
 
         if (!result.success) {
-            return apiResponse.error(new Error(result.error || 'Failed to recreate index'));
+            return apiResponse.error(new Error(result.error || 'Failed to recreate index', { cause: result.cause }));
         }
 
         logger.info('Empty index recreated via API', {
@@ -600,14 +594,8 @@ export async function handleRecreateEmptyIndex(
             message: 'Index recreated successfully. You can now re-upload documents.',
         });
     } catch (error) {
-        const err = error as Error;
-        logger.error('Failed to recreate empty index', err);
-
-        if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
-        }
-
-        return apiResponse.error(err);
+        // apiResponse.error logs it and answers with the cause: not found, or what the search service said
+        return apiResponse.error(error);
     }
 }
 

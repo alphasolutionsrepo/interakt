@@ -314,7 +314,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to create Azure index';
             logger.error('Failed to create Azure index', { indexName, error: message });
-            return { success: false, error: message };
+            return { success: false, error: message, cause: error };
         }
     }
 
@@ -330,7 +330,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
             }
             const message = error instanceof Error ? error.message : 'Failed to delete Azure index';
             logger.error('Failed to delete Azure index', { indexName, error: message });
-            return { success: false, error: message };
+            return { success: false, error: message, cause: error };
         }
     }
 

@@ -6,6 +6,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/shared/ui/custom/appSidebar"
 import { Navbar } from "@/shared/ui/custom/navbar"
 import { HelpButton } from "@/shared/ui/custom/HelpButton"
+import { ActivityMenu } from "@/shared/ui/custom/ActivityMenu"
 
 // Public routes that should NOT show the sidebar
 const PUBLIC_ROUTES = ['/', '/login', '/register']
@@ -65,6 +66,7 @@ export function AppShell({ children }: AppShellProps) {
             <div className="flex items-center justify-between px-4 py-3">
               <SidebarTrigger />
               <div className="flex items-center gap-1">
+                <ActivityMenu />
                 <HelpButton />
                 <Navbar />
               </div>
