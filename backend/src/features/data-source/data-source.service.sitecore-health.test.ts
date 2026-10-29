@@ -72,6 +72,9 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     expect(result.status).toBe('healthy');
     expect(result.documentCount).toBe(1);
     expect(result.schema?.fields.find((f) => f.name === 'year')?.valueType).toBe('number');
+    // and saved, for later searches
+    const saved = repository.updateDataSource.mock.calls[0][1] as { schema: { fields: DataSourceField[] } };
+    expect(saved.schema.fields.find((f) => f.name === 'year')?.valueType).toBe('number');
     const converted = { type: 'and', filters: [{ type: 'eq', name: 'year', value: 2024 }] };
     const asWritten = { type: 'and', filters: [{ type: 'eq', name: 'year', value: '2024' }] };
     // probe; discovery: scoped (refused), whole widget to learn types, scoped again; profiling; count
@@ -194,5 +197,26 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     expect(sentFilters().at(-1)).toEqual({
       type: 'and', filters: [{ type: 'not', filter: { type: 'anyOf', name: 'category_id', values: [3, 4] } }],
     });
+  });
+
+  it('keeps the stored fields when the fixed filters are refused even with learned types', async () => {
+    const stored: DataSourceField[] = [
+      { name: 'id', displayName: 'Id', type: 'text', providerType: 'string', valueType: 'text', isSearchable: false, isFacetable: false, isFilterable: true },
+    ];
+    repository.getDataSourceById.mockResolvedValue({
+      ...source(stored),
+      config: { ...source().config, providerSettings: { fixedFilters: [{ field: 'site', operator: 'eq', value: 'a' }] } },
+    });
+    // The widget refuses any request with the fixed filter; the whole widget has extra attributes
+    sitecore.mockImplementation(async (_url: string, init?: RequestInit) => {
+      const filter = JSON.parse(String(init?.body)).widget.items[0].search.filter;
+      if (filter) return new Response('{"message":"site is not filterable"}', { status: 400 });
+      return new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'b', other_site_only: 'x' }] }] }));
+    });
+
+    const result = await performHealthCheck('ds-1');
+
+    expect(result.status).toBe('error');
+    expect(result.schema).toBeUndefined();
   });
 });
