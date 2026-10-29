@@ -140,7 +140,7 @@ export async function performHealthCheck(id: string): Promise<HealthCheckResult>
         break;
       }
       case 'search_index_external': {
-        result = await checkExternalIndexHealth(ds.config as ExternalSearchIndexConfig);
+        result = await checkExternalIndexHealth(ds.config as ExternalSearchIndexConfig, (ds.schema as DataSourceSchema | null)?.fields);
         break;
       }
       default: {
@@ -351,8 +351,13 @@ function mapSearchIndexFieldsToSchema(fields: SearchIndexField[]): DataSourceFie
 // EXTERNAL INDEX HEALTH + SCHEMA DISCOVERY
 // ============================================================================
 
+/**
+ * @param storedFields - the source's stored fields, so Sitecore fixed filter values are
+ *   sent as their type when counting documents
+ */
 async function checkExternalIndexHealth(
   config: ExternalSearchIndexConfig,
+  storedFields?: DataSourceField[],
 ): Promise<HealthCheckResult> {
   const now = new Date().toISOString();
 
@@ -374,7 +379,7 @@ async function checkExternalIndexHealth(
   let storageSizeBytes: number | undefined;
   let statsNote = '';
   try {
-    const stats = await fetchExternalIndexStats(config);
+    const stats = await fetchExternalIndexStats(config, storedFields);
     if (stats) {
       documentCount = stats.documentCount;
       storageSizeBytes = stats.storageSizeBytes;
@@ -478,11 +483,14 @@ async function probeExternalConnection(
   }
 }
 
-/** Run a one-item Sitecore query: proves the endpoint, widget and key together. */
+/**
+ * Run a one-item Sitecore query: proves the endpoint, widget and key together. Without
+ * the fixed filters, so one written with the wrong type can't stop discovery from running.
+ */
 async function probeSitecore(config: ExternalSearchIndexConfig, now: string): Promise<HealthCheckResult> {
   try {
     const connection = await resolveExternalConnection('Sitecore Search', config);
-    await sampleSitecore(connection, 1);
+    await sampleSitecore(connection, 1, { withoutFixedFilters: true });
     return {
       status: 'healthy',
       message: `Sitecore Search widget '${config.connection.indexName}' is reachable`,
@@ -540,10 +548,14 @@ interface IndexStats {
   storageSizeBytes: number;
 }
 
-async function fetchExternalIndexStats(config: ExternalSearchIndexConfig): Promise<IndexStats | null> {
+async function fetchExternalIndexStats(
+  config: ExternalSearchIndexConfig,
+  storedFields?: DataSourceField[],
+): Promise<IndexStats | null> {
   switch (config.provider) {
     case 'sitecore_search': {
-      const sample = await sampleSitecore(await resolveExternalConnection('Sitecore Search', config), 1);
+      const connection = await resolveExternalConnection('Sitecore Search', config);
+      const sample = await sampleSitecore(connection, 1, { fields: storedFields });
       return { documentCount: sample.total, storageSizeBytes: 0 };
     }
     case 'elasticsearch':
@@ -645,7 +657,7 @@ async function discoverExternalSchema(
   if (sampleSize === 0) return discovered;
 
   try {
-    const documents = await fetchDocumentSample(config, sampleSize);
+    const documents = await fetchDocumentSample(config, sampleSize, discovered.fields);
     if (documents.length === 0) {
       logger.warn('Field profiling skipped — no documents sampled', { provider: config.provider });
       return discovered;
@@ -673,7 +685,7 @@ async function discoverExternalFields(
       return discoverAzureAISearchSchema(config);
     case 'sitecore_search': {
       const connection = await resolveExternalConnection('Sitecore Search', config);
-      return { fields: inferSitecoreFields(await sampleSitecore(connection, 25, false)), discoveredFrom: 'sample' };
+      return { fields: inferSitecoreFields(await sampleSitecore(connection, 25, { withoutFixedFilters: true })), discoveredFrom: 'sample' };
     }
     default:
       return { fields: [] };
@@ -691,9 +703,11 @@ async function discoverExternalFields(
  * the sort field favours, and a null rate measured on a biased sample is worse than no
  * null rate at all.
  */
+/** @param fields - the fields just discovered, so Sitecore fixed filter values are sent as their type */
 async function fetchDocumentSample(
   config: ExternalSearchIndexConfig,
   sampleSize: number,
+  fields: DataSourceField[],
 ): Promise<Record<string, unknown>[]> {
   switch (config.provider) {
     case 'elasticsearch':
@@ -702,7 +716,7 @@ async function fetchDocumentSample(
       return sampleAzureAISearchDocuments(config, sampleSize);
     case 'sitecore_search': {
       const connection = await resolveExternalConnection('Sitecore Search', config);
-      return (await sampleSitecore(connection, sampleSize)).items;
+      return (await sampleSitecore(connection, sampleSize, { fields })).items;
     }
     default:
       return [];

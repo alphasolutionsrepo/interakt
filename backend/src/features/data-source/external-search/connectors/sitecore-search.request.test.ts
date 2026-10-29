@@ -477,8 +477,9 @@ describe('fixed filters through the connector', () => {
     }
   });
 
-  it('samples for field discovery without fixed filters, and with them otherwise', async () => {
-    // A fixed filter value of the wrong type would fail the sample, and discovery would never learn the type
+  it('samples without fixed filters, as written, or as their field type', async () => {
+    // Without: a fixed filter value of the wrong type would fail the probe and discovery,
+    // and the type would never be learned
     const fetchMock = vi.fn(async () => ({
       ok: true,
       text: async () => JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 0, content: [] }] }),
@@ -486,12 +487,18 @@ describe('fixed filters through the connector', () => {
     vi.stubGlobal('fetch', fetchMock);
     try {
       const source = connection({ fixedFilters: [{ field: 'year', operator: 'eq', value: '2024' }] });
-      await sampleSitecore(source, 25, false);
+      const fields = inferSitecoreFields({ total: 1, items: [{ id: 'a', year: 2024 }], facets: new Map() });
+      await sampleSitecore(source, 25, { withoutFixedFilters: true });
       await sampleSitecore(source, 1);
+      await sampleSitecore(source, 1, { fields });
       const filters = fetchMock.mock.calls.map(
         (call) => JSON.parse((call as unknown as [string, { body: string }])[1].body).widget.items[0].search.filter,
       );
-      expect(filters).toEqual([undefined, { type: 'and', filters: [{ type: 'eq', name: 'year', value: '2024' }] }]);
+      expect(filters).toEqual([
+        undefined,
+        { type: 'and', filters: [{ type: 'eq', name: 'year', value: '2024' }] },
+        { type: 'and', filters: [{ type: 'eq', name: 'year', value: 2024 }] },
+      ]);
     } finally {
       vi.unstubAllGlobals();
     }
