@@ -74,6 +74,28 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     expect(sentFilters()).toEqual([undefined, undefined, converted, converted]);
   });
 
+  it("uses a stored type when this sample didn't see the attribute, or found no fields at all", async () => {
+    const storedYear: DataSourceField = { name: 'year', displayName: 'Year', type: 'number', providerType: 'number', valueType: 'number', isSearchable: false, isFacetable: false, isFilterable: false };
+    repository.getDataSourceById.mockResolvedValue(source([storedYear]));
+    const answer = (content: object[]) => new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content }] }));
+    const converted = { type: 'and', filters: [{ type: 'eq', name: 'year', value: 2024 }] };
+
+    // This sample's items have no year
+    sitecore.mockImplementationOnce(async () => answer([{ id: 'a', title: 'Linen shirt' }]));
+    sitecore.mockImplementationOnce(async () => answer([{ id: 'a', title: 'Linen shirt' }]));
+    const missing = await performHealthCheck('ds-1');
+    expect(missing.status).toBe('healthy');
+    expect(sentFilters().at(-1)).toEqual(converted);
+
+    // The sample is empty: no fields discovered
+    sitecore.mockClear();
+    sitecore.mockImplementationOnce(async () => answer([]));
+    sitecore.mockImplementationOnce(async () => answer([]));
+    const empty = await performHealthCheck('ds-1');
+    expect(empty.status).toBe('healthy');
+    expect(sentFilters().at(-1)).toEqual(converted);
+  });
+
   it("is unhealthy, naming the fixed filters, when they can't be used, and keeps the discovered fields", async () => {
     repository.getDataSourceById.mockResolvedValue(source(undefined, 'recent'));
 

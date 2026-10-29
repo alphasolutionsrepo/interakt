@@ -352,8 +352,8 @@ function mapSearchIndexFieldsToSchema(fields: SearchIndexField[]): DataSourceFie
 // ============================================================================
 
 /**
- * @param storedFields - the source's stored fields, for Sitecore fixed filter values when
- *   discovery finds none
+ * @param storedFields - the source's stored fields: with what discovery finds, they give
+ *   the types Sitecore fixed filter values are sent as
  */
 async function checkExternalIndexHealth(
   config: ExternalSearchIndexConfig,
@@ -417,12 +417,14 @@ async function checkExternalIndexHealth(
     });
   }
 
-  // Step 4 (Sitecore): count with the fixed filters, sent as the types just discovered.
+  // Step 4 (Sitecore): count with the fixed filters, sent as the types searches will use:
+  // the schema as it's about to be saved (stored types this sample didn't see are kept).
   // Every search makes this request, so a failure here makes the source unhealthy.
   if (config.provider === 'sitecore_search') {
     try {
       const connection = await resolveExternalConnection('Sitecore Search', config);
-      const sample = await sampleSitecore(connection, 1, { fields: schema?.fields ?? storedFields });
+      const fields = schema ? mergeOperatorFieldEdits(storedFields ? { fields: storedFields } : null, schema).fields : storedFields;
+      const sample = await sampleSitecore(connection, 1, { fields });
       documentCount = sample.total;
       statsNote = ` — ${sample.total.toLocaleString()} docs`;
     } catch (err) {
