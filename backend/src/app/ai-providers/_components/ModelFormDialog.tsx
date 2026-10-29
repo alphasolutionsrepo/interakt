@@ -5,7 +5,6 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import {
     Dialog,
     DialogContent,
@@ -30,6 +29,7 @@ import { Loader2, Sparkles, MessageSquare, FileText, Database, Eye } from 'lucid
 import { cn } from '@/lib/utils';
 import type { AIProviderModelResponse } from '@/features/ai-providers';
 import { reasoningChoiceOf } from '../_lib/model-capabilities';
+import { modelFormSchema, optionalNumber, type ModelFormData } from '../_lib/model-form';
 
 // ============================================================================
 // Model Type Config
@@ -41,69 +41,6 @@ const MODEL_TYPE_CONFIG = {
     chat: { label: 'Chat', icon: MessageSquare },
     vision: { label: 'Vision', icon: Eye },
 } as const;
-
-// ============================================================================
-// Form Schema
-// ============================================================================
-
-const modelFormSchema = z.object({
-    modelKey: z.string()
-        .min(1, 'Model key is required')
-        .max(100, 'Model key too long')
-        .regex(/^[a-zA-Z0-9._-]+$/, 'Model key can only contain letters, numbers, dots, hyphens, and underscores'),
-
-    displayName: z.string()
-        .min(1, 'Display name is required')
-        .max(150, 'Display name too long'),
-
-    description: z.string()
-        .max(500, 'Description too long')
-        .optional()
-        .nullable(),
-
-    modelType: z.enum(['text', 'chat', 'embedding', 'vision']),
-
-    dimensions: z.number()
-        .int()
-        .positive()
-        .max(10000, 'Dimensions value too large')
-        .optional()
-        .nullable(),
-
-    isAvailable: z.boolean().default(true),
-
-    // Pricing fields for cost estimation
-    inputCostPerMillionTokens: z.number()
-        .min(0, 'Cost cannot be negative')
-        .max(1000, 'Cost seems too high')
-        .optional()
-        .nullable(),
-
-    outputCostPerMillionTokens: z.number()
-        .min(0, 'Cost cannot be negative')
-        .max(1000, 'Cost seems too high')
-        .optional()
-        .nullable(),
-
-    // Capabilities (flattened for form, will be restructured on submit)
-    usesCompletionTokens: z.boolean().default(false),
-    noTemperature: z.boolean().default(false),
-    reasoningEffort: z.enum(['default', 'none', 'minimal', 'low', 'medium', 'high']).default('default'),
-}).refine(
-    (data) => {
-        // Dimensions required for embedding models
-        if (data.modelType === 'embedding' && !data.dimensions) {
-            return false;
-        }
-        return true;
-    },
-    {
-        message: 'Dimensions is required for embedding models',
-        path: ['dimensions'],
-    }
-);
-
-type ModelFormData = z.infer<typeof modelFormSchema>;
 
 // ============================================================================
 // Component Props
@@ -329,7 +266,7 @@ export function ModelFormDialog({
                                 id="dimensions"
                                 type="number"
                                 placeholder="e.g., 1536, 3072"
-                                {...register('dimensions', { valueAsNumber: true })}
+                                {...register('dimensions', { setValueAs: optionalNumber })}
                                 className={cn(errors.dimensions && 'border-red-500')}
                             />
                             {errors.dimensions && (
@@ -377,7 +314,7 @@ export function ModelFormDialog({
                                     step="0.01"
                                     min="0"
                                     placeholder="e.g., 0.15"
-                                    {...register('inputCostPerMillionTokens', { valueAsNumber: true })}
+                                    {...register('inputCostPerMillionTokens', { setValueAs: optionalNumber })}
                                     className={cn(
                                         'h-8 text-sm',
                                         errors.inputCostPerMillionTokens && 'border-red-500'
@@ -401,7 +338,7 @@ export function ModelFormDialog({
                                     step="0.01"
                                     min="0"
                                     placeholder="e.g., 0.60"
-                                    {...register('outputCostPerMillionTokens', { valueAsNumber: true })}
+                                    {...register('outputCostPerMillionTokens', { setValueAs: optionalNumber })}
                                     className={cn(
                                         'h-8 text-sm',
                                         errors.outputCostPerMillionTokens && 'border-red-500'
