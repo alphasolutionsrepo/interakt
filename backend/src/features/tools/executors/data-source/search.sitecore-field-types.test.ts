@@ -1,7 +1,7 @@
 // src/features/tools/executors/data-source/search.sitecore-field-types.test.ts
 
 /**
- * The chat search and enumerate tools on a Sitecore source, through the real connector and the
+ * The chat search, enumerate and lookup tools on a Sitecore source, through the real connector and the
  * source's stored schema: Sitecore rejects a filter value that isn't its
  * attribute's type, so values go out as the type discovery saw. Only fetch is stubbed.
  */
@@ -39,6 +39,7 @@ vi.mock('./shared', async (importOriginal) => ({
 import { inferSitecoreFields } from '@/features/data-source/external-search/connectors/sitecore-search.connector';
 
 import { executeDataSourceEnumerate } from './enumerate';
+import { executeDataSourceLookup } from './lookup';
 import { executeDataSourceSearch } from './search';
 
 /** The filter Sitecore was sent (undefined when none) */
@@ -162,5 +163,24 @@ describe('chat enumerate tool on a Sitecore source', () => {
 
     expect(result.success).toBe(true);
     expect(sent()).toEqual({ type: 'and', filters: [{ type: 'gte', name: 'year', value: 2020 }] });
+  });
+});
+
+describe('chat lookup tool on a Sitecore source', () => {
+  it('filters by the id as the type discovery saw', async () => {
+    storedFields.value = inferSitecoreFields({ items: [{ id: 42, title: 'Linen shirt' }], total: 1, facets: new Map() });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({
+        widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 42, title: 'Linen shirt' }] }],
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await executeDataSourceLookup('ds', { idField: 'id' }, { id: '42' });
+
+    const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body).widget.items[0].search.filter;
+    expect(sent).toEqual({ type: 'and', filters: [{ type: 'eq', name: 'id', value: 42 }] });
+    expect(result).toMatchObject({ success: true, data: { document: { title: 'Linen shirt' } } });
   });
 });

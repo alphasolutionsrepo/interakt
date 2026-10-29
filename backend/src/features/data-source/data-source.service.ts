@@ -352,8 +352,8 @@ function mapSearchIndexFieldsToSchema(fields: SearchIndexField[]): DataSourceFie
 // ============================================================================
 
 /**
- * @param storedFields - the source's stored fields, so Sitecore fixed filter values are
- *   sent as their type when counting documents
+ * @param storedFields - the source's stored fields, for Sitecore fixed filter values when
+ *   discovery finds none
  */
 async function checkExternalIndexHealth(
   config: ExternalSearchIndexConfig,
@@ -379,7 +379,7 @@ async function checkExternalIndexHealth(
   let storageSizeBytes: number | undefined;
   let statsNote = '';
   try {
-    const stats = await fetchExternalIndexStats(config, storedFields);
+    const stats = await fetchExternalIndexStats(config);
     if (stats) {
       documentCount = stats.documentCount;
       storageSizeBytes = stats.storageSizeBytes;
@@ -415,6 +415,24 @@ async function checkExternalIndexHealth(
       provider: config.provider,
       error: errMsg,
     });
+  }
+
+  // Step 4 (Sitecore): count with the fixed filters, sent as the types just discovered.
+  // Every search makes this request, so a failure here makes the source unhealthy.
+  if (config.provider === 'sitecore_search') {
+    try {
+      const connection = await resolveExternalConnection('Sitecore Search', config);
+      const sample = await sampleSitecore(connection, 1, { fields: schema?.fields ?? storedFields });
+      documentCount = sample.total;
+      statsNote = ` — ${sample.total.toLocaleString()} docs`;
+    } catch (err) {
+      return {
+        status: 'error',
+        message: `Searches with this source's fixed filters fail: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        checkedAt: now,
+        schema,
+      };
+    }
   }
 
   return {
@@ -548,16 +566,9 @@ interface IndexStats {
   storageSizeBytes: number;
 }
 
-async function fetchExternalIndexStats(
-  config: ExternalSearchIndexConfig,
-  storedFields?: DataSourceField[],
-): Promise<IndexStats | null> {
+/** Sitecore is counted after discovery, with its fixed filters (checkExternalIndexHealth). */
+async function fetchExternalIndexStats(config: ExternalSearchIndexConfig): Promise<IndexStats | null> {
   switch (config.provider) {
-    case 'sitecore_search': {
-      const connection = await resolveExternalConnection('Sitecore Search', config);
-      const sample = await sampleSitecore(connection, 1, { fields: storedFields });
-      return { documentCount: sample.total, storageSizeBytes: 0 };
-    }
     case 'elasticsearch':
       return fetchElasticsearchStats(config);
     case 'azure_ai_search':
