@@ -211,6 +211,14 @@ export function untranslatableReason(clause: FilterClause): string | undefined {
   }
 }
 
+/** A fixed filter Interakt can't translate: every search on the source fails until it's fixed. */
+export class FixedFilterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FixedFilterError';
+  }
+}
+
 /**
  * Combine the fixed filters with the requested ones into one AND. Clauses Sitecore
  * cannot express are reported as unapplied rather than failing the search, the same
@@ -231,7 +239,7 @@ export function buildFilter(
       return translateFilter(clause, fieldTypes, true);
     } catch (error) {
       if (!(error instanceof UnsupportedFilter)) throw error;
-      throw new Error(
+      throw new FixedFilterError(
         `Fixed filter on '${clause.field}' can't be used: ${error.message}. Fix it in the data source's settings.`,
       );
     }

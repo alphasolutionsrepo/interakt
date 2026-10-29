@@ -38,7 +38,7 @@ function source(fields?: DataSourceField[], yearValue: string | null = '2024') {
 }
 
 /** Sitecore: rejects a text value for year, like the live engine; otherwise one item */
-const sitecore = vi.fn(async (_url: string, init?: RequestInit) => {
+const sitecoreDefault = async (_url: string, init?: RequestInit) => {
   const filter = JSON.parse(String(init?.body)).widget.items[0].search.filter;
   const year = filter?.filters?.[0]?.value;
   if (typeof year === 'string') {
@@ -47,7 +47,8 @@ const sitecore = vi.fn(async (_url: string, init?: RequestInit) => {
   return new Response(JSON.stringify({
     widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'a', title: 'Linen shirt', year: 2024 }] }],
   }));
-});
+};
+const sitecore = vi.fn(sitecoreDefault);
 
 /** The filter each call sent, in order */
 const sentFilters = () => sitecore.mock.calls.map(
@@ -56,6 +57,7 @@ const sentFilters = () => sitecore.mock.calls.map(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sitecore.mockImplementation(sitecoreDefault);
   vi.stubGlobal('fetch', sitecore);
   repository.updateDataSource.mockResolvedValue({});
 });
@@ -154,5 +156,43 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     // probe, the scoped sample (503), then the count: no whole-widget sample
     const asWritten = { type: 'and', filters: [{ type: 'eq', name: 'year', value: '2024' }] };
     expect(sentFilters()).toEqual([undefined, asWritten, asWritten]);
+  });
+
+  it("is unhealthy when a stored fixed filter is one Interakt can't translate", async () => {
+    // Saved before validation existed: Sitecore has no `contains`
+    repository.getDataSourceById.mockResolvedValue({
+      ...source(),
+      config: { ...source().config, providerSettings: { fixedFilters: [{ field: 'title', operator: 'contains', value: 'shirt' }] } },
+    });
+
+    const result = await performHealthCheck('ds-1');
+
+    expect(result.status).toBe('error');
+    expect(result.message).toMatch(/^Searches with this source's fixed filters fail: Fixed filter on 'title' can't be used/);
+  });
+
+  it("keeps a learned type when the scoped sample's items don't carry the fixed filter's attribute", async () => {
+    // Scope excludes categories 3 and 4; the items inside it have no category_id
+    repository.getDataSourceById.mockResolvedValue({
+      ...source(),
+      config: { ...source().config, providerSettings: { fixedFilters: [{ field: 'category_id', operator: 'nin', value: ['3', '4'] }] } },
+    });
+    sitecore.mockImplementation(async (_url: string, init?: RequestInit) => {
+      const filter = JSON.parse(String(init?.body)).widget.items[0].search.filter;
+      const values = filter?.filters?.[0]?.filter?.values as unknown[] | undefined;
+      if (values?.some((v) => typeof v === 'string')) {
+        return new Response(`{"message":"filter value '3' not of the expected type"}`, { status: 400 });
+      }
+      const content = filter ? [{ id: 'a', title: 'Linen shirt' }] : [{ id: 'b', title: 'Wool coat', category_id: 7 }];
+      return new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content }] }));
+    });
+
+    const result = await performHealthCheck('ds-1');
+
+    expect(result.status).toBe('healthy');
+    expect(result.schema?.fields.find((f) => f.name === 'category_id')?.valueType).toBe('number');
+    expect(sentFilters().at(-1)).toEqual({
+      type: 'and', filters: [{ type: 'not', filter: { type: 'anyOf', name: 'category_id', values: [3, 4] } }],
+    });
   });
 });

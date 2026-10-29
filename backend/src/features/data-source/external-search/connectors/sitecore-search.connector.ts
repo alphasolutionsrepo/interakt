@@ -13,6 +13,7 @@
  */
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
+import type { FilterClause } from '@/features/search/search.types';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 import type {
   ExternalConnection,
@@ -217,10 +218,38 @@ export async function discoverSitecoreFields(
   try {
     // Learned types win; a known type this sample didn't see is kept
     const fields = [...knownFields, ...learned];
-    return inferSitecoreFields(await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { fields }));
+    const scoped = inferSitecoreFields(await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { fields }));
+    return withFixedFilterTypes(scoped, learned, connection);
   } catch {
     return learned;
   }
+}
+
+/**
+ * The scoped sample may carry no value for a fixed filter's attribute (a `nin` or `neq`
+ * scope, or an empty one). Keep the type learned for it, or the fixed filter would be
+ * sent as written again and refused on every search.
+ */
+function withFixedFilterTypes(
+  scoped: DataSourceField[],
+  learned: DataSourceField[],
+  connection: ExternalConnection,
+): DataSourceField[] {
+  const names = new Set<string>();
+  const collect = (clauses: FilterClause[]) => clauses.forEach((c) => {
+    if (c.field) names.add(c.field);
+    if (c.filters) collect(c.filters);
+  });
+  collect(sitecoreSettings(connection).fixedFilters);
+
+  const fromSample = new Map(learned.map((f) => [f.name, f]));
+  const fields = scoped.map((f) => {
+    const valueType = f.valueType ?? (names.has(f.name) ? fromSample.get(f.name)?.valueType : undefined);
+    return valueType ? { ...f, valueType } : f;
+  });
+  const present = new Set(fields.map((f) => f.name));
+  const missing = [...names].filter((n) => !present.has(n) && fromSample.has(n)).map((n) => fromSample.get(n)!);
+  return [...fields, ...missing];
 }
 
 function humanize(name: string): string {

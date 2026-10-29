@@ -269,3 +269,32 @@ describe('in/nin with a null or list item on a text field', () => {
         }
     });
 });
+
+describe('a value that is not a collection item on a collection field', () => {
+    it('drops eq/neq with a list, null or object instead of matching it as text', () => {
+        for (const operator of ['eq', 'neq']) {
+            for (const value of [['linen', 'summer'], { a: 1 }]) {
+                const { odata, dropped } = buildAzureFilterParts([{ field: 'keywords', operator, value } as FilterClause], collections);
+                expect(odata).toBeUndefined();
+                expect(dropped).toHaveLength(1);
+            }
+        }
+    });
+
+    it('drops in/nin with a null, list or object item', () => {
+        for (const operator of ['in', 'nin']) {
+            for (const item of [null, ['fr'], { a: 1 }]) {
+                const { odata, dropped } = buildAzureFilterParts(
+                    [{ field: 'keywords', operator, value: ['linen', item] } as FilterClause], collections,
+                );
+                expect(odata).toBeUndefined();
+                expect(dropped[0].reason).toContain('not collection items');
+            }
+        }
+    });
+
+    it('still matches plain items', () => {
+        expect(buildAzureFilterParts([{ field: 'keywords', operator: 'in', value: ['linen', 80] } as FilterClause], collections).odata)
+            .toBe("keywords/any(t: t eq 'linen' or t eq '80')");
+    });
+});

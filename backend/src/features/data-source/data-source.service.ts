@@ -17,6 +17,7 @@ import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } fro
 import { inferFieldRole } from '@/shared/utils/field-roles';
 import { resolveExternalConnection } from './external-search/external-connection';
 import { discoverSitecoreFields, sampleSitecore, SitecoreHttpError } from './external-search/connectors/sitecore-search.connector';
+import { FixedFilterError } from './external-search/connectors/sitecore-search.request';
 
 const logger = createLogger('data-source-service');
 
@@ -419,9 +420,10 @@ async function checkExternalIndexHealth(
 
   // Step 4 (Sitecore): count with the fixed filters, sent as the types searches will use:
   // the schema as it's about to be saved (stored types this sample didn't see are kept).
-  // Every search makes this request, so Sitecore refusing it (HTTP 400) with fixed filters
-  // makes the source unhealthy. Any other failure (no fixed filters, a 503, a timeout)
-  // only loses the count: the probe already showed the connection works.
+  // Every search makes this request, so its fixed filters being refused, by Sitecore (HTTP
+  // 400) or by Interakt (one it can't translate), makes the source unhealthy. Any other
+  // failure (no fixed filters, a 503, a timeout) only loses the count: the probe already
+  // showed the connection works.
   if (config.provider === 'sitecore_search') {
     try {
       const connection = await resolveExternalConnection('Sitecore Search', config);
@@ -430,7 +432,8 @@ async function checkExternalIndexHealth(
       statsNote = ` — ${sample.total.toLocaleString()} docs`;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
-      if (err instanceof SitecoreHttpError && err.status === 400 && sitecoreFixedFilters(config).length > 0) {
+      const refused = (err instanceof SitecoreHttpError && err.status === 400) || err instanceof FixedFilterError;
+      if (refused && sitecoreFixedFilters(config).length > 0) {
         return { status: 'error', message: `Searches with this source's fixed filters fail: ${errMsg}`, checkedAt: now, schema };
       }
       logger.warn('Index stats fetch failed (non-fatal)', { provider: config.provider, error: errMsg });

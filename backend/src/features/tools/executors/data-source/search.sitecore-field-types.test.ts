@@ -147,6 +147,18 @@ describe("chat search tool with a default filter Sitecore can't take", () => {
     expect(result.success).toBe(true);
     expect(sent()).toEqual({ type: 'and', filters: [{ type: 'eq', name: 'open', value: true }] });
   });
+
+  it("searches and reports the model's filter when it replaces that default with a value that also fails", async () => {
+    storedFields.value = inferSitecoreFields({ items: [{ id: 'a', open: true }], total: 1, facets: new Map() });
+    const sent = stubSitecoreFilter();
+
+    const result = await executeDataSourceSearch('ds', config, { query: 'x', filters: [{ field: 'open', operator: 'eq', value: 'maybe' }] });
+
+    expect(result.success).toBe(true);
+    expect(sent()).toBeUndefined();
+    expect(result.data).toMatchObject({ unappliedFilters: [{ field: 'open', operator: 'eq' }] });
+    expect(result.data).not.toHaveProperty('appliedDefaultFilters');
+  });
 });
 
 describe('chat enumerate tool on a Sitecore source', () => {

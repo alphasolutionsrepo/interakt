@@ -125,7 +125,8 @@ function buildFilterClause(
         case 'eq': {
             if (isCollection) {
                 // Collection(Edm.String): use lambda — field/any(t: t eq 'value')
-                return `${field}/any(t: t eq ${formatCollectionElement(value)})`;
+                const element = formatCollectionElement(value);
+                return element === null ? drop(notCoercible) : `${field}/any(t: t eq ${element})`;
             }
             const operand = formatOperand(value, fieldType);
             return operand === null ? drop(notCoercible) : `${field} eq ${operand}`;
@@ -134,7 +135,8 @@ function buildFilterClause(
         case 'neq': {
             if (isCollection) {
                 // No item matches the value — field/all(t: t ne 'value')
-                return `${field}/all(t: t ne ${formatCollectionElement(value)})`;
+                const element = formatCollectionElement(value);
+                return element === null ? drop(notCoercible) : `${field}/all(t: t ne ${element})`;
             }
             const operand = formatOperand(value, fieldType);
             return operand === null ? drop(notCoercible) : `${field} ne ${operand}`;
@@ -166,8 +168,9 @@ function buildFilterClause(
             }
             if (isCollection) {
                 // Any item in the collection matches any of the given values
-                const conditions = value.map(v => `t eq ${formatCollectionElement(v)}`);
-                return `${field}/any(t: ${conditions.join(' or ')})`;
+                const elements = collectionElements(value);
+                if (!Array.isArray(elements)) return elements;
+                return `${field}/any(t: ${elements.map(e => `t eq ${e}`).join(' or ')})`;
             }
             const operands = coerceAll(value, fieldType);
             if (!Array.isArray(operands)) return operands;
@@ -183,8 +186,9 @@ function buildFilterClause(
             }
             if (isCollection) {
                 // No item in the collection matches any of the given values
-                const conditions = value.map(v => `t ne ${formatCollectionElement(v)}`);
-                return `${field}/all(t: ${conditions.join(' and ')})`;
+                const elements = collectionElements(value);
+                if (!Array.isArray(elements)) return elements;
+                return `${field}/all(t: ${elements.map(e => `t ne ${e}`).join(' and ')})`;
             }
             const operands = coerceAll(value, fieldType);
             if (!Array.isArray(operands)) return operands;
@@ -292,10 +296,22 @@ function formatOperand(value: unknown, fieldType?: string): string | null {
 
 /**
  * Format a collection element. Array fields in current schemas are
- * Collection(Edm.String), so elements are emitted as quoted strings.
+ * Collection(Edm.String), so elements are emitted as quoted strings. Null, a list or
+ * an object isn't an element value (it would match nothing as text): null.
  */
-function formatCollectionElement(value: unknown): string {
-    return `'${escapeOData(String(value))}'`;
+function formatCollectionElement(value: unknown): string | null {
+    const typed = asFieldType(value, 'text');
+    return typed === undefined ? null : `'${escapeOData(String(typed))}'`;
+}
+
+/** Every element of an in/nin list, or the clause drop naming the ones that aren't values. */
+function collectionElements(values: unknown[]): string[] | ClauseDrop {
+    const elements = values.map(formatCollectionElement);
+    const failed = values.filter((_, i) => elements[i] === null);
+    if (failed.length > 0) {
+        return drop(`${failed.length} of ${values.length} values are not collection items: ${failed.map(v => JSON.stringify(v)).join(', ')}`);
+    }
+    return elements as string[];
 }
 
 function escapeOData(value: string): string {
