@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
+import { trackSearch } from '@/features/analytics';
 
 const { storedFields, providerSettings } = vi.hoisted(() => ({
   storedFields: { value: [] as DataSourceField[] },
@@ -57,6 +58,7 @@ function stubSitecore() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(trackSearch).mockClear();
   providerSettings.value = {};
 });
 
@@ -128,6 +130,11 @@ describe("chat search tool with a default filter Sitecore can't take", () => {
     expect(result.error).toBe(
       `The tool's default filter can't be applied (open: "Yes" is not a boolean value for 'open'). Fix it in the tool's settings.`,
     );
+    // Analytics records it as a failed search with no results
+    expect(vi.mocked(trackSearch)).toHaveBeenCalledOnce();
+    expect(vi.mocked(trackSearch).mock.calls[0][0]).toMatchObject({
+      success: false, totalResults: 0, resultsReturned: 0, errorMessage: result.error,
+    });
   });
 
   it('runs when the request replaces that default with a value that converts', async () => {

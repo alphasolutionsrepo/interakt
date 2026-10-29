@@ -673,7 +673,7 @@ async function discoverExternalFields(
       return discoverAzureAISearchSchema(config);
     case 'sitecore_search': {
       const connection = await resolveExternalConnection('Sitecore Search', config);
-      return { fields: inferSitecoreFields(await sampleSitecore(connection, 25)), discoveredFrom: 'sample' };
+      return { fields: inferSitecoreFields(await sampleSitecore(connection, 25, false)), discoveredFrom: 'sample' };
     }
     default:
       return { fields: [] };

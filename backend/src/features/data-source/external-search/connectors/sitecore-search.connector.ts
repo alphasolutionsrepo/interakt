@@ -147,9 +147,22 @@ export interface SitecoreSample {
   facets: Map<string, string>;
 }
 
-/** Fetch a match-all sample with every facet the widget exposes. */
-export async function sampleSitecore(connection: ExternalConnection, limit: number): Promise<SitecoreSample> {
-  const call = await callSitecore(connection, { offset: 0, limit }, true);
+/**
+ * Fetch a match-all sample with every facet the widget exposes.
+ *
+ * @param withFixedFilters - false for field discovery: fixed filter values can only be
+ *   sent as their attribute's type once discovery has seen it, so a value of the wrong
+ *   type would make the sample fail and the type would never be learned
+ */
+export async function sampleSitecore(
+  connection: ExternalConnection,
+  limit: number,
+  withFixedFilters = true,
+): Promise<SitecoreSample> {
+  const sampled = withFixedFilters
+    ? connection
+    : { ...connection, providerSettings: { ...connection.providerSettings, fixedFilters: [] } };
+  const call = await callSitecore(sampled, { offset: 0, limit }, true);
   const widgets = ((call.json ?? {}) as { widgets?: Array<{ rfk_id?: string; facet?: Array<{ name: string; label?: string }> }> }).widgets ?? [];
   const widget = widgets.find((w) => w.rfk_id === connection.indexName) ?? widgets[0];
   const mapped = mapSitecoreResponse(call.json, connection.indexName, 0);

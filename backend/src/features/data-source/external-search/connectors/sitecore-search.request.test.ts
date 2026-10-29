@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { generateToolDescription } from '@/features/tools/tools.description-generator';
 
 import type { ExternalConnection } from '../external-search.types';
-import { inferSitecoreFields, sitecoreFieldTypes, sitecoreSearchConnector } from './sitecore-search.connector';
+import { inferSitecoreFields, sampleSitecore, sitecoreFieldTypes, sitecoreSearchConnector } from './sitecore-search.connector';
 import {
   sitecoreSettings,
   translateFilter,
@@ -472,6 +472,26 @@ describe('fixed filters through the connector', () => {
         { type: 'lte', name: 'year', value: 2030 },
       ]);
       expect(result.hits).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('samples for field discovery without fixed filters, and with them otherwise', async () => {
+    // A fixed filter value of the wrong type would fail the sample, and discovery would never learn the type
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 0, content: [] }] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const source = connection({ fixedFilters: [{ field: 'year', operator: 'eq', value: '2024' }] });
+      await sampleSitecore(source, 25, false);
+      await sampleSitecore(source, 1);
+      const filters = fetchMock.mock.calls.map(
+        (call) => JSON.parse((call as unknown as [string, { body: string }])[1].body).widget.items[0].search.filter,
+      );
+      expect(filters).toEqual([undefined, { type: 'and', filters: [{ type: 'eq', name: 'year', value: '2024' }] }]);
     } finally {
       vi.unstubAllGlobals();
     }
