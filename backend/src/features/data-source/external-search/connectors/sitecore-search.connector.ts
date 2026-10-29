@@ -148,11 +148,7 @@ export interface SitecoreSample {
 }
 
 export interface SitecoreSampleOptions {
-  /**
-   * Leave the fixed filters out: for the connection probe and field discovery. Fixed
-   * filter values go out as their attribute's type only once discovery has seen it, so
-   * a value of the wrong type would fail the call and the type would never be learned.
-   */
+  /** Leave the fixed filters out: for the connection probe, and discovery's fallback */
   withoutFixedFilters?: boolean;
   /** Known fields: fixed filter values are sent as their type, as in a search */
   fields?: DataSourceField[];
@@ -178,6 +174,39 @@ export async function sampleSitecore(
     total: mapped.total,
     facets: new Map((widget?.facet ?? []).map((f) => [f.name, f.label ?? f.name])),
   };
+}
+
+const DISCOVERY_SAMPLE_SIZE = 25;
+
+/**
+ * Discover fields from a sample within the source's fixed filters, sent as the known
+ * types. Fixed filter values go out as their type only once a sample has seen it, so if
+ * Sitecore refuses the scoped sample (a value of the wrong type, on a source not yet
+ * discovered), the types are learned from a sample of the whole widget and the scope is
+ * sampled again with them. If that still fails, the whole-widget fields are returned so
+ * the schema isn't empty; the health check then reports the fixed filters as failing.
+ *
+ * @param knownFields - the source's stored fields
+ */
+export async function discoverSitecoreFields(
+  connection: ExternalConnection,
+  knownFields: DataSourceField[] = [],
+): Promise<DataSourceField[]> {
+  try {
+    return inferSitecoreFields(await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { fields: knownFields }));
+  } catch (scopedError) {
+    if (sitecoreSettings(connection).fixedFilters.length === 0) throw scopedError;
+  }
+  const learned = inferSitecoreFields(
+    await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { withoutFixedFilters: true }),
+  );
+  try {
+    // Learned types win; a known type this sample didn't see is kept
+    const fields = [...knownFields, ...learned];
+    return inferSitecoreFields(await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { fields }));
+  } catch {
+    return learned;
+  }
 }
 
 function humanize(name: string): string {

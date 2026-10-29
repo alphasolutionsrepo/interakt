@@ -3,9 +3,10 @@
 /**
  * The health check on a Sitecore source with a fixed filter written as text for a
  * number attribute (`year = 2024`). Sitecore rejects a value of the wrong type, so
- * the probe and field discovery leave the fixed filters out. Field profiling and
- * the document count keep them, sent as the types discovery just saw; the count is
- * the request every search makes, so its failure makes the source unhealthy. Runs
+ * the probe leaves the fixed filters out, and discovery samples within them, learning
+ * the types from the whole widget first when Sitecore refuses a value. Field profiling
+ * and the document count send them as the types searches use; the count is the
+ * request every search makes, so its failure makes the source unhealthy. Runs
  * the real health check and connector; only the stored source and the network
  * are faked.
  */
@@ -70,8 +71,9 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     expect(result.documentCount).toBe(1);
     expect(result.schema?.fields.find((f) => f.name === 'year')?.valueType).toBe('number');
     const converted = { type: 'and', filters: [{ type: 'eq', name: 'year', value: 2024 }] };
-    // probe, discovery, profiling, document count
-    expect(sentFilters()).toEqual([undefined, undefined, converted, converted]);
+    const asWritten = { type: 'and', filters: [{ type: 'eq', name: 'year', value: '2024' }] };
+    // probe; discovery: scoped (refused), whole widget to learn types, scoped again; profiling; count
+    expect(sentFilters()).toEqual([undefined, asWritten, undefined, converted, converted, converted]);
   });
 
   it("uses a stored type when this sample didn't see the attribute, or found no fields at all", async () => {
@@ -85,8 +87,8 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     sitecore.mockImplementationOnce(async () => answer([{ id: 'a', title: 'Linen shirt' }]));
     const missing = await performHealthCheck('ds-1');
     expect(missing.status).toBe('healthy');
-    // profiling and the count
-    expect(sentFilters().slice(2)).toEqual([converted, converted]);
+    // discovery within the fixed filters in one call, profiling, the count
+    expect(sentFilters().slice(1)).toEqual([converted, converted, converted]);
 
     // The sample is empty: no fields discovered
     sitecore.mockClear();

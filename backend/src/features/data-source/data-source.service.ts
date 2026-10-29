@@ -16,7 +16,7 @@ import * as toolsService from '@/features/tools/tools.service';
 import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } from '@/features/search-experience/search-experience.cache';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 import { resolveExternalConnection } from './external-search/external-connection';
-import { sampleSitecore, inferSitecoreFields } from './external-search/connectors/sitecore-search.connector';
+import { discoverSitecoreFields, sampleSitecore } from './external-search/connectors/sitecore-search.connector';
 
 const logger = createLogger('data-source-service');
 
@@ -677,7 +677,7 @@ async function discoverExternalSchema(
   config: ExternalSearchIndexConfig,
   storedFields?: DataSourceField[],
 ): Promise<DiscoveredSchema> {
-  const discovered = await discoverExternalFields(config);
+  const discovered = await discoverExternalFields(config, storedFields);
   if (discovered.fields.length === 0) return discovered;
 
   // Profiling is a second read against the index, so it is strictly best-effort: a field
@@ -707,6 +707,7 @@ async function discoverExternalSchema(
 
 async function discoverExternalFields(
   config: ExternalSearchIndexConfig,
+  storedFields?: DataSourceField[],
 ): Promise<DiscoveredSchema> {
   switch (config.provider) {
     case 'elasticsearch':
@@ -715,7 +716,7 @@ async function discoverExternalFields(
       return discoverAzureAISearchSchema(config);
     case 'sitecore_search': {
       const connection = await resolveExternalConnection('Sitecore Search', config);
-      return { fields: inferSitecoreFields(await sampleSitecore(connection, 25, { withoutFixedFilters: true })), discoveredFrom: 'sample' };
+      return { fields: await discoverSitecoreFields(connection, storedFields), discoveredFrom: 'sample' };
     }
     default:
       return { fields: [] };
