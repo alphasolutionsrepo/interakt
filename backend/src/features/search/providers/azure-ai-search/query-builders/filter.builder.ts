@@ -34,7 +34,7 @@
 import 'server-only';
 
 import { asFieldType } from '../../../filter-value';
-import { SearchError, type FilterClause, type FieldConfig } from '../../../search.types';
+import { SearchError, type FilterClause, type FieldConfig, type RangeValue } from '../../../search.types';
 
 /** Field type lookup — maps field name to its type (e.g., 'array', 'text', 'keyword') */
 export type FieldTypeLookup = Map<string, FieldConfig> | Map<string, { fieldType: string }>;
@@ -205,7 +205,7 @@ function buildFilterClause(
             return `search.ismatch('${escapeOData(String(value))}*', '${field}')`;
 
         case 'range': {
-            const range = value as { gte?: number | string; lte?: number | string; gt?: number | string; lt?: number | string };
+            const range = rangeBounds(value);
             const parts: string[] = [];
             const failed: unknown[] = [];
             const push = (op: string, v: number | string | undefined) => {
@@ -228,6 +228,23 @@ function buildFilterClause(
         default:
             return drop(`operator "${operator}" is not supported by Azure AI Search`);
     }
+}
+
+type RangeBounds = { gte?: number | string; gt?: number | string; lte?: number | string; lt?: number | string };
+
+/**
+ * A range's bounds. Callers send the shared RangeValue shape ({ from, to }, bounds
+ * included unless includeLower / includeUpper is false), as Elasticsearch reads it;
+ * gte / gt / lte / lt are read too.
+ */
+function rangeBounds(value: unknown): RangeBounds {
+    const v = value as RangeValue & RangeBounds;
+    return {
+        gte: v.from !== undefined && v.includeLower !== false ? v.from : v.gte,
+        gt: v.from !== undefined && v.includeLower === false ? v.from : v.gt,
+        lte: v.to !== undefined && v.includeUpper !== false ? v.to : v.lte,
+        lt: v.to !== undefined && v.includeUpper === false ? v.to : v.lt,
+    };
 }
 
 /** Look up a field's declared type from the field-type map. */

@@ -233,6 +233,24 @@ describe('a list or object as a single value on a text field', () => {
 });
 
 describe('range', () => {
+    it('reads the { from, to } shape callers send, bounds included by default', () => {
+        const range = (value: object) =>
+            buildAzureFilterParts([{ field: 'price', operator: 'range', value } as FilterClause], scalars).odata;
+        expect(range({ from: '10', to: 80 })).toBe('price ge 10 and price le 80');
+        expect(range({ from: 10, to: 80, includeLower: false, includeUpper: false })).toBe('price gt 10 and price lt 80');
+        expect(range({ from: 10 })).toBe('price ge 10');
+        expect(range({ to: 80 })).toBe('price le 80');
+    });
+
+    it('drops a { from, to } range with a bound that cannot be the field type', () => {
+        const { odata, dropped } = buildAzureFilterParts(
+            [{ field: 'price', operator: 'range', value: { from: '10', to: 'cheap' } } as FilterClause],
+            scalars,
+        );
+        expect(odata).toBeUndefined();
+        expect(dropped[0].reason).toContain('"cheap"');
+    });
+
     it('sends every bound as the field type', () => {
         const { odata } = buildAzureFilterParts(
             [{ field: 'price', operator: 'range', value: { gte: '10', lte: 80 } } as FilterClause],
