@@ -35,7 +35,6 @@ vi.mock('@/features/data-source/external-search/external-connection', () => ({
 }));
 
 import { inferSitecoreFields } from '@/features/data-source/external-search/connectors/sitecore-search.connector';
-import { SearchError } from '@/features/search/search.types';
 
 import { searchExternalSourceForExperience } from './external-source-search';
 import type { SearchExperienceExternalSourceWithDetails, SearchExperienceWithIndexes } from './search-experience.types';
