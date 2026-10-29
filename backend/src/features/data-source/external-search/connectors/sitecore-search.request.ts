@@ -108,12 +108,21 @@ export type SitecoreFieldTypes = ReadonlyMap<string, string>;
  * Sitecore rejects a value that isn't its attribute's type ("filter value '80' not
  * of the expected type"), so a value for a field of known type is sent as that
  * type. A field the source doesn't list keeps the value as sent.
+ *
+ * @param keepUnconverted - send a value that can't be its field's type as written
+ *   instead of throwing (fixed filters)
  */
-function typed(clause: FilterClause, value: unknown, fieldTypes: SitecoreFieldTypes | undefined): unknown {
+function typed(
+  clause: FilterClause,
+  value: unknown,
+  fieldTypes: SitecoreFieldTypes | undefined,
+  keepUnconverted: boolean,
+): unknown {
   const fieldType = clause.field ? fieldTypes?.get(clause.field) : undefined;
   if (fieldType === undefined) return value;
   const converted = asFieldType(value, fieldType);
   if (converted === undefined) {
+    if (keepUnconverted) return value;
     throw new UnsupportedFilter(clause, `${JSON.stringify(value)} is not a ${fieldType} value for '${clause.field}'`);
   }
   return converted;
@@ -123,20 +132,26 @@ function typed(clause: FilterClause, value: unknown, fieldTypes: SitecoreFieldTy
  * Translate one filter clause into a Sitecore filter.
  *
  * @param fieldTypes - the source's field types; values are sent as their field's type
+ * @param keepUnconverted - send a value that can't be its field's type as written
+ *   rather than throwing
  * @throws UnsupportedFilter for clauses Sitecore cannot be sent: an operator it
  *   has no equivalent for, a clause missing what its operator needs, or a value
  *   that can't be its field's type
  */
-export function translateFilter(clause: FilterClause, fieldTypes?: SitecoreFieldTypes): SitecoreFilter {
+export function translateFilter(
+  clause: FilterClause,
+  fieldTypes?: SitecoreFieldTypes,
+  keepUnconverted = false,
+): SitecoreFilter {
   const { operator, value } = clause;
 
   if (COMPARISONS.has(operator) && value === undefined) {
     throw new UnsupportedFilter(clause, `'${operator}' needs a value`);
   }
 
-  const one = (v: unknown) => typed(clause, v, fieldTypes);
+  const one = (v: unknown) => typed(clause, v, fieldTypes, keepUnconverted);
   const list = () => nonEmptyValues(clause).map(one);
-  const nested = () => (clause.filters ?? []).map((f) => translateFilter(f, fieldTypes));
+  const nested = () => (clause.filters ?? []).map((f) => translateFilter(f, fieldTypes, keepUnconverted));
 
   switch (operator) {
     case 'eq':
@@ -209,16 +224,11 @@ export function buildFilter(
   // Data source validation rejects these, so this is a source saved before it did:
   // a fixed filter goes on every query, so say which one and where to fix it.
   const translated: SitecoreFilter[] = fixed.map((clause) => {
-    try {
-      return translateFilter(clause, fieldTypes);
-    } catch (error) {
-      if (!(error instanceof UnsupportedFilter)) throw error;
-    }
     // Saving checks a fixed filter without field types (they're sampled after the
     // source is saved), so a value that isn't its field's type is sent as written
-    // rather than failing every search.
+    // rather than failing every search; the clause's other values are still converted.
     try {
-      return translateFilter(clause);
+      return translateFilter(clause, fieldTypes, true);
     } catch (error) {
       if (!(error instanceof UnsupportedFilter)) throw error;
       throw new Error(

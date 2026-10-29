@@ -2,6 +2,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { generateToolDescription } from '@/features/tools/tools.description-generator';
+
 import type { ExternalConnection } from '../external-search.types';
 import { inferSitecoreFields, sitecoreFieldTypes, sitecoreSearchConnector } from './sitecore-search.connector';
 import {
@@ -289,7 +291,17 @@ describe('field types for filter values', () => {
     expect(types.get('sizes')).toBe('number');
     expect(types.get('labels')).toBe('text');
     expect(types.get('year')).toBe('number');
-    expect(fields.find((f) => f.name === 'sizes')).toMatchObject({ type: 'number', providerType: 'array', valueType: 'number' });
+    expect(fields.find((f) => f.name === 'sizes')).toMatchObject({ type: 'text', providerType: 'array', valueType: 'number' });
+  });
+
+  // The field's type is what the chat tool offers (operators, sorting); a list keeps text's
+  it('keeps offering a list of numbers as a text field to the chat tool', () => {
+    const listFacet = inferSitecoreFields({
+      items: [{ id: 'a', category_ids: [12, 40] }], total: 1, facets: new Map([['category_ids', 'Category']]),
+    });
+    const { aiDescription } = generateToolDescription('S', 'search_index_external', 'search', { fields: listFacet });
+    expect(aiDescription).toContain('- category_ids (text): eq, neq, in, contains');
+    expect(aiDescription).not.toMatch(/Sortable fields:.*category_ids/);
   });
 
   it('looks past an empty first list for the items type', () => {
@@ -408,6 +420,17 @@ describe('fixed filters and field types', () => {
     const { filter, unapplied } = buildFilter([{ field: 'price', operator: 'lte', value: 'cheap' }], [], types);
     expect(filter).toEqual({ type: 'and', filters: [{ type: 'lte', name: 'price', value: 'cheap' }] });
     expect(unapplied).toEqual([]);
+  });
+
+  it('converts the other values of a combined fixed filter when one does not fit', () => {
+    const { filter } = buildFilter([{
+      operator: 'and',
+      filters: [{ field: 'price', operator: 'lte', value: 'cheap' }, { field: 'type', operator: 'eq', value: 80 }],
+    }] as never, [], types);
+    expect(filter).toEqual({ type: 'and', filters: [{ type: 'and', filters: [
+      { type: 'lte', name: 'price', value: 'cheap' },
+      { type: 'eq', name: 'type', value: '80' },
+    ] }] });
   });
 
   it('still refuses a fixed filter Sitecore has no operator for', () => {

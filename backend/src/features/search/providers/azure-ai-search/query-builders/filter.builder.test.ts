@@ -253,3 +253,19 @@ describe('range', () => {
         }
     });
 });
+
+describe('in/nin with a null or list item on a text field', () => {
+    it('drops the clause instead of matching the text "null"', () => {
+        for (const operator of ['in', 'nin']) {
+            for (const item of [null, ['fr']]) {
+                const { odata, dropped } = buildAzureFilterParts(
+                    [{ field: 'locale', operator, value: ['en', item] } as FilterClause],
+                    scalars,
+                );
+                expect(odata).toBeUndefined();
+                expect(dropped).toHaveLength(1);
+                expect(dropped[0].reason).toContain(JSON.stringify(item));
+            }
+        }
+    });
+});

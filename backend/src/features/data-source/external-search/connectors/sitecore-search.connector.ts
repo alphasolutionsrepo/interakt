@@ -213,12 +213,14 @@ export function inferSitecoreFields(sample: SitecoreSample): DataSourceField[] {
       : typeof item === 'string' ? 'text'
       : undefined;
 
-    const type = valueType ?? 'text';
+    // The field's type (what the chat tool offers: operators, sorting) stays text for a
+    // list; only filter values take the items' type
+    let type = 'text';
     let providerType = 'string';
     if (Array.isArray(first)) {
       providerType = 'array';
     } else if (typeof first === 'number' || typeof first === 'boolean') {
-      providerType = typeof first;
+      type = providerType = typeof first;
     }
 
     // Prose has spaces; ids and URLs don't, however long they are.
