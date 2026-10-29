@@ -2,7 +2,9 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { modelFormSchema, optionalNumber } from './model-form';
+import type { AIProviderModelResponse } from '@/features/ai-providers';
+
+import { formValuesOf, modelFormSchema, optionalNumber } from './model-form';
 
 const base = {
   modelKey: 'gpt-4o-mini',
@@ -43,5 +45,25 @@ describe('model form', () => {
 
   it('rejects a price that is not a number', () => {
     expect(modelFormSchema.safeParse({ ...base, inputCostPerMillionTokens: optionalNumber('abc') }).success).toBe(false);
+  });
+});
+
+describe('model form values for a saved model', () => {
+  const saved = (prices: { input: number | null; output: number | null }) => ({
+    id: 20, modelKey: 'qwen3.5:9b', displayName: 'Qwen 3.5 9B', description: null, modelType: 'chat',
+    dimensions: null, isAvailable: true, capabilities: { reasoningEffort: 'none' },
+    inputCostPerMillionTokens: prices.input, outputCostPerMillionTokens: prices.output,
+  }) as unknown as AIProviderModelResponse;
+
+  it('keeps a price of 0, so saving another change does not clear it', () => {
+    const values = formValuesOf(saved({ input: 0, output: 0.6 }));
+    expect(values.inputCostPerMillionTokens).toBe(0);
+    expect(values.outputCostPerMillionTokens).toBe(0.6);
+  });
+
+  it('shows no price as blank, and the saved reasoning level', () => {
+    const values = formValuesOf(saved({ input: null, output: null }));
+    expect(values.inputCostPerMillionTokens).toBeUndefined();
+    expect(values.reasoningEffort).toBe('none');
   });
 });

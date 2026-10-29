@@ -23,14 +23,14 @@ import { performHealthCheck } from './data-source.service';
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 
-function source(fields?: DataSourceField[], yearValue = '2024') {
+function source(fields?: DataSourceField[], yearValue: string | null = '2024') {
   return {
     id: 'ds-1',
     type: 'search_index_external',
     config: {
       provider: 'sitecore_search',
       connection: { url: 'https://discover.sitecorecloud.io/discover/v2/123', indexName: 'rfk_global_search', authType: 'none' },
-      providerSettings: { fixedFilters: [{ field: 'year', operator: 'eq', value: yearValue }] },
+      providerSettings: { fixedFilters: yearValue === null ? [] : [{ field: 'year', operator: 'eq', value: yearValue }] },
     },
     schema: fields ? { fields } : null,
   };
@@ -85,7 +85,8 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     sitecore.mockImplementationOnce(async () => answer([{ id: 'a', title: 'Linen shirt' }]));
     const missing = await performHealthCheck('ds-1');
     expect(missing.status).toBe('healthy');
-    expect(sentFilters().at(-1)).toEqual(converted);
+    // profiling and the count
+    expect(sentFilters().slice(2)).toEqual([converted, converted]);
 
     // The sample is empty: no fields discovered
     sitecore.mockClear();
@@ -104,5 +105,20 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     expect(result.status).toBe('error');
     expect(result.message).toMatch(/^Searches with this source's fixed filters fail: .*'recent' not of the expected type/);
     expect(result.schema?.fields.map((f) => f.name)).toEqual(['id', 'title', 'year']);
+  });
+
+  it('stays healthy when only the count fails on a source with no fixed filters', async () => {
+    repository.getDataSourceById.mockResolvedValue(source(undefined, null));
+    sitecore
+      .mockImplementationOnce(async () => new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'a' }] }] })))
+      .mockImplementationOnce(async () => new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'a' }] }] })))
+      .mockImplementationOnce(async () => new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'a' }] }] })))
+      .mockImplementationOnce(async () => new Response('{"message":"busy"}', { status: 503 }));
+
+    const result = await performHealthCheck('ds-1');
+
+    expect(result.status).toBe('healthy');
+    expect(result.documentCount).toBeUndefined();
+    expect(result.message).not.toMatch(/fixed filters/);
   });
 });

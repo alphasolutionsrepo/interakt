@@ -28,8 +28,7 @@ import {
 import { Loader2, Sparkles, MessageSquare, FileText, Database, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AIProviderModelResponse } from '@/features/ai-providers';
-import { reasoningChoiceOf } from '../_lib/model-capabilities';
-import { modelFormSchema, optionalNumber, type ModelFormData } from '../_lib/model-form';
+import { formValuesOf, modelFormSchema, optionalNumber, type ModelFormData } from '../_lib/model-form';
 
 // ============================================================================
 // Model Type Config
@@ -103,20 +102,7 @@ export function ModelFormDialog({
     useEffect(() => {
         if (open) {
             if (model) {
-                const capabilities = model.capabilities as Record<string, unknown> || {};
-                reset({
-                    modelKey: model.modelKey,
-                    displayName: model.displayName,
-                    description: model.description || '',
-                    modelType: model.modelType as 'text' | 'chat' | 'embedding' | 'vision',
-                    dimensions: model.dimensions || undefined,
-                    isAvailable: model.isAvailable,
-                    inputCostPerMillionTokens: model.inputCostPerMillionTokens || undefined,
-                    outputCostPerMillionTokens: model.outputCostPerMillionTokens || undefined,
-                    usesCompletionTokens: capabilities.usesCompletionTokens === true,
-                    noTemperature: capabilities.noTemperature === true,
-                    reasoningEffort: reasoningChoiceOf(capabilities),
-                });
+                reset(formValuesOf(model));
             } else {
                 reset({
                     modelKey: '',

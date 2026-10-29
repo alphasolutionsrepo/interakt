@@ -2,6 +2,10 @@
 
 import { z } from 'zod';
 
+import type { AIProviderModelResponse } from '@/features/ai-providers';
+
+import { reasoningChoiceOf } from './model-capabilities';
+
 /**
  * Model form schema. The model key follows the server's rule (any non-empty key):
  * provider keys carry `:` (Ollama tags) and `/` (gateway routes).
@@ -72,4 +76,22 @@ export type ModelFormData = z.infer<typeof modelFormSchema>;
 export function optionalNumber(value: unknown): number | null {
     if (value === '' || value === null || value === undefined) return null;
     return Number(value);
+}
+
+/** The form's values for a saved model. A price of 0 stays 0: blank would clear it on save. */
+export function formValuesOf(model: AIProviderModelResponse): ModelFormData {
+    const capabilities = (model.capabilities as Record<string, unknown>) || {};
+    return {
+        modelKey: model.modelKey,
+        displayName: model.displayName,
+        description: model.description || '',
+        modelType: model.modelType as ModelFormData['modelType'],
+        dimensions: model.dimensions || undefined,
+        isAvailable: model.isAvailable,
+        inputCostPerMillionTokens: model.inputCostPerMillionTokens ?? undefined,
+        outputCostPerMillionTokens: model.outputCostPerMillionTokens ?? undefined,
+        usesCompletionTokens: capabilities.usesCompletionTokens === true,
+        noTemperature: capabilities.noTemperature === true,
+        reasoningEffort: reasoningChoiceOf(capabilities),
+    };
 }

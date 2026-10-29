@@ -395,7 +395,7 @@ async function checkExternalIndexHealth(
   let schemaNote = '';
   try {
     logger.info('Attempting schema discovery', { provider: config.provider, indexName: config.connection.indexName });
-    const discovered = await discoverExternalSchema(config);
+    const discovered = await discoverExternalSchema(config, storedFields);
     if (discovered.fields.length > 0) {
       schema = {
         fields: discovered.fields,
@@ -419,21 +419,20 @@ async function checkExternalIndexHealth(
 
   // Step 4 (Sitecore): count with the fixed filters, sent as the types searches will use:
   // the schema as it's about to be saved (stored types this sample didn't see are kept).
-  // Every search makes this request, so a failure here makes the source unhealthy.
+  // Every search makes this request, so with fixed filters a failure makes the source
+  // unhealthy; without, it's the probe's request again and only the count is lost.
   if (config.provider === 'sitecore_search') {
     try {
       const connection = await resolveExternalConnection('Sitecore Search', config);
-      const fields = schema ? mergeOperatorFieldEdits(storedFields ? { fields: storedFields } : null, schema).fields : storedFields;
-      const sample = await sampleSitecore(connection, 1, { fields });
+      const sample = await sampleSitecore(connection, 1, { fields: typesForSearches(storedFields, schema) });
       documentCount = sample.total;
       statsNote = ` — ${sample.total.toLocaleString()} docs`;
     } catch (err) {
-      return {
-        status: 'error',
-        message: `Searches with this source's fixed filters fail: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        checkedAt: now,
-        schema,
-      };
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      if (sitecoreFixedFilters(config).length > 0) {
+        return { status: 'error', message: `Searches with this source's fixed filters fail: ${errMsg}`, checkedAt: now, schema };
+      }
+      logger.warn('Index stats fetch failed (non-fatal)', { provider: config.provider, error: errMsg });
     }
   }
 
@@ -657,8 +656,26 @@ interface DiscoveredSchema {
   discoveredFrom?: DataSourceSchema['discoveredFrom'];
 }
 
+/**
+ * The fields searches will use once a discovery is saved: the stored schema merged with
+ * what discovery found, so a type an earlier sample saw is kept.
+ */
+function typesForSearches(
+  storedFields: DataSourceField[] | undefined,
+  discovered: { fields: DataSourceField[]; discoveredFrom?: DataSourceSchema['discoveredFrom'] } | undefined,
+): DataSourceField[] | undefined {
+  if (!discovered) return storedFields;
+  return mergeOperatorFieldEdits(storedFields ? { fields: storedFields } : null, discovered as DataSourceSchema).fields;
+}
+
+function sitecoreFixedFilters(config: ExternalSearchIndexConfig): unknown[] {
+  const fixed = (config.providerSettings as { fixedFilters?: unknown } | undefined)?.fixedFilters;
+  return Array.isArray(fixed) ? fixed : [];
+}
+
 async function discoverExternalSchema(
   config: ExternalSearchIndexConfig,
+  storedFields?: DataSourceField[],
 ): Promise<DiscoveredSchema> {
   const discovered = await discoverExternalFields(config);
   if (discovered.fields.length === 0) return discovered;
@@ -670,7 +687,7 @@ async function discoverExternalSchema(
   if (sampleSize === 0) return discovered;
 
   try {
-    const documents = await fetchDocumentSample(config, sampleSize, discovered.fields);
+    const documents = await fetchDocumentSample(config, sampleSize, typesForSearches(storedFields, discovered) ?? []);
     if (documents.length === 0) {
       logger.warn('Field profiling skipped — no documents sampled', { provider: config.provider });
       return discovered;
