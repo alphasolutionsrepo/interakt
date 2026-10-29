@@ -115,6 +115,32 @@ describe('chat search tool on a Sitecore source', () => {
   });
 });
 
+describe("chat search tool with a default filter Sitecore can't take", () => {
+  const config = { defaultFilters: [{ field: 'open', operator: 'eq', value: 'Yes' }] };
+
+  it('fails, rather than searching wider than the tool was set up for', async () => {
+    storedFields.value = inferSitecoreFields({ items: [{ id: 'a', open: true }], total: 1, facets: new Map() });
+    stubSitecoreFilter();
+
+    const result = await executeDataSourceSearch('ds', config, { query: 'x' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(
+      `The tool's default filter can't be applied (open: "Yes" is not a boolean value for 'open'). Fix it in the tool's settings.`,
+    );
+  });
+
+  it('runs when the request replaces that default with a value that converts', async () => {
+    storedFields.value = inferSitecoreFields({ items: [{ id: 'a', open: true }], total: 1, facets: new Map() });
+    const sent = stubSitecoreFilter();
+
+    const result = await executeDataSourceSearch('ds', config, { query: 'x', filters: [{ field: 'open', operator: 'eq', value: 'true' }] });
+
+    expect(result.success).toBe(true);
+    expect(sent()).toEqual({ type: 'and', filters: [{ type: 'eq', name: 'open', value: true }] });
+  });
+});
+
 describe('chat enumerate tool on a Sitecore source', () => {
   it("sends a fixed filter's value as its field's type", async () => {
     storedFields.value = inferSitecoreFields({

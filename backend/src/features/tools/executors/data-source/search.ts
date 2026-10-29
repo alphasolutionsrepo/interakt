@@ -19,6 +19,7 @@ import {
   mergeDefaultSort,
   describeAppliedConfig,
   annotateResult,
+  unappliedDefaults,
 } from '../filter-defaults';
 import {
   resolveDataSource,
@@ -205,6 +206,11 @@ async function executeExternalSearch(
     );
     unappliedFilters = searched.unappliedFilters;
     unappliedSort = searched.unappliedSort;
+    const brokenDefaults = unappliedDefaults(merged.appliedDefaults, unappliedFilters);
+    if (brokenDefaults.length > 0) {
+      const reasons = brokenDefaults.map((u) => `${u.field}: ${u.reason}`).join('; ');
+      throw new Error(`The tool's default filter can't be applied (${reasons}). Fix it in the tool's settings.`);
+    }
     result = {
       success: true,
       data: {

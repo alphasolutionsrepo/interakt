@@ -60,6 +60,20 @@ export function mergeDefaultFilters(
 }
 
 /**
+ * Defaults the engine reported it couldn't apply. Searching without one would widen the
+ * scope the tool was configured with while the result still lists it as applied, so the
+ * search fails instead (a managed index fails the same way). A requested filter on the
+ * same field already replaced its default, so matching on field is enough.
+ */
+export function unappliedDefaults(
+  appliedDefaults: FilterClause[],
+  unappliedFilters: UnappliedClause[],
+): UnappliedClause[] {
+  const fields = new Set(appliedDefaults.map((d) => d.field));
+  return unappliedFilters.filter((u) => fields.has(u.field));
+}
+
+/**
  * Choose between the caller's sort and the configured default.
  *
  * Sort is all-or-nothing rather than merged per field: interleaving a default ordering
