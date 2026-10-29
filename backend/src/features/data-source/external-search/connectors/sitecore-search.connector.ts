@@ -192,7 +192,7 @@ const DISCOVERY_SAMPLE_SIZE = 25;
 /**
  * Discover fields from a sample within the source's fixed filters, sent as the known
  * types. Fixed filter values go out as their type only once a sample has seen it, so if
- * Sitecore refuses the scoped sample (a value of the wrong type, on a source not yet
+ * Sitecore refuses the scoped sample with HTTP 400 (a value of the wrong type, on a source not yet
  * discovered), the types are learned from a sample of the whole widget and the scope is
  * sampled again with them. If that still fails, the whole-widget fields are returned so
  * the schema isn't empty; the health check then reports the fixed filters as failing.
@@ -206,7 +206,10 @@ export async function discoverSitecoreFields(
   try {
     return inferSitecoreFields(await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { fields: knownFields }));
   } catch (scopedError) {
-    if (sitecoreSettings(connection).fixedFilters.length === 0) throw scopedError;
+    // Only a refusal (HTTP 400) can be a fixed filter value's type; anything else
+    // (timeout, 5xx, auth) fails discovery as before
+    const refused = scopedError instanceof SitecoreHttpError && scopedError.status === 400;
+    if (!refused || sitecoreSettings(connection).fixedFilters.length === 0) throw scopedError;
   }
   const learned = inferSitecoreFields(
     await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { withoutFixedFilters: true }),

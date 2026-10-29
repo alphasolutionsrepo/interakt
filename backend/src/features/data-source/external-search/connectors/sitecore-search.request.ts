@@ -243,7 +243,9 @@ export function buildFilter(
       translated.push(translateFilter(clause, fieldTypes));
     } catch (error) {
       if (!(error instanceof UnsupportedFilter)) throw error;
-      unapplied.push({ field: clause.field, operator: clause.operator, reason: error.message });
+      // Inside and / or / not, the field is the condition's that failed
+      const field = error.clause.field ?? clause.field ?? `(${clause.operator})`;
+      unapplied.push({ field, operator: clause.operator, reason: error.message });
     }
   }
 

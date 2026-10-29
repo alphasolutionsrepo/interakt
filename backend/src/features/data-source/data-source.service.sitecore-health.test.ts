@@ -140,4 +140,19 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     expect(result.documentCount).toBeUndefined();
     expect(result.message).not.toMatch(/fixed filters/);
   });
+
+  it("fails discovery, without sampling the whole widget, when the scoped sample fails for another reason", async () => {
+    repository.getDataSourceById.mockResolvedValue(source());
+    const ok = async () => new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'a' }] }] }));
+    sitecore
+      .mockImplementationOnce(ok)
+      .mockImplementationOnce(async () => new Response('{"message":"busy"}', { status: 503 }));
+
+    const result = await performHealthCheck('ds-1');
+
+    expect(result.schema).toBeUndefined();
+    // probe, the scoped sample (503), then the count: no whole-widget sample
+    const asWritten = { type: 'and', filters: [{ type: 'eq', name: 'year', value: '2024' }] };
+    expect(sentFilters()).toEqual([undefined, asWritten, asWritten]);
+  });
 });

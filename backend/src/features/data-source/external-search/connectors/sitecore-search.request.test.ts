@@ -405,6 +405,13 @@ describe("filter values as their field's type", () => {
     ]);
   });
 
+  it('reports a value that fails inside and/or/not against its own field', () => {
+    const { unapplied } = buildFilter([], [
+      { operator: 'or', filters: [{ field: 'type', operator: 'eq', value: 'page' }, { field: 'price', operator: 'eq', value: 'cheap' }] },
+    ] as never, types);
+    expect(unapplied).toEqual([{ field: 'price', operator: 'or', reason: `"cheap" is not a number value for 'price'` }]);
+  });
+
   it('reports in/nin as not applied when one item, or a null item, can\'t be the field\'s type', () => {
     // Dropping only the bad item would narrow `in` or widen `nin`
     const { filter, unapplied } = buildFilter([], [
