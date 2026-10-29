@@ -33,6 +33,14 @@ import {
 // HTTP
 // ============================================================================
 
+/** Sitecore answered with an HTTP error: 400 means it refused the request itself. */
+export class SitecoreHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'SitecoreHttpError';
+  }
+}
+
 interface SitecoreCall {
   json: unknown;
   took: number;
@@ -86,9 +94,12 @@ async function callSitecore(
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new Error('Sitecore Search rejected the request — check the API key');
+      throw new SitecoreHttpError('Sitecore Search rejected the request — check the API key', response.status);
     }
-    throw new Error(`Sitecore Search returned HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`);
+    throw new SitecoreHttpError(
+      `Sitecore Search returned HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`,
+      response.status,
+    );
   }
 
   try {

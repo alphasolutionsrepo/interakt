@@ -123,4 +123,21 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     expect(result.documentCount).toBeUndefined();
     expect(result.message).not.toMatch(/fixed filters/);
   });
+
+  it('stays healthy when the count fails for another reason on a source with fixed filters', async () => {
+    const storedYear: DataSourceField = { name: 'year', displayName: 'Year', type: 'number', providerType: 'number', valueType: 'number', isSearchable: false, isFacetable: false, isFilterable: false };
+    repository.getDataSourceById.mockResolvedValue(source([storedYear]));
+    const ok = async () => new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'a', year: 2024 }] }] }));
+    sitecore
+      .mockImplementationOnce(ok)
+      .mockImplementationOnce(ok)
+      .mockImplementationOnce(ok)
+      .mockImplementationOnce(async () => new Response('{"message":"busy"}', { status: 503 }));
+
+    const result = await performHealthCheck('ds-1');
+
+    expect(result.status).toBe('healthy');
+    expect(result.documentCount).toBeUndefined();
+    expect(result.message).not.toMatch(/fixed filters/);
+  });
 });
