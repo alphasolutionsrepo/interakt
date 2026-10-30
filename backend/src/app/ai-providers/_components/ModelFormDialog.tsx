@@ -28,6 +28,7 @@ import {
 import { Loader2, Sparkles, MessageSquare, FileText, Database, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AIProviderModelResponse } from '@/features/ai-providers';
+import { REASONING_CHOICES, REASONING_LABELS } from '../_lib/model-capabilities';
 import { formValuesOf, modelFormSchema, optionalNumber, type ModelFormData } from '../_lib/model-form';
 
 // ============================================================================
@@ -398,12 +399,9 @@ export function ModelFormDialog({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="default">Model default</SelectItem>
-                                        <SelectItem value="none">Off</SelectItem>
-                                        <SelectItem value="minimal">Minimal</SelectItem>
-                                        <SelectItem value="low">Low</SelectItem>
-                                        <SelectItem value="medium">Medium</SelectItem>
-                                        <SelectItem value="high">High</SelectItem>
+                                        {REASONING_CHOICES.map((choice) => (
+                                            <SelectItem key={choice} value={choice}>{REASONING_LABELS[choice]}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>

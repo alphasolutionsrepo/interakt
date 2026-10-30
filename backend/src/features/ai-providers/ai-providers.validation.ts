@@ -82,6 +82,10 @@ export const providerSettingsSchema = z.object({
 // MODEL CAPABILITIES SCHEMA
 // ============================================================================
 
+/** Reasoning levels a thinking model can be set to (the model form adds "Model default"). */
+export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high'] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
 export const modelCapabilitiesSchema = z.object({
   maxTokens: z.number().int().positive().optional(),
   contextWindow: z.number().int().positive().optional(),
@@ -94,7 +98,7 @@ export const modelCapabilitiesSchema = z.object({
   // OpenAI-specific: reasoning models don't support temperature
   noTemperature: z.boolean().optional(),
   // Thinking models: sent as reasoning_effort (OpenAI-compatible) or think (Ollama)
-  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high']).optional(),
+  reasoningEffort: z.enum(REASONING_EFFORTS).optional(),
 }).passthrough();
 
 // ============================================================================

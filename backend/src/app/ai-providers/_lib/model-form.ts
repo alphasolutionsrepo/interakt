@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import type { AIProviderModelResponse } from '@/features/ai-providers';
 
-import { reasoningChoiceOf } from './model-capabilities';
+import { REASONING_CHOICES, reasoningChoiceOf } from './model-capabilities';
 
 /**
  * Model form schema. The model key follows the server's rule (any non-empty key):
@@ -51,7 +51,7 @@ export const modelFormSchema = z.object({
     // Capabilities (flattened for form, will be restructured on submit)
     usesCompletionTokens: z.boolean().default(false),
     noTemperature: z.boolean().default(false),
-    reasoningEffort: z.enum(['default', 'none', 'minimal', 'low', 'medium', 'high']).default('default'),
+    reasoningEffort: z.enum(REASONING_CHOICES).default('default'),
 }).refine(
     (data) => {
         // Dimensions required for embedding models

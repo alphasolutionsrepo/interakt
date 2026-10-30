@@ -48,7 +48,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ModelFormDialog } from './ModelFormDialog';
 import { aiModelsApi } from '../_lib/api-client';
-import { capabilitiesFromForm } from '../_lib/model-capabilities';
+import { capabilitiesFromForm, type ReasoningChoice } from '../_lib/model-capabilities';
 import type {
     AIProviderWithModelsResponse,
     AIProviderModelResponse,
@@ -275,11 +275,14 @@ export function ManageModelsDialog({
         outputCostPerMillionTokens?: number | null;
         usesCompletionTokens?: boolean;
         noTemperature?: boolean;
-        reasoningEffort?: 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high';
+        reasoningEffort?: ReasoningChoice;
     }) => {
         setIsSubmitting(true);
         try {
-            const capabilities = capabilitiesFromForm(data);
+            const capabilities = capabilitiesFromForm(
+                data,
+                (editingModel?.capabilities as Record<string, unknown> | undefined) ?? {},
+            );
 
             if (editingModel) {
                 // Update existing model (modelType cannot be changed after creation)
