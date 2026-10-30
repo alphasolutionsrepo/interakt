@@ -2,6 +2,7 @@
 
 import 'server-only';
 
+import { healthCheckWorker } from './handlers/health-check.handler';
 import { refreshInsightsWorker } from './handlers/refresh-insights.handler';
 import { QUEUE } from './job-queues';
 
@@ -28,6 +29,38 @@ export interface JobTypeDef {
   worker: (jobs: Array<{ id: string; data: never }>) => Promise<unknown>;
   /** Jobs processed per batch (default 1 — serialize heavy work). */
   batchSize?: number;
+  /**
+   * Schedule set once, the first time the jobs engine starts with this job type.
+   * Changing or removing it in the operator console sticks: it is not set again.
+   * Omit for jobs that only run on demand.
+   */
+  defaultSchedule?: { cron: string; timezone: string };
+  /**
+   * Queue settings, applied at every boot (existing queues are updated too). pg-boss
+   * defaults are 15 minutes to expire and 2 retries, which suits short jobs only.
+   */
+  queueOptions?: { expireInSeconds?: number; retryLimit?: number; deleteAfterSeconds?: number };
+}
+
+/**
+ * Nightly insights refresh, so "What needs attention" is current each morning.
+ * INSIGHTS_REFRESH_CRON changes the time; set it to "off" to keep insights
+ * on-demand only. INSIGHTS_REFRESH_TIMEZONE is an IANA zone (default UTC).
+ */
+function insightsRefreshSchedule(): JobTypeDef['defaultSchedule'] {
+  const cron = process.env.INSIGHTS_REFRESH_CRON?.trim() || '0 2 * * *';
+  if (cron.toLowerCase() === 'off') return undefined;
+  return { cron, timezone: process.env.INSIGHTS_REFRESH_TIMEZONE?.trim() || 'UTC' };
+}
+
+/**
+ * Health checks for the home page, every 10 minutes. HEALTH_CHECK_CRON changes
+ * how often; "off" leaves the home page without health (Health Monitoring still works).
+ */
+function healthCheckSchedule(): JobTypeDef['defaultSchedule'] {
+  const cron = process.env.HEALTH_CHECK_CRON?.trim() || '*/10 * * * *';
+  if (cron.toLowerCase() === 'off') return undefined;
+  return { cron, timezone: 'UTC' };
 }
 
 export const JOB_TYPES: readonly JobTypeDef[] = [
@@ -35,10 +68,28 @@ export const JOB_TYPES: readonly JobTypeDef[] = [
     queue: QUEUE.REFRESH_INSIGHTS,
     label: 'Refresh AI insights',
     description:
-      'Recompute analytics AI insights. Omit experienceId to process all active experiences.',
+      'Recompute analytics AI insights. Omit experienceId to process all experiences combined, then each experience active in the last 30 days.',
     payloadExample: { experienceId: '' },
     worker: refreshInsightsWorker,
     batchSize: 1,
+    defaultSchedule: insightsRefreshSchedule(),
+    // One run covers every active experience, so it can take a while. Expiring it
+    // mid-run and retrying would process (and pay for) the same work again; a run
+    // that fails is picked up by the next night's.
+    queueOptions: { expireInSeconds: 4 * 60 * 60, retryLimit: 0 },
+  },
+  {
+    queue: QUEUE.HEALTH_CHECK,
+    label: 'Check system health',
+    description:
+      'Check the database, search engine and AI providers, as Health Monitoring does. The home page shows the latest result. No payload.',
+    payloadExample: {},
+    worker: healthCheckWorker,
+    batchSize: 1,
+    defaultSchedule: healthCheckSchedule(),
+    // A quick check: no retries (the next run is minutes away), and finished runs
+    // are kept for a day only, since one is recorded every 10 minutes
+    queueOptions: { expireInSeconds: 120, retryLimit: 0, deleteAfterSeconds: 24 * 60 * 60 },
   },
 ];
 

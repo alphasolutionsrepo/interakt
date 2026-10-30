@@ -70,23 +70,23 @@ function getTypeIcon(type: InferredFieldType) {
 function getTypeBadgeColor(type: InferredFieldType): string {
     switch (type) {
         case 'string':
-            return 'bg-blue-100 text-blue-700 border-blue-200';
+            return 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
         case 'number':
-            return 'bg-green-100 text-green-700 border-green-200';
+            return 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800';
         case 'boolean':
-            return 'bg-amber-100 text-amber-700 border-amber-200';
+            return 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
         case 'object':
-            return 'bg-purple-100 text-purple-700 border-purple-200';
+            return 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800';
         case 'array:string':
         case 'array:number':
         case 'array:boolean':
         case 'array:object':
         case 'array:mixed':
-            return 'bg-cyan-100 text-cyan-700 border-cyan-200';
+            return 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800';
         case 'null':
-            return 'bg-slate-100 text-slate-500 border-slate-200';
+            return 'bg-slate-100 dark:bg-muted text-slate-500 border-slate-200 dark:border-border';
         default:
-            return 'bg-gray-100 text-gray-600 border-gray-200';
+            return 'bg-gray-100 dark:bg-muted text-gray-600 border-gray-200 dark:border-border';
     }
 }
 
@@ -134,8 +134,8 @@ function FieldItem({ field, isSelected, onClick }: FieldItemProps) {
             className={cn(
                 'border rounded-lg transition-colors',
                 isSelected
-                    ? 'border-blue-300 bg-blue-50'
-                    : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50',
+                    ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/40'
+                    : 'border-slate-200 dark:border-border hover:border-slate-300 hover:bg-slate-50',
                 onClick && 'cursor-pointer'
             )}
             onClick={onClick}
@@ -145,11 +145,11 @@ function FieldItem({ field, isSelected, onClick }: FieldItemProps) {
                     <div className="flex-1 min-w-0">
                         {/* Field Path */}
                         <div className="flex items-center gap-2">
-                            <code className="font-mono text-sm font-medium text-slate-900 truncate">
+                            <code className="font-mono text-sm font-medium text-slate-900 dark:text-foreground truncate">
                                 {field.path}
                             </code>
                             {hasNestedPath && (
-                                <Badge variant="outline" className="text-[10px] h-4 px-1 bg-slate-100">
+                                <Badge variant="outline" className="text-[10px] h-4 px-1 bg-slate-100 dark:bg-muted">
                                     nested
                                 </Badge>
                             )}
@@ -192,9 +192,9 @@ function FieldItem({ field, isSelected, onClick }: FieldItemProps) {
                 {/* Sample Value (collapsible) */}
                 <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
                     <CollapsibleContent>
-                        <div className="mt-2 pt-2 border-t border-slate-100">
+                        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-border">
                             <p className="text-xs text-slate-500 mb-1">Sample value:</p>
-                            <code className="text-xs font-mono text-slate-700 bg-slate-100 px-2 py-1 rounded block overflow-x-auto">
+                            <code className="text-xs font-mono text-slate-700 dark:text-muted-foreground bg-slate-100 dark:bg-muted px-2 py-1 rounded block overflow-x-auto">
                                 {formatSampleValue(field.sampleValue)}
                             </code>
                         </div>
@@ -249,7 +249,7 @@ export function ParsedFieldsList({
 
     if (fields.length === 0) {
         return (
-            <Card className={cn('border-slate-200', className)}>
+            <Card className={cn('border-slate-200 dark:border-border', className)}>
                 <CardContent className="p-6">
                     <div className="text-center text-slate-500">
                         <FileJson className="h-10 w-10 mx-auto mb-3 text-slate-300" />
@@ -264,11 +264,11 @@ export function ParsedFieldsList({
     }
 
     return (
-        <Card className={cn('border-slate-200', className)}>
+        <Card className={cn('border-slate-200 dark:border-border', className)}>
             <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="flex items-center gap-2 text-slate-900">
+                        <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-foreground">
                             <FileJson className="h-5 w-5" />
                             Source Fields
                         </CardTitle>

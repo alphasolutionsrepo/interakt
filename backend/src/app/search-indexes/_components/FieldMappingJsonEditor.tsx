@@ -180,7 +180,7 @@ export function FieldMappingJsonEditor({
         return (
             <div className="space-y-3">
                 {[...Array(6)].map((_, i) => (
-                    <div key={i} className="h-6 bg-slate-100 rounded animate-pulse" />
+                    <div key={i} className="h-6 bg-slate-100 dark:bg-muted rounded animate-pulse" />
                 ))}
             </div>
         );
@@ -205,25 +205,25 @@ export function FieldMappingJsonEditor({
                         </Badge>
                     )}
                     {isValid && !isDirty && !applied && (
-                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+                        <Badge className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 gap-1">
                             <CheckCircle2 className="h-3 w-3" />
                             {fieldCount} fields
                         </Badge>
                     )}
                     {isValid && isDirty && (
-                        <Badge className="bg-blue-100 text-blue-700 border-blue-200 gap-1">
+                        <Badge className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 gap-1">
                             <FileText className="h-3 w-3" />
                             Modified — {fieldCount} fields
                         </Badge>
                     )}
                     {applied && (
-                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+                        <Badge className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 gap-1">
                             <Check className="h-3 w-3" />
                             Applied
                         </Badge>
                     )}
                     {conversionWarnings.length > 0 && isValid && (
-                        <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1">
+                        <Badge className="bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 gap-1">
                             <AlertTriangle className="h-3 w-3" />
                             {conversionWarnings.length} warning{conversionWarnings.length !== 1 ? 's' : ''}
                         </Badge>
@@ -254,13 +254,13 @@ export function FieldMappingJsonEditor({
 
             {/* Error Details */}
             {parseError && (
-                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
                     <p className="font-medium">JSON Parse Error</p>
                     <p className="mt-1 font-mono text-xs">{parseError}</p>
                 </div>
             )}
             {!parseError && validationErrors.length > 0 && (
-                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
                     <p className="font-medium">Validation Errors</p>
                     <ul className="mt-1 list-disc list-inside space-y-0.5 text-xs">
                         {validationErrors.map((err, i) => (
@@ -272,7 +272,7 @@ export function FieldMappingJsonEditor({
 
             {/* Diff Summary */}
             {isDirty && isValid && diffSummary && (
-                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+                <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 p-3 text-sm text-blue-700 dark:text-blue-300">
                     <div className="flex items-center gap-4 flex-wrap">
                         <span>{diffSummary.matchedFields} of {diffSummary.totalFields} fields matched</span>
                         {diffSummary.mappingChanges > 0 && (
@@ -290,7 +290,7 @@ export function FieldMappingJsonEditor({
 
             {/* Warnings */}
             {conversionWarnings.length > 0 && isValid && isDirty && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-700 dark:text-amber-300">
                     <p className="font-medium">Warnings</p>
                     <ul className="mt-1 list-disc list-inside space-y-0.5 text-xs max-h-24 overflow-y-auto">
                         {conversionWarnings.slice(0, 10).map((w, i) => (
@@ -307,7 +307,7 @@ export function FieldMappingJsonEditor({
             <Textarea
                 value={jsonText}
                 onChange={(e) => handleTextChange(e.target.value)}
-                className="font-mono text-xs leading-relaxed min-h-[500px] resize-y bg-slate-50 border-slate-200"
+                className="font-mono text-xs leading-relaxed min-h-[500px] resize-y bg-slate-50 dark:bg-muted/40 border-slate-200 dark:border-border"
                 spellCheck={false}
             />
         </div>

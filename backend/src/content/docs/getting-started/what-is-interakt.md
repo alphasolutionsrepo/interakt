@@ -71,7 +71,7 @@ You connect a data source, populate a search index, then build one or more exper
 
 ## What you'll do, in roughly the order you'll do it
 
-1. **Configure an AI provider** (Platform → AI Providers). Without one, you can do keyword search but not meaning-based search or chat.
+1. **Configure an AI provider** (Admin → AI Providers). Without one, you can do keyword search but not meaning-based search or chat.
 2. **Connect a data source** or **load data into a search index**.
 3. **Define the index fields** — what's searchable, what's filterable, what's shown in results.
 4. **Build an experience** — a search page, a chat window, or both.

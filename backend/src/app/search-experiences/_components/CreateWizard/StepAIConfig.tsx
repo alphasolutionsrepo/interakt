@@ -101,7 +101,7 @@ export function StepAIConfig({
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded-lg">
                 <Sparkles className="h-5 w-5 text-purple-600" />
               </div>
               <div>

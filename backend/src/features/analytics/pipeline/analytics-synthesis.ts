@@ -10,6 +10,7 @@
 import 'server-only';
 
 import { createLogger } from '@/shared/logger/logger';
+import { describePeriod } from '../analytics-period';
 import type {
   ModuleResult,
   AnalyticsActionResult,
@@ -36,23 +37,38 @@ function formatTimeRange(range: string): string {
  * (e.g. precomputed insights only exist for 24h/7d/30d, so a "last hour" request reads
  * 24h data), and calls out when that differs from what was asked for.
  */
-export function describeDataPeriods(actions: AnalyticsActionResult[]): string {
+export function describeDataPeriods(actions: AnalyticsActionResult[], timeZone: string = 'UTC'): string {
   const notes: string[] = [];
   const covered = new Set<string>();
   for (const action of actions) {
-    if (!action.result.success || !action.result.timeRange) continue;
-    const actual = action.result.timeRange;
-    covered.add(actual);
-    const requested = action.parameters?.timeRange ? String(action.parameters.timeRange) : undefined;
+    if (!action.result.success) continue;
+    const params = action.parameters ?? {};
+    // What was asked for: an exact period, or a fixed range
+    const requested =
+      typeof params.from === 'string' && typeof params.to === 'string'
+        ? describePeriod({ from: new Date(params.from), to: new Date(params.to) }, timeZone)
+        : params.timeRange
+          ? `the ${formatTimeRange(String(params.timeRange))}`
+          : undefined;
+
+    if (action.result.period) {
+      // The tool read exactly the requested period
+      const exact = describePeriod({ from: new Date(action.result.period.from), to: new Date(action.result.period.to) }, timeZone);
+      covered.add(`${action.toolSlug}: ${exact}`);
+      continue;
+    }
+    if (!action.result.timeRange) continue;
+    const actual = `the ${formatTimeRange(action.result.timeRange)}`;
+    covered.add(`${action.toolSlug}: ${actual}`);
     if (requested && requested !== actual) {
       notes.push(
-        `${action.toolSlug} has no data for the ${formatTimeRange(requested)}; its results cover the ${formatTimeRange(actual)}. Say this explicitly and do not describe these numbers as the ${formatTimeRange(requested)}.`,
+        `${action.toolSlug} has no data for ${requested}; its results cover ${actual}. Say this explicitly and do not describe these numbers as ${requested}.`,
       );
     }
   }
   if (covered.size === 0) return '';
   return [
-    `The data covers: ${[...covered].map((r) => `the ${formatTimeRange(r)}`).join(', ')}. State the period in your answer.`,
+    `The data covers (times in ${timeZone}): ${[...covered].join('; ')}. State the period with each figure.`,
     ...notes,
   ].join('\n');
 }
@@ -94,10 +110,27 @@ const SYNTHESIS_PROMPT = `You are an analytics advisor for a business admin. Int
 1. Data is auto-displayed in visual cards alongside your text. NEVER list or repeat numbers shown in cards.
 2. Provide 2-3 sentences of business insight — focus on what it MEANS, not what it IS.
 3. Use business language: "Customers can't find X" not "zero-result rate is 15%".
-4. Always mention the time period.
+4. State the period each figure covers, exactly as given under "The data covers". Never describe a figure as covering a different day or period than its tool read.
 5. If no data or tools failed: explain what happened and suggest actions.
 6. End with exactly 2-3 follow-up question suggestions on separate lines, prefixed with "- ".
-7. Keep your response concise — no more than 4-5 sentences before follow-ups.`;
+7. Keep your response concise — no more than 4-5 sentences before follow-ups.
+8. Earlier turns of the conversation come before the latest question. Answer the latest question; read short follow-ups ("why?", "and before that?") as being about the previous answer. Figures in earlier answers are not data: only the tool results below are.`;
+
+/** Earlier turns the answer step sees: the latest few, each cut short so they can't crowd out the data */
+const HISTORY_TURNS = 4;
+const HISTORY_CHARS = 1200;
+
+export function conversationSoFar(context: AnalyticsTurnContext): Array<{ role: string; content: string }> {
+  const messages: Array<{ role: string; content: string }> = [];
+  if (context.conversationSummary) {
+    messages.push({ role: 'system', content: `## Earlier in this conversation\n${context.conversationSummary}` });
+  }
+  for (const msg of context.conversationHistory.slice(-HISTORY_TURNS)) {
+    const content = msg.content.length > HISTORY_CHARS ? `${msg.content.slice(0, HISTORY_CHARS)}…` : msg.content;
+    messages.push({ role: msg.role, content });
+  }
+  return messages;
+}
 
 // ============================================================================
 // D3b: RESPONSE SYNTHESIS (1 AI call, streaming)
@@ -128,13 +161,16 @@ export async function synthesizeAnalyticsResponse(
       const experienceNote = context.experienceId
         ? `All data below is scoped to the experience "${context.experienceName ?? 'selected experience'}" only. Say so when it matters (e.g. "for ${context.experienceName ?? 'this experience'}, ..."), and do not present these numbers as platform-wide.`
         : `You are showing data across all experiences.`;
-      const periodNote = describeDataPeriods(actions);
+      const periodNote = describeDataPeriods(actions, context.timeZone);
 
       messages.push({
         role: 'system',
         content: `${SYNTHESIS_PROMPT}\n\n${experienceNote}\n${periodNote}\n\n## Tool Results\n${preparedData}`,
       });
     }
+
+    // The conversation so far, so a follow-up ("why?", "and the week before?") is read in its light
+    messages.push(...conversationSoFar(context));
 
     // Add user message
     messages.push({ role: 'user', content: context.userMessage });

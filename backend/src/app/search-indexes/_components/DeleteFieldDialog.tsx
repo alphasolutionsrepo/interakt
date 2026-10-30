@@ -171,10 +171,10 @@ export function DeleteFieldDialog({
                     )}
 
                     {isError && (
-                        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3">
                             <div className="flex gap-2">
                                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
-                                <p className="text-sm text-red-800">
+                                <p className="text-sm text-red-800 dark:text-red-200">
                                     {error instanceof Error
                                         ? error.message
                                         : 'Could not check dependencies'}
@@ -186,14 +186,14 @@ export function DeleteFieldDialog({
                     {/* Blocked */}
                     {!isLoading && !isError && dependents.length > 0 && (
                         <>
-                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3">
                                 <div className="flex gap-2">
                                     <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
-                                    <div className="text-sm text-amber-800">
+                                    <div className="text-sm text-amber-800 dark:text-amber-200">
                                         <p className="font-medium">
                                             This field can&apos;t be deleted yet
                                         </p>
-                                        <p className="mt-0.5 text-amber-700">
+                                        <p className="mt-0.5 text-amber-700 dark:text-amber-300">
                                             {dependents.length}{' '}
                                             {dependents.length === 1 ? 'thing depends' : 'things depend'}{' '}
                                             on it. Remove{' '}
@@ -210,12 +210,12 @@ export function DeleteFieldDialog({
                     {/* Clear to delete */}
                     {!isLoading && !isError && canDelete && (
                         <>
-                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3">
                                 <div className="flex gap-2">
                                     <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
-                                    <div className="text-sm text-amber-800">
+                                    <div className="text-sm text-amber-800 dark:text-amber-200">
                                         <p className="font-medium">What happens:</p>
-                                        <ul className="mt-1 list-inside list-disc space-y-0.5 text-amber-700">
+                                        <ul className="mt-1 list-inside list-disc space-y-0.5 text-amber-700 dark:text-amber-300">
                                             <li>
                                                 The field stops being searched, faceted, and returned
                                                 straight away
@@ -257,10 +257,10 @@ export function DeleteFieldDialog({
                     )}
 
                     {submitError && (
-                        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3">
                             <div className="flex gap-2">
                                 <Link2Off className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
-                                <p className="text-sm text-red-800">{submitError}</p>
+                                <p className="text-sm text-red-800 dark:text-red-200">{submitError}</p>
                             </div>
                         </div>
                     )}

@@ -223,9 +223,9 @@ function BatchHistory({ searchIndexId }: { searchIndexId: string }) {
                     variant="outline"
                     className={cn(
                       'text-[10px] px-1.5 py-0 rounded-md capitalize font-medium',
-                      batch.status === 'completed' && 'text-emerald-600 border-emerald-300',
-                      batch.status === 'processing' && 'text-blue-600 border-blue-300',
-                      batch.status === 'failed' && 'text-red-600 border-red-300',
+                      batch.status === 'completed' && 'text-emerald-600 border-emerald-300 dark:border-emerald-700',
+                      batch.status === 'processing' && 'text-blue-600 border-blue-300 dark:border-blue-700',
+                      batch.status === 'failed' && 'text-red-600 border-red-300 dark:border-red-700',
                       batch.status === 'pending' && 'text-muted-foreground border-border',
                     )}
                   >

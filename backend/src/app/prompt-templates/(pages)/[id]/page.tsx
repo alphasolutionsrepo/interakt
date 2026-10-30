@@ -133,7 +133,7 @@ export default function PromptTemplateDetailPage({
               {status.label}
             </span>
             {template.isSystemDefault && (
-              <Badge className="text-xs bg-blue-500/10 text-blue-600 border-blue-200">
+              <Badge className="text-xs bg-blue-500/10 text-blue-600 border-blue-200 dark:border-blue-800">
                 System Default
               </Badge>
             )}

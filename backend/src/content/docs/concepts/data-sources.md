@@ -7,7 +7,7 @@ sidebar_position: 6
 A **data source** is the connection to where data physically lives. Most people interact with data sources only in the background — they're the plumbing behind search indexes and tools. But there are screens for them, and you'll need them if you're connecting Interakt to something external.
 
 ## Where to find these screens
-Sidebar → **Capabilities → Data Sources**.
+Sidebar → **Build → Data Sources**.
 
 ## What a data source is, conceptually
 

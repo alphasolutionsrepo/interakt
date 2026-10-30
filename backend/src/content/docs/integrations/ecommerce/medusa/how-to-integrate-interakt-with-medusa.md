@@ -64,7 +64,7 @@ Nothing on the Medusa side can push a single product until these exist. Do this 
 
 ### 1.1 Create a Search Index
 
-In the Interakt admin console: **Capabilities → Search Indexes → New**. Pick lexical, semantic, or hybrid depending on whether you want pure keyword matching or AI-assisted matching (hybrid is the common choice for a fashion catalog with free-text queries like "warm jacket for winter"). Note the index's **ID** (a UUID) — this becomes `SEARCH_INDEX_ID` on the Medusa side.
+In the Interakt admin console: **Build → Search Indexes → New**. Pick lexical, semantic, or hybrid depending on whether you want pure keyword matching or AI-assisted matching (hybrid is the common choice for a fashion catalog with free-text queries like "warm jacket for winter"). Note the index's **ID** (a UUID) — this becomes `SEARCH_INDEX_ID` on the Medusa side.
 
 You don't need to upload anything by hand here. Once Medusa's env vars are set (Part 2), the reindex script or the admin "Push all to Interakt" button provisions the index with real data. See [Search indexes](../../../concepts/search-indexes) and [Creating a search index](../../../guides/create-a-search-index).
 
@@ -76,8 +76,8 @@ On the index's detail page, copy its **ingestion key** (`ik_…`). This is the c
 
 Both point at the index from 1.1:
 
-- A **Search Experience** (`Capabilities → Search Experiences → New`) — powers the storefront's search page. Copy its **access token**.
-- An **AI Experience** (`Capabilities → AI Experiences → New`, also labeled "Chat Experience" in the UI) — powers the chat assistant. Configure its system instructions/persona here (this is also where the [action-marker instructions](#42-chat-actions-a-custom-protocol) described in Part 4 get added to the prompt). Copy its **access token**.
+- A **Search Experience** (`Experiences → Create Experience` → Search) — powers the storefront's search page. Copy its **access token**.
+- An **AI Experience** (`Experiences → Create Experience` → AI, also labeled "Chat Experience" in the UI) — powers the chat assistant. Configure its system instructions/persona here (this is also where the [action-marker instructions](#42-chat-actions-a-custom-protocol) described in Part 4 get added to the prompt). Copy its **access token**.
 
 See [Access tokens](../../../concepts/access-tokens), [Search experiences](../../../concepts/search-indexes), and [Chat/AI experiences](../../../concepts/chat-experiences) for what each screen configures. Data-source **tools** (search/lookup/inspect/enumerate) are auto-generated for the AI Experience from the index in 1.1 — see [Data sources](../../../concepts/data-sources) and [Tools](../../../concepts/tools) if you want to see what's actually happening under the hood.
 
@@ -209,7 +209,7 @@ This is entirely storefront-side convention, not an Interakt feature — if the 
 ## Verify
 
 1. **Backend push:** run `yarn reindex` from `apps/backend`, then check the index's document count on its detail page in Interakt matches your product count.
-2. **Live sync:** edit a product in the Medusa admin, then use **Playground → Index Search** in Interakt to confirm the change shows up without re-running the script.
+2. **Live sync:** edit a product in the Medusa admin, then use **Test → Search** in Interakt to confirm the change shows up without re-running the script.
 3. **Search:** load `/search` on the storefront, run a query, and confirm results, facets, and the AI summary all render.
 4. **Chat:** open the floating chat, ask it to show a product, then ask it to add that product to the cart — confirm the cart actually updates and the chat correctly resolved "it" to the product shown earlier in the conversation.
 

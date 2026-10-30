@@ -327,7 +327,7 @@ function SpanDetailSections({ span }: { span: SpanDetail }) {
           const badgeClass = colorMap[classification] ?? colorMap.domain;
 
           return (
-            <Section title="Guardrail & Classification" icon={ShieldCheck} iconClass="text-red-500" accent="border-red-300">
+            <Section title="Guardrail & Classification" icon={ShieldCheck} iconClass="text-red-500" accent="border-red-300 dark:border-red-700">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border ${badgeClass}`}>
@@ -422,7 +422,7 @@ function SpanDetailSections({ span }: { span: SpanDetail }) {
                   </Badge>
                 )}
                 {aiStreaming && (
-                  <Badge variant="outline" className="text-[11px] text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+                  <Badge variant="outline" className="text-[11px] text-amber-600 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30">
                     <Zap className="mr-1 size-2.5" />
                     streaming
                   </Badge>

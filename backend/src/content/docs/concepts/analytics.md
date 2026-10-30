@@ -4,171 +4,94 @@ sidebar_position: 20
 
 # Analytics
 
-The **Analytics** section answers questions like: *"What did people search for last week?"*, *"Which queries had no results?"*, *"How long did the chatbot take to respond on average?"*, *"What did the chatbot answer to a specific user?"*. Three sub-screens cover three angles.
+**Analytics** answers questions like *"What did people search for last week?"*, *"Which searches found nothing?"*, *"Why did that conversation fail?"* and *"What is the AI costing us?"*. It's one area with a section per job, a filter bar they all share, and an **Ask** chat you can reach from every section.
 
 ## Where to find it
-Sidebar → **Analytics**.
+Sidebar → **Monitor → Analytics**. The sections are listed under it, and as tabs at the top of every analytics page:
 
-- **Overview** — dashboards: totals, trends, success rates, top queries.
-- **Chat** — an AI assistant you can ask analytics questions in plain English.
-- **Conversations / Traces** — the full record of every chat turn.
+- **Overview** — what needs attention, the Ask chat, and every experience side by side.
+- **Search** — what people searched for, and how well search answered.
+- **Conversations** — how the assistant handled conversations, and what people asked about (chat experiences).
+- **AI & cost** — model calls, tokens, cost and tool usage (chat experiences).
+- **Traces** — every chat turn, search and AI summary, step by step.
+- **Settings** — when insights refresh, what is recorded, and clearing data.
+
+## The filter bar
+
+Every section answers for the same selection, shown in the header:
+
+- **Experience** — one experience, or *All experiences*.
+- **Period** — presets (Today, Yesterday, Last 24 hours, Last 7 / 30 / 90 days, This month, Last month) or **Custom range** with a calendar. Days start at midnight in *your* time zone, shown at the bottom of the picker.
+
+The selection is kept in the page address, so a link you share opens the same view. **Updated … ago** next to the refresh button says how fresh the figures are; they also refresh on their own every minute.
 
 ## Overview
 
-Headline metrics and time-series charts for search and chat across your experiences.
+**What needs attention** lists findings from the nightly insights refresh — content gaps, failing searches, unusual cost, AI behaviour — for the stored window nearest your period (24 hours, 7 days or 30 days). Each finding has **Explain this**, which asks the Ask chat about it. **Hide for 7 days** removes a finding you're already handling, for every admin; hidden findings are listed underneath, with **Show again**.
 
-### Where to find it
-Sidebar → **Analytics → Overview**.
+**Ask** sits beside it. **Experiences** below compares every experience: volume, how many succeeded, how many searches found nothing, and average time. Click one to see its analytics.
 
-### Controls at the top
+## Search, Conversations, AI & cost
 
-- **Experience selector** — narrow to one experience, or "all experiences" for the cross-experience view.
-- **Time range selector** — Last 1h / 24h / 7d / 30d / 90d / custom range.
-- **Processing status banner** — Interakt's analytics run on a background job; the banner shows when the last run completed and lets you trigger a manual run if you need fresh numbers.
+Each section starts with headline figures. Each figure shows how it moved since the same days just before ("↘ 42% vs prev."); hover it for the exact dates compared. Rates change in points, and an arrow is coloured only where one direction is clearly better.
 
-### Trigger Processing button
+Charts have a **Table** view with the same data. On **Search activity**, click a day or drag across several to pick them; **Show this day** narrows the page to it, and **Ask about this day** asks the chat.
 
-Forces a fresh analytics run. The job aggregates raw query logs into the dashboards. Click this if you ran a batch of queries five minutes ago and the dashboard still shows the old numbers.
+On **Search**, totals count searches typed by visitors and searches the AI assistant made with its Search tool. **Popular searches** and **Failed searches** list only what visitors typed; **Assistant searches** lists what the assistant searched for, with how often each query found nothing. Lookups that Find Record, List Values and query understanding run aren't counted as searches, but **Latest searches** shows them, named by tool or step.
 
-### Clear Analytics Data button
+**Conversations** and part of **AI & cost** come from the nightly insights, so they show the stored window nearest your period, and say when they were computed.
 
-Destructive. Wipes analytics aggregates. Underlying raw logs in the traces remain. Use this when you want a clean slate for demos.
+## Ask (analytics chat)
 
-### Dashboards
+Ask questions in plain English — *"Which searches most often find nothing?"*, *"How did search do this week compared with the week before?"*, *"Which conversations failed, and why?"*, *"How much did AI cost us?"*. Ask answers for the experience and period in the filter bar unless your question names another (*"on Oct 13"*, *"last week"*).
 
-When data exists, the page shows multiple rows of metrics.
+- **Where:** inline on the Overview, and the **Ask** button on every other section opens it in a panel. The Dashboard has an Ask box too.
+- **Answers show their data:** each answer comes with cards of the figures it used and the period they cover. A figure in the answer that isn't in that data is flagged.
+- **Follow-ups** keep the conversation's context, and suggested follow-ups appear under each answer. **Stop** ends an answer early; a stopped question isn't saved.
+- **History** (the clock icon) lists earlier conversations. Search them by title, experience or anything said, and delete ones you don't need. History is shared by every admin.
+- **Full screen:** the arrow icon opens the conversation on a page of its own.
 
-**Top numbers:**
-- Total searches.
-- Successful searches (with %).
-- Failed searches (with %).
-- Average response time.
+For help using Interakt itself, use the **?** in the top bar instead.
 
-**Quality and engagement:**
-- Quality score — Interakt's internal scoring of how relevant the top results were.
-- Unique users.
-- Average searches per user.
+## Traces
 
-**Trends:**
-- Trending queries chart — area chart over time, top queries by frequency.
-- Query performance pie chart — success / failure / no-results.
+The lowest-level view: every chat turn, search request and AI summary, with what ran and how long it took.
 
-**Comparison:**
-- Experience comparison table — for each experience, total queries, quality score, response time, error rate.
+The figures at the top count the turns in the list for your selection: how many errored, turn time (average, and the time 95% stay under), and background tasks that failed (memory and summaries after a turn). The list can be searched and filtered by status; select a turn to see its timeline — the planner, each tool call with its inputs and outputs, and the answer. A link with `?trace=<id>` opens one trace directly, whenever it happened.
 
-**Recent searches feed:**
-- The last N queries with timestamps, who searched (if known), what came back.
+Use it when a visitor reports a bad answer, a tool was called wrongly, or a step is slow.
 
-### Empty state
+## Settings
 
-If no traffic has hit your experiences yet, the dashboards are mostly empty. Run the warm-up checkbox in [Initial Setup](../getting-started/initial-setup) to backfill the dashboards with synthetic traffic, or wait for real users.
-
-## Chat (analytics assistant)
-
-A chat interface where you can ask analytics questions in plain English. Interakt's own AI runs the analytics queries for you and renders the answer — sometimes as text, sometimes as embedded charts and tables.
-
-### Where to find it
-Sidebar → **Analytics → Chat**.
-
-### How to use
-
-Type a question. Examples:
-
-- *"What were the top 10 searches yesterday?"*
-- *"How many chats happened in the last hour?"*
-- *"Which experience had the slowest response time this week?"*
-- *"What were the most common failed queries last month?"*
-- *"Compare quality scores across experiences."*
-
-The assistant calls a set of analytics tools internally, fetches the data, and writes the answer. Tool calls are visible in the conversation — you can see what it queried.
-
-### Sidebar
-- **Chat history** — your previous conversations, clickable to resume.
-- **New Chat** — start a fresh one.
-
-### When to use
-
-When you don't know which dashboard to look at. The chat figures out the relevant metric and shows it; you don't have to know the schema. Good for one-off questions you'd otherwise pull a junior analyst in for.
-
-## Conversations / Traces
-
-The lowest-level analytics view — every chat turn that ever happened, with the full trace.
-
-### Where to find it
-Sidebar → **Analytics → Traces**.
-
-### Layout
-
-Two-pane view.
-
-#### Left pane — list of conversations
-
-A table of every conversation, with:
-- Conversation ID.
-- User (if known).
-- Tool call count.
-- Total duration.
-- Timestamp.
-- Status (success / error / cancelled).
-
-Filter controls:
-- **Root only** toggle — show only top-level conversation entries, not individual tool calls.
-- **Experience** filter.
-- **Status** filter.
-- **Time range** filter.
-
-#### Right pane — turn detail (when one is selected)
-
-A timeline of the conversation:
-- The user's message at the top.
-- Each pipeline step as a row — Turn Planner → Param Extraction → Tool Calls → Response Synthesis.
-- For each step: duration, status, expanded view of inputs and outputs.
-
-The trace shows what the AI saw, what tools were called, what they returned, and what the final response was. It's the most useful view for debugging "why did the chatbot say that?"
-
-### When to use
-
-- A user complained about a specific chat — find their conversation, replay it in the trace.
-- The chatbot is hallucinating — see what it had in context when it made up the answer.
-- A tool is being called wrong — see the parameters the AI extracted.
-- Latency is high — see which step is slow.
-
-### Span metrics at the top
-
-A visual summary: total conversations, average duration, average tool calls per turn, error rate. Helps you spot trends before drilling into individual conversations.
-
-### Actions
-
-- **Refresh** — reload the list.
-- **Clear All** — destructive; wipes the trace store. Use with care.
+- **Insights** — when the nightly refresh runs (*Every day at 02:00 UTC* by default; change it in **Monitor → Background Jobs**), when it last ran, and **Refresh now**.
+- **What analytics records** — which tracking is on, and the environment variable that sets each.
+- **Analytics data** — **Clear all analytics data** (or one experience's), and **Clear only traces, for every experience**. Both are permanent.
 
 ## What feeds analytics
 
-Both search and chat are logged automatically with no extra setup. Every search query and every chat turn goes through a background pipeline that:
+Search and chat are recorded automatically. Every search and chat turn is written to the trace store as it happens; the dashboards read it live, and the nightly insights refresh computes findings, intents, guardrail and cost summaries from it.
 
-1. Writes the raw event to the trace store.
-2. Aggregates it into the analytics dashboards on the next processing run.
-
-You can configure the **observability level** per chat and search experience (Off / Metadata / Full) on the experience's edit page. Experiences start at Metadata: timings, counts and status, without query or message text. Off means no traces — only aggregate counts. Full means everything is captured.
+You can set the **observability level** per chat and search experience (Off / Metadata / Full) on the experience's edit page. Experiences start at Metadata: timings, counts and status, without query or message text. Off means no traces — only aggregate counts. Full captures everything.
 
 ## What about PII?
 
-Traces and analytics may contain user inputs (search queries, chat messages). If your users type personally identifying information into the chat, it'll be stored.
+Traces may contain what visitors typed. If they type personal information into a chat, it's stored.
 
-Mitigations:
-- **Observability level** per experience can be set to Metadata (which strips message content) or Off (no traces at all).
-- **Clear Analytics Data** wipes aggregates; **Clear All** on Traces wipes individual records.
-- Database-level retention policies are outside the admin UI — for production, the operator should configure retention at the database layer.
+- Set the **observability level** to Metadata (no message text) or Off (no traces) per experience.
+- **Settings → Analytics data** clears recorded data.
+- Retention beyond that is configured at the database by the operator.
 
 ## Common gotchas
 
-- **Dashboards seem stale.** Click **Trigger Processing** in the Overview controls — the background job hasn't run yet.
+- **Findings or Conversations look old.** They come from the nightly refresh. Use **Refresh now** on the Overview or in Settings for fresh ones.
 - **No data after a clean install.** Run the analytics warm-up from [Initial Setup](../getting-started/initial-setup), or wait for real traffic.
-- **Trace shows old prompt versions.** Traces are point-in-time — they show what the AI saw at the moment of the conversation, not what the current prompt template is. If you changed templates since, the trace won't reflect the change.
-- **Looking for one specific user's conversation.** Filter by experience and time range, sort by timestamp; alternatively, search by conversation ID if your widget logs it.
+- **A trace shows an old prompt.** Traces are point-in-time — they show what the AI saw then, not the current prompt template.
+- **My test chats don't show up.** Searches, chats and tool runs from an admin test chat, the playgrounds or a tool's Test panel aren't live traffic: they're left out of searches and insights. They still appear in **Traces**.
+- **A day looks split oddly.** Days follow your browser's time zone; someone in another zone sees the same data grouped by their days.
 
 ## Where to go next
 
 - [Chat experiences](chat-experiences) → Observability — controls what gets captured.
 - [Prompt templates](prompts) — what to tune when a trace shows the AI doing the wrong thing.
 - [Tools](tools) — what to fix when a trace shows the wrong tool being called.
+- [Background jobs](background-jobs) — the nightly insights refresh.

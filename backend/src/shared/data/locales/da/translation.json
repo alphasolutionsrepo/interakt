@@ -2,7 +2,13 @@
   "common": {
     "getStarted": "Kom i gang",
     "documentation": "Dokumentation & Support",
-    "platformOnline": "Platform Online"
+    "platformOnline": "Platform Online",
+    "theme": {
+      "label": "Tema",
+      "light": "Lyst",
+      "dark": "Mørkt",
+      "system": "System"
+    }
   },
   "home": {
     "badge": {
@@ -18,7 +24,7 @@
         "description": "Forbind datakilder, konfigurer feltmapping og administrer søgbart indhold med semantiske og hybride søgefunktioner."
       },
       "searchTuning": {
-        "title": "Søgejustering", 
+        "title": "Søgejustering",
         "description": "Finjuster rangering algoritmer, boost specifikke felter og optimer søgerelevans for dine brugere."
       },
       "aiChatFlows": {
@@ -47,7 +53,11 @@
       "playground": "Legeplads",
       "developer": "Developer",
       "administration": "Administration",
-      "platform": "Platform"
+      "platform": "Platform",
+      "monitor": "Overvågning",
+      "build": "Byg",
+      "test": "Test",
+      "admin": "Administration"
     },
     "items": {
       "dashboard": "Dashboard",
@@ -81,6 +91,9 @@
       "backgroundJobs": "Baggrundsjob",
       "cacheManagement": "Cache Styring",
       "traces": "Spor",
+      "analyticsSearch": "Søgning",
+      "conversations": "Samtaler",
+      "aiCost": "AI og omkostninger",
       "aiServices": "AI Udbyder",
       "indexSearch": "Søgning",
       "unifiedSearch": "Experience Søgning",
@@ -100,7 +113,8 @@
       "mcpConnections": "MCP Forbindelser",
       "createMcpConnection": "Opret MCP Forbindelse",
       "allMcpConnections": "Alle MCP Forbindelser",
-      "dropinWidget": "Drop-in Widget"
+      "dropinWidget": "Drop-in Widget",
+      "aiModels": "AI-modeller"
     }
   },
   "analytics": {
@@ -132,7 +146,7 @@
       },
       "quickOptions": {
         "analyticsOverview": "Analyse oversigt",
-        "topQueries": "Top forespørgsler i dag", 
+        "topQueries": "Top forespørgsler i dag",
         "searchPerformance": "Søgeydelse",
         "noResultQueries": "Forespørgsler uden resultater",
         "unusualPatterns": "Usædvanlige mønstre",
@@ -204,7 +218,7 @@
       "title": "Ydeevne Analyse",
       "metrics": {
         "averageResponseTime": "Gennemsnitlig Svartid",
-        "95thPercentile": "95. Percentil", 
+        "95thPercentile": "95. Percentil",
         "slowQueries": "Langsomme Forespørgsler",
         "errorRate": "Fejlrate",
         "totalSearches": "Samlede Søgninger",
@@ -218,7 +232,7 @@
       },
       "levels": {
         "excellent": "FREMRAGENDE",
-        "good": "GOD", 
+        "good": "GOD",
         "fair": "RIMELIG",
         "poor": "DÅRLIG",
         "critical": "KRITISK"

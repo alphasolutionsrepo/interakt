@@ -9,7 +9,7 @@ A **tool** is a capability you give a chat experience beyond "respond with text.
 You define a tool once. Many chat experiences can use the same tool. Each chat experience picks which tools it wants from the catalog and can override how the tool is described *for that experience*.
 
 ## Where to find these screens
-Sidebar → **Capabilities → Tools**.
+Sidebar → **Build → Tools**.
 
 > Looking for MCP? It's no longer a tool type — MCP servers are **Connections** that yield many tools at once. See [MCP Connections](mcp-connections).
 
@@ -150,7 +150,7 @@ The override doesn't change the tool's global description — only the descripti
 
 Hard-coding API keys in tool configurations is bad. Use the [Secrets vault](secrets):
 
-1. **Platform → Secrets Vault → New Secret.** Paste the key, give it a name (e.g. `orders_api_key`).
+1. **Admin → Secrets Vault → New Secret.** Paste the key, give it a name (e.g. `orders_api_key`).
 2. In the tool config, reference it as `{{secret:orders_api_key}}`.
 3. At execution time, Interakt resolves the placeholder to the real value before making the call.
 

@@ -61,6 +61,20 @@ describe('time range reported by analytics tools', () => {
     expect(result.timeRange).toBe('30d');
   });
 
+  it('reads the 30-day insight for a 90-day period, the nearest one stored', async () => {
+    const experienceId = crypto.randomUUID();
+    await testDb.db.insert(analyticsInsights).values({
+      experienceId,
+      insightType: 'cost_analysis',
+      timeRange: '30d',
+      data: { totalTokens: 1000 },
+    });
+
+    const result = await executeAnalyticsTool('get_cost_analysis', { timeRange: '90d', experienceId });
+
+    expect(result.timeRange).toBe('30d');
+  });
+
   it('reports no range for the latest-searches tool, which ignores it', async () => {
     const result = await executeAnalyticsTool('get_recent_searches', { timeRange: '30d', experienceId: crypto.randomUUID() });
 

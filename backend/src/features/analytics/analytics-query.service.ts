@@ -159,9 +159,10 @@ export function getGranularityForRange(range: DateRange): Granularity {
   const diffMs = range.to.getTime() - range.from.getTime();
   const diffHours = diffMs / (1000 * 60 * 60);
 
-  if (diffHours <= 24) return 'hour';
-  if (diffHours <= 7 * 24) return 'hour';
-  if (diffHours <= 30 * 24) return 'day';
+  // Hours for a day or two, days up to about a quarter (so a 31-day month is
+  // still daily), weeks beyond
+  if (diffHours <= 48) return 'hour';
+  if (diffHours <= 92 * 24) return 'day';
   return 'week';
 }
 
@@ -477,7 +478,9 @@ function getEmptyOverviewMetrics(): OverviewMetrics {
 export async function getSearchTrends(
   timeRange: TimeRange,
   experienceId?: string,
-  customRange?: DateRange
+  customRange?: DateRange,
+  /** IANA zone whose midnights start day and week buckets (validated by the caller) */
+  timeZone: string = 'UTC'
 ): Promise<SearchTrendPoint[]> {
   const range = getDateRange(timeRange, customRange);
   const granularity = getGranularityForRange(range);
@@ -492,21 +495,13 @@ export async function getSearchTrends(
     // Match the overview totals: lookups aren't searches
     conditions.push(countedSearch(searchEvents));
 
-    // Determine time bucket expression based on granularity
-    let timeBucketExpr;
-    switch (granularity) {
-      case 'hour':
-        timeBucketExpr = sql`date_trunc('hour', ${searchEvents.timestamp})`;
-        break;
-      case 'day':
-        timeBucketExpr = sql`date_trunc('day', ${searchEvents.timestamp})`;
-        break;
-      case 'week':
-        timeBucketExpr = sql`date_trunc('week', ${searchEvents.timestamp})`;
-        break;
-      default:
-        timeBucketExpr = sql`date_trunc('day', ${searchEvents.timestamp})`;
-    }
+    // Bucket on the viewer's wall clock, then turn the bucket start back into an
+    // instant: a "day" is midnight to midnight where the viewer is, not in UTC.
+    // Grouped by the column alias: the zone is a bound parameter, and a repeated
+    // expression would get different placeholders that Postgres won't match.
+    const unit = sql.raw(`'${granularity}'`);
+    const timeBucketExpr = sql`(date_trunc(${unit}, ${searchEvents.timestamp} AT TIME ZONE ${timeZone}) AT TIME ZONE ${timeZone})`;
+    const timeBucket = sql.raw('time_bucket');
 
     const results = await analyticsDB
       .select({
@@ -518,8 +513,8 @@ export async function getSearchTrends(
       })
       .from(searchEvents)
       .where(and(...conditions))
-      .groupBy(timeBucketExpr)
-      .orderBy(timeBucketExpr);
+      .groupBy(timeBucket)
+      .orderBy(timeBucket);
 
     return results.map((row) => ({
       timestamp: new Date(row.timeBucket as string),
@@ -1009,7 +1004,9 @@ function getEmptyToolMetrics(): ToolUsageMetrics {
  */
 export async function getRecentSearchEvents(
   limit: number = 20,
-  experienceId?: string
+  experienceId?: string,
+  /** Only searches in this period; the latest searches overall when omitted */
+  range?: DateRange
 ): Promise<
   Array<{
     id: string;
@@ -1034,6 +1031,9 @@ export async function getRecentSearchEvents(
     const conditions = [eq(searchEvents.source, 'api')];
     if (experienceId) {
       conditions.push(await buildExperienceCondition(searchEvents, experienceId));
+    }
+    if (range) {
+      conditions.push(gte(searchEvents.timestamp, range.from), lte(searchEvents.timestamp, range.to));
     }
 
     const results = await analyticsDB

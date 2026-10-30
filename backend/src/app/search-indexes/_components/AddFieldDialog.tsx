@@ -390,7 +390,7 @@ export function AddFieldDialog({
                     )}
 
                     {mode === 'computed' && (
-                        <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                        <div className="space-y-3 rounded-md border border-slate-200 dark:border-border bg-slate-50 dark:bg-muted/40 p-3">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
                                     <Label htmlFor="sourceArrayPath">Source array path *</Label>
@@ -525,7 +525,7 @@ export function AddFieldDialog({
 
                     {/* Errors */}
                     {validation.length > 0 && fieldName !== '' && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                        <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-700 dark:text-amber-300">
                             <div className="flex items-center gap-2">
                                 <AlertCircle className="h-4 w-4 flex-shrink-0" />
                                 <p className="font-medium">Fix before saving</p>

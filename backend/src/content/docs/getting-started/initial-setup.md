@@ -4,11 +4,11 @@ sidebar_position: 3
 
 # Initial setup
 
-The first time you log in, you have a working dashboard but no data, no AI provider, and no experiences. The **Initial Setup** screen (Platform → Initial Setup) walks you through both: configure an AI provider, then optionally build a fully working demo so you can see what Interakt does before you load your own data.
+The first time you log in, you have a working dashboard but no data, no AI provider, and no experiences. The **Initial Setup** screen (Admin → Initial Setup) walks you through both: configure an AI provider, then optionally build a fully working demo so you can see what Interakt does before you load your own data.
 
 ## Where to find it
 
-Sidebar → **Platform → Initial Setup**.
+Sidebar → **Admin → Initial Setup**.
 
 The same screen is where you come back later to **tear the demo down** or **switch AI providers**.
 
@@ -54,7 +54,7 @@ Ollama needs to be **reachable from the Interakt server**, with the models you w
 
 ### Other providers
 
-Anthropic, Azure OpenAI, Google Vertex AI, HuggingFace are listed in the same screen with the same shape — paste the credential, pick a model. The setup screen only sets *one* provider as the system default; you can add others later under **Platform → AI Providers**.
+Anthropic, Azure OpenAI, Google Vertex AI, HuggingFace are listed in the same screen with the same shape — paste the credential, pick a model. The setup screen only sets *one* provider as the system default; you can add others later under **Admin → AI Providers**.
 
 ## Step 2 — Decide whether to load the Fashion Catalog demo
 
@@ -62,10 +62,10 @@ The demo creates real, working resources in your installation:
 
 | What it creates | Where to find it after |
 |---|---|
-| A hybrid search index of 200 fashion products | Capabilities → Search Indexes |
+| A hybrid search index of 200 fashion products | Build → Search Indexes |
 | Field mappings (title, brand, category, price, colour, size, etc.) | Inside that index → **Fields** |
-| A file-store data source for the products | Capabilities → Data Sources |
-| Four tools (search, inspect, enumerate, lookup) over that data source | Capabilities → Tools |
+| A file-store data source for the products | Build → Data Sources |
+| Four tools (search, inspect, enumerate, lookup) over that data source | Build → Tools |
 | A public **search experience** with display configuration | Experiences |
 | A public **chat experience** that can answer "do you have red shoes under $100?" | Experiences |
 | (Optional) Replayed search and chat traffic so Analytics isn't empty | Analytics |

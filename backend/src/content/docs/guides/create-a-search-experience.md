@@ -125,7 +125,7 @@ See [Calling the search API](call-the-search-api) for the response and the other
 - **CORS errors in the browser.** You forgot to add the origin under **Allowed origins**. Add the full URL including protocol — `https://your-site.com`, not just `your-site.com`.
 - **Widget loads but no results.** The experience isn't activated. Hit **Activate** in the header.
 - **Token says HTTP 401.** Token is wrong, regenerated, or for a different experience. Copy the current one from the Access Token card.
-- **Search returns nothing.** Check the underlying index in **Playground → Index Search**. If the index works there but not through the experience, the experience may have a filter or default that's eliminating results.
+- **Search returns nothing.** Check the underlying index in **Test → Search**. If the index works there but not through the experience, the experience may have a filter or default that's eliminating results.
 - **Slug already taken.** Slugs are unique system-wide. Pick a different one.
 
 ## Where to go next

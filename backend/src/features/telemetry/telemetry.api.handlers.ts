@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import { apiResponse } from '@/shared/api/response';
+import { PeriodError, readRequestedPeriod } from '@/features/analytics/analytics-period';
 import {
   getTelemetryStatus,
   setExperienceTelemetryOverride,
@@ -50,6 +51,7 @@ const spanQuerySchema = z.object({
   pipelineType: z.string().optional(),
   minDurationMs: z.coerce.number().int().optional(),
   search: z.string().max(255).optional(),
+  traceId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
   rootOnly: z.coerce.boolean().optional(),
@@ -183,6 +185,7 @@ function parseSpanQueryParams(request: NextRequest) {
     pipelineType: sp.get('pipelineType') ?? undefined,
     minDurationMs: sp.get('minDurationMs') ?? undefined,
     search: sp.get('search') ?? undefined,
+    traceId: sp.get('traceId') ?? undefined,
     rootOnly: sp.get('rootOnly') ?? undefined,
     limit: sp.get('limit') ?? '100',
     offset: sp.get('offset') ?? '0',
@@ -208,10 +211,12 @@ export async function handleGetSpans(request: NextRequest) {
         pipelineType: params.pipelineType,
         minDurationMs: params.minDurationMs,
         search: params.search,
+        traceId: params.traceId,
         rootOnly: params.rootOnly,
       },
       params.limit,
-      params.offset
+      params.offset,
+      readRequestedPeriod(request.nextUrl.searchParams)
     );
 
     return apiResponse.successWithPagination(result.spans, {
@@ -224,6 +229,7 @@ export async function handleGetSpans(request: NextRequest) {
     if (error instanceof z.ZodError) {
       return apiResponse.badRequest(`Invalid parameters: ${error.message}`);
     }
+    if (error instanceof PeriodError) return apiResponse.badRequest(error.message);
     logger.error('Failed to get spans', error as Error);
     return apiResponse.error('Failed to get spans', 500);
   }
@@ -273,9 +279,12 @@ export async function handleGetSpanMetrics(request: NextRequest) {
     if (authError) return authError;
 
     const timeRange = (request.nextUrl.searchParams.get('timeRange') ?? '24h') as TimeRange;
-    const metrics = await getSpanMetrics(timeRange);
+    const experienceId = z.string().uuid().optional().parse(request.nextUrl.searchParams.get('experienceId') ?? undefined);
+    const metrics = await getSpanMetrics(timeRange, readRequestedPeriod(request.nextUrl.searchParams), experienceId);
     return apiResponse.success(metrics);
   } catch (error) {
+    if (error instanceof PeriodError) return apiResponse.badRequest(error.message);
+    if (error instanceof z.ZodError) return apiResponse.badRequest('experienceId must be a UUID');
     logger.error('Failed to get span metrics', error as Error);
     return apiResponse.error('Failed to get span metrics', 500);
   }

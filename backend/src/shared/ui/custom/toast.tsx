@@ -45,7 +45,7 @@ function Toast(props: ToastProps) {
         data-testid="toast"
         key={id}
         className={cn(
-          'bg-zinc-100 p-3 rounded-lg w-full toast-mobile:w-fit flex flex-row gap-3',
+          'bg-zinc-100 dark:bg-muted p-3 rounded-lg w-full toast-mobile:w-fit flex flex-row gap-3',
           multiLine ? 'items-start' : 'items-center',
         )}
       >
@@ -58,7 +58,7 @@ function Toast(props: ToastProps) {
         >
           {iconsByType[type]}
         </div>
-        <div ref={descriptionRef} className="text-zinc-950 text-sm">
+        <div ref={descriptionRef} className="text-zinc-950 dark:text-foreground text-sm">
           {description}
         </div>
       </div>

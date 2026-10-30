@@ -15,6 +15,8 @@ export const JOBS_SCHEMA = 'pgboss';
 export const QUEUE = {
   /** Recompute analytics AI insights (wraps the analytics processing pipeline). */
   REFRESH_INSIGHTS: 'refresh-insights',
+  /** Check the database, search engine and AI providers; the result is the job's output. */
+  HEALTH_CHECK: 'health-check',
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];

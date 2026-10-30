@@ -11,7 +11,11 @@ import 'server-only';
 
 import { getThresholds } from './analytics-thresholds';
 import {
+  getAIUsageMetrics,
+  getDateRange,
+  getGranularityForRange,
   getOverviewMetrics,
+  getToolUsageMetrics,
   getSearchTrends,
   getPopularQueries,
   SEARCH_ORIGINS,
@@ -24,6 +28,16 @@ import {
   type TimeRange,
 } from './index';
 import { getConversationDetail } from './conversation-analytics.service';
+import { describePeriod, isValidTimeZone, previousPeriodIn } from './analytics-period';
+import { getExperienceSummaries, type ExperienceSummary } from './analytics-experience-summary.service';
+import { getFailedTurns, type FailedTurnsResult } from './analytics-failed-turns.service';
+import type { AIUsageMetrics, OverviewMetrics, SearchTrendPoint, ToolUsageMetrics } from './analytics-query.service';
+
+/** compare_periods: the same figures for the period and the days just before it */
+export interface PeriodComparison {
+  current: { label: string; overview: OverviewMetrics; ai: AIUsageMetrics };
+  previous: { label: string; overview: OverviewMetrics; ai: AIUsageMetrics };
+}
 
 // ============================================================================
 // RESULT CACHING (5 minute TTL)
@@ -36,6 +50,13 @@ interface CacheEntry {
 
 const toolResultCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** A rolling period ends "now", so its instants change every call; to the minute, follow-ups can share a result */
+function toMinute(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? value : new Date(Math.floor(time / 60_000) * 60_000).toISOString();
+}
 
 /** The model's `origin` argument when it is one we know; anything else means both ('all'). */
 function originOf(args: Record<string, unknown>): SearchOrigin {
@@ -50,7 +71,7 @@ function originNote(args: Record<string, unknown>): string {
 }
 
 function getCacheKey(toolName: string, args: Record<string, unknown>): string {
-  return `${toolName}:${JSON.stringify(args)}`;
+  return `${toolName}:${JSON.stringify({ ...args, from: toMinute(args.from), to: toMinute(args.to) })}`;
 }
 
 function getCachedResult(key: string): unknown | null {
@@ -722,6 +743,11 @@ export const TOOL_DATA_TYPES: Record<string, string> = {
   get_proactive_insights: 'proactive_insights',
   get_guardrail_analytics: 'guardrail_analytics',
   get_conversation_detail: 'conversation_detail',
+  // Comparisons, failures and usage
+  compare_periods: 'period_comparison',
+  compare_experiences: 'experience_comparison',
+  get_failed_conversations: 'failed_turns',
+  get_ai_usage: 'ai_usage',
   // Response formatting tool
   respond_with_analytics: 'response_metadata',
 };
@@ -740,6 +766,8 @@ export interface ToolExecutionResult {
   error?: string;
   /** Time range the data actually covers (may differ from the requested one); unset when the result has no time range */
   timeRange?: string;
+  /** The exact period the data covers (ISO instants), when the tool read one */
+  period?: { from: string; to: string };
 }
 
 /**
@@ -755,13 +783,14 @@ export async function executeAnalyticsTool(
   const cacheKey = getCacheKey(toolName, args);
   const cached = getCachedResult(cacheKey);
   if (cached !== null) {
-    const cachedData = cached as { formatted: string; raw: unknown; timeRange?: string };
+    const cachedData = cached as { formatted: string; raw: unknown; timeRange?: string; period?: { from: string; to: string } };
     return {
       success: true,
       data: cachedData.formatted,
       rawData: cachedData.raw,
       dataType: TOOL_DATA_TYPES[toolName],
       timeRange: cachedData.timeRange,
+      period: cachedData.period,
     };
   }
 
@@ -777,46 +806,105 @@ export async function executeAnalyticsTool(
     // The period the returned data actually covers; tools below override it when they
     // read a different range or have none
     let coveredTimeRange: string | undefined = timeRange;
+    // An exact period (the page's, or days the user named) wins for tools that read
+    // recorded events; stored insights only exist for fixed ranges
+    const customRange =
+      typeof args.from === 'string' && typeof args.to === 'string'
+        ? { from: new Date(args.from), to: new Date(args.to) }
+        : undefined;
+    const liveRange: TimeRange = customRange ? 'custom' : timeRange;
+    const timeZone = typeof args.timeZone === 'string' && isValidTimeZone(args.timeZone) ? args.timeZone : 'UTC';
+    let coveredPeriod: { from: string; to: string } | undefined = customRange
+      ? { from: customRange.from.toISOString(), to: customRange.to.toISOString() }
+      : undefined;
 
     switch (toolName) {
       case 'get_search_overview': {
-        const data = await getOverviewMetrics(timeRange, experienceId);
+        const data = await getOverviewMetrics(liveRange, experienceId, customRange);
         formatted = formatOverviewForAI(data);
         raw = data;
         break;
       }
 
       case 'get_search_trends': {
-        const data = await getSearchTrends(timeRange, experienceId);
-        formatted = formatTrendsForAI(data);
+        const data = await getSearchTrends(liveRange, experienceId, customRange, timeZone);
+        formatted = formatTrendsForAI(data, timeZone, getGranularityForRange(customRange ?? getDateRange(timeRange)));
         raw = data;
         break;
       }
 
       case 'get_popular_queries': {
-        const data = await getPopularQueries(timeRange, experienceId, limit || 20, undefined, originOf(args));
+        const data = await getPopularQueries(liveRange, experienceId, limit || 20, customRange, originOf(args));
         formatted = originNote(args) + formatPopularQueriesForAI(data);
         raw = data;
         break;
       }
 
       case 'get_zero_result_queries': {
-        const data = await getZeroResultQueries(timeRange, experienceId, limit || 50, undefined, originOf(args));
+        const data = await getZeroResultQueries(liveRange, experienceId, limit || 50, customRange, originOf(args));
         formatted = originNote(args) + formatZeroResultsForAI(data);
         raw = data;
         break;
       }
 
       case 'get_search_type_breakdown': {
-        const data = await getSearchTypeBreakdown(timeRange, experienceId);
+        const data = await getSearchTypeBreakdown(liveRange, experienceId, customRange);
         formatted = formatSearchTypesForAI(data);
         raw = data;
         break;
       }
 
       case 'get_search_performance': {
-        const data = await getPerformanceMetrics(timeRange, experienceId);
+        const data = await getPerformanceMetrics(liveRange, experienceId, customRange);
         formatted = formatPerformanceForAI(data);
+        raw = data;
+        break;
+      }
+
+      // =================================================================
+      // COMPARISONS, FAILURES AND USAGE (live, for exactly the period)
+      // =================================================================
+
+      case 'compare_periods': {
+        const current = customRange ?? getDateRange(timeRange);
+        const previous = previousPeriodIn(current, timeZone);
+        const [now, before, aiNow, aiBefore] = await Promise.all([
+          getOverviewMetrics('custom', experienceId, current),
+          getOverviewMetrics('custom', experienceId, previous),
+          getAIUsageMetrics('custom', experienceId, current),
+          getAIUsageMetrics('custom', experienceId, previous),
+        ]);
+        const data: PeriodComparison = {
+          current: { label: describePeriod(current, timeZone), overview: now, ai: aiNow },
+          previous: { label: describePeriod(previous, timeZone), overview: before, ai: aiBefore },
+        };
+        formatted = formatPeriodComparisonForAI(data);
+        raw = data;
+        coveredPeriod = { from: current.from.toISOString(), to: current.to.toISOString() };
+        break;
+      }
+
+      case 'compare_experiences': {
+        const data = await getExperienceSummaries(liveRange, customRange);
+        formatted = formatExperienceComparisonForAI(data);
+        raw = data;
+        break;
+      }
+
+      case 'get_failed_conversations': {
+        const data = await getFailedTurns(customRange ?? getDateRange(timeRange), experienceId, limit || 20);
+        formatted = formatFailedTurnsForAI(data, timeZone);
+        raw = data;
+        break;
+      }
+
+      case 'get_ai_usage': {
+        const [usage, tools] = await Promise.all([
+          getAIUsageMetrics(liveRange, experienceId, customRange),
+          getToolUsageMetrics(liveRange, experienceId, customRange),
+        ]);
+        const data = { usage, tools };
+        formatted = formatAIUsageForAI(data);
         raw = data;
         break;
       }
@@ -832,9 +920,11 @@ export async function executeAnalyticsTool(
       case 'get_cost_analysis':
       case 'get_proactive_insights':
       case 'get_guardrail_analytics': {
-        // Insights are precomputed for 24h/7d/30d only; the closest match for 1h is 24h
-        const insightTimeRange = (['24h', '7d', '30d'].includes(timeRange) ? timeRange : timeRange === '1h' ? '24h' : '7d') as string;
+        // Insights are precomputed for 24h/7d/30d only: 1h reads 24h, and anything longer
+        // than 30 days (90d) reads 30d, the same choice the analytics pages make
+        const insightTimeRange = (['24h', '7d', '30d'].includes(timeRange) ? timeRange : timeRange === '1h' ? '24h' : timeRange === '90d' ? '30d' : '7d') as string;
         coveredTimeRange = insightTimeRange;
+        coveredPeriod = undefined;
         const insightType = TOOL_TO_INSIGHT_TYPE[toolName];
         const result = await getPreComputedInsight(insightType, insightTimeRange, experienceId);
         if (!result) {
@@ -869,12 +959,14 @@ export async function executeAnalyticsTool(
         formatted = formatConversationDetailForAI(detail);
         raw = detail;
         coveredTimeRange = undefined;
+        coveredPeriod = undefined;
         break;
       }
 
       case 'get_recent_searches': {
         // Latest N searches regardless of time range
         coveredTimeRange = undefined;
+        coveredPeriod = undefined;
         const data = await getRecentSearchEvents(limit || 20, experienceId);
         formatted = formatRecentSearchesForAI(data);
         raw = data;
@@ -888,7 +980,7 @@ export async function executeAnalyticsTool(
         }
         const queryTimeRange = (args.timeRange as TimeRange) || '7d';
         coveredTimeRange = queryTimeRange;
-        const data = await getQuerySearchEvents(queryText, queryTimeRange, experienceId, limit || 50);
+        const data = await getQuerySearchEvents(queryText, customRange ? 'custom' : queryTimeRange, experienceId, limit || 50, customRange);
         formatted = formatQuerySearchEventsForAI(data, queryText);
         raw = data;
         break;
@@ -924,7 +1016,7 @@ export async function executeAnalyticsTool(
     }
 
     // Cache both formatted and raw data
-    setCachedResult(cacheKey, { formatted, raw, timeRange: coveredTimeRange });
+    setCachedResult(cacheKey, { formatted, raw, timeRange: coveredTimeRange, period: coveredPeriod });
 
     return {
       success: true,
@@ -932,6 +1024,7 @@ export async function executeAnalyticsTool(
       rawData: raw,
       dataType: TOOL_DATA_TYPES[toolName],
       timeRange: coveredTimeRange,
+      period: coveredPeriod,
     };
   } catch (error) {
     return {
@@ -961,8 +1054,12 @@ Total AI Requests: ${data.totalAIRequests.toLocaleString()}
 Average AI Latency: ${data.avgAIDurationMs.toFixed(0)}ms`;
 }
 
-function formatTrendsForAI(
-  data: Awaited<ReturnType<typeof getSearchTrends>>
+/** Trend points as text for the model, dated in the time zone they were grouped in */
+export function formatTrendsForAI(
+  data: SearchTrendPoint[],
+  timeZone = 'UTC',
+  /** The bucket size the query grouped by (getGranularityForRange); only buckets with searches are returned */
+  unit: 'hour' | 'day' | 'week' | 'month' = 'day',
 ): string {
   if (data.length === 0) {
     return 'No search trend data available for this period.';
@@ -971,22 +1068,134 @@ function formatTrendsForAI(
   const total = data.reduce((sum, p) => sum + p.totalSearches, 0);
   const avgPerPeriod = total / data.length;
   const zeroResultTotal = data.reduce((sum, p) => sum + p.zeroResults, 0);
+  const points = [...data].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  // Dated in the viewer's time zone, the one the buckets were grouped in, so "Oct 13" means their Oct 13
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: unit === 'day' ? 'short' : undefined,
+    month: unit === 'month' ? 'long' : 'short',
+    day: unit === 'month' ? undefined : 'numeric',
+    year: 'numeric',
+    hour: unit === 'hour' ? '2-digit' : undefined,
+    minute: unit === 'hour' ? '2-digit' : undefined,
+    hour12: false,
+  });
+  const label = (p: SearchTrendPoint) => `${unit === 'week' ? 'Week of ' : ''}${fmt.format(new Date(p.timestamp))}`;
+  const line = (p: SearchTrendPoint) => `- ${label(p)}: ${p.totalSearches} searches, ${p.zeroResults} zero results`;
 
-  let summary = `Search Trends (${data.length} data points):
+  const busiest = [...points].sort((a, b) => b.totalSearches - a.totalSearches);
+  let summary = `Search Trends (${points.length} ${unit}s with searches; ${unit}s not listed had none; times in ${timeZone}):
 - Total Searches: ${total.toLocaleString()}
-- Average per period: ${avgPerPeriod.toFixed(1)}
+- Average per ${unit} with searches: ${avgPerPeriod.toFixed(1)}
 - Total Zero Results: ${zeroResultTotal.toLocaleString()}
+- Busiest ${unit}: ${label(busiest[0])} (${busiest[0].totalSearches} searches)
 
 `;
 
-  // Show first and last few data points
-  const points = data.slice(0, 5);
-  summary += 'Recent data points:\n';
-  for (const p of points) {
-    summary += `- ${new Date(p.timestamp).toLocaleString()}: ${p.totalSearches} searches, ${p.zeroResults} zero results\n`;
+  // Every bucket while that stays short; otherwise the busiest and the most recent
+  const LISTED = 31;
+  if (points.length <= LISTED) {
+    summary += `Searches per ${unit}, oldest first:\n${points.map(line).join('\n')}\n`;
+  } else {
+    summary += `Busiest ${unit}s:\n${busiest.slice(0, 5).map(line).join('\n')}\n\n`;
+    summary += `Most recent ${unit}s, oldest first:\n${points.slice(-10).map(line).join('\n')}\n`;
   }
 
   return summary;
+}
+
+/** "+12% (from 100 to 112)"; "no data before" when there's nothing to compare with */
+function describeChange(current: number, previous: number, format: (v: number) => string): string {
+  const values = `${format(previous)} → ${format(current)}`;
+  if (previous === 0) return current === 0 ? `${values} (no change)` : `${values} (none in the previous period)`;
+  const percent = Math.round(((current - previous) / previous) * 100);
+  return percent === 0 ? `${values} (no change)` : `${values} (${percent > 0 ? '+' : ''}${percent}%)`;
+}
+
+export function formatPeriodComparisonForAI({ current, previous }: PeriodComparison): string {
+  const count = (v: number) => v.toLocaleString();
+  const ms = (v: number) => `${Math.round(v)}ms`;
+  const points = (now: number, before: number) => {
+    const diff = (now - before) * 100;
+    return `${(before * 100).toFixed(1)}% → ${(now * 100).toFixed(1)}% (${diff > 0 ? '+' : ''}${diff.toFixed(1)} points)`;
+  };
+  const hadSearches = current.overview.totalSearches > 0 && previous.overview.totalSearches > 0;
+  const lines = [
+    `Comparison: ${current.label} (current) against ${previous.label} (previous, the same days just before).`,
+    'Each line reads previous → current.',
+    `- Searches: ${describeChange(current.overview.totalSearches, previous.overview.totalSearches, count)}`,
+    `- Unique queries: ${describeChange(current.overview.uniqueQueries, previous.overview.uniqueQueries, count)}`,
+    hadSearches
+      ? `- Share of searches with no results: ${points(current.overview.zeroResultRate, previous.overview.zeroResultRate)}`
+      : '- Share of searches with no results: not comparable (one period had no searches)',
+    hadSearches
+      ? `- Average search time: ${describeChange(current.overview.avgSearchDurationMs, previous.overview.avgSearchDurationMs, ms)}`
+      : '- Average search time: not comparable (one period had no searches)',
+    `- AI model calls: ${describeChange(current.ai.totalRequests, previous.ai.totalRequests, count)}`,
+    `- Tokens: ${describeChange(current.ai.totalTokens, previous.ai.totalTokens, count)}`,
+  ];
+  if (current.ai.estimatedCostUsd > 0 || previous.ai.estimatedCostUsd > 0) {
+    lines.push(`- Estimated AI cost: ${describeChange(current.ai.estimatedCostUsd, previous.ai.estimatedCostUsd, (v) => `$${v.toFixed(2)}`)}`);
+  }
+  return lines.join('\n');
+}
+
+export function formatExperienceComparisonForAI(data: ExperienceSummary[]): string {
+  if (data.length === 0) return 'No experience had any activity in this period.';
+  const sorted = [...data].sort((a, b) => b.volume - a.volume);
+  const lines = sorted.map((e) => {
+    const unit = e.type === 'ai' ? 'conversations' : 'searches';
+    const parts = [`${e.volume.toLocaleString()} ${unit}`];
+    if (e.type === 'ai') parts.push(`${(e.successRate * 100).toFixed(1)}% of turns succeeded`);
+    parts.push(`${(e.zeroResultRate * 100).toFixed(1)}% of searches found nothing`, `${e.avgLatencyMs}ms average`);
+    return `- ${e.name}${e.deleted ? ' (deleted)' : ''} [${e.type === 'ai' ? 'chat' : 'search'}]: ${parts.join(', ')}`;
+  });
+  return `Experiences with activity in this period (${data.length}), busiest first:\n${lines.join('\n')}`;
+}
+
+export function formatFailedTurnsForAI(data: FailedTurnsResult, timeZone = 'UTC'): string {
+  if (data.totalTurns === 0) return 'No conversation turns were recorded in this period.';
+  if (data.failedTurns === 0) return `All ${data.totalTurns.toLocaleString()} conversation turns in this period succeeded.`;
+  const share = ((data.failedTurns / data.totalTurns) * 100).toFixed(1);
+  const reasons = Object.entries(data.byReason)
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, n]) => `${reason === 'error' ? 'errored' : reason.replace(/_/g, ' ')}: ${n}`)
+    .join(', ');
+  const at = new Intl.DateTimeFormat('en-US', { timeZone, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  const recent = data.recent.map((t) => {
+    const why = t.error ? `errored: ${t.error.slice(0, 160)}` : (t.outcome ?? 'no outcome recorded').replace(/_/g, ' ');
+    return `- ${at.format(new Date(t.at))}${t.experienceName ? ` in ${t.experienceName}` : ''}: ${why} (trace ${t.traceId})`;
+  });
+  return [
+    `${data.failedTurns.toLocaleString()} of ${data.totalTurns.toLocaleString()} conversation turns failed (${share}%).`,
+    `By reason: ${reasons}.`,
+    `Most recent failures (times in ${timeZone}); get_conversation_detail with a trace id shows what happened:`,
+    ...recent,
+  ].join('\n');
+}
+
+export function formatAIUsageForAI({ usage, tools }: { usage: AIUsageMetrics; tools: ToolUsageMetrics }): string {
+  if (usage.totalRequests === 0 && tools.totalExecutions === 0) return 'No AI model calls or tool calls in this period.';
+  const lines = [
+    `AI model calls: ${usage.totalRequests.toLocaleString()} (chat ${usage.byOperation.chat.toLocaleString()}, text ${usage.byOperation.text.toLocaleString()}, embeddings ${usage.byOperation.embedding.toLocaleString()})`,
+    `Tokens: ${usage.totalTokens.toLocaleString()} (${usage.inputTokens.toLocaleString()} in, ${usage.outputTokens.toLocaleString()} out)`,
+    usage.estimatedCostUsd > 0
+      ? `Estimated cost: $${usage.estimatedCostUsd.toFixed(2)} (from list prices; the provider's bill is the real figure)`
+      : 'Estimated cost: not available (no prices known for the models used)',
+    `Average model call: ${Math.round(usage.avgDurationMs)}ms`,
+  ];
+  if (tools.totalExecutions > 0) {
+    const byTool = Object.entries(tools.byTool)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, n]) => `${name} ${n.toLocaleString()}`)
+      .join(', ');
+    lines.push(
+      `Tool calls: ${tools.totalExecutions.toLocaleString()}, ${(tools.successRate * 100).toFixed(1)}% without errors, ${Math.round(tools.avgDurationMs)}ms average`,
+      `Most used tools: ${byTool}`,
+    );
+  }
+  return lines.join('\n');
 }
 
 function formatPopularQueriesForAI(

@@ -49,15 +49,15 @@ export function PromptContentViewer({
         </div>
         <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm bg-blue-500/20 border border-blue-300" />
+            <span className="inline-block w-3 h-3 rounded-sm bg-blue-500/20 border border-blue-300 dark:border-blue-700" />
             Variables
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm bg-amber-500/20 border border-amber-300" />
+            <span className="inline-block w-3 h-3 rounded-sm bg-amber-500/20 border border-amber-300 dark:border-amber-700" />
             Editable Sections
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm bg-gray-500/20 border border-gray-300" />
+            <span className="inline-block w-3 h-3 rounded-sm bg-gray-500/20 border border-gray-300 dark:border-border" />
             Conditionals
           </span>
         </div>

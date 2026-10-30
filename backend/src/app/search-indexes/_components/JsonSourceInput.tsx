@@ -135,8 +135,8 @@ function FileDropZone({ onFileSelect, isLoading, error }: FileDropZoneProps) {
             className={cn(
                 'border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer',
                 isDragging
-                    ? 'border-blue-400 bg-blue-50'
-                    : 'border-slate-300 hover:border-slate-400 hover:bg-slate-50'
+                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/40'
+                    : 'border-slate-300 dark:border-border hover:border-slate-400 hover:bg-slate-50'
             )}
             onClick={() => fileInputRef.current?.click()}
         >
@@ -275,14 +275,14 @@ export function JsonSourceInput({
     }, []);
 
     return (
-        <Card className={cn('border-slate-200', className)}>
+        <Card className={cn('border-slate-200 dark:border-border', className)}>
             <CardContent className="p-4">
                 {/* Header - Always visible */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className={cn(
                             'h-10 w-10 rounded-lg flex items-center justify-center',
-                            hasData ? 'bg-emerald-100' : 'bg-slate-100'
+                            hasData ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-slate-100 dark:bg-muted'
                         )}>
                             {hasData ? (
                                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
@@ -293,7 +293,7 @@ export function JsonSourceInput({
                         <div>
                             <p className={cn(
                                 'font-medium',
-                                hasData ? 'text-emerald-900' : 'text-slate-900'
+                                hasData ? 'text-emerald-900 dark:text-emerald-200' : 'text-slate-900 dark:text-foreground'
                             )}>
                                 {hasData ? 'Source Data Loaded' : 'Source Data'}
                             </p>
@@ -347,7 +347,7 @@ export function JsonSourceInput({
 
                 {/* Expandable Input Section */}
                 {isExpanded && (
-                    <div className="mt-4 pt-4 border-t border-slate-200">
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-border">
                         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'paste' | 'upload')}>
                             <TabsList className="grid w-full grid-cols-2 mb-3">
                                 <TabsTrigger value="paste" className="flex items-center gap-2 text-sm">
@@ -368,8 +368,8 @@ export function JsonSourceInput({
                                         onChange={(e) => setJsonText(e.target.value)}
                                         className={cn(
                                             'font-mono text-sm h-[80px] resize-none',
-                                            parseError && jsonText && 'border-red-300 focus-visible:ring-red-300',
-                                            isValidJson && 'border-emerald-300 focus-visible:ring-emerald-300'
+                                            parseError && jsonText && 'border-red-300 dark:border-red-700 focus-visible:ring-red-300',
+                                            isValidJson && 'border-emerald-300 dark:border-emerald-700 focus-visible:ring-emerald-300'
                                         )}
                                         disabled={isProcessing}
                                     />

@@ -91,9 +91,9 @@ export function ProviderCard({
 
     return (
         <div className={cn(
-            "group relative bg-white border-2 border-slate-200 rounded-xl p-5 transition-all duration-200",
+            "group relative bg-white dark:bg-card border-2 border-slate-200 dark:border-border rounded-xl p-5 transition-all duration-200",
             "hover:border-slate-300 hover:shadow-sm",
-            !provider.isEnabled && "bg-slate-50/80 border-slate-200/70"
+            !provider.isEnabled && "bg-slate-50/80 dark:bg-muted/40 border-slate-200/70 dark:border-border"
         )}>
             {/* Header */}
             <div className="flex items-start justify-between mb-4">
@@ -102,14 +102,14 @@ export function ProviderCard({
                     <div className={cn(
                         "w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold",
                         isLocal
-                            ? "bg-violet-50 text-violet-600"
-                            : "bg-sky-50 text-sky-600"
+                            ? "bg-violet-50 dark:bg-violet-950/40 text-violet-600"
+                            : "bg-sky-50 dark:bg-sky-950/40 text-sky-600"
                     )}>
                         {provider.displayName.charAt(0).toUpperCase()}
                     </div>
 
                     <div>
-                        <h3 className="font-semibold text-slate-900">
+                        <h3 className="font-semibold text-slate-900 dark:text-foreground">
                             {provider.displayName}
                         </h3>
                         <p className="text-sm text-slate-500">
@@ -195,8 +195,8 @@ export function ProviderCard({
                     className={cn(
                         "text-xs font-medium",
                         isLocal
-                            ? "bg-violet-50 text-violet-700 hover:bg-violet-50"
-                            : "bg-sky-50 text-sky-700 hover:bg-sky-50"
+                            ? "bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 hover:bg-violet-50"
+                            : "bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-50"
                     )}
                 >
                     {isLocal ? 'Local' : 'Cloud'}
@@ -208,8 +208,8 @@ export function ProviderCard({
                         className={cn(
                             "text-xs font-medium",
                             provider.hasApiKey
-                                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
-                                : "bg-amber-50 text-amber-700 hover:bg-amber-50"
+                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50"
+                                : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50"
                         )}
                     >
                         {provider.hasApiKey ? 'API Key Set' : 'No API Key'}
@@ -218,12 +218,12 @@ export function ProviderCard({
             </div>
 
             {/* Stats Row */}
-            <div className="flex items-center justify-between py-3 border-t-2 border-slate-100">
+            <div className="flex items-center justify-between py-3 border-t-2 border-slate-100 dark:border-border">
                 <div className="flex items-center gap-6">
                     {/* Models */}
                     <div className="text-sm">
                         <span className="text-slate-500">Models</span>
-                        <span className="ml-2 font-medium text-slate-900">
+                        <span className="ml-2 font-medium text-slate-900 dark:text-foreground">
                             {availableModels}
                             <span className="text-slate-400">/{totalModels}</span>
                         </span>

@@ -16,7 +16,7 @@ export function CardSkeleton({
     showFooter = false,
 }: CardSkeletonProps) {
     return (
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 dark:border-border">
             {showHeader && (
                 <CardHeader>
                     <Skeleton className="h-6 w-48" />

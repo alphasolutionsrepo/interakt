@@ -111,7 +111,7 @@ The embedding model is **locked at index creation**. Configure your AI provider 
 
 ### 2.2 Create the indexes
 
-**Capabilities → Search Indexes → New**, one per corpus, type **hybrid** unless you have a reason not to. Note each **index UUID** from its admin URL — you'll need it for every ingestion call, and an ingestion key cannot tell you which index it belongs to.
+**Build → Search Indexes → New**, one per corpus, type **hybrid** unless you have a reason not to. Note each **index UUID** from its admin URL — you'll need it for every ingestion call, and an ingestion key cannot tell you which index it belongs to.
 
 See [Search indexes](../../../concepts/search-indexes) and [Creating a search index](../../../guides/create-a-search-index).
 

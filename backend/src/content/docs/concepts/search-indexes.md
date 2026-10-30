@@ -7,7 +7,7 @@ sidebar_position: 2
 A **search index** is where your data is organised so it can be searched fast. You usually have one index per "kind" of thing — your product catalog, your articles, your support tickets, your knowledge base. An index isn't user-facing on its own — you wrap it in a [search experience](search-experiences) (or feed it to a [chat experience](chat-experiences) as a tool) to put it in front of users.
 
 ## Where to find these screens
-Sidebar → **Capabilities → Search Indexes**.
+Sidebar → **Build → Search Indexes**.
 
 ## The list screen
 

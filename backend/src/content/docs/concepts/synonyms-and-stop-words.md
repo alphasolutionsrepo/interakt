@@ -7,7 +7,7 @@ sidebar_position: 4
 Two text-analysis tools that quietly make search a lot better. Both live on the **Edit** screen of any search index, under the **Text Analysis** tab.
 
 ## Where to find them
-Sidebar → **Capabilities → Search Indexes** → pick an index → **Edit** → **Text Analysis** tab.
+Sidebar → **Build → Search Indexes** → pick an index → **Edit** → **Text Analysis** tab.
 
 ## Synonyms — make search forgiving
 

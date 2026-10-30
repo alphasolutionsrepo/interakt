@@ -52,6 +52,7 @@ import { adminChatSessions } from './admin-chat-sessions.schema';
 import { otelSpans } from './otel-spans.schema';
 
 import {
+  analyticsHiddenFindings,
   analyticsInsights,
   analyticsProcessingRuns,
 } from './analytics-insights.schema';
@@ -89,4 +90,5 @@ export const analyticsSchema = {
   // Analytics Insights (pre-computed)
   analyticsInsights,
   analyticsProcessingRuns,
+  analyticsHiddenFindings,
 };

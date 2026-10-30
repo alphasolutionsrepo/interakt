@@ -24,7 +24,7 @@ The distinction is the whole point: an access token is safe to publish because i
 
 ## Creating a key
 
-Sidebar → **Capabilities → Search Indexes** → open your index → **Ingestion Keys** card.
+Sidebar → **Build → Search Indexes** → open your index → **Ingestion Keys** card.
 
 Give it a name you'll recognise later ("Storyblok sink (EN)") and tick the permissions it needs:
 

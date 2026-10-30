@@ -12,9 +12,12 @@ export const databaseConfig = {
     url: process.env.POSTGRES_URL || process.env.DATABASE_URL || '',
     
     // Connection Pool Settings
+    // Each app instance opens up to DB_POOL_MAX + ANALYTICS_DB_POOL_MAX + JOBS_DB_POOL_MAX
+    // connections. Keep that total, times the number of instances, below the
+    // server's max_connections minus its reserved slots (small managed tiers allow ~35).
     pool: {
       min: parseInt(process.env.DB_POOL_MIN || '2'),
-      max: parseInt(process.env.DB_POOL_MAX || '10'),
+      max: parseInt(process.env.DB_POOL_MAX || '5'),
       idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '30000'),
       connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '10000'),
     },
@@ -23,6 +26,12 @@ export const databaseConfig = {
   // Analytics Database (optional)
   analytics: {
     url: process.env.ANALYTICS_POSTGRES_URL || '',
+    poolMax: parseInt(process.env.ANALYTICS_DB_POOL_MAX || '3'),
+  },
+
+  // Background jobs (pg-boss) pool, on the main database
+  jobs: {
+    poolMax: parseInt(process.env.JOBS_DB_POOL_MAX || '3'),
   },
 
   // Drizzle Settings

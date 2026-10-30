@@ -7,6 +7,7 @@ import { NextAuthProvider } from "@/shared/providers/session-provider";
 import { I18nProvider } from "@/shared/providers/i18n-provider";
 import { QueryProvider } from "@/shared/providers/QueryProvider";
 import { AppShell } from "@/shared/ui/custom/AppShell";
+import { ThemeProvider } from "@/shared/ui/providers/theme-provider";
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -42,20 +43,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // next-themes sets the theme class on <html> before React hydrates
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${montserrat.variable} ${geistMono.variable} antialiased`}
       >
-        <I18nProvider>
-          <NextAuthProvider>
-            <QueryProvider>
-              <AppShell>
-                {children}
-              </AppShell>
-              <Toaster />
-            </QueryProvider>
-          </NextAuthProvider>
-        </I18nProvider>
+        {/* Light unless someone chooses otherwise; the choice is kept in this browser */}
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+          <I18nProvider>
+            <NextAuthProvider>
+              <QueryProvider>
+                <AppShell>
+                  {children}
+                </AppShell>
+                <Toaster />
+              </QueryProvider>
+            </NextAuthProvider>
+          </I18nProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

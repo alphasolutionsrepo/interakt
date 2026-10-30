@@ -60,7 +60,7 @@ The display configuration is included so your frontend can format result cards c
 
 The exact JSON shape evolves. Two living references that are always current:
 
-- **The Playground.** Sidebar → **Playground → Experience Search**. The network panel of your browser dev tools shows the live request and response when you run a query — copy that.
+- **The Playground.** Sidebar → **Test → Search** (Experience Search tab). The network panel of your browser dev tools shows the live request and response when you run a query — copy that.
 - **The API reference** on the docs site — the full request and response schema of the public API.
 - **The detail page** — each experience's access token, with a copy button, on its detail page.
 
@@ -69,7 +69,7 @@ The exact JSON shape evolves. Two living references that are always current:
 - **CORS errors from the browser.** Add your origin to the experience's allowed origins.
 - **HTTP 401.** Token wrong, expired, or for a different experience.
 - **HTTP 429.** Rate-limited. Implement exponential backoff and respect the `Retry-After` header.
-- **Empty results.** Confirm the index has data in **Playground → Index Search**, and the experience is **Active**.
+- **Empty results.** Confirm the index has data in **Test → Search**, and the experience is **Active**.
 - **`partial: true` in the response.** One of the experience's sources failed while the others answered; check **Analytics → Traces** for which one.
 
 ## Where to go next

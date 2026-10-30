@@ -3,15 +3,10 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { formatDistanceToNow } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/shared/ui/components/button';
 import { Textarea } from '@/shared/ui/components/textarea';
 import { Skeleton } from '@/shared/ui/components/skeleton';
-import { Badge } from '@/shared/ui/components/badge';
-import { Input } from '@/shared/ui/components/input';
 import {
   Select,
   SelectContent,
@@ -27,74 +22,33 @@ import {
 import {
   Send,
   Bot,
-  User,
   Sparkles,
   Settings2,
   Cpu,
   Zap,
   MessageSquare,
+  ChevronLeft,
   ChevronRight,
   AlertCircle,
-  CheckCircle2,
-  Wrench,
   StopCircle,
   Plus,
   History,
-  Search,
   X,
-  Loader2,
-  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { AnalyticsDataRenderer } from './_components/AnalyticsDataRenderer';
+import { MessageBubble } from './_components/MessageBubble';
+import Link from 'next/link';
+import { ChatHistoryList } from '../_components/shell/ChatHistoryList';
+import { useAnalyticsChat } from '../_lib/hooks/useAnalyticsChat';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ExperienceSelector } from '../_components/ExperienceSelector';
-import { TimeRangeSelector } from '../_components/TimeRangeSelector';
-import { useAnalyticsContext, TIME_RANGE_OPTIONS } from '../_lib/AnalyticsContext';
+import { PeriodPicker } from '../_components/PeriodPicker';
+import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-interface AnalyticsDataBlock {
-  tool: string;
-  dataType: string;
-  data: unknown;
-}
-
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  toolsUsed?: string[];
-  error?: boolean;
-  isStreaming?: boolean;
-  analyticsData?: AnalyticsDataBlock[];
-  suggestedFollowUps?: string[];
-  dataStatus?: 'has_data' | 'no_data' | 'sparse_data' | 'anomaly';
-}
-
-interface StreamChunk {
-  type: 'status' | 'tool_start' | 'tool_result' | 'tool_data' | 'content' | 'done' | 'error' | 'response_metadata';
-  message?: string;
-  content?: string;
-  done?: boolean;
-  tool?: string;
-  input?: Record<string, unknown>;
-  success?: boolean;
-  hasData?: boolean;
-  dataType?: string;
-  data?: unknown;
-  sessionId?: string;
-  usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
-  toolsUsed?: string[];
-  error?: string;
-  // For response_metadata
-  dataStatus?: 'has_data' | 'no_data' | 'sparse_data' | 'anomaly';
-  timePeriod?: string;
-  suggestedFollowUps?: string[];
-}
 
 interface AIProvider {
   id: string;
@@ -122,153 +76,21 @@ interface ProvidersResponse {
   };
 }
 
-interface SessionMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  toolsUsed?: string[];
-  error?: boolean;
-  analyticsData?: AnalyticsDataBlock[];
-}
-
-interface Session {
-  id: string;
-  title: string;
-  /** Experience the conversation is scoped to (null = all experiences) */
-  experienceId: string | null;
-  experienceName: string | null;
-  messages: SessionMessage[];
-  messageCount: number;
-  createdAt: string;
-}
-
-interface SessionSummary {
-  id: string;
-  title: string;
-  experienceId: string | null;
-  experienceName: string | null;
-  messageCount: number;
-  lastMessageAt: string | null;
-  createdAt: string;
-}
-
-interface SessionsResponse {
-  success: boolean;
-  data: {
-    sessions: SessionSummary[];
-    pagination: {
-      limit: number;
-      offset: number;
-      total: number;
-      hasMore: boolean;
-    };
-  };
-}
 
 // ============================================================================
-// PROCESSING STATUS (compact banner for chat page)
+// BACK LINK
 // ============================================================================
 
-function useProcessingStatus(experienceId: string | undefined) {
-  return useQuery({
-    queryKey: ['analytics', 'processing-status', experienceId],
-    queryFn: async () => {
-      const res = await fetch(`/api/analytics/process${experienceId ? `?experienceId=${experienceId}` : ''}`);
-      if (!res.ok) throw new Error('Failed to fetch status');
-      const json = await res.json();
-      return json.data as {
-        lastRun: { id: string; status: string; completedAt: string | null } | null;
-        currentRun: { id: string; status: string } | null;
-        isStale: boolean;
-      };
-    },
-    refetchInterval: 10000,
-    staleTime: 5000,
-  });
-}
-
-function ProcessingStatusBanner() {
-  const { experienceId } = useAnalyticsContext();
-  const { data: status, refetch } = useProcessingStatus(experienceId);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const triggerProcessing = useCallback(async () => {
-    setIsProcessing(true);
-    try {
-      const res = await fetch('/api/analytics/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ triggeredBy: 'admin', experienceId }),
-      });
-      if (res.status === 409) { refetch(); return; }
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (decoder.decode(value).includes('[DONE]')) break;
-        }
-      }
-    } finally {
-      setIsProcessing(false);
-      refetch();
-    }
-  }, [refetch, experienceId]);
-
-  const isRunning = isProcessing || status?.currentRun?.status === 'running';
-  const isStale = status?.isStale ?? true;
-  const lastCompletedAt = status?.lastRun?.completedAt;
-
-  const formatTimeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  };
-
+/** The chat full screen is a view of the Ask chat, not a section; this leads back to the sections */
+function BackToAnalytics() {
   return (
-    <div className="flex items-center justify-between rounded-xl border bg-card/80 px-4 py-2.5">
-      <div className="flex items-center gap-2 text-sm">
-        <Sparkles className="h-4 w-4 text-violet-500" />
-        <div>
-          {isRunning ? (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> Processing chat insights...
-            </span>
-          ) : lastCompletedAt ? (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              {isStale ? (
-                <><AlertTriangle className="h-3 w-3 text-amber-500" /> Chat data {formatTimeAgo(lastCompletedAt)} — may be stale</>
-              ) : (
-                <><CheckCircle2 className="h-3 w-3 text-green-500" /> Chat data processed {formatTimeAgo(lastCompletedAt)}</>
-              )}
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <AlertTriangle className="h-3 w-3 text-amber-500" /> Process data to enable business insight tools
-            </span>
-          )}
-          <p className="text-[10px] text-muted-foreground mt-0.5">Powers intent analysis, catalog health, AI effectiveness, and other business-focused tools</p>
-        </div>
-      </div>
-      <Button
-        variant={isStale && !isRunning ? 'default' : 'ghost'}
-        size="sm"
-        onClick={triggerProcessing}
-        disabled={isRunning}
-        className="h-7 text-xs rounded-lg"
+    <div className="shrink-0 px-6 pt-3">
+      <Link
+        href="/analytics/overview"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        {isRunning ? (
-          <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Processing</>
-        ) : (
-          <><Sparkles className="mr-1.5 h-3 w-3" /> Process Data</>
-        )}
-      </Button>
+        <ChevronLeft className="size-4" aria-hidden /> Back to analytics
+      </Link>
     </div>
   );
 }
@@ -279,36 +101,36 @@ function ProcessingStatusBanner() {
 
 const SUGGESTED_QUESTIONS = [
   {
-    category: 'Business Insights',
+    category: 'What to fix',
     icon: Zap,
     color: 'text-amber-500',
     bgColor: 'bg-amber-500/15',
     questions: [
-      'What should I focus on?',
-      'What are customers looking for?',
-      'Is the AI helping customers?',
+      'What needs attention right now?',
+      'Which conversations failed, and why?',
+      'Which experience is doing worst?',
     ],
   },
   {
-    category: 'Catalog & Content',
+    category: 'Search',
     icon: Cpu,
     color: 'text-blue-500',
     bgColor: 'bg-blue-500/15',
     questions: [
-      'Where is my catalog failing?',
-      'What content gaps should I address?',
-      'How much is AI costing me?',
+      'Which searches most often find nothing?',
+      'What are people searching for most?',
+      'Is search getting slower?',
     ],
   },
   {
-    category: 'Trends & Performance',
+    category: 'Changes and cost',
     icon: MessageSquare,
     color: 'text-emerald-500',
     bgColor: 'bg-emerald-500/15',
     questions: [
-      'What\'s trending this week?',
-      'Show me the top search queries',
-      'What is our search response time?',
+      'What changed compared with the previous period?',
+      'How much did AI cost, and what used it most?',
+      'What are customers asking the assistant about?',
     ],
   },
 ];
@@ -330,352 +152,21 @@ function useAIProviders() {
   });
 }
 
-function useSession(sessionId: string | null) {
-  return useQuery({
-    queryKey: ['admin-chat-session', sessionId],
-    queryFn: async (): Promise<Session> => {
-      if (!sessionId) throw new Error('No session ID');
-      const response = await fetch(`/api/analytics/chat/sessions/${sessionId}`);
-      if (!response.ok) throw new Error('Failed to fetch session');
-      const data = await response.json();
-      return data.data;
-    },
-    enabled: !!sessionId,
-    staleTime: 0,
-  });
-}
-
-function useSessions() {
-  return useQuery({
-    queryKey: ['admin-chat-sessions'],
-    queryFn: async (): Promise<SessionsResponse> => {
-      const response = await fetch('/api/analytics/chat/sessions?limit=50');
-      if (!response.ok) throw new Error('Failed to fetch sessions');
-      return response.json();
-    },
-    staleTime: 30000,
-  });
-}
 
 // ============================================================================
 // COMPONENTS
 // ============================================================================
 
-interface MessageBubbleProps {
-  message: ChatMessage;
-  onFollowUpClick?: (question: string) => void;
-  streamingState?: {
-    status?: string;
-    activeTool?: string;
-    toolsExecuted?: string[];
-  };
-}
-
-function MessageBubble({ message, onFollowUpClick, streamingState }: MessageBubbleProps) {
-  const isUser = message.role === 'user';
-  const hasContent = message.content && message.content.length > 0;
-  const hasAnalyticsData = message.analyticsData && message.analyticsData.length > 0;
-  // Show loading animation until text content starts streaming (analytics data can appear alongside)
-  const isActivelyStreaming = message.isStreaming && !hasContent;
-
-  // Get phase and phrases for streaming state
-  const phase = streamingState ? getPhaseFromStatus(streamingState.status, streamingState.activeTool) : 'thinking';
-  const phrases = streamingState?.activeTool && TOOL_PHRASES[streamingState.activeTool]
-    ? TOOL_PHRASES[streamingState.activeTool]
-    : LOADING_PHRASES[phase];
-  const { phrase, isVisible } = useRotatingPhrase(phrases, 2500);
-
-  return (
-    <div className={cn('flex gap-3', isUser ? 'flex-row-reverse' : '')}>
-      {/* Avatar */}
-      <div className="relative flex size-9 shrink-0 items-center justify-center mt-0.5">
-        {/* Pulsing ring for streaming state */}
-        {message.isStreaming && !message.error && (
-          <div
-            className="absolute inset-0 animate-ping rounded-xl bg-violet-500/20 opacity-75"
-            style={{ animationDuration: '2s' }}
-          />
-        )}
-        <div
-          className={cn(
-            'relative flex size-9 items-center justify-center rounded-xl transition-all duration-300',
-            isUser
-              ? 'bg-primary text-primary-foreground'
-              : message.error
-                ? 'bg-red-100 dark:bg-red-900'
-                : 'bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900 dark:to-purple-900 shadow-sm'
-          )}
-        >
-          {isUser ? (
-            <User className="size-4" />
-          ) : message.error ? (
-            <AlertCircle className="size-4 text-red-600 dark:text-red-400" />
-          ) : message.isStreaming ? (
-            <Sparkles className="size-4 text-violet-600 dark:text-violet-400 animate-pulse" />
-          ) : (
-            <Sparkles className="size-4 text-violet-600 dark:text-violet-400" />
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div
-        className={cn(
-          'flex-1 max-w-[90%] min-w-0 rounded-2xl px-5 py-4 overflow-hidden transition-all duration-300',
-          isUser
-            ? 'bg-primary text-primary-foreground'
-            : message.error
-              ? 'border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/50'
-              : 'bg-gradient-to-br from-muted/80 to-muted/40 shadow-sm'
-        )}
-      >
-        {isUser ? (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">
-            {message.content}
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {/* Streaming status indicator - shows when no content yet */}
-            {isActivelyStreaming && streamingState && (
-              <div className="animate-in fade-in-0 duration-300">
-                <div className="flex flex-col gap-2">
-                  {/* Rotating phrase with fade animation */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-0.5">
-                      <div className="size-1 rounded-full bg-violet-500 animate-[pulse_1s_ease-in-out_infinite]" />
-                      <div className="size-1 rounded-full bg-violet-500 animate-[pulse_1s_ease-in-out_infinite_0.2s]" />
-                      <div className="size-1 rounded-full bg-violet-500 animate-[pulse_1s_ease-in-out_infinite_0.4s]" />
-                    </div>
-                    <span
-                      className={cn(
-                        "text-sm font-medium text-foreground/80 transition-all duration-200",
-                        isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"
-                      )}
-                    >
-                      {phrase}
-                    </span>
-                  </div>
-
-                  {/* Active tool indicator */}
-                  {streamingState.activeTool && (
-                    <div className="flex items-center gap-2 animate-in slide-in-from-left-2 duration-300">
-                      <div className="flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5">
-                        <div className="relative">
-                          <Wrench className="size-2.5 text-violet-600 dark:text-violet-400" />
-                          <div className="absolute inset-0 animate-ping">
-                            <Wrench className="size-2.5 text-violet-600/50 dark:text-violet-400/50" />
-                          </div>
-                        </div>
-                        <span className="text-xs font-medium text-violet-600 dark:text-violet-400">
-                          {streamingState.activeTool.replace(/_/g, ' ').replace(/^get /, '')}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Completed tools */}
-                  {streamingState.toolsExecuted && streamingState.toolsExecuted.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {streamingState.toolsExecuted.map((tool, index) => (
-                        <Badge
-                          key={tool}
-                          variant="secondary"
-                          className={cn(
-                            "text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 py-0.5 px-2",
-                            "animate-in fade-in-0 zoom-in-95 duration-300"
-                          )}
-                          style={{ animationDelay: `${index * 100}ms` }}
-                        >
-                          <CheckCircle2 className="mr-0.5 size-2" />
-                          {tool.replace(/_/g, ' ').replace(/^get /, '')}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Analytics data cards - animate in */}
-            {hasAnalyticsData && (
-              <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
-                <AnalyticsDataRenderer dataBlocks={message.analyticsData!} />
-              </div>
-            )}
-
-            {/* Text content - streams in naturally */}
-            {hasContent && (
-              <div className={cn(
-                'prose prose-sm max-w-none dark:prose-invert animate-in fade-in-0 duration-300',
-                'prose-p:my-1 prose-p:leading-relaxed',
-                'prose-ul:my-2 prose-ol:my-2',
-                'prose-li:my-0.5',
-                'prose-headings:my-2 prose-headings:font-semibold',
-                'prose-h1:text-base prose-h2:text-sm prose-h3:text-sm',
-                'prose-code:rounded prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:text-xs prose-code:before:content-none prose-code:after:content-none',
-                'prose-pre:my-2 prose-pre:rounded-lg prose-pre:bg-muted prose-pre:p-3 prose-pre:text-xs',
-                'prose-table:my-3 prose-table:w-full prose-table:border-collapse prose-table:rounded-lg prose-table:overflow-hidden prose-table:text-sm',
-                'prose-thead:bg-muted/50',
-                'prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:border-b prose-th:border-border',
-                'prose-td:px-3 prose-td:py-2 prose-td:border-b prose-td:border-border/50',
-                'prose-tr:hover:bg-muted/30',
-                'prose-strong:font-semibold',
-                message.error && 'text-red-700 dark:text-red-300',
-                hasAnalyticsData && 'mt-4 pt-4 border-t border-border/30'
-              )}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {message.content}
-                </ReactMarkdown>
-                {message.isStreaming && (
-                  <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-violet-500 rounded-full" />
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Tools used badges */}
-        {!message.isStreaming && message.toolsUsed && message.toolsUsed.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/50 pt-2.5 animate-in fade-in-0 duration-300">
-            {message.toolsUsed.map((tool) => (
-              <Badge key={tool} variant="secondary" className="text-xs font-normal py-0.5 px-2">
-                {tool.replace(/_/g, ' ').replace(/^get /, '')}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* Follow-up suggestion chips */}
-        {!message.isStreaming && message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-border/50 pt-3 animate-in fade-in-0 slide-in-from-bottom-1 duration-500">
-            <span className="mr-0.5 text-xs text-muted-foreground self-center">Follow up:</span>
-            {message.suggestedFollowUps.map((followUp, i) => (
-              <button
-                key={i}
-                onClick={() => onFollowUpClick?.(followUp)}
-                className="text-xs px-3 py-1.5 rounded-full bg-violet-100 hover:bg-violet-200 dark:bg-violet-900/50 dark:hover:bg-violet-800/50 text-violet-700 dark:text-violet-300 transition-colors cursor-pointer"
-              >
-                {followUp}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Timestamp */}
-        {!message.isStreaming && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Contextual loading phrases that rotate based on what's happening
-const LOADING_PHRASES = {
-  idle: [
-    'Preparing your insights',
-    'Getting ready to analyze',
-    'Initializing analytics engine',
-  ],
-  connecting: [
-    'Establishing connection',
-    'Connecting to data sources',
-    'Preparing query pipeline',
-  ],
-  thinking: [
-    'Understanding your question',
-    'Analyzing context',
-    'Determining best approach',
-    'Processing your request',
-  ],
-  fetching: [
-    'Querying analytics data',
-    'Gathering metrics',
-    'Fetching insights',
-    'Collecting data points',
-  ],
-  analyzing: [
-    'Analyzing patterns',
-    'Processing results',
-    'Identifying trends',
-    'Crunching numbers',
-  ],
-  generating: [
-    'Crafting response',
-    'Preparing insights',
-    'Generating analysis',
-    'Composing summary',
-  ],
-};
-
-// Tool-specific phrases
-const TOOL_PHRASES: Record<string, string[]> = {
-  get_search_overview: ['Fetching search metrics', 'Gathering search statistics', 'Analyzing search activity'],
-  get_search_trends: ['Charting search trends', 'Analyzing volume patterns', 'Tracking search history'],
-  get_popular_queries: ['Finding top queries', 'Ranking popular searches', 'Analyzing query frequency'],
-  get_zero_result_queries: ['Identifying content gaps', 'Finding failed searches', 'Analyzing zero-result patterns'],
-  get_search_type_breakdown: ['Breaking down search types', 'Categorizing searches', 'Analyzing search methods'],
-  get_search_performance: ['Measuring latency', 'Analyzing response times', 'Checking performance metrics'],
-  get_ai_usage: ['Calculating AI costs', 'Measuring token usage', 'Analyzing AI activity'],
-  get_tool_usage: ['Tracking tool executions', 'Measuring tool performance', 'Analyzing tool patterns'],
-  get_recent_searches: ['Loading recent activity', 'Fetching latest searches', 'Getting live data'],
-  get_query_search_events: ['Investigating search events', 'Analyzing query patterns', 'Digging into details'],
-  respond_with_analytics: ['Formatting response', 'Preparing insights', 'Composing analysis'],
-};
-
-function useRotatingPhrase(phrases: string[], intervalMs: number = 2500) {
-  const [index, setIndex] = useState(0);
-  const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setIsVisible(false);
-      setTimeout(() => {
-        setIndex((prev) => (prev + 1) % phrases.length);
-        setIsVisible(true);
-      }, 200);
-    }, intervalMs);
-
-    return () => clearInterval(interval);
-  }, [phrases, intervalMs]);
-
-  return { phrase: phrases[index], isVisible };
-}
-
-function getPhaseFromStatus(status?: string, activeTool?: string): keyof typeof LOADING_PHRASES {
-  if (!status) return 'idle';
-  const lower = status.toLowerCase();
-  if (lower.includes('connect')) return 'connecting';
-  if (lower.includes('think') || lower.includes('understand')) return 'thinking';
-  if (lower.includes('fetch') || lower.includes('query') || lower.includes('gathering') || activeTool) return 'fetching';
-  if (lower.includes('analyz') || lower.includes('process')) return 'analyzing';
-  if (lower.includes('generat') || lower.includes('craft') || lower.includes('prepar')) return 'generating';
-  return 'thinking';
-}
 
 interface HistorySheetProps {
   isOpen: boolean;
   onClose: () => void;
-  sessions: SessionSummary[];
-  isLoading: boolean;
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
+  onDeleted: (sessionId: string) => void;
 }
 
-function HistorySheet({ isOpen, onClose, sessions, isLoading, currentSessionId, onSelectSession }: HistorySheetProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const filteredSessions = sessions.filter(session =>
-    session.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const handleSelect = (sessionId: string) => {
-    onSelectSession(sessionId);
-    onClose();
-  };
-
+function HistorySheet({ isOpen, onClose, currentSessionId, onSelectSession, onDeleted }: HistorySheetProps) {
   return (
     <>
       {/* Backdrop */}
@@ -700,82 +191,25 @@ function HistorySheet({ isOpen, onClose, sessions, isLoading, currentSessionId, 
             <div className="flex items-center gap-2">
               <History className="size-5 text-muted-foreground" />
               <h3 className="font-semibold">Chat History</h3>
-              <Badge variant="secondary" className="text-xs">
-                {sessions.length}
-              </Badge>
             </div>
             <Button variant="ghost" size="icon" onClick={onClose} className="rounded-lg">
               <X className="size-4" />
             </Button>
           </div>
 
-          {/* Search */}
-          <div className="border-b px-4 py-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search conversations..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 rounded-xl border-border/60"
-              />
-            </div>
-          </div>
-
-          {/* Sessions List */}
-          <div className="max-h-[50vh] overflow-y-auto p-2">
-            {isLoading ? (
-              <div className="space-y-2 p-2">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Skeleton key={i} className="h-16 w-full rounded-xl" />
-                ))}
-              </div>
-            ) : filteredSessions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <MessageSquare className="size-10 text-muted-foreground/30" />
-                <p className="mt-3 text-sm text-muted-foreground">
-                  {searchQuery ? 'No matching conversations' : 'No chat history yet'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {filteredSessions.map((session) => (
-                  <button
-                    key={session.id}
-                    onClick={() => handleSelect(session.id)}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
-                      session.id === currentSessionId
-                        ? 'bg-primary/10 text-primary'
-                        : 'hover:bg-muted'
-                    )}
-                  >
-                    <div className={cn(
-                      'flex size-10 shrink-0 items-center justify-center rounded-lg',
-                      session.id === currentSessionId ? 'bg-primary/20' : 'bg-muted'
-                    )}>
-                      <MessageSquare className="size-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{session.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {session.experienceId ? session.experienceName ?? 'Single experience' : 'All Experiences'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {session.messageCount} {session.messageCount === 1 ? 'message' : 'messages'}
-                        {session.lastMessageAt && (
-                          <> · {formatDistanceToNow(new Date(session.lastMessageAt), { addSuffix: true })}</>
-                        )}
-                      </p>
-                    </div>
-                    {session.id === currentSessionId && (
-                      <CheckCircle2 className="size-4 shrink-0 text-primary" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Mounted only while open, so history loads when first asked for */}
+          {isOpen && (
+            <ChatHistoryList
+              currentSessionId={currentSessionId}
+              onOpen={(id) => {
+                onSelectSession(id);
+                onClose();
+              }}
+              onDeleted={onDeleted}
+              autoFocus
+              listClassName="max-h-[50vh]"
+            />
+          )}
         </div>
       </div>
     </>
@@ -787,30 +221,33 @@ function HistorySheet({ isOpen, onClose, sessions, isLoading, currentSessionId, 
 // ============================================================================
 
 export default function AnalyticsChatPage() {
-  const queryClient = useQueryClient();
-  const { experienceId, experienceName, setExperience, timeRange } = useAnalyticsContext();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // Experience the open conversation is scoped to: undefined = no conversation yet, null = all experiences
-  const conversationScopeRef = useRef<string | null | undefined>(undefined);
-  const [scopeNotice, setScopeNotice] = useState<string | null>(null);
+  const { experienceId, experienceName, periodLabel } = useAnalyticsContext();
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
-  const [streamStatus, setStreamStatus] = useState<string>('');
-  const [activeTool, setActiveTool] = useState<string>('');
-  const [toolsExecuted, setToolsExecuted] = useState<string[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const { data: providersData, isLoading: isLoadingProviders } = useAIProviders();
-  const { data: sessionData } = useSession(currentSessionId);
-  const { data: sessionsData, isLoading: isLoadingSessions } = useSessions();
+  const chat = useAnalyticsChat({ providerId: selectedProviderId, modelId: selectedModelId });
+  const {
+    messages,
+    isLoading,
+    streamStatus,
+    activeTool,
+    toolsExecuted,
+    sessionId: currentSessionId,
+    session: sessionData,
+    scopeNotice,
+    openSession,
+  } = chat;
 
-  const sessions = sessionsData?.data?.sessions || [];
+  // Open a conversation named in the URL (?session=…), e.g. from the Ask panel
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('session');
+    if (id) openSession(id);
+  }, [openSession]);
 
   // Initialize with defaults when providers data loads
   useEffect(() => {
@@ -825,46 +262,6 @@ export default function AnalyticsChatPage() {
     }
   }, [providersData?.defaults?.chat?.modelId, selectedProviderId, selectedModelId]);
 
-  // Load session messages when session changes, and switch the page to the
-  // experience the conversation is scoped to
-  useEffect(() => {
-    if (sessionData?.messages) {
-      const sessionScope = sessionData.experienceId ?? null;
-      conversationScopeRef.current = sessionScope;
-      setScopeNotice(null);
-      // Always re-apply a stored experience so its scope survives even if the
-      // experience has since been deleted (the selector shows it as deleted)
-      if (sessionScope) {
-        setExperience(sessionScope, sessionData.experienceName ?? undefined, undefined, { keepWhenMissing: true });
-      } else if (experienceId) {
-        setExperience(undefined);
-      }
-      const loadedMessages: ChatMessage[] = sessionData.messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        timestamp: new Date(m.timestamp),
-        toolsUsed: m.toolsUsed,
-        error: m.error,
-        analyticsData: m.analyticsData,
-      }));
-      setMessages(loadedMessages);
-    }
-    // Only react to a newly loaded session, not to later experience changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionData]);
-
-  // A conversation stays scoped to one experience. Switching experience mid-conversation
-  // starts a new one (the old one stays in History) instead of mixing the two.
-  useEffect(() => {
-    const scope = conversationScopeRef.current;
-    if (scope === undefined || scope === (experienceId ?? null)) return;
-    abortControllerRef.current?.abort();
-    conversationScopeRef.current = undefined;
-    setCurrentSessionId(null);
-    setMessages([]);
-    setScopeNotice('You switched experience, so a new conversation was started. The previous one is still in History.');
-  }, [experienceId]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -874,268 +271,20 @@ export default function AnalyticsChatPage() {
   const handleSubmit = useCallback(async (messageContent?: string) => {
     const content = messageContent || input.trim();
     if (!content || isLoading) return;
-
-    // The first message fixes the conversation's scope
-    if (conversationScopeRef.current === undefined) {
-      conversationScopeRef.current = experienceId ?? null;
-    }
-    setScopeNotice(null);
-
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content,
-      timestamp: new Date(),
-    };
-
-    // Generate streaming message ID upfront so we can add it before fetch
-    const streamingMessageId = crypto.randomUUID();
-
-    // Add both user message and streaming placeholder immediately
-    setMessages((prev) => [
-      ...prev,
-      userMessage,
-      {
-        id: streamingMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date(),
-        isStreaming: true,
-        analyticsData: [],
-      },
-    ]);
     setInput('');
-    setIsLoading(true);
-    setStreamStatus('Connecting...');
-    setActiveTool('');
-    setToolsExecuted([]);
-
-    abortControllerRef.current = new AbortController();
-
-    try {
-      const response = await fetch('/api/analytics/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: content,
-          sessionId: currentSessionId,
-          providerId: selectedProviderId,
-          modelId: selectedModelId,
-          experienceId,
-          experienceName: experienceId ? experienceName : undefined,
-          timeRange,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let streamedContent = '';
-      const finalToolsUsed: string[] = [];
-      const collectedAnalyticsData: AnalyticsDataBlock[] = [];
-      let collectedSuggestedFollowUps: string[] = [];
-      let collectedDataStatus: 'has_data' | 'no_data' | 'sparse_data' | 'anomaly' | undefined;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-
-            try {
-              const chunk = JSON.parse(data) as StreamChunk;
-
-              switch (chunk.type) {
-                case 'status':
-                  setStreamStatus(chunk.message || '');
-                  break;
-
-                case 'tool_start':
-                  setActiveTool(chunk.tool || '');
-                  setStreamStatus(`Querying ${chunk.tool}...`);
-                  break;
-
-                case 'tool_data':
-                  if (chunk.tool && chunk.dataType && chunk.data) {
-                    // Deduplicate: replace existing entry with same dataType, or add new
-                    const existingIndex = collectedAnalyticsData.findIndex(
-                      (d) => d.dataType === chunk.dataType
-                    );
-                    if (existingIndex >= 0) {
-                      // Replace with latest data
-                      collectedAnalyticsData[existingIndex] = {
-                        tool: chunk.tool,
-                        dataType: chunk.dataType,
-                        data: chunk.data,
-                      };
-                    } else {
-                      collectedAnalyticsData.push({
-                        tool: chunk.tool,
-                        dataType: chunk.dataType,
-                        data: chunk.data,
-                      });
-                    }
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === streamingMessageId
-                          ? { ...m, analyticsData: [...collectedAnalyticsData] }
-                          : m
-                      )
-                    );
-                  }
-                  break;
-
-                case 'tool_result':
-                  if (chunk.tool) {
-                    setToolsExecuted((prev) => [...prev, chunk.tool!]);
-                    finalToolsUsed.push(chunk.tool);
-                  }
-                  setActiveTool('');
-                  setStreamStatus('Processing results...');
-                  break;
-
-                case 'response_metadata':
-                  // Store the metadata for the final message
-                  if (chunk.suggestedFollowUps) {
-                    collectedSuggestedFollowUps = chunk.suggestedFollowUps;
-                  }
-                  if (chunk.dataStatus) {
-                    collectedDataStatus = chunk.dataStatus;
-                  }
-                  // Update message with metadata immediately
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId
-                        ? {
-                            ...m,
-                            suggestedFollowUps: chunk.suggestedFollowUps || [],
-                            dataStatus: chunk.dataStatus,
-                          }
-                        : m
-                    )
-                  );
-                  break;
-
-                case 'content':
-                  streamedContent += chunk.content || '';
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId
-                        ? { ...m, content: streamedContent }
-                        : m
-                    )
-                  );
-                  setStreamStatus('');
-                  break;
-
-                case 'done':
-                  if (chunk.sessionId && chunk.sessionId !== currentSessionId) {
-                    setCurrentSessionId(chunk.sessionId);
-                    queryClient.invalidateQueries({ queryKey: ['admin-chat-sessions'] });
-                  }
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId
-                        ? {
-                            ...m,
-                            content: streamedContent,
-                            isStreaming: false,
-                            toolsUsed: chunk.toolsUsed || finalToolsUsed,
-                            analyticsData: collectedAnalyticsData.length > 0 ? collectedAnalyticsData : undefined,
-                            suggestedFollowUps: collectedSuggestedFollowUps.length > 0 ? collectedSuggestedFollowUps : undefined,
-                            dataStatus: collectedDataStatus,
-                          }
-                        : m
-                    )
-                  );
-                  break;
-
-                case 'error':
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId
-                        ? {
-                            ...m,
-                            content: chunk.error || 'An error occurred',
-                            isStreaming: false,
-                            error: true,
-                          }
-                        : m
-                    )
-                  );
-                  break;
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      }
-
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === streamingMessageId && m.isStreaming
-            ? { ...m, isStreaming: false, toolsUsed: finalToolsUsed }
-            : m
-        )
-      );
-    } catch (error) {
-      if ((error as Error).name === 'AbortError') {
-        setMessages((prev) => prev.filter((m) => !m.isStreaming));
-      } else {
-        const errorMessage: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: (error as Error).message || 'Failed to connect to the analytics service.',
-          timestamp: new Date(),
-          error: true,
-        };
-        setMessages((prev) => [...prev.filter((m) => !m.isStreaming), errorMessage]);
-      }
-    } finally {
-      setIsLoading(false);
-      setStreamStatus('');
-      setActiveTool('');
-      setToolsExecuted([]);
-      abortControllerRef.current = null;
-    }
-  }, [input, isLoading, currentSessionId, selectedProviderId, selectedModelId, experienceId, experienceName, timeRange, queryClient]);
+    await chat.send(content);
+  }, [input, isLoading, chat]);
 
   const handleSuggestedQuestion = useCallback((question: string) => {
     handleSubmit(question);
   }, [handleSubmit]);
 
-  const handleNewSession = useCallback(() => {
-    conversationScopeRef.current = undefined;
-    setScopeNotice(null);
-    setCurrentSessionId(null);
-    setMessages([]);
-  }, []);
-
-  const handleSelectSession = useCallback((sessionId: string) => {
-    if (sessionId !== currentSessionId) {
-      setCurrentSessionId(sessionId);
-    }
-  }, [currentSessionId]);
-
-  const stopStreaming = useCallback(() => {
-    abortControllerRef.current?.abort();
-  }, []);
+  const handleNewSession = chat.startNew;
+  const handleDeletedSession = (id: string) => {
+    if (id === currentSessionId) chat.startNew();
+  };
+  const handleSelectSession = chat.openSession;
+  const stopStreaming = chat.stop;
 
   const handleFormSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -1153,7 +302,7 @@ export default function AnalyticsChatPage() {
   const currentSessionTitle = sessionData?.title || 'New Conversation';
 
   const hasMessages = messages.length > 0;
-  const scopeRangeLabel = TIME_RANGE_OPTIONS.find((o) => o.value === timeRange)?.label ?? timeRange;
+  const scopeRangeLabel = periodLabel;
 
   // Provider settings popover content (reused in both states)
   const providerSettingsContent = (
@@ -1217,12 +366,13 @@ export default function AnalyticsChatPage() {
   if (!hasMessages) {
     return (
       <div className="-mx-4 sm:-mx-6 lg:-mx-8 -my-8 flex h-[calc(100vh-64px)] flex-col">
+        <BackToAnalytics />
         {/* Header */}
-        <div className="border-b p-6">
+        <div className="border-b p-6 pt-3">
           <PageHeader
             variant="hero"
-            title="Analytics Chat"
-            description="AI-powered insights into your search data"
+            title="Ask about your analytics"
+            description="The Ask chat, full screen. Same conversations as the Ask panel on every analytics page."
             icon={MessageSquare}
             iconBg="bg-violet-500/10"
             iconColor="text-violet-500"
@@ -1230,7 +380,7 @@ export default function AnalyticsChatPage() {
               <div className="flex items-center gap-2">
                 {/* Experience Selector */}
                 <ExperienceSelector />
-                <TimeRangeSelector />
+                <PeriodPicker />
 
                 {/* AI Provider Settings */}
                 <Popover>
@@ -1284,7 +434,7 @@ export default function AnalyticsChatPage() {
             )}
             <p className="mb-6 text-sm text-muted-foreground">
               Answers cover <span className="font-medium text-foreground">{experienceId ? experienceName : 'all experiences'}</span>
-              {' '}for the <span className="font-medium text-foreground">{scopeRangeLabel.toLowerCase()}</span> unless your question names a different period.
+              {' '}for <span className="font-medium text-foreground">{scopeRangeLabel.toLowerCase()}</span> unless your question names a different period.
             </p>
             {isLoadingProviders ? (
               <div className="text-center py-20">
@@ -1303,12 +453,9 @@ export default function AnalyticsChatPage() {
                     What would you like to know?
                   </h2>
                   <p className="text-muted-foreground max-w-lg mx-auto">
-                    Get AI-powered insights about search performance, user behavior, and content gaps.
+                    Ask about searches, conversations, failures and cost. Answers show the data they used and the period it covers.
                   </p>
                 </div>
-
-                {/* Processing Status */}
-                <ProcessingStatusBanner />
 
                 {/* Setup Warning */}
                 {!canChat && (
@@ -1401,10 +548,9 @@ export default function AnalyticsChatPage() {
         <HistorySheet
           isOpen={isHistoryOpen}
           onClose={() => setIsHistoryOpen(false)}
-          sessions={sessions}
-          isLoading={isLoadingSessions}
           currentSessionId={currentSessionId}
           onSelectSession={handleSelectSession}
+          onDeleted={handleDeletedSession}
         />
       </div>
     );
@@ -1414,6 +560,7 @@ export default function AnalyticsChatPage() {
   // Use negative margins to break out of the mainDiv's py-8 padding
   return (
     <div className="-mx-4 sm:-mx-6 lg:-mx-8 -my-8 flex h-[calc(100vh-64px)] flex-col">
+      <BackToAnalytics />
       {/* Compact Header for chat mode */}
       <div className="border-b px-6 py-2.5">
         <div className="flex items-center justify-between gap-4">
@@ -1423,7 +570,7 @@ export default function AnalyticsChatPage() {
             </div>
             <div className="min-w-0">
               <h1 className="text-sm font-semibold tracking-tight truncate">
-                {currentSessionId ? currentSessionTitle : 'Analytics Chat'}
+                {currentSessionId ? currentSessionTitle : 'Ask about your analytics'}
               </h1>
               <p className="truncate text-xs text-muted-foreground">
                 {experienceId ? experienceName : 'All experiences'} · {scopeRangeLabel}
@@ -1433,7 +580,7 @@ export default function AnalyticsChatPage() {
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Experience Selector - Compact */}
             <ExperienceSelector compact />
-            <TimeRangeSelector compact />
+            <PeriodPicker compact />
 
             {/* AI Provider Settings - Compact */}
             <Popover>
@@ -1611,10 +758,9 @@ export default function AnalyticsChatPage() {
       <HistorySheet
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        sessions={sessions}
-        isLoading={isLoadingSessions}
         currentSessionId={currentSessionId}
         onSelectSession={handleSelectSession}
+        onDeleted={handleDeletedSession}
       />
     </div>
   );
