@@ -19,6 +19,7 @@ import type {
     RRFConfig,
 } from './search.types';
 import { createLogger } from '@/shared/logger/logger';
+import { isFullTextSearchableFieldType } from '@/shared/constants/field-types';
 
 // ============================================================================
 // LOGGING CONFIGURATION
@@ -103,10 +104,27 @@ export function buildSearchContext(index: SearchIndexComplete): SearchContext {
 
 /**
  * Build searchable field configurations
+ *
+ * Only text-like types take part. A number, date or boolean field flagged
+ * searchable (older data, or an import that set the flag) would otherwise be
+ * handed to multi_match, and Elasticsearch fails the whole query trying to
+ * parse the query text as that type. The flag is ignored here rather than
+ * trusted, so a stale configuration degrades to "that field is not searched"
+ * instead of "nothing is searchable".
  */
 function buildSearchableFields(fields: SearchIndexField[]): SearchableFieldConfig[] {
-    return fields
-        .filter(field => field.isSearchable && field.isIndexed && hasDataAvailable(field))
+    const flagged = fields.filter(
+        field => field.isSearchable && field.isIndexed && hasDataAvailable(field)
+    );
+    const ignored = flagged.filter(field => !isFullTextSearchableFieldType(field.fieldType));
+    if (ignored.length > 0) {
+        fieldConfigLogger.debug('Ignoring searchable flag on non-text fields', {
+            fields: ignored.map(f => `${f.fieldName}:${f.fieldType}`),
+        });
+    }
+
+    return flagged
+        .filter(field => isFullTextSearchableFieldType(field.fieldType))
         .map(field => ({
             fieldName: field.fieldName,
             fieldType: field.fieldType,

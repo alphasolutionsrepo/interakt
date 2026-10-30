@@ -719,6 +719,7 @@ export async function handleCreateField(
         return apiResponse.success(field, 201);
     } catch (error) {
         const err = error as Error;
+
         logger.error('Failed to create field', err);
 
         if (err.message.includes('not found')) {
@@ -1156,6 +1157,7 @@ export async function handleUpdateField(
         return apiResponse.success(field);
     } catch (error) {
         const err = error as Error;
+
         logger.error('Failed to update field', err);
 
         if (err.message.includes('not found')) {

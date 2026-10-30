@@ -39,7 +39,7 @@ import { toast } from 'sonner';
 import type { SearchIndexField } from '@/features/search-index';
 import { searchIndexFieldsApi } from '../_lib/api-client';
 import { getProviderUI } from './providers';
-import { FIELD_TYPES, FIELD_TYPE_INFO, type FieldType } from '@/shared/constants/field-types';
+import { FIELD_TYPES, FIELD_TYPE_INFO, isFullTextSearchableFieldType, type FieldType } from '@/shared/constants/field-types';
 import {
     MAPPING_MODE_INFO,
     COMPUTED_AGGREGATIONS,
@@ -111,12 +111,14 @@ export function AddFieldDialog({
     // Autocomplete is text-only (matches the edit panel and the Zod schema's refine).
     const isAutocompleteCompatible = fieldType === 'text';
 
-    // Some providers cannot full-text search every type — Azure rejects any query
-    // naming a non-string field, so such a field must never be created searchable.
+    // No engine can full-text search a number, date, boolean or json field —
+    // Elasticsearch fails the whole query, Azure rejects the field — so the shared
+    // type list gates every provider, and a provider may narrow it further (Azure).
     // The type select can change after the box is ticked, so gate the effective
     // value on compatibility rather than trying to reset state on every change.
     const isSearchableCompatible =
-        getProviderUI(searchProvider || 'elasticsearch')?.supportsSearchableFieldType?.(fieldType) ?? true;
+        isFullTextSearchableFieldType(fieldType)
+        && (getProviderUI(searchProvider || 'elasticsearch')?.supportsSearchableFieldType?.(fieldType) ?? true);
     const effectiveIsSearchable = isSearchable && isSearchableCompatible;
 
     const [isSubmitting, setIsSubmitting] = useState(false);
