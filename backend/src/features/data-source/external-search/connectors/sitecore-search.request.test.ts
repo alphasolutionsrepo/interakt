@@ -391,6 +391,9 @@ describe("filter values as their field's type", () => {
     expect(buildFilter([], [{ field: 'price', operator: 'lte', value: 'cheap' }] as never, types).unapplied).toEqual([
       { field: 'price', operator: 'lte', reason: `"cheap" is not a number value for 'price'` },
     ]);
+    expect(buildFilter([], [{ field: 'price', operator: 'lte', value: '0x50' }] as never, types).unapplied).toEqual([
+      { field: 'price', operator: 'lte', reason: `"0x50" is not a number value for 'price'` },
+    ]);
   });
 
   it('reports null or a list for a text field as not applied, rather than sending it as text', () => {

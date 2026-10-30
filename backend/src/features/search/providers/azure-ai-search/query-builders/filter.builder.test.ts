@@ -217,6 +217,14 @@ describe('blank values on a number field', () => {
         expect(odata).toBeUndefined();
         expect(dropped).toHaveLength(1);
     });
+
+    it('drops hex text rather than reading it as a number, and keeps JSON number text', () => {
+        const hex = buildAzureFilterParts([{ field: 'price', operator: 'lte', value: '0x50' } as FilterClause], scalars);
+        expect(hex.odata).toBeUndefined();
+        expect(hex.dropped).toHaveLength(1);
+        const exponent = buildAzureFilterParts([{ field: 'price', operator: 'lte', value: '8e1' } as FilterClause], scalars);
+        expect(exponent.odata).toBe('price le 80');
+    });
 });
 
 describe('a list or object as a single value on a text field', () => {

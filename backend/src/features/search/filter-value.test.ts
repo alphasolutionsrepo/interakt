@@ -19,6 +19,16 @@ describe('asFieldType', () => {
     expect(asFieldType(Number.NaN, 'number')).toBeUndefined();
   });
 
+  it('reads number text as JSON writes numbers', () => {
+    expect(asFieldType(' -12.5 ', 'number')).toBe(-12.5);
+    expect(asFieldType('0', 'number')).toBe(0);
+    expect(asFieldType('1e3', 'number')).toBe(1000);
+    expect(asFieldType('2.5E-1', 'number')).toBe(0.25);
+    for (const text of ['0x7E8', '0b11111101000', '0o3750', '+5', '007', '.5', '5.', 'Infinity', '1e999']) {
+      expect(asFieldType(text, 'number')).toBeUndefined();
+    }
+  });
+
   it('refuses null, a list or an object for any field', () => {
     for (const fieldType of ['text', 'number', 'boolean', undefined]) {
       expect(asFieldType(null, fieldType)).toBeUndefined();

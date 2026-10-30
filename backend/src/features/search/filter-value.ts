@@ -1,5 +1,8 @@
 // src/features/search/filter-value.ts
 
+/** A number as JSON writes it (RFC 8259): no hex, binary or octal, no leading '+' or zeros. */
+const JSON_NUMBER = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/;
+
 /**
  * A filter value as the type its field holds. A caller (an AI tool, a saved
  * setting) may send 80 or "80", true or "true"; engines that check value types
@@ -14,9 +17,9 @@ export function asFieldType(value: unknown, fieldType: string | undefined): stri
   switch (fieldType) {
     case 'number': {
       if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
-      // Number('') is 0: blank text is no number, not zero
+      // Text must be a JSON number: Number() alone reads '' as 0 and '0x7E8' as 2024
       const s = String(value).trim();
-      const n = s === '' ? NaN : Number(s);
+      const n = JSON_NUMBER.test(s) ? Number(s) : NaN;
       return Number.isFinite(n) ? n : undefined;
     }
     case 'boolean': {
