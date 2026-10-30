@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // pure unit tests of the attribute defaults createField persists.
 vi.mock('./search-index-fields.repository', () => ({
     createField: vi.fn(),
+    createFields: vi.fn(),
     fieldNameExists: vi.fn(),
     getFieldById: vi.fn(),
     sourceFieldExists: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock('./search-index.cache', () => ({
 import * as repository from './search-index-fields.repository';
 import * as searchIndexRepository from './search-index.repository';
 import { clearIndexCache } from './search-index.cache';
-import { createField, updateField, defaultIsSearchableForType, InvalidFieldConfigError } from './search-index-fields.service';
+import { createField, updateField, importFields, defaultIsSearchableForType } from './search-index-fields.service';
 
 const INDEX_ID = 'idx-1';
 
@@ -86,16 +87,15 @@ describe('createField', () => {
             .toBe(true);
     });
 
-    it('rejects an explicit true on a numeric field', async () => {
-        // Below the HTTP schema (bulk, import) this is the only guard. A stored
-        // searchable numeric field makes Elasticsearch fail every query on the index.
-        await expect(createField(
-            INDEX_ID,
-            { fieldName: 'priceAmount', fieldType: 'number', isSearchable: true },
-            'user-1',
-        )).rejects.toThrow(InvalidFieldConfigError);
-
-        expect(repository.createField).not.toHaveBeenCalled();
+    it('turns an explicit true on a numeric field off instead of storing it', async () => {
+        // A stored searchable numeric field makes Elasticsearch fail every query on
+        // the index. Rejecting the request instead broke the Add Field dialog (which
+        // ticks the box by default) and mapping imports, so the flag is coerced.
+        expect(await persistedIsSearchable({
+            fieldName: 'priceAmount',
+            fieldType: 'number',
+            isSearchable: true,
+        })).toBe(false);
     });
 
     it('honours an explicit false on a text field', async () => {
@@ -137,18 +137,21 @@ describe('schema-change invalidation', () => {
 describe('updateField — isSearchable', () => {
     // The update schema carries no field type, so the stored row's type is the
     // only thing that can stop a date or number field being flagged searchable.
-    it('rejects marking a stored date field searchable', async () => {
+    it('stores false when asked to mark a stored date field searchable', async () => {
         vi.mocked(repository.getFieldById).mockResolvedValue(
             { id: 2, searchIndexId: INDEX_ID, fieldName: 'birthDate', fieldType: 'date' } as Awaited<
                 ReturnType<typeof repository.getFieldById>
             >,
         );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 2, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
 
-        // Typed so the handler answers 400, not 500
-        await expect(updateField(2, { isSearchable: true }, 'user-1'))
-            .rejects.toThrow(InvalidFieldConfigError);
+        // The demo seed passes mapping-file flags straight here; a throw aborted it.
+        await updateField(2, { isSearchable: true }, 'user-1');
 
-        expect(repository.updateField).not.toHaveBeenCalled();
+        const written = vi.mocked(repository.updateField).mock.calls.at(-1)?.[1];
+        expect(written?.isSearchable).toBe(false);
     });
 
     it('still allows turning the flag off on a date field', async () => {
@@ -164,6 +167,39 @@ describe('updateField — isSearchable', () => {
         await updateField(2, { isSearchable: false }, 'user-1');
 
         expect(repository.updateField).toHaveBeenCalled();
+    });
+});
+
+describe('importFields — isSearchable', () => {
+    // Whole-index import writes rows directly, below createField, so it needs the
+    // same guard: an export taken before the flag was policed brings it back.
+    it('turns the flag off on a json field and keeps it on a text field', async () => {
+        vi.mocked(repository.createFields).mockImplementation(
+            async (rows) => rows as unknown as Awaited<ReturnType<typeof repository.createFields>>,
+        );
+        const base = {
+            displayName: null,
+            isSystemField: false,
+            isRequired: false,
+            isFacetable: false,
+            includeInResponse: true,
+            boostValue: 1,
+            isMapped: true,
+            isIndexed: true,
+            isVectorSource: false,
+            isAutocomplete: false,
+        };
+
+        await importFields(INDEX_ID, [
+            { ...base, fieldName: 'variants', fieldType: 'json', isSearchable: true },
+            { ...base, fieldName: 'title', fieldType: 'text', isSearchable: true },
+        ]);
+
+        const rows = vi.mocked(repository.createFields).mock.calls.at(-1)?.[0] ?? [];
+        expect(rows.map(r => [r.fieldName, r.isSearchable])).toEqual([
+            ['variants', false],
+            ['title', true],
+        ]);
     });
 });
 

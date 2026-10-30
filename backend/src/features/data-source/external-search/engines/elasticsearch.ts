@@ -158,7 +158,9 @@ export async function callElasticsearchSearch(
   if (!query || query === '*') {
     matchClause = { match_all: {} };
   } else if (searchFields.length > 0) {
-    matchClause = { multi_match: { query, fields: searchFields } };
+    // lenient: a searchable field whose type cannot hold the query text (a number
+    // asked for "test") is skipped instead of failing the whole request.
+    matchClause = { multi_match: { query, fields: searchFields, lenient: true } };
   } else {
     // No known searchable fields — let ES search across all analyzed fields.
     matchClause = { simple_query_string: { query } };

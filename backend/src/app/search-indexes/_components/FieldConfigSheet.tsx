@@ -52,6 +52,7 @@ import {
 import { FilterValueMappingsModal } from './FilterValueMappingsModal';
 import { searchIndexFieldsApi } from '../_lib/api-client';
 import { getProviderUI } from './providers';
+import { isFullTextSearchableFieldType } from '@/shared/constants/field-types';
 import { cn } from '@/lib/utils';
 import type {
     SearchIndexField,
@@ -251,12 +252,14 @@ export function FieldConfigSheet({
         field.fieldType.toLowerCase()
     );
     const isAutocompleteCompatible = field.fieldType === 'text';
-    // Providers that cannot full-text search this field type reject any query that
-    // includes it. The toggle stays visible in that case and blocks only the switch
-    // ON — a field already stored as searchable must remain switchable OFF, since
-    // that is the repair for an index that is currently failing every search.
+    // No engine can full-text search a number, date, boolean or json field, and a
+    // provider may narrow the list further (Azure). The toggle stays visible in
+    // that case and blocks only the switch ON — a field already stored as
+    // searchable must remain switchable OFF, since that is the repair for an index
+    // that is currently failing every search.
     const isSearchableCompatible =
-        providerUI?.supportsSearchableFieldType?.(field.fieldType) ?? true;
+        isFullTextSearchableFieldType(field.fieldType)
+        && (providerUI?.supportsSearchableFieldType?.(field.fieldType) ?? true);
     const searchableNeedsRepair = !isSearchableCompatible && localSearchable;
     const filterValueMappings = field.filterValueMappings ?? {};
     const mappingsCount = Object.keys(filterValueMappings).length;

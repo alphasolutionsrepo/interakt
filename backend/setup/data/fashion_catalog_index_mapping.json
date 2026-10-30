@@ -15,7 +15,7 @@
         "transform": "none"
       },
       "attributes": {
-        "isSearchable": true,
+        "isSearchable": false,
         "isFacetable": false,
         "includeInResponse": false,
         "boostValue": 0.3,
@@ -54,7 +54,7 @@
         "transform": "none"
       },
       "attributes": {
-        "isSearchable": true,
+        "isSearchable": false,
         "isFacetable": false,
         "includeInResponse": true,
         "boostValue": 0.5,
@@ -699,7 +699,7 @@
         "transform": "none"
       },
       "attributes": {
-        "isSearchable": true,
+        "isSearchable": false,
         "isFacetable": false,
         "includeInResponse": true,
         "boostValue": 3,

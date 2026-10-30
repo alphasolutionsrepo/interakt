@@ -31,23 +31,11 @@ describe('createSearchIndexFieldSchema — isSearchable', () => {
         expect(parsed.isSearchable).toBeUndefined();
     });
 
-    it('rejects an explicit true on a numeric field', () => {
-        // Elasticsearch fails the whole query ("failed to create query: For input
-        // string") when the query text is sent to a numeric field, so the flag
-        // must never be stored for one.
-        const result = createSearchIndexFieldSchema.safeParse({
-            ...numericFieldInput(),
-            isSearchable: true,
-        });
-
-        expect(result.success).toBe(false);
-        expect(result.error?.issues[0]?.path).toEqual(['isSearchable']);
-    });
-
-    it.each(['text', 'keyword', 'array'])('accepts an explicit true on a %s field', (fieldType) => {
+    it('preserves an explicit true, leaving the type check to the service', () => {
+        // The schema stays passive on this flag: the service turns it off for types
+        // the engine cannot search, with a warning, so old mapping files still import.
         const parsed = createSearchIndexFieldSchema.parse({
-            fieldName: 'tags',
-            fieldType,
+            ...numericFieldInput(),
             isSearchable: true,
         });
 
