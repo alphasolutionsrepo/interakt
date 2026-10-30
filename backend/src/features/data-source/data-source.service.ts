@@ -17,7 +17,7 @@ import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } fro
 import { inferFieldRole } from '@/shared/utils/field-roles';
 import { resolveExternalConnection } from './external-search/external-connection';
 import { discoverSitecoreFields, sampleSitecore, SitecoreHttpError } from './external-search/connectors/sitecore-search.connector';
-import { FixedFilterError } from './external-search/connectors/sitecore-search.request';
+import { FixedFilterError, sitecoreFixedFilters } from './external-search/connectors/sitecore-search.request';
 
 const logger = createLogger('data-source-service');
 
@@ -433,7 +433,7 @@ async function checkExternalIndexHealth(
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
       const refused = (err instanceof SitecoreHttpError && err.status === 400) || err instanceof FixedFilterError;
-      if (refused && sitecoreFixedFilters(config).length > 0) {
+      if (refused && sitecoreFixedFilters(config.providerSettings).length > 0) {
         return { status: 'error', message: `Searches with this source's fixed filters fail: ${errMsg}`, checkedAt: now, schema };
       }
       logger.warn('Index stats fetch failed (non-fatal)', { provider: config.provider, error: errMsg });
@@ -670,11 +670,6 @@ function typesForSearches(
 ): DataSourceField[] | undefined {
   if (!discovered) return storedFields;
   return mergeOperatorFieldEdits(storedFields ? { fields: storedFields } : null, discovered as DataSourceSchema).fields;
-}
-
-function sitecoreFixedFilters(config: ExternalSearchIndexConfig): unknown[] {
-  const fixed = (config.providerSettings as { fixedFilters?: unknown } | undefined)?.fixedFilters;
-  return Array.isArray(fixed) ? fixed : [];
 }
 
 async function discoverExternalSchema(

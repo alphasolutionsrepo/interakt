@@ -62,8 +62,14 @@ export function sitecoreSettings(connection: ExternalConnection): SitecoreSearch
     locale: locale && typeof locale.country === 'string' && typeof locale.language === 'string'
       ? { country: locale.country, language: locale.language }
       : undefined,
-    fixedFilters: Array.isArray(s.fixedFilters) ? (s.fixedFilters as FilterClause[]) : [],
+    fixedFilters: sitecoreFixedFilters(s),
   };
+}
+
+/** The fixed filters in a Sitecore source's provider settings; none when unset or not a list. */
+export function sitecoreFixedFilters(providerSettings: Record<string, unknown> | undefined): FilterClause[] {
+  const fixed = providerSettings?.fixedFilters;
+  return Array.isArray(fixed) ? (fixed as FilterClause[]) : [];
 }
 
 // ============================================================================
