@@ -239,11 +239,15 @@ type RangeBounds = { gte?: number | string; gt?: number | string; lte?: number |
  */
 function rangeBounds(value: unknown): RangeBounds {
     const v = value as RangeValue & RangeBounds;
+    // A null bound is an open side, as in Elasticsearch
+    const open = (b: unknown) => (b === null ? undefined : b) as number | string | undefined;
+    const from = open(v.from);
+    const to = open(v.to);
     return {
-        gte: v.from !== undefined && v.includeLower !== false ? v.from : v.gte,
-        gt: v.from !== undefined && v.includeLower === false ? v.from : v.gt,
-        lte: v.to !== undefined && v.includeUpper !== false ? v.to : v.lte,
-        lt: v.to !== undefined && v.includeUpper === false ? v.to : v.lt,
+        gte: from !== undefined && v.includeLower !== false ? from : open(v.gte),
+        gt: from !== undefined && v.includeLower === false ? from : open(v.gt),
+        lte: to !== undefined && v.includeUpper !== false ? to : open(v.lte),
+        lt: to !== undefined && v.includeUpper === false ? to : open(v.lt),
     };
 }
 

@@ -91,6 +91,14 @@ describe('translateFilter', () => {
       .toEqual({ type: 'gt', name: 'p', value: 1 });
   });
 
+  it('reads a null bound as an open side, as Elasticsearch does', () => {
+    const types = new Map([['p', 'number']]);
+    expect(translateFilter({ field: 'p', operator: 'range', value: { from: 1, to: null } } as never, types))
+      .toEqual({ type: 'gte', name: 'p', value: 1 });
+    expect(translateFilter({ field: 'p', operator: 'range', value: { from: null, to: 5 } } as never, types))
+      .toEqual({ type: 'lte', name: 'p', value: 5 });
+  });
+
   it('recurses through and / or / not', () => {
     expect(translateFilter({
       field: '',

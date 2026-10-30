@@ -250,6 +250,14 @@ describe('range', () => {
         expect(range({ to: 80 })).toBe('price le 80');
     });
 
+    it('reads a null bound as an open side, as Elasticsearch does', () => {
+        const range = (value: object) =>
+            buildAzureFilterParts([{ field: 'price', operator: 'range', value } as FilterClause], scalars).odata;
+        expect(range({ from: 10, to: null })).toBe('price ge 10');
+        expect(range({ from: null, to: 80 })).toBe('price le 80');
+        expect(range({ gte: null, lte: 80 })).toBe('price le 80');
+    });
+
     it('drops a { from, to } range with a bound that cannot be the field type', () => {
         const { odata, dropped } = buildAzureFilterParts(
             [{ field: 'price', operator: 'range', value: { from: '10', to: 'cheap' } } as FilterClause],

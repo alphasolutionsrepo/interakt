@@ -177,10 +177,11 @@ export function translateFilter(
       const field = leaf(clause);
       const range = (value ?? {}) as RangeValue;
       const bounds: SitecoreFilter[] = [];
-      if (range.from !== undefined) {
+      // A null bound is an open side, as in Elasticsearch
+      if (range.from !== undefined && range.from !== null) {
         bounds.push({ type: range.includeLower === false ? 'gt' : 'gte', name: field, value: one(range.from) });
       }
-      if (range.to !== undefined) {
+      if (range.to !== undefined && range.to !== null) {
         bounds.push({ type: range.includeUpper === false ? 'lt' : 'lte', name: field, value: one(range.to) });
       }
       if (bounds.length === 0) throw new UnsupportedFilter(clause, "'range' needs a from or to value");
