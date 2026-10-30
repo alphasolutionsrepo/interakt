@@ -128,12 +128,14 @@ export async function searchExternalSourceForExperience(
         const unapplied = searched.result.unappliedFilters;
         if (unapplied.length > 0) {
           const fields = [...new Set(unapplied.map((u) => u.field))];
+          // The reason says what's wrong: the field, the operator or the value
+          const reasons = unapplied.map((u) => `${u.field}: ${u.reason}`);
           logger.warn('External index cannot apply a filter; refusing the search', {
             dataSourceId: source.dataSourceId,
-            unappliedFilters: unapplied.map((u) => `${u.field}: ${u.reason}`),
+            unappliedFilters: reasons,
           });
-          track({ total: 0, returned: 0, error: `filter not applied: ${fields.join(', ')}` });
-          throw new SearchError(`This search source can't filter on ${fields.join(', ')}`, 'INVALID_FILTER', { fields });
+          track({ total: 0, returned: 0, error: `filter not applied: ${reasons.join('; ')}` });
+          throw new SearchError(`This search source can't apply the filter (${reasons.join('; ')})`, 'INVALID_FILTER', { fields });
         }
         // Counts only for an answer: a refused search's hits are the unfiltered set
         span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, searched.result.total);

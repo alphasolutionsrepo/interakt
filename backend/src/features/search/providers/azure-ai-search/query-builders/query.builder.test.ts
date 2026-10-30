@@ -174,3 +174,12 @@ describe('hidden searched fields in the response', () => {
         expect(options.select).toBeUndefined();
     });
 });
+
+describe('range filters', () => {
+    it('sends the { from, to } range callers send as typed bounds', () => {
+        const options = build(mixedIndex, {
+            filters: [{ field: 'priceAmount', operator: 'range', value: { from: '10', to: 80 } }],
+        });
+        expect(options.filter).toBe('priceAmount ge 10 and priceAmount le 80');
+    });
+});

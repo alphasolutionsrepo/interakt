@@ -5,7 +5,6 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import {
     Dialog,
     DialogContent,
@@ -29,6 +28,7 @@ import {
 import { Loader2, Sparkles, MessageSquare, FileText, Database, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AIProviderModelResponse } from '@/features/ai-providers';
+import { formValuesOf, modelFormSchema, optionalNumber, type ModelFormData } from '../_lib/model-form';
 
 // ============================================================================
 // Model Type Config
@@ -40,68 +40,6 @@ const MODEL_TYPE_CONFIG = {
     chat: { label: 'Chat', icon: MessageSquare },
     vision: { label: 'Vision', icon: Eye },
 } as const;
-
-// ============================================================================
-// Form Schema
-// ============================================================================
-
-const modelFormSchema = z.object({
-    modelKey: z.string()
-        .min(1, 'Model key is required')
-        .max(100, 'Model key too long')
-        .regex(/^[a-zA-Z0-9._-]+$/, 'Model key can only contain letters, numbers, dots, hyphens, and underscores'),
-
-    displayName: z.string()
-        .min(1, 'Display name is required')
-        .max(150, 'Display name too long'),
-
-    description: z.string()
-        .max(500, 'Description too long')
-        .optional()
-        .nullable(),
-
-    modelType: z.enum(['text', 'chat', 'embedding', 'vision']),
-
-    dimensions: z.number()
-        .int()
-        .positive()
-        .max(10000, 'Dimensions value too large')
-        .optional()
-        .nullable(),
-
-    isAvailable: z.boolean().default(true),
-
-    // Pricing fields for cost estimation
-    inputCostPerMillionTokens: z.number()
-        .min(0, 'Cost cannot be negative')
-        .max(1000, 'Cost seems too high')
-        .optional()
-        .nullable(),
-
-    outputCostPerMillionTokens: z.number()
-        .min(0, 'Cost cannot be negative')
-        .max(1000, 'Cost seems too high')
-        .optional()
-        .nullable(),
-
-    // Capabilities (flattened for form, will be restructured on submit)
-    usesCompletionTokens: z.boolean().default(false),
-    noTemperature: z.boolean().default(false),
-}).refine(
-    (data) => {
-        // Dimensions required for embedding models
-        if (data.modelType === 'embedding' && !data.dimensions) {
-            return false;
-        }
-        return true;
-    },
-    {
-        message: 'Dimensions is required for embedding models',
-        path: ['dimensions'],
-    }
-);
-
-type ModelFormData = z.infer<typeof modelFormSchema>;
 
 // ============================================================================
 // Component Props
@@ -152,6 +90,7 @@ export function ModelFormDialog({
             outputCostPerMillionTokens: undefined,
             usesCompletionTokens: false,
             noTemperature: false,
+            reasoningEffort: 'default',
         },
     });
 
@@ -163,19 +102,7 @@ export function ModelFormDialog({
     useEffect(() => {
         if (open) {
             if (model) {
-                const capabilities = model.capabilities as Record<string, unknown> || {};
-                reset({
-                    modelKey: model.modelKey,
-                    displayName: model.displayName,
-                    description: model.description || '',
-                    modelType: model.modelType as 'text' | 'chat' | 'embedding' | 'vision',
-                    dimensions: model.dimensions || undefined,
-                    isAvailable: model.isAvailable,
-                    inputCostPerMillionTokens: model.inputCostPerMillionTokens || undefined,
-                    outputCostPerMillionTokens: model.outputCostPerMillionTokens || undefined,
-                    usesCompletionTokens: capabilities.usesCompletionTokens === true,
-                    noTemperature: capabilities.noTemperature === true,
-                });
+                reset(formValuesOf(model));
             } else {
                 reset({
                     modelKey: '',
@@ -188,6 +115,7 @@ export function ModelFormDialog({
                     outputCostPerMillionTokens: undefined,
                     usesCompletionTokens: false,
                     noTemperature: false,
+                    reasoningEffort: 'default',
                 });
             }
         }
@@ -324,7 +252,7 @@ export function ModelFormDialog({
                                 id="dimensions"
                                 type="number"
                                 placeholder="e.g., 1536, 3072"
-                                {...register('dimensions', { valueAsNumber: true })}
+                                {...register('dimensions', { setValueAs: optionalNumber })}
                                 className={cn(errors.dimensions && 'border-red-500')}
                             />
                             {errors.dimensions && (
@@ -372,7 +300,7 @@ export function ModelFormDialog({
                                     step="0.01"
                                     min="0"
                                     placeholder="e.g., 0.15"
-                                    {...register('inputCostPerMillionTokens', { valueAsNumber: true })}
+                                    {...register('inputCostPerMillionTokens', { setValueAs: optionalNumber })}
                                     className={cn(
                                         'h-8 text-sm',
                                         errors.inputCostPerMillionTokens && 'border-red-500'
@@ -396,7 +324,7 @@ export function ModelFormDialog({
                                     step="0.01"
                                     min="0"
                                     placeholder="e.g., 0.60"
-                                    {...register('outputCostPerMillionTokens', { valueAsNumber: true })}
+                                    {...register('outputCostPerMillionTokens', { setValueAs: optionalNumber })}
                                     className={cn(
                                         'h-8 text-sm',
                                         errors.outputCostPerMillionTokens && 'border-red-500'
@@ -415,9 +343,9 @@ export function ModelFormDialog({
                     {(modelType === 'chat' || modelType === 'text') && (
                         <div className="space-y-3 rounded-lg border p-3 bg-blue-50/50 dark:bg-blue-950/40">
                             <div>
-                                <Label className="text-sm font-medium">OpenAI Model Options</Label>
+                                <Label className="text-sm font-medium">Model Options</Label>
                                 <p className="text-xs text-slate-500">
-                                    Configure OpenAI-specific model behavior
+                                    How Interakt calls this model
                                 </p>
                             </div>
 
@@ -451,6 +379,33 @@ export function ModelFormDialog({
                                     checked={watch('noTemperature')}
                                     onCheckedChange={(checked) => setValue('noTemperature', checked)}
                                 />
+                            </div>
+
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <Label htmlFor="reasoningEffort" className="text-sm">
+                                        Reasoning
+                                    </Label>
+                                    <p className="text-xs text-slate-500">
+                                        For thinking models. If replies come back empty, try a lower level; not every model accepts every level. Ollama has no Minimal level and uses Low
+                                    </p>
+                                </div>
+                                <Select
+                                    value={watch('reasoningEffort')}
+                                    onValueChange={(value) => setValue('reasoningEffort', value as ModelFormData['reasoningEffort'])}
+                                >
+                                    <SelectTrigger id="reasoningEffort" className="w-36">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="default">Model default</SelectItem>
+                                        <SelectItem value="none">Off</SelectItem>
+                                        <SelectItem value="minimal">Minimal</SelectItem>
+                                        <SelectItem value="low">Low</SelectItem>
+                                        <SelectItem value="medium">Medium</SelectItem>
+                                        <SelectItem value="high">High</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
                     )}

@@ -82,7 +82,7 @@ describe('searchExternalSourceForExperience', () => {
       SOURCE, [], { query: 'x', filters: [{ field: 'title', operator: 'contains', value: 'zzz' }] }, EXPERIENCE,
     );
     await expect(search).rejects.toBeInstanceOf(SearchError);
-    await expect(search).rejects.toMatchObject({ code: 'INVALID_FILTER', message: "This search source can't filter on title" });
+    await expect(search).rejects.toMatchObject({ code: 'INVALID_FILTER', message: "This search source can't apply the filter (title: contains is not supported)" });
   });
 
   it('still answers when only the sort could not be applied', async () => {

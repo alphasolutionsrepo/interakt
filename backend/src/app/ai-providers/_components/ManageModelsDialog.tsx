@@ -48,6 +48,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ModelFormDialog } from './ModelFormDialog';
 import { aiModelsApi } from '../_lib/api-client';
+import { capabilitiesFromForm } from '../_lib/model-capabilities';
 import type {
     AIProviderWithModelsResponse,
     AIProviderModelResponse,
@@ -274,17 +275,11 @@ export function ManageModelsDialog({
         outputCostPerMillionTokens?: number | null;
         usesCompletionTokens?: boolean;
         noTemperature?: boolean;
+        reasoningEffort?: 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high';
     }) => {
         setIsSubmitting(true);
         try {
-            // Build capabilities object from flat form fields
-            const capabilities: Record<string, unknown> = {};
-            if (data.usesCompletionTokens) {
-                capabilities.usesCompletionTokens = true;
-            }
-            if (data.noTemperature) {
-                capabilities.noTemperature = true;
-            }
+            const capabilities = capabilitiesFromForm(data);
 
             if (editingModel) {
                 // Update existing model (modelType cannot be changed after creation)

@@ -207,3 +207,112 @@ describe('partial coercion inside in/nin', () => {
         expect(odata).toBe("keywords/all(t: t ne 'a' and t ne '10')");
     });
 });
+
+describe('blank values on a number field', () => {
+    it('drops the clause instead of comparing with 0', () => {
+        const { odata, dropped } = buildAzureFilterParts(
+            [{ field: 'price', operator: 'lte', value: '' } as FilterClause],
+            scalars,
+        );
+        expect(odata).toBeUndefined();
+        expect(dropped).toHaveLength(1);
+    });
+});
+
+describe('a list or object as a single value on a text field', () => {
+    it('drops the clause instead of comparing with the list as text', () => {
+        for (const value of [['en', 'fr'], { a: 1 }]) {
+            const { odata, dropped } = buildAzureFilterParts(
+                [{ field: 'locale', operator: 'eq', value } as FilterClause],
+                scalars,
+            );
+            expect(odata).toBeUndefined();
+            expect(dropped).toHaveLength(1);
+        }
+    });
+});
+
+describe('range', () => {
+    it('reads the { from, to } shape callers send, bounds included by default', () => {
+        const range = (value: object) =>
+            buildAzureFilterParts([{ field: 'price', operator: 'range', value } as FilterClause], scalars).odata;
+        expect(range({ from: '10', to: 80 })).toBe('price ge 10 and price le 80');
+        expect(range({ from: 10, to: 80, includeLower: false, includeUpper: false })).toBe('price gt 10 and price lt 80');
+        expect(range({ from: 10 })).toBe('price ge 10');
+        expect(range({ to: 80 })).toBe('price le 80');
+    });
+
+    it('drops a { from, to } range with a bound that cannot be the field type', () => {
+        const { odata, dropped } = buildAzureFilterParts(
+            [{ field: 'price', operator: 'range', value: { from: '10', to: 'cheap' } } as FilterClause],
+            scalars,
+        );
+        expect(odata).toBeUndefined();
+        expect(dropped[0].reason).toContain('"cheap"');
+    });
+
+    it('sends every bound as the field type', () => {
+        const { odata } = buildAzureFilterParts(
+            [{ field: 'price', operator: 'range', value: { gte: '10', lte: 80 } } as FilterClause],
+            scalars,
+        );
+        expect(odata).toBe('price ge 10 and price le 80');
+    });
+
+    it('drops the clause when a bound is blank or not a number, rather than widening the range', () => {
+        for (const lte of ['', 'cheap']) {
+            const { odata, dropped } = buildAzureFilterParts(
+                [{ field: 'price', operator: 'range', value: { gte: '10', lte } } as FilterClause],
+                scalars,
+            );
+            expect(odata).toBeUndefined();
+            expect(dropped).toHaveLength(1);
+            expect(dropped[0].reason).toContain(JSON.stringify(lte));
+        }
+    });
+});
+
+describe('in/nin with a null or list item on a text field', () => {
+    it('drops the clause instead of matching the text "null"', () => {
+        for (const operator of ['in', 'nin']) {
+            for (const item of [null, ['fr']]) {
+                const { odata, dropped } = buildAzureFilterParts(
+                    [{ field: 'locale', operator, value: ['en', item] } as FilterClause],
+                    scalars,
+                );
+                expect(odata).toBeUndefined();
+                expect(dropped).toHaveLength(1);
+                expect(dropped[0].reason).toContain(JSON.stringify(item));
+            }
+        }
+    });
+});
+
+describe('a value that is not a collection item on a collection field', () => {
+    it('drops eq/neq with a list, null or object instead of matching it as text', () => {
+        for (const operator of ['eq', 'neq']) {
+            for (const value of [['linen', 'summer'], { a: 1 }]) {
+                const { odata, dropped } = buildAzureFilterParts([{ field: 'keywords', operator, value } as FilterClause], collections);
+                expect(odata).toBeUndefined();
+                expect(dropped).toHaveLength(1);
+            }
+        }
+    });
+
+    it('drops in/nin with a null, list or object item', () => {
+        for (const operator of ['in', 'nin']) {
+            for (const item of [null, ['fr'], { a: 1 }]) {
+                const { odata, dropped } = buildAzureFilterParts(
+                    [{ field: 'keywords', operator, value: ['linen', item] } as FilterClause], collections,
+                );
+                expect(odata).toBeUndefined();
+                expect(dropped[0].reason).toContain('not collection items');
+            }
+        }
+    });
+
+    it('still matches plain items', () => {
+        expect(buildAzureFilterParts([{ field: 'keywords', operator: 'in', value: ['linen', 80] } as FilterClause], collections).odata)
+            .toBe("keywords/any(t: t eq 'linen' or t eq '80')");
+    });
+});

@@ -93,6 +93,8 @@ export const modelCapabilitiesSchema = z.object({
   usesCompletionTokens: z.boolean().optional(),
   // OpenAI-specific: reasoning models don't support temperature
   noTemperature: z.boolean().optional(),
+  // Thinking models: sent as reasoning_effort (OpenAI-compatible) or think (Ollama)
+  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high']).optional(),
 }).passthrough();
 
 // ============================================================================

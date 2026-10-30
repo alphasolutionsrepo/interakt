@@ -2,8 +2,10 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { generateToolDescription } from '@/features/tools/tools.description-generator';
+
 import type { ExternalConnection } from '../external-search.types';
-import { inferSitecoreFields, sitecoreSearchConnector } from './sitecore-search.connector';
+import { inferSitecoreFields, sampleSitecore, sitecoreFieldTypes, sitecoreSearchConnector } from './sitecore-search.connector';
 import {
   sitecoreSettings,
   translateFilter,
@@ -277,6 +279,52 @@ describe('inferSitecoreFields', () => {
   });
 });
 
+describe('field types for filter values', () => {
+  const fields = inferSitecoreFields({
+    items: [{ id: 'a', title: 'A page', year: 2024, sizes: [3, 4], labels: ['x'], code: '' }],
+    total: 1,
+    facets: new Map([['rating', 'Rating']]),
+  });
+  const types = sitecoreFieldTypes(fields);
+
+  it('takes a list attribute type from its items', () => {
+    expect(types.get('sizes')).toBe('number');
+    expect(types.get('labels')).toBe('text');
+    expect(types.get('year')).toBe('number');
+    expect(fields.find((f) => f.name === 'sizes')).toMatchObject({ type: 'text', providerType: 'array', valueType: 'number' });
+  });
+
+  // The field's type is what the chat tool offers (operators, sorting); a list keeps text's
+  it('keeps offering a list of numbers as a text field to the chat tool', () => {
+    const listFacet = inferSitecoreFields({
+      items: [{ id: 'a', category_ids: [12, 40] }], total: 1, facets: new Map([['category_ids', 'Category']]),
+    });
+    const { aiDescription } = generateToolDescription('S', 'search_index_external', 'search', { fields: listFacet });
+    expect(aiDescription).toContain('- category_ids (text): eq, neq, in, contains');
+    expect(aiDescription).not.toMatch(/Sortable fields:.*category_ids/);
+  });
+
+  it('looks past an empty first list for the items type', () => {
+    const later = inferSitecoreFields({ items: [{ id: 'a', sizes: [] }, { id: 'b', sizes: [5] }], total: 2, facets: new Map() });
+    expect(sitecoreFieldTypes(later).get('sizes')).toBe('number');
+  });
+
+  // Sitecore rejects a value of the wrong type, so a guessed type would break a value that works as sent
+  it('leaves out attributes the sample had no value for', () => {
+    expect(types.has('rating')).toBe(false);
+    expect(types.has('code')).toBe(false);
+    expect(translateFilter({ field: 'rating', operator: 'eq', value: 2 }, types)).toEqual({ type: 'eq', name: 'rating', value: 2 });
+  });
+
+  it('sends values as given for a source sampled before value types were recorded', () => {
+    // Stored shape before valueType: an unsampled number facet was saved as text
+    const stored = [{ name: 'rating', displayName: 'Rating', type: 'text', providerType: 'string', isSearchable: false, isFacetable: true, isFilterable: true }];
+    const storedTypes = sitecoreFieldTypes(stored);
+    expect(storedTypes.size).toBe(0);
+    expect(translateFilter({ field: 'rating', operator: 'eq', value: 2 }, storedTypes)).toEqual({ type: 'eq', name: 'rating', value: 2 });
+  });
+});
+
 describe('sitecoreSearchConnector', () => {
   it('asks for at least one item (Sitecore rejects limit 0) and returns none for a facet-only request', async () => {
     const fetchMock = vi.fn(async () => ({
@@ -292,6 +340,172 @@ describe('sitecoreSearchConnector', () => {
       expect(sent.widget.items[0].search.limit).toBe(1);
       expect(result.hits).toEqual([]);
       expect(result.facets).toEqual([{ field: 'type', buckets: [{ key: 'x', count: 9 }] }]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("sends filter values as the source's field types", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 0, content: [] }] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const fields = inferSitecoreFields({ total: 1, items: [{ id: 'a', type: 'page', year: 2024 }], facets: new Map([['type', 'Type']]) });
+      await sitecoreSearchConnector.search(connection(), {
+        query: '', offset: 0, limit: 3,
+        filters: [{ field: 'type', operator: 'eq', value: 80 }, { field: 'year', operator: 'gte', value: '2020' }],
+      }, fields);
+      const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+      expect(sent.widget.items[0].search.filter.filters).toEqual([
+        { type: 'eq', name: 'type', value: '80' },
+        { type: 'gte', name: 'year', value: 2020 },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+// Sitecore rejects a value that isn't its attribute's type: "filter value '80' not of the expected type"
+describe("filter values as their field's type", () => {
+  const types = new Map([['type', 'text'], ['price', 'number'], ['open', 'boolean']]);
+  const sent = (field: string, operator: string, value: unknown) =>
+    translateFilter({ field, operator, value } as never, types);
+
+  it("sends a value as its field's type when the source lists the field", () => {
+    expect(sent('type', 'eq', 80)).toEqual({ type: 'eq', name: 'type', value: '80' });
+    expect(sent('type', 'eq', true)).toEqual({ type: 'eq', name: 'type', value: 'true' });
+    expect(sent('price', 'lte', '80')).toEqual({ type: 'lte', name: 'price', value: 80 });
+    expect(sent('open', 'eq', 'true')).toEqual({ type: 'eq', name: 'open', value: true });
+    expect(sent('type', 'in', ['page', 80])).toEqual({ type: 'anyOf', name: 'type', values: ['page', '80'] });
+    expect(sent('price', 'range', { from: '10', to: 80 })).toEqual({
+      type: 'and', filters: [{ type: 'gte', name: 'price', value: 10 }, { type: 'lte', name: 'price', value: 80 }],
+    });
+    expect(translateFilter({ operator: 'not', filters: [{ field: 'type', operator: 'eq', value: 80 }] } as never, types))
+      .toEqual({ type: 'not', filter: { type: 'eq', name: 'type', value: '80' } });
+  });
+
+  it("reports a value that can't be its field's type as not applied", () => {
+    expect(buildFilter([], [{ field: 'price', operator: 'lte', value: 'cheap' }] as never, types).unapplied).toEqual([
+      { field: 'price', operator: 'lte', reason: `"cheap" is not a number value for 'price'` },
+    ]);
+  });
+
+  it('reports null or a list for a text field as not applied, rather than sending it as text', () => {
+    const { filter, unapplied } = buildFilter([], [
+      { field: 'type', operator: 'eq', value: ['page', 'event'] },
+      { field: 'type', operator: 'eq', value: null },
+    ] as never, types);
+    expect(filter).toBeUndefined();
+    expect(unapplied).toEqual([
+      { field: 'type', operator: 'eq', reason: `["page","event"] is not a text value for 'type'` },
+      { field: 'type', operator: 'eq', reason: `null is not a text value for 'type'` },
+    ]);
+  });
+
+  it('reports a value that fails inside and/or/not against its own field', () => {
+    const { unapplied } = buildFilter([], [
+      { operator: 'or', filters: [{ field: 'type', operator: 'eq', value: 'page' }, { field: 'price', operator: 'eq', value: 'cheap' }] },
+    ] as never, types);
+    expect(unapplied).toEqual([{ field: 'price', operator: 'or', reason: `"cheap" is not a number value for 'price'` }]);
+  });
+
+  it('reports in/nin as not applied when one item, or a null item, can\'t be the field\'s type', () => {
+    // Dropping only the bad item would narrow `in` or widen `nin`
+    const { filter, unapplied } = buildFilter([], [
+      { field: 'price', operator: 'nin', value: ['10', 'cheap'] },
+      { field: 'type', operator: 'in', value: ['page', null] },
+    ] as never, types);
+    expect(filter).toBeUndefined();
+    expect(unapplied).toEqual([
+      { field: 'price', operator: 'nin', reason: `"cheap" is not a number value for 'price'` },
+      { field: 'type', operator: 'in', reason: `null is not a text value for 'type'` },
+    ]);
+  });
+});
+
+describe('fixed filters and field types', () => {
+  const types = new Map([['type', 'text'], ['price', 'number']]);
+
+  it("converts a fixed filter's value to its field's type", () => {
+    expect(buildFilter([{ field: 'price', operator: 'lte', value: '80' }], [], types).filter)
+      .toEqual({ type: 'and', filters: [{ type: 'lte', name: 'price', value: 80 }] });
+  });
+
+  // Saving can't check value types (fields are sampled after the source is saved),
+  // so a fixed filter must not start failing every search when it doesn't convert.
+  it('sends a fixed filter that does not fit its field type as written', () => {
+    const { filter, unapplied } = buildFilter([{ field: 'price', operator: 'lte', value: 'cheap' }], [], types);
+    expect(filter).toEqual({ type: 'and', filters: [{ type: 'lte', name: 'price', value: 'cheap' }] });
+    expect(unapplied).toEqual([]);
+  });
+
+  it('converts the other values of a combined fixed filter when one does not fit', () => {
+    const { filter } = buildFilter([{
+      operator: 'and',
+      filters: [{ field: 'price', operator: 'lte', value: 'cheap' }, { field: 'type', operator: 'eq', value: 80 }],
+    }] as never, [], types);
+    expect(filter).toEqual({ type: 'and', filters: [{ type: 'and', filters: [
+      { type: 'lte', name: 'price', value: 'cheap' },
+      { type: 'eq', name: 'type', value: '80' },
+    ] }] });
+  });
+
+  it('still refuses a fixed filter Sitecore has no operator for', () => {
+    expect(() => buildFilter([{ field: 'type', operator: 'contains', value: 'x' }], [], types))
+      .toThrow("Fixed filter on 'type' can't be used");
+  });
+});
+
+describe('fixed filters through the connector', () => {
+  it("sends a fixed filter that doesn't fit its field type as written, and still searches", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 0, content: [] }] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const fields = inferSitecoreFields({ total: 1, items: [{ id: 'a', year: 2024 }], facets: new Map() });
+      const result = await sitecoreSearchConnector.search(
+        connection({ fixedFilters: [{ field: 'year', operator: 'gte', value: 'recent' }, { field: 'year', operator: 'lte', value: '2030' }] }),
+        { query: '', offset: 0, limit: 3 },
+        fields,
+      );
+      const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+      expect(sent.widget.items[0].search.filter.filters).toEqual([
+        { type: 'gte', name: 'year', value: 'recent' },
+        { type: 'lte', name: 'year', value: 2030 },
+      ]);
+      expect(result.hits).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('samples without fixed filters, as written, or as their field type', async () => {
+    // Without: a fixed filter value of the wrong type would fail the probe and discovery,
+    // and the type would never be learned
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 0, content: [] }] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const source = connection({ fixedFilters: [{ field: 'year', operator: 'eq', value: '2024' }] });
+      const fields = inferSitecoreFields({ total: 1, items: [{ id: 'a', year: 2024 }], facets: new Map() });
+      await sampleSitecore(source, 25, { withoutFixedFilters: true });
+      await sampleSitecore(source, 1);
+      await sampleSitecore(source, 1, { fields });
+      const filters = fetchMock.mock.calls.map(
+        (call) => JSON.parse((call as unknown as [string, { body: string }])[1].body).widget.items[0].search.filter,
+      );
+      expect(filters).toEqual([
+        undefined,
+        { type: 'and', filters: [{ type: 'eq', name: 'year', value: '2024' }] },
+        { type: 'and', filters: [{ type: 'eq', name: 'year', value: 2024 }] },
+      ]);
     } finally {
       vi.unstubAllGlobals();
     }

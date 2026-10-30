@@ -48,11 +48,24 @@ function toOllamaFormat(responseFormat?: ResponseFormat): OllamaFormat | undefin
 // OLLAMA API TYPES
 // ============================================================================
 
+/** Ollama's `think`: on/off, or a level for models that take one (gpt-oss). */
+type OllamaThink = boolean | 'low' | 'medium' | 'high';
+
+/** The model's configured reasoning effort as Ollama's `think`, when one is set. */
+function thinkOf(config: AdapterConfig): { think?: OllamaThink } {
+    const effort = config.capabilities?.reasoningEffort;
+    if (effort === 'none') return { think: false };
+    if (effort === 'minimal' || effort === 'low') return { think: 'low' };
+    if (effort === 'medium' || effort === 'high') return { think: effort };
+    return {};
+}
+
 interface OllamaGenerateRequest {
     model: string;
     prompt: string;
     system?: string;
     stream?: boolean;
+    think?: OllamaThink;
     format?: OllamaFormat;
     options?: {
         temperature?: number;
@@ -86,6 +99,7 @@ interface OllamaChatRequest {
     model: string;
     messages: OllamaChatMessage[];
     stream?: boolean;
+    think?: OllamaThink;
     format?: OllamaFormat;
     options?: {
         temperature?: number;
@@ -158,6 +172,7 @@ export class OllamaAdapter implements AIProviderAdapter {
                 ...(request.stopSequences?.length && { stop: request.stopSequences }),
             },
             ...(config.settings?.keepAlive && { keep_alive: config.settings.keepAlive as string }),
+            ...thinkOf(config),
         };
 
         const response = await this.makeRequest<OllamaGenerateResponse>(
@@ -208,6 +223,7 @@ export class OllamaAdapter implements AIProviderAdapter {
                 ...(request.stopSequences?.length && { stop: request.stopSequences }),
             },
             ...(config.settings?.keepAlive && { keep_alive: config.settings.keepAlive as string }),
+            ...thinkOf(config),
         };
 
         const response = await this.makeRequest<OllamaChatResponse>(
@@ -248,6 +264,7 @@ export class OllamaAdapter implements AIProviderAdapter {
                 ...(request.stopSequences?.length && { stop: request.stopSequences }),
             },
             ...(config.settings?.keepAlive && { keep_alive: config.settings.keepAlive as string }),
+            ...thinkOf(config),
         };
 
         const response = await this.makeStreamRequest(

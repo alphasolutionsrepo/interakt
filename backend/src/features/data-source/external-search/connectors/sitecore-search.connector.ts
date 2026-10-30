@@ -13,6 +13,7 @@
  */
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
+import type { FilterClause } from '@/features/search/search.types';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 import type {
   ExternalConnection,
@@ -25,12 +26,21 @@ import {
   buildSitecoreRequest,
   mapSitecoreResponse,
   sitecoreSettings,
+  type SitecoreFieldTypes,
   type SitecoreRequestInput,
 } from './sitecore-search.request';
 
 // ============================================================================
 // HTTP
 // ============================================================================
+
+/** Sitecore answered with an HTTP error: 400 means it refused the request itself. */
+export class SitecoreHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'SitecoreHttpError';
+  }
+}
 
 interface SitecoreCall {
   json: unknown;
@@ -85,9 +95,12 @@ async function callSitecore(
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new Error('Sitecore Search rejected the request — check the API key');
+      throw new SitecoreHttpError('Sitecore Search rejected the request — check the API key', response.status);
     }
-    throw new Error(`Sitecore Search returned HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`);
+    throw new SitecoreHttpError(
+      `Sitecore Search returned HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`,
+      response.status,
+    );
   }
 
   try {
@@ -109,7 +122,7 @@ export const sitecoreSearchConnector: ExternalSearchConnector = {
   async search(
     connection: ExternalConnection,
     request: ExternalSearchRequest,
-    _fields?: DataSourceField[],
+    fields?: DataSourceField[],
   ): Promise<ExternalSearchResult> {
     // Sitecore rejects limit 0 ("under minimum allowed value 1"), which a facet-only
     // request (enumerate, facet values) asks for: fetch one item and drop it.
@@ -121,6 +134,7 @@ export const sitecoreSearchConnector: ExternalSearchConnector = {
       facets: request.facets,
       sort: request.sort,
       fields: request.selectFields,
+      fieldTypes: fields ? sitecoreFieldTypes(fields) : undefined,
     });
 
     const mapped = mapSitecoreResponse(call.json, connection.indexName, request.offset);
@@ -145,9 +159,24 @@ export interface SitecoreSample {
   facets: Map<string, string>;
 }
 
+export interface SitecoreSampleOptions {
+  /** Leave the fixed filters out: for the connection probe, and discovery's fallback */
+  withoutFixedFilters?: boolean;
+  /** Known fields: fixed filter values are sent as their type, as in a search */
+  fields?: DataSourceField[];
+}
+
 /** Fetch a match-all sample with every facet the widget exposes. */
-export async function sampleSitecore(connection: ExternalConnection, limit: number): Promise<SitecoreSample> {
-  const call = await callSitecore(connection, { offset: 0, limit }, true);
+export async function sampleSitecore(
+  connection: ExternalConnection,
+  limit: number,
+  options: SitecoreSampleOptions = {},
+): Promise<SitecoreSample> {
+  const sampled = options.withoutFixedFilters
+    ? { ...connection, providerSettings: { ...connection.providerSettings, fixedFilters: [] } }
+    : connection;
+  const fieldTypes = options.fields ? sitecoreFieldTypes(options.fields) : undefined;
+  const call = await callSitecore(sampled, { offset: 0, limit, fieldTypes }, true);
   const widgets = ((call.json ?? {}) as { widgets?: Array<{ rfk_id?: string; facet?: Array<{ name: string; label?: string }> }> }).widgets ?? [];
   const widget = widgets.find((w) => w.rfk_id === connection.indexName) ?? widgets[0];
   const mapped = mapSitecoreResponse(call.json, connection.indexName, 0);
@@ -159,8 +188,85 @@ export async function sampleSitecore(connection: ExternalConnection, limit: numb
   };
 }
 
+const DISCOVERY_SAMPLE_SIZE = 25;
+
+/**
+ * Discover fields from a sample within the source's fixed filters, sent as the known
+ * types. Fixed filter values go out as their type only once a sample has seen it, so if
+ * Sitecore refuses the scoped sample with HTTP 400 (a value of the wrong type, on a source not yet
+ * discovered), the types are learned from a sample of the whole widget and the scope is
+ * sampled again with them. If that still fails, a source with no fields yet gets the
+ * whole-widget fields so its schema isn't empty; a source with fields keeps them (the
+ * whole widget's would add attributes outside its scope). The health check then reports
+ * the fixed filters as failing.
+ *
+ * @param knownFields - the source's stored fields
+ */
+export async function discoverSitecoreFields(
+  connection: ExternalConnection,
+  knownFields: DataSourceField[] = [],
+): Promise<DataSourceField[]> {
+  try {
+    return inferSitecoreFields(await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { fields: knownFields }));
+  } catch (scopedError) {
+    // Only a refusal (HTTP 400) can be a fixed filter value's type; anything else
+    // (timeout, 5xx, auth) fails discovery as before
+    const refused = scopedError instanceof SitecoreHttpError && scopedError.status === 400;
+    if (!refused || sitecoreSettings(connection).fixedFilters.length === 0) throw scopedError;
+  }
+  const learned = inferSitecoreFields(
+    await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { withoutFixedFilters: true }),
+  );
+  try {
+    // Learned types win; a known type this sample didn't see is kept
+    const fields = [...knownFields, ...learned];
+    const scoped = inferSitecoreFields(await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { fields }));
+    return withFixedFilterTypes(scoped, learned, connection);
+  } catch (error) {
+    if (knownFields.length > 0) throw error;
+    return learned;
+  }
+}
+
+/**
+ * The scoped sample may carry no value for a fixed filter's attribute (a `nin` or `neq`
+ * scope, or an empty one). Keep the type learned for it, or the fixed filter would be
+ * sent as written again and refused on every search.
+ */
+function withFixedFilterTypes(
+  scoped: DataSourceField[],
+  learned: DataSourceField[],
+  connection: ExternalConnection,
+): DataSourceField[] {
+  const names = new Set<string>();
+  const collect = (clauses: FilterClause[]) => clauses.forEach((c) => {
+    if (c.field) names.add(c.field);
+    if (c.filters) collect(c.filters);
+  });
+  collect(sitecoreSettings(connection).fixedFilters);
+
+  const fromSample = new Map(learned.map((f) => [f.name, f]));
+  const fields = scoped.map((f) => {
+    const valueType = f.valueType ?? (names.has(f.name) ? fromSample.get(f.name)?.valueType : undefined);
+    return valueType ? { ...f, valueType } : f;
+  });
+  const present = new Set(fields.map((f) => f.name));
+  const missing = [...names].filter((n) => !present.has(n) && fromSample.has(n)).map((n) => fromSample.get(n)!);
+  return [...fields, ...missing];
+}
+
 function humanize(name: string): string {
   return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Field name → type, for sending filter values as their attribute's type. Only
+ * types seen in sampled values (valueType): Sitecore rejects a value of the wrong
+ * type, so a guessed type would break a value that works as sent. Sources sampled
+ * before valueType existed send values as given until they are rediscovered.
+ */
+export function sitecoreFieldTypes(fields: DataSourceField[]): SitecoreFieldTypes {
+  return new Map(fields.flatMap((f) => (f.valueType ? [[f.name, f.valueType] as const] : [])));
 }
 
 /**
@@ -194,15 +300,21 @@ export function inferSitecoreFields(sample: SitecoreSample): DataSourceField[] {
     const seen = values.get(name)!;
     const first = seen[0];
     const isFacet = sample.facets.has(name);
+    // A list attribute's type is its items' type
+    const item = seen.flatMap((v) => (Array.isArray(v) ? v : [v])).find((v) => v !== null && v !== undefined && v !== '');
+    const valueType = typeof item === 'number' ? 'number'
+      : typeof item === 'boolean' ? 'boolean'
+      : typeof item === 'string' ? 'text'
+      : undefined;
 
+    // The field's type (what the chat tool offers: operators, sorting) stays text for a
+    // list; only filter values take the items' type
     let type = 'text';
     let providerType = 'string';
-    if (typeof first === 'number') {
-      type = providerType = 'number';
-    } else if (typeof first === 'boolean') {
-      type = providerType = 'boolean';
-    } else if (Array.isArray(first)) {
+    if (Array.isArray(first)) {
       providerType = 'array';
+    } else if (typeof first === 'number' || typeof first === 'boolean') {
+      type = providerType = typeof first;
     }
 
     // Prose has spaces; ids and URLs don't, however long they are.
@@ -218,6 +330,7 @@ export function inferSitecoreFields(sample: SitecoreSample): DataSourceField[] {
       displayName: sample.facets.get(name) ?? humanize(name),
       type,
       providerType,
+      ...(valueType && { valueType }),
       role,
       isSearchable: isFreeText,
       isFacetable: isFacet,

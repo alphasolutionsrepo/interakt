@@ -15,7 +15,6 @@
  *   { widgets: [{ rfk_id, total_item, content: [...], facet: [{ name, label, value: [{ id, text, count }] }] }] }
  */
 
-import type { FilterClause, SortClause, RangeValue } from '@/features/search/search.types';
 import type {
   ExternalConnection,
   ExternalFacet,
@@ -23,6 +22,9 @@ import type {
   ExternalSearchHit,
   UnappliedClause,
 } from '../external-search.types';
+
+import { asFieldType } from '@/features/search/filter-value';
+import type { FilterClause, SortClause, RangeValue } from '@/features/search/search.types';
 
 // ============================================================================
 // SETTINGS
@@ -99,54 +101,93 @@ function nonEmptyValues(clause: FilterClause): unknown[] {
   return values;
 }
 
+/** Field name → type ('text', 'number', 'boolean', ...), from the data source's fields. */
+export type SitecoreFieldTypes = ReadonlyMap<string, string>;
+
+/**
+ * Sitecore rejects a value that isn't its attribute's type ("filter value '80' not
+ * of the expected type"), so a value for a field of known type is sent as that
+ * type. A field the source doesn't list keeps the value as sent.
+ *
+ * @param keepUnconverted - send a value that can't be its field's type as written
+ *   instead of throwing (fixed filters)
+ */
+function typed(
+  clause: FilterClause,
+  value: unknown,
+  fieldTypes: SitecoreFieldTypes | undefined,
+  keepUnconverted: boolean,
+): unknown {
+  const fieldType = clause.field ? fieldTypes?.get(clause.field) : undefined;
+  if (fieldType === undefined) return value;
+  const converted = asFieldType(value, fieldType);
+  if (converted === undefined) {
+    if (keepUnconverted) return value;
+    throw new UnsupportedFilter(clause, `${JSON.stringify(value)} is not a ${fieldType} value for '${clause.field}'`);
+  }
+  return converted;
+}
+
 /**
  * Translate one filter clause into a Sitecore filter.
  *
+ * @param fieldTypes - the source's field types; values are sent as their field's type
+ * @param keepUnconverted - send a value that can't be its field's type as written
+ *   rather than throwing
  * @throws UnsupportedFilter for clauses Sitecore cannot be sent: an operator it
- *   has no equivalent for, or a clause missing what its operator needs
+ *   has no equivalent for, a clause missing what its operator needs, or a value
+ *   that can't be its field's type
  */
-export function translateFilter(clause: FilterClause): SitecoreFilter {
+export function translateFilter(
+  clause: FilterClause,
+  fieldTypes?: SitecoreFieldTypes,
+  keepUnconverted = false,
+): SitecoreFilter {
   const { operator, value } = clause;
 
   if (COMPARISONS.has(operator) && value === undefined) {
     throw new UnsupportedFilter(clause, `'${operator}' needs a value`);
   }
 
+  const one = (v: unknown) => typed(clause, v, fieldTypes, keepUnconverted);
+  const list = () => nonEmptyValues(clause).map(one);
+  const nested = () => (clause.filters ?? []).map((f) => translateFilter(f, fieldTypes, keepUnconverted));
+
   switch (operator) {
     case 'eq':
-      return { type: 'eq', name: leaf(clause), value };
+      return { type: 'eq', name: leaf(clause), value: one(value) };
     case 'neq':
-      return { type: 'not', filter: { type: 'eq', name: leaf(clause), value } };
+      return { type: 'not', filter: { type: 'eq', name: leaf(clause), value: one(value) } };
     case 'gt':
     case 'gte':
     case 'lt':
     case 'lte':
-      return { type: operator, name: leaf(clause), value };
+      return { type: operator, name: leaf(clause), value: one(value) };
     case 'in':
-      return { type: 'anyOf', name: leaf(clause), values: nonEmptyValues(clause) };
+      return { type: 'anyOf', name: leaf(clause), values: list() };
     case 'nin':
-      return { type: 'not', filter: { type: 'anyOf', name: leaf(clause), values: nonEmptyValues(clause) } };
+      return { type: 'not', filter: { type: 'anyOf', name: leaf(clause), values: list() } };
     case 'range': {
       const field = leaf(clause);
       const range = (value ?? {}) as RangeValue;
       const bounds: SitecoreFilter[] = [];
       if (range.from !== undefined) {
-        bounds.push({ type: range.includeLower === false ? 'gt' : 'gte', name: field, value: range.from });
+        bounds.push({ type: range.includeLower === false ? 'gt' : 'gte', name: field, value: one(range.from) });
       }
       if (range.to !== undefined) {
-        bounds.push({ type: range.includeUpper === false ? 'lt' : 'lte', name: field, value: range.to });
+        bounds.push({ type: range.includeUpper === false ? 'lt' : 'lte', name: field, value: one(range.to) });
       }
       if (bounds.length === 0) throw new UnsupportedFilter(clause, "'range' needs a from or to value");
       return bounds.length === 1 ? bounds[0] : { type: 'and', filters: bounds };
     }
     case 'and':
     case 'or': {
-      const filters = (clause.filters ?? []).map(translateFilter);
+      const filters = nested();
       if (filters.length === 0) throw new UnsupportedFilter(clause, `'${operator}' needs at least one filter`);
       return { type: operator, filters };
     }
     case 'not': {
-      const inner = (clause.filters ?? []).map(translateFilter);
+      const inner = nested();
       if (inner.length === 0) throw new UnsupportedFilter(clause, "'not' needs a filter");
       return { type: 'not', filter: inner.length === 1 ? inner[0] : { type: 'and', filters: inner } };
     }
@@ -170,6 +211,14 @@ export function untranslatableReason(clause: FilterClause): string | undefined {
   }
 }
 
+/** A fixed filter Interakt can't translate: every search on the source fails until it's fixed. */
+export class FixedFilterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FixedFilterError';
+  }
+}
+
 /**
  * Combine the fixed filters with the requested ones into one AND. Clauses Sitecore
  * cannot express are reported as unapplied rather than failing the search, the same
@@ -178,15 +227,19 @@ export function untranslatableReason(clause: FilterClause): string | undefined {
 export function buildFilter(
   fixed: FilterClause[],
   requested: FilterClause[] | undefined,
+  fieldTypes?: SitecoreFieldTypes,
 ): { filter?: SitecoreFilter; unapplied: UnappliedClause[] } {
   // Data source validation rejects these, so this is a source saved before it did:
   // a fixed filter goes on every query, so say which one and where to fix it.
   const translated: SitecoreFilter[] = fixed.map((clause) => {
+    // Saving checks a fixed filter without field types (they're sampled after the
+    // source is saved), so a value that isn't its field's type is sent as written
+    // rather than failing every search; the clause's other values are still converted.
     try {
-      return translateFilter(clause);
+      return translateFilter(clause, fieldTypes, true);
     } catch (error) {
       if (!(error instanceof UnsupportedFilter)) throw error;
-      throw new Error(
+      throw new FixedFilterError(
         `Fixed filter on '${clause.field}' can't be used: ${error.message}. Fix it in the data source's settings.`,
       );
     }
@@ -195,10 +248,12 @@ export function buildFilter(
 
   for (const clause of requested ?? []) {
     try {
-      translated.push(translateFilter(clause));
+      translated.push(translateFilter(clause, fieldTypes));
     } catch (error) {
       if (!(error instanceof UnsupportedFilter)) throw error;
-      unapplied.push({ field: clause.field, operator: clause.operator, reason: error.message });
+      // Inside and / or / not, the field is the condition's that failed
+      const field = error.clause.field ?? clause.field ?? `(${clause.operator})`;
+      unapplied.push({ field, operator: clause.operator, reason: error.message });
     }
   }
 
@@ -247,6 +302,8 @@ export interface SitecoreRequestInput {
   sort?: SortClause[];
   /** Sitecore content attributes to return (all when omitted) */
   fields?: string[];
+  /** The source's field types; filter values are sent as their field's type */
+  fieldTypes?: SitecoreFieldTypes;
 }
 
 /** Empty or '*' means "match everything". */
@@ -273,7 +330,7 @@ export function buildSitecoreRequest(
   const facet = buildFacet(input.facets);
   if (facet) search.facet = facet;
 
-  const { filter, unapplied } = buildFilter(settings.fixedFilters, input.filters);
+  const { filter, unapplied } = buildFilter(settings.fixedFilters, input.filters, input.fieldTypes);
   if (filter) search.filter = filter;
 
   const sort = buildSort(input.sort);

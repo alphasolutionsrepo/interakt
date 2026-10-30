@@ -33,7 +33,8 @@
 
 import 'server-only';
 
-import { SearchError, type FilterClause, type FieldConfig } from '../../../search.types';
+import { asFieldType } from '../../../filter-value';
+import { SearchError, type FilterClause, type FieldConfig, type RangeValue } from '../../../search.types';
 
 /** Field type lookup — maps field name to its type (e.g., 'array', 'text', 'keyword') */
 export type FieldTypeLookup = Map<string, FieldConfig> | Map<string, { fieldType: string }>;
@@ -124,7 +125,8 @@ function buildFilterClause(
         case 'eq': {
             if (isCollection) {
                 // Collection(Edm.String): use lambda — field/any(t: t eq 'value')
-                return `${field}/any(t: t eq ${formatCollectionElement(value)})`;
+                const element = formatCollectionElement(value);
+                return element === null ? drop(notCoercible) : `${field}/any(t: t eq ${element})`;
             }
             const operand = formatOperand(value, fieldType);
             return operand === null ? drop(notCoercible) : `${field} eq ${operand}`;
@@ -133,7 +135,8 @@ function buildFilterClause(
         case 'neq': {
             if (isCollection) {
                 // No item matches the value — field/all(t: t ne 'value')
-                return `${field}/all(t: t ne ${formatCollectionElement(value)})`;
+                const element = formatCollectionElement(value);
+                return element === null ? drop(notCoercible) : `${field}/all(t: t ne ${element})`;
             }
             const operand = formatOperand(value, fieldType);
             return operand === null ? drop(notCoercible) : `${field} ne ${operand}`;
@@ -165,8 +168,9 @@ function buildFilterClause(
             }
             if (isCollection) {
                 // Any item in the collection matches any of the given values
-                const conditions = value.map(v => `t eq ${formatCollectionElement(v)}`);
-                return `${field}/any(t: ${conditions.join(' or ')})`;
+                const elements = collectionElements(value);
+                if (!Array.isArray(elements)) return elements;
+                return `${field}/any(t: ${elements.map(e => `t eq ${e}`).join(' or ')})`;
             }
             const operands = coerceAll(value, fieldType);
             if (!Array.isArray(operands)) return operands;
@@ -182,8 +186,9 @@ function buildFilterClause(
             }
             if (isCollection) {
                 // No item in the collection matches any of the given values
-                const conditions = value.map(v => `t ne ${formatCollectionElement(v)}`);
-                return `${field}/all(t: ${conditions.join(' and ')})`;
+                const elements = collectionElements(value);
+                if (!Array.isArray(elements)) return elements;
+                return `${field}/all(t: ${elements.map(e => `t ne ${e}`).join(' and ')})`;
             }
             const operands = coerceAll(value, fieldType);
             if (!Array.isArray(operands)) return operands;
@@ -200,23 +205,46 @@ function buildFilterClause(
             return `search.ismatch('${escapeOData(String(value))}*', '${field}')`;
 
         case 'range': {
-            const range = value as { gte?: number | string; lte?: number | string; gt?: number | string; lt?: number | string };
+            const range = rangeBounds(value);
             const parts: string[] = [];
+            const failed: unknown[] = [];
             const push = (op: string, v: number | string | undefined) => {
                 if (v === undefined) return;
                 const operand = formatOperand(v, fieldType);
-                if (operand !== null) parts.push(`${field} ${op} ${operand}`);
+                if (operand === null) failed.push(v);
+                else parts.push(`${field} ${op} ${operand}`);
             };
             push('ge', range.gte);
             push('gt', range.gt);
             push('le', range.lte);
             push('lt', range.lt);
+            // Skipping one bound would widen the range, so a bound that can't convert drops the clause
+            if (failed.length > 0) {
+                return drop(`range bound not coercible to field type "${fieldType ?? 'unknown'}": ${failed.map((v) => JSON.stringify(v)).join(', ')}`);
+            }
             return parts.length > 0 ? parts.join(' and ') : drop('range has no usable bounds');
         }
 
         default:
             return drop(`operator "${operator}" is not supported by Azure AI Search`);
     }
+}
+
+type RangeBounds = { gte?: number | string; gt?: number | string; lte?: number | string; lt?: number | string };
+
+/**
+ * A range's bounds. Callers send the shared RangeValue shape ({ from, to }, bounds
+ * included unless includeLower / includeUpper is false), as Elasticsearch reads it;
+ * gte / gt / lte / lt are read too.
+ */
+function rangeBounds(value: unknown): RangeBounds {
+    const v = value as RangeValue & RangeBounds;
+    return {
+        gte: v.from !== undefined && v.includeLower !== false ? v.from : v.gte,
+        gt: v.from !== undefined && v.includeLower === false ? v.from : v.gt,
+        lte: v.to !== undefined && v.includeUpper !== false ? v.to : v.lte,
+        lt: v.to !== undefined && v.includeUpper === false ? v.to : v.lt,
+    };
 }
 
 /** Look up a field's declared type from the field-type map. */
@@ -268,34 +296,39 @@ function coerceAll(values: unknown[], fieldType?: string): string[] | ClauseDrop
 }
 
 function formatOperand(value: unknown, fieldType?: string): string | null {
+    const typed = asFieldType(value, fieldType);
+    if (typed === undefined) return null;
     switch (fieldType) {
-        case 'number': {
-            const n = typeof value === 'number' ? value : Number(String(value).trim());
-            return Number.isFinite(n) ? String(n) : null;
-        }
-        case 'boolean': {
-            if (typeof value === 'boolean') return value ? 'true' : 'false';
-            const s = String(value).trim().toLowerCase();
-            if (s === 'true') return 'true';
-            if (s === 'false') return 'false';
-            return null;
-        }
+        case 'number':
+        case 'boolean':
         case 'date':
         case 'datetime':
-            // Edm.DateTimeOffset literal — unquoted ISO 8601
-            return String(value);
+            // Bare literals; a date is an unquoted ISO 8601 Edm.DateTimeOffset
+            return String(typed);
         default:
             // text / keyword / url / email / json / image_url / unknown → quoted string
-            return `'${escapeOData(String(value))}'`;
+            return `'${escapeOData(String(typed))}'`;
     }
 }
 
 /**
  * Format a collection element. Array fields in current schemas are
- * Collection(Edm.String), so elements are emitted as quoted strings.
+ * Collection(Edm.String), so elements are emitted as quoted strings. Null, a list or
+ * an object isn't an element value (it would match nothing as text): null.
  */
-function formatCollectionElement(value: unknown): string {
-    return `'${escapeOData(String(value))}'`;
+function formatCollectionElement(value: unknown): string | null {
+    const typed = asFieldType(value, 'text');
+    return typed === undefined ? null : `'${escapeOData(String(typed))}'`;
+}
+
+/** Every element of an in/nin list, or the clause drop naming the ones that aren't values. */
+function collectionElements(values: unknown[]): string[] | ClauseDrop {
+    const elements = values.map(formatCollectionElement);
+    const failed = values.filter((_, i) => elements[i] === null);
+    if (failed.length > 0) {
+        return drop(`${failed.length} of ${values.length} values are not collection items: ${failed.map(v => JSON.stringify(v)).join(', ')}`);
+    }
+    return elements as string[];
 }
 
 function escapeOData(value: string): string {

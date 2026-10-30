@@ -16,7 +16,8 @@ import * as toolsService from '@/features/tools/tools.service';
 import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } from '@/features/search-experience/search-experience.cache';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 import { resolveExternalConnection } from './external-search/external-connection';
-import { sampleSitecore, inferSitecoreFields } from './external-search/connectors/sitecore-search.connector';
+import { discoverSitecoreFields, sampleSitecore, SitecoreHttpError } from './external-search/connectors/sitecore-search.connector';
+import { FixedFilterError } from './external-search/connectors/sitecore-search.request';
 
 const logger = createLogger('data-source-service');
 
@@ -140,7 +141,7 @@ export async function performHealthCheck(id: string): Promise<HealthCheckResult>
         break;
       }
       case 'search_index_external': {
-        result = await checkExternalIndexHealth(ds.config as ExternalSearchIndexConfig);
+        result = await checkExternalIndexHealth(ds.config as ExternalSearchIndexConfig, (ds.schema as DataSourceSchema | null)?.fields);
         break;
       }
       default: {
@@ -226,7 +227,7 @@ export function mergeOperatorFieldEdits(
  *
  * Inference is a guess (is this prose? is that a facet?), so for a field the operator
  * already has, their curation wins: label, role, description and every capability flag.
- * Only what was measured — type and profile — is refreshed. A field missing from this
+ * Only what was measured — type, value type and profile — is refreshed. A field missing from this
  * sample is kept, since a sample can simply not contain it; new fields are added.
  */
 function mergeSampledSchema(previous: DataSourceField[], discovered: DataSourceSchema): DataSourceSchema {
@@ -240,6 +241,7 @@ function mergeSampledSchema(previous: DataSourceField[], discovered: DataSourceS
       ...curated,
       type: measured.type,
       ...(measured.providerType && { providerType: measured.providerType }),
+      ...(measured.valueType && { valueType: measured.valueType }),
       ...(measured.profile && { profile: measured.profile }),
     };
   });
@@ -350,8 +352,13 @@ function mapSearchIndexFieldsToSchema(fields: SearchIndexField[]): DataSourceFie
 // EXTERNAL INDEX HEALTH + SCHEMA DISCOVERY
 // ============================================================================
 
+/**
+ * @param storedFields - the source's stored fields: with what discovery finds, they give
+ *   the types Sitecore fixed filter values are sent as
+ */
 async function checkExternalIndexHealth(
   config: ExternalSearchIndexConfig,
+  storedFields?: DataSourceField[],
 ): Promise<HealthCheckResult> {
   const now = new Date().toISOString();
 
@@ -389,7 +396,7 @@ async function checkExternalIndexHealth(
   let schemaNote = '';
   try {
     logger.info('Attempting schema discovery', { provider: config.provider, indexName: config.connection.indexName });
-    const discovered = await discoverExternalSchema(config);
+    const discovered = await discoverExternalSchema(config, storedFields);
     if (discovered.fields.length > 0) {
       schema = {
         fields: discovered.fields,
@@ -409,6 +416,28 @@ async function checkExternalIndexHealth(
       provider: config.provider,
       error: errMsg,
     });
+  }
+
+  // Step 4 (Sitecore): count with the fixed filters, sent as the types searches will use:
+  // the schema as it's about to be saved (stored types this sample didn't see are kept).
+  // Every search makes this request, so its fixed filters being refused, by Sitecore (HTTP
+  // 400) or by Interakt (one it can't translate), makes the source unhealthy. Any other
+  // failure (no fixed filters, a 503, a timeout) only loses the count: the probe already
+  // showed the connection works.
+  if (config.provider === 'sitecore_search') {
+    try {
+      const connection = await resolveExternalConnection('Sitecore Search', config);
+      const sample = await sampleSitecore(connection, 1, { fields: typesForSearches(storedFields, schema) });
+      documentCount = sample.total;
+      statsNote = ` — ${sample.total.toLocaleString()} docs`;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      const refused = (err instanceof SitecoreHttpError && err.status === 400) || err instanceof FixedFilterError;
+      if (refused && sitecoreFixedFilters(config).length > 0) {
+        return { status: 'error', message: `Searches with this source's fixed filters fail: ${errMsg}`, checkedAt: now, schema };
+      }
+      logger.warn('Index stats fetch failed (non-fatal)', { provider: config.provider, error: errMsg });
+    }
   }
 
   return {
@@ -477,11 +506,14 @@ async function probeExternalConnection(
   }
 }
 
-/** Run a one-item Sitecore query: proves the endpoint, widget and key together. */
+/**
+ * Run a one-item Sitecore query: proves the endpoint, widget and key together. Without
+ * the fixed filters, so one written with the wrong type can't stop discovery from running.
+ */
 async function probeSitecore(config: ExternalSearchIndexConfig, now: string): Promise<HealthCheckResult> {
   try {
     const connection = await resolveExternalConnection('Sitecore Search', config);
-    await sampleSitecore(connection, 1);
+    await sampleSitecore(connection, 1, { withoutFixedFilters: true });
     return {
       status: 'healthy',
       message: `Sitecore Search widget '${config.connection.indexName}' is reachable`,
@@ -539,12 +571,9 @@ interface IndexStats {
   storageSizeBytes: number;
 }
 
+/** Sitecore is counted after discovery, with its fixed filters (checkExternalIndexHealth). */
 async function fetchExternalIndexStats(config: ExternalSearchIndexConfig): Promise<IndexStats | null> {
   switch (config.provider) {
-    case 'sitecore_search': {
-      const sample = await sampleSitecore(await resolveExternalConnection('Sitecore Search', config), 1);
-      return { documentCount: sample.total, storageSizeBytes: 0 };
-    }
     case 'elasticsearch':
       return fetchElasticsearchStats(config);
     case 'azure_ai_search':
@@ -631,10 +660,28 @@ interface DiscoveredSchema {
   discoveredFrom?: DataSourceSchema['discoveredFrom'];
 }
 
+/**
+ * The fields searches will use once a discovery is saved: the stored schema merged with
+ * what discovery found, so a type an earlier sample saw is kept.
+ */
+function typesForSearches(
+  storedFields: DataSourceField[] | undefined,
+  discovered: { fields: DataSourceField[]; discoveredFrom?: DataSourceSchema['discoveredFrom'] } | undefined,
+): DataSourceField[] | undefined {
+  if (!discovered) return storedFields;
+  return mergeOperatorFieldEdits(storedFields ? { fields: storedFields } : null, discovered as DataSourceSchema).fields;
+}
+
+function sitecoreFixedFilters(config: ExternalSearchIndexConfig): unknown[] {
+  const fixed = (config.providerSettings as { fixedFilters?: unknown } | undefined)?.fixedFilters;
+  return Array.isArray(fixed) ? fixed : [];
+}
+
 async function discoverExternalSchema(
   config: ExternalSearchIndexConfig,
+  storedFields?: DataSourceField[],
 ): Promise<DiscoveredSchema> {
-  const discovered = await discoverExternalFields(config);
+  const discovered = await discoverExternalFields(config, storedFields);
   if (discovered.fields.length === 0) return discovered;
 
   // Profiling is a second read against the index, so it is strictly best-effort: a field
@@ -644,7 +691,7 @@ async function discoverExternalSchema(
   if (sampleSize === 0) return discovered;
 
   try {
-    const documents = await fetchDocumentSample(config, sampleSize);
+    const documents = await fetchDocumentSample(config, sampleSize, typesForSearches(storedFields, discovered) ?? []);
     if (documents.length === 0) {
       logger.warn('Field profiling skipped — no documents sampled', { provider: config.provider });
       return discovered;
@@ -664,6 +711,7 @@ async function discoverExternalSchema(
 
 async function discoverExternalFields(
   config: ExternalSearchIndexConfig,
+  storedFields?: DataSourceField[],
 ): Promise<DiscoveredSchema> {
   switch (config.provider) {
     case 'elasticsearch':
@@ -672,7 +720,7 @@ async function discoverExternalFields(
       return discoverAzureAISearchSchema(config);
     case 'sitecore_search': {
       const connection = await resolveExternalConnection('Sitecore Search', config);
-      return { fields: inferSitecoreFields(await sampleSitecore(connection, 25)), discoveredFrom: 'sample' };
+      return { fields: await discoverSitecoreFields(connection, storedFields), discoveredFrom: 'sample' };
     }
     default:
       return { fields: [] };
@@ -690,9 +738,11 @@ async function discoverExternalFields(
  * the sort field favours, and a null rate measured on a biased sample is worse than no
  * null rate at all.
  */
+/** @param fields - the fields just discovered, so Sitecore fixed filter values are sent as their type */
 async function fetchDocumentSample(
   config: ExternalSearchIndexConfig,
   sampleSize: number,
+  fields: DataSourceField[],
 ): Promise<Record<string, unknown>[]> {
   switch (config.provider) {
     case 'elasticsearch':
@@ -701,7 +751,7 @@ async function fetchDocumentSample(
       return sampleAzureAISearchDocuments(config, sampleSize);
     case 'sitecore_search': {
       const connection = await resolveExternalConnection('Sitecore Search', config);
-      return (await sampleSitecore(connection, sampleSize)).items;
+      return (await sampleSitecore(connection, sampleSize, { fields })).items;
     }
     default:
       return [];

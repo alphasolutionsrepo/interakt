@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  unappliedDefaults,
   mergeDefaultFilters,
   mergeDefaultSort,
   describeAppliedConfig,
@@ -153,5 +154,17 @@ describe('annotateResult', () => {
   it('returns the original object when there is nothing to annotate', () => {
     const clean = { success: true, data: { results: [] } };
     expect(annotateResult(clean, [], { sort: [], fromDefault: false }, [], [])).toBe(clean);
+  });
+});
+
+describe('unappliedDefaults', () => {
+  it('picks the unapplied clauses that came from a default', () => {
+    const defaults: FilterClause[] = [{ field: 'open', operator: 'eq', value: 'Yes' }];
+    const unapplied = [
+      { field: 'open', operator: 'eq', reason: 'not a boolean' },
+      { field: 'title', operator: 'contains', reason: 'not supported' },
+    ];
+    expect(unappliedDefaults(defaults, unapplied)).toEqual([unapplied[0]]);
+    expect(unappliedDefaults([], unapplied)).toEqual([]);
   });
 });
