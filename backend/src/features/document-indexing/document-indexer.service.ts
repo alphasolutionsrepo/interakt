@@ -42,7 +42,8 @@ const logger = createLogger('document-indexer');
  * Standard field name for storing document embeddings in Elasticsearch
  * Used across all semantic and hybrid search indexes for consistency
  */
-export const EMBEDDING_FIELD_NAME = 'content_embedding';
+export { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
 
 /**
  * Search types that require embedding generation

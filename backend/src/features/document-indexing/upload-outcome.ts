@@ -4,6 +4,7 @@ import type { indexDocuments } from './document-indexer.service';
 
 import type { IndexLastJob } from '@/db/schema/search-index.schema';
 import { currentRequestId } from '@/shared/api/request-id';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
 import { scrub } from '@/shared/errors/upstream';
 
 /**
@@ -18,7 +19,9 @@ export function uploadOutcome(
 ): IndexLastJob {
     const from = sourceFileName ? ` from ${sourceFileName}` : '';
     const base = { kind: 'upload' as const, startedAt, finishedAt: new Date().toISOString() };
-    const reason = result.errors[0]?.error;
+    // Embedding errors are on documents that were still indexed (without a vector), so
+    // they don't say why any document failed
+    const reason = result.errors.find((e) => e.field !== EMBEDDING_FIELD_NAME)?.error;
     if (result.indexedDocuments > 0) {
         const indexed = `${result.indexedDocuments} of ${result.totalDocuments} documents indexed${from}`;
         if (result.failedDocuments === 0) return { ...base, status: 'succeeded', summary: indexed };

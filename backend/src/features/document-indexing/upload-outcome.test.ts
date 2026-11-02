@@ -42,6 +42,15 @@ describe('uploadOutcome', () => {
         expect(outcome.error).toBeUndefined();
     });
 
+    it('gives the reason a document failed, not an embedding problem on one that went in', () => {
+        const r = result(1, 1);
+        (r as unknown as { errors: unknown[] }).errors = [
+            { documentIndex: 0, error: 'Embedding failed: rate limited', field: 'content_embedding' },
+            { documentIndex: 1, error: 'Required field has no value', field: 'uniqueId' },
+        ];
+        expect(uploadOutcome(r, startedAt).summary).toBe('1 of 2 documents indexed, 1 failed: Required field has no value');
+    });
+
     it('succeeds when every document went in', () => {
         expect(uploadOutcome(result(2, 0), startedAt)).toMatchObject({ status: 'succeeded', summary: '2 of 2 documents indexed' });
     });

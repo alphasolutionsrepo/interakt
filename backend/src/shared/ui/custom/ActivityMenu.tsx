@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { activityStore, entryAsText, type ActivityEntry } from '@/shared/activity/activity-store';
+import { activityStore, entryAsText, entryState, unreadProblems, type ActivityEntry } from '@/shared/activity/activity-store';
 import { OPEN_ACTIVITY_EVENT, type OpenActivityDetail } from '@/shared/activity/report';
 import { useActivity } from '@/shared/activity/useActivity';
 
@@ -26,7 +26,7 @@ export function ActivityMenu() {
   const entries = useActivity();
   const [open, setOpen] = useState(false);
   const [focusId, setFocusId] = useState<string | undefined>();
-  const unread = entries.filter((e) => !e.read && (e.kind === 'error' || e.status === 'failed' || e.status === 'partial')).length;
+  const unread = unreadProblems(entries);
 
   // Details on a notice opens the panel at that entry
   useEffect(() => {
@@ -94,8 +94,9 @@ export function ActivityMenu() {
 }
 
 function ActivityItem({ entry, focused, onNavigate }: { entry: ActivityEntry; focused: boolean; onNavigate: () => void }) {
-  const failed = entry.kind === 'error' || entry.status === 'failed';
-  const partial = entry.status === 'partial';
+  const state = entryState(entry);
+  const failed = state === 'failed';
+  const partial = state === 'partial';
   return (
     <li id={`activity-${entry.id}`} className={cn('space-y-1 px-4 py-3 text-sm', focused && 'bg-muted/50')}>
       <div className="flex items-start gap-2">

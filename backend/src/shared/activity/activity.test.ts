@@ -166,6 +166,23 @@ describe('the mutation cache', () => {
         }));
         expect(entries[0]).toMatchObject({ kind: 'job', status: 'partial', message: '1 of 2 documents indexed, 1 failed: Required field has no value' });
         expect(toastWarning).toHaveBeenCalledWith('Index documents finished with problems', expect.anything());
+        // It goes away by itself, unlike a failure
+        expect(toastWarning.mock.calls[0][1]).not.toHaveProperty('duration', Infinity);
         expect(toastError).not.toHaveBeenCalled();
+    });
+});
+
+describe('entryState and unreadProblems', () => {
+    it('reads failures red, partial results orange and the rest as fine', async () => {
+        stubWindow();
+        const { entryState, unreadProblems } = await loadModules().then(async () => import('./activity-store'));
+        expect(entryState({ kind: 'error' })).toBe('failed');
+        expect(entryState({ kind: 'job', status: 'failed' })).toBe('failed');
+        expect(entryState({ kind: 'job', status: 'partial' })).toBe('partial');
+        expect(entryState({ kind: 'job', status: 'succeeded' })).toBe('ok');
+
+        const entry = (kind: 'error' | 'job', status?: 'failed' | 'partial' | 'succeeded', read = false) =>
+            ({ id: '', at: '', action: '', message: '', kind, status, read });
+        expect(unreadProblems([entry('error'), entry('job', 'partial'), entry('job', 'succeeded'), entry('job', 'failed', true)])).toBe(2);
     });
 });

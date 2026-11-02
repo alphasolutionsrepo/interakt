@@ -25,6 +25,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     Upload,
     FileJson,
+    AlertTriangle,
     CheckCircle2,
     AlertCircle,
     XCircle,
@@ -228,7 +229,9 @@ function IndexingProgress({
     onCancel: () => void;
 }) {
     const isProcessing = status.status === 'pending' || status.status === 'processing';
-    const isComplete = status.status === 'completed';
+    // Finished, but some documents were rejected: orange, as in the Activity panel
+    const isPartial = status.status === 'completed' && status.progress.failed > 0;
+    const isComplete = status.status === 'completed' && !isPartial;
     const isFailed = status.status === 'failed';
 
     const statusConfig = {
@@ -239,13 +242,16 @@ function IndexingProgress({
         cancelled: { icon: X, color: 'text-amber-500', label: 'Cancelled' },
     };
 
-    const config = statusConfig[status.status];
+    const config = isPartial
+        ? { icon: AlertTriangle, color: 'text-amber-500', label: 'Completed with problems' }
+        : statusConfig[status.status];
     const Icon = config.icon;
 
     return (
         <Card className={cn(
             'border',
             isComplete && 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/40',
+            isPartial && 'border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/40',
             isFailed && 'border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-950/40'
         )}>
             <CardContent className="p-6">
@@ -439,14 +445,15 @@ export function DocumentUploadPanel({
             setParsedData(null);
 
             // Build detailed toast message
-            let toastMessage = result.message;
+            let embeddingNote: string | undefined;
             if (result.embeddingStats?.enabled) {
                 if (result.embeddingStats.generated > 0) {
-                    toastMessage += `\n✨ ${result.embeddingStats.generated} embeddings generated`;
+                    embeddingNote = `✨ ${result.embeddingStats.generated} embeddings generated`;
                 } else if (result.embeddingStats.skipped > 0) {
-                    toastMessage += `\n⚠️ No embeddings generated (${result.embeddingStats.skipped} skipped)`;
+                    embeddingNote = `⚠️ No embeddings generated (${result.embeddingStats.skipped} skipped)`;
                 }
             }
+            const toastMessage = embeddingNote ? `${result.message}\n${embeddingNote}` : result.message;
 
             if (result.success) {
                 toast.success(toastMessage, {
@@ -456,8 +463,10 @@ export function DocumentUploadPanel({
                         : undefined,
                 });
                 onComplete?.();
+            } else if (embeddingNote) {
+                // The failure itself gets its notice from the Activity panel (job outcome)
+                toast.warning(embeddingNote, { duration: 5000 });
             }
-            // A failed or partial upload gets its notice from the Activity panel (job outcome)
 
             // Show warnings if any
             if (result.warnings && result.warnings.length > 0) {

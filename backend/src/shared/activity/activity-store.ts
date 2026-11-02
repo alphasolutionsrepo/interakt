@@ -140,6 +140,17 @@ export function errorEntry(action: string, error: unknown): NewActivityEntry {
     return { action, kind: 'error', message };
 }
 
+/** How the entry reads in the Activity panel: a problem (red), finished with problems (orange) or fine */
+export function entryState(entry: Pick<ActivityEntry, 'kind' | 'status'>): 'failed' | 'partial' | 'ok' {
+    if (entry.kind === 'error' || entry.status === 'failed') return 'failed';
+    return entry.status === 'partial' ? 'partial' : 'ok';
+}
+
+/** Unread entries that need a look: failures and partial results */
+export function unreadProblems(entries: ActivityEntry[]): number {
+    return entries.filter((e) => !e.read && entryState(e) !== 'ok').length;
+}
+
 /** The entry as plain text, for pasting into a support request */
 export function entryAsText(entry: ActivityEntry): string {
     const lines = [
