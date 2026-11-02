@@ -16,9 +16,11 @@ describe('uploadProgressState', () => {
 
 describe('uploadNotice', () => {
     it('celebrates a clean upload with its embeddings', () => {
-        expect(uploadNotice({ success: true, message: 'Successfully indexed 2 documents', embeddingStats: embeddings(2, 0) })).toEqual({
+        // The message as the server writes it, embedding count included
+        const message = 'Successfully indexed 2 documents (2 embeddings generated)';
+        expect(uploadNotice({ success: true, message, embeddingStats: embeddings(2, 0) })).toEqual({
             kind: 'success',
-            message: 'Successfully indexed 2 documents\n✨ 2 embeddings generated',
+            message: `${message}\n✨ 2 embeddings generated`,
             description: 'Embeddings: 2 generated, 0 skipped',
         });
     });

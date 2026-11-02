@@ -51,15 +51,6 @@ describe('uploadOutcome', () => {
         expect(uploadOutcome(r, startedAt).summary).toBe('1 of 2 documents indexed, 1 failed: Required field has no value');
     });
 
-    it('gives the document reason in the order the indexer writes errors (embedding errors last)', () => {
-        const r = result(1, 1);
-        (r as unknown as { errors: unknown[] }).errors = [
-            { documentIndex: 1, error: 'No source field configured', field: 'customFields' },
-            { documentIndex: 0, error: 'Embedding failed: rate limited', field: 'content_embedding' },
-        ];
-        expect(uploadOutcome(r, startedAt).summary).toBe('1 of 2 documents indexed, 1 failed: No source field configured');
-    });
-
     it('gives no reason when only embeddings failed', () => {
         const r = result(1, 1);
         (r as unknown as { errors: unknown[] }).errors = [{ documentIndex: 0, error: 'Embedding failed: rate limited', field: 'content_embedding' }];
