@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { searchIndex } from './useSearchPlayground';
+import { searchExperience, searchIndex } from './useSearchPlayground';
 
 import { ApiError } from '@/shared/api/api-error';
 
@@ -35,5 +35,28 @@ describe('searchIndex', () => {
     it('returns the results', async () => {
         respond(JSON.stringify({ success: true, data: { hits: [] } }), 200);
         expect(await searchIndex('id', { query: 'linen shirt' })).toEqual({ hits: [] });
+    });
+});
+
+describe('searchExperience', () => {
+    it('throws the error the public route answered with, request id included', async () => {
+        respond(JSON.stringify({
+            success: false, code: 'UPSTREAM_UNAVAILABLE', message: 'The service is temporarily unavailable. Try again in a moment.', requestId: 'r2',
+        }), 503);
+        const err = await searchExperience('catalog', { query: 'linen shirt' }).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ApiError);
+        expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', status: 503, requestId: 'r2' });
+    });
+
+    it('still explains a gateway page that is not JSON', async () => {
+        respond('<html>502 Bad Gateway</html>', 502, 'text/html');
+        const err = await searchExperience('catalog', { query: 'linen shirt' }).catch((e: unknown) => e);
+        expect((err as ApiError).message).toBe('Search failed (502)');
+    });
+
+    it('posts to the experience and returns the results', async () => {
+        respond(JSON.stringify({ success: true, data: { results: [] } }), 200);
+        expect(await searchExperience('catalog', { query: 'linen shirt' })).toEqual({ results: [] });
+        expect(vi.mocked(fetch).mock.calls[0][0]).toBe('/api/v1/search/catalog/search');
     });
 });

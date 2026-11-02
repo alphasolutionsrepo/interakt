@@ -234,6 +234,23 @@ export async function searchIndex(
 }
 
 /**
+ * Search a search experience from the playground, as its visitors would (the server
+ * treats the admin session as a test). A failed search throws an ApiError.
+ */
+export async function searchExperience<T>(slug: string, body: Record<string, unknown>): Promise<T> {
+    // Sent with the admin session, not the experience's access token, so the server
+    // treats it as a test: not counted as real traffic, not traced unless asked.
+    const response = await fetch(`/api/v1/search/${slug}/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) throw await toApiError(response, 'Search failed');
+    const data = await response.json();
+    return data.data;
+}
+
+/**
  * Hook to execute search
  */
 export function useSearch() {
