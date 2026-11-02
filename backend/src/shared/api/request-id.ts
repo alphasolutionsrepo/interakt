@@ -8,8 +8,12 @@
 import { trace } from '@opentelemetry/api';
 
 export function currentRequestId(): string {
+    return activeTraceId() ?? crypto.randomUUID().replaceAll('-', '');
+}
+
+function activeTraceId(): string | undefined {
     const traceId = trace.getActiveSpan()?.spanContext().traceId;
-    return traceId && !/^0+$/.test(traceId) ? traceId : crypto.randomUUID().replaceAll('-', '');
+    return traceId && !/^0+$/.test(traceId) ? traceId : undefined;
 }
 
 // The id each failure was given, so every place that reports it (the job record on
@@ -18,11 +22,15 @@ const failureIds = new WeakMap<object, string>();
 const MAX_CAUSES = 5;
 
 /**
- * The request id for a failure: the one it was already given, looking through the
- * errors it wraps (a job records the inner error, the response gets the wrapper),
- * or a new one that sticks to it.
+ * The request id for a failure. With tracing on it is the current trace id, the same
+ * everywhere in the request. Without, it is the id the failure was already given,
+ * looking through the errors it wraps (a job records the inner error, the response
+ * gets the wrapper), or a new one that sticks to it. Requests that share one failure
+ * (a cached lookup that rejected) then share its id.
  */
 export function requestIdFor(err: unknown): string {
+    const traceId = activeTraceId();
+    if (traceId) return traceId;
     let current: unknown = err;
     for (let i = 0; current !== null && typeof current === 'object' && i <= MAX_CAUSES; i++) {
         const known = failureIds.get(current);

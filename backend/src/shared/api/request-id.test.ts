@@ -2,7 +2,8 @@
 
 /** With tracing off, one failure keeps one request id wherever it is reported */
 
-import { describe, expect, it } from 'vitest';
+import { trace } from '@opentelemetry/api';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { requestIdFor } from './request-id';
 import { apiResponse } from './response';
@@ -25,4 +26,16 @@ describe('requestIdFor', () => {
         const res = apiResponse.error(new Error('Reindex failed', { cause: providerError }));
         expect((await res.json()).requestId).toBe(recorded);
     });
+
+    it('with tracing on, gives each request its own trace id, even for a shared error', () => {
+        const shared = new Error('cached lookup failed');
+        const span = (traceId: string) => ({ spanContext: () => ({ traceId }) }) as never;
+        const active = vi.spyOn(trace, 'getActiveSpan');
+        active.mockReturnValue(span('a'.repeat(32)));
+        expect(requestIdFor(shared)).toBe('a'.repeat(32));
+        active.mockReturnValue(span('b'.repeat(32)));
+        expect(requestIdFor(shared)).toBe('b'.repeat(32));
+    });
 });
+
+afterEach(() => vi.restoreAllMocks());

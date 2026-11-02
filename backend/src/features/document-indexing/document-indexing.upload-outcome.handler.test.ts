@@ -27,7 +27,7 @@ vi.mock('./document-actor', () => ({
     actorAuditColumns: () => ({ createdBy: 'u1' }),
 }));
 vi.mock('./document-indexer.service', () => ({
-    indexDocuments: async () => state.result,
+    indexDocuments: async () => { if (state.result instanceof Error) throw state.result; return state.result; },
     getIndexingProgress: vi.fn(),
     listBatches: vi.fn(),
     cancelBatch: vi.fn(),
@@ -36,12 +36,23 @@ vi.mock('./document-writer.service', () => ({
     getDocument: vi.fn(), listDocuments: vi.fn(), writeDocuments: vi.fn(), deleteDocumentsByFilter: vi.fn(),
     SearchIndexNotFoundError: class extends Error {}, IndexNotProvisionedError: class extends Error {},
 }));
-vi.mock('@/features/search-index/search-index.service', () => ({
+vi.mock('@/features/search-index/search-index.service', async () => ({
     recordLastJob: async (_id: string, job: unknown) => { state.recorded.push(job); },
-    jobError: vi.fn(),
+    // The real one: it gives the failure the id the response then shows
+    jobError: (await vi.importActual<typeof import('@/features/search-index/search-index.service')>('@/features/search-index/search-index.service')).jobError,
 }));
 
 import { handleIndexDocuments } from './document-indexing.api.handlers';
+
+function post() {
+    return handleIndexDocuments(
+        new NextRequest('http://localhost/api/search-indexes/x/documents', {
+            method: 'POST',
+            body: JSON.stringify({ documents: [{ id: 'd0' }], sourceFileName: 'upload.json' }),
+        }),
+        { params: Promise.resolve({ id: crypto.randomUUID() }) }
+    );
+}
 
 async function upload(indexed: number, failed: number) {
     state.result = {
@@ -75,13 +86,25 @@ describe('upload outcome in the response', () => {
     it('says an upload with some documents rejected is partial', async () => {
         const { body } = await upload(1, 1);
         expect(body.data.outcome).toMatchObject({ status: 'partial', summary: '1 of 2 documents indexed from upload.json, 1 failed: No source field configured' });
+        expect(state.logged.at(-1)?.level).toBe('warn');
     });
 
     it('says a clean upload succeeded', async () => {
         const { status, body } = await upload(2, 0);
         expect(status).toBe(200);
         expect(body.data.outcome).toMatchObject({ status: 'succeeded' });
+        expect(state.logged.at(-1)?.level).toBe('info');
         // The upload panel's notice relies on the message counting the embeddings
         expect(body.data.message).toBe('Successfully indexed 2 documents (2 embeddings generated)');
+    });
+
+    it('answers a thrown upload failure with the id it recorded on the index', async () => {
+        state.result = new Error('connect ECONNREFUSED 127.0.0.1:9200');
+        const res = await post();
+        const body = await res.json();
+        expect(res.status).toBe(500);
+        const recorded = state.recorded.at(-1) as { status: string; error: { requestId: string } };
+        expect(recorded.status).toBe('failed');
+        expect(recorded.error.requestId).toBe(body.requestId);
     });
 });
