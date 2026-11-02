@@ -1,6 +1,6 @@
 // app/playground/ai-service/_lib/api-client.ts
 
-import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+import { ApiError, apiErrorFrom, handleApiResponse } from '@/shared/api/api-error';
 
 /**
  * AI Service Playground API Client
@@ -146,32 +146,6 @@ export interface EmbeddingsResponse {
 
 export { ApiError };
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const contentType = response.headers.get('content-type');
-
-  if (!contentType?.includes('application/json')) {
-    if (!response.ok) {
-      throw new ApiError(
-        `HTTP ${response.status}: ${response.statusText}`,
-        response.status
-      );
-    }
-    return response.text() as unknown as T;
-  }
-
-  const json = await response.json();
-
-  if (!response.ok) {
-    throw apiErrorFrom(json, response.status);
-  }
-
-  // Handle { success: true, data: {...} } format
-  if (json.success !== undefined && json.data !== undefined) {
-    return json.data;
-  }
-
-  return json;
-}
 
 // ============================================================================
 // AI SERVICE API
@@ -183,7 +157,7 @@ export const aiServiceApi = {
    */
   getProviders: async (): Promise<ProvidersResponse> => {
     const response = await fetch('/api/ai-service/providers');
-    return handleResponse<ProvidersResponse>(response);
+    return handleApiResponse<ProvidersResponse>(response);
   },
 
   /**
@@ -195,7 +169,7 @@ export const aiServiceApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
-    return handleResponse<TextGenerationResponse>(response);
+    return handleApiResponse<TextGenerationResponse>(response);
   },
 
   /**
@@ -207,7 +181,7 @@ export const aiServiceApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
-    return handleResponse<ChatResponse>(response);
+    return handleApiResponse<ChatResponse>(response);
   },
 
   /**
@@ -274,6 +248,6 @@ export const aiServiceApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
-    return handleResponse<EmbeddingsResponse>(response);
+    return handleApiResponse<EmbeddingsResponse>(response);
   },
 };

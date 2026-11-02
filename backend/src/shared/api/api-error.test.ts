@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApiError, apiErrorFrom, toApiError } from './api-error';
+import { ApiError, apiErrorFrom, handleApiResponse, toApiError } from './api-error';
 import { applyServerErrors } from './apply-server-errors';
 
 describe('toApiError', () => {
@@ -55,5 +55,43 @@ describe('applyServerErrors', () => {
         const setError = vi.fn();
         expect(applyServerErrors({ setError, getValues: () => ({}) } as never, new Error('x'))).toEqual([]);
         expect(setError).not.toHaveBeenCalled();
+    });
+});
+
+describe('handleApiResponse', () => {
+    const respond = (body: string, status: number, contentType = 'application/json') =>
+        new Response(body, { status, headers: { 'content-type': contentType } });
+
+    it('explains a gateway error page that is not JSON, instead of a JSON parse error', async () => {
+        const err = await handleApiResponse(respond('<html><body>502 Bad Gateway</body></html>', 502, 'text/html')).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).message).toBe('The request failed (502)');
+    });
+
+    it('unwraps data, even when it is null', async () => {
+        expect(await handleApiResponse(respond(JSON.stringify({ success: true, data: { id: 1 } }), 200))).toEqual({ id: 1 });
+        expect(await handleApiResponse(respond(JSON.stringify({ success: true, data: null }), 200))).toBeNull();
+        expect(await handleApiResponse(respond(JSON.stringify([1, 2]), 200))).toEqual([1, 2]);
+    });
+
+    it('returns a success that is not JSON as text, and an empty one as undefined', async () => {
+        expect(await handleApiResponse(respond('name,price', 200, 'text/csv'))).toBe('name,price');
+        expect(await handleApiResponse(new Response(null, { status: 204 }))).toBeUndefined();
+    });
+});
+
+describe('the feature API clients', () => {
+    // They used their own copies, which read the body as JSON first
+    it.each([
+        ['tools', async () => (await import('@/app/tools/_lib/api-client')).toolsApi.getById('t1')],
+        ['users', async () => (await import('@/app/users/_lib/api-client')).usersApi.getById('u1')],
+        ['AI providers', async () => (await import('@/app/ai-providers/_lib/api-client')).aiProvidersApi.getById('p1')],
+        ['secrets', async () => (await import('@/app/secrets/_lib/api-client')).secretsApi.list()],
+    ])('%s explain a gateway error page', async (_name, call) => {
+        vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>502 Bad Gateway</html>', { status: 502, headers: { 'content-type': 'text/html' } })));
+        const err = await call().catch((e: unknown) => e);
+        vi.unstubAllGlobals();
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(502);
     });
 });

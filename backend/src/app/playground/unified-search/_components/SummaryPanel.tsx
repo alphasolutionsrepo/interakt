@@ -33,7 +33,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { reportActionError } from '@/shared/activity/report';
 
-import { apiErrorFrom } from '@/shared/api/api-error';
+import { toApiError } from '@/shared/api/api-error';
 import { Markdown } from '@/shared/ui/custom/markdown';
 
 // ============================================================================
@@ -88,10 +88,8 @@ export function SummaryPanel({ experienceId, slug, trace = false }: SummaryPanel
         }),
       });
 
+      if (!response.ok) throw await toApiError(response, 'Search failed');
       const json = await response.json();
-      if (!response.ok) {
-        throw apiErrorFrom(json, response.status, 'Search failed');
-      }
       return json.data as SearchResponse;
     },
     onSuccess: (data) => {

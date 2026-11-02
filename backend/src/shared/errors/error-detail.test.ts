@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hintFor, redactSecrets, serializeError, toErrorDetail } from './error-detail';
+import { redactSecrets, serializeError, toErrorDetail } from './error-detail';
 
 /** Shaped like @azure/core-rest-pipeline's RestError */
 function azureRestError() {
@@ -19,7 +19,6 @@ describe('toErrorDetail', () => {
         expect(detail.statusCode).toBe(400);
         expect(detail.code).toBe('InvalidRequestParameter');
         expect(detail.details).toEqual({ error: { code: 'InvalidRequestParameter', message: 'dimensions mismatch' } });
-        expect(detail.hint).toMatch(/vector size/);
     });
 
     it('reads status and body through a wrapping error', () => {
@@ -37,28 +36,17 @@ describe('toErrorDetail', () => {
         const detail = toErrorDetail(err);
         expect(detail.statusCode).toBe(404);
         expect(detail.details).toEqual({ type: 'index_not_found_exception', reason: 'no such index [x]' });
-        expect(detail.hint).toMatch(/Recreate Index/);
     });
 
     it('reads AdapterError fields', () => {
         const err = Object.assign(new Error('Rate limit reached'), { name: 'AdapterError', providerKey: 'openai', statusCode: 429, retryable: true });
         const detail = toErrorDetail(err);
         expect(detail).toMatchObject({ provider: 'openai', statusCode: 429, retryable: true });
-        expect(detail.hint).toMatch(/Wait a minute/);
     });
 
     it('handles non-errors', () => {
         expect(toErrorDetail('boom')).toEqual({ message: 'boom' });
         expect(toErrorDetail(undefined)).toEqual({ message: 'Unknown error' });
-    });
-});
-
-describe('hintFor', () => {
-    it('recognises credentials, connectivity and server errors', () => {
-        expect(hintFor({ message: 'x', statusCode: 403 })).toMatch(/credentials/);
-        expect(hintFor({ message: 'connect ECONNREFUSED 127.0.0.1:9200' })).toMatch(/couldn't be reached/);
-        expect(hintFor({ message: 'x', statusCode: 503 })).toMatch(/Trying again/);
-        expect(hintFor({ message: 'something unusual' })).toBeUndefined();
     });
 });
 

@@ -1,16 +1,9 @@
 // app/secrets/_lib/api-client.ts
 
-import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
 
 export { ApiError };
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw apiErrorFrom(data, response.status);
-  }
-  return data.data ?? data;
-}
 
 export interface SecretMetadata {
   id: string;
@@ -37,10 +30,8 @@ export const secretsApi = {
     if (search) params.set('search', search);
     const url = `/api/secrets${params.toString() ? `?${params.toString()}` : ''}`;
     const response = await fetch(url);
+    if (!response.ok) throw await toApiError(response);
     const json = await response.json();
-    if (!response.ok) {
-      throw apiErrorFrom(json, response.status);
-    }
     return json.data ?? json;
   },
 
@@ -50,7 +41,7 @@ export const secretsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<SecretMetadata>(response);
+    return handleApiResponse<SecretMetadata>(response);
   },
 
   update: async (id: string, data: UpdateSecretPayload): Promise<SecretMetadata> => {
@@ -59,11 +50,11 @@ export const secretsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<SecretMetadata>(response);
+    return handleApiResponse<SecretMetadata>(response);
   },
 
   delete: async (id: string): Promise<void> => {
     const response = await fetch(`/api/secrets/${id}`, { method: 'DELETE' });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 };

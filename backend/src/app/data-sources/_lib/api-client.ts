@@ -1,16 +1,9 @@
 // app/data-sources/_lib/api-client.ts
 
-import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
 
 export { ApiError };
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw apiErrorFrom(data, response.status);
-  }
-  return data.data ?? data;
-}
 
 // ============================================================================
 // TYPES
@@ -103,8 +96,8 @@ export const dataSourcesApi = {
 
     const url = `/api/data-sources${p.toString() ? `?${p.toString()}` : ''}`;
     const response = await fetch(url);
+    if (!response.ok) throw await toApiError(response);
     const json = await response.json();
-    if (!response.ok) throw apiErrorFrom(json, response.status);
     return {
       dataSources: json.data ?? [],
       pagination: json.pagination,
@@ -113,7 +106,7 @@ export const dataSourcesApi = {
 
   getById: async (id: string): Promise<DataSource> => {
     const response = await fetch(`/api/data-sources/${id}`);
-    return handleResponse<DataSource>(response);
+    return handleApiResponse<DataSource>(response);
   },
 
   create: async (data: CreateDataSourcePayload): Promise<DataSource> => {
@@ -122,7 +115,7 @@ export const dataSourcesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<DataSource>(response);
+    return handleApiResponse<DataSource>(response);
   },
 
   update: async (id: string, data: UpdateDataSourcePayload): Promise<DataSource> => {
@@ -131,23 +124,23 @@ export const dataSourcesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<DataSource>(response);
+    return handleApiResponse<DataSource>(response);
   },
 
   delete: async (id: string): Promise<void> => {
     const response = await fetch(`/api/data-sources/${id}`, { method: 'DELETE' });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   checkSlug: async (slug: string, excludeId?: string): Promise<{ available: boolean }> => {
     const p = new URLSearchParams({ slug });
     if (excludeId) p.set('excludeId', excludeId);
     const response = await fetch(`/api/data-sources/check-slug?${p.toString()}`);
-    return handleResponse<{ available: boolean }>(response);
+    return handleApiResponse<{ available: boolean }>(response);
   },
 
   checkHealth: async (id: string): Promise<HealthCheckResult> => {
     const response = await fetch(`/api/data-sources/${id}/health`, { method: 'POST' });
-    return handleResponse<HealthCheckResult>(response);
+    return handleApiResponse<HealthCheckResult>(response);
   },
 };

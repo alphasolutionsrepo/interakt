@@ -1,16 +1,9 @@
 // app/ai-experiences/_lib/api-client.ts
 
-import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
 
 export { ApiError };
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw apiErrorFrom(data, response.status);
-  }
-  return data.data ?? data;
-}
 
 // ============================================================================
 // TYPES
@@ -163,14 +156,14 @@ export const aiExperiencesApi = {
 
     const url = `/api/ai-experiences${p.toString() ? `?${p.toString()}` : ''}`;
     const response = await fetch(url);
+    if (!response.ok) throw await toApiError(response);
     const json = await response.json();
-    if (!response.ok) throw apiErrorFrom(json, response.status);
     return { experiences: json.data ?? [], pagination: json.pagination };
   },
 
   getById: async (id: string): Promise<AIExperienceWithTools> => {
     const response = await fetch(`/api/ai-experiences/${id}`);
-    return handleResponse<AIExperienceWithTools>(response);
+    return handleApiResponse<AIExperienceWithTools>(response);
   },
 
   create: async (data: CreateAIExperiencePayload): Promise<AIExperienceWithTools> => {
@@ -179,7 +172,7 @@ export const aiExperiencesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<AIExperienceWithTools>(response);
+    return handleApiResponse<AIExperienceWithTools>(response);
   },
 
   update: async (id: string, data: UpdateAIExperiencePayload): Promise<AIExperienceWithTools> => {
@@ -188,12 +181,12 @@ export const aiExperiencesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<AIExperienceWithTools>(response);
+    return handleApiResponse<AIExperienceWithTools>(response);
   },
 
   delete: async (id: string): Promise<void> => {
     const response = await fetch(`/api/ai-experiences/${id}`, { method: 'DELETE' });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   assignTool: async (id: string, data: AssignToolPayload): Promise<AIExperienceToolAssignment> => {
@@ -202,7 +195,7 @@ export const aiExperiencesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<AIExperienceToolAssignment>(response);
+    return handleApiResponse<AIExperienceToolAssignment>(response);
   },
 
   updateToolAssignment: async (
@@ -215,23 +208,23 @@ export const aiExperiencesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<AIExperienceToolAssignment>(response);
+    return handleApiResponse<AIExperienceToolAssignment>(response);
   },
 
   removeTool: async (id: string, toolId: string): Promise<void> => {
     const response = await fetch(`/api/ai-experiences/${id}/tools/${toolId}`, { method: 'DELETE' });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   regenerateToken: async (id: string): Promise<{ accessToken: string }> => {
     const response = await fetch(`/api/ai-experiences/${id}/regenerate-token`, { method: 'POST' });
-    return handleResponse<{ accessToken: string }>(response);
+    return handleApiResponse<{ accessToken: string }>(response);
   },
 
   checkSlug: async (slug: string, excludeId?: string): Promise<{ available: boolean }> => {
     const p = new URLSearchParams({ slug });
     if (excludeId) p.set('excludeId', excludeId);
     const response = await fetch(`/api/ai-experiences/check-slug?${p.toString()}`);
-    return handleResponse<{ available: boolean }>(response);
+    return handleApiResponse<{ available: boolean }>(response);
   },
 };

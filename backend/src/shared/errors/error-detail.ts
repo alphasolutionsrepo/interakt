@@ -2,13 +2,13 @@
 
 /**
  * Turns any thrown error into something an admin can read: the message, what the
- * provider said (status, code, response body), the chain of causes, and a short hint
- * on what to try. Provider SDK errors carry the useful part in different places
- * (Azure RestError: statusCode/code/details, Elasticsearch: meta.body.error, OpenAI:
- * status/error), and the request headers next to it hold API keys, so everything goes
- * through redactSecrets before it is logged or shown.
+ * provider said (status, code, response body) and the chain of causes. Provider SDK
+ * errors carry the useful part in different places (Azure RestError:
+ * statusCode/code/details, Elasticsearch: meta.body.error, OpenAI: status/error), and
+ * the request headers next to it hold API keys, so everything goes through
+ * redactSecrets before it is shown. upstream.ts builds the explanation and hint from it.
  *
- * No Node-only imports: the logger uses this, and the logger is loaded everywhere.
+ * No Node-only imports, so it stays usable from any code, the logger included.
  */
 
 export interface ErrorDetail {
@@ -23,8 +23,6 @@ export interface ErrorDetail {
     details?: unknown;
     /** Messages of the errors this one wraps, outermost first */
     causes?: string[];
-    /** A suggestion in plain words, when the error is one we recognise */
-    hint?: string;
 }
 
 const MAX_STRING = 4000;
@@ -85,7 +83,7 @@ export function serializeError(err: unknown, depth = 0, seen = new WeakSet<objec
     return out;
 }
 
-/** The structured detail for an error, with its hint. Walks the cause chain for status and code. */
+/** The structured detail for an error. Walks the cause chain for status and code. */
 export function toErrorDetail(err: unknown): ErrorDetail {
     if (!(err instanceof Error)) {
         return { message: typeof err === 'string' ? err : 'Unknown error' };
@@ -111,53 +109,7 @@ export function toErrorDetail(err: unknown): ErrorDetail {
         current = e.cause;
     }
     if (causes.length > 0) detail.causes = causes;
-
-    const hint = hintFor(detail);
-    if (hint) detail.hint = hint;
     return detail;
-}
-
-/**
- * A suggestion for errors we recognise. Matches on status, code and the text of the
- * message and its causes, since providers word the same problem differently.
- */
-export function hintFor(detail: Pick<ErrorDetail, 'message' | 'statusCode' | 'code' | 'causes' | 'details'>): string | undefined {
-    const text = [detail.message, detail.code, ...(detail.causes ?? []), typeof detail.details === 'string' ? detail.details : JSON.stringify(detail.details ?? '')]
-        .join(' ')
-        .toLowerCase();
-    const status = detail.statusCode;
-
-    if (/dimension/.test(text) && /vector|embedding|dims/.test(text)) {
-        return "The embedding model's vector size doesn't match the index. Pick a model with the same dimensions, or change the AI configuration and reindex.";
-    }
-    if (/insufficient_quota|quota exceeded|exceeded your current quota/.test(text)) {
-        return 'The AI provider account is out of quota. Check billing or limits with the provider.';
-    }
-    if (status === 429 || /rate.?limit|too many requests/.test(text)) {
-        return 'The provider is limiting how many requests it accepts. Wait a minute and try again.';
-    }
-    if (status === 401 || status === 403 || /unauthorized|forbidden|authentication|invalid api key|access denied/.test(text)) {
-        return 'The service rejected the credentials. Check the API key or secret configured for the search service or AI provider.';
-    }
-    if (/econnrefused|enotfound|etimedout|econnreset|fetch failed|socket hang up|getaddrinfo/.test(text)) {
-        return "The service couldn't be reached. Check its endpoint URL and that it is running.";
-    }
-    if (status === 413 || /request entity too large|payload too large|request is too large/.test(text)) {
-        return 'The request was too large for the provider. Upload fewer or smaller documents at a time.';
-    }
-    if (/index_not_found|index .* (was )?not found|no such index|index does not exist/.test(text)) {
-        return "The index doesn't exist on the search service. Use Recreate Index, then upload or reindex the documents.";
-    }
-    if (/resource_already_exists|already exists/.test(text)) {
-        return 'Something with this name already exists on the search service.';
-    }
-    if (/mapper_parsing|illegal_argument|invalidrequestparameter|invalid ?field|cannot be changed|is not a valid/.test(text)) {
-        return 'The search service rejected the index definition. Check the field settings named in the log.';
-    }
-    if (status !== undefined && status >= 500) {
-        return 'The provider had an internal error. Trying again usually works.';
-    }
-    return undefined;
 }
 
 function numberOf(value: unknown): number | undefined {
