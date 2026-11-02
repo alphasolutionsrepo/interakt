@@ -69,7 +69,7 @@ describe('callElasticsearchSearch', () => {
 
     expect(sentBody().query).toEqual({
       bool: {
-        must: { multi_match: { query: 'sweater', fields: ['title'] } },
+        must: { multi_match: { query: 'sweater', fields: ['title'], lenient: true } },
         filter: [{ term: { 'brand.keyword': 'Vesper' } }],
       },
     });
