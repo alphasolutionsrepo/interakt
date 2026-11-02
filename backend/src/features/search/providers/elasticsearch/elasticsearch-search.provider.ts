@@ -158,7 +158,8 @@ export class ElasticsearchSearchProvider implements SearchProvider {
             throw new SearchError(
                 errorMessage,
                 'PROVIDER_ERROR',
-                { provider: this.name, indexName: context.indexName }
+                { provider: this.name, indexName: context.indexName },
+                { cause: error }
             );
         }
     }
@@ -373,7 +374,8 @@ export class ElasticsearchSearchProvider implements SearchProvider {
             throw new SearchError(
                 `Failed to fetch distinct values for field "${fieldName}": ${errorMessage}`,
                 'PROVIDER_ERROR',
-                { provider: this.name, indexName, fieldName }
+                { provider: this.name, indexName, fieldName },
+                { cause: error }
             );
         }
     }

@@ -367,23 +367,13 @@ function handleSearchError(error: unknown, operation: string) {
                     500
                 );
 
-            case 'PROVIDER_ERROR':
-            case 'TIMEOUT':
-                return apiResponse.error(error.message, 500);
-
             default:
-                return apiResponse.error(error.message, 500);
+                // The error, not its message: the provider's error is its cause, and
+                // apiResponse explains it (or hides it when it isn't recognised)
+                return apiResponse.error(error);
         }
     }
 
-    // Log unexpected errors
-    logger.error(`Unexpected error in ${operation}`, {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    return apiResponse.error(
-        error instanceof Error ? error.message : 'An unexpected error occurred',
-        500
-    );
+    // apiResponse logs it with the request id
+    return apiResponse.error(error);
 }

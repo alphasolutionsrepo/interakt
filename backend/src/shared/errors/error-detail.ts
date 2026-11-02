@@ -170,7 +170,8 @@ function providerBody(err: unknown): unknown {
     if (e.details !== undefined) return e.details;
     const meta = e.meta as Record<string, unknown> | undefined;
     const metaBody = meta?.body as Record<string, unknown> | undefined;
-    if (metaBody !== undefined) return metaBody.error ?? metaBody;
+    // null when there was no response at all (connection refused, timeout)
+    if (metaBody !== undefined && metaBody !== null) return metaBody.error ?? metaBody;
     const response = e.response as Record<string, unknown> | undefined;
     if (typeof response?.bodyAsText === 'string') return parseMaybeJson(response.bodyAsText);
     if (e.error !== undefined && typeof e.error === 'object') return e.error;

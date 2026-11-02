@@ -115,7 +115,7 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     if (!provider) return undefined;
 
     const detail = toErrorDetail(err);
-    const serviceCode = aiServiceCode(err);
+    const serviceCode = aiServiceCode(err) ?? transportCode(err);
     const code = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
     const copy = COPY[code];
     const fill = (text: string) => text.replaceAll('{provider}', provider.name).replaceAll('{settings}', SETTINGS[provider.kind]);
@@ -179,6 +179,26 @@ function aiServiceCode(err: unknown): UpstreamCode | undefined {
     for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
         const e = current as Error & Record<string, unknown>;
         if (e.name === 'AIServiceError' && typeof e.code === 'string' && AI_SERVICE_CODES[e.code]) return AI_SERVICE_CODES[e.code];
+        current = e.cause;
+    }
+    return undefined;
+}
+
+/**
+ * Elasticsearch client errors that say what happened only by their name: a
+ * ConnectionError has an empty message and status 0 when the cluster is down.
+ */
+const TRANSPORT_ERROR_CODES: Record<string, UpstreamCode> = {
+    ConnectionError: 'UPSTREAM_UNAVAILABLE',
+    NoLivingConnectionsError: 'UPSTREAM_UNAVAILABLE',
+    TimeoutError: 'UPSTREAM_TIMEOUT',
+};
+
+function transportCode(err: unknown): UpstreamCode | undefined {
+    let current: unknown = err;
+    for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
+        const e = current as Error & Record<string, unknown>;
+        if (isElasticsearchError(e) && TRANSPORT_ERROR_CODES[e.name]) return TRANSPORT_ERROR_CODES[e.name];
         current = e.cause;
     }
     return undefined;

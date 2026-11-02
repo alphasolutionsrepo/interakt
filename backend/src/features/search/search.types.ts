@@ -490,9 +490,11 @@ export class SearchError extends Error {
     constructor(
         message: string,
         public code: SearchErrorCode,
-        public details?: Record<string, unknown>
+        public details?: Record<string, unknown>,
+        /** cause: the provider's own error, so the API response can say what it was */
+        options?: { cause?: unknown }
     ) {
-        super(message);
+        super(message, options);
         this.name = 'SearchError';
     }
 }

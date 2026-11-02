@@ -229,7 +229,7 @@ export class AzureSearchProvider implements SearchProvider {
             throw new SearchError(errorMessage, 'PROVIDER_ERROR', {
                 provider: 'azure-ai-search',
                 indexName: context.indexName,
-            });
+            }, { cause: error });
         }
     }
 

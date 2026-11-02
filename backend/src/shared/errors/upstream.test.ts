@@ -1,4 +1,7 @@
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, expect, it } from 'vitest';
+
+import { SearchError } from '@/features/search/search.types';
 
 import { classifyUpstream, scrub } from './upstream';
 
@@ -98,5 +101,28 @@ describe('scrub', () => {
     it('removes long key-like strings and cuts long messages', () => {
         expect(scrub('key AbCdEf0123456789AbCdEf0123456789XyZ was rejected')).not.toContain('AbCdEf0123456789');
         expect(scrub('x'.repeat(1000)).length).toBeLessThanOrEqual(301);
+    });
+});
+
+describe('classifyUpstream with the Elasticsearch client errors', () => {
+    // The real classes: a ConnectionError has an empty message, status 0 and a null body
+    const meta = { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never;
+
+    it('says Elasticsearch could not be reached when the cluster is down', () => {
+        const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', meta) }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', status: 503, message: "Elasticsearch couldn't be reached." });
+        expect(err?.hint).toMatch(/running/);
+        expect(err?.details).toMatchObject({ provider: 'Elasticsearch' });
+    });
+
+    it('says Elasticsearch timed out, and finds no cluster as unreachable', () => {
+        expect(classifyUpstream(new esErrors.TimeoutError('Request timed out', meta))?.code).toBe('UPSTREAM_TIMEOUT');
+        expect(classifyUpstream(new esErrors.NoLivingConnectionsError('', meta))?.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
+
+    it('explains a reindex that failed because the cluster is down', () => {
+        const createFailed = new Error('Failed to create index: ', { cause: new esErrors.ConnectionError('', meta) });
+        const err = classifyUpstream(new Error('Reindex failed: ', { cause: createFailed }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
     });
 });

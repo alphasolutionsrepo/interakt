@@ -334,7 +334,8 @@ export async function search(
         throw new SearchError(
             error instanceof Error ? error.message : 'Search failed',
             'PROVIDER_ERROR',
-            { identifier }
+            { identifier },
+            { cause: error }
         );
     }
 }
@@ -784,7 +785,8 @@ export async function autocomplete(
         throw new SearchError(
             error instanceof Error ? error.message : 'Autocomplete failed',
             'PROVIDER_ERROR',
-            { identifier }
+            { identifier },
+            { cause: error }
         );
     }
 }
@@ -871,7 +873,8 @@ export async function getDocumentById(
         throw new SearchError(
             error instanceof Error ? error.message : 'Failed to get document',
             'PROVIDER_ERROR',
-            { identifier, documentId }
+            { identifier, documentId },
+            { cause: error }
         );
     }
 }
