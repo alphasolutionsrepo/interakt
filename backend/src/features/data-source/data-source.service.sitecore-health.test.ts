@@ -236,7 +236,38 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
       const result = await performHealthCheck('ds-1');
 
       expect(result.status).toBe('error');
-      expect(savedCategory()).toMatchObject({ valueType: 'text', valueTypeLocked: true });
+      expect(result.message).toMatch(/^Searches with this source's fixed filters fail/);
+      // Discovery kept the hand-set type and was refused, so the stored schema isn't rewritten
+      expect(repository.updateDataSource.mock.calls[0][1]).not.toHaveProperty('schema');
+    });
+
+    // Sitecore holds year as a number but returns it as text; rating has no type yet
+    it('keeps a type set by hand while learning the others after a refused sample', async () => {
+      const stored: DataSourceField[] = [
+        { name: 'year', displayName: 'Year', type: 'text', providerType: 'string', valueType: 'number', valueTypeLocked: true, isSearchable: false, isFacetable: true, isFilterable: true },
+      ];
+      repository.getDataSourceById.mockResolvedValue({
+        ...source(stored),
+        config: { ...source().config, providerSettings: { fixedFilters: [
+          { field: 'year', operator: 'eq', value: 2024 },
+          { field: 'rating', operator: 'eq', value: '4' },
+        ] } },
+      });
+      sitecore.mockImplementation(async (_url: string, init?: RequestInit) => {
+        const filter = JSON.parse(String(init?.body)).widget.items[0].search.filter;
+        const values = (filter?.filters ?? []).map((f: { value: unknown }) => f.value);
+        if (values.some((v: unknown) => typeof v === 'string')) {
+          return new Response(`{"message":"filter value not of the expected type"}`, { status: 400 });
+        }
+        return new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'b', year: '2024', rating: 4 }] }] }));
+      });
+
+      const result = await performHealthCheck('ds-1');
+
+      expect(result.status).toBe('healthy');
+      const saved = (repository.updateDataSource.mock.calls[0][1] as { schema: { fields: DataSourceField[] } }).schema.fields;
+      expect(saved.find((f) => f.name === 'year')).toMatchObject({ valueType: 'number', valueTypeLocked: true });
+      expect(saved.find((f) => f.name === 'rating')?.valueType).toBe('number');
     });
   });
 

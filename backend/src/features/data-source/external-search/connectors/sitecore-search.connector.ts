@@ -218,8 +218,9 @@ export async function discoverSitecoreFields(
     await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { withoutFixedFilters: true }),
   );
   try {
-    // Learned types win; a known type this sample didn't see is kept
-    const fields = [...knownFields, ...learned];
+    // Learned types win, except over one set by hand; a known type this sample didn't see is kept
+    const locked = new Set(knownFields.filter((f) => f.valueTypeLocked).map((f) => f.name));
+    const fields = [...knownFields, ...learned.filter((f) => !locked.has(f.name))];
     const scoped = inferSitecoreFields(await sampleSitecore(connection, DISCOVERY_SAMPLE_SIZE, { fields }));
     return withFixedFilterTypes(scoped, learned, connection);
   } catch (error) {
