@@ -481,12 +481,15 @@ describe('a request with a value of the wrong type', () => {
 
 describe('a document lookup when the search service is down', () => {
   it('tells the visitor plainly instead of "not found"', async () => {
-    // What getDocumentByIdFromIndex throws: the provider's message, without its error
-    mocks.getDocumentByIdFromIndex.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.7:9200'));
+    // What getDocumentByIdFromIndex throws (search.service): a search error around the
+    // provider's message, which the provider's lookup passes on without its own error
+    const { SearchError } = await import('@/features/search/search.types');
+    const lookupFailed = new Error('connect ECONNREFUSED 10.0.0.7:9200');
+    mocks.getDocumentByIdFromIndex.mockRejectedValue(new SearchError(lookupFailed.message, 'PROVIDER_ERROR', {}, { cause: lookupFailed }));
     const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
     const body = await res.json();
-    expect(res.status).toBe(500);
-    expect(body).toMatchObject({ code: 'INTERNAL_ERROR', message: PUBLIC_FAILURE_MESSAGE });
+    expect(res.status).toBe(503);
+    expect(body).toMatchObject({ code: 'PROVIDER_ERROR', message: PUBLIC_FAILURE_MESSAGE });
     expect(JSON.stringify(body)).not.toContain('10.0.0.7');
   });
 });

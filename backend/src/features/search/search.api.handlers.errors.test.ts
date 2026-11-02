@@ -57,6 +57,13 @@ describe('admin search errors', () => {
         expect(body.message).toMatch(/Something went wrong/);
     });
 
+    it('answers a missing or unready index with its own status and code', async () => {
+        failWith.error = new SearchError('Index "shop" not found', 'INDEX_NOT_FOUND');
+        expect(await search()).toMatchObject({ status: 404, body: { code: 'INDEX_NOT_FOUND', message: 'Index "shop" not found' } });
+        failWith.error = new SearchError('Search index "shop" is not active', 'INDEX_NOT_READY');
+        expect(await search()).toMatchObject({ status: 503, body: { code: 'INDEX_NOT_READY', message: 'Search index "shop" is not active' } });
+    });
+
     it('still shows what was wrong with the query', async () => {
         failWith.error = new SearchError('Unknown filter field "colour"', 'INVALID_FILTER');
         const { status, body } = await search();
