@@ -38,6 +38,8 @@ type ProviderKind = 'search' | 'ai';
 interface Provider {
     name: string;
     kind: ProviderKind;
+    /** The provider's own error in the chain: the details come from it, not from our wrappers */
+    error: Error;
 }
 
 const MAX_MESSAGE = 300;
@@ -120,11 +122,14 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     const copy = COPY[code];
     const fill = (text: string) => text.replaceAll('{provider}', provider.name).replaceAll('{settings}', SETTINGS[provider.kind]);
 
+    // Status 0 means no response at all, not a status the provider sent
+    const own = toErrorDetail(provider.error);
+    const message = scrub(upstreamMessage(err, detail.details));
     const details: UpstreamDetails = {
         provider: provider.name,
-        ...(detail.statusCode !== undefined && { status: detail.statusCode }),
-        ...(detail.code !== undefined && { code: detail.code }),
-        message: scrub(upstreamMessage(err, detail.details)),
+        ...(own.statusCode && { status: own.statusCode }),
+        ...(own.code !== undefined && { code: own.code }),
+        ...(message && { message }),
     };
 
     return new UpstreamError(fill(copy.message), {
@@ -157,12 +162,12 @@ function findProvider(err: unknown): Provider | undefined {
     for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
         const e = current as Error & Record<string, unknown>;
         if (typeof e.providerKey === 'string') {
-            return { name: AI_PROVIDER_NAMES[e.providerKey] ?? e.providerKey, kind: 'ai' };
+            return { name: AI_PROVIDER_NAMES[e.providerKey] ?? e.providerKey, kind: 'ai', error: e };
         }
-        if (e.name === 'RestError') return { name: 'Azure AI Search', kind: 'search' };
-        if (isElasticsearchError(e)) return { name: 'Elasticsearch', kind: 'search' };
+        if (e.name === 'RestError') return { name: 'Azure AI Search', kind: 'search', error: e };
+        if (isElasticsearchError(e)) return { name: 'Elasticsearch', kind: 'search', error: e };
         if (typeof e.status === 'number' && e.error !== undefined && typeof e.error === 'object') {
-            return { name: 'The AI provider', kind: 'ai' };
+            return { name: 'The AI provider', kind: 'ai', error: e };
         }
         current = e.cause;
     }

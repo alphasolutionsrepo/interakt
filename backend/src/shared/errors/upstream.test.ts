@@ -112,7 +112,13 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', meta) }));
         expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', status: 503, message: "Elasticsearch couldn't be reached." });
         expect(err?.hint).toMatch(/running/);
-        expect(err?.details).toMatchObject({ provider: 'Elasticsearch' });
+        // Only what Elasticsearch said: no status 0 (it never answered), not our own PROVIDER_ERROR
+        expect(err?.details).toEqual({ provider: 'Elasticsearch' });
+    });
+
+    it("shows Azure's own code, not the code of the search error around it", () => {
+        const err = classifyUpstream(new SearchError('Invalid field', 'PROVIDER_ERROR', {}, { cause: azureError(400, 'Invalid field', 'InvalidRequestParameter') }));
+        expect(err?.details).toMatchObject({ provider: 'Azure AI Search', status: 400, code: 'InvalidRequestParameter' });
     });
 
     it('says Elasticsearch timed out, and finds no cluster as unreachable', () => {
