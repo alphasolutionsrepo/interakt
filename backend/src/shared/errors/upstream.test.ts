@@ -159,6 +159,11 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         expect(err?.hint).toMatch(/disk space/);
     });
 
+    it('leaves blocks that are about availability to the availability explanation', () => {
+        const err = classifyUpstream(blocked(503, 'blocked by: [SERVICE_UNAVAILABLE/1/state not recovered / initialized];'));
+        expect(err?.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
+
     it('explains a full disk as a read-only index, not as a rate limit', () => {
         const err = classifyUpstream(blocked(429, 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];'));
         expect(err?.code).toBe('UPSTREAM_READ_ONLY');

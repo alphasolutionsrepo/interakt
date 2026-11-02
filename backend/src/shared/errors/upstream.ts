@@ -151,8 +151,9 @@ export function classifyUpstream(err: unknown): AppError | undefined {
 function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     const text = rawText.toLowerCase();
     // Elasticsearch blocks writes with a 403 (read-only index) or a 429 (disk full):
-    // neither is about credentials or rate limits, so this comes before both
-    if (/cluster_block_exception|blocked by: \[/.test(text)) return 'UPSTREAM_READ_ONLY';
+    // neither is about credentials or rate limits, so this comes before both. Other
+    // cluster blocks (no master, state not recovered) are about availability, not writes.
+    if (/blocked by: \[[^\]]*(index write|read[-_ ]only|flood-stage|disk usage)/.test(text)) return 'UPSTREAM_READ_ONLY';
     if (/dimension/.test(text) && /vector|embedding|dims/.test(text)) return 'UPSTREAM_DIMENSION_MISMATCH';
     if (/insufficient_quota|quota exceeded|exceeded your current quota|out of quota/.test(text)) return 'UPSTREAM_QUOTA';
     if (status === 429 || /rate.?limit|too many requests/.test(text)) return 'UPSTREAM_RATE_LIMITED';

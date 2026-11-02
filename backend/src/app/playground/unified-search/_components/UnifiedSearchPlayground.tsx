@@ -40,6 +40,7 @@ import { toast } from 'sonner';
 
 import { SearchPanel } from './SearchPanel';
 import { SummaryPanel } from './SummaryPanel';
+import { handleApiResponse } from '@/shared/api/api-error';
 
 // ============================================================================
 // TYPES
@@ -120,9 +121,7 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
     queryKey: ['search-experiences', 'playground'],
     queryFn: async () => {
       const response = await fetch('/api/search-experiences?pageSize=100&isActive=true');
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || 'Failed to fetch');
-      return json.data as SearchExperienceOption[];
+      return handleApiResponse<SearchExperienceOption[]>(response);
     },
   });
 
@@ -131,9 +130,7 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
     queryKey: ['search-experience', selectedExperienceId],
     queryFn: async () => {
       const response = await fetch(`/api/search-experiences/${selectedExperienceId}`);
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || 'Failed to fetch');
-      return json.data;
+      return handleApiResponse<{ accessToken?: string }>(response);
     },
     enabled: !!selectedExperienceId,
   });
