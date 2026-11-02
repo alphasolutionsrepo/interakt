@@ -159,6 +159,16 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         expect(err?.hint).toMatch(/disk space/);
     });
 
+    it('explains an index set to read-only the same way', () => {
+        expect(classifyUpstream(blocked(403, 'index [shop] blocked by: [FORBIDDEN/5/index read-only (api)];'))?.code).toBe('UPSTREAM_READ_ONLY');
+    });
+
+    it('does not call a block on reading an index a credentials problem', () => {
+        const err = classifyUpstream(blocked(403, 'index [shop] blocked by: [FORBIDDEN/7/index read (api)];'));
+        expect(err?.code).toBe('UPSTREAM_ERROR');
+        expect(err?.details).toMatchObject({ message: 'index [shop] blocked by: [FORBIDDEN/7/index read (api)];' });
+    });
+
     it('leaves blocks that are about availability to the availability explanation', () => {
         const err = classifyUpstream(blocked(503, 'blocked by: [SERVICE_UNAVAILABLE/1/state not recovered / initialized];'));
         expect(err?.code).toBe('UPSTREAM_UNAVAILABLE');
