@@ -456,11 +456,8 @@ export function DocumentUploadPanel({
                         : undefined,
                 });
                 onComplete?.();
-            } else {
-                toast.warning(toastMessage, {
-                    duration: 5000,
-                });
             }
+            // A failed or partial upload gets its notice from the Activity panel (job outcome)
 
             // Show warnings if any
             if (result.warnings && result.warnings.length > 0) {

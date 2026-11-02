@@ -32,10 +32,11 @@ import { AnalyzerConfig } from '@/shared/constants/search-index.constants';
  */
 export interface IndexLastJob {
   kind: 'reindex' | 'recreate' | 'upload';
-  status: 'running' | 'succeeded' | 'failed';
+  /** partial: it finished, but some of the work failed (an upload with some documents rejected) */
+  status: 'running' | 'succeeded' | 'partial' | 'failed';
   startedAt: string;
   finishedAt?: string;
-  /** What it did, e.g. "1,204 documents reindexed" */
+  /** What it did, e.g. "1,204 documents reindexed", and for partial what went wrong */
   summary?: string;
   error?: { code: string; message: string; hint?: string; details?: unknown; requestId?: string };
 }

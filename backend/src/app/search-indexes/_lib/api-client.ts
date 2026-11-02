@@ -1,5 +1,6 @@
 // app/search-indexes/_lib/api-client.ts
 
+import type { IndexLastJob } from '@/db/schema/search-index.schema';
 import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
 
 /**
@@ -764,6 +765,8 @@ export const searchIndexFieldsApi = {
 
 export interface IndexDocumentsResponse {
     success: boolean;
+    /** How the upload ended, as recorded on the index */
+    outcome?: IndexLastJob;
     batchId: string;
     message: string;
     summary: {

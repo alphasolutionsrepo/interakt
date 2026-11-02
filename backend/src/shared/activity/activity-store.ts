@@ -21,8 +21,8 @@ export interface ActivityEntry {
     /** What the user did, e.g. "Reindex products" */
     action: string;
     kind: 'error' | 'job';
-    /** For jobs: how it ended */
-    status?: 'succeeded' | 'failed';
+    /** For jobs: how it ended. partial: it finished, but some of the work failed */
+    status?: 'succeeded' | 'partial' | 'failed';
     message: string;
     hint?: string;
     code?: string;
