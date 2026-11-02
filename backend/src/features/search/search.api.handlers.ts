@@ -342,38 +342,10 @@ function handleSearchError(error: unknown, operation: string) {
             message: error.message,
             details: error.details,
         });
-
-        switch (error.code) {
-            case 'INDEX_NOT_FOUND':
-                return apiResponse.notFound(error.message);
-
-            case 'INDEX_NOT_READY':
-                return apiResponse.error(error.message, 503);
-
-            case 'INVALID_QUERY':
-            case 'INVALID_FILTER':
-            case 'INVALID_FACET':
-            case 'INVALID_SORT':
-                return apiResponse.badRequest(error.message);
-
-            case 'FIELD_NOT_FOUND':
-            case 'FIELD_NOT_SEARCHABLE':
-            case 'FIELD_NOT_FACETABLE':
-                return apiResponse.badRequest(error.message);
-
-            case 'EMBEDDING_FAILED':
-                return apiResponse.error(
-                    'Failed to generate query embedding for semantic search',
-                    500
-                );
-
-            default:
-                // The error, not its message: the provider's error is its cause, and
-                // apiResponse explains it (or hides it when it isn't recognised)
-                return apiResponse.error(error);
-        }
     }
 
-    // apiResponse logs it with the request id
+    // The error itself: a search error answers with its own status (SEARCH_ERROR_STATUS),
+    // and a provider failure is explained from its cause or hidden. apiResponse logs it
+    // with the request id.
     return apiResponse.error(error);
 }

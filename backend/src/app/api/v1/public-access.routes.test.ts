@@ -429,19 +429,19 @@ describe('chat daily total', () => {
   });
 });
 
+// What the engine throws when Elasticsearch can't be reached (see search.service)
+const down = async () => {
+  const { errors } = await import('@elastic/elasticsearch');
+  const { SearchError } = await import('@/features/search/search.types');
+  const cause = new errors.ConnectionError('connect ECONNREFUSED 10.0.0.7:9200', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+  return new SearchError(cause.message, 'PROVIDER_ERROR', {}, { cause });
+};
+
 describe('when the search service is down', () => {
-  // What the engine throws when Elasticsearch can't be reached (see search.service)
-  const down = async () => {
-    const { errors } = await import('@elastic/elasticsearch');
-    const { SearchError } = await import('@/features/search/search.types');
-    const cause = new errors.ConnectionError('connect ECONNREFUSED 10.0.0.7:9200', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
-    return new SearchError(cause.message, 'PROVIDER_ERROR', {}, { cause });
-  };
   const failing: Array<{ name: string; route: string; work: () => ReturnType<typeof vi.fn> }> = [
     { name: 'search by token', route: 'search by token', work: () => mocks.executeExperienceSearch },
     { name: 'search by slug', route: 'search by slug', work: () => mocks.executeExperienceSearch },
     { name: 'autocomplete', route: 'autocomplete', work: () => mocks.getAutocompleteSuggestions },
-    { name: 'document by token', route: 'document by token', work: () => mocks.getDocumentByIdFromIndex },
   ];
 
   it.each(failing)('$name tells the visitor plainly, with a request id, and names no service', async ({ route, work }) => {
@@ -476,6 +476,30 @@ describe('a request with a value of the wrong type', () => {
     expect(body.details).toEqual([expect.objectContaining({ field: 'page' })]);
     expect(body.fields).toEqual(body.details);
     expect(body.requestId).toEqual(expect.any(String));
+  });
+});
+
+describe('a document lookup when the search service is down', () => {
+  it('tells the visitor plainly instead of "not found"', async () => {
+    // What getDocumentByIdFromIndex throws: the provider's message, without its error
+    mocks.getDocumentByIdFromIndex.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.7:9200'));
+    const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const body = await res.json();
+    expect(res.status).toBe(500);
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR', message: PUBLIC_FAILURE_MESSAGE });
+    expect(JSON.stringify(body)).not.toContain('10.0.0.7');
+  });
+});
+
+describe("an admin testing in the playground (signed in, on the slug route)", () => {
+  it('gets the failure explained in full, unlike a visitor', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.executeExperienceSearch.mockRejectedValue(await down());
+    const res = await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'jeans' }), slugParams('catalog'));
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
+    expect(body.hint).toMatch(/running/);
   });
 });
 
