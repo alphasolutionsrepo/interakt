@@ -148,4 +148,19 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         const err = classifyUpstream(new Error('Reindex failed: ', { cause: createFailed }));
         expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
     });
+
+    // The errors a real Elasticsearch 9 returned (2 Nov) for a write to a blocked index
+    const blocked = (statusCode: number, reason: string) =>
+        new esErrors.ResponseError({ body: { error: { type: 'cluster_block_exception', reason }, status: statusCode }, statusCode, headers: {}, meta: {} as never, warnings: null });
+
+    it('explains a read-only index as such, not as rejected credentials', () => {
+        const err = classifyUpstream(new Error('Failed to index documents', { cause: blocked(403, 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];') }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_READ_ONLY', status: 503, message: 'Elasticsearch is refusing writes to this index.' });
+        expect(err?.hint).toMatch(/disk space/);
+    });
+
+    it('explains a full disk as a read-only index, not as a rate limit', () => {
+        const err = classifyUpstream(blocked(429, 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];'));
+        expect(err?.code).toBe('UPSTREAM_READ_ONLY');
+    });
 });

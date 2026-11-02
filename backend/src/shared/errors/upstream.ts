@@ -22,6 +22,7 @@ export type UpstreamCode =
     | 'UPSTREAM_RATE_LIMITED'
     | 'UPSTREAM_SCHEMA_MISMATCH'
     | 'UPSTREAM_DIMENSION_MISMATCH'
+    | 'UPSTREAM_READ_ONLY'
     | 'UPSTREAM_TIMEOUT'
     | 'UPSTREAM_UNAVAILABLE'
     | 'UPSTREAM_ERROR';
@@ -85,6 +86,11 @@ const COPY: Record<UpstreamCode, { status: number; message: string; hint?: strin
         message: "The embedding size doesn't match the index.",
         hint: 'Pick an embedding model with the same dimensions, or change the AI configuration of the index and reindex.',
     },
+    UPSTREAM_READ_ONLY: {
+        status: 503,
+        message: '{provider} is refusing writes to this index.',
+        hint: 'The index is read-only, most often because the search service is low on disk space. Free disk space or raise its disk limits, clear the read-only block on the index, then try again.',
+    },
     UPSTREAM_TIMEOUT: {
         status: 504,
         message: "{provider} didn't respond in time.",
@@ -144,6 +150,9 @@ export function classifyUpstream(err: unknown): AppError | undefined {
 
 function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     const text = rawText.toLowerCase();
+    // Elasticsearch blocks writes with a 403 (read-only index) or a 429 (disk full):
+    // neither is about credentials or rate limits, so this comes before both
+    if (/cluster_block_exception|blocked by: \[/.test(text)) return 'UPSTREAM_READ_ONLY';
     if (/dimension/.test(text) && /vector|embedding|dims/.test(text)) return 'UPSTREAM_DIMENSION_MISMATCH';
     if (/insufficient_quota|quota exceeded|exceeded your current quota|out of quota/.test(text)) return 'UPSTREAM_QUOTA';
     if (status === 429 || /rate.?limit|too many requests/.test(text)) return 'UPSTREAM_RATE_LIMITED';
