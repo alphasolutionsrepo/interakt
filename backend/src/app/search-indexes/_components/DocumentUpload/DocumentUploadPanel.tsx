@@ -447,8 +447,7 @@ export function DocumentUploadPanel({
             setParsedData(null);
 
             const notice = uploadNotice(result);
-            if (notice?.kind === 'success') toast.success(notice.message, { duration: 5000, description: notice.description });
-            else if (notice?.kind === 'warning') toast.warning(notice.message, { duration: 5000 });
+            if (notice) toast.success(notice.message, { duration: 5000, description: notice.description });
             if (result.success) onComplete?.();
 
             // Show warnings if any

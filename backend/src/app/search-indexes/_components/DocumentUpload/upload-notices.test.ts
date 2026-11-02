@@ -15,31 +15,20 @@ describe('uploadProgressState', () => {
 });
 
 describe('uploadNotice', () => {
-    it('celebrates a clean upload with its embeddings', () => {
-        // The message as the server writes it, embedding count included
+    it('shows a clean upload with the embedding count once, from the server message', () => {
         const message = 'Successfully indexed 2 documents (2 embeddings generated)';
         expect(uploadNotice({ success: true, message, embeddingStats: embeddings(2, 0) })).toEqual({
-            kind: 'success',
-            // Counted once, by the server's message
             message,
             description: 'Embeddings: 2 generated, 0 skipped',
         });
     });
 
-    it('says nothing good about a failed or partial upload: the Activity panel reports it', () => {
+    it('counts failed embeddings in the description', () => {
+        expect(uploadNotice({ success: true, message: 'Successfully indexed 3 documents', embeddingStats: embeddings(1, 1, 1) })?.description)
+            .toBe('Embeddings: 1 generated, 1 failed, 1 skipped');
+    });
+
+    it('says nothing about a failed or partial upload: the Activity panel reports it', () => {
         expect(uploadNotice({ success: false, message: 'Indexing completed with 1 failures', embeddingStats: embeddings(1, 0) })).toBeUndefined();
-        expect(uploadNotice({ success: false, message: 'Indexing completed with 2 failures' })).toBeUndefined();
-    });
-
-    it('warns when embeddings failed, on a clean or a failed upload', () => {
-        const warning = '⚠️ Embeddings failed for 2 documents: they are indexed without one';
-        expect(uploadNotice({ success: true, message: 'Successfully indexed 2 documents', embeddingStats: embeddings(0, 0, 2) }))
-            .toMatchObject({ kind: 'success', message: `Successfully indexed 2 documents\n${warning}` });
-        expect(uploadNotice({ success: false, message: 'x', embeddingStats: embeddings(0, 0, 2) })).toEqual({ kind: 'warning', message: warning });
-    });
-
-    it('still warns when no embeddings were made', () => {
-        expect(uploadNotice({ success: false, message: 'x', embeddingStats: embeddings(0, 3) }))
-            .toEqual({ kind: 'warning', message: '⚠️ No embeddings generated (3 skipped)' });
     });
 });

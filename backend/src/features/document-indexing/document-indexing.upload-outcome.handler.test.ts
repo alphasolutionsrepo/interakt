@@ -39,6 +39,7 @@ async function upload(indexed: number, failed: number) {
         success: failed === 0, batchId: 'b1', totalDocuments: indexed + failed, indexedDocuments: indexed, failedDocuments: failed,
         errors: failed ? [{ documentIndex: 0, error: 'No source field configured', field: 'customFields' }] : [],
         warnings: [], durationMs: 5,
+        embeddingStats: { enabled: true, generated: indexed, failed: 0, skipped: 0 },
     };
     const res = await handleIndexDocuments(
         new NextRequest('http://localhost/api/search-indexes/x/documents', {
@@ -69,5 +70,7 @@ describe('upload outcome in the response', () => {
         const { status, body } = await upload(2, 0);
         expect(status).toBe(200);
         expect(body.data.outcome).toMatchObject({ status: 'succeeded' });
+        // The upload panel's notice relies on the message counting the embeddings
+        expect(body.data.message).toBe('Successfully indexed 2 documents (2 embeddings generated)');
     });
 });

@@ -31,6 +31,7 @@ import { generateEmbeddings } from '@/features/ai-service';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { buildIndexSettingsContext } from '@/features/search-index/provider-settings.utils';
 import { getEmbeddingText } from './embedding-text';
+import { embeddingWarnings } from './embedding-warnings';
 
 const logger = createLogger('document-indexer');
 
@@ -768,11 +769,8 @@ export async function indexDocuments(
                 skipped: embeddingStats.skipped,
             });
 
-            // Count docs without embeddings as warnings (not failures)
-            const docsWithoutEmbedding = embeddingResult.embeddings.filter(e => e === null).length;
-            if (docsWithoutEmbedding > 0) {
-                warnings.push(`${docsWithoutEmbedding} documents indexed without embeddings (no vector source content)`);
-            }
+            // Docs without embeddings are warnings (not failures), saying why
+            warnings.push(...embeddingWarnings(embeddingResult.stats, embeddingResult.errors[0]?.error));
         } else if (embeddingConfig.enabled && vectorSourceFields.length === 0) {
             // Embedding enabled but no vector source fields configured
             embeddingStats = {
