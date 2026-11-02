@@ -19,10 +19,9 @@ vi.mock('@/features/telemetry', () => ({ runWithTelemetryLevel: (_level: string,
 vi.mock('./search.service', () => ({
     searchById: vi.fn(async () => { throw failWith.error; }),
     searchByName: vi.fn(),
-    autocompleteById: vi.fn(async () => { throw failWith.error; }),
 }));
 
-import { handleAutocompleteById, handleSearchById } from './search.api.handlers';
+import { handleSearchById } from './search.api.handlers';
 
 async function search() {
     const res = await handleSearchById(
@@ -43,6 +42,8 @@ describe('admin search errors', () => {
         expect(status).toBe(503);
         expect(body).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
         expect(body.hint).toMatch(/running/);
+        // What Elasticsearch said, nothing of ours: no status (it never answered), no PROVIDER_ERROR
+        expect(body.details).toEqual({ provider: 'Elasticsearch' });
         expect(body.requestId).toEqual(expect.any(String));
     });
 
@@ -61,13 +62,4 @@ describe('admin search errors', () => {
         expect(body.message).toBe('Unknown filter field "colour"');
     });
 
-    it('explains a failed autocomplete the same way', async () => {
-        failWith.error = new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', noResponse) });
-        const res = await handleAutocompleteById(
-            new NextRequest('http://localhost/api/search', { method: 'POST', body: JSON.stringify({ query: 'lin' }) }),
-            { id: crypto.randomUUID() }
-        );
-        expect(res.status).toBe(503);
-        expect(await res.json()).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
-    });
 });

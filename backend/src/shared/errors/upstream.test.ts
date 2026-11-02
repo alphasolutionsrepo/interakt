@@ -1,6 +1,7 @@
 import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, expect, it } from 'vitest';
 
+import { AdapterError } from '@/features/ai-service/adapters/types';
 import { SearchError } from '@/features/search/search.types';
 
 import { classifyUpstream, scrub } from './upstream';
@@ -74,6 +75,14 @@ describe('classifyUpstream', () => {
         const err = classifyUpstream(Object.assign(new Error('Request timed out'), { name: 'AdapterError', providerKey: 'openai', retryable: true }));
         expect(err).toMatchObject({ code: 'UPSTREAM_TIMEOUT', status: 504, message: "OpenAI didn't respond in time." });
         expect(err?.hint).toMatch(/Try again/);
+    });
+
+    it("takes the details from our adapter's error and the provider's response", () => {
+        const apiError = openAIError(429, 'rate_limit_exceeded', 'Rate limit reached for text-embedding-3-small');
+        const adapterError = new AdapterError('Rate limit reached', 'openai', 429, true, apiError);
+        const err = classifyUpstream(new Error('Failed to generate embeddings', { cause: adapterError }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_RATE_LIMITED', message: 'OpenAI is limiting requests right now.' });
+        expect(err?.details).toEqual({ provider: 'OpenAI', status: 429, message: 'Rate limit reached for text-embedding-3-small' });
     });
 
     it('maps AIServiceError codes', () => {
