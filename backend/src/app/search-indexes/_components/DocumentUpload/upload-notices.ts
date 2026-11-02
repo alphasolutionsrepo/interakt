@@ -21,16 +21,19 @@ export type UploadNotice =
 
 export function uploadNotice(result: Pick<IndexDocumentsResponse, 'success' | 'message' | 'embeddingStats'>): UploadNotice | undefined {
     const stats = result.embeddingStats?.enabled ? result.embeddingStats : undefined;
-    const noEmbeddings = stats && stats.generated === 0 && stats.skipped > 0
-        ? `⚠️ No embeddings generated (${stats.skipped} skipped)`
-        : undefined;
+    // The server's message already counts the embeddings made; only problems are added
+    const problem = !stats
+        ? undefined
+        : stats.failed > 0
+            ? `⚠️ Embeddings failed for ${stats.failed} documents: they are indexed without one`
+            : stats.generated === 0 && stats.skipped > 0
+                ? `⚠️ No embeddings generated (${stats.skipped} skipped)`
+                : undefined;
 
-    if (!result.success) return noEmbeddings ? { kind: 'warning', message: noEmbeddings } : undefined;
-
-    const note = stats && stats.generated > 0 ? `✨ ${stats.generated} embeddings generated` : noEmbeddings;
+    if (!result.success) return problem ? { kind: 'warning', message: problem } : undefined;
     return {
         kind: 'success',
-        message: note ? `${result.message}\n${note}` : result.message,
+        message: problem ? `${result.message}\n${problem}` : result.message,
         description: stats ? `Embeddings: ${stats.generated} generated, ${stats.skipped} skipped` : undefined,
     };
 }
