@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 
 import { isPublicRequest } from './public-route';
-import { currentRequestId } from './request-id';
+import { currentRequestId, requestIdFor } from './request-id';
 
 import { type FieldError, INTERNAL_MESSAGE, codeForStatus } from '@/shared/errors/app-error';
 import { toAppError } from '@/shared/errors/to-app-error';
@@ -115,7 +115,8 @@ function successWithPagination<T>(
  * status is used when the error doesn't carry one of its own.
  */
 function error(err: unknown, status: number = 500): NextResponse<APIErrorResponse> {
-    const requestId = currentRequestId();
+    // The same id the failure was recorded with elsewhere (a job on the index)
+    const requestId = typeof err === 'string' ? currentRequestId() : requestIdFor(err);
 
     if (typeof err === 'string') {
         if (status >= 500) logger.error(err, undefined, { requestId });

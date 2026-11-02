@@ -39,7 +39,7 @@ import type {
     SearchIndexImportDTO,
  ChangeAIConfigDTO } from './search-index.validation';
 import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
-import { currentRequestId } from '@/shared/api/request-id';
+import { requestIdFor } from '@/shared/api/request-id';
 import { NotFoundError } from '@/shared/errors/app-error';
 import { toAppError } from '@/shared/errors/to-app-error';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
@@ -1195,7 +1195,8 @@ export function jobError(error: unknown): NonNullable<IndexLastJob['error']> {
         message: appError.message,
         ...(appError.hint && { hint: appError.hint }),
         ...(appError.details !== undefined && { details: appError.details }),
-        requestId: currentRequestId(),
+        // The id the error response and its log line will show too
+        requestId: requestIdFor(error),
     };
 }
 

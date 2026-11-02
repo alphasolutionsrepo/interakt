@@ -196,8 +196,12 @@ async function runDocumentIndexing(
         response.warnings = result.warnings.slice(0, 50);
     }
 
-    logger.info('Document indexing completed', {
+    // A failed or partial upload is a warning, so a log filtered by level still shows it
+    const log = outcome.status === 'succeeded' ? logger.info.bind(logger) : logger.warn.bind(logger);
+    log('Document indexing completed', {
         searchIndexId,
+        // A failed upload's id, shown on the index page, so support can find this line
+        ...(outcome.error?.requestId && { requestId: outcome.error.requestId }),
         batchId: result.batchId,
         indexed: result.indexedDocuments,
         failed: result.failedDocuments,

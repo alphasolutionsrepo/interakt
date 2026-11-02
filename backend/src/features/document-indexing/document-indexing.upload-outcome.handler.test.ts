@@ -9,7 +9,16 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ result: undefined as unknown, recorded: [] as unknown[] }));
+const state = vi.hoisted(() => ({ result: undefined as unknown, recorded: [] as unknown[], logged: [] as Array<{ level: string; context: Record<string, unknown> }> }));
+
+vi.mock('@/shared/logger/logger', () => {
+    const logger = {
+        info: (_m: string, context: Record<string, unknown>) => state.logged.push({ level: 'info', context }),
+        warn: (_m: string, context: Record<string, unknown>) => state.logged.push({ level: 'warn', context }),
+        error: vi.fn(), debug: vi.fn(),
+    };
+    return { createLogger: () => logger, logger };
+});
 
 vi.mock('./document-actor', () => ({
     resolveDocumentActor: async () => ({ actor: { kind: 'user', userId: 'u1' } }),
@@ -52,13 +61,15 @@ async function upload(indexed: number, failed: number) {
 }
 
 describe('upload outcome in the response', () => {
-    beforeEach(() => { state.recorded = []; });
+    beforeEach(() => { state.recorded = []; state.logged = []; });
 
     it('says an upload where nothing went in failed, as recorded on the index', async () => {
         const { status, body } = await upload(0, 2);
         expect(status).toBe(207);
         expect(body.data.outcome).toMatchObject({ status: 'failed', error: { code: 'INDEXING_FAILED' } });
         expect(state.recorded.at(-1)).toEqual(body.data.outcome);
+        // The id on the index page is on a warning log line, so support can find it
+        expect(state.logged.at(-1)).toMatchObject({ level: 'warn', context: { requestId: body.data.outcome.error.requestId } });
     });
 
     it('says an upload with some documents rejected is partial', async () => {
