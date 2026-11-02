@@ -42,6 +42,8 @@ import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 import { useIndexDocuments, useBatchStatus, useCancelBatch } from '../../_lib/hooks';
 import type { IndexingStatusResponse } from '../../_lib/api-client';
 
+import { uploadNotice, uploadProgressState } from './upload-notices';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -230,7 +232,7 @@ function IndexingProgress({
 }) {
     const isProcessing = status.status === 'pending' || status.status === 'processing';
     // Finished, but some documents were rejected: orange, as in the Activity panel
-    const isPartial = status.status === 'completed' && status.progress.failed > 0;
+    const isPartial = uploadProgressState(status) === 'partial';
     const isComplete = status.status === 'completed' && !isPartial;
     const isFailed = status.status === 'failed';
 
@@ -444,29 +446,10 @@ export function DocumentUploadPanel({
             setActiveBatchId(result.batchId);
             setParsedData(null);
 
-            // Build detailed toast message
-            let embeddingNote: string | undefined;
-            if (result.embeddingStats?.enabled) {
-                if (result.embeddingStats.generated > 0) {
-                    embeddingNote = `✨ ${result.embeddingStats.generated} embeddings generated`;
-                } else if (result.embeddingStats.skipped > 0) {
-                    embeddingNote = `⚠️ No embeddings generated (${result.embeddingStats.skipped} skipped)`;
-                }
-            }
-            const toastMessage = embeddingNote ? `${result.message}\n${embeddingNote}` : result.message;
-
-            if (result.success) {
-                toast.success(toastMessage, {
-                    duration: 5000,
-                    description: result.embeddingStats?.enabled
-                        ? `Embeddings: ${result.embeddingStats.generated} generated, ${result.embeddingStats.skipped} skipped`
-                        : undefined,
-                });
-                onComplete?.();
-            } else if (embeddingNote) {
-                // The failure itself gets its notice from the Activity panel (job outcome)
-                toast.warning(embeddingNote, { duration: 5000 });
-            }
+            const notice = uploadNotice(result);
+            if (notice?.kind === 'success') toast.success(notice.message, { duration: 5000, description: notice.description });
+            else if (notice?.kind === 'warning') toast.warning(notice.message, { duration: 5000 });
+            if (result.success) onComplete?.();
 
             // Show warnings if any
             if (result.warnings && result.warnings.length > 0) {
