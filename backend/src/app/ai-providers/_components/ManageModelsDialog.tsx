@@ -48,12 +48,12 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ModelFormDialog } from './ModelFormDialog';
 import { aiModelsApi } from '../_lib/api-client';
-import { capabilitiesFromForm, type ReasoningChoice } from '../_lib/model-capabilities';
+import { capabilitiesFromForm } from '../_lib/model-capabilities';
+import { modelUpdateInput, type ModelFormSubmission } from '../_lib/model-form';
 import type {
     AIProviderWithModelsResponse,
     AIProviderModelResponse,
     CreateAIModelInput,
-    UpdateAIModelInput,
 } from '@/features/ai-providers';
 
 // ============================================================================
@@ -264,39 +264,11 @@ export function ManageModelsDialog({
     };
 
     // Handle form submit (create or update)
-    const handleFormSubmit = async (data: {
-        modelKey: string;
-        displayName: string;
-        description?: string | null;
-        modelType: 'text' | 'chat' | 'embedding' | 'vision';
-        dimensions?: number | null;
-        isAvailable: boolean;
-        inputCostPerMillionTokens?: number | null;
-        outputCostPerMillionTokens?: number | null;
-        usesCompletionTokens?: boolean;
-        noTemperature?: boolean;
-        reasoningEffort?: ReasoningChoice;
-    }) => {
+    const handleFormSubmit = async (data: ModelFormSubmission) => {
         setIsSubmitting(true);
         try {
-            const capabilities = capabilitiesFromForm(
-                data,
-                (editingModel?.capabilities as Record<string, unknown> | undefined) ?? {},
-            );
-
             if (editingModel) {
-                // Update existing model (modelType cannot be changed after creation)
-                const updateData: UpdateAIModelInput = {
-                    displayName: data.displayName,
-                    description: data.description,
-                    // Only update dimensions if it's an embedding model
-                    dimensions: editingModel.modelType === 'embedding' ? data.dimensions : undefined,
-                    isAvailable: data.isAvailable,
-                    inputCostPerMillionTokens: data.inputCostPerMillionTokens,
-                    outputCostPerMillionTokens: data.outputCostPerMillionTokens,
-                    capabilities,
-                };
-                await aiModelsApi.update(editingModel.id, updateData);
+                await aiModelsApi.update(editingModel.id, modelUpdateInput(editingModel, data));
                 toast.success(`Model "${data.displayName}" updated`);
             } else {
                 // Create new model
@@ -310,7 +282,7 @@ export function ManageModelsDialog({
                     isAvailable: data.isAvailable,
                     inputCostPerMillionTokens: data.inputCostPerMillionTokens,
                     outputCostPerMillionTokens: data.outputCostPerMillionTokens,
-                    capabilities,
+                    capabilities: capabilitiesFromForm(data),
                 };
                 await aiModelsApi.create(createData);
                 toast.success(`Model "${data.displayName}" added`);

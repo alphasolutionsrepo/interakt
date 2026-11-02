@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AIProviderModelResponse } from '@/features/ai-providers';
 
-import { formValuesOf, modelFormSchema, optionalNumber } from './model-form';
+import { formValuesOf, modelFormSchema, modelUpdateInput, optionalNumber } from './model-form';
 
 const base = {
   modelKey: 'gpt-4o-mini',
@@ -67,3 +67,25 @@ describe('model form values for a saved model', () => {
     expect(values.reasoningEffort).toBe('none');
   });
 });
+
+describe('saving an edited model', () => {
+  const saved = {
+    id: 'm1', modelKey: 'qwen2.5:7b', displayName: 'Qwen 2.5 7B', modelType: 'chat', isAvailable: true,
+    capabilities: { contextWindow: 32768, supportsStreaming: true, supportsFunctionCalling: true },
+  } as unknown as AIProviderModelResponse;
+  const submitted = { modelKey: 'qwen2.5:7b', displayName: 'Qwen 2.5 7B', modelType: 'chat' as const, isAvailable: true };
+
+  it('keeps the capabilities the form does not show', () => {
+    const input = modelUpdateInput(saved, { ...submitted, reasoningEffort: 'none' });
+    expect(input.capabilities).toEqual({
+      contextWindow: 32768, supportsStreaming: true, supportsFunctionCalling: true, reasoningEffort: 'none',
+    });
+  });
+
+  it('clears Reasoning when set back to Model default', () => {
+    const withLevel = { ...saved, capabilities: { ...saved.capabilities, reasoningEffort: 'none' } } as AIProviderModelResponse;
+    expect(modelUpdateInput(withLevel, { ...submitted, reasoningEffort: 'default' }).capabilities)
+      .toEqual({ contextWindow: 32768, supportsStreaming: true, supportsFunctionCalling: true });
+  });
+});
+

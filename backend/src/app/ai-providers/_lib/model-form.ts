@@ -2,9 +2,9 @@
 
 import { z } from 'zod';
 
-import type { AIProviderModelResponse } from '@/features/ai-providers';
+import type { AIProviderModelResponse, UpdateAIModelInput } from '@/features/ai-providers';
 
-import { REASONING_CHOICES, reasoningChoiceOf } from './model-capabilities';
+import { capabilitiesFromForm, REASONING_CHOICES, reasoningChoiceOf, type ReasoningChoice } from './model-capabilities';
 
 /**
  * Model form schema. The model key follows the server's rule (any non-empty key):
@@ -93,5 +93,37 @@ export function formValuesOf(model: AIProviderModelResponse): ModelFormData {
         usesCompletionTokens: capabilities.usesCompletionTokens === true,
         noTemperature: capabilities.noTemperature === true,
         reasoningEffort: reasoningChoiceOf(capabilities),
+    };
+}
+
+/** What the model form submits: its values, with blank boxes as null. */
+export interface ModelFormSubmission {
+    modelKey: string;
+    displayName: string;
+    description?: string | null;
+    modelType: 'text' | 'chat' | 'embedding' | 'vision';
+    dimensions?: number | null;
+    isAvailable: boolean;
+    inputCostPerMillionTokens?: number | null;
+    outputCostPerMillionTokens?: number | null;
+    usesCompletionTokens?: boolean;
+    noTemperature?: boolean;
+    reasoningEffort?: ReasoningChoice;
+}
+
+/**
+ * The update request for an edited model. Capabilities start from the saved ones, so
+ * those the form doesn't show are kept; the model type can't change after creation.
+ */
+export function modelUpdateInput(model: AIProviderModelResponse, data: ModelFormSubmission): UpdateAIModelInput {
+    return {
+        displayName: data.displayName,
+        description: data.description,
+        // Only update dimensions if it's an embedding model
+        dimensions: model.modelType === 'embedding' ? data.dimensions : undefined,
+        isAvailable: data.isAvailable,
+        inputCostPerMillionTokens: data.inputCostPerMillionTokens,
+        outputCostPerMillionTokens: data.outputCostPerMillionTokens,
+        capabilities: capabilitiesFromForm(data, (model.capabilities as Record<string, unknown> | undefined) ?? {}),
     };
 }
