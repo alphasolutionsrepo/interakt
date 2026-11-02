@@ -65,6 +65,7 @@ import { POST as summaryByToken } from './summarize/route';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import * as searchService from '@/features/search-experience/search-experience.service';
 import { rateLimiter } from '@/shared/api/rate-limit';
+import { PUBLIC_FAILURE_MESSAGE } from '@/shared/api/response';
 
 const SHOP = 'https://shop.example';
 const OTHER = 'https://other.example';
@@ -425,5 +426,63 @@ describe('chat daily total', () => {
     expect(await settle(await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', from('1.1.1.1'), { message: 'hi' })))).toBe(200);
     expect(await settle(await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', from('2.2.2.2'), { message: 'hi' })))).toBe(200);
     expect(await settle(await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', from('3.3.3.3'), { message: 'hi' })))).toBe(429);
+  });
+});
+
+describe('when the search service is down', () => {
+  // What the engine throws when Elasticsearch can't be reached (see search.service)
+  const down = async () => {
+    const { errors } = await import('@elastic/elasticsearch');
+    const { SearchError } = await import('@/features/search/search.types');
+    const cause = new errors.ConnectionError('connect ECONNREFUSED 10.0.0.7:9200', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+    return new SearchError(cause.message, 'PROVIDER_ERROR', {}, { cause });
+  };
+  const failing: Array<{ name: string; route: string; work: () => ReturnType<typeof vi.fn> }> = [
+    { name: 'search by token', route: 'search by token', work: () => mocks.executeExperienceSearch },
+    { name: 'search by slug', route: 'search by slug', work: () => mocks.executeExperienceSearch },
+    { name: 'autocomplete', route: 'autocomplete', work: () => mocks.getAutocompleteSuggestions },
+    { name: 'document by token', route: 'document by token', work: () => mocks.getDocumentByIdFromIndex },
+  ];
+
+  it.each(failing)('$name tells the visitor plainly, with a request id, and names no service', async ({ route, work }) => {
+    work().mockRejectedValue(await down());
+    const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const body = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(body).toMatchObject({ success: false, code: 'UPSTREAM_UNAVAILABLE', message: PUBLIC_FAILURE_MESSAGE, error: PUBLIC_FAILURE_MESSAGE });
+    expect(body.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(body.hint).toBeUndefined();
+    expect(body.details).toBeUndefined();
+    expect(JSON.stringify(body)).not.toMatch(/elasticsearch|ECONNREFUSED|10\.0\.0\.7/i);
+  });
+
+  it('keeps the CORS headers on the error, so the widget can read it', async () => {
+    mocks.executeExperienceSearch.mockRejectedValue(await down());
+    const res = await ROUTES.find((r) => r.name === 'search by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+  });
+});
+
+describe('a request with a value of the wrong type', () => {
+  it('lists the field in details, as the public API documents, and in fields', async () => {
+    const res = await searchBySlug(
+      req('/api/v1/search/catalog/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', page: 'x' }),
+      slugParams('catalog')
+    );
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('VALIDATION_ERROR');
+    expect(body.details).toEqual([expect.objectContaining({ field: 'page' })]);
+    expect(body.fields).toEqual(body.details);
+    expect(body.requestId).toEqual(expect.any(String));
+  });
+});
+
+describe('a document that is not in any index', () => {
+  it('is still not found when the lookups worked', async () => {
+    mocks.getDocumentByIdFromIndex.mockResolvedValue(null);
+    const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(res.status).toBe(404);
   });
 });

@@ -11,10 +11,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { authenticateAccessToken, createCorsHeaders, handleCorsPreflight, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
 import * as searchService from '@/features/search/search.service';
-import { SearchError } from '@/features/search/search.types';
 import { publicRoute } from '@/shared/api/public-route';
 
 const logger = createLogger('document-api');
@@ -47,6 +48,8 @@ async function get(
 
     // 3. Try to find document in each index
     let document: searchService.GetDocumentResponse | null = null;
+    // Lookups that failed rather than not finding the document
+    const failures: unknown[] = [];
 
     for (const idx of activeIndexes) {
       try {
@@ -59,11 +62,17 @@ async function get(
         }
       } catch (err) {
         // Continue to next index if this one fails
-        logger.debug('Document not found in index', {
+        failures.push(err);
+        logger.debug('Document lookup failed in index', {
           indexId: idx.searchIndexId,
           documentId,
         });
       }
+    }
+
+    // Every index failed: the search service is down, not the document missing
+    if (!document && failures.length === activeIndexes.length) {
+      return apiResponse.error(failures[0]);
     }
 
     if (!document) {
@@ -106,22 +115,9 @@ async function get(
       error: error instanceof Error ? error.message : 'Unknown error',
     });
 
-    if (error instanceof SearchError) {
-      const statusMap: Record<string, number> = {
-        INDEX_NOT_FOUND: 404,
-        INDEX_NOT_READY: 503,
-        PROVIDER_ERROR: 503,
-      };
-      return NextResponse.json(
-        { success: false, error: error.message, code: error.code },
-        { status: statusMap[error.code] ?? 500 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: false, error: 'An unexpected error occurred', code: 'INTERNAL_ERROR' },
-      { status: 500 }
-    );
+    // A search error answers with its own status; a server failure gets the plain
+    // public message and a request id
+    return apiResponse.error(error);
   }
 }
 

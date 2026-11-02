@@ -50,7 +50,9 @@ describe('admin search errors', () => {
     it('does not send provider text it does not recognise', async () => {
         failWith.error = new SearchError('connect failed https://elastic:Sup3rSecretPassw0rd@es.internal:9200', 'PROVIDER_ERROR');
         const { status, body } = await search();
-        expect(status).toBe(500);
+        // A provider failure's status, with a generic message instead of the provider's text
+        expect(status).toBe(503);
+        expect(body.code).toBe('PROVIDER_ERROR');
         expect(JSON.stringify(body)).not.toContain('Sup3rSecret');
         expect(body.message).toMatch(/Something went wrong/);
     });

@@ -540,7 +540,8 @@ async function getQueryEmbedding(
         throw new SearchError(
             'Failed to generate query embedding',
             'EMBEDDING_FAILED',
-            { indexName: context.indexName }
+            { indexName: context.indexName },
+            { cause: error }
         );
     }
 }

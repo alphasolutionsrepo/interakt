@@ -6,7 +6,7 @@ vi.mock('@/shared/logger/logger', () => ({
 }));
 
 import { publicRoute } from './public-route';
-import { apiResponse } from './response';
+import { PUBLIC_FAILURE_MESSAGE, apiResponse } from './response';
 
 import { NotFoundError } from '@/shared/errors/app-error';
 
@@ -32,7 +32,7 @@ describe('apiResponse.error', () => {
         const response = apiResponse.error(new Error('column "foo" does not exist'));
         const body = await response.json();
         expect(response.status).toBe(500);
-        expect(body.code).toBe('INTERNAL');
+        expect(body.code).toBe('INTERNAL_ERROR');
         expect(JSON.stringify(body)).not.toContain('foo');
         expect(body.details).toBeUndefined();
     });
@@ -60,6 +60,19 @@ describe('apiResponse.error', () => {
         expect(body.code).toBe('UPSTREAM_AUTH');
         expect(body.hint).toBeUndefined();
         expect(body.details).toBeUndefined();
+        // Nor which service failed: the message is the plain public one
+        expect(body.message).toBe(PUBLIC_FAILURE_MESSAGE);
+        expect(JSON.stringify(body)).not.toContain('Azure');
+    });
+
+    it('still tells admins which service failed', async () => {
+        const body = await apiResponse.error(azureAuthError()).json();
+        expect(body.message).toBe('Azure AI Search rejected the credentials.');
+    });
+
+    it('keeps the message of a public request the caller got wrong', async () => {
+        const handler = publicRoute(async () => apiResponse.badRequest('query is required'));
+        expect((await (await handler()).json()).message).toBe('query is required');
     });
 });
 
@@ -68,5 +81,14 @@ describe('apiResponse.validationError', () => {
         const result = z.object({ name: z.string().min(1) }).safeParse({ name: '' });
         const body = await apiResponse.validationError(!result.success ? result.error : (undefined as never)).json();
         expect(body).toMatchObject({ code: 'VALIDATION_ERROR', fields: [{ field: 'name' }] });
+        // details is the public API's documented list; admins read fields only
+        expect(body.details).toBeUndefined();
+    });
+
+    it('also lists them as details on public routes, as the public API documents', async () => {
+        const result = z.object({ name: z.string().min(1) }).safeParse({ name: '' });
+        const handler = publicRoute(async () => apiResponse.validationError(!result.success ? result.error : (undefined as never)));
+        const body = await (await handler()).json();
+        expect(body.details).toEqual(body.fields);
     });
 });

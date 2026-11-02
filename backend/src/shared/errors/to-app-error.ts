@@ -9,22 +9,17 @@
 import { AppError, ConflictError, INTERNAL_MESSAGE, NotFoundError, ValidationError, codeForStatus } from './app-error';
 import { classifyUpstream } from './upstream';
 
-// SearchError codes that mean the request was wrong, not that the engine failed
-const SEARCH_REQUEST_CODES = new Set([
-    'INVALID_QUERY', 'INVALID_FILTER', 'INVALID_FACET', 'INVALID_SORT',
-    'FIELD_NOT_FOUND', 'FIELD_NOT_SEARCHABLE', 'FIELD_NOT_FACETABLE',
-]);
 // AIServiceError codes that point at our own configuration
 const AI_CONFIG_CODES = new Set(['PROVIDER_NOT_FOUND', 'MODEL_NOT_FOUND', 'PROVIDER_DISABLED']);
 
 /**
- * Whatever was thrown, as an AppError. Errors we don't recognise become INTERNAL
+ * Whatever was thrown, as an AppError. Errors we don't recognise become INTERNAL_ERROR
  * with a generic message; the original stays as the cause for the log.
  */
 export function toAppError(err: unknown): AppError {
     if (err instanceof AppError) return err;
     if (!(err instanceof Error)) {
-        return new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL', status: 500, cause: err });
+        return new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
     }
 
     const e = err as Error & Record<string, unknown>;
@@ -54,12 +49,18 @@ export function toAppError(err: unknown): AppError {
                 });
             }
             break;
-        case 'SearchError':
-            if (e.code === 'INDEX_NOT_FOUND') return new NotFoundError(err.message);
-            if (typeof e.code === 'string' && SEARCH_REQUEST_CODES.has(e.code)) {
-                return new AppError(err.message, { code: e.code, status: 400 });
-            }
-            break;
+        case 'SearchError': {
+            // SearchError carries its status (SEARCH_ERROR_STATUS in the search feature)
+            const status = typeof e.status === 'number' ? e.status : 500;
+            const code = typeof e.code === 'string' ? e.code : codeForStatus(status);
+            // The request was wrong: our own message says how
+            if (status < 500) return new AppError(err.message, { code, status });
+            // The engine or its AI provider failed: explained when we recognise it
+            const upstream = classifyUpstream(err);
+            if (upstream) return upstream;
+            // A provider failure we don't recognise may carry the provider's own text
+            return new AppError(code === 'PROVIDER_ERROR' ? INTERNAL_MESSAGE : err.message, { code, status, cause: err });
+        }
         case 'AIServiceError':
             if (typeof e.code === 'string' && AI_CONFIG_CODES.has(e.code)) {
                 return new AppError(err.message, { code: e.code, status: 400 });
@@ -67,5 +68,5 @@ export function toAppError(err: unknown): AppError {
             break;
     }
 
-    return classifyUpstream(err) ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL', status: 500, cause: err });
+    return classifyUpstream(err) ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
 }

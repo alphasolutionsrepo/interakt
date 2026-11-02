@@ -12,6 +12,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+import { apiResponse } from '@/shared/api/response';
 import { ZodError } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
 import { searchExperienceAccess } from '@/features/auth/public-access';
@@ -99,22 +101,14 @@ async function post(
       },
     });
   } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request', code: 'VALIDATION_ERROR' },
-        { status: 400 }
-      );
-    }
+    if (error instanceof ZodError) return apiResponse.validationError(error);
 
     logger.error('Summarize error', {
       slug,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
 
-    return NextResponse.json(
-      { success: false, error: 'An unexpected error occurred', code: 'INTERNAL_ERROR' },
-      { status: 500 }
-    );
+    return apiResponse.error(error);
   }
 }
 

@@ -54,18 +54,26 @@ interface ErrorBody {
     details?: unknown;
 }
 
+/** What visitors of the widget and API clients read when the server side failed */
+export const PUBLIC_FAILURE_MESSAGE = 'The service is temporarily unavailable. Try again in a moment.';
+
 function errorResponse(body: ErrorBody, status: number, requestId: string = currentRequestId()): NextResponse<APIErrorResponse> {
-    // Visitors of the widget and API clients don't get to see which service failed or how
-    const internal = isPublicRequest() && status >= 500;
+    const publicRequest = isPublicRequest();
+    // Visitors of the widget and API clients don't get to see which service failed or how:
+    // not its name, its hint or its details. The code and request id are kept for support.
+    const internal = publicRequest && status >= 500;
+    const message = internal ? PUBLIC_FAILURE_MESSAGE : body.message;
+    // The public API documents per-field problems as details (OpenAPI ErrorResponse)
+    const details = body.details ?? (publicRequest && body.fields?.length ? body.fields : undefined);
     return NextResponse.json(
         {
             success: false as const,
             code: body.code,
-            message: body.message,
-            error: body.message,
+            message,
+            error: message,
             ...(body.hint && !internal && { hint: body.hint }),
             ...(body.fields?.length && { fields: body.fields }),
-            ...(body.details !== undefined && !internal && { details: body.details }),
+            ...(details !== undefined && !internal && { details }),
             requestId,
         },
         { status }
@@ -124,7 +132,7 @@ function error(err: unknown, status: number = 500): NextResponse<APIErrorRespons
     }
 
     const appError = toAppError(err);
-    const recognised = appError.code !== 'INTERNAL';
+    const recognised = appError.code !== 'INTERNAL_ERROR';
     const finalStatus = recognised ? appError.status : status;
     const message = recognised
         ? appError.message
@@ -214,7 +222,7 @@ function conflict(message: string, details?: any): NextResponse<APIErrorResponse
  * Internal server error
  */
 function internalError(message: string = 'Internal server error'): NextResponse<APIErrorResponse> {
-    return errorResponse({ code: 'INTERNAL', message }, 500);
+    return errorResponse({ code: 'INTERNAL_ERROR', message }, 500);
 }
 
 // Export all response builders

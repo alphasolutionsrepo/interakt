@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { AppError, ConflictError } from './app-error';
 import { toAppError } from './to-app-error';
 
+import { SearchError } from '@/features/search/search.types';
+
 describe('toAppError', () => {
     it('returns AppErrors as they are', () => {
         const err = new ConflictError('Name taken');
@@ -25,8 +27,10 @@ describe('toAppError', () => {
         const experience = Object.assign(new Error('Slug already used'), { name: 'SearchExperienceError', code: 'DUPLICATE_SLUG', statusCode: 409 });
         expect(toAppError(experience)).toMatchObject({ code: 'DUPLICATE_SLUG', status: 409, message: 'Slug already used' });
 
-        const filter = Object.assign(new Error('At least one filter clause is required'), { name: 'SearchError', code: 'INVALID_FILTER' });
-        expect(toAppError(filter)).toMatchObject({ code: 'INVALID_FILTER', status: 400 });
+        // A search error carries its status (SEARCH_ERROR_STATUS)
+        expect(toAppError(new SearchError('At least one filter clause is required', 'INVALID_FILTER'))).toMatchObject({ code: 'INVALID_FILTER', status: 400 });
+        expect(toAppError(new SearchError('Search index "shop" is not active', 'INDEX_NOT_READY')))
+            .toMatchObject({ code: 'INDEX_NOT_READY', status: 503, message: 'Search index "shop" is not active' });
 
         const provider = Object.assign(new Error('Unsupported AI provider: foo'), { name: 'AIServiceError', code: 'PROVIDER_NOT_FOUND' });
         expect(toAppError(provider)).toMatchObject({ code: 'PROVIDER_NOT_FOUND', status: 400 });
@@ -41,7 +45,7 @@ describe('toAppError', () => {
         const cause = new Error('duplicate key value violates unique constraint "users_pkey"');
         const err = toAppError(cause);
         expect(err).toBeInstanceOf(AppError);
-        expect(err).toMatchObject({ code: 'INTERNAL', status: 500 });
+        expect(err).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
         expect(err.message).not.toContain('users_pkey');
         expect(err.cause).toBe(cause);
     });

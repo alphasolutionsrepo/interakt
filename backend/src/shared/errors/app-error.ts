@@ -79,6 +79,6 @@ export function codeForStatus(status: number): string {
     if (status === 404) return 'NOT_FOUND';
     if (status === 409) return 'CONFLICT';
     if (status === 422) return 'VALIDATION_ERROR';
-    if (status >= 500) return 'INTERNAL';
+    if (status >= 500) return 'INTERNAL_ERROR';
     return 'ERROR';
 }

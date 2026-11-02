@@ -18,13 +18,14 @@ import { searchExperienceAccess } from '@/features/auth/public-access';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { flushTelemetry, runWithTelemetryLevel } from '@/features/telemetry';
-import type { FacetResult, SearchErrorCode } from '@/features/search/search.types';
-import { SearchError } from '@/features/search/search.types';
+import type { FacetResult } from '@/features/search/search.types';
 import * as repository from '@/features/search-experience/search-experience.repository';
 import { publicSearchRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import { executeExperienceSearch, NoSourcesError } from '@/features/search-experience/experience-search';
 import type { PublicSearchRequest } from '@/features/search-experience/search-experience.types';
 import { publicRoute } from '@/shared/api/public-route';
+import { apiResponse } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 
 // Extended schema: playground-only switches
 const searchRequestSchema = publicSearchRequestSchema.extend({
@@ -172,54 +173,13 @@ function handleSearchError(error: unknown, slug: string): NextResponse {
   });
 
   if (error instanceof NoSourcesError) {
-    return NextResponse.json(
-      { success: false, error: error.message, code: 'NO_INDEXES' },
-      { status: 400 }
-    );
+    return apiResponse.error(new AppError(error.message, { code: 'NO_INDEXES', status: 400 }));
   }
+  if (error instanceof ZodError) return apiResponse.validationError(error);
 
-  if (error instanceof ZodError) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Invalid request',
-        code: 'VALIDATION_ERROR',
-        details: error.errors.map((e) => ({ field: e.path.join('.'), message: e.message })),
-      },
-      { status: 400 }
-    );
-  }
-
-  if (error instanceof SearchError) {
-    // Typed as Record<SearchErrorCode, …> on purpose: this is the customer-facing
-    // route, and an unmapped code falls through to 500 — so a bad filter, facet or
-    // field name read as "search is down" rather than "your request was invalid".
-    // The exhaustive type means adding a code to the union without deciding its
-    // status here is a compile error instead of a silent 500 in production.
-    const statusMap: Record<SearchErrorCode, number> = {
-      INDEX_NOT_FOUND: 404,
-      INDEX_NOT_READY: 503,
-      INVALID_QUERY: 400,
-      INVALID_FILTER: 400,
-      INVALID_FACET: 400,
-      INVALID_SORT: 400,
-      FIELD_NOT_FOUND: 400,
-      FIELD_NOT_SEARCHABLE: 400,
-      FIELD_NOT_FACETABLE: 400,
-      EMBEDDING_FAILED: 503,
-      PROVIDER_ERROR: 503,
-      TIMEOUT: 504,
-    };
-    return NextResponse.json(
-      { success: false, error: error.message, code: error.code },
-      { status: statusMap[error.code] ?? 500 }
-    );
-  }
-
-  return NextResponse.json(
-    { success: false, error: 'An unexpected error occurred', code: 'INTERNAL_ERROR' },
-    { status: 500 }
-  );
+  // A search error answers with its own status (SEARCH_ERROR_STATUS); provider failures
+  // are explained to admins and given the plain public message here (apiResponse)
+  return apiResponse.error(error);
 }
 
 export const POST = publicRoute(post);
