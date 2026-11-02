@@ -19,9 +19,10 @@ vi.mock('@/features/telemetry', () => ({ runWithTelemetryLevel: (_level: string,
 vi.mock('./search.service', () => ({
     searchById: vi.fn(async () => { throw failWith.error; }),
     searchByName: vi.fn(),
+    autocompleteById: vi.fn(async () => { throw failWith.error; }),
 }));
 
-import { handleSearchById } from './search.api.handlers';
+import { handleAutocompleteById, handleSearchById } from './search.api.handlers';
 
 async function search() {
     const res = await handleSearchById(
@@ -58,5 +59,15 @@ describe('admin search errors', () => {
         const { status, body } = await search();
         expect(status).toBe(400);
         expect(body.message).toBe('Unknown filter field "colour"');
+    });
+
+    it('explains a failed autocomplete the same way', async () => {
+        failWith.error = new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', noResponse) });
+        const res = await handleAutocompleteById(
+            new NextRequest('http://localhost/api/search', { method: 'POST', body: JSON.stringify({ query: 'lin' }) }),
+            { id: crypto.randomUUID() }
+        );
+        expect(res.status).toBe(503);
+        expect(await res.json()).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
     });
 });

@@ -116,6 +116,14 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         expect(err?.details).toEqual({ provider: 'Elasticsearch' });
     });
 
+    it('is not swayed by the details of the search error around it', () => {
+        // An index named like a schema problem, and an Elasticsearch error that isn't one
+        const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', { indexName: 'fashion-mapping' }, { cause: elasticError(500, 'internal_error', 'shard failure') }));
+        expect(err?.code).toBe('UPSTREAM_ERROR');
+        expect(err?.details).toMatchObject({ provider: 'Elasticsearch', status: 500 });
+        expect(err?.details).not.toHaveProperty('code');
+    });
+
     it("shows Azure's own code, not the code of the search error around it", () => {
         const err = classifyUpstream(new SearchError('Invalid field', 'PROVIDER_ERROR', {}, { cause: azureError(400, 'Invalid field', 'InvalidRequestParameter') }));
         expect(err?.details).toMatchObject({ provider: 'Azure AI Search', status: 400, code: 'InvalidRequestParameter' });

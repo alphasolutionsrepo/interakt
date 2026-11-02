@@ -116,19 +116,20 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     const provider = findProvider(err);
     if (!provider) return undefined;
 
-    const detail = toErrorDetail(err);
+    // Read from the provider's own error, not our wrappers: their codes and details
+    // (an index name, PROVIDER_ERROR) would pick the wrong explanation
+    const detail = toErrorDetail(provider.error);
     const serviceCode = aiServiceCode(err) ?? transportCode(err);
     const code = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
     const copy = COPY[code];
     const fill = (text: string) => text.replaceAll('{provider}', provider.name).replaceAll('{settings}', SETTINGS[provider.kind]);
 
-    // Status 0 means no response at all, not a status the provider sent
-    const own = toErrorDetail(provider.error);
-    const message = scrub(upstreamMessage(err, detail.details));
+    const message = scrub(upstreamMessage(provider.error, detail.details));
     const details: UpstreamDetails = {
         provider: provider.name,
-        ...(own.statusCode && { status: own.statusCode }),
-        ...(own.code !== undefined && { code: own.code }),
+        // Status 0 means no response at all, not a status the provider sent
+        ...(detail.statusCode && { status: detail.statusCode }),
+        ...(detail.code !== undefined && { code: detail.code }),
         ...(message && { message }),
     };
 
