@@ -185,6 +185,7 @@ const dataSourceFieldSchema = z.object({
   description: z.string().max(500).optional(),
   providerType: z.string().optional(),
   valueType: z.enum(['text', 'number', 'boolean']).optional(),
+  valueTypeLocked: z.boolean().optional(),
   filterField: z.string().optional(),
   profile: dataSourceFieldProfileSchema.optional(),
 });

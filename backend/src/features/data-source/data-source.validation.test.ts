@@ -343,6 +343,7 @@ describe('data source schema round-trip', () => {
     description: 'fabric composition, not a category',
     providerType: 'text',
     valueType: 'text',
+    valueTypeLocked: true,
     filterField: 'material.keyword',
     profile: {
       sampleSize: 50,

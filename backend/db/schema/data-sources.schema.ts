@@ -210,6 +210,11 @@ export interface DataSourceField {
    */
   valueType?: 'text' | 'number' | 'boolean';
   /**
+   * True when `valueType` was set by hand: health checks keep it. Otherwise each sample
+   * that sees a value refreshes it.
+   */
+  valueTypeLocked?: boolean;
+  /**
    * The field name to use in filter and sort expressions when it differs from `name`.
    * Elasticsearch `text` fields are not exact-matchable, but usually carry a `keyword`
    * sub-field (`title.keyword`) that is. Absent means filter on `name` directly.

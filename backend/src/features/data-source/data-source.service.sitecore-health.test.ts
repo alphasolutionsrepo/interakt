@@ -199,6 +199,47 @@ describe('health check on a Sitecore source whose fixed filter is written as tex
     });
   });
 
+  describe('a stored value type Sitecore now refuses', () => {
+    const staleSource = (locked: boolean) => {
+      const stored: DataSourceField[] = [
+        { name: 'category_id', displayName: 'Category', type: 'text', providerType: 'string', valueType: 'text', ...(locked && { valueTypeLocked: true }), isSearchable: false, isFacetable: true, isFilterable: true },
+      ];
+      repository.getDataSourceById.mockResolvedValue({
+        ...source(stored),
+        config: { ...source().config, providerSettings: { fixedFilters: [{ field: 'category_id', operator: 'nin', value: ['3', '4'] }] } },
+      });
+      sitecore.mockImplementation(async (_url: string, init?: RequestInit) => {
+        const filter = JSON.parse(String(init?.body)).widget.items[0].search.filter;
+        const values = filter?.filters?.[0]?.filter?.values as unknown[] | undefined;
+        if (values?.some((v) => typeof v === 'string')) {
+          return new Response(`{"message":"filter value '3' not of the expected type"}`, { status: 400 });
+        }
+        return new Response(JSON.stringify({ widgets: [{ rfk_id: 'rfk_global_search', total_item: 1, content: [{ id: 'b', category_id: 7 }] }] }));
+      });
+    };
+    const savedCategory = () =>
+      (repository.updateDataSource.mock.calls[0][1] as { schema: { fields: DataSourceField[] } })
+        .schema.fields.find((f) => f.name === 'category_id');
+
+    it('takes the type discovery learned, so the source recovers', async () => {
+      staleSource(false);
+
+      const result = await performHealthCheck('ds-1');
+
+      expect(result.status).toBe('healthy');
+      expect(savedCategory()?.valueType).toBe('number');
+    });
+
+    it('keeps a type set by hand, and reports the fixed filters failing', async () => {
+      staleSource(true);
+
+      const result = await performHealthCheck('ds-1');
+
+      expect(result.status).toBe('error');
+      expect(savedCategory()).toMatchObject({ valueType: 'text', valueTypeLocked: true });
+    });
+  });
+
   it('keeps the stored fields when the fixed filters are refused even with learned types', async () => {
     const stored: DataSourceField[] = [
       { name: 'id', displayName: 'Id', type: 'text', providerType: 'string', valueType: 'text', isSearchable: false, isFacetable: false, isFilterable: true },

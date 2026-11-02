@@ -227,9 +227,9 @@ export function mergeOperatorFieldEdits(
  *
  * Inference is a guess (is this prose? is that a facet?), so for a field the operator
  * already has, their curation wins: label, role, description and every capability flag.
- * Only what was measured — type and profile — is refreshed. A value type is added when the
- * field has none and then kept, so one set by hand (Sitecore may return a number attribute
- * as text) isn't replaced by the next sample's guess. A field missing from this
+ * Only what was measured — type, value type and profile — is refreshed. A value type set
+ * by hand (`valueTypeLocked`: Sitecore may return a number attribute as text) is kept. A
+ * field missing from this
  * sample is kept, since a sample can simply not contain it; new fields are added.
  */
 function mergeSampledSchema(previous: DataSourceField[], discovered: DataSourceSchema): DataSourceSchema {
@@ -243,7 +243,7 @@ function mergeSampledSchema(previous: DataSourceField[], discovered: DataSourceS
       ...curated,
       type: measured.type,
       ...(measured.providerType && { providerType: measured.providerType }),
-      ...(measured.valueType && !curated.valueType && { valueType: measured.valueType }),
+      ...(measured.valueType && !curated.valueTypeLocked && { valueType: measured.valueType }),
       ...(measured.profile && { profile: measured.profile }),
     };
   });
