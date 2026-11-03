@@ -152,10 +152,15 @@ function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     const text = rawText.toLowerCase();
     // Elasticsearch blocks writes with a 403 (read-only index) or a 429 (disk full):
     // neither is about credentials or rate limits, so this comes before both
-    if (/blocked by: \[[^\]]*(index write|read[-_ ]only|flood-stage|disk usage)/.test(text)) return 'UPSTREAM_READ_ONLY';
-    // Any other block on an index (reads, metadata) is not a credentials problem either;
-    // a cluster that isn't ready (503) falls through to unavailable
-    if (/blocked by: \[/.test(text) && status !== 503) return 'UPSTREAM_ERROR';
+    const block = text.indexOf('blocked by: [');
+    if (block >= 0) {
+        // What follows "blocked by: [", e.g. "forbidden/8/index write (api)]"
+        const reason = text.slice(block, block + 200);
+        if (/index write|read[-_ ]only|flood-stage|disk usage/.test(reason)) return 'UPSTREAM_READ_ONLY';
+        // Any other block on an index (reads, metadata) is not a credentials problem
+        // either; a cluster that isn't ready (503) falls through to unavailable
+        if (status !== 503) return 'UPSTREAM_ERROR';
+    }
     if (/dimension/.test(text) && /vector|embedding|dims/.test(text)) return 'UPSTREAM_DIMENSION_MISMATCH';
     if (/insufficient_quota|quota exceeded|exceeded your current quota|out of quota/.test(text)) return 'UPSTREAM_QUOTA';
     if (status === 429 || /rate.?limit|too many requests/.test(text)) return 'UPSTREAM_RATE_LIMITED';
