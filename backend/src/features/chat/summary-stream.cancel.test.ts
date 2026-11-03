@@ -85,7 +85,9 @@ describe('cancelling a summary', () => {
     await span.settled;
 
     expect(events.join('')).toContain('"type":"error"');
-    expect(log.error).toHaveBeenCalledWith('Summary generation failed', expect.anything());
+    // Logged once, by the shared error path, with the experience it failed for
+    expect(log.error).toHaveBeenCalledTimes(1);
+    expect(log.error).toHaveBeenCalledWith('Request failed', expect.any(Error), expect.objectContaining({ experienceId: 'exp-1' }));
   });
 
   it('aborts the model request when the visitor leaves before the first word', async () => {

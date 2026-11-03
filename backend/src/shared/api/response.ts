@@ -131,13 +131,18 @@ function error(err: unknown, status: number = 500): NextResponse<APIErrorRespons
 /**
  * The error body and status apiResponse.error answers with, logged the same way, for
  * answers that aren't a JSON response of their own (an error event in a stream).
+ * logContext is added to the log line (say, which experience failed).
  */
-export function describeError(err: unknown, status: number = 500): { status: number; body: APIErrorResponse } {
+export function describeError(
+    err: unknown,
+    status: number = 500,
+    logContext?: Record<string, unknown>
+): { status: number; body: APIErrorResponse } {
     // The same id the failure was recorded with elsewhere (a job on the index)
     const requestId = typeof err === 'string' ? currentRequestId() : requestIdFor(err);
 
     if (typeof err === 'string') {
-        if (status >= 500) logger.error(err, undefined, { requestId });
+        if (status >= 500) logger.error(err, undefined, { ...logContext, requestId });
         return { status, body: errorPayload({ code: codeForStatus(status), message: err }, status, requestId) };
     }
 
@@ -151,12 +156,13 @@ export function describeError(err: unknown, status: number = 500): { status: num
 
     if (finalStatus >= 500) {
         logger.error('Request failed', err instanceof Error ? err : new Error(String(err)), {
+            ...logContext,
             requestId,
             code: appError.code,
             ...(appError.details !== undefined && { details: appError.details }),
         });
     } else {
-        logger.warn('Request rejected', { requestId, code: appError.code, message });
+        logger.warn('Request rejected', { ...logContext, requestId, code: appError.code, message });
     }
 
     return {

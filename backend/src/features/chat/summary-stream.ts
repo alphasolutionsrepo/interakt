@@ -182,14 +182,9 @@ export function createSummaryStream(
       // The model call ended because the client went away
       if (cancelled) return await endCancelled();
 
-      logger.error('Summary generation failed', {
-        experienceId: experience.id,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-
       // The same body an error response has: a plain message for visitors on a server
-      // failure, the explanation for admins, and a request id
-      send({ type: 'error', ...describeError(error).body });
+      // failure, the explanation for admins, and a request id. describeError logs it.
+      send({ type: 'error', ...describeError(error, 500, { experienceId: experience.id }).body });
       await finish();
     }
   }
