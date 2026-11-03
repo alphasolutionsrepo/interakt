@@ -3,7 +3,8 @@
 import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
 
 /** Outcome of one engine call: data on success, a readable error otherwise. */
-type OperationResult = { success: boolean; data?: unknown; error?: string };
+/** status: the HTTP status of a failed call, when the engine answered */
+type OperationResult = { success: boolean; data?: unknown; error?: string; status?: number };
 
 // Azure AI Search REST API version
 const AZURE_API_VERSION = '2024-07-01';
@@ -136,6 +137,7 @@ export async function callAzureAISearch(
     return {
       success: false,
       error: `Azure AI Search returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
+      status: response.status,
     };
   }
 

@@ -20,7 +20,7 @@ import type {
   ExternalSearchRequest,
   ExternalSearchResult,
 } from '../external-search.types';
-import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
+import { EXTERNAL_REQUEST_TIMEOUT_MS, ExternalSearchError } from '../external-search.types';
 import {
   buildSitecoreRequest,
   mapSitecoreResponse,
@@ -32,6 +32,8 @@ import {
 // HTTP
 // ============================================================================
 
+const SITECORE = 'Sitecore Search';
+
 interface SitecoreCall {
   json: unknown;
   took: number;
@@ -42,7 +44,7 @@ interface SitecoreCall {
  * Build and send one discover request.
  *
  * @param facetAll - ask Sitecore for every facet configured on the widget
- * @throws Error with a readable message on network, HTTP or parse failure
+ * @throws ExternalSearchError with a readable message on network, HTTP or parse failure
  */
 async function callSitecore(
   connection: ExternalConnection,
@@ -76,7 +78,8 @@ async function callSitecore(
     });
     text = await response.text();
   } catch (error) {
-    throw new Error(
+    throw new ExternalSearchError(
+      SITECORE,
       (error as Error).name === 'TimeoutError'
         ? 'Sitecore Search request timed out'
         : `Network error connecting to Sitecore Search: ${(error as Error).message}`,
@@ -85,15 +88,19 @@ async function callSitecore(
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new Error('Sitecore Search rejected the request — check the API key');
+      throw new ExternalSearchError(SITECORE, 'Sitecore Search rejected the request — check the API key', response.status);
     }
-    throw new Error(`Sitecore Search returned HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`);
+    throw new ExternalSearchError(
+      SITECORE,
+      `Sitecore Search returned HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`,
+      response.status,
+    );
   }
 
   try {
     return { json: JSON.parse(text), took: Date.now() - start, unapplied };
   } catch {
-    throw new Error('Sitecore Search returned a non-JSON response');
+    throw new ExternalSearchError(SITECORE, 'Sitecore Search returned a non-JSON response');
   }
 }
 
@@ -103,7 +110,7 @@ async function callSitecore(
 
 export const sitecoreSearchConnector: ExternalSearchConnector = {
   provider: 'sitecore-search',
-  displayName: 'Sitecore Search',
+  displayName: SITECORE,
   capabilities: { facets: true, paging: true, sort: true, highlights: false },
 
   async search(

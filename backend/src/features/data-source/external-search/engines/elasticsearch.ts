@@ -16,7 +16,8 @@
 import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
 
 /** Outcome of one engine call: data on success, a readable error otherwise. */
-type OperationResult = { success: boolean; data?: unknown; error?: string };
+/** status: the HTTP status of a failed call, when the engine answered */
+type OperationResult = { success: boolean; data?: unknown; error?: string; status?: number };
 
 export interface ElasticsearchConfig {
   endpoint: string;
@@ -82,7 +83,11 @@ async function esSearchRequest(
       detail = await response.text().catch(() => '');
     }
     return {
-      error: { success: false, error: `Elasticsearch returned HTTP ${response.status}${detail ? `: ${detail}` : ''}` },
+      error: {
+        success: false,
+        error: `Elasticsearch returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
+        status: response.status,
+      },
     };
   }
 

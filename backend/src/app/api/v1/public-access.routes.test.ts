@@ -522,6 +522,30 @@ describe("an admin testing in the playground (signed in, on the slug route)", ()
     expect(visitor.status).toBe(503);
     expect(await visitor.json()).toMatchObject({ code: 'SOURCE_UNAVAILABLE', message: PUBLIC_FAILURE_MESSAGE });
   });
+
+  it("is told why an external source failed; a visitor isn't", async () => {
+    const { SearchError } = await import('@/features/search/search.types');
+    const { ExternalSearchError } = await import('@/features/data-source/external-search/external-search.types');
+    const rejected = () => new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE', {}, {
+      cause: new ExternalSearchError('Sitecore Search', 'Sitecore Search rejected the request — check the API key', 401),
+    });
+
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.executeExperienceSearch.mockRejectedValue(rejected());
+    const admin = await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'jeans' }), slugParams('catalog'));
+    const adminBody = await admin.json();
+    expect(adminBody).toMatchObject({ code: 'UPSTREAM_AUTH', message: 'Sitecore Search rejected the credentials.' });
+    expect(adminBody.hint).toMatch(/data source's connection settings/);
+
+    mocks.auth.mockResolvedValue(null);
+    mocks.executeExperienceSearch.mockRejectedValue(rejected());
+    const visitor = await ROUTES.find((r) => r.name === 'search by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const visitorBody = await visitor.json();
+    expect(visitorBody.message).toBe(PUBLIC_FAILURE_MESSAGE);
+    expect(visitorBody.hint).toBeUndefined();
+    expect(visitorBody.details).toBeUndefined();
+    expect(JSON.stringify(visitorBody)).not.toMatch(/sitecore/i);
+  });
 });
 
 describe('a document lookup where one index failed and another lacked the document', () => {

@@ -18,6 +18,7 @@ vi.mock('@/features/data-source/external-search/external-search.service', () => 
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { searchExternalSource } from '@/features/data-source/external-search/external-search.service';
+import { ExternalSearchError } from '@/features/data-source/external-search/external-search.types';
 import { SearchError } from '@/features/search/search.types';
 import { searchExternalSourceForExperience } from './external-source-search';
 import type { SearchExperienceExternalSourceWithDetails, SearchExperienceWithIndexes } from './search-experience.types';
@@ -72,6 +73,57 @@ describe('searchExternalSourceForExperience', () => {
     await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x' }, EXPERIENCE)).rejects.toMatchObject({
       code: 'SOURCE_UNAVAILABLE',
       status: 503,
+    });
+  });
+
+  // What the connectors throw when the engine answers with an error (ExternalSearchError)
+  const engineError = (status: number) =>
+    new ExternalSearchError('Elasticsearch', `Elasticsearch returned HTTP ${status}: failed to parse`, status);
+
+  it('keeps the engine error as the cause, for the explanation admins see', async () => {
+    const cause = engineError(401);
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(cause);
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x' }, EXPERIENCE)).rejects.toMatchObject({
+      code: 'SOURCE_UNAVAILABLE',
+      cause,
+    });
+  });
+
+  it('answers a filter the engine refused as a bad filter, not an outage', async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(engineError(400));
+    const filters = [{ field: 'rating', operator: 'gt' as const, value: 'abc' }];
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x', filters }, EXPERIENCE)).rejects.toMatchObject({
+      code: 'INVALID_FILTER',
+      status: 400,
+      message: "This search source can't filter on rating",
+    });
+  });
+
+  it('answers a sort the engine refused as a bad sort', async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(engineError(400));
+    const sort = [{ field: 'name', direction: 'asc' as const }];
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x', sort }, EXPERIENCE)).rejects.toMatchObject({
+      code: 'INVALID_SORT',
+      status: 400,
+      message: "This search source can't sort on name",
+    });
+  });
+
+  it('answers a refused request with both as a bad query', async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(engineError(400));
+    const filters = [{ field: 'rating', operator: 'gt' as const, value: 'abc' }];
+    const sort = [{ field: 'name', direction: 'asc' as const }];
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x', filters, sort }, EXPERIENCE)).rejects.toMatchObject({
+      code: 'INVALID_QUERY',
+      status: 400,
+      message: "This search source can't filter on rating or sort on name",
+    });
+  });
+
+  it('treats a 400 with no filter or sort as the source failing', async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(engineError(400));
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x' }, EXPERIENCE)).rejects.toMatchObject({
+      code: 'SOURCE_UNAVAILABLE',
     });
   });
 

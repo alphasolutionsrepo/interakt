@@ -179,3 +179,24 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         expect(err?.code).toBe('UPSTREAM_READ_ONLY');
     });
 });
+
+describe('classifyUpstream with an external search source', () => {
+    // What the external connectors throw (ExternalSearchError), matched by name
+    const external = (provider: string, message: string, status?: number) =>
+        Object.assign(new Error(message), { name: 'ExternalSearchError', provider, ...(status !== undefined && { status }) });
+    const unavailable = (cause: Error) =>
+        new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE', {}, { cause });
+
+    it('names the engine and points at the data source when it rejects the key', () => {
+        const err = classifyUpstream(unavailable(external('Sitecore Search', 'Sitecore Search returned HTTP 401: invalid key', 401)));
+        expect(err).toMatchObject({ code: 'UPSTREAM_AUTH', message: 'Sitecore Search rejected the credentials.' });
+        expect(err?.hint).toMatch(/data source/);
+        expect(err?.hint).not.toMatch(/deployment settings/);
+        expect(err?.details).toMatchObject({ provider: 'Sitecore Search', status: 401 });
+    });
+
+    it('says the engine could not be reached', () => {
+        const err = classifyUpstream(unavailable(external('Elasticsearch', 'Network error connecting to Elasticsearch: fetch failed')));
+        expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
+    });
+});

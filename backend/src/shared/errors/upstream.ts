@@ -7,8 +7,8 @@
  * stops being "Something went wrong".
  *
  * The provider is worked out from the error's shape anywhere in its cause chain:
- * Azure RestError, Elasticsearch meta.body, OpenAI-style status + error, or the
- * providerKey our AI adapters attach. Errors from anywhere else are not classified.
+ * Azure RestError, Elasticsearch meta.body, OpenAI-style status + error, the
+ * providerKey our AI adapters attach, or an external search source's ExternalSearchError. Errors from anywhere else are not classified.
  *
  * Everything returned is redacted and short: it ends up in the browser.
  */
@@ -34,7 +34,7 @@ export interface UpstreamDetails {
     message?: string;
 }
 
-type ProviderKind = 'search' | 'ai';
+type ProviderKind = 'search' | 'ai' | 'external';
 
 interface Provider {
     name: string;
@@ -57,6 +57,7 @@ const AI_PROVIDER_NAMES: Record<string, string> = {
 const SETTINGS: Record<ProviderKind, string> = {
     search: "the search service's endpoint and admin key in the deployment settings",
     ai: 'the provider under AI Providers',
+    external: "the data source's connection settings",
 };
 
 /** What each code tells the user. {provider} is the service's name; {settings} where to fix it. */
@@ -197,6 +198,8 @@ function findProvider(err: unknown): Provider | undefined {
             return { name: AI_PROVIDER_NAMES[e.providerKey] ?? e.providerKey, kind: 'ai', error: e };
         }
         if (e.name === 'RestError') return { name: 'Azure AI Search', kind: 'search', error: e };
+        // An external search source's engine (data-source/external-search)
+        if (e.name === 'ExternalSearchError' && typeof e.provider === 'string') return { name: e.provider, kind: 'external', error: e };
         if (isElasticsearchError(e)) return { name: 'Elasticsearch', kind: 'search', error: e };
         if (typeof e.status === 'number' && e.error !== undefined && typeof e.error === 'object') {
             return { name: 'The AI provider', kind: 'ai', error: e };
