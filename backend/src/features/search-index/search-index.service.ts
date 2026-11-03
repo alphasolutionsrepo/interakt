@@ -42,6 +42,7 @@ import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/sear
 import { requestIdFor } from '@/shared/api/request-id';
 import { NotFoundError } from '@/shared/errors/app-error';
 import { toAppError } from '@/shared/errors/to-app-error';
+import { scrub } from '@/shared/errors/upstream';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
@@ -1085,6 +1086,7 @@ export async function triggerReindex(
         }
 
         // Step 6: Write the prepared documents back
+        let written = { indexed: preparedDocs.length, failed: 0, firstError: undefined as string | undefined };
         if (preparedDocs.length > 0) {
             logger.info('Re-indexing documents', {
                 indexName,
@@ -1094,6 +1096,7 @@ export async function triggerReindex(
             const bulkDocs = preparedDocs;
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
+            written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error };
 
             if (bulkResult.failed > 0) {
                 logger.warn('Some documents failed to reindex', {
@@ -1135,18 +1138,14 @@ export async function triggerReindex(
             triggeredBy: userId,
         });
 
-        await recordLastJob(searchIndexId, {
-            kind: 'reindex',
-            status: 'succeeded',
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            summary: `${documents.length} documents reindexed`,
-        });
+        const outcome = reindexOutcome(written, startedAt);
+        await recordLastJob(searchIndexId, outcome);
 
         return {
             success: true,
-            documentCount: documents.length,
+            documentCount: written.indexed,
             durationMs,
+            outcome,
         };
 
     } catch (error) {
@@ -1204,6 +1203,20 @@ export interface ReindexResult {
     success: boolean;
     documentCount: number;
     durationMs: number;
+    /** How it ended, as recorded on the index: partial when some documents failed */
+    outcome: IndexLastJob;
+}
+
+/** How a reindex that finished ended: some documents failing to write back is partial */
+export function reindexOutcome(
+    written: { indexed: number; failed: number; firstError?: string },
+    startedAt: string
+): IndexLastJob {
+    const base = { kind: 'reindex' as const, startedAt, finishedAt: new Date().toISOString() };
+    if (written.failed === 0) return { ...base, status: 'succeeded', summary: `${written.indexed} documents reindexed` };
+    const total = written.indexed + written.failed;
+    const reason = written.firstError ? `: ${written.firstError}` : '';
+    return { ...base, status: 'partial', summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`) };
 }
 
 // ============================================================================

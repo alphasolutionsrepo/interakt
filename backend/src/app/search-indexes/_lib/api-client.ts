@@ -230,11 +230,11 @@ export const searchIndexesApi = {
      * Trigger reindex - performs full reindex of all documents
      * Returns the result with document count and duration
      */
-    triggerReindex: async (id: string): Promise<{ message: string; documentCount: number; durationMs: number }> => {
+    triggerReindex: async (id: string): Promise<ReindexResponse> => {
         const response = await fetch(`/api/search-indexes/${id}/reindex`, {
             method: 'POST',
         });
-        return handleApiResponse<{ message: string; documentCount: number; durationMs: number }>(response);
+        return handleApiResponse<ReindexResponse>(response);
     },
 
     /**
@@ -750,6 +750,14 @@ export const searchIndexFieldsApi = {
 // ============================================================================
 // Document Indexing API
 // ============================================================================
+
+/** A reindex that finished; outcome says how (partial when some documents failed) */
+export interface ReindexResponse {
+    message: string;
+    documentCount: number;
+    durationMs: number;
+    outcome?: IndexLastJob;
+}
 
 export interface IndexDocumentsResponse {
     success: boolean;

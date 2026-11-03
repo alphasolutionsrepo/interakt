@@ -547,9 +547,11 @@ export async function handleTriggerReindex(
         });
 
         return apiResponse.success({
-            message: 'Reindex completed successfully',
+            message: result.outcome.status === 'partial' ? 'Reindex finished with problems' : 'Reindex completed successfully',
             documentCount: result.documentCount,
             durationMs: result.durationMs,
+            // The Activity panel reads how it ended from here (partial is orange)
+            outcome: result.outcome,
         });
     } catch (error) {
         // apiResponse.error logs it and answers with the cause: not found, or what the search service said
