@@ -39,6 +39,12 @@ describe('a failed external search', () => {
     await expect(search(connector)).rejects.toMatchObject({ name: 'ExternalSearchError', provider: name, status: 401 });
   });
 
+  it('keeps the reason Elasticsearch gives at the root, not "all shards failed"', async () => {
+    const body = { error: { type: 'search_phase_execution_exception', reason: 'all shards failed', root_cause: [{ type: 'query_shard_exception', reason: 'No mapping found for [price] in order to sort on' }] } };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status: 400 })));
+    await expect(search(elasticsearchConnector)).rejects.toThrow('Elasticsearch returned HTTP 400: No mapping found for [price] in order to sort on');
+  });
+
   it.each(connectors)('$name keeps the engine when it could not be reached', async ({ name, connector }) => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
     const error = await search(connector).catch((e: unknown) => e);

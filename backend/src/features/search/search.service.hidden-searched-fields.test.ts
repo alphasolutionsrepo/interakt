@@ -2,10 +2,13 @@
 
 /**
  * search() validates each request before the engine sees it. A request option the validation
- * doesn't know is dropped there, so this runs the real search() and checks what the engine gets.
+ * doesn't know is dropped there, so this runs the real search() and checks what the engine gets,
+ * and what analytics records about the filters.
  */
 
 import { describe, it, expect, vi } from 'vitest';
+
+import { trackSearch } from '@/features/analytics';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/shared/logger/logger', () => ({
@@ -39,5 +42,24 @@ describe('search request options', () => {
     expect(engineSearch).toHaveBeenCalledWith(
       expect.objectContaining({ request: expect.objectContaining({ includeHiddenSearchedFields: true }) }),
     );
+  });
+});
+
+describe('filters recorded for analytics', () => {
+  // A group's own field is not filtered on; brand appears twice
+  const filters = [{
+    field: 'any', operator: 'or' as const,
+    filters: [{ field: 'brand', operator: 'eq' as const, value: 'x' }, { field: 'brand', operator: 'eq' as const, value: 'y' }],
+  }];
+
+  it('records each field once and counts every filter, after a search', async () => {
+    await searchById('idx', { query: 'shirt', filters });
+    expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ filterFields: ['brand'], filterCount: 2 });
+  });
+
+  it('counts every filter when the search fails', async () => {
+    engineSearch.mockRejectedValueOnce(new Error('engine down'));
+    await expect(searchById('idx', { query: 'shirt', filters })).rejects.toThrow();
+    expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ filterCount: 2, success: false });
   });
 });

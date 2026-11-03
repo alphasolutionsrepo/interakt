@@ -77,8 +77,9 @@ async function esSearchRequest(
   if (!response.ok) {
     let detail = '';
     try {
-      const errorBody = await response.json() as { error?: { reason?: string; type?: string } };
-      detail = errorBody?.error?.reason ?? errorBody?.error?.type ?? '';
+      // The root cause says what failed; the top-level reason is often just "all shards failed"
+      const errorBody = await response.json() as { error?: { reason?: string; type?: string; root_cause?: Array<{ reason?: string }> } };
+      detail = errorBody?.error?.root_cause?.[0]?.reason ?? errorBody?.error?.reason ?? errorBody?.error?.type ?? '';
     } catch {
       detail = await response.text().catch(() => '');
     }

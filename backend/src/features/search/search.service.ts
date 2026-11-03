@@ -23,6 +23,7 @@ import { trackSearch, type TriggerStep, type TriggerType } from '@/features/anal
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import type { AnalyticsSource } from '@/features/analytics/analytics.types';
 import { ATTR } from '@/features/telemetry';
+import { filterFields, leafFilters } from './filter-clauses';
 import { traceSearch } from './search.tracing';
 import type {
     SearchRequest,
@@ -278,8 +279,8 @@ export async function search(
             experienceSlug,
             queryText: validatedRequest.query,
             hasFilters: validatedRequest.filters && validatedRequest.filters.length > 0,
-            filterFields: extractFilterFields(validatedRequest.filters),
-            filterCount: countFilters(validatedRequest.filters),
+            filterFields: validatedRequest.filters?.length ? filterFields(validatedRequest.filters) : undefined,
+            filterCount: leafFilters(validatedRequest.filters).length,
             facetsRequested: validatedRequest.facets?.map(f => f.field),
             totalResults: response.total.value,
             resultsReturned: response.hits.length,
@@ -316,7 +317,7 @@ export async function search(
             experienceSlug,
             queryText: request.query ?? '',
             hasFilters: request.filters && request.filters.length > 0,
-            filterCount: countFilters(request.filters),
+            filterCount: leafFilters(request.filters).length,
             totalResults: 0,
             resultsReturned: 0,
             pageNumber: request.page ?? 1,
@@ -338,66 +339,6 @@ export async function search(
             { cause: error }
         );
     }
-}
-
-/**
- * Extract filter field names from filters array
- */
-function extractFilterFields(filters?: unknown[]): string[] | undefined {
-    if (!filters || filters.length === 0) return undefined;
-
-    const fields: string[] = [];
-
-    function extractFromClause(clause: unknown) {
-        if (!clause || typeof clause !== 'object') return;
-        const c = clause as Record<string, unknown>;
-
-        if (c.field && typeof c.field === 'string' && !['and', 'or', 'not'].includes(c.field)) {
-            fields.push(c.field);
-        }
-
-        if (Array.isArray(c.filters)) {
-            for (const nested of c.filters) {
-                extractFromClause(nested);
-            }
-        }
-    }
-
-    for (const filter of filters) {
-        extractFromClause(filter);
-    }
-
-    return fields.length > 0 ? [...new Set(fields)] : undefined;
-}
-
-/**
- * Count total filter conditions
- */
-function countFilters(filters?: unknown[]): number {
-    if (!filters || filters.length === 0) return 0;
-
-    let count = 0;
-
-    function countFromClause(clause: unknown) {
-        if (!clause || typeof clause !== 'object') return;
-        const c = clause as Record<string, unknown>;
-
-        if (c.field && typeof c.field === 'string' && !['and', 'or', 'not'].includes(c.field)) {
-            count++;
-        }
-
-        if (Array.isArray(c.filters)) {
-            for (const nested of c.filters) {
-                countFromClause(nested);
-            }
-        }
-    }
-
-    for (const filter of filters) {
-        countFromClause(filter);
-    }
-
-    return count;
 }
 
 /**

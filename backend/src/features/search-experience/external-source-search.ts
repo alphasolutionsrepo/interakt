@@ -14,49 +14,14 @@ import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { trackSearch } from '@/features/analytics';
 import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
 import { searchExternalSource } from '@/features/data-source/external-search/external-search.service';
-import { ExternalSearchError } from '@/features/data-source/external-search/external-search.types';
-import type { FilterClause, SearchRequest, SearchResponse } from '@/features/search/search.types';
+import { filterFields, leafFilters } from '@/features/search/filter-clauses';
+import type { SearchRequest, SearchResponse } from '@/features/search/search.types';
 import { SearchError } from '@/features/search/search.types';
 import { createLogger } from '@/shared/logger/logger';
+import { refusedRequest } from './external-refusal';
 import type { SearchExperienceExternalSourceWithDetails, SearchExperienceWithIndexes } from './search-experience.types';
 
 const logger = createLogger('external-source-search');
-
-function filterFields(filters: FilterClause[] | undefined): string[] {
-  const out: string[] = [];
-  for (const f of filters ?? []) {
-    if (f.filters?.length) out.push(...filterFields(f.filters));
-    else if (f.field) out.push(f.field);
-  }
-  return out;
-}
-
-/**
- * The engine refused the request (400) and it carried a filter or a sort: the caller's
- * to fix, so a 400 naming the fields rather than an outage. A 400 to a request with
- * neither is ours, and stays a failure of the source.
- */
-function refusedRequest(error: unknown, request: SearchRequest): SearchError | undefined {
-  if (!(error instanceof ExternalSearchError) || error.status !== 400) return undefined;
-  const filters = [...new Set(filterFields(request.filters))];
-  const sorts = [...new Set((request.sort ?? []).map((s) => s.field))];
-  const options = { cause: error };
-  if (filters.length > 0 && sorts.length > 0) {
-    return new SearchError(
-      `This search source can't filter on ${filters.join(', ')} or sort on ${sorts.join(', ')}`,
-      'INVALID_QUERY',
-      { fields: [...filters, ...sorts] },
-      options,
-    );
-  }
-  if (filters.length > 0) {
-    return new SearchError(`This search source can't filter on ${filters.join(', ')}`, 'INVALID_FILTER', { fields: filters }, options);
-  }
-  if (sorts.length > 0) {
-    return new SearchError(`This search source can't sort on ${sorts.join(', ')}`, 'INVALID_SORT', { fields: sorts }, options);
-  }
-  return undefined;
-}
 
 /**
  * Facetable fields of an external index, from its data source schema.
@@ -72,7 +37,7 @@ export function externalFacetableFields(fields: DataSourceField[]): DataSourceFi
  * belongs to another source in the same experience never reaches this engine.
  *
  * @throws SearchError('SOURCE_UNAVAILABLE') when the engine call fails, with the engine's
- *   error as the cause; INVALID_FILTER, INVALID_SORT or INVALID_QUERY when it refused them
+ *   error as the cause; INVALID_FILTER, INVALID_SORT or INVALID_QUERY when it refused the ones it names
  */
 export async function searchExternalSourceForExperience(
   source: SearchExperienceExternalSourceWithDetails,
@@ -102,7 +67,7 @@ export async function searchExternalSourceForExperience(
       queryText: request.query,
       hasFilters: !!request.filters?.length,
       filterFields: filterFields(request.filters),
-      filterCount: filterFields(request.filters).length,
+      filterCount: leafFilters(request.filters).length,
       facetsRequested: facets?.map((f) => f.field),
       totalResults: outcome.total,
       resultsReturned: outcome.returned,
@@ -175,7 +140,7 @@ export async function searchExternalSourceForExperience(
     if (error instanceof SearchError && error.code === 'INVALID_FILTER') throw error; // the refusal above
     const message = error instanceof Error ? error.message : String(error);
     track({ total: 0, returned: 0, error: message });
-    const refused = refusedRequest(error, request);
+    const refused = refusedRequest(error, request, fields);
     if (refused) {
       logger.warn('External index refused the request', { dataSourceId: source.dataSourceId, error: message });
       throw refused;

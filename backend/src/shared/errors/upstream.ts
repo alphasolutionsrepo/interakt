@@ -127,7 +127,9 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     // (an index name, PROVIDER_ERROR) would pick the wrong explanation
     const detail = toErrorDetail(provider.error);
     const serviceCode = aiServiceCode(err) ?? transportCode(err);
-    const code = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
+    const found = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
+    // External sources are only searched, never written: advice about the index definition doesn't apply
+    const code = provider.kind === 'external' && found === 'UPSTREAM_SCHEMA_MISMATCH' ? 'UPSTREAM_ERROR' : found;
     const copy = COPY[code];
     const fill = (text: string) => text.replaceAll('{provider}', provider.name).replaceAll('{settings}', SETTINGS[provider.kind]);
 

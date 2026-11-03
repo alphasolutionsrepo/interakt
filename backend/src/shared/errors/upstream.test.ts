@@ -195,6 +195,12 @@ describe('classifyUpstream with an external search source', () => {
         expect(err?.details).toMatchObject({ provider: 'Sitecore Search', status: 401 });
     });
 
+    it('does not give index-definition advice for a search it only reads', () => {
+        const err = classifyUpstream(unavailable(external('Elasticsearch', 'Elasticsearch returned HTTP 400: No mapping found for [title.keyword] in order to sort on', 400)));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Elasticsearch returned an error.' });
+        expect(err?.details).toMatchObject({ message: expect.stringMatching(/No mapping found/) });
+    });
+
     it('says the engine could not be reached', () => {
         const err = classifyUpstream(unavailable(external('Elasticsearch', 'Network error connecting to Elasticsearch: fetch failed')));
         expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
