@@ -284,13 +284,8 @@ export default function SearchIndexDetailPage() {
     }
   };
 
-  const handleReindex = async () => {
-    const result = await triggerReindex();
-    return {
-      documentCount: result.documentCount,
-      durationMs: result.durationMs,
-    };
-  };
+  // The whole result: the dialog shows a partial reindex from its outcome
+  const handleReindex = () => triggerReindex();
 
   if (isLoading) {
     return <DetailPageSkeleton />;
