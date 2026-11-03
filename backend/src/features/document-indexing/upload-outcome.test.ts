@@ -29,6 +29,11 @@ describe('uploadOutcome', () => {
         });
     });
 
+    it('says what to do when the search service refused the writes (a full disk)', () => {
+        const outcome = uploadOutcome(result(0, 1, ['index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];']), startedAt);
+        expect(outcome.error?.hint).toMatch(/disk space/);
+    });
+
     it('leaves out an empty reason', () => {
         expect(uploadOutcome(result(0, 1, ['']), startedAt).error?.message).toBe('None of the 1 documents were indexed');
     });

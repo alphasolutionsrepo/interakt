@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { reindexOutcome } from './search-index.service';
+import { reindexOutcome, reindexWriteFailure } from './search-index.service';
 
 const startedAt = '2026-11-02T10:00:00.000Z';
 
@@ -18,5 +18,29 @@ describe('reindexOutcome', () => {
             status: 'partial',
             summary: '5 of 7 documents reindexed, 2 failed: mapper_parsing_exception: failed to parse field [price]',
         });
+    });
+});
+
+describe('reindexWriteFailure', () => {
+    it('fails a reindex where nothing could be written back, with what to do about a full disk', () => {
+        const err = reindexWriteFailure({
+            indexed: 0, failed: 7,
+            firstError: 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];',
+        });
+        expect(err).toMatchObject({ code: 'REINDEX_FAILED', status: 502 });
+        expect(err?.message).toMatch(/^None of the 7 documents could be written back: index \[shop\] blocked by/);
+        expect(err?.hint).toMatch(/disk space/);
+    });
+
+    it('leaves a reindex that wrote something to the partial outcome', () => {
+        expect(reindexWriteFailure({ indexed: 1, failed: 6 })).toBeUndefined();
+        expect(reindexWriteFailure({ indexed: 0, failed: 0 })).toBeUndefined();
+    });
+
+    it('answers through the API with its own message and hint', async () => {
+        const { apiResponse } = await import('@/shared/api/response');
+        const body = await apiResponse.error(reindexWriteFailure({ indexed: 0, failed: 2, firstError: 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];' })).json();
+        expect(body).toMatchObject({ code: 'REINDEX_FAILED', message: expect.stringMatching(/could be written back/) });
+        expect(body.hint).toMatch(/read-only/);
     });
 });

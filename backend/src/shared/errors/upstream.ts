@@ -148,6 +148,20 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     });
 }
 
+/**
+ * The explanation for a search service's error text alone. Per-document errors from a
+ * bulk write arrive as text, not as an error (Elasticsearch answers the bulk request
+ * with 200 and puts a write block on each document). Undefined when the text isn't
+ * one we recognise.
+ */
+export function explainSearchServiceText(text: string): { code: UpstreamCode; message: string; hint?: string } | undefined {
+    const code = codeFor(undefined, text);
+    if (code === 'UPSTREAM_ERROR') return undefined;
+    const copy = COPY[code];
+    const fill = (t: string) => t.replaceAll('{provider}', 'The search service').replaceAll('{settings}', SETTINGS.search);
+    return { code, message: fill(copy.message), ...(copy.hint && { hint: fill(copy.hint) }) };
+}
+
 function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     const text = rawText.toLowerCase();
     // Elasticsearch blocks writes with a 403 (read-only index) or a 429 (disk full):

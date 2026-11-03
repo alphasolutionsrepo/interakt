@@ -534,6 +534,36 @@ describe('the AI summary for visitors (by token)', () => {
   });
 });
 
+describe('the AI summary routes with a value of the wrong type', () => {
+  it.each([
+    ['by token', () => summaryByToken(req('/api/v1/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', results: 'x' }))],
+    ['by slug', () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', results: 'x' }), slugParams('catalog'))],
+  ])('%s list the field in details', async (_name, call) => {
+    const res = await call();
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ code: 'VALIDATION_ERROR', requestId: expect.any(String) });
+    expect(body.details).toEqual([expect.objectContaining({ field: 'results' })]);
+  });
+});
+
+describe('the AI summary by slug when the AI provider fails', () => {
+  const providerError = () => Object.assign(new Error('401 Incorrect API key provided'), { name: 'AdapterError', providerKey: 'openai', statusCode: 401 });
+
+  it('tells the visitor plainly', async () => {
+    mocks.createSummaryStream.mockImplementation(() => { throw providerError(); });
+    const res = await summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY), slugParams('catalog'));
+    expect(await res.json()).toMatchObject({ code: 'UPSTREAM_AUTH', message: PUBLIC_FAILURE_MESSAGE });
+  });
+
+  it('explains it in full to an admin in the playground', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.createSummaryStream.mockImplementation(() => { throw providerError(); });
+    const res = await summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', {}, SUMMARY), slugParams('catalog'));
+    expect(await res.json()).toMatchObject({ code: 'UPSTREAM_AUTH', message: 'OpenAI rejected the credentials.' });
+  });
+});
+
 describe('input errors on the token search and autocomplete', () => {
   it.each([
     ['search by token', () => searchByToken(req('/api/v1/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', page: 'x' }))],

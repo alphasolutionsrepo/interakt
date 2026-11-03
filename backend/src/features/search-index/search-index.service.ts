@@ -40,9 +40,9 @@ import type {
  ChangeAIConfigDTO } from './search-index.validation';
 import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
 import { requestIdFor } from '@/shared/api/request-id';
-import { NotFoundError } from '@/shared/errors/app-error';
+import { AppError, NotFoundError } from '@/shared/errors/app-error';
 import { toAppError } from '@/shared/errors/to-app-error';
-import { scrub } from '@/shared/errors/upstream';
+import { explainSearchServiceText, scrub } from '@/shared/errors/upstream';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
@@ -1097,6 +1097,9 @@ export async function triggerReindex(
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
             written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error };
+            // Nothing went back in: the reindex failed (the index is now empty), not partly
+            const nothingWritten = reindexWriteFailure(written);
+            if (nothingWritten) throw nothingWritten;
 
             if (bulkResult.failed > 0) {
                 logger.warn('Some documents failed to reindex', {
@@ -1169,6 +1172,8 @@ export async function triggerReindex(
         });
         await clearIndexCache(searchIndexId, indexName);
 
+        // An error that already says what happened answers as it is
+        if (error instanceof AppError) throw error;
         throw new Error(`Reindex failed: ${errorMessage}`, { cause: error });
     }
 }
@@ -1205,6 +1210,21 @@ export interface ReindexResult {
     durationMs: number;
     /** How it ended, as recorded on the index: partial when some documents failed */
     outcome: IndexLastJob;
+}
+
+/**
+ * The error for a reindex where no document could be written back, with what to do
+ * when the search service's reason is one we recognise (a write block, a full disk)
+ */
+export function reindexWriteFailure(written: { indexed: number; failed: number; firstError?: string }): AppError | undefined {
+    if (written.indexed > 0 || written.failed === 0) return undefined;
+    const explained = written.firstError ? explainSearchServiceText(written.firstError) : undefined;
+    const reason = written.firstError ? `: ${written.firstError}` : '';
+    return new AppError(scrub(`None of the ${written.failed} documents could be written back${reason}`), {
+        code: 'REINDEX_FAILED',
+        status: 502,
+        ...(explained?.hint && { hint: explained.hint }),
+    });
 }
 
 /** How a reindex that finished ended: some documents failing to write back is partial */
