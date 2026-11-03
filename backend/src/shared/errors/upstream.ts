@@ -163,6 +163,18 @@ export function explainSearchServiceText(text: string): { code: UpstreamCode; me
     return { code, message: fill(copy.message), ...(copy.hint && { hint: fill(copy.hint) }) };
 }
 
+/**
+ * Why a write to a search service failed, and what to do: from the error that failed it
+ * (the service couldn't be reached, timed out) when we recognise it, else the service's
+ * own reason text, with a hint for write blocks. The raw error is still in the log.
+ */
+export function explainWriteFailure(writeError: unknown, reason: string | undefined): { reason?: string; hint?: string } {
+    const upstream = writeError !== undefined ? classifyUpstream(writeError) : undefined;
+    if (upstream) return { reason: upstream.message, ...(upstream.hint && { hint: upstream.hint }) };
+    const hint = reason ? explainSearchServiceText(reason)?.hint : undefined;
+    return { ...(reason && { reason }), ...(hint && { hint }) };
+}
+
 function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     const text = rawText.toLowerCase();
     // Elasticsearch blocks writes with a 403 (read-only index) or a 429 (disk full):

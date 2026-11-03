@@ -176,6 +176,11 @@ export interface BulkIndexResult {
     }>;
     /** Total operation time in milliseconds */
     took: number;
+    /**
+     * The error that failed a whole batch (the service couldn't be reached, timed out),
+     * so the caller can explain it. Its documents are in errors too, with its message.
+     */
+    writeError?: unknown;
 }
 
 /**

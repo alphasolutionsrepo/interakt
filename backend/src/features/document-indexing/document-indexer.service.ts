@@ -107,6 +107,11 @@ export interface IndexingResult {
     }>;
     durationMs: number;
     warnings: string[];
+    /**
+     * The error that failed the write (the search service couldn't be reached, timed
+     * out), so the outcome can explain it; its text is in errors too. Never sent as is.
+     */
+    writeError?: unknown;
 }
 
 // ============================================================================
@@ -784,6 +789,7 @@ export async function indexDocuments(
         // Index to Elasticsearch
         let indexed = 0;
         let indexFailed = 0;
+        let writeError: unknown;
 
         if (successfulDocs.length > 0) {
             logger.info('Indexing documents to search provider', {
@@ -799,6 +805,7 @@ export async function indexDocuments(
 
             indexed = bulkResult.indexed;
             indexFailed = bulkResult.failed;
+            writeError = bulkResult.writeError;
 
             // Add ES errors
             bulkResult.errors.forEach(err => {
@@ -847,6 +854,7 @@ export async function indexDocuments(
             errors: allErrors,
             durationMs,
             warnings,
+            ...(writeError !== undefined && { writeError }),
         };
 
     } catch (error) {
@@ -877,6 +885,7 @@ export async function indexDocuments(
             }],
             durationMs,
             warnings: [],
+            writeError: error,
         };
     }
 }

@@ -42,7 +42,7 @@ import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/sear
 import { requestIdFor } from '@/shared/api/request-id';
 import { AppError, NotFoundError } from '@/shared/errors/app-error';
 import { toAppError } from '@/shared/errors/to-app-error';
-import { explainSearchServiceText, scrub } from '@/shared/errors/upstream';
+import { explainWriteFailure, scrub } from '@/shared/errors/upstream';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
@@ -1086,7 +1086,7 @@ export async function triggerReindex(
         }
 
         // Step 6: Write the prepared documents back
-        let written = { indexed: preparedDocs.length, failed: 0, firstError: undefined as string | undefined };
+        let written: { indexed: number; failed: number; firstError?: string; writeError?: unknown } = { indexed: preparedDocs.length, failed: 0 };
         if (preparedDocs.length > 0) {
             logger.info('Re-indexing documents', {
                 indexName,
@@ -1096,7 +1096,7 @@ export async function triggerReindex(
             const bulkDocs = preparedDocs;
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
-            written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error };
+            written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error, writeError: bulkResult.writeError };
 
             if (bulkResult.failed > 0) {
                 logger.warn('Some documents failed to reindex', {
@@ -1216,16 +1216,18 @@ export interface ReindexResult {
 
 /**
  * The error for a reindex where no document could be written back, with what to do
- * when the search service's reason is one we recognise (a write block, a full disk)
+ * when the cause is one we recognise (the service down or timing out, a write block)
  */
-export function reindexWriteFailure(written: { indexed: number; failed: number; firstError?: string }): AppError | undefined {
+export function reindexWriteFailure(
+    written: { indexed: number; failed: number; firstError?: string; writeError?: unknown }
+): AppError | undefined {
     if (written.indexed > 0 || written.failed === 0) return undefined;
-    const explained = written.firstError ? explainSearchServiceText(written.firstError) : undefined;
-    const reason = written.firstError ? `: ${written.firstError}` : '';
+    const { reason: because, hint } = explainWriteFailure(written.writeError, written.firstError);
+    const reason = because ? `: ${because}` : '';
     return new AppError(scrub(`None of the ${written.failed} documents could be written back${reason}`), {
         code: 'REINDEX_FAILED',
         status: 502,
-        ...(explained?.hint && { hint: explained.hint }),
+        ...(hint && { hint }),
     });
 }
 

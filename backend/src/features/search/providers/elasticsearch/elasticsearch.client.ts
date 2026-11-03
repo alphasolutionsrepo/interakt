@@ -295,6 +295,11 @@ export interface BulkIndexResult {
         error: string;
     }>;
     took: number;
+    /**
+     * The error that failed a whole batch (the service couldn't be reached, timed out),
+     * so the caller can explain it. Its documents are in errors too, with its message.
+     */
+    writeError?: unknown;
 }
 
 export type BulkWriteAction = 'upload' | 'merge' | 'delete';
@@ -356,6 +361,7 @@ export async function bulkWrite(
     const allErrors: BulkIndexResult['errors'] = [];
     const counts: Record<BulkWriteAction, number> = { upload: 0, merge: 0, delete: 0 };
     const startTime = Date.now();
+    let writeError: unknown;
 
     // Process in batches
     for (let i = 0; i < operations.length; i += batchSize) {
@@ -404,6 +410,7 @@ export async function bulkWrite(
             });
 
             totalFailed += batch.length;
+            writeError ??= error;
             batch.forEach((_, batchIndex) => {
                 allErrors.push({
                     index: i + batchIndex,
@@ -431,6 +438,7 @@ export async function bulkWrite(
         errors: allErrors,
         counts,
         took,
+        ...(writeError !== undefined && { writeError }),
     };
 }
 

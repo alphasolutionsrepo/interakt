@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { AdapterError } from '@/features/ai-service/adapters/types';
 import { SearchError } from '@/features/search/search.types';
 
-import { classifyUpstream, scrub } from './upstream';
+import { classifyUpstream, explainWriteFailure, scrub } from './upstream';
 
 /** Shaped like @azure/core-rest-pipeline's RestError */
 function azureError(statusCode: number, message: string, code?: string) {
@@ -198,5 +198,36 @@ describe('classifyUpstream with an external search source', () => {
     it('says the engine could not be reached', () => {
         const err = classifyUpstream(unavailable(external('Elasticsearch', 'Network error connecting to Elasticsearch: fetch failed')));
         expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
+    });
+});
+
+describe('explainWriteFailure', () => {
+    const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+    const blockText = 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];';
+
+    it('explains the error that failed the write, in place of its text', () => {
+        const explained = explainWriteFailure(down, 'connect ECONNREFUSED 127.0.0.1:9200');
+        expect(explained.reason).toBe("Elasticsearch couldn't be reached.");
+        expect(explained.hint).toMatch(/running/);
+    });
+
+    it('keeps the service reason and adds the write-block hint', () => {
+        const explained = explainWriteFailure(undefined, blockText);
+        expect(explained.reason).toBe(blockText);
+        expect(explained.hint).toMatch(/read-only/);
+    });
+
+    it('keeps a reason it does not recognise, with no hint', () => {
+        expect(explainWriteFailure(undefined, 'mapper_parsing_exception: failed to parse field [price]')).toEqual({
+            reason: 'mapper_parsing_exception: failed to parse field [price]',
+        });
+    });
+
+    it('falls back to the reason when the error is not from a provider', () => {
+        expect(explainWriteFailure(new Error('boom'), 'boom')).toEqual({ reason: 'boom' });
+    });
+
+    it('has nothing to say without an error or a reason', () => {
+        expect(explainWriteFailure(undefined, undefined)).toEqual({});
     });
 });

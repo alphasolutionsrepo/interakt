@@ -2,6 +2,7 @@
 
 /** How an upload ended: nothing indexed failed, some documents rejected partial, all in succeeded */
 
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, expect, it } from 'vitest';
 
 import { uploadOutcome } from './upload-outcome';
@@ -32,6 +33,16 @@ describe('uploadOutcome', () => {
     it('says what to do when the search service refused the writes (a full disk)', () => {
         const outcome = uploadOutcome(result(0, 1, ['index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];']), startedAt);
         expect(outcome.error?.hint).toMatch(/disk space/);
+    });
+
+    it('explains a write that failed as a whole, from the error itself (the cluster is down)', () => {
+        const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        const outcome = uploadOutcome({ ...result(0, 2, ['', '']), writeError: down }, startedAt, 'upload.json');
+        expect(outcome).toMatchObject({
+            status: 'failed',
+            error: { code: 'INDEXING_FAILED', message: "None of the 2 documents from upload.json were indexed: Elasticsearch couldn't be reached." },
+        });
+        expect(outcome.error?.hint).toMatch(/running/);
     });
 
     it("gives no search-service hint for our own field mapping problems", () => {

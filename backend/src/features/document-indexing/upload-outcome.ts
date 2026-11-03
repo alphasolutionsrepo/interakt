@@ -5,7 +5,7 @@ import type { indexDocuments } from './document-indexer.service';
 import type { IndexLastJob } from '@/db/schema/search-index.schema';
 import { currentRequestId } from '@/shared/api/request-id';
 import { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
-import { explainSearchServiceText, scrub } from '@/shared/errors/upstream';
+import { explainWriteFailure, scrub } from '@/shared/errors/upstream';
 
 /**
  * How an upload ended, for the index page and the Activity panel. Nothing indexed is
@@ -31,17 +31,19 @@ export function uploadOutcome(
             summary: scrub(`${indexed}, ${result.failedDocuments} failed${reason ? `: ${reason}` : ''}`),
         };
     }
-    const explained = reason ? explainSearchServiceText(reason) : undefined;
+    // A write that failed as a whole is explained from its error (the search service
+    // couldn't be reached, timed out); otherwise from the search service's text
+    const { reason: because, hint } = explainWriteFailure(result.writeError, reason);
     return {
         ...base,
         status: 'failed',
         error: {
             code: 'INDEXING_FAILED',
             // What to do about it, when the search service's reason is one we recognise
-            ...(explained?.hint && { hint: explained.hint }),
+            ...(hint && { hint }),
             message: scrub(result.totalDocuments > 0
-                ? `None of the ${result.totalDocuments} documents${from} were indexed${reason ? `: ${reason}` : ''}`
-                : reason ?? 'No documents were indexed'),
+                ? `None of the ${result.totalDocuments} documents${from} were indexed${because ? `: ${because}` : ''}`
+                : because ?? 'No documents were indexed'),
             requestId: currentRequestId(),
         },
     };

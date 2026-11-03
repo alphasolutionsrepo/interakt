@@ -6,10 +6,11 @@
  * is empty). Storage, the search engine and the field config are stubbed.
  */
 
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
-    bulk: { success: true, indexed: 2, failed: 0, errors: [] as Array<{ index: number; error: string }>, took: 1 },
+    bulk: { success: true, indexed: 2, failed: 0, errors: [] as Array<{ index: number; error: string }>, took: 1 } as Record<string, unknown>,
     lastJobs: [] as Array<Record<string, unknown>>,
     updates: [] as Array<Record<string, unknown>>,
 }));
@@ -75,5 +76,14 @@ describe('triggerReindex', () => {
         expect((thrown as { hint?: string }).hint).toMatch(/read-only/);
         expect(state.updates.at(-1)).toMatchObject({ documentCount: 0 });
         expect(state.lastJobs.at(-1)).toMatchObject({ status: 'failed', error: { code: 'REINDEX_FAILED' } });
+    });
+
+    it('explains a write that failed as a whole, from the error itself (it timed out)', async () => {
+        const timedOut = new esErrors.TimeoutError('Request timed out', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        state.bulk = { success: false, indexed: 0, failed: 2, errors: [{ index: 0, error: 'Request timed out' }, { index: 1, error: 'Request timed out' }], took: 1, writeError: timedOut };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', message: "None of the 2 documents could be written back: Elasticsearch didn't respond in time." });
+        expect((thrown as { hint?: string }).hint).toMatch(/fewer documents/);
+        expect(state.lastJobs.at(-1)).toMatchObject({ status: 'failed', error: { code: 'REINDEX_FAILED', hint: expect.stringMatching(/fewer documents/) } });
     });
 });

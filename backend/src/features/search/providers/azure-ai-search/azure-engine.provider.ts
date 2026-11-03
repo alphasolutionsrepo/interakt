@@ -494,6 +494,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 errors: [{ index: 0, error: message }],
                 counts,
                 took: Date.now() - startTime,
+                writeError: error,
             };
         }
     }
