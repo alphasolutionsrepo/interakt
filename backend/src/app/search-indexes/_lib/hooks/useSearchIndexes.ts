@@ -222,6 +222,8 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: searchIndexKeys.detail(id) });
             queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            // A partial reindex gets its warning from the Activity panel (job outcome)
+            if (result.outcome?.status === 'partial') return;
             const duration = result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s` : '';
             toast.success('Reindex completed successfully', {
                 description: `${result.documentCount} documents reindexed${duration ? ` in ${duration}` : ''}`,

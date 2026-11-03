@@ -34,6 +34,11 @@ describe('uploadOutcome', () => {
         expect(outcome.error?.hint).toMatch(/disk space/);
     });
 
+    it("gives no search-service hint for our own field mapping problems", () => {
+        expect(uploadOutcome(result(0, 2, ['No source field configured']), startedAt).error?.hint).toBeUndefined();
+        expect(uploadOutcome(result(0, 1, ['Invalid field mapping for "price"']), startedAt).error?.hint).toBeUndefined();
+    });
+
     it('leaves out an empty reason', () => {
         expect(uploadOutcome(result(0, 1, ['']), startedAt).error?.message).toBe('None of the 1 documents were indexed');
     });

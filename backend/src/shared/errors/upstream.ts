@@ -149,14 +149,14 @@ export function classifyUpstream(err: unknown): AppError | undefined {
 }
 
 /**
- * The explanation for a search service's error text alone. Per-document errors from a
- * bulk write arrive as text, not as an error (Elasticsearch answers the bulk request
- * with 200 and puts a write block on each document). Undefined when the text isn't
- * one we recognise.
+ * The explanation for a write block in a search service's error text. Per-document
+ * errors from a bulk write arrive as text, not as an error (Elasticsearch answers the
+ * bulk request with 200 and puts the block on each document). Only write blocks: the
+ * same list holds our own field-mapping problems, which aren't the search service's.
  */
 export function explainSearchServiceText(text: string): { code: UpstreamCode; message: string; hint?: string } | undefined {
     const code = codeFor(undefined, text);
-    if (code === 'UPSTREAM_ERROR') return undefined;
+    if (code !== 'UPSTREAM_READ_ONLY') return undefined;
     const copy = COPY[code];
     const fill = (t: string) => t.replaceAll('{provider}', 'The search service').replaceAll('{settings}', SETTINGS.search);
     return { code, message: fill(copy.message), ...(copy.hint && { hint: fill(copy.hint) }) };

@@ -1097,9 +1097,6 @@ export async function triggerReindex(
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
             written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error };
-            // Nothing went back in: the reindex failed (the index is now empty), not partly
-            const nothingWritten = reindexWriteFailure(written);
-            if (nothingWritten) throw nothingWritten;
 
             if (bulkResult.failed > 0) {
                 logger.warn('Some documents failed to reindex', {
@@ -1115,6 +1112,11 @@ export async function triggerReindex(
                 documentCount: bulkResult.indexed,
                 lastIndexedAt: new Date(),
             });
+
+            // Nothing went back in: the reindex failed (the index is now empty, and its
+            // count says so), not partly
+            const nothingWritten = reindexWriteFailure(written);
+            if (nothingWritten) throw nothingWritten;
         }
 
         // Refresh index to make all docs searchable
