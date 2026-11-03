@@ -48,25 +48,16 @@ async function post(
     const baseExperience = await repository.getSearchExperienceBySlug(slug);
 
     if (!baseExperience) {
-      return NextResponse.json(
-        { success: false, error: 'Search experience not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
+      return apiResponse.notFound('Search experience not found');
     }
 
     if (!baseExperience.isActive) {
-      return NextResponse.json(
-        { success: false, error: 'Search experience is not active', code: 'INACTIVE' },
-        { status: 403 }
-      );
+      return apiResponse.error(new AppError('Search experience is not active', { code: 'INACTIVE', status: 403 }));
     }
 
     const experience = await repository.getSearchExperienceWithIndexes(baseExperience.id);
     if (!experience) {
-      return NextResponse.json(
-        { success: false, error: 'Search experience not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
+      return apiResponse.notFound('Search experience not found');
     }
 
     // 2. Authenticate: the experience's access token (real traffic) or an admin
@@ -74,10 +65,7 @@ async function post(
     //    analytics leaves out by default, and are not traced unless asked for.
     const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
     if (!caller) {
-      return refused ?? NextResponse.json(
-        { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
-        { status: 401 }
-      );
+      return refused ?? apiResponse.unauthorized('Unauthorized');
     }
     const isAdmin = caller === 'admin';
 

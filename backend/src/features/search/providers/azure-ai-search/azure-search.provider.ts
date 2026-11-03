@@ -30,6 +30,7 @@ import type {
 import type { GetDocumentResult } from '../search-engine-provider.interface';
 import { getSearchClient, checkAzureHealth } from './azure-client';
 import { buildAzureSearchOptions, type AzureSearchOptions } from './query-builders';
+import { lookupFailure } from '../search-engine-provider.interface';
 
 const logger = createLogger('azure-search-provider');
 
@@ -426,9 +427,9 @@ export class AzureSearchProvider implements SearchProvider {
             if ((error as { statusCode?: number } | null)?.statusCode === 404) {
                 return { found: false };
             }
-            const message = error instanceof Error ? error.message : 'Get document failed';
+            const message = lookupFailure(error, 'Get document failed');
             logger.error('Azure getDocument failed', { indexName, documentId, error: message });
-            return { found: false, error: message };
+            return { found: false, error: message, cause: error };
         }
     }
 

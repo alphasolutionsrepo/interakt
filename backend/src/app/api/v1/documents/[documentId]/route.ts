@@ -14,7 +14,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
-import { authenticateAccessToken, createCorsHeaders, handleCorsPreflight, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
+import { authenticateAccessToken, createCorsHeaders, handleCorsPreflight, withCors, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
+import { AppError } from '@/shared/errors/app-error';
 import * as searchService from '@/features/search/search.service';
 import { publicRoute } from '@/shared/api/public-route';
 
@@ -35,15 +36,13 @@ async function get(
     }
 
     const experience = authResult.experience;
+    const origin = request.headers.get('origin');
 
     // 2. Get active indexes
     const activeIndexes = experience.indexes.filter((idx) => idx.searchIndex.isActive);
 
     if (activeIndexes.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No active indexes configured', code: 'NO_INDEXES' },
-        { status: 400 }
-      );
+      return withCors(apiResponse.error(new AppError('No active indexes configured', { code: 'NO_INDEXES', status: 400 })), experience, origin);
     }
 
     // 3. Try to find document in each index
@@ -70,16 +69,14 @@ async function get(
       }
     }
 
-    // Every index failed: the search service is down, not the document missing
-    if (!document && failures.length === activeIndexes.length) {
-      return apiResponse.error(failures[0]);
+    // A lookup failed and no other index had it: it may be in the one that failed, so
+    // the answer is the failure, not "not found"
+    if (!document && failures.length > 0) {
+      return withCors(apiResponse.error(failures[0]), experience, origin);
     }
 
     if (!document) {
-      return NextResponse.json(
-        { success: false, error: 'Document not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
+      return withCors(apiResponse.notFound('Document not found'), experience, origin);
     }
 
     // 4. Return document with display config
@@ -100,7 +97,6 @@ async function get(
     });
 
     // Add CORS headers
-    const origin = request.headers.get('origin');
     const corsHeaders = createCorsHeaders(experience, origin);
 
     const jsonResponse = NextResponse.json({ success: true, data: response });

@@ -36,9 +36,11 @@ describe('AzureSearchProvider.getDocument', () => {
   });
 
   it('returns other failures as errors', async () => {
-    getDocument.mockRejectedValueOnce(Object.assign(new Error('Service Unavailable'), { statusCode: 503 }));
+    const unavailable = Object.assign(new Error('Service Unavailable'), { statusCode: 503 });
+    getDocument.mockRejectedValueOnce(unavailable);
 
-    expect(await provider.getDocument('products', 'PROD-1')).toEqual({ found: false, error: 'Service Unavailable' });
+    // With Azure's own error, so the API can explain it
+    expect(await provider.getDocument('products', 'PROD-1')).toEqual({ found: false, error: 'Service Unavailable', cause: unavailable });
   });
 
   it('returns the document when the key exists', async () => {

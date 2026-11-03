@@ -11,6 +11,7 @@ import { Client, type ClientOptions } from '@elastic/elasticsearch';
 import { elasticsearchConfig } from '@/config';
 import { createLogger } from '@/shared/logger/logger';
 import { EMBEDDING_FIELD_NAME } from './elasticsearch.constants';
+import { lookupFailure, type GetDocumentResult } from '../search-engine-provider.interface';
 
 const logger = createLogger('elasticsearch-client');
 
@@ -733,12 +734,7 @@ export async function fetchAllDocuments(
 // GET DOCUMENT BY ID
 // ============================================================================
 
-export interface GetDocumentResult {
-    found: boolean;
-    id?: string;
-    source?: Record<string, unknown>;
-    error?: string;
-}
+export type { GetDocumentResult };
 
 /**
  * Get a single document by ID
@@ -775,9 +771,9 @@ export async function getDocumentById(
             return { found: false };
         }
 
-        const message = error instanceof Error ? error.message : 'Failed to get document';
+        const message = lookupFailure(error, 'Failed to get document');
         logger.error('Failed to get document by ID', { indexName, documentId, error: message });
-        return { found: false, error: message };
+        return { found: false, error: message, cause: error };
     }
 }
 

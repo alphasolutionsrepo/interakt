@@ -23,6 +23,7 @@ import { registerProviderClass } from '../search-engine-provider.factory';
 import { buildAzureFilter } from './query-builders/filter.builder';
 import type { ProviderCapabilities } from '../provider-capabilities';
 import { SearchError, type FilterClause, type SearchContext } from '../../search.types';
+import { lookupFailure } from '../search-engine-provider.interface';
 
 import type {
     SearchEngineProvider,
@@ -716,8 +717,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
             if (error?.statusCode === 404) {
                 return { found: false, error: 'Document not found' };
             }
-            const message = error instanceof Error ? error.message : 'Failed to get document';
-            return { found: false, error: message };
+            return { found: false, error: lookupFailure(error, 'Failed to get document'), cause: error };
         }
     }
 

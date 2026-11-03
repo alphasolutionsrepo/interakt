@@ -29,6 +29,7 @@ import type {
     AutocompleteResult,
 } from '../search-provider.interface';
 import type { GetDocumentResult } from '../search-engine-provider.interface';
+import { lookupFailure } from '../search-engine-provider.interface';
 import {
     buildSearchBody,
     buildLexicalSearchBody,
@@ -282,9 +283,9 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                 return { found: false };
             }
 
-            const message = error instanceof Error ? error.message : 'Failed to get document';
+            const message = lookupFailure(error, 'Failed to get document');
             logger.error('Failed to get document by ID', { indexName, documentId, error: message });
-            return { found: false, error: message };
+            return { found: false, error: message, cause: error };
         }
     }
 

@@ -849,7 +849,7 @@ export async function getDocumentById(
 
         if (!result.found) {
             if (result.error) {
-                throw new Error(result.error);
+                throw new Error(result.error, { cause: result.cause });
             }
             return null;
         }

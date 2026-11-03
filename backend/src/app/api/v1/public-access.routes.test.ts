@@ -506,6 +506,58 @@ describe("an admin testing in the playground (signed in, on the slug route)", ()
   });
 });
 
+describe('a document lookup where one index failed and another lacked the document', () => {
+  it('answers with the failure, since the document may be in the index that failed, with CORS', async () => {
+    mocks.getSearchExperienceByAccessToken.mockResolvedValue({
+      ...searchExperience,
+      indexes: [{ searchIndexId: 'i1', searchIndex: { isActive: true } }, { searchIndexId: 'i2', searchIndex: { isActive: true } }],
+    });
+    mocks.getDocumentByIdFromIndex.mockResolvedValueOnce(null).mockRejectedValueOnce(await down());
+    const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+    expect((await res.json()).requestId).toEqual(expect.any(String));
+  });
+});
+
+describe('the AI summary for visitors (by token)', () => {
+  it('tells the visitor plainly when the AI provider fails, with a request id and CORS', async () => {
+    const providerError = Object.assign(new Error('401 Incorrect API key provided: sk-proj-abcdefghijklmnopqrstuvwxyz123456'), { name: 'AdapterError', providerKey: 'openai', statusCode: 401 });
+    mocks.createSummaryStream.mockImplementation(() => { throw providerError; });
+    const res = await ROUTES.find((r) => r.name === 'AI summary by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const body = await res.json();
+    expect(res.status).toBe(502);
+    expect(body).toMatchObject({ code: 'UPSTREAM_AUTH', message: PUBLIC_FAILURE_MESSAGE });
+    expect(body.requestId).toEqual(expect.any(String));
+    expect(JSON.stringify(body)).not.toMatch(/sk-proj|OpenAI/);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+  });
+});
+
+describe('input errors on the token search and autocomplete', () => {
+  it.each([
+    ['search by token', () => searchByToken(req('/api/v1/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', page: 'x' }))],
+    ['autocomplete', () => autocomplete(req('/api/v1/autocomplete', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 42 }))],
+  ])('%s list the field in details, with CORS', async (_name, call) => {
+    const res = await call();
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('VALIDATION_ERROR');
+    expect(body.details).toEqual(body.fields);
+    expect(body.details.length).toBeGreaterThan(0);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+  });
+});
+
+describe('a search experience that does not exist', () => {
+  it('answers in the shared shape, with a request id', async () => {
+    mocks.getSearchExperienceBySlug.mockResolvedValue(null);
+    const res = await searchBySlug(req('/api/v1/search/nope/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans' }), slugParams('nope'));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: 'NOT_FOUND', message: 'Search experience not found', requestId: expect.any(String) });
+  });
+});
+
 describe('a document that is not in any index', () => {
   it('is still not found when the lookups worked', async () => {
     mocks.getDocumentByIdFromIndex.mockResolvedValue(null);

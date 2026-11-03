@@ -22,6 +22,7 @@ import {
   authenticateAccessToken,
   createCorsHeaders,
   handleCorsPreflight,
+  withCors,
 } from './access-token.middleware';
 import { publicSearchRequestSchema, autocompleteRequestSchema } from './search-experience.schemas';
 import type {
@@ -129,14 +130,6 @@ function handleSearchError(
   // A search error answers with its own status (SEARCH_ERROR_STATUS); a server failure
   // gets the plain public message and a request id (apiResponse)
   return withCors(apiResponse.error(error), experience, origin);
-}
-
-/**
- * An error response with the experience's CORS headers, so the widget can read it
- */
-function withCors(response: NextResponse, experience: SearchExperienceWithIndexes, origin: string | null): NextResponse {
-  createCorsHeaders(experience, origin).forEach((value, key) => response.headers.set(key, value));
-  return response;
 }
 
 // ============================================================================
