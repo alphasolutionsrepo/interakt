@@ -120,3 +120,34 @@ describe('cancelling a summary', () => {
     expect(log.error).not.toHaveBeenCalled();
   });
 });
+
+describe('a summary the model fails to write', () => {
+  const failingModel = async () => {
+    const ai = await import('@/features/ai-service/ai-service.service');
+    vi.spyOn(ai, 'streamChat').mockImplementationOnce(async function* () {
+      throw Object.assign(new Error('401 Incorrect API key provided: sk-proj-abcdefghijklmnopqrstuvwxyz123456'), { name: 'AdapterError', providerKey: 'openai', statusCode: 401 });
+    } as never);
+  };
+  const errorEvent = async () => {
+    const reader = createSummaryStream(experience, request).getReader();
+    let text = '';
+    for (let r = await reader.read(); !r.done; r = await reader.read()) text += new TextDecoder().decode(r.value);
+    await span.settled?.catch(() => undefined);
+    const line = text.split('\n').find((l) => l.includes('"type":"error"'))!;
+    return JSON.parse(line.slice(line.indexOf('{')));
+  };
+
+  it('tells a visitor plainly, with a request id, and nothing of the provider', async () => {
+    await failingModel();
+    const { publicRoute } = await import('@/shared/api/public-route');
+    const { PUBLIC_FAILURE_MESSAGE } = await import('@/shared/api/response');
+    const event = await publicRoute(errorEvent)();
+    expect(event).toMatchObject({ type: 'error', code: 'UPSTREAM_AUTH', error: PUBLIC_FAILURE_MESSAGE, requestId: expect.any(String) });
+    expect(JSON.stringify(event)).not.toMatch(/sk-proj|OpenAI/);
+  });
+
+  it('explains it to an admin', async () => {
+    await failingModel();
+    expect(await errorEvent()).toMatchObject({ type: 'error', code: 'UPSTREAM_AUTH', error: 'OpenAI rejected the credentials.' });
+  });
+});

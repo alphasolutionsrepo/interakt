@@ -58,6 +58,10 @@ interface ErrorBody {
 export const PUBLIC_FAILURE_MESSAGE = 'The service is temporarily unavailable. Try again in a moment.';
 
 function errorResponse(body: ErrorBody, status: number, requestId: string = currentRequestId()): NextResponse<APIErrorResponse> {
+    return NextResponse.json(errorPayload(body, status, requestId), { status });
+}
+
+function errorPayload(body: ErrorBody, status: number, requestId: string): APIErrorResponse {
     const publicRequest = isPublicRequest();
     // Visitors of the widget and API clients don't get to see which service failed or how:
     // not its name, its hint or its details. The code and request id are kept for support.
@@ -65,19 +69,16 @@ function errorResponse(body: ErrorBody, status: number, requestId: string = curr
     const message = internal ? PUBLIC_FAILURE_MESSAGE : body.message;
     // The public API documents per-field problems as details (OpenAPI ErrorResponse)
     const details = body.details ?? (publicRequest && body.fields?.length ? body.fields : undefined);
-    return NextResponse.json(
-        {
-            success: false as const,
-            code: body.code,
-            message,
-            error: message,
-            ...(body.hint && !internal && { hint: body.hint }),
-            ...(body.fields?.length && { fields: body.fields }),
-            ...(details !== undefined && !internal && { details }),
-            requestId,
-        },
-        { status }
-    );
+    return {
+        success: false as const,
+        code: body.code,
+        message,
+        error: message,
+        ...(body.hint && !internal && { hint: body.hint }),
+        ...(body.fields?.length && { fields: body.fields }),
+        ...(details !== undefined && !internal && { details }),
+        requestId,
+    };
 }
 
 /**
@@ -123,12 +124,21 @@ function successWithPagination<T>(
  * status is used when the error doesn't carry one of its own.
  */
 function error(err: unknown, status: number = 500): NextResponse<APIErrorResponse> {
+    const described = describeError(err, status);
+    return NextResponse.json(described.body, { status: described.status });
+}
+
+/**
+ * The error body and status apiResponse.error answers with, logged the same way, for
+ * answers that aren't a JSON response of their own (an error event in a stream).
+ */
+export function describeError(err: unknown, status: number = 500): { status: number; body: APIErrorResponse } {
     // The same id the failure was recorded with elsewhere (a job on the index)
     const requestId = typeof err === 'string' ? currentRequestId() : requestIdFor(err);
 
     if (typeof err === 'string') {
         if (status >= 500) logger.error(err, undefined, { requestId });
-        return errorResponse({ code: codeForStatus(status), message: err }, status, requestId);
+        return { status, body: errorPayload({ code: codeForStatus(status), message: err }, status, requestId) };
     }
 
     const appError = toAppError(err);
@@ -149,17 +159,20 @@ function error(err: unknown, status: number = 500): NextResponse<APIErrorRespons
         logger.warn('Request rejected', { requestId, code: appError.code, message });
     }
 
-    return errorResponse(
-        {
-            code: recognised ? appError.code : codeForStatus(finalStatus),
-            message,
-            hint: appError.hint,
-            fields: appError.fields,
-            details: appError.details,
-        },
-        finalStatus,
-        requestId
-    );
+    return {
+        status: finalStatus,
+        body: errorPayload(
+            {
+                code: recognised ? appError.code : codeForStatus(finalStatus),
+                message,
+                hint: appError.hint,
+                fields: appError.fields,
+                details: appError.details,
+            },
+            finalStatus,
+            requestId
+        ),
+    };
 }
 
 /**
