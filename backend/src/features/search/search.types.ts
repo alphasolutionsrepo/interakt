@@ -486,7 +486,21 @@ export interface ProviderHit {
 /**
  * Search error with details
  */
+/** Marks a SearchError from any copy of this module (Symbol.for is shared across bundles) */
+const SEARCH_ERROR = Symbol.for('interakt.SearchError');
+
 export class SearchError extends Error {
+    readonly [SEARCH_ERROR] = true;
+
+    /**
+     * Next.js bundles instrumentation, which registers the search providers, apart from
+     * the routes: a provider's SearchError comes from another copy of this class. Checking
+     * the mark instead of the prototype keeps instanceof true for it.
+     */
+    static [Symbol.hasInstance](value: unknown): boolean {
+        return typeof value === 'object' && value !== null && (value as Record<symbol, unknown>)[SEARCH_ERROR] === true;
+    }
+
     constructor(
         message: string,
         public code: SearchErrorCode,

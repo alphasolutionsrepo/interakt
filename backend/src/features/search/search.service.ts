@@ -325,7 +325,7 @@ export async function search(
             embeddingDurationMs,
             success: false,
             errorCode: error instanceof SearchError ? error.code : 'UNKNOWN_ERROR',
-            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            errorMessage: failureMessage(error),
         }, experienceId);
 
         if (error instanceof SearchError) {
@@ -485,6 +485,16 @@ async function getQueryEmbedding(
             { cause: error }
         );
     }
+}
+
+/**
+ * For the failure record: what the caller was told, and what the engine said when that
+ * was put in the caller's terms ("abc" isn't a valid value for rating)
+ */
+function failureMessage(error: unknown): string {
+    if (!(error instanceof Error)) return 'Unknown error';
+    const said = error.cause instanceof Error ? error.cause.message : undefined;
+    return said && said !== error.message ? `${error.message} (${said})` : error.message;
 }
 
 // ============================================================================

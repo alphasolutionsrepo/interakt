@@ -20,6 +20,7 @@ import type {
     ProviderHit,
     TotalHits,
 } from '../../search.types';
+import { refusedOrFailed } from '../../request-refusal';
 import { SearchError } from '../../search.types';
 import type {
     SearchProvider,
@@ -153,7 +154,11 @@ export class ElasticsearchSearchProvider implements SearchProvider {
             });
 
             if (error instanceof SearchError) {
-                throw error;
+                // A refused search (400) answers as the filter or sort to fix, or as a failure.
+                // Text fields are filtered through .keyword, so either name may be the one given.
+                throw error.code === 'INVALID_QUERY'
+                    ? refusedOrFailed(error.message, searchRequest, (field) => [field, `${field}.keyword`], error, error.details)
+                    : error;
             }
 
             throw new SearchError(
@@ -613,19 +618,17 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                            this.isSearchPhaseExecutionError(error) ? 'SEARCH_PHASE_ERROR' : 'UNKNOWN',
             });
 
-            if (this.isIndexNotFoundError(error)) {
-                throw new SearchError(
-                    `Index "${indexName}" not found`,
-                    'INDEX_NOT_FOUND',
-                    { indexName }
-                );
-            }
+            // An index that is gone is not the caller's doing: it stays a failure (the
+            // engine's error goes along as the cause), and its name stays out of the API response
 
-            if (this.isSearchPhaseExecutionError(error)) {
+            // Only a 400 is the request's doing: shards that failed or timed out (503) are
+            // the cluster's, and stay a failure
+            if (this.isSearchPhaseExecutionError(error) && statusCodeOf(error) === 400) {
                 throw new SearchError(
                     this.extractSearchError(error),
                     'INVALID_QUERY',
-                    { indexName }
+                    { indexName },
+                    { cause: error }
                 );
             }
 
@@ -679,9 +682,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
      * Check if error is index not found
      */
     private isIndexNotFoundError(error: unknown): boolean {
-        if (!error || typeof error !== 'object') return false;
-        const meta = (error as { meta?: { statusCode?: number } }).meta;
-        return meta?.statusCode === 404;
+        return statusCodeOf(error) === 404;
     }
 
     /**
@@ -708,6 +709,11 @@ export class ElasticsearchSearchProvider implements SearchProvider {
         const message = (error as { message?: string }).message;
         return message || 'Search failed';
     }
+}
+
+/** The HTTP status Elasticsearch answered with, from the client's error */
+function statusCodeOf(error: unknown): number | undefined {
+    return (error as { meta?: { statusCode?: number } } | undefined)?.meta?.statusCode;
 }
 
 // ============================================================================

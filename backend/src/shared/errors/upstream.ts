@@ -128,8 +128,10 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     const detail = toErrorDetail(provider.error);
     const serviceCode = aiServiceCode(err) ?? transportCode(err);
     const found = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
-    // External sources are only searched, never written: advice about the index definition doesn't apply
-    const code = provider.kind === 'external' && found === 'UPSTREAM_SCHEMA_MISMATCH' ? 'UPSTREAM_ERROR' : found;
+    // Advice about the index definition is for writes, never for a search: external sources
+    // are only searched, and Elasticsearch names a refused search search_phase_execution_exception
+    const searched = provider.kind === 'external' || /search_phase_execution_exception/.test(detail.message);
+    const code = searched && found === 'UPSTREAM_SCHEMA_MISMATCH' ? 'UPSTREAM_ERROR' : found;
     const copy = COPY[code];
     const fill = (text: string) => text.replaceAll('{provider}', provider.name).replaceAll('{settings}', SETTINGS[provider.kind]);
 
@@ -263,6 +265,9 @@ function upstreamMessage(err: unknown, body: unknown): string {
     if (body && typeof body === 'object') {
         const b = body as Record<string, unknown>;
         const inner = (b.error && typeof b.error === 'object' ? b.error : b) as Record<string, unknown>;
+        // Elasticsearch's root cause says what failed; its top-level reason is often "all shards failed"
+        const rootCause = Array.isArray(inner.root_cause) ? (inner.root_cause[0] as Record<string, unknown> | undefined)?.reason : undefined;
+        if (typeof rootCause === 'string') return rootCause;
         for (const key of ['message', 'reason']) {
             if (typeof inner[key] === 'string') return inner[key] as string;
         }

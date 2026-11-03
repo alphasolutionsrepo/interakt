@@ -19,6 +19,7 @@ import type {
     ProviderHit,
     TotalHits,
 } from '../../search.types';
+import { refusedOrFailed } from '../../request-refusal';
 import { SearchError } from '../../search.types';
 import type {
     SearchProvider,
@@ -227,10 +228,13 @@ export class AzureSearchProvider implements SearchProvider {
                 throw error;
             }
 
-            throw new SearchError(errorMessage, 'PROVIDER_ERROR', {
-                provider: 'azure-ai-search',
-                indexName: context.indexName,
-            }, { cause: error });
+            const details = { provider: 'azure-ai-search', indexName: context.indexName };
+            // A refused search (400) answers as the filter or sort to fix, or as a failure
+            if ((error as { statusCode?: number } | undefined)?.statusCode === 400) {
+                throw refusedOrFailed(errorMessage, searchRequest, (field) => [field], error, details);
+            }
+
+            throw new SearchError(errorMessage, 'PROVIDER_ERROR', details, { cause: error });
         }
     }
 

@@ -111,8 +111,16 @@ describe('searchExternalSourceForExperience', () => {
     });
   });
 
+  it('answers paging past the result window as the page to change', async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(engineError(400, 'Result window is too large, from + size must be less than or equal to: [10000] but was [10020].'));
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x', page: 501 }, EXPERIENCE)).rejects.toMatchObject({
+      code: 'INVALID_QUERY',
+      status: 400,
+    });
+  });
+
   it('treats a 400 that names no filter or sort as the source failing', async () => {
-    vi.mocked(searchExternalSource).mockRejectedValueOnce(engineError(400, 'Result window is too large'));
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(engineError(400, 'the query vector has a different number of dimensions [768] than the document vectors [1536]'));
     await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x', filters: ratingAbove }, EXPERIENCE)).rejects.toMatchObject({
       code: 'SOURCE_UNAVAILABLE',
     });

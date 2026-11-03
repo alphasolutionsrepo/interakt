@@ -34,6 +34,7 @@ vi.mock('./providers', () => {
 });
 
 import { searchById } from './search.service';
+import { SearchError } from './search.types';
 
 describe('search request options', () => {
   it('passes a request for hidden searched fields on to the engine', async () => {
@@ -63,3 +64,32 @@ describe('filters recorded for analytics', () => {
     expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ filterCount: 2, success: false });
   });
 });
+
+describe('a search the engine refused', () => {
+  it('passes on a SearchError from the providers\' own copy of the class, not a server error', async () => {
+    // Providers are registered from the instrumentation bundle, with its own SearchError
+    class OtherCopy extends Error {
+      code = 'INVALID_FILTER';
+      constructor(message: string) {
+        super(message);
+        Object.assign(this, { [Symbol.for('interakt.SearchError')]: true });
+      }
+    }
+    const refused = new OtherCopy('"abc" isn\'t a valid value for rating');
+    engineSearch.mockRejectedValueOnce(refused);
+
+    await expect(searchById('idx', { query: 'shirt' })).rejects.toBe(refused);
+    expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ errorCode: 'INVALID_FILTER' });
+  });
+
+  it('records what the engine said next to what the caller was told', async () => {
+    const said = new SearchError('failed to create query: For input string: "abc"', 'INVALID_QUERY');
+    engineSearch.mockRejectedValueOnce(new SearchError('"abc" isn\'t a valid value for rating', 'INVALID_FILTER', {}, { cause: said }));
+
+    await expect(searchById('idx', { query: 'shirt' })).rejects.toThrow();
+    expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({
+      errorMessage: '"abc" isn\'t a valid value for rating (failed to create query: For input string: "abc")',
+    });
+  });
+});
+

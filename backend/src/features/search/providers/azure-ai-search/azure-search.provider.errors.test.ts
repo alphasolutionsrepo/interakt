@@ -33,4 +33,28 @@ describe('Azure AI Search failures', () => {
         expect(thrown).toBeInstanceOf(SearchError);
         expect((thrown as SearchError).cause).toBe(restError);
     });
+
+    describe('a search Azure AI Search refuses (400)', () => {
+        const refusal = (message: string) => Object.assign(new Error(message), { name: 'RestError', statusCode: 400 });
+        const search = (request: Record<string, unknown>) => new AzureSearchProvider()
+            .search({
+                context: { indexName: 'products', searchableFields: [], defaultResponseFields: [], facetableFields: [], allFields: new Map() },
+                request: { query: 'shirt', ...request },
+                searchType: 'lexical',
+            } as never)
+            .catch((e: unknown) => e);
+
+        it('names the filter it could not apply, as Elasticsearch does', async () => {
+            azure.error = refusal("Invalid expression: Could not find a property named 'colour' on type 'search.document'.");
+            const thrown = await search({ filters: [{ field: 'colour', operator: 'eq', value: 'red' }] });
+            expect(thrown).toMatchObject({ code: 'INVALID_FILTER', status: 400, details: { fields: ['colour'] } });
+        });
+
+        it('answers a refusal that names nothing in the request as a failure, keeping the cause', async () => {
+            const error = refusal("Invalid expression: A binary operator with incompatible types was detected. Found operand types 'Edm.Double' and 'Edm.String'.");
+            azure.error = error;
+            const thrown = await search({ filters: [{ field: 'rating', operator: 'gt', value: 4 }] });
+            expect(thrown).toMatchObject({ code: 'PROVIDER_ERROR', cause: error });
+        });
+    });
 });

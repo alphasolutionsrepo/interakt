@@ -180,6 +180,33 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
     });
 });
 
+describe('classifyUpstream with a search Elasticsearch refused', () => {
+    // The real client error: the message names the exception, the body has the root cause
+    const refused = Object.assign(
+        new esErrors.ResponseError({
+            body: {
+                error: {
+                    type: 'search_phase_execution_exception',
+                    reason: 'all shards failed',
+                    root_cause: [{ type: 'illegal_argument_exception', reason: 'Result window is too large, from + size must be less than or equal to: [10000] but was [12000].' }],
+                },
+                status: 400,
+            },
+            statusCode: 400, headers: {}, meta: {} as never, warnings: null,
+        } as never),
+    );
+
+    it('says what failed at the root, not "all shards failed"', () => {
+        const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', {}, { cause: refused }));
+        expect(err?.details).toMatchObject({ provider: 'Elasticsearch', status: 400, message: expect.stringMatching(/^Result window is too large/) });
+    });
+
+    it('does not give index-definition advice for a search', () => {
+        const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', {}, { cause: refused }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Elasticsearch returned an error.' });
+    });
+});
+
 describe('classifyUpstream with an external search source', () => {
     // What the external connectors throw (ExternalSearchError), matched by name
     const external = (provider: string, message: string, status?: number) =>
