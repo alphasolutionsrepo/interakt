@@ -31,6 +31,8 @@ describe('toAppError', () => {
         expect(toAppError(new SearchError('At least one filter clause is required', 'INVALID_FILTER'))).toMatchObject({ code: 'INVALID_FILTER', status: 400 });
         expect(toAppError(new SearchError('Search index "shop" is not active', 'INDEX_NOT_READY')))
             .toMatchObject({ code: 'INDEX_NOT_READY', status: 503, message: 'Search index "shop" is not active' });
+        expect(toAppError(new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE')))
+            .toMatchObject({ code: 'SOURCE_UNAVAILABLE', status: 503, message: 'An external search source is unavailable' });
 
         const provider = Object.assign(new Error('Unsupported AI provider: foo'), { name: 'AIServiceError', code: 'PROVIDER_NOT_FOUND' });
         expect(toAppError(provider)).toMatchObject({ code: 'PROVIDER_NOT_FOUND', status: 400 });

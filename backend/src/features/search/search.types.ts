@@ -516,6 +516,7 @@ export type SearchErrorCode =
     | 'FIELD_NOT_FACETABLE'
     | 'EMBEDDING_FAILED'
     | 'PROVIDER_ERROR'
+    | 'SOURCE_UNAVAILABLE'
     | 'TIMEOUT';
 
 /**
@@ -535,6 +536,8 @@ export const SEARCH_ERROR_STATUS: Record<SearchErrorCode, number> = {
     FIELD_NOT_FACETABLE: 400,
     EMBEDDING_FAILED: 503,
     PROVIDER_ERROR: 503,
+    // An external search source failed; the message is ours, so it is kept for admins
+    SOURCE_UNAVAILABLE: 503,
     TIMEOUT: 504,
 };
 

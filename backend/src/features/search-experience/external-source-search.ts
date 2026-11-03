@@ -43,7 +43,7 @@ export function externalFacetableFields(fields: DataSourceField[]): DataSourceFi
  * Facets are requested only for fields the source marks facetable, so a facet that
  * belongs to another source in the same experience never reaches this engine.
  *
- * @throws SearchError('PROVIDER_ERROR') when the engine call fails
+ * @throws SearchError('SOURCE_UNAVAILABLE') when the engine call fails
  */
 export async function searchExternalSourceForExperience(
   source: SearchExperienceExternalSourceWithDetails,
@@ -153,7 +153,7 @@ export async function searchExternalSourceForExperience(
       dataSourceId: source.dataSourceId,
       error: message,
     });
-    throw new SearchError('An external search source is unavailable', 'PROVIDER_ERROR');
+    throw new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE');
   }
 
   if (result.unappliedSort.length > 0) {

@@ -504,6 +504,24 @@ describe("an admin testing in the playground (signed in, on the slug route)", ()
     expect(body).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
     expect(body.hint).toMatch(/running/);
   });
+
+  it('is told an external source is unavailable; a visitor gets the plain message', async () => {
+    const { SearchError } = await import('@/features/search/search.types');
+    // What searchExternalSourceForExperience throws when the engine call fails
+    const unavailable = () => new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE');
+
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.executeExperienceSearch.mockRejectedValue(unavailable());
+    const admin = await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'jeans' }), slugParams('catalog'));
+    expect(admin.status).toBe(503);
+    expect(await admin.json()).toMatchObject({ code: 'SOURCE_UNAVAILABLE', message: 'An external search source is unavailable' });
+
+    mocks.auth.mockResolvedValue(null);
+    mocks.executeExperienceSearch.mockRejectedValue(unavailable());
+    const visitor = await ROUTES.find((r) => r.name === 'search by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(visitor.status).toBe(503);
+    expect(await visitor.json()).toMatchObject({ code: 'SOURCE_UNAVAILABLE', message: PUBLIC_FAILURE_MESSAGE });
+  });
 });
 
 describe('a document lookup where one index failed and another lacked the document', () => {

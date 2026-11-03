@@ -67,6 +67,14 @@ describe('searchExternalSourceForExperience', () => {
     );
   });
 
+  it('fails with its own code, so admins are told the source is unavailable', async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:9200'));
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x' }, EXPERIENCE)).rejects.toMatchObject({
+      code: 'SOURCE_UNAVAILABLE',
+      status: 503,
+    });
+  });
+
   it('refuses a filter the engine cannot apply instead of returning the unfiltered set', async () => {
     vi.mocked(searchExternalSource).mockResolvedValueOnce({
       dataSource: { id: 'ds', name: 'Sitecore', fields: [] },
