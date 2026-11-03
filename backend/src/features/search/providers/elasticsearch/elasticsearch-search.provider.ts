@@ -147,7 +147,8 @@ export class ElasticsearchSearchProvider implements SearchProvider {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-            logger.error('Search execution failed', {
+            // Passed on: whoever answers the caller logs it
+            logger.debug('Search execution failed', {
                 indexName: context.indexName,
                 searchType,
                 error: errorMessage,
@@ -289,7 +290,8 @@ export class ElasticsearchSearchProvider implements SearchProvider {
             }
 
             const message = lookupFailure(error, 'Failed to get document');
-            logger.error('Failed to get document by ID', { indexName, documentId, error: message });
+            // The search service turns it into a failure, and whoever answers logs it
+            logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
             return { found: false, error: message, cause: error };
         }
     }
@@ -610,7 +612,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                 });
             }
 
-            logger.error('ES query failed', {
+            logger.debug('ES query failed', {
                 index: indexName,
                 took,
                 error: error instanceof Error ? error.message : 'Unknown error',

@@ -16,7 +16,6 @@ import { withAnalyticsSource } from '@/features/analytics/analytics-source-conte
 import { runWithTelemetryLevel } from '@/features/telemetry';
 import * as searchService from './search.service';
 import { searchRequestSchema } from './search.validation';
-import { SearchError } from './search.types';
 import type { SearchRequest } from './search.types';
 
 const logger = createLogger('search-handlers');
@@ -336,16 +335,8 @@ export async function handleAutocompleteByName(
  * Handle search errors and return appropriate HTTP responses
  */
 function handleSearchError(error: unknown, operation: string) {
-    if (error instanceof SearchError) {
-        logger.warn(`Search error in ${operation}`, {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-        });
-    }
-
     // The error itself: a search error answers with its own status (SEARCH_ERROR_STATUS),
     // and a provider failure is explained from its cause or hidden. apiResponse logs it
-    // with the request id.
-    return apiResponse.error(error);
+    // once, with the request id and the operation.
+    return apiResponse.error(error, undefined, { operation });
 }

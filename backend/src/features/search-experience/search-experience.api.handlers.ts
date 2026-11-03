@@ -118,18 +118,13 @@ function handleSearchError(
   origin: string | null
 ): NextResponse {
   if (error instanceof NoSourcesError) {
-    return withCors(apiResponse.error(new AppError(error.message, { code: 'NO_INDEXES', status: 400 })), experience, origin);
+    return withCors(apiResponse.error(new AppError(error.message, { code: 'NO_INDEXES', status: 400 }), undefined, { experienceId: experience.id }), experience, origin);
   }
-
-  logger.error('Search error', {
-    experienceId: experience.id,
-    error: error instanceof Error ? error.message : 'Unknown error',
-  });
 
   if (error instanceof ZodError) return withCors(apiResponse.validationError(error), experience, origin);
   // A search error answers with its own status (SEARCH_ERROR_STATUS); a server failure
-  // gets the plain public message and a request id (apiResponse)
-  return withCors(apiResponse.error(error), experience, origin);
+  // gets the plain public message and a request id (apiResponse), which logs it once
+  return withCors(apiResponse.error(error, undefined, { experienceId: experience.id }), experience, origin);
 }
 
 // ============================================================================
@@ -210,17 +205,12 @@ export async function handleAutocomplete(request: NextRequest): Promise<NextResp
       { headers: corsHeaders }
     );
   } catch (error) {
-    logger.error('Autocomplete error', {
-      experienceId: experience.id,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-
     // Zod validation error
     if (error instanceof ZodError) {
       return withCors(apiResponse.validationError(error), experience, origin);
     }
 
-    // Unknown error
-    return withCors(apiResponse.error(error), experience, origin);
+    // Logged once by apiResponse
+    return withCors(apiResponse.error(error, undefined, { experienceId: experience.id }), experience, origin);
   }
 }

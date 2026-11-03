@@ -155,19 +155,15 @@ function transformFacets(facets: FacetResult[]): Record<string, { buckets: Array
 }
 
 function handleSearchError(error: unknown, slug: string): NextResponse {
-  logger.error('Search error', {
-    slug,
-    error: error instanceof Error ? error.message : 'Unknown error',
-  });
-
   if (error instanceof NoSourcesError) {
-    return apiResponse.error(new AppError(error.message, { code: 'NO_INDEXES', status: 400 }));
+    return apiResponse.error(new AppError(error.message, { code: 'NO_INDEXES', status: 400 }), undefined, { slug });
   }
   if (error instanceof ZodError) return apiResponse.validationError(error);
 
   // A search error answers with its own status (SEARCH_ERROR_STATUS); provider failures
-  // are explained to admins and given the plain public message here (apiResponse)
-  return apiResponse.error(error);
+  // are explained to admins and given the plain public message here (apiResponse), which
+  // logs it once
+  return apiResponse.error(error, undefined, { slug });
 }
 
 export const POST = publicRoute(post);

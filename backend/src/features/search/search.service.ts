@@ -296,7 +296,8 @@ export async function search(
     } catch (error) {
         const durationMs = Date.now() - startTime;
 
-        logger.error('Search failed', {
+        // Passed on: whoever answers the caller logs it (the API, a chat tool)
+        logger.debug('Search failed', {
             identifier,
             query: request.query?.substring(0, 50),
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -473,7 +474,8 @@ async function getQueryEmbedding(
 
         return embedding;
     } catch (error) {
-        logger.error('Failed to generate query embedding', {
+        // Passed on: whoever answers the caller logs it
+        logger.debug('Failed to generate query embedding', {
             indexName: context.indexName,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
@@ -728,7 +730,8 @@ export async function autocomplete(
             took: Date.now() - startTime,
         };
     } catch (error) {
-        logger.error('Autocomplete failed', {
+        // Passed on: whoever answers the caller logs it
+        logger.debug('Autocomplete failed', {
             identifier,
             query: query.substring(0, 20),
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -812,7 +815,8 @@ export async function getDocumentById(
             indexName: searchIndex.name,
         };
     } catch (error) {
-        logger.error('Failed to get document by ID', {
+        // Passed on: whoever answers the caller logs it (the documents API, Find Record)
+        logger.debug('Failed to get document by ID', {
             identifier,
             documentId,
             error: error instanceof Error ? error.message : 'Unknown error',

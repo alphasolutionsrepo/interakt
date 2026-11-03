@@ -73,6 +73,12 @@ describe('redactSecrets', () => {
 });
 
 describe('serializeError', () => {
+    it("names the provider, leaving out secrets in what the error carries", () => {
+        const err = Object.assign(new Error('rejected'), { provider: { name: 'Sitecore Search', apiKey: 'sk-live-123' } });
+        const out = serializeError(err);
+        expect(out.provider).toEqual({ name: 'Sitecore Search', apiKey: '[Redacted]' });
+    });
+
     it('leaves out the request and its credentials', () => {
         const out = serializeError(azureRestError());
         expect(out).toMatchObject({ name: 'RestError', code: 'InvalidRequestParameter', statusCode: 400 });

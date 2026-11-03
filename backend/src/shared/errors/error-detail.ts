@@ -74,8 +74,8 @@ export function serializeError(err: unknown, depth = 0, seen = new WeakSet<objec
 
     const out: Record<string, unknown> = { name: err.name, message: err.message, stack: err.stack };
     const e = err as unknown as Record<string, unknown>;
-    for (const key of ['code', 'statusCode', 'status', 'providerKey', 'providerId', 'retryable', 'type', 'param']) {
-        if (e[key] !== undefined && typeof e[key] !== 'function') out[key] = e[key];
+    for (const key of ['code', 'statusCode', 'status', 'provider', 'providerKey', 'providerId', 'retryable', 'type', 'param']) {
+        if (e[key] !== undefined && typeof e[key] !== 'function') out[key] = redactSecrets(e[key], depth + 1, seen);
     }
     const body = providerBody(err);
     if (body !== undefined) out.details = redactSecrets(body, depth + 1, seen);

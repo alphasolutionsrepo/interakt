@@ -7,6 +7,10 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/data-source/data-source.service', () => ({}));
 vi.mock('@/features/search/search.service', () => ({}));
 vi.mock('@/features/search-index/search-index.service', () => ({}));
@@ -115,5 +119,40 @@ describe('mergeSearchResults', () => {
     );
     expect(merged.hits).toEqual([]);
     expect(failedSources).toEqual([external]);
+  });
+
+  it('logs why each other source failed when every source failed, since the answer carries only the first', () => {
+    logs.length = 0;
+    const down = new Error('connect ECONNREFUSED');
+    const rejected = new Error('Azure AI Search rejected the request — check the API key');
+    expect(() => mergeSearchResults(
+      [
+        { source: { origin: catalog, weight: 1 }, result: null, error: down },
+        { source: { origin: external, weight: 1 }, result: null, error: rejected },
+      ],
+      { query: 'jeans', page: 1, pageSize: 20 },
+      { id: 'exp-1' },
+      { exact: true, failedSources: [], hitOrigins: new WeakMap() }
+    )).toThrow(down);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ sourceId: 'ds-1', err: rejected }) }),
+    ]);
+  });
+
+  it('logs why a source failed when the others still answered, since nothing else does', () => {
+    logs.length = 0;
+    const refused = new Error('failed to create query: For input string: "zzz"');
+    mergeSearchResults(
+      [
+        { source: { origin: catalog, weight: 1 }, result: response([]), error: null },
+        { source: { origin: external, weight: 1 }, result: null, error: refused },
+      ],
+      { query: 'jeans', page: 1, pageSize: 20 },
+      { id: 'exp-1' },
+      { exact: true, failedSources: [], hitOrigins: new WeakMap() }
+    );
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ experienceId: 'exp-1', sourceId: 'ds-1', err: refused }) }),
+    ]);
   });
 });

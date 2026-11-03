@@ -2,6 +2,11 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+
 vi.mock('@/features/analytics', () => ({ trackSearch: vi.fn() }));
 vi.mock('@/features/data-source/external-search/external-search.service', () => ({
   searchExternalSource: vi.fn(async () => ({
@@ -116,6 +121,34 @@ describe('searchExternalSourceForExperience', () => {
     await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x', page: 501 }, EXPERIENCE)).rejects.toMatchObject({
       code: 'INVALID_QUERY',
       status: 400,
+    });
+  });
+
+  it.each([
+    ['refused', engineError(400, 'failed to create query: For input string: "abc"')],
+    ['failed', engineError(503, 'unavailable')],
+  ])('passes a %s search on without a warning or error of its own: whoever answers the caller logs it', async (_, error) => {
+    logs.length = 0;
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(error);
+    await searchExternalSourceForExperience(SOURCE, [], { query: 'x', filters: ratingAbove }, EXPERIENCE).catch(() => undefined);
+    expect(reported(logs)).toEqual([]);
+  });
+
+  it('refuses a filter the engine cannot apply without a warning of its own', async () => {
+    logs.length = 0;
+    vi.mocked(searchExternalSource).mockResolvedValueOnce({
+      dataSource: { id: 'ds', name: 'Sitecore', fields: [] },
+      result: { hits: [], total: 0, took: 1, unappliedFilters: [{ field: 'rating', reason: 'not filterable' }], unappliedSort: [] },
+    } as never);
+    await searchExternalSourceForExperience(SOURCE, [], { query: 'x', filters: ratingAbove }, EXPERIENCE).catch(() => undefined);
+    expect(reported(logs)).toEqual([]);
+  });
+
+  it('names the source that failed, for the log line of whoever answers the caller', async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(engineError(503, 'unavailable'));
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'x' }, EXPERIENCE)).rejects.toMatchObject({
+      code: 'SOURCE_UNAVAILABLE',
+      details: { dataSourceId: 'ds' },
     });
   });
 

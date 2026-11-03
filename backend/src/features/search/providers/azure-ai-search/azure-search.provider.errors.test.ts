@@ -9,6 +9,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SearchError } from '../../search.types';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+
 const azure = vi.hoisted(() => ({ error: undefined as unknown }));
 vi.mock('./azure-client', () => ({
     getSearchClient: () => ({ search: async () => { throw azure.error; } }),
@@ -34,6 +39,19 @@ describe('Azure AI Search failures', () => {
         expect((thrown as SearchError).cause).toBe(restError);
     });
 
+    it('are passed on without a warning or error of their own: whoever answers the caller logs them', async () => {
+        logs.length = 0;
+        azure.error = Object.assign(new Error('Access denied'), { name: 'RestError', statusCode: 403 });
+        await new AzureSearchProvider()
+            .search({
+                context: { indexName: 'products', searchableFields: [], defaultResponseFields: [], facetableFields: [] },
+                request: { query: 'linen shirt' },
+                searchType: 'lexical',
+            } as never)
+            .catch(() => undefined);
+        expect(reported(logs)).toEqual([]);
+    });
+
     describe('a search Azure AI Search refuses (400)', () => {
         const refusal = (message: string) => Object.assign(new Error(message), { name: 'RestError', statusCode: 400 });
         const search = (request: Record<string, unknown>) => new AzureSearchProvider()
@@ -43,6 +61,13 @@ describe('Azure AI Search failures', () => {
                 searchType: 'lexical',
             } as never)
             .catch((e: unknown) => e);
+
+        it('is passed on without a warning or error of its own', async () => {
+            logs.length = 0;
+            azure.error = refusal("Invalid expression: Could not find a property named 'colour' on type 'search.document'.");
+            await search({ filters: [{ field: 'colour', operator: 'eq', value: 'red' }] });
+            expect(reported(logs)).toEqual([]);
+        });
 
         it('names the filter it could not apply, as Elasticsearch does', async () => {
             azure.error = refusal("Invalid expression: Could not find a property named 'colour' on type 'search.document'.");

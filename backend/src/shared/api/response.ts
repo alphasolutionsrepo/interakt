@@ -121,10 +121,11 @@ function successWithPagination<T>(
  * Error response for anything thrown. Errors we recognise (AppError, the feature
  * errors, provider errors) answer with their own status, message and hint; others
  * get a generic message. A string is our own message and is shown as it is.
- * status is used when the error doesn't carry one of its own.
+ * status is used when the error doesn't carry one of its own; logContext is added to
+ * the log line (say, which operation failed).
  */
-function error(err: unknown, status: number = 500): NextResponse<APIErrorResponse> {
-    const described = describeError(err, status);
+function error(err: unknown, status: number = 500, logContext?: Record<string, unknown>): NextResponse<APIErrorResponse> {
+    const described = describeError(err, status, logContext);
     return NextResponse.json(described.body, { status: described.status });
 }
 
@@ -162,7 +163,7 @@ export function describeError(
             ...(appError.details !== undefined && { details: appError.details }),
         });
     } else {
-        logger.warn('Request rejected', { ...logContext, requestId, code: appError.code, message });
+        logger.warn('Request rejected', { ...logContext, requestId, code: appError.code, message, err });
     }
 
     return {

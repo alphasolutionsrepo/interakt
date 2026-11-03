@@ -10,6 +10,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SearchError } from '../../search.types';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+
 const connectionRefused = vi.hoisted(() => ({ error: undefined as unknown }));
 vi.mock('./elasticsearch.client', () => ({
     getElasticsearchClient: () => ({
@@ -38,13 +43,29 @@ describe('Elasticsearch search failures', () => {
         expect((thrown as SearchError).cause).toBe(clientError);
     });
 
+    it('are passed on without a warning or error of their own: whoever answers the caller logs them', async () => {
+        logs.length = 0;
+        connectionRefused.error = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        await new ElasticsearchSearchProvider()
+            .search({
+                context: { indexName: 'products', searchableFields: [], defaultResponseFields: [], facetableFields: [] },
+                request: { query: 'linen shirt' },
+                searchType: 'lexical',
+            } as never)
+            .catch(() => undefined);
+        expect(reported(logs)).toEqual([]);
+    });
+
     it('report a failed document lookup as a failure, not as "not found", when the error has no message', async () => {
         const clientError = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
         connectionRefused.error = clientError;
+        logs.length = 0;
 
         const result = await new ElasticsearchSearchProvider().getDocument('products', 'PROD-1');
 
         expect(result).toEqual({ found: false, error: 'ConnectionError', cause: clientError });
+        // The caller turns it into a failure, and whoever answers logs it
+        expect(reported(logs)).toEqual([]);
     });
 
     describe('a search Elasticsearch refuses', () => {
@@ -68,6 +89,13 @@ describe('Elasticsearch search failures', () => {
                 queryEmbedding: [0.1, 0.2, 0.3],
             } as never)
             .catch((e: unknown) => e);
+
+        it('is passed on without a warning or error of its own', async () => {
+            logs.length = 0;
+            connectionRefused.error = refusal('failed to create query: For input string: "abc"');
+            await search({ filters: [{ field: 'rating', operator: 'gt', value: 'abc' }] });
+            expect(reported(logs)).toEqual([]);
+        });
 
         it.each(['lexical', 'semantic', 'hybrid'])('names the value it could not read (%s), as an external source does', async (searchType) => {
             connectionRefused.error = refusal('failed to create query: For input string: "abc"');

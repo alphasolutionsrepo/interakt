@@ -42,13 +42,13 @@ async function get(
     const activeIndexes = experience.indexes.filter((idx) => idx.searchIndex.isActive);
 
     if (activeIndexes.length === 0) {
-      return withCors(apiResponse.error(new AppError('No active indexes configured', { code: 'NO_INDEXES', status: 400 })), experience, origin);
+      return withCors(apiResponse.error(new AppError('No active indexes configured', { code: 'NO_INDEXES', status: 400 }), undefined, { experienceId: experience.id, documentId }), experience, origin);
     }
 
     // 3. Try to find document in each index
     let document: searchService.GetDocumentResponse | null = null;
     // Lookups that failed rather than not finding the document
-    const failures: unknown[] = [];
+    const failures: Array<{ indexId: string; error: unknown }> = [];
 
     for (const idx of activeIndexes) {
       try {
@@ -61,19 +61,22 @@ async function get(
         }
       } catch (err) {
         // Continue to next index if this one fails
-        failures.push(err);
-        logger.debug('Document lookup failed in index', {
-          indexId: idx.searchIndexId,
-          documentId,
-        });
+        failures.push({ indexId: idx.searchIndexId, error: err });
       }
     }
 
+    const logFailure = (failure: (typeof failures)[number], message: string) =>
+      logger.warn(message, { experienceId: experience.id, documentId, indexId: failure.indexId, err: failure.error });
+
     // A lookup failed and no other index had it: it may be in the one that failed, so
-    // the answer is the failure, not "not found"
+    // the answer is the failure, not "not found". The answer's failure is logged by
+    // apiResponse; the others are logged here, or nothing would say why they failed.
     if (!document && failures.length > 0) {
-      return withCors(apiResponse.error(failures[0]), experience, origin);
+      const [first, ...others] = failures;
+      for (const failure of others) logFailure(failure, 'A document lookup failed too');
+      return withCors(apiResponse.error(first.error, undefined, { experienceId: experience.id, documentId, indexId: first.indexId }), experience, origin);
     }
+    for (const failure of failures) logFailure(failure, 'A document lookup failed; another index had the document');
 
     if (!document) {
       return withCors(apiResponse.notFound('Document not found'), experience, origin);
@@ -106,14 +109,9 @@ async function get(
 
     return jsonResponse;
   } catch (error) {
-    logger.error('Failed to fetch document', {
-      documentId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-
     // A search error answers with its own status; a server failure gets the plain
-    // public message and a request id
-    return apiResponse.error(error);
+    // public message and a request id. Logged once by apiResponse.
+    return apiResponse.error(error, undefined, { documentId });
   }
 }
 

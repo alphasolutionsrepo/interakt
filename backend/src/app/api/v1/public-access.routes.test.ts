@@ -7,6 +7,8 @@
 import { NextRequest } from 'next/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   getSearchExperienceBySlug: vi.fn(),
@@ -21,9 +23,8 @@ const mocks = vi.hoisted(() => ({
   getDocumentByIdFromIndex: vi.fn(),
 }));
 
-vi.mock('@/shared/logger/logger', () => ({
-  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: mocks.auth }));
 vi.mock('@/features/telemetry', () => ({
   flushTelemetry: vi.fn().mockResolvedValue(undefined),
@@ -464,6 +465,55 @@ describe('when the search service is down', () => {
   });
 });
 
+describe('a failed search', () => {
+  const refused = async () => {
+    const { SearchError } = await import('@/features/search/search.types');
+    const engine = new Error('failed to create query: For input string: "abc"');
+    return new SearchError('"abc" isn\'t a valid value for rating', 'INVALID_FILTER', { fields: ['rating'] }, { cause: engine });
+  };
+  const searches = ['search by token', 'search by slug'];
+
+  beforeEach(() => { logs.length = 0; });
+
+  it.each([
+    { route: 'search by token', experience: { experienceId: searchExperience.id } },
+    { route: 'search by slug', experience: { slug: searchExperience.slug } },
+  ])('$route logs an experience with no source once, naming it', async ({ route, experience }) => {
+    const { NoSourcesError } = await import('@/features/search-experience/experience-search');
+    mocks.executeExperienceSearch.mockRejectedValue(new NoSourcesError());
+    const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(res.status).toBe(400);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ code: 'NO_INDEXES', ...experience }) }),
+    ]);
+  });
+
+  it.each(searches)('%s logs a refused filter once, as a warning with the request id and the engine words', async (route) => {
+    mocks.executeExperienceSearch.mockRejectedValue(await refused());
+    const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const { requestId } = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ requestId, code: 'INVALID_FILTER' }) })]);
+    expect((reported(logs)[0].context.err as Error).cause).toMatchObject({ message: expect.stringContaining('For input string') });
+  });
+
+  it.each([
+    { route: 'search by token', work: () => mocks.executeExperienceSearch, experience: { experienceId: searchExperience.id } },
+    { route: 'search by slug', work: () => mocks.executeExperienceSearch, experience: { slug: searchExperience.slug } },
+    { route: 'autocomplete', work: () => mocks.getAutocompleteSuggestions, experience: { experienceId: searchExperience.id } },
+    { route: 'document by token', work: () => mocks.getDocumentByIdFromIndex, experience: { experienceId: searchExperience.id } },
+  ])('$route logs an outage once, as an error with the request id and the experience', async ({ route, work, experience }) => {
+    work().mockRejectedValue(await down());
+    const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const { requestId } = await res.json();
+
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, ...experience }) }),
+    ]);
+  });
+});
+
 describe('a request with a value of the wrong type', () => {
   it('lists the field in details, as the public API documents, and in fields', async () => {
     const res = await searchBySlug(
@@ -559,6 +609,53 @@ describe('a document lookup where one index failed and another lacked the docume
     expect(res.status).toBe(503);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
     expect((await res.json()).requestId).toEqual(expect.any(String));
+  });
+});
+
+describe('a document lookup across indexes, for the log', () => {
+  const twoIndexes = () => mocks.getSearchExperienceByAccessToken.mockResolvedValue({
+    ...searchExperience,
+    indexes: [{ searchIndexId: 'i1', searchIndex: { isActive: true } }, { searchIndexId: 'i2', searchIndex: { isActive: true } }],
+  });
+  const lookUp = () => ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+
+  beforeEach(() => { logs.length = 0; });
+
+  it('warns about an index that failed when another one had the document', async () => {
+    twoIndexes();
+    const failed = await down();
+    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(failed).mockResolvedValueOnce({ id: 'd1', fields: {}, indexId: 'i2', indexName: 'two' });
+    expect((await lookUp()).status).toBe(200);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ indexId: 'i1', experienceId: searchExperience.id, documentId: 'd1', err: failed }) }),
+    ]);
+  });
+
+  it('names the index that failed on the line for the answer', async () => {
+    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(await down());
+    expect((await lookUp()).status).toBe(503);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ experienceId: searchExperience.id, documentId: 'd1', indexId: 'i1' }) }),
+    ]);
+  });
+
+  it('names the experience and document when it has no active index', async () => {
+    mocks.getSearchExperienceByAccessToken.mockResolvedValue({ ...searchExperience, indexes: [{ searchIndexId: 'i1', searchIndex: { isActive: false } }] });
+    expect((await lookUp()).status).toBe(400);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ code: 'NO_INDEXES', experienceId: searchExperience.id, documentId: 'd1' }) }),
+    ]);
+  });
+
+  it('answers with the first failure and warns about the others', async () => {
+    twoIndexes();
+    const second = await down();
+    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(await down()).mockRejectedValueOnce(second);
+    expect((await lookUp()).status).toBe(503);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ indexId: 'i2', err: second }) }),
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ experienceId: searchExperience.id }) }),
+    ]);
   });
 });
 

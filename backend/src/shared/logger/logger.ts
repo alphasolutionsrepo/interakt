@@ -29,7 +29,6 @@ export {
   cacheLogger,
   searchLogger,
   flushLogs,
-  type Logger,
   type LogLevel,
   type LogContext,
 } from './pino-logger';

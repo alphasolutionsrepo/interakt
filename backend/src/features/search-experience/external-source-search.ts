@@ -122,7 +122,7 @@ export async function searchExternalSourceForExperience(
         const unapplied = searched.result.unappliedFilters;
         if (unapplied.length > 0) {
           const fields = [...new Set(unapplied.map((u) => u.field))];
-          logger.warn('External index cannot apply a filter; refusing the search', {
+          logger.debug('External index cannot apply a filter; refusing the search', {
             dataSourceId: source.dataSourceId,
             unappliedFilters: unapplied.map((u) => `${u.field}: ${u.reason}`),
           });
@@ -142,17 +142,18 @@ export async function searchExternalSourceForExperience(
     track({ total: 0, returned: 0, error: message });
     const refused = refusedRequest(error, request, fields);
     if (refused) {
-      logger.warn('External index refused the request', { dataSourceId: source.dataSourceId, error: message });
+      logger.debug('External index refused the request', { dataSourceId: source.dataSourceId, error: message });
       throw refused;
     }
-    // The engine's message (status, response body) is for admins: logs, analytics and
-    // the trace have it, and the cause explains it to them. Public callers get a generic error.
-    logger.error('External index search failed', {
+    // The engine's message (status, response body) is for admins: analytics and the trace
+    // have it, and the cause explains it to them and goes in the log line of whoever answers
+    // the caller. Public callers get a generic error.
+    logger.debug('External index search failed', {
       experienceId: experience.id,
       dataSourceId: source.dataSourceId,
       error: message,
     });
-    throw new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE', {}, { cause: error });
+    throw new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE', { dataSourceId: source.dataSourceId }, { cause: error });
   }
 
   if (result.unappliedSort.length > 0) {

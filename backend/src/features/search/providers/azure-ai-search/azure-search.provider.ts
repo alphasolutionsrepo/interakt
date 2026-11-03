@@ -218,7 +218,8 @@ export class AzureSearchProvider implements SearchProvider {
             return await runSearchWithFallbacks();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            logger.error('Azure search failed', {
+            // Passed on: whoever answers the caller logs it
+            logger.debug('Azure search failed', {
                 indexName: context.indexName,
                 searchType,
                 error: errorMessage,
@@ -432,7 +433,8 @@ export class AzureSearchProvider implements SearchProvider {
                 return { found: false };
             }
             const message = lookupFailure(error, 'Get document failed');
-            logger.error('Azure getDocument failed', { indexName, documentId, error: message });
+            // The search service turns it into a failure, and whoever answers logs it
+            logger.debug('Azure getDocument failed', { indexName, documentId, error: message });
             return { found: false, error: message, cause: error };
         }
     }

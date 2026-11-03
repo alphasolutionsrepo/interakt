@@ -485,23 +485,26 @@ export function mergeSearchResults(
     result: SearchResponse;
   }>;
 
+  const failedResults = results.filter((r) => r.error);
+  const logFailure = (failed: (typeof results)[number], message: string) =>
+    logger.warn(message, { experienceId: experience.id, sourceId: failed.source.origin.id, err: failed.error });
+
   if (successfulResults.length === 0) {
-    // All searches failed
-    const firstError = results.find((r) => r.error);
-    if (firstError?.error instanceof Error) {
-      throw firstError.error;
+    // All searches failed: the answer is the first failure, logged by whoever answers;
+    // the others are logged here, or nothing would say why they failed
+    const [first, ...others] = failedResults;
+    for (const failed of others) logFailure(failed, 'A search source failed too');
+    if (first?.error instanceof Error) {
+      throw first.error;
     }
     throw new SearchError('All index searches failed', 'PROVIDER_ERROR');
   }
 
   // Report partial failures: the response says results are partial, logs say which source
-  const failedResults = results.filter((r) => r.error);
-  if (failedResults.length > 0) {
-    merge.failedSources.push(...failedResults.map((r) => r.source.origin));
-    logger.warn('Some index searches failed', {
-      experienceId: experience.id,
-      failedIndexes: failedResults.map((r) => r.source.origin.id),
-    });
+  // and why (nothing else logs it, since the search still answers)
+  for (const failed of failedResults) {
+    merge.failedSources.push(failed.source.origin);
+    logFailure(failed, 'A search source failed; answering with the others');
   }
 
   const pageSize = request.pageSize ?? 20;

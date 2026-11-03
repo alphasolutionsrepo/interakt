@@ -1,6 +1,8 @@
 // src/shared/logger/pino-logger.ts
 import pino, { Logger as PinoLogger, LoggerOptions } from 'pino';
 
+import { serializeError } from '@/shared/errors/error-detail';
+
 /**
  * Production-Grade Logger using Pino
  *
@@ -58,7 +60,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 // PINO CONFIGURATION
 // ============================================================================
 
-function createPinoOptions(): LoggerOptions {
+export function createPinoOptions(): LoggerOptions {
   return {
     level: LOG_LEVEL,
     base: {
@@ -88,6 +90,8 @@ function createPinoOptions(): LoggerOptions {
       ],
       censor: '[Redacted]',
     },
+    // An error logged as err keeps its causes and the provider's response, secrets left out
+    serializers: { err: serializeError },
     timestamp: pino.stdTimeFunctions.isoTime,
     formatters: {
       level: (label) => ({ level: label }),
@@ -145,106 +149,39 @@ function createPinoLogger(options: LoggerOptions): PinoLogger {
 // ============================================================================
 
 /**
- * Logger class using Pino
+ * A service's logger over pino. An error passed to error() is logged as err, which
+ * the err serializer above expands.
  */
-class Logger implements LoggerInstance {
-  private pino: PinoLogger;
-
-  constructor(serviceName: string, parentLogger?: PinoLogger) {
-    if (parentLogger) {
-      this.pino = parentLogger.child({ service: serviceName });
-    } else {
-      const options = createPinoOptions();
-      this.pino = createPinoLogger(options).child({ service: serviceName });
-    }
-  }
+export class ServiceLogger implements LoggerInstance {
+  constructor(private readonly pino: PinoLogger) {}
 
   debug(message: string, context?: LogContext): void {
-    if (context) {
-      this.pino.debug(context, message);
-    } else {
-      this.pino.debug(message);
-    }
+    this.write('debug', message, context);
   }
 
   info(message: string, context?: LogContext): void {
-    if (context) {
-      this.pino.info(context, message);
-    } else {
-      this.pino.info(message);
-    }
+    this.write('info', message, context);
   }
 
   warn(message: string, context?: LogContext): void {
-    if (context) {
-      this.pino.warn(context, message);
-    } else {
-      this.pino.warn(message);
-    }
+    this.write('warn', message, context);
   }
 
   error(message: string, error?: Error | LogContext, context?: LogContext): void {
-    let logContext: LogContext = {};
+    const fields = error instanceof Error ? { err: error } : error;
+    this.write('error', message, fields || context ? { ...fields, ...context } : undefined);
+  }
 
-    if (error instanceof Error) {
-      logContext = {
-        err: {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-        },
-        ...context,
-      };
-    } else if (error) {
-      logContext = { ...error, ...context };
-    } else if (context) {
-      logContext = context;
-    }
+  child(bindings: LogContext): LoggerInstance {
+    return new ServiceLogger(this.pino.child(bindings));
+  }
 
-    if (Object.keys(logContext).length > 0) {
-      this.pino.error(logContext, message);
+  private write(level: LogLevel, message: string, context?: LogContext): void {
+    if (context && Object.keys(context).length > 0) {
+      this.pino[level](context, message);
     } else {
-      this.pino.error(message);
+      this.pino[level](message);
     }
-  }
-
-  child(bindings: LogContext): LoggerInstance {
-    return new ChildLogger(this.pino.child(bindings));
-  }
-}
-
-/**
- * Child logger for request-scoped logging
- */
-class ChildLogger implements LoggerInstance {
-  constructor(private pino: PinoLogger) {}
-
-  debug(message: string, context?: LogContext): void {
-    context ? this.pino.debug(context, message) : this.pino.debug(message);
-  }
-
-  info(message: string, context?: LogContext): void {
-    context ? this.pino.info(context, message) : this.pino.info(message);
-  }
-
-  warn(message: string, context?: LogContext): void {
-    context ? this.pino.warn(context, message) : this.pino.warn(message);
-  }
-
-  error(message: string, error?: Error | LogContext, context?: LogContext): void {
-    let logContext: LogContext = {};
-    if (error instanceof Error) {
-      logContext = { err: { message: error.message, stack: error.stack, name: error.name }, ...context };
-    } else if (error) {
-      logContext = { ...error, ...context };
-    } else if (context) {
-      logContext = context;
-    }
-    Object.keys(logContext).length > 0 ? this.pino.error(logContext, message) : this.pino.error(message);
-  }
-
-  child(bindings: LogContext): LoggerInstance {
-    return new ChildLogger(this.pino.child(bindings));
   }
 }
 
@@ -253,7 +190,7 @@ class ChildLogger implements LoggerInstance {
 // ============================================================================
 
 // Cache for logger instances
-const loggerCache = new Map<string, Logger>();
+const loggerCache = new Map<string, ServiceLogger>();
 
 /**
  * Create a logger for a specific service/module
@@ -262,7 +199,7 @@ const loggerCache = new Map<string, Logger>();
 export function createLogger(serviceName: string): LoggerInstance {
   let logger = loggerCache.get(serviceName);
   if (!logger) {
-    logger = new Logger(serviceName);
+    logger = new ServiceLogger(createPinoLogger(createPinoOptions()).child({ service: serviceName }));
     loggerCache.set(serviceName, logger);
   }
   return logger;
@@ -285,7 +222,7 @@ export const searchLogger = createLogger('search');
 // EXPORTS
 // ============================================================================
 
-export type { LoggerInstance as Logger, LogLevel, LogContext };
+export type { LogLevel, LogContext };
 
 /**
  * Flush logs (for graceful shutdown)

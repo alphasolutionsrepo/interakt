@@ -11,6 +11,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SearchError } from './search.types';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 const failWith = vi.hoisted(() => ({ error: undefined as unknown }));
 vi.mock('@/features/global-settings', () => ({
     getGlobalSearchConfig: async () => ({ hybridDefaults: {}, timeout: { timeoutMs: 1000 } }),
@@ -34,7 +38,7 @@ async function search() {
 const noResponse = { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never;
 
 describe('admin search errors', () => {
-    beforeEach(() => { failWith.error = undefined; });
+    beforeEach(() => { failWith.error = undefined; logs.length = 0; });
 
     it('says Elasticsearch could not be reached, with what to try', async () => {
         failWith.error = new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', noResponse) });
@@ -69,6 +73,18 @@ describe('admin search errors', () => {
         const { status, body } = await search();
         expect(status).toBe(400);
         expect(body.message).toBe('Unknown filter field "colour"');
+    });
+
+    it('logs a refused search once, as a warning with the request id', async () => {
+        failWith.error = new SearchError('Unknown filter field "colour"', 'INVALID_FILTER');
+        const { body } = await search();
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ requestId: body.requestId, operation: 'searchById' }) })]);
+    });
+
+    it('logs a failure once, as an error with the request id', async () => {
+        failWith.error = new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', noResponse) });
+        const { body } = await search();
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: body.requestId, operation: 'searchById' }) })]);
     });
 
 });
