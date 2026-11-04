@@ -185,6 +185,19 @@ interface ResolvedIndex {
  * dynamically-mapped index with none of the configured analyzers or vector
  * fields, which then silently misbehaves at search time.
  */
+/**
+ * A document from the engine, or found: false when it isn't there. A lookup the engine
+ * couldn't answer is thrown, with the engine's error as its cause, so the caller
+ * explains it ("Elasticsearch couldn't be reached.") instead of calling it missing.
+ */
+async function lookUp(index: ResolvedIndex, documentId: string) {
+    const result = await index.provider.getDocumentById(index.name, documentId);
+    if (!result.found && result.error) {
+        throw new Error(result.error, { cause: result.cause });
+    }
+    return result;
+}
+
 async function resolveIndex(searchIndexId: string): Promise<ResolvedIndex> {
     const [index] = await db.select()
         .from(searchIndex)
@@ -273,7 +286,7 @@ export async function getDocument(
     documentId: string
 ): Promise<DocumentReadResult> {
     const index = await resolveIndex(searchIndexId);
-    const result = await index.provider.getDocumentById(index.name, documentId);
+    const result = await lookUp(index, documentId);
 
     const document = result.source ? withoutEmbedding(result.source) : undefined;
 
@@ -524,10 +537,7 @@ async function resolveEmbeddings(
         let embeddingSource = operation.document;
 
         if (operation.action === 'merge') {
-            const existing = await index.provider.getDocumentById(
-                index.name,
-                operation.documentId
-            );
+            const existing = await lookUp(index, operation.documentId);
             if (existing.found && existing.source) {
                 embeddingSource = { ...existing.source, ...operation.document };
             } else {

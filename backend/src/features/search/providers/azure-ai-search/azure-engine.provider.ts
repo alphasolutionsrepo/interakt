@@ -715,8 +715,9 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 source: doc,
             };
         } catch (error: any) {
+            // Not there: a miss, not a failure (error is for a lookup that couldn't be answered)
             if (error?.statusCode === 404) {
-                return { found: false, error: 'Document not found' };
+                return { found: false };
             }
             return { found: false, error: lookupFailure(error, 'Failed to get document'), cause: error };
         }

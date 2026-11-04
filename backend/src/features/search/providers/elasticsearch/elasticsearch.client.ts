@@ -779,8 +779,9 @@ export async function getDocumentById(
             return { found: false };
         }
 
+        // Passed on with its cause: whoever answers the caller logs it
         const message = lookupFailure(error, 'Failed to get document');
-        logger.error('Failed to get document by ID', { indexName, documentId, error: message });
+        logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
         return { found: false, error: message, cause: error };
     }
 }
