@@ -56,13 +56,12 @@ export async function handleCreateUser(request: NextRequest) {
     return apiResponse.success(user, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create user', err);
 
     if (err.message.includes('already exists')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createUser' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createUser' });
   }
 }
 
@@ -96,8 +95,7 @@ export async function handleListUsers(request: NextRequest) {
     return apiResponse.success(users);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list users', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listUsers' });
   }
 }
 
@@ -131,8 +129,7 @@ export async function handleGetUser(request: NextRequest, userId: string) {
     return apiResponse.success(user);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get user', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getUser' });
   }
 }
 
@@ -181,13 +178,12 @@ export async function handleUpdateUser(
     return apiResponse.success(updatedUser);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update user', err);
 
     if (err.message.includes('already in use')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'updateUser' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateUser' });
   }
 }
 
@@ -220,8 +216,7 @@ export async function handleActivateUser(
     return apiResponse.success({ message: 'User activated successfully' });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to activate user', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'activateUser' });
   }
 }
 
@@ -259,8 +254,7 @@ export async function handleDeactivateUser(
     return apiResponse.success({ message: 'User deactivated successfully' });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to deactivate user', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deactivateUser' });
   }
 }
 
@@ -304,12 +298,11 @@ export async function handleChangePassword(
     return apiResponse.success({ message: 'Password changed successfully' });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to change password', err);
 
     if (err.message.includes('incorrect')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'changePassword' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'changePassword' });
   }
 }

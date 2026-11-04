@@ -10,11 +10,7 @@ import { getHomeData, invalidateHomeCache, TIP_ID } from './home.service';
 import { dismissTip } from '@/features/analytics/analytics-insights.service';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';
 import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
-
-
-const logger = createLogger('home-api');
 
 /** GET /api/dashboard/home?tz=Europe/Copenhagen — everything the home page shows */
 export async function handleGetHome(request: NextRequest) {
@@ -24,8 +20,7 @@ export async function handleGetHome(request: NextRequest) {
   try {
     return NextResponse.json({ success: true, data: await getHomeData(tz) });
   } catch (error) {
-    logger.error('Failed to build the home page', error as Error);
-    return apiResponse.error('Failed to load the home page', 500);
+    return apiResponse.error('Failed to load the home page', 500, { operation: 'getHome', err: error });
   }
 }
 
@@ -41,7 +36,6 @@ export async function handleDismissTip(request: NextRequest) {
     invalidateHomeCache();
     return NextResponse.json({ success: true, data: { tipId: parsed.data.tipId } });
   } catch (error) {
-    logger.error('Failed to dismiss tip', error as Error);
-    return apiResponse.error('Failed to dismiss the tip', 500);
+    return apiResponse.error('Failed to dismiss the tip', 500, { operation: 'dismissTip', err: error });
   }
 }

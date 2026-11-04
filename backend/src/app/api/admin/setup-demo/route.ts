@@ -76,8 +76,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (e) {
-    logger.error('setup-demo status failed', e as Error);
-    return apiResponse.error(e as Error);
+    return apiResponse.error(e as Error, undefined, { operation: 'setupDemoStatus' });
   }
 }
 
@@ -136,8 +135,7 @@ export async function POST(request: NextRequest) {
 
     return apiResponse.badRequest(`Unknown action "${action}". Use "seed" or "reset".`);
   } catch (e) {
-    logger.error('setup-demo failed', e as Error);
-    return apiResponse.error(e as Error);
+    return apiResponse.error(e as Error, undefined, { operation: 'setupDemo' });
   }
 }
 

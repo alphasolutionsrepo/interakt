@@ -2,12 +2,9 @@
 
 import { NextRequest } from 'next/server';
 import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import * as service from './secrets.service';
 import { createSecretSchema, updateSecretSchema, listSecretsQuerySchema } from './secrets.validation';
-
-const logger = createLogger('secrets-handlers');
 
 // ============================================================================
 // LIST
@@ -28,8 +25,7 @@ export async function handleListSecrets(request: NextRequest) {
     return apiResponse.success(secrets);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list secrets', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listSecrets' });
   }
 }
 
@@ -52,11 +48,10 @@ export async function handleCreateSecret(request: NextRequest) {
     return apiResponse.success(secret, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create secret', err);
     if (err.message.includes('already exists')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createSecret' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createSecret' });
   }
 }
 
@@ -81,8 +76,7 @@ export async function handleGetSecret(
     return apiResponse.success(secret);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get secret', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getSecret' });
   }
 }
 
@@ -113,8 +107,7 @@ export async function handleUpdateSecret(
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update secret', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateSecret' });
   }
 }
 
@@ -139,10 +132,9 @@ export async function handleDeleteSecret(
     return apiResponse.success({ deleted: true });
   } catch (error) {
     if (error instanceof service.SecretInUseError) {
-      return apiResponse.conflict(error.message);
+      return apiResponse.refused(error, 'CONFLICT', { operation: 'deleteSecret' });
     }
     const err = error as Error;
-    logger.error('Failed to delete secret', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteSecret' });
   }
 }

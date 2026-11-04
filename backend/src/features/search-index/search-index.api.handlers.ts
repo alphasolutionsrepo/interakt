@@ -78,17 +78,16 @@ export async function handleCreateSearchIndex(request: NextRequest) {
         return apiResponse.success(searchIndex, 201);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to create search index', err);
 
         if (err.message.includes('already exists')) {
-            return apiResponse.badRequest(err.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createSearchIndex' });
         }
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createSearchIndex' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'createSearchIndex' });
     }
 }
 
@@ -101,8 +100,7 @@ export async function handleGetAllActiveSearchIndexes() {
         const indexes = await service.getAllActiveSearchIndexes();
         return apiResponse.success(indexes);
     } catch (error) {
-        logger.error('Failed to get all active search indexes', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'getAllActiveSearchIndexes' });
     }
 }
 
@@ -125,8 +123,7 @@ export async function handleListSearchIndexes(request: NextRequest) {
 
         return apiResponse.success(result);
     } catch (error) {
-        logger.error('Failed to list search indexes', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'listSearchIndexes' });
     }
 }
 
@@ -154,8 +151,7 @@ export async function handleGetSearchIndex(
 
         return apiResponse.success(searchIndex);
     } catch (error) {
-        logger.error('Failed to get search index', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'getSearchIndex' });
     }
 }
 
@@ -186,8 +182,7 @@ export async function handleGetSearchIndexByName(
 
         return apiResponse.success(searchIndex);
     } catch (error) {
-        logger.error('Failed to get search index by name', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'getSearchIndexByName' });
     }
 }
 
@@ -233,13 +228,12 @@ export async function handleUpdateSearchIndex(
         return apiResponse.success(searchIndex);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to update search index', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateSearchIndex' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'updateSearchIndex' });
     }
 }
 
@@ -274,17 +268,16 @@ export async function handleDeleteSearchIndex(
         return apiResponse.success({ message: 'Search index deleted successfully' });
     } catch (error) {
         if (error instanceof service.SearchIndexInUseError) {
-            return apiResponse.conflict(error.message);
+            return apiResponse.refused(error, 'CONFLICT', { operation: 'deleteSearchIndex' });
         }
 
         const err = error as Error;
-        logger.error('Failed to delete search index', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'deleteSearchIndex' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'deleteSearchIndex' });
     }
 }
 
@@ -328,13 +321,12 @@ export async function handleActivateSearchIndex(
         return apiResponse.success(searchIndex);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to activate search index', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'activateSearchIndex' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'activateSearchIndex' });
     }
 }
 
@@ -374,13 +366,12 @@ export async function handleDeactivateSearchIndex(
         return apiResponse.success(searchIndex);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to deactivate search index', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'deactivateSearchIndex' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'deactivateSearchIndex' });
     }
 }
 
@@ -433,17 +424,16 @@ export async function handleChangeAIConfig(
         });
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to change AI configuration', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'changeAIConfig' });
         }
 
         if (err.message.includes('Cannot change AI configuration')) {
-            return apiResponse.badRequest(err.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'changeAIConfig' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'changeAIConfig' });
     }
 }
 
@@ -468,13 +458,12 @@ export async function handleGetIndexStats(
         return apiResponse.success(stats);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to get index stats', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'getIndexStats' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'getIndexStats' });
     }
 }
 
@@ -499,13 +488,12 @@ export async function handleGetMappingSyncStatus(
         return apiResponse.success(status);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to get mapping sync status', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'getMappingSyncStatus' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'getMappingSyncStatus' });
     }
 }
 
@@ -643,8 +631,7 @@ export async function handleCheckNameAvailability(
             available: isAvailable,
         });
     } catch (error) {
-        logger.error('Failed to check name availability', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'checkNameAvailability' });
     }
 }
 
@@ -709,16 +696,15 @@ export async function handleCreateField(
         return apiResponse.success(field, 201);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to create field', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createField' });
         }
         if (err.message.includes('already exists')) {
-            return apiResponse.badRequest(err.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createField' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'createField' });
     }
 }
 
@@ -778,13 +764,12 @@ export async function handleCreateFieldsFromJson(
         }, 201);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to create fields from JSON', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createFieldsFromJson' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'createFieldsFromJson' });
     }
 }
 
@@ -836,13 +821,12 @@ export async function handleCreateFieldsFromReview(
         return apiResponse.success({ created, createdCount: created.length }, 201);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to create fields from review', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createFieldsFromReview' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'createFieldsFromReview' });
     }
 }
 
@@ -914,13 +898,12 @@ export async function handleCreateFieldsFromMapping(
         );
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to create fields from mapping JSON', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createFieldsFromMapping' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'createFieldsFromMapping' });
     }
 }
 
@@ -976,22 +959,17 @@ export async function handleDeleteField(
 
         // Blocked by a dependency — return the list so the caller knows what to fix
         if (err instanceof fieldsService.FieldHasDependentsError) {
-            logger.info('Field delete blocked by dependents', {
-                dependentCount: err.dependents.length,
-            });
-            return apiResponse.conflict(err.message, { dependents: err.dependents });
+            return apiResponse.refused(error, { code: 'CONFLICT', message: err.message, details: { dependents: err.dependents } }, { operation: 'deleteField' });
         }
-
-        logger.error('Failed to delete field', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'deleteField' });
         }
         if (err.message.includes('Cannot delete')) {
-            return apiResponse.badRequest(err.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'deleteField' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'deleteField' });
     }
 }
 
@@ -1035,13 +1013,12 @@ export async function handleGetFieldDependents(
         });
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to get field dependents', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'getFieldDependents' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'getFieldDependents' });
     }
 }
 
@@ -1066,8 +1043,7 @@ export async function handleGetFields(
 
         return apiResponse.success(fields);
     } catch (error) {
-        logger.error('Failed to get fields', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'getFields' });
     }
 }
 
@@ -1091,8 +1067,7 @@ export async function handleGetFieldsSummary(
 
         return apiResponse.success(summary);
     } catch (error) {
-        logger.error('Failed to get fields summary', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'getFieldsSummary' });
     }
 }
 
@@ -1146,17 +1121,16 @@ export async function handleUpdateField(
         return apiResponse.success(field);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to update field', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateField' });
         }
 
         if (err.message.includes('already mapped')) {
-            return apiResponse.badRequest(err.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'updateField' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'updateField' });
     }
 }
 
@@ -1197,17 +1171,16 @@ export async function handleGetFieldDistinctValues(
         return apiResponse.success(result);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to get distinct values', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'getFieldDistinctValues' });
         }
 
         if (err.message.includes('not facetable')) {
-            return apiResponse.badRequest(err.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'getFieldDistinctValues' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'getFieldDistinctValues' });
     }
 }
 
@@ -1267,13 +1240,12 @@ export async function handleUpdateFieldMappingConfig(
         return apiResponse.success(field);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to update field mapping config', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateFieldMappingConfig' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'updateFieldMappingConfig' });
     }
 }
 
@@ -1321,17 +1293,16 @@ export async function handleBulkUpdateMappings(
         return apiResponse.success(fields);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to bulk update mappings', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'bulkUpdateMappings' });
         }
 
         if (err.message.includes('Duplicate')) {
-            return apiResponse.badRequest(err.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'bulkUpdateMappings' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'bulkUpdateMappings' });
     }
 }
 
@@ -1373,13 +1344,12 @@ export async function handleClearMappings(
         });
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to clear mappings', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'clearMappings' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'clearMappings' });
     }
 }
 
@@ -1432,13 +1402,12 @@ export async function handleUpdateAdditionalDataConfig(
         return apiResponse.success(field);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to update additionalData config', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateAdditionalDataConfig' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'updateAdditionalDataConfig' });
     }
 }
 
@@ -1462,8 +1431,7 @@ export async function handleValidateMappings(
 
         return apiResponse.success(result);
     } catch (error) {
-        logger.error('Failed to validate mappings', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'validateMappings' });
     }
 }
 
@@ -1517,8 +1485,7 @@ export async function handleClearCache() {
 
         return apiResponse.success({ message: 'Caches cleared successfully' });
     } catch (error) {
-        logger.error('Failed to clear caches', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'clearSearchIndexCache' });
     }
 }
 
@@ -1531,8 +1498,7 @@ export async function handleGetCacheStats() {
         const stats = service.getCacheStats();
         return apiResponse.success(stats);
     } catch (error) {
-        logger.error('Failed to get cache stats', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'getSearchIndexCacheStats' });
     }
 }
 
@@ -1571,8 +1537,7 @@ export async function handleExportSearchIndex(
             },
         });
     } catch (error) {
-        logger.error('Failed to export search index', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'exportSearchIndex' });
     }
 }
 
@@ -1595,8 +1560,7 @@ export async function handlePreviewImport(request: NextRequest) {
 
         return apiResponse.success(preview);
     } catch (error) {
-        logger.error('Failed to preview import', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'previewImport' });
     }
 }
 
@@ -1630,8 +1594,7 @@ export async function handleImportSearchIndex(request: NextRequest) {
 
         return apiResponse.success(result);
     } catch (error) {
-        logger.error('Failed to import search index', error as Error);
-        return apiResponse.error(error as Error);
+        return apiResponse.error(error as Error, undefined, { operation: 'importSearchIndex' });
     }
 }
 

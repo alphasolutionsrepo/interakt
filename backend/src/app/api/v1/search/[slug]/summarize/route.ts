@@ -85,7 +85,7 @@ async function post(
     });
   } catch (error) {
     if (error instanceof ZodError) return apiResponse.validationError(error);
-    return apiResponse.error(error, undefined, { slug, operation: 'summarize' });
+    return apiResponse.error(error, undefined, { slug, operation: 'summarizeBySlug' });
   }
 }
 

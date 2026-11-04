@@ -57,8 +57,7 @@ export async function handleUploadDocument(request: NextRequest) {
     }, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to upload document', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'uploadDocument' });
   }
 }
 
@@ -83,8 +82,7 @@ export async function handleListDocuments(request: NextRequest) {
     return apiResponse.success({ documents, total: documents.length });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list documents', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listDocuments' });
   }
 }
 
@@ -114,7 +112,6 @@ export async function handleDeleteDocument(
     return apiResponse.success({ deleted: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete document', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteDocument' });
   }
 }

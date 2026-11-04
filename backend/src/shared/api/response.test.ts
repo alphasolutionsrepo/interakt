@@ -114,3 +114,43 @@ describe('the level a failure is logged at', () => {
     });
 });
 
+
+describe('apiResponse.refused', () => {
+    const missing = new Error('Search index abc not found');
+    const refuse = (err: unknown, details?: unknown) => {
+        logs.length = 0;
+        return apiResponse.refused(err, { code: 'NOT_FOUND', message: 'Search index not found', details }, { operation: 'getSearchIndex' });
+    };
+
+    const blocked = { dependents: ['title_ngram'] };
+    // The code alone takes the cause's message (an error's, or a string as it is)
+    const helpers = [
+        { helper: 'notFound', cause: new Error('Search index not found'), refusal: 'NOT_FOUND' as const, answer: () => apiResponse.notFound('Search index not found') },
+        { helper: 'badRequest', cause: 'Name already exists', refusal: 'BAD_REQUEST' as const, answer: () => apiResponse.badRequest('Name already exists') },
+        { helper: 'conflict', cause: missing, refusal: { code: 'CONFLICT' as const, message: 'Field is used', details: blocked }, answer: () => apiResponse.conflict('Field is used', blocked) },
+    ];
+    const run = (where: string, answer: () => Response) => (where === 'on a public route' ? publicRoute(async () => answer())() : Promise.resolve(answer()));
+
+    describe.each(['on an admin route', 'on a public route'])('%s', (where) => {
+        it.each(helpers)('answers as $helper does', async ({ cause, refusal, answer }) => {
+            const [refused, helper] = [await run(where, () => apiResponse.refused(cause, refusal)), await run(where, answer)];
+            const [a, b] = [await refused.json(), await helper.json()];
+            expect(refused.status).toBe(helper.status);
+            expect({ ...a, requestId: undefined }).toEqual({ ...b, requestId: undefined });
+            expect(a.requestId).toMatch(/^[0-9a-f]{32}$/);
+        });
+    });
+
+    it('logs it once as a warning, with the error that caused it and the operation', async () => {
+        const { requestId } = await refuse(missing).json();
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'warn', context: expect.objectContaining({ requestId, operation: 'getSearchIndex', code: 'NOT_FOUND', err: expect.objectContaining({ cause: missing }) }) }),
+        ]);
+    });
+
+    it('logs it as an error when the cause is ours to fix, as an AI model that is gone', () => {
+        const modelDown = Object.assign(new Error('model "qwen2.5:14b" not found'), { name: 'AdapterError', providerKey: 'ollama', statusCode: 404 });
+        expect(refuse(modelDown).status).toBe(404);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error' })]);
+    });
+});

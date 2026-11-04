@@ -10,15 +10,12 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
 import { getGlobalSearchConfig } from '@/features/global-settings';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { runWithTelemetryLevel } from '@/features/telemetry';
 import * as searchService from './search.service';
 import { searchRequestSchema } from './search.validation';
 import type { SearchRequest } from './search.types';
-
-const logger = createLogger('search-handlers');
 
 // ============================================================================
 // VALIDATION SCHEMAS
@@ -178,7 +175,7 @@ export async function handleGetSearchContextById(
 
         return apiResponse.success(serializedContext);
     } catch (error) {
-        return handleSearchError(error, 'getSearchContext');
+        return handleSearchError(error, 'getSearchContextById');
     }
 }
 
@@ -209,7 +206,7 @@ export async function handleGetSearchContextByName(
 
         return apiResponse.success(serializedContext);
     } catch (error) {
-        return handleSearchError(error, 'getSearchContext');
+        return handleSearchError(error, 'getSearchContextByName');
     }
 }
 
@@ -231,10 +228,7 @@ export async function handleHealthCheck() {
             return apiResponse.error('Search service is unhealthy', 503);
         }
     } catch (error) {
-        logger.error('Health check failed', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-        });
-        return apiResponse.error('Search service health check failed', 503);
+        return apiResponse.error('Search service health check failed', 503, { operation: 'healthCheck', err: error });
     }
 }
 

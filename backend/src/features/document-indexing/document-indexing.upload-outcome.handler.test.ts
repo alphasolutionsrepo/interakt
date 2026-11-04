@@ -15,7 +15,8 @@ vi.mock('@/shared/logger/logger', () => {
     const logger = {
         info: (_m: string, context: Record<string, unknown>) => state.logged.push({ level: 'info', context }),
         warn: (_m: string, context: Record<string, unknown>) => state.logged.push({ level: 'warn', context }),
-        error: vi.fn(), debug: vi.fn(),
+        error: (_m: string, err: unknown, context: Record<string, unknown> = {}) => state.logged.push({ level: 'error', context: { ...context, err } }),
+        debug: vi.fn(),
     };
     return { createLogger: () => logger, logger };
 });
@@ -106,5 +107,18 @@ describe('upload outcome in the response', () => {
         const recorded = state.recorded.at(-1) as { status: string; error: { requestId: string } };
         expect(recorded.status).toBe('failed');
         expect(recorded.error.requestId).toBe(body.requestId);
+    });
+
+    it('answers an upload whose AI provider is gone with 404, and logs it once as an error with the id it recorded', async () => {
+        state.result = Object.assign(new Error('Provider not found: p1'), { name: 'AIServiceError', code: 'PROVIDER_NOT_FOUND' });
+        const res = await post();
+        const body = await res.json();
+
+        expect(res.status).toBe(404);
+        const recorded = state.recorded.at(-1) as { error: { requestId: string } };
+        expect(recorded.error.requestId).toBe(body.requestId);
+        expect(state.logged.filter((line) => line.level !== 'info')).toEqual([
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: body.requestId, operation: 'indexDocuments' }) }),
+        ]);
     });
 });

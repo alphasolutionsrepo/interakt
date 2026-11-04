@@ -251,13 +251,12 @@ export async function handleIndexDocuments(
         });
     } catch (error) {
         const err = error as Error;
-        logger.error('Document indexing failed', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'indexDocuments' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'indexDocuments' });
     }
 }
 
@@ -310,8 +309,7 @@ export async function handleListBatches(
         return apiResponse.success(response);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to list batches', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'listBatches' });
     }
 }
 
@@ -388,8 +386,7 @@ export async function handleGetBatchStatus(
         return apiResponse.success(response);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to get batch status', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'getBatchStatus' });
     }
 }
 
@@ -439,8 +436,7 @@ export async function handleCancelBatch(
         return apiResponse.success({ cancelled: true, batchId: params.batchId });
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to cancel batch', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'cancelBatch' });
     }
 }
 
@@ -456,7 +452,7 @@ export async function handleCancelBatch(
  * an index that exists in the database but was never provisioned in the search
  * provider (409 — fixable by running a full upload).
  */
-function mapWriteError(error: unknown, context: string) {
+function mapWriteError(error: unknown, operation: string) {
     if (error instanceof SearchIndexNotFoundError) {
         return apiResponse.notFound(error.message);
     }
@@ -468,9 +464,8 @@ function mapWriteError(error: unknown, context: string) {
         return apiResponse.badRequest(error.message);
     }
 
-    const err = error as Error;
-    logger.error(context, err);
-    return apiResponse.error(err);
+    // apiResponse.error logs it, once
+    return apiResponse.error(error, undefined, { operation });
 }
 
 /**
@@ -601,7 +596,7 @@ async function handleSingleDocumentWrite(
             result.success ? 200 : 207
         );
     } catch (error) {
-        return mapWriteError(error, `Failed to ${action} document`);
+        return mapWriteError(error, action === 'upload' ? 'uploadIndexDocument' : 'mergeIndexDocument');
     }
 }
 
@@ -669,7 +664,7 @@ export async function handleListDocuments(
 
         return apiResponse.success(response);
     } catch (error) {
-        return mapWriteError(error, 'Failed to list documents');
+        return mapWriteError(error, 'listIndexDocuments');
     }
 }
 
@@ -710,7 +705,7 @@ export async function handleGetDocument(
 
         return apiResponse.success(response);
     } catch (error) {
-        return mapWriteError(error, 'Failed to get document');
+        return mapWriteError(error, 'getIndexDocument');
     }
 }
 
@@ -788,7 +783,7 @@ export async function handleDeleteDocument(
 
         return apiResponse.success(buildWriteResponse(result, 'Document deleted'));
     } catch (error) {
-        return mapWriteError(error, 'Failed to delete document');
+        return mapWriteError(error, 'deleteIndexDocument');
     }
 }
 
@@ -887,7 +882,7 @@ export async function handleBulkWriteDocuments(
             result.success ? 200 : 207 // 207 = Multi-Status
         );
     } catch (error) {
-        return mapWriteError(error, 'Bulk document write failed');
+        return mapWriteError(error, 'bulkWriteIndexDocuments');
     }
 }
 
@@ -965,6 +960,6 @@ export async function handleDeleteDocumentsByFilter(
 
         return apiResponse.success(response);
     } catch (error) {
-        return mapWriteError(error, 'Delete by filter failed');
+        return mapWriteError(error, 'deleteIndexDocumentsByFilter');
     }
 }

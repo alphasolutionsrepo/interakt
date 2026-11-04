@@ -76,14 +76,13 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     // apiResponse.error logs the failure, once
     const err = error as Error;
-    const log = { operation: 'generateInstructions', err };
 
     if (err.message.includes('not found')) {
       // A missing AI model says "not found" too, and is ours to fix
       const notFound = new AppError('One or more indexes not found', { code: 'NOT_FOUND', status: 404, cause: err, ourSide: failureLevel(err, 'warn') === 'error' });
-      return apiResponse.error(notFound, undefined, { operation: log.operation });
+      return apiResponse.error(notFound, undefined, { operation: 'generateInstructions' });
     }
 
-    return apiResponse.error('Failed to generate instructions. Please try again.', 500, log);
+    return apiResponse.error('Failed to generate instructions. Please try again.', 500, { operation: 'generateInstructions', err });
   }
 }

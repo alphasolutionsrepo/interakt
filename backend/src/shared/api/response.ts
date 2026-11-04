@@ -11,8 +11,8 @@ import { ZodError } from 'zod';
 import { isPublicRequest } from './public-route';
 import { currentRequestId, requestIdFor } from './request-id';
 
-import { type FieldError, INTERNAL_MESSAGE, codeForStatus } from '@/shared/errors/app-error';
-import { isOurFailure, toAppError } from '@/shared/errors/to-app-error';
+import { AppError, type FieldError, INTERNAL_MESSAGE, codeForStatus } from '@/shared/errors/app-error';
+import { failureLevel, isOurFailure, toAppError } from '@/shared/errors/to-app-error';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('api');
@@ -127,6 +127,25 @@ function successWithPagination<T>(
 function error(err: unknown, status: number = 500, logContext?: Record<string, unknown>): NextResponse<APIErrorResponse> {
     const described = describeError(err, status, logContext);
     return NextResponse.json(described.body, { status: described.status });
+}
+
+const REFUSAL_STATUS = { NOT_FOUND: 404, BAD_REQUEST: 400, CONFLICT: 409 } as const;
+type RefusalCode = keyof typeof REFUSAL_STATUS;
+
+/**
+ * A refusal decided from a caught error (its message said "not found", say): the same
+ * answer as notFound, badRequest or conflict, logged once with the error as its cause.
+ * The message is the error's own unless one is given. A cause that is ours to fix (an
+ * AI model that is gone) is logged as an error.
+ */
+function refused(
+    cause: unknown,
+    refusal: RefusalCode | { code: RefusalCode; message?: string; details?: unknown },
+    logContext?: Record<string, unknown>
+): NextResponse<APIErrorResponse> {
+    const { code, message = cause instanceof Error ? cause.message : String(cause), details } = typeof refusal === 'string' ? { code: refusal } : refusal;
+    const status = REFUSAL_STATUS[code];
+    return error(new AppError(message, { code, status, details, cause, ourSide: failureLevel(cause, 'warn') === 'error' }), status, logContext);
 }
 
 /**
@@ -251,6 +270,7 @@ export const apiResponse = {
     success,
     successWithPagination,
     error,
+    refused,
     validationError,
     notFound,
     badRequest,

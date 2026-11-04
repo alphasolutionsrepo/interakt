@@ -705,8 +705,8 @@ describe('the AI summary by slug when the AI provider fails', () => {
 
 describe('a summary that fails before it streams, for the log', () => {
   const summaries = [
-    { route: 'by token', call: () => summaryByToken(req('/api/v1/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY)), experience: { experienceId: searchExperience.id } },
-    { route: 'by slug', call: () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY), slugParams('catalog')), experience: { slug: searchExperience.slug } },
+    { route: 'by token', call: () => summaryByToken(req('/api/v1/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY)), experience: { experienceId: searchExperience.id, operation: 'summarize' } },
+    { route: 'by slug', call: () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY), slugParams('catalog')), experience: { slug: searchExperience.slug, operation: 'summarizeBySlug' } },
   ];
 
   beforeEach(() => { logs.length = 0; });
@@ -717,7 +717,7 @@ describe('a summary that fails before it streams, for the log', () => {
     const { requestId } = await (await call()).json();
 
     expect(reported(logs)).toEqual([
-      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, ...experience, operation: 'summarize', err: modelDown }) }),
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, ...experience, err: modelDown }) }),
     ]);
   });
 
@@ -728,7 +728,7 @@ describe('a summary that fails before it streams, for the log', () => {
 
     expect(res.status).toBe(500);
     expect(reported(logs)).toEqual([
-      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, slug: searchExperience.slug, operation: 'summarize' }) }),
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, slug: searchExperience.slug, operation: 'summarizeBySlug' }) }),
     ]);
   });
 

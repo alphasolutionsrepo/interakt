@@ -58,17 +58,16 @@ export async function handleCreateSearchExperience(request: NextRequest) {
     return apiResponse.success(experience, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create search experience', err);
 
     if (err instanceof service.ValidationError) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createSearchExperience' });
     }
 
     if (err instanceof service.NotFoundError) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createSearchExperience' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createSearchExperience' });
   }
 }
 
@@ -101,8 +100,7 @@ export async function handleListSearchExperiences(request: NextRequest) {
       totalItems: result.total,
     });
   } catch (error) {
-    logger.error('Failed to list search experiences', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'listSearchExperiences' });
   }
 }
 
@@ -129,11 +127,10 @@ export async function handleGetSearchExperience(
     const err = error as Error;
 
     if (err instanceof service.NotFoundError) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'getSearchExperience' });
     }
 
-    logger.error('Failed to get search experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getSearchExperience' });
   }
 }
 
@@ -176,15 +173,14 @@ export async function handleUpdateSearchExperience(
     const err = error as Error;
 
     if (err instanceof service.NotFoundError) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateSearchExperience' });
     }
 
     if (err instanceof service.ValidationError) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'updateSearchExperience' });
     }
 
-    logger.error('Failed to update search experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateSearchExperience' });
   }
 }
 
@@ -216,11 +212,10 @@ export async function handleDeleteSearchExperience(
     const err = error as Error;
 
     if (err instanceof service.NotFoundError) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'deleteSearchExperience' });
     }
 
-    logger.error('Failed to delete search experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteSearchExperience' });
   }
 }
 
@@ -251,8 +246,7 @@ export async function handleCheckSlug(request: NextRequest) {
 
     return apiResponse.success({ available });
   } catch (error) {
-    logger.error('Failed to check slug availability', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'checkSearchExperienceSlug' });
   }
 }
 
@@ -288,11 +282,10 @@ export async function handleRegenerateAccessToken(
     const err = error as Error;
 
     if (err instanceof service.NotFoundError) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'regenerateSearchExperienceAccessToken' });
     }
 
-    logger.error('Failed to regenerate access token', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'regenerateSearchExperienceAccessToken' });
   }
 }
 
@@ -336,15 +329,14 @@ export async function handleAddIndex(
     const err = error as Error;
 
     if (err instanceof service.NotFoundError) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'addIndex' });
     }
 
     if (err instanceof service.ValidationError) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'addIndex' });
     }
 
-    logger.error('Failed to add index to search experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'addIndex' });
   }
 }
 
@@ -389,11 +381,10 @@ export async function handleUpdateIndex(
     const err = error as Error;
 
     if (err instanceof service.NotFoundError) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateIndex' });
     }
 
-    logger.error('Failed to update index in search experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateIndex' });
   }
 }
 
@@ -426,15 +417,14 @@ export async function handleRemoveIndex(
     const err = error as Error;
 
     if (err instanceof service.NotFoundError) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'removeIndex' });
     }
 
     if (err instanceof service.ValidationError) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'removeIndex' });
     }
 
-    logger.error('Failed to remove index from search experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'removeIndex' });
   }
 }
 
@@ -469,10 +459,9 @@ export async function handleAddExternalSource(
     return apiResponse.success(experience, 201);
   } catch (error) {
     const err = error as Error;
-    if (err instanceof service.NotFoundError) return apiResponse.notFound(err.message);
-    if (err instanceof service.ValidationError) return apiResponse.badRequest(err.message);
-    logger.error('Failed to add external index to search experience', err);
-    return apiResponse.error(err);
+    if (err instanceof service.NotFoundError) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'addExternalSource' });
+    if (err instanceof service.ValidationError) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'addExternalSource' });
+    return apiResponse.error(err, undefined, { operation: 'addExternalSource' });
   }
 }
 
@@ -494,9 +483,8 @@ export async function handleRemoveExternalSource(
     return apiResponse.success(experience);
   } catch (error) {
     const err = error as Error;
-    if (err instanceof service.NotFoundError) return apiResponse.notFound(err.message);
-    if (err instanceof service.ValidationError) return apiResponse.badRequest(err.message);
-    logger.error('Failed to remove external index from search experience', err);
-    return apiResponse.error(err);
+    if (err instanceof service.NotFoundError) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'removeExternalSource' });
+    if (err instanceof service.ValidationError) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'removeExternalSource' });
+    return apiResponse.error(err, undefined, { operation: 'removeExternalSource' });
   }
 }

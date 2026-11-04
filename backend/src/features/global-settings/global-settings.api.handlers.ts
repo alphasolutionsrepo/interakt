@@ -60,12 +60,10 @@ export async function handleGetGlobalSettings() {
         const settings = await getGlobalSettingsForApi();
         return apiResponse.success(settings);
     } catch (error) {
-        logger.error('Failed to get global settings', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-        });
         return apiResponse.error(
             error instanceof Error ? error.message : 'Failed to get global settings',
-            500
+            500,
+            { operation: 'getGlobalSettings', err: error }
         );
     }
 }
@@ -106,18 +104,15 @@ export async function handleUpdateGlobalSettings(request: NextRequest) {
 
         return apiResponse.success(updated);
     } catch (error) {
-        logger.error('Failed to update global settings', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-        });
-
         // Handle validation errors from service
         if (error instanceof Error && error.message.startsWith('Invalid settings:')) {
-            return apiResponse.badRequest(error.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'updateGlobalSettings' });
         }
 
         return apiResponse.error(
             error instanceof Error ? error.message : 'Failed to update global settings',
-            500
+            500,
+            { operation: 'updateGlobalSettings', err: error }
         );
     }
 }
