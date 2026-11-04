@@ -543,7 +543,7 @@ export async function handleTriggerReindex(
         });
     } catch (error) {
         // apiResponse.error logs it and answers with the cause: not found, or what the search service said
-        return apiResponse.error(error);
+        return apiResponse.error(error, undefined, { operation: 'triggerReindex', indexId: (await context.params).id });
     }
 }
 
@@ -572,7 +572,7 @@ export async function handleRecreateEmptyIndex(
         const result = await service.recreateEmptyIndex(validation.data.id, userId);
 
         if (!result.success) {
-            return apiResponse.error(new Error(result.error || 'Failed to recreate index', { cause: result.cause }));
+            return apiResponse.error(new Error(result.error || 'Failed to recreate index', { cause: result.cause }), undefined, { operation: 'recreateEmptyIndex', indexId: validation.data.id });
         }
 
         logger.info('Empty index recreated via API', {
@@ -585,7 +585,7 @@ export async function handleRecreateEmptyIndex(
         });
     } catch (error) {
         // apiResponse.error logs it and answers with the cause: not found, or what the search service said
-        return apiResponse.error(error);
+        return apiResponse.error(error, undefined, { operation: 'recreateEmptyIndex', indexId: (await context.params).id });
     }
 }
 

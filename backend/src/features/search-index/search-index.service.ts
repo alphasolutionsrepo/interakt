@@ -1098,6 +1098,18 @@ export async function triggerReindex(
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
             written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error, writeError: bulkResult.writeError };
 
+            // Update index stats via updateSearchIndex
+            await repository.updateSearchIndex(searchIndexId, {
+                documentCount: bulkResult.indexed,
+                lastIndexedAt: new Date(),
+            });
+
+            // Nothing went back in: the reindex failed (the index is now empty, and its
+            // count says so), not partly. The error response logs it.
+            const nothingWritten = reindexWriteFailure(written);
+            if (nothingWritten) throw nothingWritten;
+
+            // Partly written: the reindex succeeds, so this is its one line about the rest
             if (bulkResult.failed > 0) {
                 logger.warn('Some documents failed to reindex', {
                     indexName,
@@ -1106,17 +1118,6 @@ export async function triggerReindex(
                     errors: bulkResult.errors.slice(0, 5),
                 });
             }
-
-            // Update index stats via updateSearchIndex
-            await repository.updateSearchIndex(searchIndexId, {
-                documentCount: bulkResult.indexed,
-                lastIndexedAt: new Date(),
-            });
-
-            // Nothing went back in: the reindex failed (the index is now empty, and its
-            // count says so), not partly
-            const nothingWritten = reindexWriteFailure(written);
-            if (nothingWritten) throw nothingWritten;
         }
 
         // Refresh index to make all docs searchable
@@ -1154,14 +1155,8 @@ export async function triggerReindex(
         };
 
     } catch (error) {
+        // Not logged here: the error is rethrown, and the response to it logs it once
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-        logger.error('Reindex failed', {
-            searchIndexId,
-            indexName,
-            error: errorMessage,
-            triggeredBy: userId,
-        });
 
         // Update status to failed
         await repository.updateSearchIndexStatus(searchIndexId, 'error');
@@ -1332,12 +1327,8 @@ export async function recreateEmptyIndex(
 
         return { success: true };
     } catch (error) {
+        // Not logged here: the handler answers the failure, and the response logs it once
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger.error('Failed to recreate empty index', {
-            searchIndexId,
-            indexName,
-            error: errorMessage,
-        });
         await repository.updateSearchIndexStatus(searchIndexId, 'error');
         await recordLastJob(searchIndexId, {
             kind: 'recreate',
