@@ -1,7 +1,14 @@
 // src/shared/logger/pino-logger.ts
 import pino, { Logger as PinoLogger, LoggerOptions } from 'pino';
 
-import { serializeError } from '@/shared/errors/error-detail';
+import {
+  ATTR_ERROR_TYPE,
+  ATTR_EXCEPTION_MESSAGE,
+  ATTR_EXCEPTION_STACKTRACE,
+  ATTR_EXCEPTION_TYPE,
+} from '@opentelemetry/semantic-conventions';
+
+import { redactLogFields, scrubCredentials, serializeError } from '@/shared/errors/error-detail';
 
 /**
  * Production-Grade Logger using Pino
@@ -60,7 +67,12 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 // PINO CONFIGURATION
 // ============================================================================
 
-export function createPinoOptions(): LoggerOptions {
+/**
+ * json is what log tools read (production); pretty is for people (development). Every
+ * line has credentials left out of its message and fields, and an error is expanded
+ * with its causes and the provider's response.
+ */
+export function createPinoOptions(format: 'json' | 'pretty' = IS_PRODUCTION ? 'json' : 'pretty'): LoggerOptions {
   return {
     level: LOG_LEVEL,
     base: {
@@ -90,12 +102,13 @@ export function createPinoOptions(): LoggerOptions {
       ],
       censor: '[Redacted]',
     },
-    // An error logged as err keeps its causes and the provider's response, secrets left out.
-    // Many call sites log it as error: an Error there is expanded the same way (it would
-    // otherwise print as {}), and a message string is left as it is.
-    serializers: {
-      err: serializeError,
-      error: (value: unknown) => (value instanceof Error ? serializeError(value) : value),
+    // The log formatter below has expanded errors already; pino's own err serializer
+    // would rewrite them (message and stack joined with the cause's)
+    serializers: { err: expanded, error: expanded },
+    hooks: {
+      logMethod(args, method) {
+        method.apply(this, args.map((arg) => (typeof arg === 'string' ? scrubCredentials(arg) : arg)) as Parameters<typeof method>);
+      },
     },
     timestamp: pino.stdTimeFunctions.isoTime,
     formatters: {
@@ -105,7 +118,44 @@ export function createPinoOptions(): LoggerOptions {
         pid: undefined,
         hostname: undefined,
       }),
+      // Many call sites log the error as error rather than err: both are expanded, and a
+      // message string or plain object there is left as it is (credentials aside)
+      log: (fields) => {
+        // Logging never throws. A value that can't be read is marked by redactLogFields;
+        // this is for anything else, so the line is still written
+        try {
+          return format === 'json' ? withExceptionFields(fields, redactLogFields(fields)) : redactLogFields(fields);
+        } catch {
+          return { logFields: '[Unreadable]' };
+        }
+      },
     },
+  };
+}
+
+function expanded(value: unknown): unknown {
+  return value instanceof Error ? serializeError(value) : value;
+}
+
+/**
+ * The error of a log line under OpenTelemetry's names (exception.type, exception.message,
+ * exception.stacktrace, error.type), so a log tool reads it without knowing our format.
+ * err keeps what those names have no place for: the causes and the provider's response.
+ * https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-logs/
+ */
+function withExceptionFields(fields: Record<string, unknown>, redacted: Record<string, unknown>): Record<string, unknown> {
+  const key = ['err', 'error'].find((k) => fields[k] instanceof Error);
+  if (!key) return redacted;
+  const written = redacted[key];
+  if (written === null || typeof written !== 'object') return redacted;
+  const { stack, ...expanded } = written as Record<string, unknown>;
+  return {
+    [ATTR_EXCEPTION_TYPE]: expanded.name,
+    [ATTR_EXCEPTION_MESSAGE]: expanded.message,
+    [ATTR_EXCEPTION_STACKTRACE]: stack,
+    [ATTR_ERROR_TYPE]: typeof expanded.code === 'string' ? expanded.code : expanded.name,
+    ...redacted,
+    [key]: expanded,
   };
 }
 
@@ -155,7 +205,7 @@ function createPinoLogger(options: LoggerOptions): PinoLogger {
 
 /**
  * A service's logger over pino. An error passed to error() is logged as err, which
- * the err serializer above expands.
+ * the log formatter above expands.
  */
 export class ServiceLogger implements LoggerInstance {
   constructor(private readonly pino: PinoLogger) {}
@@ -177,8 +227,9 @@ export class ServiceLogger implements LoggerInstance {
     this.write('error', message, fields || context ? { ...fields, ...context } : undefined);
   }
 
+  // Here: pino doesn't run its bindings formatter on a child's fields
   child(bindings: LogContext): LoggerInstance {
-    return new ServiceLogger(this.pino.child(bindings));
+    return new ServiceLogger(this.pino.child(redactLogFields(bindings)));
   }
 
   private write(level: LogLevel, message: string, context?: LogContext): void {

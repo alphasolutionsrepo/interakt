@@ -291,15 +291,17 @@ function upstreamMessage(err: unknown, body: unknown): string {
     return deepest;
 }
 
-/** Remove anything that looks like a credential and cut to a readable length */
+/**
+ * Remove anything that looks like a credential and cut to a readable length. On top of
+ * the credentials every log line leaves out (redactSecrets), text shown to an admin is
+ * stricter: any key or code written with a colon, any bearer value, and long opaque strings.
+ */
 export function scrub(text: string): string {
     const cleaned = String(redactSecrets(text))
-        // key=value pairs in query strings or connection strings
+        // key=value or key: value pairs
         .replace(/((?:api[-_]?key|key|code|sig|token|password|secret|accountkey|sharedaccesskey)\s*[=:]\s*)[^&;\s"']+/gi, '$1[Redacted]')
         // bearer and basic auth
         .replace(/\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, '$1 [Redacted]')
-        // credentials in URLs: https://user:pass@host
-        .replace(/(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/g, '$1[Redacted]@')
         // long opaque strings that look like keys
         .replace(/\b(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[A-Za-z])[A-Za-z0-9+/_-]{32,}={0,2}/g, '[Redacted]');
     return cleaned.length > MAX_MESSAGE ? `${cleaned.slice(0, MAX_MESSAGE)}…` : cleaned;
