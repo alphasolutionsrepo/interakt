@@ -1,6 +1,7 @@
 // src/shared/logger/pino-logger.ts
 import pino, { Logger as PinoLogger, LoggerOptions } from 'pino';
 
+import { isSpanContextValid, trace } from '@opentelemetry/api';
 import {
   ATTR_ERROR_TYPE,
   ATTR_EXCEPTION_MESSAGE,
@@ -102,6 +103,8 @@ export function createPinoOptions(format: 'json' | 'pretty' = IS_PRODUCTION ? 'j
       ],
       censor: '[Redacted]',
     },
+    // The trace a JSON line was written in, so a log tool links the line to the trace
+    ...(format === 'json' && { mixin: traceFields }),
     // The log formatter below has expanded errors already; pino's own err serializer
     // would rewrite them (message and stack joined with the cause's)
     serializers: { err: expanded, error: expanded },
@@ -130,6 +133,20 @@ export function createPinoOptions(format: 'json' | 'pretty' = IS_PRODUCTION ? 'j
         }
       },
     },
+  };
+}
+
+/**
+ * The active span's ids under the names OpenTelemetry's pino instrumentation uses
+ * (trace_id, span_id, trace_flags); nothing outside a trace.
+ */
+function traceFields(): Record<string, string> {
+  const spanContext = trace.getActiveSpan()?.spanContext();
+  if (!spanContext || !isSpanContextValid(spanContext)) return {};
+  return {
+    trace_id: spanContext.traceId,
+    span_id: spanContext.spanId,
+    trace_flags: spanContext.traceFlags.toString(16).padStart(2, '0'),
   };
 }
 

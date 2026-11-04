@@ -5,6 +5,7 @@
  * are usually in the cause) and the provider's response, with secrets left out.
  */
 
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import pino from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -148,6 +149,43 @@ describe('an error in a JSON log line', () => {
         logger.error('Request failed', refused());
         expect(lines[0]).not.toHaveProperty(['exception.type']);
         expect(lines[0]).toMatchObject({ err: { stack: expect.stringContaining('Error') } });
+    });
+});
+
+// One tracer for the file: OpenTelemetry takes the first provider registered
+const tracer = (() => {
+    const provider = new NodeTracerProvider();
+    provider.register();
+    return provider.getTracer('test');
+})();
+
+describe('a JSON log line written inside a trace', () => {
+    // Links the line to its trace, under the names OpenTelemetry's own pino instrumentation uses
+
+    it('carries the trace id, span id and trace flags of the active span', () => {
+        const { lines, logger } = capture('json');
+        const span = tracer.startActiveSpan('search', (active) => {
+            logger.warn('Request rejected', { requestId: active.spanContext().traceId });
+            active.end();
+            return active;
+        });
+        const { traceId, spanId } = span.spanContext();
+        expect(lines[0]).toMatchObject({ trace_id: traceId, span_id: spanId, trace_flags: '01', requestId: traceId });
+    });
+
+    it('carries nothing outside a trace', () => {
+        const { lines, logger } = capture('json');
+        logger.info('Started');
+        expect(Object.keys(lines[0]).filter((k) => k.startsWith('trace_') || k === 'span_id')).toEqual([]);
+    });
+
+    it('stays as it was in the readable development output', () => {
+        const { lines, logger } = capture('pretty');
+        tracer.startActiveSpan('search', (active) => {
+            logger.info('Searched');
+            active.end();
+        });
+        expect(lines[0]).not.toHaveProperty('trace_id');
     });
 });
 
@@ -335,5 +373,25 @@ describe('createLogger in production', () => {
 
         const line = written.map((w) => JSON.parse(w)).find((l) => l.service === 'production-test');
         expect(line).toMatchObject({ 'exception.type': 'Error', err: { cause: { message: expect.stringContaining('For input string') } } });
+    });
+
+    it('links a line written inside a request span to its trace', async () => {
+        vi.stubEnv('NODE_ENV', 'production');
+        vi.resetModules();
+        const written: string[] = [];
+        vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+            written.push(String(chunk));
+            return true;
+        });
+        const { createLogger } = await import('./pino-logger');
+
+        const traceId = tracer.startActiveSpan('GET /api/search-indexes', (span) => {
+            createLogger('production-trace-test').warn('Request rejected');
+            span.end();
+            return span.spanContext().traceId;
+        });
+
+        const line = written.map((w) => JSON.parse(w)).find((l) => l.service === 'production-trace-test');
+        expect(line).toMatchObject({ trace_id: traceId, span_id: expect.stringMatching(/^[0-9a-f]{16}$/) });
     });
 });

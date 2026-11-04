@@ -7,6 +7,7 @@
 
 import { cacheConfig } from '@/config/cache.config';
 import { createLogger } from '@/shared/logger/logger';
+import { inBackground } from '@/shared/telemetry/background';
 
 const logger = createLogger('cache');
 
@@ -36,7 +37,7 @@ export class CacheManager {
 
     // Setup cleanup interval
     if (cacheConfig.memory.cleanupIntervalMs > 0) {
-      setInterval(() => this.cleanup(), cacheConfig.memory.cleanupIntervalMs);
+      inBackground(() => setInterval(() => this.cleanup(), cacheConfig.memory.cleanupIntervalMs));
     }
   }
 
