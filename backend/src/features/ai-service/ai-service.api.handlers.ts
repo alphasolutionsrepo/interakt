@@ -386,7 +386,7 @@ export async function handleGetProviders(request: NextRequest) {
 
     return apiResponse.success(result);
   } catch (error) {
-    return apiResponse.error(error);
+    return apiResponse.error(error, undefined, { operation: 'getProviders' });
   }
 }
 
@@ -397,12 +397,11 @@ export async function handleGetProviders(request: NextRequest) {
  */
 function aiCallFailure(error: unknown, operation: string) {
   const err = error as Error;
-  const log = { operation };
   if (err.message.includes('not found')) {
-    return apiResponse.error(new AppError(err.message, { code: 'NOT_FOUND', status: 404, cause: err, ourSide: true }), undefined, log);
+    return apiResponse.error(new AppError(err.message, { code: 'NOT_FOUND', status: 404, cause: err, ourSide: true }), undefined, { operation });
   }
   if (err.message.includes('Circuit breaker')) {
-    return apiResponse.error(new AppError(err.message, { code: 'BAD_REQUEST', status: 400, cause: err, ourSide: true }), undefined, log);
+    return apiResponse.error(new AppError(err.message, { code: 'BAD_REQUEST', status: 400, cause: err, ourSide: true }), undefined, { operation });
   }
-  return apiResponse.error(err, undefined, log);
+  return apiResponse.error(err, undefined, { operation });
 }

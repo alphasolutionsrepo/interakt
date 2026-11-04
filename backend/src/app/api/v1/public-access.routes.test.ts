@@ -772,3 +772,31 @@ describe('a document that is not in any index', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('a feature the experience has turned off, for the log', () => {
+  const headers = { 'X-Access-Token': 'search-token', Origin: SHOP };
+  const inactive = { ...searchExperience, isActive: false };
+  const aiOff = { ...searchExperience, aiConfig: { enabled: true, summary: { enabled: false } } };
+  const autocompleteOff = { ...searchExperience, searchConfig: { autocomplete: { enabled: false } } };
+
+  beforeEach(() => { logs.length = 0; });
+
+  it.each([
+    { name: 'search by slug, experience inactive', experience: inactive, code: 'INACTIVE', operation: 'searchBySlug', call: () => searchBySlug(req('/api/v1/search/catalog/search', 'POST', headers, { query: 'jeans' }), slugParams('catalog')) },
+    { name: 'AI summary by slug, experience inactive', experience: inactive, code: 'INACTIVE', operation: 'summarizeBySlug', call: () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', headers, SUMMARY), slugParams('catalog')) },
+    { name: 'AI summary by slug, summary off', experience: aiOff, code: 'AI_UNAVAILABLE', operation: 'summarizeBySlug', call: () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', headers, SUMMARY), slugParams('catalog')) },
+    { name: 'AI summary by token, summary off', experience: aiOff, code: 'AI_UNAVAILABLE', operation: 'summarize', call: () => summaryByToken(req('/api/v1/summarize', 'POST', headers, SUMMARY)) },
+    { name: 'autocomplete, turned off', experience: autocompleteOff, code: 'AUTOCOMPLETE_DISABLED', operation: 'autocomplete', call: () => autocomplete(req('/api/v1/autocomplete', 'POST', headers, { query: 'je' })) },
+  ])('$name is a warning that names the operation', async ({ experience, code, operation, call }) => {
+    mocks.getSearchExperienceBySlug.mockResolvedValue(experience);
+    mocks.getSearchExperienceWithIndexes.mockResolvedValue(experience);
+    mocks.getSearchExperienceByAccessToken.mockResolvedValue(experience);
+    const res = await call();
+    const body = await res.json();
+
+    expect(body).toMatchObject({ code, requestId: expect.any(String) });
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ operation, code, requestId: body.requestId }) }),
+    ]);
+  });
+});

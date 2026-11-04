@@ -59,7 +59,7 @@ export async function handleSummarize(request: NextRequest): Promise<Response> {
   // Check if AI is enabled
   if (!experience.aiConfig.enabled || !experience.aiConfig.summary.enabled) {
     return withCors(
-      apiResponse.error(new AppError('AI summarization is not enabled for this search experience', { code: 'AI_UNAVAILABLE', status: 403 })),
+      apiResponse.error(new AppError('AI summarization is not enabled for this search experience', { code: 'AI_UNAVAILABLE', status: 403 }), undefined, { operation: 'summarize', experienceId: experience.id }),
       experience,
       origin
     );

@@ -41,7 +41,7 @@ async function post(
     }
 
     if (!baseExperience.isActive) {
-      return apiResponse.error(new AppError('Search experience is not active', { code: 'INACTIVE', status: 403 }));
+      return apiResponse.error(new AppError('Search experience is not active', { code: 'INACTIVE', status: 403 }), undefined, { operation: 'summarizeBySlug', slug });
     }
 
     // Get experience with indexes for AI config
@@ -52,7 +52,7 @@ async function post(
 
     // 2. Check if AI summary is enabled
     if (!experience.aiConfig.enabled || !experience.aiConfig.summary.enabled) {
-      return apiResponse.error(new AppError('AI summarization is not enabled for this search experience', { code: 'AI_UNAVAILABLE', status: 403 }));
+      return apiResponse.error(new AppError('AI summarization is not enabled for this search experience', { code: 'AI_UNAVAILABLE', status: 403 }), undefined, { operation: 'summarizeBySlug', slug });
     }
 
     // 3. Authenticate: the experience's access token, or an admin session. Admin

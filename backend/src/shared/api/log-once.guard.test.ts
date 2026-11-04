@@ -156,6 +156,26 @@ function operationsNamed(source: string): string[] {
   return names;
 }
 
+/**
+ * Answers that don't name their operation: the line of each. The name is written where
+ * the answer is, as { operation: ... } (a helper passes on the one it takes).
+ */
+function unnamed(source: string): number[] {
+  const file = ts.createSourceFile('file.ts', source, ts.ScriptTarget.Latest, true);
+  const lines: number[] = [];
+  const names = (arg: ts.Expression) =>
+    ts.isObjectLiteralExpression(arg) &&
+    arg.properties.some((p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && ts.isIdentifier(p.name) && p.name.text === 'operation');
+  const visit = (node: ts.Node) => {
+    if (answersFailure(node) && !(node as ts.CallExpression).arguments.some(names)) {
+      lines.push(file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return lines;
+}
+
 describe('the scanner', () => {
   it.each([
     ['a typed catch', `try { a(); } catch (error: unknown) { logger.error('x', error); return apiResponse.error(error); }`],
@@ -185,6 +205,14 @@ describe('the scanner', () => {
     expect(operationsNamed(`apiResponse.error(e, undefined, { operation: 'a' }); apiResponse.refused(e, r, { slug, operation: 'b' }); describeError(e, 500, { operation: 'c' });`)).toEqual(['a', 'b', 'c']);
   });
 
+  it('finds an answer that names no operation', () => {
+    expect(unnamed(`apiResponse.error(e);\napiResponse.refused(e, 'NOT_FOUND', { slug });\ndescribeError(e, 500, log);`)).toEqual([1, 2, 3]);
+  });
+
+  it('passes an answer that names its operation, or passes on the one it was given', () => {
+    expect(unnamed(`apiResponse.error(e, undefined, { operation: 'a' }); describeError(e, 500, { slug, operation });`)).toEqual([]);
+  });
+
   it('reads an operation kept in a variable no further: write it where the answer is', () => {
     expect(operationsNamed(`const log = { operation: 'a' }; apiResponse.error(e, undefined, { operation: log.operation });`)).toEqual([]);
   });
@@ -202,6 +230,14 @@ describe('a failure an API answers', () => {
   it('is logged once: nothing logs it and answers through apiResponse too', () => {
     const twice = files.flatMap(({ path, source }) => loggedTwice(source, path).map((line) => `${path}:${line}`));
     expect(twice).toEqual([]);
+  });
+
+  it('names what failed', () => {
+    // response.ts is apiResponse itself, passing on what its caller named
+    const missing = files
+      .filter(({ path }) => path !== join('shared', 'api', 'response.ts'))
+      .flatMap(({ path, source }) => unnamed(source).map((line) => `${path}:${line}`));
+    expect(missing).toEqual([]);
   });
 
   it('names what failed: an operation belongs to one file', () => {

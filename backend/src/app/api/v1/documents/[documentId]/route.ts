@@ -42,7 +42,7 @@ async function get(
     const activeIndexes = experience.indexes.filter((idx) => idx.searchIndex.isActive);
 
     if (activeIndexes.length === 0) {
-      return withCors(apiResponse.error(new AppError('No active indexes configured', { code: 'NO_INDEXES', status: 400 }), undefined, { experienceId: experience.id, documentId }), experience, origin);
+      return withCors(apiResponse.error(new AppError('No active indexes configured', { code: 'NO_INDEXES', status: 400 }), undefined, { operation: 'getPublicDocument', experienceId: experience.id, documentId }), experience, origin);
     }
 
     // 3. Try to find document in each index
@@ -74,7 +74,7 @@ async function get(
     if (!document && failures.length > 0) {
       const [first, ...others] = failures;
       for (const failure of others) logFailure(failure, 'A document lookup failed too');
-      return withCors(apiResponse.error(first.error, undefined, { experienceId: experience.id, documentId, indexId: first.indexId }), experience, origin);
+      return withCors(apiResponse.error(first.error, undefined, { operation: 'getPublicDocument', experienceId: experience.id, documentId, indexId: first.indexId }), experience, origin);
     }
     for (const failure of failures) logFailure(failure, 'A document lookup failed; another index had the document');
 
@@ -111,7 +111,7 @@ async function get(
   } catch (error) {
     // A search error answers with its own status; a server failure gets the plain
     // public message and a request id. Logged once by apiResponse.
-    return apiResponse.error(error, undefined, { documentId });
+    return apiResponse.error(error, undefined, { operation: 'getPublicDocument', documentId });
   }
 }
 

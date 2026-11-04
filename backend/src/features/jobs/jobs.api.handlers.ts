@@ -40,7 +40,7 @@ async function requireReady() {
   const boss = await ensureJobsStarted();
   if (!boss) {
     return {
-      error: apiResponse.error('Background jobs engine is not running', 503),
+      error: apiResponse.error('Background jobs engine is not running', 503, { operation: 'startJobsEngine' }),
     };
   }
   return { userId };

@@ -184,7 +184,7 @@ export function createSummaryStream(
 
       // The same body an error response has: a plain message for visitors on a server
       // failure, the explanation for admins, and a request id. describeError logs it.
-      send({ type: 'error', ...describeError(error, 500, { experienceId: experience.id }).body });
+      send({ type: 'error', ...describeError(error, 500, { operation: 'summaryStream', experienceId: experience.id }).body });
       await finish();
     }
   }

@@ -225,7 +225,7 @@ export async function handleHealthCheck() {
         if (isHealthy) {
             return apiResponse.success({ status: 'healthy' });
         } else {
-            return apiResponse.error('Search service is unhealthy', 503);
+            return apiResponse.error('Search service is unhealthy', 503, { operation: 'healthCheck' });
         }
     } catch (error) {
         return apiResponse.error('Search service health check failed', 503, { operation: 'healthCheck', err: error });
