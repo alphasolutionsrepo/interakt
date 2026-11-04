@@ -27,6 +27,7 @@ import {
   sitecoreSettings,
   type SitecoreRequestInput,
 } from './sitecore-search.request';
+import { bodyExcerpt, readResponseBody } from '../engines/response-body';
 
 // ============================================================================
 // HTTP
@@ -68,7 +69,7 @@ async function callSitecore(
 
   // One timeout for the whole exchange, reading the body included
   let response: Response;
-  let text: string;
+  let answer: Awaited<ReturnType<typeof readResponseBody>>;
   try {
     response = await fetch(settings.endpoint, {
       method: 'POST',
@@ -76,7 +77,7 @@ async function callSitecore(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(EXTERNAL_REQUEST_TIMEOUT_MS),
     });
-    text = await response.text();
+    answer = await readResponseBody(response);
   } catch (error) {
     throw new ExternalSearchError(
       SITECORE,
@@ -92,16 +93,15 @@ async function callSitecore(
     }
     throw new ExternalSearchError(
       SITECORE,
-      `Sitecore Search returned HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`,
+      `Sitecore Search returned HTTP ${response.status}${bodyExcerpt(answer.text)}`,
       response.status,
     );
   }
 
-  try {
-    return { json: JSON.parse(text), took: Date.now() - start, unapplied };
-  } catch {
-    throw new ExternalSearchError(SITECORE, 'Sitecore Search returned a non-JSON response');
+  if (answer.json === undefined) {
+    throw new ExternalSearchError(SITECORE, `Sitecore Search returned a non-JSON response (HTTP ${response.status})${bodyExcerpt(answer.text)}`);
   }
+  return { json: answer.json, took: Date.now() - start, unapplied };
 }
 
 // ============================================================================

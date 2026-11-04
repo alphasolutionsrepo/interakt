@@ -14,6 +14,7 @@
  */
 
 import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
+import { bodyExcerpt, readResponseBody } from './response-body';
 
 /** Outcome of one engine call: data on success, a readable error otherwise. */
 /** status: the HTTP status of a failed call, when the engine answered */
@@ -75,25 +76,31 @@ async function esSearchRequest(
   }
 
   if (!response.ok) {
-    let detail = '';
-    try {
-      // The root cause says what failed; the top-level reason is often just "all shards failed"
-      const errorBody = await response.json() as { error?: { reason?: string; type?: string; root_cause?: Array<{ reason?: string }> } };
-      detail = errorBody?.error?.root_cause?.[0]?.reason ?? errorBody?.error?.reason ?? errorBody?.error?.type ?? '';
-    } catch {
-      detail = await response.text().catch(() => '');
-    }
+    const { text, json } = await readResponseBody(response).catch(() => ({ text: '', json: undefined }));
+    // The root cause says what failed; the top-level reason is often just "all shards failed"
+    const error = (json as { error?: { reason?: string; type?: string; root_cause?: Array<{ reason?: string }> } } | undefined)?.error;
+    const reason = error?.root_cause?.[0]?.reason ?? error?.reason ?? error?.type;
     return {
       error: {
         success: false,
-        error: `Elasticsearch returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
+        error: `Elasticsearch returned HTTP ${response.status}${reason ? `: ${reason}` : bodyExcerpt(text)}`,
         status: response.status,
       },
     };
   }
 
-  const json = await response.json() as ElasticsearchSearchResponse;
-  return { json };
+  let answer: Awaited<ReturnType<typeof readResponseBody>>;
+  try {
+    answer = await readResponseBody(response);
+  } catch (err) {
+    // The timeout covers the body too: one that stalls is explained like one that never came
+    return { error: { success: false, error: `Network error reading the Elasticsearch answer: ${(err as Error).message}` } };
+  }
+  const { text, json } = answer;
+  if (json === undefined) {
+    return { error: { success: false, error: `Elasticsearch returned a non-JSON response (HTTP ${response.status})${bodyExcerpt(text)}` } };
+  }
+  return { json: json as ElasticsearchSearchResponse };
 }
 
 // ============================================================================

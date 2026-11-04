@@ -10,6 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ExternalConnection, ExternalSearchConnector } from '../external-search.types';
 
+import { classifyUpstream } from '@/shared/errors/upstream';
+
 import { azureAISearchConnector, elasticsearchConnector } from './search-engine.connectors';
 import { sitecoreSearchConnector } from './sitecore-search.connector';
 
@@ -51,5 +53,38 @@ describe('a failed external search', () => {
     expect(error).toMatchObject({ name: 'ExternalSearchError', provider: name });
     expect((error as { status?: number }).status).toBeUndefined();
     expect((error as Error).message).toMatch(/fetch failed/);
+  });
+});
+
+/**
+ * An engine that answers with something other than JSON (a proxy's sign-in or error page
+ * in front of it) is explained as that, with the start of what it sent, the same way on
+ * every engine. A timeout while the answer is still arriving is explained as a timeout.
+ */
+describe('an answer that cannot be read', () => {
+  const SIGN_IN_PAGE = '<html><body>Sign in to continue</body></html>';
+  const page = (body: string, status: number) => vi.fn(async () => new Response(body, { status, headers: { 'content-type': 'text/html' } }));
+
+  it.each(connectors)('$name explains a success that is not JSON', async ({ name, connector }) => {
+    vi.stubGlobal('fetch', page(SIGN_IN_PAGE, 200));
+    await expect(search(connector)).rejects.toMatchObject({ name: 'ExternalSearchError', provider: name, message: `${name} returned a non-JSON response (HTTP 200): ${SIGN_IN_PAGE}` });
+  });
+
+  it.each(connectors.filter(({ name }) => name !== 'Sitecore Search'))('$name keeps the text of an error page that is not JSON', async ({ name, connector }) => {
+    vi.stubGlobal('fetch', page('<html>502 Bad Gateway</html>', 502));
+    await expect(search(connector)).rejects.toMatchObject({ status: 502, message: `${name} returned HTTP 502: <html>502 Bad Gateway</html>` });
+  });
+
+  it.each(connectors)('$name explains a timeout while the answer was arriving as a timeout', async ({ connector }) => {
+    const stalled = new ReadableStream({ start: (c) => c.error(new DOMException('The operation was aborted due to timeout', 'TimeoutError')) });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(stalled, { status: 200 })));
+    const failed = await search(connector).catch((e: unknown) => e);
+    expect(failed).toMatchObject({ name: 'ExternalSearchError' });
+    expect(classifyUpstream(failed)).toMatchObject({ code: 'UPSTREAM_TIMEOUT' });
+  });
+
+  it("still reads Azure AI Search's own reason from a JSON error", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: { message: "The index 'shop' was not found" } }, { status: 404 })));
+    await expect(search(azureAISearchConnector)).rejects.toThrow("Azure AI Search returned HTTP 404: The index 'shop' was not found");
   });
 });
