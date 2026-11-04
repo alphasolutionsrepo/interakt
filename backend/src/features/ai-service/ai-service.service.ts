@@ -324,7 +324,8 @@ export async function generateText(
             updateRealtimeMetrics(metrics);
         }
 
-        logger.error('Text generation failed', error as Error, { requestId });
+        // Passed on: whoever handles it logs it (the API answer, the chat step, the summary stream)
+        logger.debug('Text generation failed', { requestId, err: error });
         throw error;
     }
 }
@@ -465,7 +466,8 @@ export async function chat(
             updateRealtimeMetrics(metrics);
         }
 
-        logger.error('Chat completion failed', error as Error, { requestId });
+        // Passed on: whoever handles it logs it (the API answer, the chat step, the summary stream)
+        logger.debug('Chat completion failed', { requestId, err: error });
         throw error;
     }
 }
@@ -557,9 +559,10 @@ export async function* streamChat(
                     // because adapter.streamChat returns the iterator lazily.
                     // Fall through to a single retry of the whole iteration.
                     if (yielded) throw err;
-                    logger.warn('Stream errored before first chunk — retrying once', {
+                    // A retry, not a failure: if the retry fails too, whoever handles it logs it
+                    logger.info('Stream errored before first chunk — retrying once', {
                         provider: config!.providerKey,
-                        error: (err as Error).message,
+                        err,
                     });
                     try {
                         yield* adapter.streamChat(request, toAdapterConfig(config!));
@@ -630,7 +633,8 @@ export async function* streamChat(
             updateRealtimeMetrics(metrics);
         }
 
-        logger.error('Streaming chat failed', error as Error, { requestId });
+        // Passed on: whoever handles it logs it (the API answer, the chat step, the summary stream)
+        logger.debug('Streaming chat failed', { requestId, err: error });
         throw error;
     } finally {
         // Usage is recorded however the stream ends. The caller may stop reading
@@ -848,7 +852,8 @@ export async function generateEmbeddings(
             updateRealtimeMetrics(metrics);
         }
 
-        logger.error('Embedding generation failed', error as Error, { requestId });
+        // Passed on: whoever handles it logs it (the API answer, the chat step, the summary stream)
+        logger.debug('Embedding generation failed', { requestId, err: error });
         throw error;
     }
 }

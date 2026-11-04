@@ -63,6 +63,43 @@ describe('an error in a log line', () => {
         expect(lines[0]).toMatchObject({ err: { details: { dataSourceId: 'ds' }, cause: { provider: 'Sitecore Search', status: 401 } } });
     });
 
+    it('expands an error logged as error, as it does err', () => {
+        const { lines, logger } = capture();
+        logger.error('Turn planner failed', { error: refused() });
+        expect(lines[0]).toMatchObject({ error: { message: '"abc" isn\'t a valid value for rating', cause: { statusCode: 400 } } });
+    });
+
+    it("keeps the fields a database error explains itself with", () => {
+        const { lines, logger } = capture();
+        const pgError = Object.assign(new Error('insert or update violates foreign key constraint "fk_session"'), {
+            name: 'PostgresError', code: '23503', detail: 'Key (session_id)=(s1) is not present in table "sessions".',
+            table_name: 'messages', constraint_name: 'fk_session', severity: 'ERROR',
+        });
+        const queryFailed = Object.assign(new Error('Failed query: insert into messages'), { query: 'insert into messages', cause: pgError });
+        logger.error('Persistence failed', { error: queryFailed });
+        expect(lines[0]).toMatchObject({
+            error: { query: 'insert into messages', cause: { code: '23503', detail: expect.stringContaining('is not present'), table_name: 'messages', constraint_name: 'fk_session' } },
+        });
+    });
+
+    it('leaves out the credentials of an error logged as error', () => {
+        const { lines, logger } = capture();
+        logger.error('Turn planner failed', { error: refused() });
+        expect(JSON.stringify(lines[0])).not.toContain('c2VjcmV0');
+    });
+
+    it('leaves a plain object logged as error as it is', () => {
+        const { lines, logger } = capture();
+        logger.warn('Tool failed', { error: { code: 'TIMEOUT', retryable: true } });
+        expect(lines[0]).toMatchObject({ error: { code: 'TIMEOUT', retryable: true } });
+    });
+
+    it('leaves an error message logged as error as it is', () => {
+        const { lines, logger } = capture();
+        logger.warn('Warm-up search failed', { error: 'connect ECONNREFUSED' });
+        expect(lines[0]).toMatchObject({ error: 'connect ECONNREFUSED' });
+    });
+
     it('keeps the fields of a child logger', () => {
         const { lines, logger } = capture();
         logger.child({ requestId: 'r2' }).error('Request failed', refused());

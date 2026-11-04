@@ -186,7 +186,11 @@ describe('cancelling a streaming chat call', () => {
     await expect((async () => {
       for await (const chunk of run(new AbortController().signal)) void chunk;
     })()).rejects.toThrow();
-    expect(log.error).toHaveBeenCalled();
+    // Passed on to the caller, which logs it (ai-service.failure-logging.test.ts), and recorded as failed;
+    // the retry before it is noted, not reported
+    expect(log.info).toHaveBeenCalledWith('Stream errored before first chunk — retrying once', expect.anything());
+    expect(log.warn).not.toHaveBeenCalled();
+    expect(log.error).not.toHaveBeenCalled();
     expect(recorded()).toMatchObject({ success: false });
   });
 });
@@ -204,7 +208,8 @@ describe('cancelling during the retry of a failed first request', () => {
     caller.abort();
     await done;
 
-    expect(log.warn).toHaveBeenCalledOnce(); // the retry
+    expect(log.info).toHaveBeenCalledWith('Stream errored before first chunk — retrying once', expect.anything());
+    expect(log.warn).not.toHaveBeenCalled();
     expect(log.error).not.toHaveBeenCalled();
     expect(recorded()).toMatchObject({
       success: true,

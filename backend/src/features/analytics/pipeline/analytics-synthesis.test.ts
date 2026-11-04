@@ -6,7 +6,12 @@
  * short, so history can't crowd out the data.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 
 import { synthesizeAnalyticsResponse } from './analytics-synthesis';
 import type { AnalyticsTurnContext, ChatFn, StreamChatFn } from './analytics-pipeline.types';
@@ -68,5 +73,18 @@ describe('synthesizeAnalyticsResponse', () => {
     expect(sent[1].content).toContain('Talked about gift cards.');
     expect(sent.slice(2, -1).map((m) => m.content.slice(0, 6))).toEqual(['turn 2', 'turn 3', 'turn 4', 'xxxxxx']);
     expect(sent.at(-2)!.content.length).toBeLessThan(1300);
+  });
+});
+
+describe('an answer the model fails to write', () => {
+  it('is passed on in the result, with the model error, without a line of its own', async () => {
+    logs.length = 0;
+    const modelDown = new Error('model "qwen2.5:14b" not found');
+    // eslint-disable-next-line require-yield -- fails before its first chunk, as a model call does
+    const streamChat = (async function* () { throw modelDown; }) as unknown as StreamChatFn;
+    const result = await synthesizeAnalyticsResponse(context(), [], false, () => {}, streamChat, (async () => ({})) as unknown as ChatFn);
+
+    expect(result).toMatchObject({ success: false, error: modelDown });
+    expect(reported(logs)).toEqual([]);
   });
 });

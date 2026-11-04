@@ -230,6 +230,14 @@ function isElasticsearchError(e: Record<string, unknown>): boolean {
     return !!meta && typeof meta === 'object' && ('body' in meta || 'statusCode' in meta || 'meta' in meta);
 }
 
+/**
+ * Whether err is the AI service saying its provider failed (timed out, unreachable, cut
+ * off by the circuit breaker), even when it doesn't name the provider.
+ */
+export function isAIProviderFailure(err: unknown): boolean {
+    return aiServiceCode(err) !== undefined;
+}
+
 function aiServiceCode(err: unknown): UpstreamCode | undefined {
     let current: unknown = err;
     for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {

@@ -20,6 +20,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+
 vi.mock('@/features/ai-service', () => ({
     chat: vi.fn(),
 }));
@@ -137,6 +142,26 @@ describe('global AI switch', () => {
         expect(aiService.chat).toHaveBeenCalledTimes(1);
         expect(result.query).toBe('waterproof jackets');
         expect(result.filters).toEqual([{ field: 'price', operator: 'lte', value: 200 }]);
+    });
+});
+
+describe('a model call that fails', () => {
+    it('searches with the raw query and logs the error, the only record of it, as an error: a model that fails needs fixing', async () => {
+        logs.length = 0;
+        // What the Ollama adapter throws for a model it doesn't have
+        const modelDown = Object.assign(new Error('model "qwen2.5:14b" not found', { cause: new Error('404 from Ollama') }), { name: 'AdapterError', providerKey: 'ollama', statusCode: 404 });
+        vi.mocked(aiService.chat).mockRejectedValue(modelDown);
+
+        const result = await applyQueryInterpretation({
+            query: QUERY,
+            clientFilters: undefined,
+            searchIndexId: freshIndexId(),
+            aiConfig: aiConfig(),
+            experienceId: 'exp-1',
+        });
+
+        expect(result.query).toBe(QUERY);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: modelDown }) })]);
     });
 });
 

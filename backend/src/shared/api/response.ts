@@ -12,7 +12,7 @@ import { isPublicRequest } from './public-route';
 import { currentRequestId, requestIdFor } from './request-id';
 
 import { type FieldError, INTERNAL_MESSAGE, codeForStatus } from '@/shared/errors/app-error';
-import { toAppError } from '@/shared/errors/to-app-error';
+import { isOurFailure, toAppError } from '@/shared/errors/to-app-error';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('api');
@@ -155,7 +155,8 @@ export function describeError(
         // The caller chose a 4xx for this error: its message is meant for the user
         : finalStatus < 500 && err instanceof Error ? err.message : INTERNAL_MESSAGE;
 
-    if (finalStatus >= 500) {
+    // An error when something on our side needs fixing; a warning when the request was wrong
+    if (isOurFailure(appError, finalStatus)) {
         logger.error('Request failed', err instanceof Error ? err : new Error(String(err)), {
             ...logContext,
             requestId,

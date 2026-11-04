@@ -73,6 +73,23 @@ describe('redactSecrets', () => {
 });
 
 describe('serializeError', () => {
+    it('leaves out the request, response and query parameters an error carries, whatever their headers are called', () => {
+        const err = Object.assign(new Error('rejected'), {
+            detail: 'Key (id)=(1) is not present in table "t".',
+            request: { headers: { 'Ocp-Apim-Subscription-Key': 'k-123' } },
+            response: { status: 401 },
+            headers: { 'X-Sitecore-Key': 'k-456' },
+            config: { url: 'https://search.example', headers: { 'X-Custom-Key': 'k-789' } },
+            options: { auth: 'k-000' },
+            params: ['alice@example.com'],
+        });
+        const out = serializeError(err);
+
+        expect(out.detail).toBe('Key (id)=(1) is not present in table "t".');
+        for (const key of ['request', 'response', 'headers', 'config', 'options', 'params']) expect(out).not.toHaveProperty(key);
+        expect(JSON.stringify(out)).not.toMatch(/k-123|k-456|k-789|k-000|alice@example\.com/);
+    });
+
     it("names the provider, leaving out secrets in what the error carries", () => {
         const err = Object.assign(new Error('rejected'), { provider: { name: 'Sitecore Search', apiKey: 'sk-live-123' } });
         const out = serializeError(err);

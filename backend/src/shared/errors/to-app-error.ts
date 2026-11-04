@@ -7,7 +7,7 @@
  */
 
 import { AppError, ConflictError, INTERNAL_MESSAGE, NotFoundError, ValidationError, codeForStatus } from './app-error';
-import { classifyUpstream } from './upstream';
+import { classifyUpstream, isAIProviderFailure } from './upstream';
 
 // AIServiceError codes that point at our own configuration
 const AI_CONFIG_CODES = new Set(['PROVIDER_NOT_FOUND', 'MODEL_NOT_FOUND', 'PROVIDER_DISABLED']);
@@ -63,10 +63,33 @@ export function toAppError(err: unknown): AppError {
         }
         case 'AIServiceError':
             if (typeof e.code === 'string' && AI_CONFIG_CODES.has(e.code)) {
-                return new AppError(err.message, { code: e.code, status: 400 });
+                return new AppError(err.message, { code: e.code, status: 400, ourSide: true });
             }
             break;
     }
 
     return classifyUpstream(err) ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
 }
+
+/**
+ * Whether a failure needs fixing on our side (our setup, or a service we depend on) rather
+ * than the request being wrong. status is the one answered with, when it isn't the error's own.
+ */
+export function isOurFailure(appError: AppError, status: number = appError.status): boolean {
+    return status >= 500 || appError.ourSide;
+}
+
+/**
+ * The level for a failure handled where it happened, by a step that carries on without
+ * what failed (a search with the raw query when interpreting it failed): an error when
+ * we recognise it as needing a fix on our side (a provider or model that is down,
+ * disabled or missing), otherwise the step's own level (a model answer it couldn't read).
+ */
+export function failureLevel(err: unknown, otherwise: 'error' | 'warn'): 'error' | 'warn' {
+    // A circuit breaker that cut the provider off names none, so it isn't classified below
+    if (isAIProviderFailure(err)) return 'error';
+    const appError = toAppError(err);
+    const recognised = appError.code !== 'INTERNAL_ERROR';
+    return recognised && isOurFailure(appError) ? 'error' : otherwise;
+}
+

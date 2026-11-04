@@ -26,6 +26,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 
 import { createLogger } from '@/shared/logger/logger';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as searchService from '@/features/search/search.service';
@@ -374,11 +375,9 @@ export async function interpretQuery(
 
         return { ...result, durationMs: Date.now() - startedAt };
     } catch (err) {
-        // Fail open — a search that returns loose results beats one that errors.
-        logger.warn('Query interpretation failed; searching with the raw query', {
-            searchIndexId,
-            error: err instanceof Error ? err.message : 'Unknown error',
-        });
+        // Fail open — a search that returns loose results beats one that errors. A model
+        // that is down or misconfigured still needs fixing, so it is logged as an error.
+        logger[failureLevel(err, 'warn')]('Query interpretation failed; searching with the raw query', { searchIndexId, err });
         return passthrough(query, startedAt);
     }
 }

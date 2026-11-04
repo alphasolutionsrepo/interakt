@@ -221,9 +221,11 @@ export async function synthesizeAnalyticsResponse(
       durationMs: Date.now() - startTime,
     };
   } catch (error) {
-    logger.error('Synthesis failed', { error });
+    // Passed on in the result: the pipeline reports it
+    logger.debug('Synthesis failed', { err: error });
     return {
       success: false,
+      error,
       summary: `Synthesis failed: ${error instanceof Error ? error.message : 'Unknown'}`,
       durationMs: Date.now() - startTime,
     };

@@ -370,7 +370,7 @@ export async function generateDocumentEmbeddings(
         };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Embedding generation failed';
-        logger.error('Embedding generation failed', { batchId, error: errorMessage });
+        logger.error('Embedding generation failed', { batchId, err: error });
 
         // Mark all documents as having embedding errors
         nonEmptyIndices.forEach(index => {

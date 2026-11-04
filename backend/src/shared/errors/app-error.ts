@@ -20,6 +20,11 @@ export interface AppErrorOptions {
     fields?: FieldError[];
     details?: unknown;
     cause?: unknown;
+    /**
+     * The request was fine: our setup or a service we depend on is at fault (a disabled
+     * AI provider, a model that is gone). Logged as an error, whatever the status.
+     */
+    ourSide?: boolean;
 }
 
 export const INTERNAL_MESSAGE = 'Something went wrong on the server. Try again, and if it keeps happening, contact support with the request id.';
@@ -30,6 +35,7 @@ export class AppError extends Error {
     readonly hint?: string;
     readonly fields?: FieldError[];
     readonly details?: unknown;
+    readonly ourSide: boolean;
 
     constructor(message: string, options: AppErrorOptions) {
         super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
@@ -39,6 +45,7 @@ export class AppError extends Error {
         this.hint = options.hint;
         this.fields = options.fields;
         this.details = options.details;
+        this.ourSide = options.ourSide ?? false;
     }
 }
 

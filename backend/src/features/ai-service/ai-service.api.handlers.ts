@@ -8,7 +8,8 @@
  */
 
 import { NextRequest } from 'next/server';
-import { apiResponse } from '@/shared/api/response';
+import { apiResponse, describeError } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
@@ -117,17 +118,7 @@ export async function handleTextGeneration(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Text generation failed', err);
-
-    if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
-    }
-    if (err.message.includes('Circuit breaker')) {
-      return apiResponse.badRequest(err.message);
-    }
-
-    return apiResponse.error(err);
+    return aiCallFailure(error, 'text');
   }
 }
 
@@ -189,17 +180,7 @@ export async function handleChat(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Chat completion failed', err);
-
-    if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
-    }
-    if (err.message.includes('Circuit breaker')) {
-      return apiResponse.badRequest(err.message);
-    }
-
-    return apiResponse.error(err);
+    return aiCallFailure(error, 'chat');
   }
 }
 
@@ -261,8 +242,9 @@ export async function handleChatStream(request: NextRequest) {
           controller.close();
         } catch (error) {
           const err = error as Error;
-          logger.error('Chat stream error', err);
-          const errorData = JSON.stringify({ error: err.message });
+          // Logged once, with the request id the event carries
+          const { body } = describeError(err, 500, { operation: 'chatStream' });
+          const errorData = JSON.stringify({ error: err.message, requestId: body.requestId });
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
           controller.close();
         }
@@ -277,12 +259,7 @@ export async function handleChatStream(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Chat stream setup failed', err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return aiCallFailure(error, 'chatStream');
   }
 }
 
@@ -345,17 +322,7 @@ export async function handleEmbeddings(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Embeddings generation failed', err);
-
-    if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
-    }
-    if (err.message.includes('Circuit breaker')) {
-      return apiResponse.badRequest(err.message);
-    }
-
-    return apiResponse.error(err);
+    return aiCallFailure(error, 'embeddings');
   }
 }
 
@@ -419,7 +386,23 @@ export async function handleGetProviders(request: NextRequest) {
 
     return apiResponse.success(result);
   } catch (error) {
-    logger.error('Failed to get providers', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error);
   }
+}
+
+/**
+ * The answer for a failed AI call, logged once (by apiResponse) with the operation: a
+ * missing provider or model is 404, an open circuit breaker 400, anything else the shared
+ * error. Both refusals are our side (setup, or a provider that is down), so logged as errors.
+ */
+function aiCallFailure(error: unknown, operation: string) {
+  const err = error as Error;
+  const log = { operation };
+  if (err.message.includes('not found')) {
+    return apiResponse.error(new AppError(err.message, { code: 'NOT_FOUND', status: 404, cause: err, ourSide: true }), undefined, log);
+  }
+  if (err.message.includes('Circuit breaker')) {
+    return apiResponse.error(new AppError(err.message, { code: 'BAD_REQUEST', status: 400, cause: err, ourSide: true }), undefined, log);
+  }
+  return apiResponse.error(err, undefined, log);
 }

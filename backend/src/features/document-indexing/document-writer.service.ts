@@ -572,7 +572,7 @@ async function resolveEmbeddings(
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Embedding generation failed';
-        logger.error('Embedding generation failed', { indexName: index.name, error: message });
+        logger.error('Embedding generation failed', { indexName: index.name, err: error });
 
         // Writing the document without a vector would leave it unreachable by
         // semantic search, so fail those operations instead.

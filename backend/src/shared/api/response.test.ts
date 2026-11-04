@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-vi.mock('@/shared/logger/logger', () => ({
-    createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
-}));
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 
 import { publicRoute } from './public-route';
 import { PUBLIC_FAILURE_MESSAGE, apiResponse } from './response';
 
 import { NotFoundError } from '@/shared/errors/app-error';
+import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const azureAuthError = () => Object.assign(new Error('Access denied'), { name: 'RestError', statusCode: 403 });
 
@@ -92,3 +92,25 @@ describe('apiResponse.validationError', () => {
         expect(body.details).toEqual(body.fields);
     });
 });
+
+describe('the level a failure is logged at', () => {
+    const answer = (err: unknown) => { logs.length = 0; return apiResponse.error(err); };
+
+    it("is a warning when the request was wrong", () => {
+        expect(answer(new NotFoundError('Document not found')).status).toBe(404);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn' })]);
+    });
+
+    it('is an error when our setup is at fault, though the answer is a 400', () => {
+        const disabled = Object.assign(new Error('Provider "openai" is disabled'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
+        const res = answer(disabled);
+        expect(res.status).toBe(400);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ code: 'PROVIDER_DISABLED' }) })]);
+    });
+
+    it('is an error when a service we depend on failed', () => {
+        answer(Object.assign(new Error('Access denied'), { name: 'RestError', statusCode: 403 }));
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error' })]);
+    });
+});
+

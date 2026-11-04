@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { AppError, ConflictError } from './app-error';
-import { toAppError } from './to-app-error';
+import { failureLevel, toAppError } from './to-app-error';
 
 import { SearchError } from '@/features/search/search.types';
 
@@ -50,5 +50,30 @@ describe('toAppError', () => {
         expect(err).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
         expect(err.message).not.toContain('users_pkey');
         expect(err.cause).toBe(cause);
+    });
+});
+
+describe('failureLevel', () => {
+    it('is an error when our setup is at fault', () => {
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
+        expect(failureLevel(disabled, 'warn')).toBe('error');
+    });
+
+    it('is an error when a service we depend on failed', () => {
+        expect(failureLevel(Object.assign(new Error('Too many requests'), { name: 'AdapterError', providerKey: 'openai', statusCode: 429 }), 'warn')).toBe('error');
+    });
+
+    it('is an error when the provider is cut off after failing (circuit open), though it names no provider', () => {
+        const circuitOpen = Object.assign(new Error('Circuit breaker is open - provider temporarily unavailable'), { name: 'AIServiceError', code: 'CIRCUIT_OPEN' });
+        expect(failureLevel(circuitOpen, 'warn')).toBe('error');
+    });
+
+    it("is the step's own level for a failure it doesn't recognise", () => {
+        expect(failureLevel(new Error('No JSON array in response'), 'warn')).toBe('warn');
+        expect(failureLevel(new Error('No JSON array in response'), 'error')).toBe('error');
+    });
+
+    it('is a warning when the request was wrong', () => {
+        expect(failureLevel(new AppError('Unknown filter field "colour"', { code: 'INVALID_FILTER', status: 400 }), 'warn')).toBe('warn');
     });
 });

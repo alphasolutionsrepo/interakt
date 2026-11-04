@@ -90,8 +90,13 @@ export function createPinoOptions(): LoggerOptions {
       ],
       censor: '[Redacted]',
     },
-    // An error logged as err keeps its causes and the provider's response, secrets left out
-    serializers: { err: serializeError },
+    // An error logged as err keeps its causes and the provider's response, secrets left out.
+    // Many call sites log it as error: an Error there is expanded the same way (it would
+    // otherwise print as {}), and a message string is left as it is.
+    serializers: {
+      err: serializeError,
+      error: (value: unknown) => (value instanceof Error ? serializeError(value) : value),
+    },
     timestamp: pino.stdTimeFunctions.isoTime,
     formatters: {
       level: (label) => ({ level: label }),

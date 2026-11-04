@@ -28,6 +28,15 @@ export interface ErrorDetail {
 const MAX_STRING = 4000;
 const MAX_DEPTH = 6;
 const MAX_CAUSES = 5;
+// Fields an error class may define without making them its own (getters, prototype fields)
+const ERROR_FIELDS = ['code', 'statusCode', 'status', 'provider', 'providerKey', 'providerId', 'retryable', 'type', 'param'];
+// Written separately (message, cause, the provider's response as details), or left out: the
+// request and response objects carry credentials, and a query's parameters are already in
+// its message
+const LEFT_OUT = new Set([
+    'name', 'message', 'stack', 'cause', 'details', 'error',
+    'request', 'response', 'headers', 'config', 'options', 'meta', 'body', 'params',
+]);
 // Matched at the end of the key, so apiKey, x-api-key, accessToken and clientSecret are
 // redacted while counts like tokens, maxTokens and tokenCount are not
 const SECRET_KEY = /(api[-_]?key|password|passwd|secret|token|authorization|cookie|connection[-_]?string|credentials?)$/i;
@@ -62,8 +71,9 @@ export function redactSecrets(value: unknown, depth = 0, seen = new WeakSet<obje
 
 /**
  * An error as a plain object for a log line. Unlike { message, stack, name } it keeps
- * what providers attach (statusCode, code, details, response body) and the cause,
- * and leaves out the request, whose headers carry credentials.
+ * the fields the error carries (statusCode, code, a database error's detail), the
+ * provider's response body and the cause, and leaves out the request and response objects,
+ * whose headers carry credentials.
  */
 export function serializeError(err: unknown, depth = 0, seen = new WeakSet<object>()): Record<string, unknown> {
     if (!(err instanceof Error)) {
@@ -74,8 +84,11 @@ export function serializeError(err: unknown, depth = 0, seen = new WeakSet<objec
 
     const out: Record<string, unknown> = { name: err.name, message: err.message, stack: err.stack };
     const e = err as unknown as Record<string, unknown>;
-    for (const key of ['code', 'statusCode', 'status', 'provider', 'providerKey', 'providerId', 'retryable', 'type', 'param']) {
-        if (e[key] !== undefined && typeof e[key] !== 'function') out[key] = redactSecrets(e[key], depth + 1, seen);
+    // What the error explains itself with (a database error's detail, table and constraint,
+    // a provider's code), whether set as its own fields or on its class
+    for (const key of new Set([...ERROR_FIELDS, ...Object.keys(err)])) {
+        if (LEFT_OUT.has(key) || e[key] === undefined || typeof e[key] === 'function') continue;
+        out[key] = redactSecrets(e[key], depth + 1, seen);
     }
     const body = providerBody(err);
     if (body !== undefined) out.details = redactSecrets(body, depth + 1, seen);

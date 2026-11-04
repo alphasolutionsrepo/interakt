@@ -77,7 +77,7 @@ export async function runWarmup(
         searchesRun++;
         emit('start', tally());
       } catch (e) {
-        logger.warn('Warm-up search failed (non-fatal)', { query, error: (e as Error).message });
+        logger.warn('Warm-up search failed (non-fatal)', { query, err: e });
       }
     }
   }
@@ -101,7 +101,7 @@ export async function runWarmup(
           chatTurnsRun++;
           emit('start', tally());
         } catch (e) {
-          logger.warn('Warm-up chat turn failed (non-fatal)', { message, error: (e as Error).message });
+          logger.warn('Warm-up chat turn failed (non-fatal)', { message, err: e });
           break; // abandon this conversation, move to the next
         }
       }
@@ -117,7 +117,7 @@ export async function runWarmup(
     const { runAnalyticsProcessing } = await import('@/features/analytics/analytics-processing.service');
     await runAnalyticsProcessing();
   } catch (e) {
-    logger.warn('Analytics processing failed (non-fatal)', { error: (e as Error).message });
+    logger.warn('Analytics processing failed (non-fatal)', { err: e });
   }
 
   // ---- Analytics Chat (admin) --------------------------------------------
@@ -136,7 +136,7 @@ export async function runWarmup(
           analyticsChatTurnsRun++;
           emit('start', tally());
         } catch (e) {
-          logger.warn('Warm-up analytics-chat turn failed (non-fatal)', { message, error: (e as Error).message });
+          logger.warn('Warm-up analytics-chat turn failed (non-fatal)', { message, err: e });
           break;
         }
       }
@@ -154,6 +154,6 @@ async function safeFlush(): Promise<void> {
   try {
     await flushTelemetry();
   } catch (e) {
-    logger.warn('flushTelemetry failed (non-fatal)', { error: (e as Error).message });
+    logger.warn('flushTelemetry failed (non-fatal)', { err: e });
   }
 }
