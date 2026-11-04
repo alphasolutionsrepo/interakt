@@ -202,6 +202,8 @@ async function runDocumentIndexing(
         searchIndexId,
         // A failed upload's id, shown on the index page, so support can find this line
         ...(outcome.error?.requestId && { requestId: outcome.error.requestId }),
+        // What went wrong, when the write failed as a whole; the indexer leaves logging it to here
+        ...(result.writeError !== undefined && { err: result.writeError }),
         batchId: result.batchId,
         indexed: result.indexedDocuments,
         failed: result.failedDocuments,

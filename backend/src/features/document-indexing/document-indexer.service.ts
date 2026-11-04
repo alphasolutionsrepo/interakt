@@ -861,11 +861,7 @@ export async function indexDocuments(
         const durationMs = Date.now() - startTime;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-        logger.error('Indexing failed', {
-            batchId: batch.id,
-            error: errorMessage,
-        });
-
+        // Passed on as writeError, which the caller logs with its request id
         await updateBatch(batch.id, {
             status: 'failed',
             errorMessage,

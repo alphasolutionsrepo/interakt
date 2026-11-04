@@ -412,7 +412,7 @@ async function seedIndexWithDocs(
     embeddings: result.embeddingStats?.generated ?? 0,
   });
   if (result.failedDocuments > 0) {
-    logger.warn('Some documents failed to index', { failed: result.failedDocuments, sample: result.errors.slice(0, 3) });
+    logger.warn('Some documents failed to index', { failed: result.failedDocuments, sample: result.errors.slice(0, 3), ...(result.writeError !== undefined && { err: result.writeError }) });
   }
   emit({
     step: 'documents',
