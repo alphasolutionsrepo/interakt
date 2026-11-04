@@ -18,7 +18,7 @@
 
 **Open-source, self-hosted search and AI chat for your website, grounded in your own data.**
 
-[Website](https://interakt.app) · [Documentation](https://docs.interakt.app) · [API Reference](https://docs.interakt.app/api/) · [Integrations](https://docs.interakt.app/integrations/) · [Discussions](https://github.com/alphasolutionsrepo/interakt/discussions)
+[Website](https://interakt.app) · [Features](https://docs.interakt.app/getting-started/features) · [Documentation](https://docs.interakt.app) · [API Reference](https://docs.interakt.app/api/) · [Integrations](https://docs.interakt.app/integrations/) · [Discussions](https://github.com/alphasolutionsrepo/interakt/discussions)
 
 </div>
 
