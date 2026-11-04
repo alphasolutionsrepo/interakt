@@ -703,6 +703,44 @@ describe('the AI summary by slug when the AI provider fails', () => {
   });
 });
 
+describe('a summary that fails before it streams, for the log', () => {
+  const summaries = [
+    { route: 'by token', call: () => summaryByToken(req('/api/v1/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY)), experience: { experienceId: searchExperience.id } },
+    { route: 'by slug', call: () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY), slugParams('catalog')), experience: { slug: searchExperience.slug } },
+  ];
+
+  beforeEach(() => { logs.length = 0; });
+
+  it.each(summaries)('$route logs a model that fails once, as an error with the request id, the experience and the error', async ({ call, experience }) => {
+    const modelDown = Object.assign(new Error('model "qwen2.5:14b" not found'), { name: 'AdapterError', providerKey: 'ollama', statusCode: 404 });
+    mocks.createSummaryStream.mockImplementation(() => { throw modelDown; });
+    const { requestId } = await (await call()).json();
+
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, ...experience, operation: 'summarize', err: modelDown }) }),
+    ]);
+  });
+
+  it('by slug logs an experience it could not load once, as an error with the slug', async () => {
+    mocks.getSearchExperienceBySlug.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+    const res = await summaries[1].call();
+    const { requestId } = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, slug: searchExperience.slug, operation: 'summarize' }) }),
+    ]);
+  });
+
+  it.each(summaries)('$route logs a value of the wrong type no more than the other routes do', async ({ route }) => {
+    const res = route === 'by token'
+      ? await summaryByToken(req('/api/v1/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', results: 'x' }))
+      : await summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', results: 'x' }), slugParams('catalog'));
+    expect(res.status).toBe(400);
+    expect(reported(logs)).toEqual([]);
+  });
+});
+
 describe('input errors on the token search and autocomplete', () => {
   it.each([
     ['search by token', () => searchByToken(req('/api/v1/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', page: 'x' }))],

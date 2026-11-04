@@ -14,7 +14,6 @@ import { ZodError } from 'zod';
 
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
-import { createLogger } from '@/shared/logger/logger';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
 import {
@@ -31,8 +30,6 @@ import type {
   SummarizeAPIRequest,
 } from '@/features/search-experience/search-experience.types';
 import { createSummaryStream } from './summary-stream';
-
-const logger = createLogger('search-experience-ai');
 
 // ============================================================================
 // AI SUMMARY HANDLER
@@ -98,17 +95,13 @@ export async function handleSummarize(request: NextRequest): Promise<Response> {
 /**
  * Handle AI-related errors: the shared error shape with a request id and the
  * experience's CORS headers. Visitors get a plain message on server failures.
+ * apiResponse.error logs the failure, once.
  */
 function handleAIError(
   error: unknown,
   experience: SearchExperienceWithIndexes,
   origin: string | null
 ): NextResponse {
-  logger.error('AI error', {
-    experienceId: experience.id,
-    error: error instanceof Error ? error.message : 'Unknown error',
-  });
-
   if (error instanceof ZodError) return withCors(apiResponse.validationError(error), experience, origin);
-  return withCors(apiResponse.error(error), experience, origin);
+  return withCors(apiResponse.error(error, undefined, { experienceId: experience.id, operation: 'summarize' }), experience, origin);
 }

@@ -16,7 +16,6 @@ import { NextRequest } from 'next/server';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
 import { ZodError } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
 import { searchExperienceAccess } from '@/features/auth/public-access';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
@@ -26,8 +25,6 @@ import * as repository from '@/features/search-experience/search-experience.repo
 import { summarizeAPIRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import type { SummarizeAPIRequest } from '@/features/search-experience/search-experience.types';
 import { publicRoute } from '@/shared/api/public-route';
-
-const logger = createLogger('summarize-api-slug');
 
 async function post(
   request: NextRequest,
@@ -88,13 +85,7 @@ async function post(
     });
   } catch (error) {
     if (error instanceof ZodError) return apiResponse.validationError(error);
-
-    logger.error('Summarize error', {
-      slug,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-
-    return apiResponse.error(error);
+    return apiResponse.error(error, undefined, { slug, operation: 'summarize' });
   }
 }
 
