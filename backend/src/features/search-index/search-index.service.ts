@@ -1175,12 +1175,11 @@ export async function triggerReindex(
 export async function recordLastJob(searchIndexId: string, job: IndexLastJob): Promise<void> {
     try {
         const name = await repository.setLastJob(searchIndexId, job);
-        // The cached index gets the job in place, by id and by name, rather than being
-        // cleared: an upload records one per batch, and clearing the index would send
-        // every search on it back to the database
-        const withJob = (index: SearchIndexComplete | null) => (index ? { ...index, lastJob: job } : index);
-        cache.update(`index:${searchIndexId}`, withJob);
-        if (name) cache.update(`index:name:${name}`, withJob);
+        // Cleared by id and by name, so both show the job and what the job changed with it
+        // (status, stats). Not clearIndexCache: an upload records a job per batch, and query
+        // interpretations don't depend on either
+        await cache.delete(`index:${searchIndexId}`);
+        if (name) await cache.delete(`index:name:${name}`);
     } catch (error) {
         logger.warn('Could not record the last job', { searchIndexId, kind: job.kind, error: (error as Error).message });
     }
