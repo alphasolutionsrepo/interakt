@@ -42,6 +42,18 @@ describe('an Azure bulk write that fails as a whole', () => {
   });
 });
 
+describe('an Azure bulk write that fails as a whole with an error that has no message', () => {
+  it('still gives each document a reason', async () => {
+    azure.error = Object.assign(new Error(''), { name: 'RestError' });
+    azure.calls = 0;
+    azure.failFromCall = 1;
+
+    const result = await new AzureEngineProvider().bulkIndex('shop', [{ _id: 'a', title: 'Linen' }]);
+
+    expect(result.errors).toEqual([{ index: 0, error: 'RestError' }]);
+  });
+});
+
 describe('an Azure bulk write where a later batch fails as a whole', () => {
   it('still counts the batches already written, so a reindex is partial, not failed', async () => {
     const timedOut = Object.assign(new Error('Request timed out'), { name: 'RestError' });

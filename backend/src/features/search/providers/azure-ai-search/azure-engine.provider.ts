@@ -23,7 +23,7 @@ import { registerProviderClass } from '../search-engine-provider.factory';
 import { buildAzureFilter } from './query-builders/filter.builder';
 import type { ProviderCapabilities } from '../provider-capabilities';
 import { SearchError, type FilterClause, type SearchContext } from '../../search.types';
-import { lookupFailure } from '../search-engine-provider.interface';
+import { failureText } from '../search-engine-provider.interface';
 
 import type {
     SearchEngineProvider,
@@ -451,7 +451,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
                         // the batches already written still count, as on Elasticsearch
                         writeError ??= error;
                         totalFailed += batch.length;
-                        const message = error instanceof Error ? error.message : 'Batch failed';
+                        const message = failureText(error, 'Batch failed');
                         batch.forEach((_, batchIndex) => errors.push({ index: run.indices[i + batchIndex], error: message }));
                         continue;
                     }
@@ -738,7 +738,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
             if (error?.statusCode === 404) {
                 return { found: false };
             }
-            return { found: false, error: lookupFailure(error, 'Failed to get document'), cause: error };
+            return { found: false, error: failureText(error, 'Failed to get document'), cause: error };
         }
     }
 

@@ -579,10 +579,11 @@ export interface SearchEngineProvider extends IndexProvider, DocumentProvider {
 }
 
 /**
- * The error text of a failed document lookup, never empty: an empty one would read
- * as "not found" (an Elasticsearch ConnectionError has no message, only its name).
+ * The text of an engine error, never empty: an Elasticsearch ConnectionError has no
+ * message, only its name. An empty one would read as "not found" on a document lookup,
+ * and as no reason at all on a document a failed batch left out.
  */
-export function lookupFailure(error: unknown, fallback: string): string {
+export function failureText(error: unknown, fallback: string): string {
     if (error instanceof Error) return error.message || error.name || fallback;
     return fallback;
 }

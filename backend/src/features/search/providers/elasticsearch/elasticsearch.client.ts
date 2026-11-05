@@ -11,7 +11,7 @@ import { Client, type ClientOptions } from '@elastic/elasticsearch';
 import { elasticsearchConfig } from '@/config';
 import { createLogger } from '@/shared/logger/logger';
 import { EMBEDDING_FIELD_NAME } from './elasticsearch.constants';
-import { lookupFailure, type GetDocumentResult } from '../search-engine-provider.interface';
+import { failureText, type GetDocumentResult } from '../search-engine-provider.interface';
 
 const logger = createLogger('elasticsearch-client');
 
@@ -412,11 +412,9 @@ export async function bulkWrite(
 
             totalFailed += batch.length;
             writeError ??= error;
+            const message = failureText(error, 'Batch failed');
             batch.forEach((_, batchIndex) => {
-                allErrors.push({
-                    index: i + batchIndex,
-                    error: error instanceof Error ? error.message : 'Batch failed',
-                });
+                allErrors.push({ index: i + batchIndex, error: message });
             });
         }
     }
@@ -781,7 +779,7 @@ export async function getDocumentById(
         }
 
         // Passed on with its cause: whoever answers the caller logs it
-        const message = lookupFailure(error, 'Failed to get document');
+        const message = failureText(error, 'Failed to get document');
         logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
         return { found: false, error: message, cause: error };
     }
