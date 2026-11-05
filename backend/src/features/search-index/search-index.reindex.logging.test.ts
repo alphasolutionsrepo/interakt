@@ -53,6 +53,7 @@ vi.mock('@/features/search/providers', () => ({
 }));
 
 import { handleRecreateEmptyIndex, handleTriggerReindex } from './search-index.api.handlers';
+import { handleApiResponse } from '@/shared/api/api-error';
 
 const ID = '7f1c0c56-3a9e-4a51-9b3f-2f7b8c1d2e3f';
 const reindex = () => handleTriggerReindex(new NextRequest(`http://localhost/api/search-indexes/${ID}/reindex`, { method: 'POST' }), { params: Promise.resolve({ id: ID }) });
@@ -82,6 +83,10 @@ describe('a reindex', () => {
 
         expect(res.ok).toBe(true);
         expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn' })]);
+        // As the admin client reads it: the Activity panel takes a job's outcome at its word
+        const answer = await handleApiResponse<{ outcome?: { status: string; summary?: string } }>(res);
+        expect(answer.outcome).toMatchObject({ status: 'partial', summary: expect.stringContaining('mapper_parsing_exception') });
+        expect(state.lastJobs.at(-1)).toEqual(answer.outcome);
     });
 
     it('where one batch failed as a whole logs that batch\'s error on its one warning', async () => {

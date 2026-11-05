@@ -6,6 +6,7 @@
  * and what analytics records about the filters.
  */
 
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, it, expect, vi } from 'vitest';
 
 import { trackSearch } from '@/features/analytics';
@@ -40,6 +41,7 @@ vi.mock('./providers', () => {
 import { autocompleteById, getDocumentByIdFromIndex, searchById } from './search.service';
 import { getSearchIndexById } from '@/features/search-index/search-index.service';
 import { SearchError } from './search.types';
+import { describeError } from '@/shared/api/response';
 
 describe('search request options', () => {
   it('passes a request for hidden searched fields on to the engine', async () => {
@@ -131,3 +133,26 @@ describe('a search the engine refused', () => {
   });
 });
 
+
+describe('a provider that is rate limiting, as the caller is told', () => {
+  const rateLimited = () => Object.assign(new Error('429 Too Many Requests'), { name: 'AdapterError', providerKey: 'openai', statusCode: 429 });
+
+  it('a query embedding it refused is explained as a rate limit, with what to do', async () => {
+    const { generateEmbedding } = await import('@/features/ai-service');
+    vi.mocked(generateEmbedding).mockRejectedValueOnce(rateLimited());
+    vi.mocked(getSearchIndexById).mockResolvedValueOnce({ id: 'idx', name: 'products', isActive: true, status: 'active', aiProviderId: 'p', aiModelId: 'm' } as never);
+
+    const failed = await searchById('idx', { query: 'shirt', searchType: 'semantic' }).catch((e: unknown) => e);
+    expect(failed).toMatchObject({ code: 'EMBEDDING_FAILED' });
+    expect(describeError(failed).body).toMatchObject({ code: 'UPSTREAM_RATE_LIMITED', hint: expect.any(String) });
+  });
+
+  it('autocomplete the engine refused is explained as a rate limit, with what to do', async () => {
+    vi.mocked(getSearchIndexById).mockResolvedValueOnce({ id: 'idx', name: 'products', isActive: true, status: 'active', fields: [{ fieldName: 'title', isAutocomplete: true, isSearchable: true }] } as never);
+    engineAutocomplete.mockRejectedValueOnce(new esErrors.ResponseError({ body: { error: { type: 'es_rejected_execution_exception', reason: 'rejected execution' }, status: 429 }, statusCode: 429, headers: {}, meta: {} as never, warnings: null }));
+
+    const failed = await autocompleteById('idx', { query: 'shi' }).catch((e: unknown) => e);
+    expect(failed).toMatchObject({ code: 'PROVIDER_ERROR' });
+    expect(describeError(failed).body).toMatchObject({ code: 'UPSTREAM_RATE_LIMITED', hint: expect.any(String) });
+  });
+});
