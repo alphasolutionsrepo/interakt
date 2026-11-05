@@ -61,13 +61,16 @@ function valueClues(clause: FilterClause): Clue[] {
 /**
  * The 400 to answer when the engine's reason blames the request's filter or sort, or
  * undefined when it can't be told. sentAs gives the names a field reached the engine as
- * (the field itself, a keyword sub-field); the engine names it by one of them.
+ * (the field itself, a keyword sub-field); the engine names it by one of them. fixedFilters
+ * are the source's own, sent with every request: the caller can't be blamed for them, and
+ * a name or value they share with the caller's could be about either.
  */
 export function refusalFor(
     engineReason: string,
     request: SearchRequest,
     sentAs: (field: string) => Array<string | undefined>,
     cause: unknown,
+    fixedFilters: FilterClause[] = [],
 ): SearchError | undefined {
     const window = RESULT_WINDOW.exec(engineReason);
     if (window) return pagingRefusal(Number(window[1]), cause);
@@ -80,6 +83,7 @@ export function refusalFor(
         else parts.push({ kind, field, clues });
     };
     for (const f of leafFilters(request.filters)) add('filter', f.field, [...names(f.field), ...valueClues(f)]);
+    for (const f of leafFilters(fixedFilters)) add('other', f.field, [...names(f.field), ...valueClues(f)]);
     for (const s of request.sort ?? []) add('sort', s.field, names(s.field));
     // Facets and returned fields are sent under the same names, and can be what was refused;
     // so is the query text, searched in every searchable field

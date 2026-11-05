@@ -39,3 +39,20 @@ describe('an Elasticsearch source whose proxy answers its index requests with a 
     expect(result.message).not.toContain('Unexpected token');
   });
 });
+
+describe('an Azure AI Search source whose proxy answers with a page', () => {
+  it('says schema discovery failed with what the proxy sent', async () => {
+    repository.getDataSourceById.mockResolvedValue({
+      id: 'ds-2',
+      type: 'search_index_external',
+      config: { provider: 'azure_ai_search', connection: { url: 'https://shop.search.windows.net', indexName: 'products', authType: 'none' } },
+      schema: null,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html><body>Gateway login</body></html>', { status: 200 })));
+
+    const result = await performHealthCheck('ds-2');
+
+    expect(result.message).toContain('schema discovery failed: Azure AI Search returned a non-JSON response (HTTP 200): <html>');
+    expect(result.message).not.toContain('Unexpected token');
+  });
+});

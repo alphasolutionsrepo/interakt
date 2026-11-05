@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 import { errorText } from '@/shared/api/api-error';
+import { TEST_MARKER_HEADER } from '@/shared/constants/test-marker.constants';
 
 import { readSuggestions } from '../read-suggestions';
 
@@ -154,6 +155,8 @@ export function useAutocomplete(options: UseAutocompleteOptions): UseAutocomplet
           headers: {
             'Content-Type': 'application/json',
             'X-Access-Token': accessToken,
+            // With the admin's login, a failure comes back explained rather than as no suggestions
+            [TEST_MARKER_HEADER]: '1',
           },
           body: JSON.stringify({
             query: searchQuery,

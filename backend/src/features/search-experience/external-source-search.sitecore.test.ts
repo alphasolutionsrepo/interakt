@@ -10,7 +10,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 
-const { storedFields } = vi.hoisted(() => ({ storedFields: { value: [] as DataSourceField[] } }));
+const { storedFields, providerSettings } = vi.hoisted(() => ({
+  storedFields: { value: [] as DataSourceField[] },
+  providerSettings: { value: {} as Record<string, unknown> },
+}));
 
 vi.mock('@/features/analytics', () => ({ trackSearch: vi.fn() }));
 vi.mock('@/features/data-source/data-source.service', () => ({
@@ -30,7 +33,7 @@ vi.mock('@/features/data-source/external-search/external-connection', () => ({
     indexName: 'rfk_global_search',
     apiKey: '',
     authType: 'none',
-    providerSettings: {},
+    providerSettings: providerSettings.value,
   })),
 }));
 
@@ -51,7 +54,10 @@ function stubSitecore() {
   return () => JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body).widget.items[0].search.filter;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  providerSettings.value = {};
+});
 
 describe('search experience on a Sitecore source', () => {
   storedFields.value = inferSitecoreFields({
@@ -102,5 +108,23 @@ describe('a search experience whose Sitecore source refuses a filter value', () 
     );
 
     await expect(search).rejects.toMatchObject({ code: 'INVALID_FILTER' });
+  });
+});
+
+describe("a Sitecore refusal of a value the source's own fixed filter sends too", () => {
+  it("doesn't blame the visitor's filter: the source is unavailable", async () => {
+    providerSettings.value = { fixedFilters: [{ field: 'is_published', operator: 'eq', value: true }] };
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      text: async () => `{"message":"filter value 'true' not of the expected type"}`,
+    })));
+    const fields = inferSitecoreFields({ items: [{ id: 'a', in_stock: true }], total: 1, facets: new Map([['in_stock', 'In stock']]) });
+
+    const search = searchExternalSourceForExperience(
+      SOURCE, fields, { query: 'x', filters: [{ field: 'in_stock', operator: 'eq', value: true }] }, EXPERIENCE,
+    );
+
+    await expect(search).rejects.toMatchObject({ code: 'SOURCE_UNAVAILABLE' });
   });
 });

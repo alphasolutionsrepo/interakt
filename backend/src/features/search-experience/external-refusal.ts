@@ -18,5 +18,5 @@ const KNOWN_WORDING = new Set(['Elasticsearch', 'Azure AI Search', 'Sitecore Sea
 export function refusedRequest(error: unknown, request: SearchRequest, fields: DataSourceField[]): SearchError | undefined {
   if (!(error instanceof ExternalSearchError) || error.status !== 400 || !KNOWN_WORDING.has(error.provider)) return undefined;
   // The engine names a field as it was sent: the schema's filterField when there is one
-  return refusalFor(error.message, request, (name) => [name, fields.find((f) => f.name === name)?.filterField], error);
+  return refusalFor(error.message, request, (name) => [name, fields.find((f) => f.name === name)?.filterField], error, error.fixedFilters);
 }

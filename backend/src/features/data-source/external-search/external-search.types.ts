@@ -31,6 +31,8 @@ export class ExternalSearchError extends Error {
     message: string,
     /** The HTTP status the engine answered with; none when it couldn't be reached */
     public status?: number,
+    /** Filters the source adds to every request, which the engine got besides the caller's */
+    public fixedFilters: FilterClause[] = [],
   ) {
     super(message);
     this.name = 'ExternalSearchError';

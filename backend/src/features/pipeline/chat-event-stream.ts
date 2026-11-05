@@ -17,24 +17,28 @@ export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent'>): Resp
   const encoder = new TextEncoder();
   const sseEvent = (event: PipelineStreamEvent) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
+  // The visitor closed the chat: the next event can't be sent, which ends the turn
+  let gone = false;
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
         await runChatPipeline({ ...input, onEvent: (event) => controller.enqueue(sseEvent(event)) });
       } catch (err) {
+        // Not a failure: nobody is left to answer
+        if (gone) return;
         const { body } = describeError(err, 500, { operation: 'chatTurn', experienceId: input.experience.id });
-        try {
-          controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
-        } catch {
-          // Controller may already be closed
-        }
+        controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
       } finally {
         // Flush telemetry spans before closing — in serverless environments (Vercel)
         // the runtime freezes after the response, so the BatchSpanProcessor's background
         // timer never fires and spans are lost without an explicit flush.
         await flushTelemetry();
-        controller.close();
+        if (!gone) controller.close();
       }
+    },
+    cancel() {
+      gone = true;
     },
   });
 

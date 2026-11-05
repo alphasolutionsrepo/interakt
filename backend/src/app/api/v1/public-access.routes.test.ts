@@ -826,13 +826,15 @@ describe('a request whose body is not JSON', () => {
     ['AI summary by token', () => summaryByToken(broken('/api/v1/summarize'))],
     ['search by slug', () => searchBySlug(broken('/api/v1/search/catalog/search'), slugParams('catalog'))],
     ['AI summary by slug', () => summaryBySlug(broken('/api/v1/search/catalog/summarize'), slugParams('catalog'))],
+    ['chat by token', () => chatByToken(broken('/api/v1/ai-experiences/chat'))],
+    ['chat by slug', () => chatBySlug(broken('/api/v1/ai-experiences/assistant/chat'), slugParams('assistant'))],
   ])('%s answers 400 "Invalid JSON body", logged once as a warning', async (_name, call) => {
     logs.length = 0;
     const res = await call();
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body).toMatchObject({ code: 'INVALID_JSON', message: 'Invalid JSON body' });
+    expect(body).toMatchObject({ code: 'INVALID_JSON', message: 'Invalid JSON body', error: 'Invalid JSON body' });
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn' })]);
   });
 });
@@ -848,6 +850,40 @@ describe('a chat turn that fails after the stream started', () => {
     expect(event).toMatchObject({ type: 'error', message: PUBLIC_FAILURE_MESSAGE, requestId: expect.any(String) });
     expect(text).not.toContain('10.0.0.7');
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: event.requestId, operation: 'chatTurn' }) })]);
+  });
+
+  it('sends an admin testing on the slug route the explanation', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.runChatPipeline.mockRejectedValueOnce(Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama' }));
+    const res = await chatBySlug(req('/api/v1/ai-experiences/assistant/chat', 'POST', {}, { message: 'hi' }), slugParams('assistant'));
+    const text = await res.text();
+    const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
+
+    expect(event).toMatchObject({ type: 'error', code: 'UPSTREAM_UNAVAILABLE', hint: expect.any(String), requestId: expect.any(String) });
+    expect(event.message).not.toBe(PUBLIC_FAILURE_MESSAGE);
+  });
+
+  it("isn't logged when the visitor closed the chat before it finished", async () => {
+    logs.length = 0;
+    let finished!: () => void;
+    const done = new Promise<void>((resolve) => { finished = resolve; });
+    mocks.runChatPipeline.mockImplementationOnce(async ({ onEvent }: { onEvent: (e: unknown) => void }) => {
+      try {
+        onEvent({ type: 'content', content: 'Hel' });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        onEvent({ type: 'content', content: 'lo' });
+      } finally {
+        finished();
+      }
+    });
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP });
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    await done;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(reported(logs)).toEqual([]);
   });
 });
 
