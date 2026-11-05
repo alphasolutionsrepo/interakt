@@ -19,7 +19,7 @@ Give visitors a search box that finds the right thing, even when they don't use 
 - **Synonyms.** Teach search that "sofa" and "couch" mean the same thing, or that "tee" should find "t-shirt".
 - **Stop words and language settings.** Ignore filler words and tune search for the language of your content.
 - **Highlighted matches.** The words that matched are highlighted in each result.
-- **AI summary of results.** Optionally show a short AI-written summary above the results, in the length and tone you choose (professional, casual, technical or friendly), with your own instructions such as "point out price differences".
+- **AI summary of results.** Optionally show a short AI-written summary above the results, with a length limit you set and your own instructions such as "point out price differences". The summary cites the results it drew on, and appears as it's written.
 - **Search several sources at once.** One search box can cover several collections (for example products and help articles), with control over which counts most.
 - **Use the search engine you already have.** Interakt can search an existing Elasticsearch, Azure AI Search or Sitecore Search setup without copying the data.
 - **Control how results look.** Choose which fields appear on result cards (title, image, price, description and so on) and in what order.
@@ -31,27 +31,25 @@ More: [Search indexes](../concepts/search-indexes) · [Search experiences](../co
 A chat assistant that answers from your content and your systems, in your brand's voice.
 
 - **Answers from your data.** The assistant looks things up in your content before answering, so answers are based on what you sell or publish rather than general knowledge.
-- **Shows its sources.** Answers can include citations, inline or as footnotes, so visitors can check where an answer came from.
 - **Finds specific items.** Visitors can ask about a product by name or code ("What is SKU-12345?"), ask what brands you carry, or describe what they want.
-- **Rich answers.** The assistant can reply with formatted text, a single product card, a grid of items or a comparison table.
+- **Rich answers.** The assistant can reply with formatted text, a single product card, or a grid or list of items.
 - **Personality you control.** Write the assistant's instructions in plain language ("never guess prices", "always recommend a size guide") and pick a tone: professional, friendly, casual, enthusiastic or concise. Interakt drafts the first version of the instructions from a short description of what the assistant is for.
-- **Remembers context.** It follows the thread of a conversation and can remember lasting preferences a visitor has shared, such as a favourite brand, to give better answers next time.
+- **Follows the conversation.** It keeps track of what's been said, so visitors can ask follow-up questions without repeating themselves.
 - **Connects to your systems.** Give the assistant access to your own APIs, such as order status, stock levels or account details, so it can answer with live information.
 - **Searches the web when allowed.** Optionally let the assistant look up current information online, limited to sites you choose.
 - **Plugs into third-party tools.** Connect services that support the Model Context Protocol (MCP) to give the assistant new abilities in one step.
 - **Effort control.** Choose a Standard or Thorough setting for how hard the assistant works on each question, trading cost against persistence.
-- **Answers appear as they're written.** Responses stream word by word, like other modern chat assistants.
 
 More: [Chat experiences](../concepts/chat-experiences) · [Tools](../concepts/tools) · [MCP Connections](../concepts/mcp-connections) · [Turn budget and limits](../concepts/pipeline-modes)
 
 ## Safety and brand protection
 
 - **Keeps the assistant on topic.** Define what the assistant is for (for example "fashion, shipping, returns") and it politely declines anything else with a message you write. Interakt can expand your topic list for you.
-- **Blocked words and phrases.** Block, flag or blank out terms such as competitor names or sensitive words, in both what visitors type and what the assistant says.
+- **Blocked words and phrases.** Stop messages that contain terms you list, such as competitor names or sensitive words.
 - **Rules that can't be switched off.** Lock the safety rules on for an assistant so they always run, which helps with compliance reviews.
-- **Rate limits.** Cap how many messages each visitor, and the assistant as a whole, can send per minute and per day.
+- **Rate limits.** Cap how many messages each visitor can send per minute, and how many the assistant answers per day in total.
 - **Only your sites can use it.** Restrict each search box or assistant to your own website addresses.
-- **Privacy controls.** Choose per experience whether to record full conversation text, only timings and counts, or nothing at all, and clear recorded data whenever you need to.
+- **Privacy controls.** Choose per experience whether analytics records full text, only timings and counts, or no traces, and clear analytics data whenever you need to.
 
 More: [Guardrails](../concepts/guardrails) · [Access tokens](../concepts/access-tokens) · [Analytics → What about PII?](../concepts/analytics#what-about-pii)
 
@@ -75,28 +73,28 @@ More: [Analytics](../concepts/analytics)
 
 - **Copy-and-paste widgets.** A search widget and a chat widget that work on any website, with no developer framework required.
 - **Matches your brand.** Set colours, fonts, rounded corners, light or dark mode, your logo, and whether "Powered by Interakt" shows.
-- **Flexible placement.** Show search or chat as a pop-up from a button, or built into a page. The chat launcher can be a floating button in any corner or a tab on the side of the page.
+- **Flexible placement.** Show search or chat as a pop-up from a button, or built into a page. The chat launcher can be a floating button in any corner, or a button of your own on the page.
 - **Conversation starters.** Add suggested questions visitors can click instead of typing, plus a welcome message.
-- **Live preview.** See changes to the widget's look as you make them, before publishing.
+- **Try before publishing.** The embed code updates as you change the widget's look, and the playground shows the widget before visitors see it.
 - **Custom builds.** Teams that want full control can build their own interface on Interakt's API instead of using the widgets.
 
 More: [Embed widgets](../concepts/embed-widgets) · [Calling the search API](../guides/call-the-search-api) · [Calling the chat API](../guides/call-the-chat-api)
 
 ## Getting your content in
 
-- **Upload or connect.** Bulk-load a catalogue, connect a database, upload documents (PDF, Word, Markdown, text), or keep content in sync automatically from your CMS or e-commerce platform.
+- **Upload or connect.** Bulk-load a catalogue as JSON, search an existing search engine, or keep content in sync automatically from your CMS or e-commerce platform.
 - **Ready-made integrations.** Step-by-step guides for Medusa (e-commerce), Storyblok, Hygraph and Sanity (content management), and React / Next.js sites.
 - **Keeps itself up to date.** Integrations push changes to Interakt as content is published or edited.
 - **Separate keys for loading data.** The key that loads content is kept apart from the public keys used on your website, so the website can only read.
 
-More: [Loading data into an index](../guides/bulk-load-data) · [Data sources](../concepts/data-sources) · [Integrations](../integrations/) · [Ingestion keys](../concepts/ingestion-keys)
+More: [Loading data into an index](../guides/bulk-load-data) · [Data sources](../concepts/data-sources) · [Integrations](../integrations/index.md) · [Ingestion keys](../concepts/ingestion-keys)
 
 ## Managing it
 
 - **One dashboard.** Search boxes, assistants, content, analytics and settings in one place.
 - **Try before going live.** A playground to test searches, chats and widgets before visitors see them.
-- **Tune without developers.** Edit the assistant's instructions and the wording behind each step in the dashboard, with full version history and one-click rollback.
-- **Team roles.** Admins manage everything; Moderators run day-to-day content and experiences; Users can look but not change.
+- **Tune without developers.** Edit the assistant's instructions in the dashboard, and the wording behind each step of a conversation with full version history and one-click rollback.
+- **Invite your team.** Give colleagues their own logins; admins manage users and background jobs.
 - **Secure secrets.** Passwords and API keys for connected systems are stored encrypted, never shown in plain text.
 - **Built-in help.** Every screen links to its help page, and a help assistant answers questions about using Interakt.
 - **Scheduled jobs.** Background tasks such as the nightly insights review and health checks run on a schedule you can change.
