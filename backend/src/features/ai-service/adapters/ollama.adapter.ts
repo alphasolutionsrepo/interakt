@@ -81,8 +81,10 @@ async function withThinkFallback<B extends { model: string; think?: OllamaThink 
 /** The model's configured reasoning effort as Ollama's `think`, when one is set. */
 function thinkOf(config: AdapterConfig): { think?: OllamaThink } {
     const effort = config.capabilities?.reasoningEffort;
-    if (effort === 'none') return { think: false };
-    if (effort === 'minimal' || effort === 'low') return { think: 'low' };
+    // Minimal is as little as possible: on a model that only turns thinking on or off
+    // (deepseek-r1, qwen3), any level turns it on
+    if (effort === 'none' || effort === 'minimal') return { think: false };
+    if (effort === 'low') return { think: 'low' };
     if (effort === 'medium' || effort === 'high') return { think: effort };
     return {};
 }

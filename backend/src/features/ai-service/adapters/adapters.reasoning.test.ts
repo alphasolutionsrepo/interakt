@@ -41,14 +41,13 @@ async function drain(stream: AsyncIterable<unknown>) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Ollama think', () => {
-  it("turns thinking off for 'none'", async () => {
+  it.each(['none', 'minimal'])("turns thinking off for '%s'", async (effort) => {
     const sent = captureFetch(ollamaReply);
-    await new OllamaAdapter().chat(request, config({ reasoningEffort: 'none' }));
+    await new OllamaAdapter().chat(request, config({ reasoningEffort: effort }));
     expect(sent().think).toBe(false);
   });
 
   it.each([
-    ['minimal', 'low'],
     ['low', 'low'],
     ['medium', 'medium'],
     ['high', 'high'],
@@ -72,7 +71,7 @@ describe('Ollama think', () => {
 
   it('is sent on text generation', async () => {
     const sent = captureFetch({ model: 'm', response: 'ok', done: true, prompt_eval_count: 1, eval_count: 1 });
-    await new OllamaAdapter().generateText({ prompt: 'hi' }, config({ reasoningEffort: 'minimal' }));
+    await new OllamaAdapter().generateText({ prompt: 'hi' }, config({ reasoningEffort: 'low' }));
     expect(sent().think).toBe('low');
   });
 });
