@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/select';
 import { StepProgress } from '@/components/ui/steps-progress';
 import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shared/seeders/demo/demo-steps';
+import { sameOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
 import { reportActionError } from '@/shared/activity/report';
 import { toApiError } from '@/shared/api/api-error';
@@ -170,7 +171,7 @@ export default function SetupDemoPage() {
   }
 
   const selected = status?.providers.options.find((o) => o.key === selectedProvider);
-  const baseUrlDirty = selected?.authType === 'none' && baseUrl.trim() !== checkedBaseUrl.trim();
+  const baseUrlDirty = selected?.authType === 'none' && !sameOllamaUrl(baseUrl, checkedBaseUrl);
 
   // Keep the chosen models valid for the selected provider. For Ollama the
   // pickers offer the pulled models (prefer the current pick, then the

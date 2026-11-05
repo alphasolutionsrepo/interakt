@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { trustedOllamaUrl } from './ollama-url';
+import { sameOllamaUrl, trustedOllamaUrl } from './ollama-url';
 
 const configured = ['http://gpu-box.lan:11434/', undefined, 'http://localhost:11434'];
 
@@ -25,5 +25,18 @@ describe('trustedOllamaUrl', () => {
     ['text that is not a URL', 'localhost:11434'],
   ])('refuses %s', (_case, typed) => {
     expect(trustedOllamaUrl(typed, configured)).toBeUndefined();
+  });
+});
+
+describe('sameOllamaUrl', () => {
+  it('treats the configured spelling of the URL the admin typed as the same server', () => {
+    expect(sameOllamaUrl('http://gpu-box.lan:11434', 'http://gpu-box.lan:11434/')).toBe(true);
+    expect(sameOllamaUrl('http://GPU-Box.lan:11434/api', 'http://gpu-box.lan:11434')).toBe(true);
+  });
+
+  it('tells another server apart, and text that is not a URL', () => {
+    expect(sameOllamaUrl('http://gpu-box.lan:11434', 'http://localhost:11434')).toBe(false);
+    expect(sameOllamaUrl('http://localhost:11434', 'http://localhost:11500')).toBe(false);
+    expect(sameOllamaUrl('localhost', 'http://localhost')).toBe(false);
   });
 });

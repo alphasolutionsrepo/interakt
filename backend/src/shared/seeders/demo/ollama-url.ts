@@ -23,6 +23,15 @@ export function trustedOllamaUrl(typed: string, configured: Array<string | undef
   return `${url.protocol === 'https:' ? 'https' : 'http'}://${host}${port}`;
 }
 
+/**
+ * Whether two Ollama URLs name the same server: the check answers with the configured
+ * spelling (a trailing slash, lower case), which is still the URL the admin typed
+ */
+export function sameOllamaUrl(a: string, b: string): boolean {
+  const origin = (text: string) => parse(text)?.origin ?? text.trim();
+  return origin(a) === origin(b);
+}
+
 /** An http(s) URL without credentials in it */
 function parse(text: string): URL | undefined {
   try {
