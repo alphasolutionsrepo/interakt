@@ -14,6 +14,7 @@ import { createLogger } from '@/shared/logger/logger';
 // session and ingestion-key callers.
 import { elasticsearchConfig } from '../../../config';
 import { uploadOutcome } from './upload-outcome';
+import { writeFailure } from './write-failure';
 
 import {
     indexDocuments,
@@ -471,15 +472,18 @@ function mapWriteError(error: unknown, operation: string) {
 }
 
 /**
- * Build the shared response body for the write endpoints.
+ * Build the shared response body for the write endpoints. A write that wrote nothing
+ * is explained (error), and the message says why.
  */
 function buildWriteResponse(
     result: DocumentWriteResult,
     message: string
 ): WriteDocumentsResponse {
+    const error = writeFailure(result);
     const response: WriteDocumentsResponse = {
         success: result.success,
-        message,
+        message: error?.message ?? message,
+        ...(error && { error }),
         summary: {
             total: result.total,
             succeeded: result.succeeded,
@@ -500,6 +504,26 @@ function buildWriteResponse(
     }
 
     return response;
+}
+
+/**
+ * The answer to a document write (207 when any of it failed), and its one log line. A
+ * failed write is a warning with its error and the request id the answer shows, so
+ * support can find the cause.
+ */
+function answerWrite(result: DocumentWriteResult, message: string, logMessage: string, context: Record<string, unknown>) {
+    const response = buildWriteResponse(result, message);
+    if (result.success) {
+        logger.info(logMessage, context);
+    } else {
+        logger.warn(logMessage, {
+            ...context,
+            failed: result.failed,
+            ...(response.error && { requestId: response.error.requestId }),
+            ...(result.writeError !== undefined && { err: result.writeError }),
+        });
+    }
+    return apiResponse.success(response, result.success ? 200 : 207); // 207 = Multi-Status
 }
 
 /**
@@ -585,18 +609,12 @@ async function handleSingleDocumentWrite(
             ? `Document ${verb}`
             : result.errors[0]?.error || `Failed to ${action} document`;
 
-        logger.info('Single document write completed', {
+        return answerWrite(result, message, 'Single document write completed', {
             searchIndexId,
             documentId,
             action,
-            success: result.success,
             ...actorLogContext(actor),
         });
-
-        return apiResponse.success(
-            buildWriteResponse(result, message),
-            result.success ? 200 : 207
-        );
     } catch (error) {
         return mapWriteError(error, action === 'upload' ? 'uploadIndexDocument' : 'mergeIndexDocument');
     }
@@ -770,20 +788,12 @@ export async function handleDeleteDocument(
             documentId,
         }]);
 
-        if (!result.success) {
-            return apiResponse.success(
-                buildWriteResponse(result, result.errors[0]?.error || 'Failed to delete document'),
-                207
-            );
-        }
-
-        logger.info('Document deleted', {
-            searchIndexId,
-            documentId,
-            ...actorLogContext(authResult.actor),
-        });
-
-        return apiResponse.success(buildWriteResponse(result, 'Document deleted'));
+        return answerWrite(
+            result,
+            result.success ? 'Document deleted' : result.errors[0]?.error || 'Failed to delete document',
+            result.success ? 'Document deleted' : 'Document delete failed',
+            { searchIndexId, documentId, ...actorLogContext(authResult.actor) }
+        );
     } catch (error) {
         return mapWriteError(error, 'deleteIndexDocument');
     }
@@ -870,19 +880,13 @@ export async function handleBulkWriteDocuments(
             ? `Applied ${result.succeeded} operations (${upload} replaced, ${merge} merged, ${removed} deleted)`
             : `Completed with ${result.failed} failures (${upload} replaced, ${merge} merged, ${removed} deleted)`;
 
-        logger.info('Bulk document write completed', {
+        return answerWrite(result, message, 'Bulk document write completed', {
             searchIndexId,
             succeeded: result.succeeded,
-            failed: result.failed,
             counts: result.counts,
             durationMs: result.durationMs,
             ...actorLogContext(actor),
         });
-
-        return apiResponse.success(
-            buildWriteResponse(result, message),
-            result.success ? 200 : 207 // 207 = Multi-Status
-        );
     } catch (error) {
         return mapWriteError(error, 'bulkWriteIndexDocuments');
     }

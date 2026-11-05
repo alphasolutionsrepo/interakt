@@ -486,7 +486,9 @@ export class AzureEngineProvider implements SearchEngineProvider {
             };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Bulk write failed';
-            logger.error('Azure bulk write failed', { indexName, error: message });
+            // Passed on as writeError; the upload, reindex or write it belongs to logs it,
+            // with its request id
+            logger.debug('Azure bulk write failed', { indexName, error: message });
             return {
                 success: false,
                 indexed: 0,

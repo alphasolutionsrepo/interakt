@@ -254,6 +254,8 @@ export interface GetDocumentResponse {
 export interface WriteDocumentsResponse {
     success: boolean;
     message: string;
+    /** Why nothing was written: what happened, what to do, the request id */
+    error?: { code: string; message: string; hint?: string; requestId: string };
     summary: {
         total: number;
         succeeded: number;

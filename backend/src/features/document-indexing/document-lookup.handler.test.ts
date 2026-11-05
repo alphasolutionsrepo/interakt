@@ -36,7 +36,7 @@ vi.mock('@/features/search-index/search-index-fields.service', () => ({ getField
 vi.mock('@/features/search-index/search-index-fields.repository', () => ({ getVectorSourceFields: async () => [] }));
 vi.mock('@/features/search-index/search-index.service', () => ({ recordLastJob: vi.fn(), jobError: vi.fn() }));
 
-import { handleDeleteDocument, handleGetDocument, handleMergeDocument } from './document-indexing.api.handlers';
+import { handleDeleteDocument, handleGetDocument, handleMergeDocument, handleReplaceDocument } from './document-indexing.api.handlers';
 
 const ID = crypto.randomUUID();
 const url = `http://localhost/api/search-indexes/${ID}/documents/d1`;
@@ -69,5 +69,26 @@ describe.each(routes)('$name a document', ({ call }) => {
         lookup.result = { found: false };
         const res = await call();
         expect(res.status).toBe(404);
+    });
+});
+
+describe('a document write the engine could not take', () => {
+    const write = [
+        { name: 'replacing', call: () => handleReplaceDocument(new NextRequest(url, { method: 'PUT', body: JSON.stringify({ document: { name: 'Linen' } }) }), params) },
+        { name: 'deleting', call: () => handleDeleteDocument(new NextRequest(url, { method: 'DELETE' }), params) },
+    ];
+
+    it.each(write)('$name is explained, with the request id its one warning has', async ({ call }) => {
+        lookup.result = { found: true, document: { name: 'Linen' } };
+        const down = unreachable();
+        provider.bulkWrite.mockResolvedValueOnce({ success: false, indexed: 0, failed: 1, errors: [{ index: 0, error: 'ConnectionError' }], counts: { upload: 0, merge: 0, delete: 0 }, writeError: down } as never);
+        const res = await call();
+        const body = await res.json();
+
+        expect(res.status).toBe(207);
+        expect(body.data).toMatchObject({ success: false, message: "Elasticsearch couldn't be reached.", error: { code: 'WRITE_FAILED', message: "Elasticsearch couldn't be reached.", requestId: expect.any(String) } });
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: down, requestId: body.data.error.requestId }) }),
+        ]);
     });
 });

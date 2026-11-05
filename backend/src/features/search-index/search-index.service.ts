@@ -1116,6 +1116,8 @@ export async function triggerReindex(
                     indexed: bulkResult.indexed,
                     failed: bulkResult.failed,
                     errors: bulkResult.errors.slice(0, 5),
+                    // A batch that failed as a whole: the search service's own error
+                    ...(bulkResult.writeError !== undefined && { err: bulkResult.writeError }),
                 });
             }
         }

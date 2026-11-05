@@ -116,6 +116,8 @@ export interface DocumentWriteResult {
     errors: DocumentWriteError[];
     warnings: string[];
     durationMs: number;
+    /** The error a write that failed as a whole ended with (the search service couldn't be reached) */
+    writeError?: unknown;
 }
 
 export interface DocumentReadResult {
@@ -655,6 +657,7 @@ export async function writeDocuments(
 
     // 3. Single bulk write, whatever the action mix
     let succeeded = 0;
+    let writeError: unknown;
 
     if (writable.length > 0) {
         const bulkOperations: BulkWriteOperation[] = writable.map(op => ({
@@ -668,6 +671,7 @@ export async function writeDocuments(
         });
 
         succeeded = result.indexed;
+        writeError = result.writeError;
         counts.upload = result.counts.upload;
         counts.merge = result.counts.merge;
         counts.delete = result.counts.delete;
@@ -714,6 +718,7 @@ export async function writeDocuments(
         errors,
         warnings,
         durationMs,
+        ...(writeError !== undefined && { writeError }),
     };
 }
 

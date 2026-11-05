@@ -9,8 +9,12 @@
 import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, expect, it, vi } from 'vitest';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
 const bulk = vi.hoisted(() => ({ error: undefined as unknown }));
 vi.mock('server-only', () => ({}));
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@elastic/elasticsearch', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@elastic/elasticsearch')>()),
     Client: class {
@@ -29,5 +33,7 @@ describe('a bulk write that fails as a whole', () => {
 
         expect(result).toMatchObject({ indexed: 0, failed: 1, writeError: clientError });
         expect(result.errors[0].error).toMatch(/ECONNREFUSED/);
+        // The upload, reindex or write it belongs to logs it, with its request id
+        expect(reported(logs)).toEqual([]);
     });
 });

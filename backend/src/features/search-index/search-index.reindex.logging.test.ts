@@ -83,6 +83,14 @@ describe('a reindex', () => {
         expect(res.ok).toBe(true);
         expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn' })]);
     });
+
+    it('where one batch failed as a whole logs that batch\'s error on its one warning', async () => {
+        const down = new Error('connect ECONNREFUSED 127.0.0.1:9200');
+        state.bulk = { success: false, indexed: 1, failed: 1, errors: [{ index: 1, error: down.message }], took: 1, writeError: down };
+        await reindex();
+
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: down }) })]);
+    });
 });
 
 describe('recreating an empty index', () => {

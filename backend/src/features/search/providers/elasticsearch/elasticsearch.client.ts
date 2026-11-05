@@ -401,8 +401,9 @@ export async function bulkWrite(
                 });
             }
         } catch (error) {
-            // Entire batch failed
-            logger.error('Bulk write batch failed', {
+            // Entire batch failed. Passed on as writeError; the upload, reindex or write it
+            // belongs to logs it, with its request id
+            logger.debug('Bulk write batch failed', {
                 indexName,
                 batchStart: i,
                 batchSize: batch.length,

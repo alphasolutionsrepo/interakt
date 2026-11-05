@@ -1,7 +1,7 @@
 // app/search-indexes/_lib/api-client.ts
 
 import type { IndexLastJob } from '@/db/schema/search-index.schema';
-import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
+import { ApiError, apiErrorFrom, toApiError, handleApiResponse } from '@/shared/api/api-error';
 
 /**
  * Search Index API Client
@@ -865,6 +865,8 @@ export type DocumentWriteOperation =
 export interface WriteDocumentsResponse {
     success: boolean;
     message: string;
+    /** Why nothing was written: what happened, what to do, the request id */
+    error?: { code: string; message: string; hint?: string; requestId: string };
     summary: {
         total: number;
         succeeded: number;
@@ -938,6 +940,17 @@ export interface DeleteByFilterResponse {
     dryRun: boolean;
     message: string;
     durationMs: number;
+}
+
+/**
+ * The answer to a write of one document. A 207 means it wasn't written (the search
+ * service couldn't be reached): thrown as a failed request is, with the explanation,
+ * hint and request id the server sent.
+ */
+async function oneDocumentWritten(response: Response): Promise<WriteDocumentsResponse> {
+    const result = await handleApiResponse<WriteDocumentsResponse>(response);
+    if (!result.success) throw apiErrorFrom(result.error ?? { message: result.message }, response.status);
+    return result;
 }
 
 export const documentIndexingApi = {
@@ -1043,7 +1056,7 @@ export const documentIndexingApi = {
                 body: JSON.stringify({ document }),
             }
         );
-        return handleApiResponse<WriteDocumentsResponse>(response);
+        return oneDocumentWritten(response);
     },
 
     /**
@@ -1063,7 +1076,7 @@ export const documentIndexingApi = {
                 body: JSON.stringify({ document }),
             }
         );
-        return handleApiResponse<WriteDocumentsResponse>(response);
+        return oneDocumentWritten(response);
     },
 
     /**
@@ -1077,7 +1090,7 @@ export const documentIndexingApi = {
             `/api/search-indexes/${searchIndexId}/documents/${encodeURIComponent(documentId)}`,
             { method: 'DELETE' }
         );
-        return handleApiResponse<WriteDocumentsResponse>(response);
+        return oneDocumentWritten(response);
     },
 
     /**
