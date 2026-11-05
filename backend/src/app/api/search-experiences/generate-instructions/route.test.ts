@@ -60,3 +60,13 @@ describe('instructions the AI could not generate', () => {
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ operation: 'generateInstructions' }) })]);
   });
 });
+
+describe('instructions whose AI model setting is gone', () => {
+  it('tells the admin which setting to fix', async () => {
+    generate.mockRejectedValue(Object.assign(new Error('Model not found: 42'), { name: 'AIServiceError', code: 'MODEL_NOT_FOUND' }));
+    const res = await ask();
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'MODEL_NOT_FOUND', message: 'Model not found: 42' });
+  });
+});

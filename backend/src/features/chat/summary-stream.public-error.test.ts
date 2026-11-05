@@ -12,12 +12,13 @@ import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 vi.mock('server-only', () => ({}));
 const logs = vi.hoisted(() => [] as LogLine[]);
+const model = vi.hoisted(() => ({ failure: undefined as (() => Error) | undefined }));
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/ai-service/ai-service.service', () => ({
   async *streamChat() {
     yield { content: 'Linen shirts are ' };
-    // What the Ollama adapter throws when Ollama stops answering
-    throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama', code: 'ECONNREFUSED' });
+    // What the Ollama adapter throws when Ollama stops answering, unless a test says otherwise
+    throw model.failure?.() ?? Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama', code: 'ECONNREFUSED' });
   },
 }));
 vi.mock('@/features/telemetry', () => ({
@@ -63,5 +64,26 @@ describe('a summary whose model fails part way', () => {
 
     expect(event.message).toMatch(/Ollama/);
     expect(reported(logs)).toHaveLength(1);
+  });
+});
+
+describe('a summary whose AI setup is broken (a disabled provider)', () => {
+  const disabled = () => Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
+
+  it('sends a visitor the plain message, as the service being unavailable', async () => {
+    model.failure = disabled;
+    const event = await errorEvent(false);
+    model.failure = undefined;
+
+    expect(event).toMatchObject({ type: 'error', code: 'PROVIDER_DISABLED', message: PUBLIC_FAILURE_MESSAGE });
+    expect(JSON.stringify(event)).not.toContain('openai');
+  });
+
+  it('tells an admin what to fix', async () => {
+    model.failure = disabled;
+    const event = await errorEvent(true);
+    model.failure = undefined;
+
+    expect(event.message).toBe('Provider is disabled: openai');
   });
 });

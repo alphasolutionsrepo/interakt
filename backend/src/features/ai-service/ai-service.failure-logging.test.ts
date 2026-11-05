@@ -20,7 +20,9 @@ vi.mock('@/features/ai-providers/ai-providers.service', () => ({
   getResolvedDefaults: vi.fn(),
 }));
 
-import { resetCircuit } from './ai-service.resilience';
+import { recordFailure, resetCircuit } from './ai-service.resilience';
+
+import { toAppError } from '@/shared/errors/to-app-error';
 import { chat, generateEmbeddings, generateText, streamChat } from './ai-service.service';
 
 // What Ollama answers for a model it doesn't have
@@ -57,5 +59,19 @@ describe('a failed AI call', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"server busy"}', { status: 503 })));
     await expect(call()).rejects.toThrow();
     expect(reported(logs)).toEqual([]);
+  });
+});
+
+describe('an AI call while the circuit breaker has cut its provider off', () => {
+  it.each([
+    ['text generation', () => generateText('Summarize these jackets', options)],
+    ['a chat completion', () => chat(messages, options)],
+    ['embeddings', () => generateEmbeddings(['linen shirt'], { ...options, feature: 'search_query' })],
+  ])('%s is explained as the provider being unavailable (503)', async (_, call) => {
+    for (let i = 0; i < 5; i++) recordFailure('prov-1');
+
+    const failed = await call().catch((e: unknown) => e);
+
+    expect(toAppError(failed)).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', status: 503 });
   });
 });
