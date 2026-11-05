@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { AdapterError } from '@/features/ai-service/adapters/types';
 import { SearchError } from '@/features/search/search.types';
 
-import { classifyUpstream, explainWriteFailure, scrub } from './upstream';
+import { classifyUpstream, explainWriteFailure, leadingReason, scrub } from './upstream';
 
 /** Shaped like @azure/core-rest-pipeline's RestError */
 function azureError(statusCode: number, message: string, code?: string) {
@@ -262,5 +262,14 @@ describe('explainWriteFailure', () => {
 
     it('has nothing to say without an error or a reason', () => {
         expect(explainWriteFailure(undefined, undefined)).toEqual({});
+    });
+});
+
+describe('leadingReason', () => {
+    it('picks a write block over a reason given before it, and the first reason otherwise', () => {
+        const block = 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];';
+        expect(leadingReason(['Required field "sku" has no value', block])).toBe(block);
+        expect(leadingReason(['a', 'b'])).toBe('a');
+        expect(leadingReason([])).toBeUndefined();
     });
 });

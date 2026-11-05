@@ -35,6 +35,13 @@ describe('uploadOutcome', () => {
         expect(outcome.error?.hint).toMatch(/disk space/);
     });
 
+    it('says what to do about a full disk even when another document failed first, for another reason', () => {
+        const full = 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];';
+        const outcome = uploadOutcome(result(0, 3, ['Required field "sku" has no value', full, full]), startedAt);
+        expect(outcome.error?.hint).toMatch(/disk space/);
+        expect(outcome.error?.message).toContain('flood-stage');
+    });
+
     it('explains a write that failed as a whole, from the error itself (the cluster is down)', () => {
         const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
         const outcome = uploadOutcome({ ...result(0, 2, ['', '']), writeError: down }, startedAt, 'upload.json');

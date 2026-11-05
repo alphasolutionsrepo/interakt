@@ -168,6 +168,14 @@ export function explainSearchServiceText(text: string): { code: UpstreamCode; me
 }
 
 /**
+ * The reason to explain a write that wrote nothing by: a write block when any document hit
+ * one (it stopped the rest, whatever failed first), otherwise the first reason given.
+ */
+export function leadingReason(reasons: string[]): string | undefined {
+    return reasons.find((reason) => explainSearchServiceText(reason)) ?? reasons[0];
+}
+
+/**
  * Why a write to a search service failed, and what to do: from the error that failed it
  * (the service couldn't be reached, timed out) when we recognise it, else the service's
  * own reason text, with a hint for write blocks. The raw error is still in the log.
