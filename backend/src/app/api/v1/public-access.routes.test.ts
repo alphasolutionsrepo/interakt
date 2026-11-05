@@ -800,3 +800,15 @@ describe('a feature the experience has turned off, for the log', () => {
     ]);
   });
 });
+
+describe('a document lookup that fails after the token is checked', () => {
+  it('is answered with CORS headers, so the visitor sees the request id and not a CORS error', async () => {
+    // An experience without its index list: the route fails reading it
+    mocks.getSearchExperienceByAccessToken.mockResolvedValueOnce({ ...searchExperience, indexes: undefined });
+    const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ requestId: expect.any(String) });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+  });
+});

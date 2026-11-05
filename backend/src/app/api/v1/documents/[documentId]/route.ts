@@ -14,7 +14,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
-import { authenticateAccessToken, createCorsHeaders, handleCorsPreflight, withCors, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
+import { authenticateAccessToken, handleCorsPreflight, withCors, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
+import type { SearchExperienceWithIndexes } from '@/features/search-experience/search-experience.types';
 import { AppError } from '@/shared/errors/app-error';
 import * as searchService from '@/features/search/search.service';
 import { publicRoute } from '@/shared/api/public-route';
@@ -26,6 +27,10 @@ async function get(
   { params }: { params: Promise<{ documentId: string }> }
 ) {
   const { documentId } = await params;
+  const origin = request.headers.get('origin');
+  // Known once the token is checked: a failure after that is answered with its CORS
+  // headers, or the visitor's browser hides it
+  let experience: SearchExperienceWithIndexes | undefined;
 
   try {
     // 1. Authenticate via access token (gets experience)
@@ -35,8 +40,9 @@ async function get(
       return (authResult as MiddlewareError).response;
     }
 
-    const experience = authResult.experience;
-    const origin = request.headers.get('origin');
+    experience = authResult.experience;
+    // A const for the callbacks below
+    const exp = experience;
 
     // 2. Get active indexes
     const activeIndexes = experience.indexes.filter((idx) => idx.searchIndex.isActive);
@@ -66,7 +72,7 @@ async function get(
     }
 
     const logFailure = (failure: (typeof failures)[number], message: string) =>
-      logger.warn(message, { experienceId: experience.id, documentId, indexId: failure.indexId, err: failure.error });
+      logger.warn(message, { experienceId: exp.id, documentId, indexId: failure.indexId, err: failure.error });
 
     // A lookup failed and no other index had it: it may be in the one that failed, so
     // the answer is the failure, not "not found". The answer's failure is logged by
@@ -99,19 +105,12 @@ async function get(
       indexId: document.indexId,
     });
 
-    // Add CORS headers
-    const corsHeaders = createCorsHeaders(experience, origin);
-
-    const jsonResponse = NextResponse.json({ success: true, data: response });
-    corsHeaders.forEach((value, key) => {
-      jsonResponse.headers.set(key, value);
-    });
-
-    return jsonResponse;
+    return withCors(NextResponse.json({ success: true, data: response }), experience, origin);
   } catch (error) {
     // A search error answers with its own status; a server failure gets the plain
     // public message and a request id. Logged once by apiResponse.
-    return apiResponse.error(error, undefined, { operation: 'getPublicDocument', documentId });
+    const answer = apiResponse.error(error, undefined, { operation: 'getPublicDocument', documentId });
+    return experience ? withCors(answer, experience, origin) : answer;
   }
 }
 
