@@ -10,8 +10,12 @@ import { CalendarClock, CheckCircle2, CircleOff, Database, Loader2, RefreshCw, T
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { useProcessingStatus, useRefreshInsights } from '../_components/NeedsAttention';
 import { formatTimeAgo } from '../_components/viz';
+import { fetchAnalytics } from '../_lib/hooks/useAnalytics';
 import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
+import { jobsApi, type ScheduleRecord } from '@/app/jobs/_lib/api-client';
 
+import { reportActionError } from '@/shared/activity/report';
+import { ApiError, errorText, handleApiResponse } from '@/shared/api/api-error';
 import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
@@ -34,22 +38,17 @@ const INSIGHTS_QUEUE = 'refresh-insights';
 /** Matches the default the server sets at startup (job-registry.ts) */
 const NIGHTLY_CRON = '0 2 * * *';
 
-interface ScheduleRecord {
-  name: string;
-  cron: string;
-  timezone: string | null;
-}
-
-/** null = the viewer may not see schedules (admin only) */
+/** null = not scheduled; 'forbidden' = the viewer may not see schedules (admin only) */
 function useInsightsSchedule() {
   return useQuery({
     queryKey: ['analytics', 'settings', 'schedule'],
     queryFn: async (): Promise<ScheduleRecord | null | 'forbidden'> => {
-      const res = await fetch('/api/jobs/schedules');
-      if (res.status === 401 || res.status === 403) return 'forbidden';
-      if (!res.ok) throw new Error('Failed to load schedules');
-      const json = await res.json();
-      return ((json.data as ScheduleRecord[]) ?? []).find((s) => s.name === INSIGHTS_QUEUE) ?? null;
+      try {
+        return (await jobsApi.getSchedules()).find((s) => s.name === INSIGHTS_QUEUE) ?? null;
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return 'forbidden';
+        throw error;
+      }
     },
     staleTime: 60000,
   });
@@ -58,12 +57,8 @@ function useInsightsSchedule() {
 function useTrackingConfig() {
   return useQuery({
     queryKey: ['analytics', 'settings', 'config'],
-    queryFn: async (): Promise<Record<string, boolean>> => {
-      const res = await fetch('/api/analytics/config');
-      if (!res.ok) throw new Error('Failed to load analytics settings');
-      const json = await res.json();
-      return json.data.config;
-    },
+    queryFn: async (): Promise<Record<string, boolean>> =>
+      (await fetchAnalytics<{ config: Record<string, boolean> }>('/api/analytics/config', 'Failed to load analytics settings')).config,
     staleTime: 60000,
   });
 }
@@ -138,17 +133,11 @@ function InsightsCard() {
     setScheduling(true);
     setScheduleError(null);
     try {
-      const res = await fetch('/api/jobs/schedules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queue: INSIGHTS_QUEUE, cron: NIGHTLY_CRON, timezone: 'UTC' }),
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        setScheduleError(json.error?.message ?? json.error ?? 'The schedule couldn’t be set.');
-      }
-      await schedule.refetch();
+      await jobsApi.setSchedule(INSIGHTS_QUEUE, NIGHTLY_CRON, 'UTC');
+    } catch (error) {
+      setScheduleError(errorText(error, 'The schedule couldn’t be set.'));
     } finally {
+      await schedule.refetch();
       setScheduling(false);
     }
   };
@@ -170,6 +159,8 @@ function InsightsCard() {
             <dd className="text-right">
               {schedule.isLoading ? (
                 <Skeleton className="h-4 w-32" />
+              ) : schedule.isError ? (
+                <span className="text-destructive">{errorText(schedule.error, 'Failed to load schedules')}</span>
               ) : schedule.data === 'forbidden' ? (
                 'Only admins can see the schedule'
               ) : schedule.data ? (
@@ -191,6 +182,8 @@ function InsightsCard() {
             <dd>
               {isRunning ? (
                 <span className="flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" /> Running now</span>
+              ) : status.isError ? (
+                <span className="text-destructive">{errorText(status.error, 'Failed to fetch status')}</span>
               ) : lastRun?.completedAt ? (
                 `${formatTimeAgo(lastRun.completedAt)}${lastRun.status === 'failed' ? ', failed' : ''}`
               ) : (
@@ -237,7 +230,7 @@ function TrackingCard() {
             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-6" />)}
           </div>
         ) : config.isError ? (
-          <p className="text-sm text-muted-foreground">Analytics settings couldn&apos;t be loaded.</p>
+          <p className="text-sm text-muted-foreground">{errorText(config.error, 'Analytics settings couldn’t be loaded.')}</p>
         ) : (
           <table className="w-full text-sm">
             <thead className="sr-only">
@@ -284,12 +277,17 @@ function DataCard() {
   const clearData = async () => {
     setIsClearing(true);
     try {
-      await fetch('/api/analytics/data', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope: 'all', experienceId }),
-      });
+      await handleApiResponse(
+        await fetch('/api/analytics/data', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: 'all', experienceId }),
+        }),
+        'Failed to clear analytics data',
+      );
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    } catch (error) {
+      reportActionError('Clear analytics data', error);
     } finally {
       setIsClearing(false);
       setConfirm(false);

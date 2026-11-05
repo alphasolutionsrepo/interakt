@@ -38,6 +38,7 @@ import {
 } from '@/features/search-index';
 import type { WizardFormData } from '@/features/search-index/search-index.wizard-schemas';
 import { getAllProviderUIs } from '../providers';
+import { handleApiResponse } from '@/shared/api/api-error';
 
 // ============================================================================
 // TYPES
@@ -174,8 +175,8 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
     useEffect(() => {
         let cancelled = false;
         fetch('/api/search-indexes/providers')
-            .then((r) => (r.ok ? r.json() : Promise.reject(r)))
-            .then((data: { providers?: Array<{ type: string; isDefault?: boolean }> }) => {
+            .then((r) => handleApiResponse<{ providers?: Array<{ type: string; isDefault?: boolean }> }>(r))
+            .then((data) => {
                 if (cancelled) return;
                 const list = (data?.providers ?? []).map((p) => ({ type: p.type, isDefault: !!p.isDefault }));
                 setEnabledProviders(list);

@@ -1,6 +1,6 @@
 // app/data-sources/_lib/api-client.ts
 
-import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
+import { ApiError, handleApiPage, handleApiResponse } from '@/shared/api/api-error';
 
 export { ApiError };
 
@@ -95,13 +95,8 @@ export const dataSourcesApi = {
     if (params?.sortOrder) p.set('sortOrder', params.sortOrder);
 
     const url = `/api/data-sources${p.toString() ? `?${p.toString()}` : ''}`;
-    const response = await fetch(url);
-    if (!response.ok) throw await toApiError(response);
-    const json = await response.json();
-    return {
-      dataSources: json.data ?? [],
-      pagination: json.pagination,
-    };
+    const { data, pagination } = await handleApiPage<DataSource, DataSourceListResponse['pagination']>(await fetch(url));
+    return { dataSources: data, pagination };
   },
 
   getById: async (id: string): Promise<DataSource> => {

@@ -1,6 +1,6 @@
 // app/playground/ai-service/_lib/api-client.ts
 
-import { apiErrorFrom, handleApiResponse } from '@/shared/api/api-error';
+import { handleApiResponse, toApiError } from '@/shared/api/api-error';
 import { streamEvents } from '@/shared/api/stream-events';
 
 /**
@@ -191,10 +191,7 @@ export const aiServiceApi = {
       body: JSON.stringify({ ...request, stream: true }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw apiErrorFrom(errorData, response.status);
-    }
+    if (!response.ok) throw await toApiError(response);
 
     yield* streamEvents<ChatStreamChunk>(response);
   },

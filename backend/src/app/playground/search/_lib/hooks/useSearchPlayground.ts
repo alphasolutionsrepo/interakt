@@ -12,7 +12,7 @@ import { useState, useCallback } from 'react';
 import useSWR from 'swr';
 
 import { reportActionError } from '@/shared/activity/report';
-import { toApiError } from '@/shared/api/api-error';
+import { handleApiResponse } from '@/shared/api/api-error';
 
 // ============================================================================
 // TYPES
@@ -164,11 +164,7 @@ export interface SearchResponse {
 // FETCHERS
 // ============================================================================
 
-const fetcher = async (url: string) => {
-    const res = await fetch(url);
-    if (!res.ok) throw await toApiError(res);
-    return res.json();
-};
+const fetcher = async <T>(url: string) => handleApiResponse<T>(await fetch(url));
 
 // ============================================================================
 // HOOKS
@@ -178,13 +174,13 @@ const fetcher = async (url: string) => {
  * Hook to fetch all active search indexes
  */
 export function useSearchIndexes() {
-    const { data, error, isLoading, mutate } = useSWR<{ data: SearchIndex[] }>(
+    const { data, error, isLoading, mutate } = useSWR<SearchIndex[]>(
         '/api/search-indexes/all',
-        fetcher
+        fetcher<SearchIndex[]>
     );
 
     return {
-        indexes: data?.data || [],
+        indexes: data || [],
         isLoading,
         error,
         refetch: mutate,
@@ -195,13 +191,13 @@ export function useSearchIndexes() {
  * Hook to fetch search context for an index
  */
 export function useSearchContext(indexId: string | null) {
-    const { data, error, isLoading, mutate } = useSWR<{ data: SearchContext }>(
+    const { data, error, isLoading, mutate } = useSWR<SearchContext>(
         indexId ? `/api/search/index/${indexId}/context` : null,
-        fetcher
+        fetcher<SearchContext>
     );
 
     return {
-        context: data?.data || null,
+        context: data || null,
         isLoading,
         error,
         refetch: mutate,
@@ -225,9 +221,7 @@ export async function searchIndex(
         // Playground searches are untraced unless `trace` asks for a full trace
         body: JSON.stringify({ ...request, ...(options?.trace ? { trace: true } : {}) }),
     });
-    if (!response.ok) throw await toApiError(response, 'Search failed');
-    const data = await response.json();
-    return data.data;
+    return handleApiResponse<SearchResponse>(response, 'Search failed');
 }
 
 /**
@@ -242,9 +236,7 @@ export async function searchExperience<T>(slug: string, body: Record<string, unk
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
     });
-    if (!response.ok) throw await toApiError(response, 'Search failed');
-    const data = await response.json();
-    return data.data;
+    return handleApiResponse<T>(response, 'Search failed');
 }
 
 /**

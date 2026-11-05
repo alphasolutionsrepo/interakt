@@ -27,6 +27,7 @@ import { Loader2, Sparkles, ArrowRight, Check, RefreshCw, Info } from 'lucide-re
 import { useMutation } from '@tanstack/react-query';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { reportActionError } from '@/shared/activity/report';
+import { errorText, handleApiResponse } from '@/shared/api/api-error';
 
 // ============================================================================
 // TYPES
@@ -54,10 +55,7 @@ export interface CustomInstructionsGeneratorProps {
 }
 
 interface GenerateResponse {
-  success: boolean;
-  data: {
-    instructions: string;
-  };
+  instructions: string;
 }
 
 // ============================================================================
@@ -104,18 +102,13 @@ export function CustomInstructionsGenerator({
         }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate instructions');
-      }
-
-      return response.json();
+      return handleApiResponse<GenerateResponse>(response, 'Failed to generate instructions');
     },
     // Shown in the dialog below; recorded in the Activity panel here
     meta: { label: 'Generate instructions', inlineError: true },
     onError: (error) => reportActionError('Generate instructions', error, { inline: true }),
     onSuccess: (response) => {
-      setGeneratedInstructions(response.data.instructions);
+      setGeneratedInstructions(response.instructions);
       if (currentInstructions) {
         setShowComparison(true);
       }
@@ -203,7 +196,7 @@ export function CustomInstructionsGenerator({
           {generateMutation.isError && (
             <Alert variant="destructive">
               <AlertDescription>
-                {generateMutation.error?.message || 'Failed to generate instructions. Please try again.'}
+                {errorText(generateMutation.error, 'Failed to generate instructions. Please try again.')}
               </AlertDescription>
             </Alert>
           )}

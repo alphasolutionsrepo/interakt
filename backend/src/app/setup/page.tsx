@@ -53,7 +53,7 @@ import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shar
 import { sameOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
 import { reportActionError } from '@/shared/activity/report';
-import { toApiError } from '@/shared/api/api-error';
+import { errorText, handleApiResponse, toApiError } from '@/shared/api/api-error';
 
 interface ProviderView {
   key: string;
@@ -136,27 +136,23 @@ export default function SetupDemoPage() {
   const [stepDetails, setStepDetails] = useState<Record<string, string>>({});
 
   async function loadStatus(ollamaBaseUrl?: string) {
+    let data: DemoStatus;
     try {
       const url = ollamaBaseUrl ? `${ENDPOINT}?ollamaBaseUrl=${encodeURIComponent(ollamaBaseUrl)}` : ENDPOINT;
-      const res = await fetch(url);
-      if (!res.ok) {
-        // A URL the server won't check says why; the first load stays best-effort
-        if (ollamaBaseUrl) reportActionError('Check Ollama', await toApiError(res));
-        return;
-      }
-      const json = await res.json();
-      const data: DemoStatus = json.data ?? json;
-      setStatus(data);
+      data = await handleApiResponse<DemoStatus>(await fetch(url));
+    } catch (e) {
+      // A URL the server won't check says why, and so does a status that couldn't be loaded
+      reportActionError(ollamaBaseUrl ? 'Check Ollama' : 'Load demo setup', e);
+      return;
+    }
+    setStatus(data);
 
-      // Initialise selection + base URL on first load (don't clobber edits).
-      setSelectedProvider((prev) => prev || data.providers.recommended);
-      const ollama = data.providers.options.find((o) => o.authType === 'none');
-      if (ollama?.baseUrl) {
-        setBaseUrl((prev) => prev || ollama.baseUrl!);
-        setCheckedBaseUrl(ollama.baseUrl);
-      }
-    } catch {
-      /* status is best-effort */
+    // Initialise selection + base URL on first load (don't clobber edits).
+    setSelectedProvider((prev) => prev || data.providers.recommended);
+    const ollama = data.providers.options.find((o) => o.authType === 'none');
+    if (ollama?.baseUrl) {
+      setBaseUrl((prev) => prev || ollama.baseUrl!);
+      setCheckedBaseUrl(ollama.baseUrl);
     }
   }
 
@@ -255,10 +251,8 @@ export default function SetupDemoPage() {
       body: JSON.stringify(body),
     });
 
-    if (!res.ok || !res.body) {
-      const json = await res.json().catch(() => null);
-      throw new Error(json?.error?.message ?? json?.message ?? `Request failed (${res.status})`);
-    }
+    if (!res.ok) throw await toApiError(res, 'Setup failed');
+    if (!res.body) throw new Error('No response body');
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -307,18 +301,13 @@ export default function SetupDemoPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'reset' }),
         });
-        const json = await res.json();
-        if (!res.ok) {
-          setError(json.error?.message ?? json.message ?? `Request failed (${res.status})`);
-        } else {
-          setResult(json.data ?? json);
-          setStepStates({});
-          setStepDetails({});
-          await loadStatus();
-        }
+        setResult(await handleApiResponse<SeedResult>(res, 'Reset failed'));
+        setStepStates({});
+        setStepDetails({});
+        await loadStatus();
       }
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e, 'Setup failed'));
     } finally {
       setBusy(null);
     }

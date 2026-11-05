@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StepProgress } from '@/components/ui/steps-progress';
+import { errorText, handleApiResponse, toApiError } from '@/shared/api/api-error';
 import { DOCS_SEED_STEPS, type DocsSeedProgressEvent } from '@/shared/seeders/docs/docs-steps';
 
 interface DocsStatus {
@@ -64,14 +65,19 @@ export function DocsAssistantCard() {
   const [building, setBuilding] = useState(false);
   const [doneSteps, setDoneSteps] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const autoTried = useRef(false);
 
   const refresh = useCallback(async () => {
-    const res = await fetch('/api/admin/setup-docs');
-    const json = await res.json().catch(() => null);
-    const data = json?.data as DocsStatus | undefined;
-    if (data) setStatus(data);
-    return data;
+    try {
+      const data = await handleApiResponse<DocsStatus>(await fetch('/api/admin/setup-docs'), 'Failed to load the assistant status');
+      setStatus(data);
+      setStatusError(null);
+      return data;
+    } catch (e) {
+      setStatusError(errorText(e, 'Failed to load the assistant status'));
+      return undefined;
+    }
   }, []);
 
   const build = useCallback(
@@ -85,7 +91,8 @@ export function DocsAssistantCard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'seed', force, stream: true }),
         });
-        if (!res.ok || !res.body) throw new Error(`Build failed (HTTP ${res.status})`);
+        if (!res.ok) throw await toApiError(res, 'Build failed');
+        if (!res.body) throw new Error('No response body');
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -112,7 +119,7 @@ export function DocsAssistantCard() {
           }
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Build failed');
+        setError(errorText(e, 'Build failed'));
       } finally {
         setBuilding(false);
         await refresh();
@@ -242,6 +249,7 @@ export function DocsAssistantCard() {
         )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {statusError && <p className="text-sm text-destructive">{statusError}</p>}
       </CardContent>
     </Card>
   );

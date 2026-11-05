@@ -1,6 +1,6 @@
 // app/search-experiences/_lib/api-client.ts
 
-import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
+import { ApiError, handleApiPage, handleApiResponse } from '@/shared/api/api-error';
 
 /**
  * Search Experience API Client
@@ -68,16 +68,9 @@ export const searchExperiencesApi = {
     if (query?.sortOrder) params.set('sortOrder', query.sortOrder);
 
     const url = `/api/search-experiences${params.toString() ? `?${params.toString()}` : ''}`;
-    const response = await fetch(url);
-    if (!response.ok) throw await toApiError(response);
-    const json = await response.json();
-
-    // Transform API response format: { data: [...], pagination: {...} }
-    // to client format: { items: [...], pagination: {...} }
-    return {
-      items: json.data || [],
-      pagination: json.pagination,
-    };
+    const { data, pagination } = await handleApiPage<SearchExperienceListResponse['items'][number], SearchExperienceListResponse['pagination']>(await fetch(url));
+    // The API's { data, pagination } as the client's { items, pagination }
+    return { items: data, pagination };
   },
 
   /**

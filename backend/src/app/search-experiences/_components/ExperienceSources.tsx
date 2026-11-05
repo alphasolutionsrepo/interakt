@@ -11,7 +11,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
 import { Database, Globe, Layers, Plus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,6 +25,8 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDataSources } from '@/app/data-sources/_lib/hooks/useDataSources';
+import { useAllActiveSearchIndexes } from '@/app/search-indexes/_lib/hooks/useSearchIndexes';
+import { errorText } from '@/shared/api/api-error';
 import { useSearchExperience } from '../_lib/hooks';
 
 // ============================================================================
@@ -59,16 +60,9 @@ export function externalProviderLabel(provider: string | null | undefined): stri
 
 /** Active search indexes and external indexes that can be attached. */
 export function useSourceOptions() {
-  const indexesQuery = useQuery({
-    queryKey: ['search-indexes', 'all-active'],
-    queryFn: async () => {
-      const response = await fetch('/api/search-indexes?isActive=true&pageSize=100');
-      const data = await response.json();
-      return (data.data?.items || []) as IndexOption[];
-    },
-  });
+  const indexesQuery = useAllActiveSearchIndexes();
 
-  const { dataSources, isLoading: isLoadingExternal } = useDataSources({
+  const { dataSources, isLoading: isLoadingExternal, error: externalError } = useDataSources({
     type: 'search_index_external',
     isActive: true,
     pageSize: 100,
@@ -84,6 +78,12 @@ export function useSourceOptions() {
     indexOptions: indexesQuery.data ?? [],
     externalOptions,
     isLoading: indexesQuery.isLoading || isLoadingExternal,
+    /** Why the sources couldn't be listed */
+    loadError: indexesQuery.error
+      ? errorText(indexesQuery.error, 'Failed to load search indexes')
+      : externalError
+        ? errorText(externalError, 'Failed to load external indexes')
+        : undefined,
   };
 }
 
@@ -252,7 +252,7 @@ export function ExperienceSourcesCard({ experienceId }: { experienceId: string }
     isUpdatingIndex,
     isChangingExternalSources,
   } = useSearchExperience(experienceId);
-  const { indexOptions, externalOptions, isLoading } = useSourceOptions();
+  const { indexOptions, externalOptions, isLoading, loadError } = useSourceOptions();
 
   if (!experience) return null;
 
@@ -275,6 +275,7 @@ export function ExperienceSourcesCard({ experienceId }: { experienceId: string }
           externalOptions={externalOptions}
           isLoading={isLoading}
           disabled={busy}
+          error={loadError}
           onAddIndex={(searchIndexId) =>
             addIndex({
               searchIndexId,

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { errorText, toApiError } from '@/shared/api/api-error';
 
 // ============================================================================
 // TYPES
@@ -449,10 +450,8 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
         },
       );
 
-      if (!response.ok || !response.body) {
-        const err = await response.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(err.error ?? `HTTP ${response.status}`);
-      }
+      if (!response.ok) throw await toApiError(response, 'Failed to send message');
+      if (!response.body) throw new Error('No response body');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -577,7 +576,7 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
         }
       }
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to send message');
+      setErrorMsg(errorText(err, 'Failed to send message'));
       setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
     } finally {
       setIsStreaming(false);

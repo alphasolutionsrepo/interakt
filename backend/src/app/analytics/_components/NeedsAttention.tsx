@@ -19,6 +19,7 @@ import { useCallback, useState } from 'react';
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { useAskPanel } from '../_lib/AskPanelContext';
 import {
+  fetchAnalytics,
   insightsRangeFor,
   useAnalyticsInsights,
   useFindingVisibility,
@@ -30,6 +31,8 @@ import {
 import { formatTimeAgo } from './viz';
 
 import { cn } from '@/lib/utils';
+import { reportActionError } from '@/shared/activity/report';
+import { toApiError } from '@/shared/api/api-error';
 import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
@@ -46,16 +49,12 @@ const VISIBLE = 4;
 export function useProcessingStatus(experienceId: string | undefined) {
   return useQuery({
     queryKey: ['analytics', 'processing-status', experienceId],
-    queryFn: async () => {
-      const res = await fetch(`/api/analytics/process${experienceId ? `?experienceId=${experienceId}` : ''}`);
-      if (!res.ok) throw new Error('Failed to fetch status');
-      const json = await res.json();
-      return json.data as {
+    queryFn: () =>
+      fetchAnalytics<{
         lastRun: { id: string; status: string; startedAt: string; completedAt: string | null; steps: unknown[] } | null;
         currentRun: { id: string; status: string; startedAt: string; steps: unknown[] } | null;
         isStale: boolean;
-      };
-    },
+      }>(`/api/analytics/process${experienceId ? `?experienceId=${experienceId}` : ''}`, 'Failed to fetch status'),
     refetchInterval: (query) => {
       // Poll fast (5s) only while processing is running, otherwise every 60s
       return query.state.data?.currentRun ? 5000 : 60000;
@@ -88,6 +87,8 @@ export function useRefreshInsights(experienceId: string | undefined, onDone: () 
             if (decoder.decode(value).includes('[DONE]')) break;
           }
         }
+      } else if (res.status !== 409) {
+        reportActionError('Refresh insights', await toApiError(res, 'Failed to refresh insights'));
       }
     } finally {
       setIsProcessing(false);

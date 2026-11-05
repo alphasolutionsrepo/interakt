@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { browserTimeZone, periodKey, periodParams, previousPeriod, type Period } from '../period';
-import { toApiError } from '@/shared/api/api-error';
+import { handleApiResponse, toApiError } from '@/shared/api/api-error';
 
 export type TimeRange = '1h' | '24h' | '7d' | '30d' | '90d';
 
@@ -131,16 +131,9 @@ export interface QueueStats {
   failedFlushCount: number;
 }
 
-async function fetchApi<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
-  const json = await response.json();
-  if (!json.success) {
-    throw new Error(json.error || 'Unknown error');
-  }
-  return json.data;
+/** An analytics endpoint's data, or an ApiError with the server's reason */
+export async function fetchAnalytics<T>(url: string, fallback?: string): Promise<T> {
+  return handleApiResponse<T>(await fetch(url), fallback);
 }
 
 export function useAnalyticsDashboard(period: Period, experienceId?: string) {
@@ -151,7 +144,7 @@ export function useAnalyticsDashboard(period: Period, experienceId?: string) {
       // Resolved at fetch time, so each refresh covers up to now
       const params = new URLSearchParams(periodParams(period));
       if (experienceId) params.set('experienceId', experienceId);
-      return fetchApi<DashboardData>(`/api/analytics/dashboard?${params}`);
+      return fetchAnalytics<DashboardData>(`/api/analytics/dashboard?${params}`);
     },
     refetchInterval: 60000, // Refresh every minute
     staleTime: 30000,
@@ -179,7 +172,7 @@ export function usePreviousAnalyticsDashboard(period: Period, experienceId?: str
         view: 'totals',
       });
       if (experienceId) params.set('experienceId', experienceId);
-      return fetchApi<DashboardTotals>(`/api/analytics/dashboard?${params}`);
+      return fetchAnalytics<DashboardTotals>(`/api/analytics/dashboard?${params}`);
     },
     refetchInterval: 5 * 60000,
     staleTime: 60000,
@@ -221,7 +214,7 @@ export function useAnalyticsInsights(experienceId?: string, timeRange: '24h' | '
 
   return useQuery({
     queryKey: ['analytics', 'insights', timeRange, experienceId],
-    queryFn: () => fetchApi<ProactiveInsightsResult>(`/api/analytics/insights?${params}`),
+    queryFn: () => fetchAnalytics<ProactiveInsightsResult>(`/api/analytics/insights?${params}`),
     staleTime: 60000,
   });
 }
@@ -285,7 +278,7 @@ export function useStoredInsight<T>(type: StoredInsightType, timeRange: TimeRang
 
   return useQuery({
     queryKey: ['analytics', 'insights', type, range, experienceId],
-    queryFn: () => fetchApi<StoredInsightResult<T>>(`/api/analytics/insights?${params}`),
+    queryFn: () => fetchAnalytics<StoredInsightResult<T>>(`/api/analytics/insights?${params}`),
     staleTime: 60000,
   });
 }
@@ -298,7 +291,7 @@ export function useAnalyticsOverview(timeRange: TimeRange, experienceId?: string
 
   return useQuery({
     queryKey: ['analytics', 'overview', timeRange, experienceId],
-    queryFn: () => fetchApi<OverviewMetrics>(`/api/analytics/overview?${params}`),
+    queryFn: () => fetchAnalytics<OverviewMetrics>(`/api/analytics/overview?${params}`),
     refetchInterval: 30000,
     staleTime: 15000,
   });
@@ -312,7 +305,7 @@ export function useSearchTrends(timeRange: TimeRange, experienceId?: string) {
 
   return useQuery({
     queryKey: ['analytics', 'search', 'trends', timeRange, experienceId],
-    queryFn: () => fetchApi<SearchTrendPoint[]>(`/api/analytics/search/trends?${params}`),
+    queryFn: () => fetchAnalytics<SearchTrendPoint[]>(`/api/analytics/search/trends?${params}`),
     refetchInterval: 60000,
     staleTime: 30000,
   });
@@ -326,7 +319,7 @@ export function usePopularQueries(timeRange: TimeRange, experienceId?: string, l
 
   return useQuery({
     queryKey: ['analytics', 'search', 'popular', timeRange, experienceId, limit],
-    queryFn: () => fetchApi<PopularQuery[]>(`/api/analytics/search/popular?${params}`),
+    queryFn: () => fetchAnalytics<PopularQuery[]>(`/api/analytics/search/popular?${params}`),
     refetchInterval: 60000,
     staleTime: 30000,
   });
@@ -340,7 +333,7 @@ export function useZeroResultQueries(timeRange: TimeRange, experienceId?: string
 
   return useQuery({
     queryKey: ['analytics', 'search', 'zero-results', timeRange, experienceId, limit],
-    queryFn: () => fetchApi<ZeroResultQuery[]>(`/api/analytics/search/zero-results?${params}`),
+    queryFn: () => fetchAnalytics<ZeroResultQuery[]>(`/api/analytics/search/zero-results?${params}`),
     refetchInterval: 120000,
     staleTime: 60000,
   });
@@ -354,7 +347,7 @@ export function usePerformanceMetrics(timeRange: TimeRange, experienceId?: strin
 
   return useQuery({
     queryKey: ['analytics', 'search', 'performance', timeRange, experienceId],
-    queryFn: () => fetchApi<PerformanceMetrics>(`/api/analytics/search/performance?${params}`),
+    queryFn: () => fetchAnalytics<PerformanceMetrics>(`/api/analytics/search/performance?${params}`),
     refetchInterval: 60000,
     staleTime: 30000,
   });
@@ -365,7 +358,7 @@ export function useAIUsageMetrics(timeRange: TimeRange) {
 
   return useQuery({
     queryKey: ['analytics', 'ai', 'usage', timeRange],
-    queryFn: () => fetchApi<AIUsageMetrics>(`/api/analytics/ai/usage?${params}`),
+    queryFn: () => fetchAnalytics<AIUsageMetrics>(`/api/analytics/ai/usage?${params}`),
     refetchInterval: 60000,
     staleTime: 30000,
   });
@@ -376,7 +369,7 @@ export function useToolUsageMetrics(timeRange: TimeRange) {
 
   return useQuery({
     queryKey: ['analytics', 'ai', 'tools', timeRange],
-    queryFn: () => fetchApi<ToolUsageMetrics>(`/api/analytics/ai/tools?${params}`),
+    queryFn: () => fetchAnalytics<ToolUsageMetrics>(`/api/analytics/ai/tools?${params}`),
     refetchInterval: 60000,
     staleTime: 30000,
   });
@@ -390,7 +383,7 @@ export function useRecentSearches(experienceId?: string, limit = 20) {
 
   return useQuery({
     queryKey: ['analytics', 'search', 'recent', experienceId, limit],
-    queryFn: () => fetchApi<RecentSearchEvent[]>(`/api/analytics/search/recent?${params}`),
+    queryFn: () => fetchAnalytics<RecentSearchEvent[]>(`/api/analytics/search/recent?${params}`),
     refetchInterval: 10000, // Every 10 seconds for live feed
     staleTime: 5000,
   });
@@ -399,7 +392,7 @@ export function useRecentSearches(experienceId?: string, limit = 20) {
 export function useAnalyticsStatus() {
   return useQuery({
     queryKey: ['analytics', 'status'],
-    queryFn: () => fetchApi<QueueStats>('/api/analytics/status'),
+    queryFn: () => fetchAnalytics<QueueStats>('/api/analytics/status'),
     refetchInterval: 5000,
     staleTime: 2000,
   });
