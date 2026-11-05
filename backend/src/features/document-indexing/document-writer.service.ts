@@ -25,6 +25,7 @@ import { db } from '@/db/index';
 import { searchIndex } from '@/db/schema/search-index.schema';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
+import { explainWriteFailure } from '@/shared/errors/upstream';
 import { elasticsearchConfig } from '../../../config';
 import {
     getSearchEngineProvider,
@@ -539,7 +540,21 @@ async function resolveEmbeddings(
         let embeddingSource = operation.document;
 
         if (operation.action === 'merge') {
-            const existing = await lookUp(index, operation.documentId);
+            let existing: Awaited<ReturnType<typeof lookUp>>;
+            try {
+                existing = await lookUp(index, operation.documentId);
+            } catch (error) {
+                // Its vector can't be rebuilt without the stored document: this merge fails
+                // on its own, explained, and the other operations go ahead
+                const reason = explainWriteFailure(error, undefined).reason ?? (error as Error).message;
+                errors.push({
+                    operationIndex: operation.operationIndex,
+                    documentId: operation.documentId,
+                    error: `The stored document couldn't be read to rebuild its embedding: ${reason}`,
+                    field: EMBEDDING_FIELD_NAME,
+                });
+                continue;
+            }
             if (existing.found && existing.source) {
                 embeddingSource = { ...existing.source, ...operation.document };
             } else {

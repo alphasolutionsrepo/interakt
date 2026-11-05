@@ -519,6 +519,8 @@ function answerWrite(result: DocumentWriteResult, message: string, logMessage: s
         logger.warn(logMessage, {
             ...context,
             failed: result.failed,
+            // Why the first one failed, when it wasn't the write as a whole
+            ...(result.errors[0] && { firstError: result.errors[0].error }),
             ...(response.error && { requestId: response.error.requestId }),
             ...(result.writeError !== undefined && { err: result.writeError }),
         });
