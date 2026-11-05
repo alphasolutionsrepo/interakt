@@ -31,6 +31,27 @@ const refused = () => {
 };
 
 describe('an error in a log line', () => {
+    it("keeps an AggregateError's own errors, which say what failed where", () => {
+        // What Node's fetch to localhost fails with: one error per address it tried
+        const refusedAt = (address: string) => Object.assign(new Error(`connect ECONNREFUSED ${address}:9200`), { code: 'ECONNREFUSED' });
+        const failed = new Error('fetch failed', { cause: new AggregateError([refusedAt('::1'), refusedAt('127.0.0.1')]) });
+        const { lines, logger } = capture();
+        logger.error('Request failed', failed);
+        expect(lines[0]).toMatchObject({
+            err: { cause: { errors: [
+                { message: 'connect ECONNREFUSED ::1:9200', code: 'ECONNREFUSED' },
+                { message: 'connect ECONNREFUSED 127.0.0.1:9200', code: 'ECONNREFUSED' },
+            ] } },
+        });
+    });
+
+    it('logs text passed as the error as err, not spread into letters', () => {
+        const { lines, logger } = capture();
+        logger.error('Request failed', 'socket hang up' as unknown as Error, { requestId: 'r1' });
+        expect(lines[0]).toMatchObject({ err: 'socket hang up', requestId: 'r1' });
+        expect(lines[0]).not.toHaveProperty('0');
+    });
+
     it('keeps the cause and the provider response', () => {
         const { lines, logger } = capture();
         logger.error('Request failed', refused(), { requestId: 'r1' });
