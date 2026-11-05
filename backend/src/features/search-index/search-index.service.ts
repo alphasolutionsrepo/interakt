@@ -1234,6 +1234,11 @@ export function reindexOutcome(
     startedAt: string
 ): IndexLastJob {
     const base = { kind: 'reindex' as const, startedAt, finishedAt: new Date().toISOString() };
+    // Nothing lost by it, but an empty index needs its documents (after a failed reindex, say),
+    // so it shows in orange rather than as a success
+    if (written.indexed === 0 && written.failed === 0) {
+        return { ...base, status: 'partial', summary: 'The index is empty: there was nothing to reindex. Upload its documents to fill it.' };
+    }
     if (written.failed === 0) return { ...base, status: 'succeeded', summary: `${written.indexed} documents reindexed` };
     const total = written.indexed + written.failed;
     // A batch that failed as a whole is explained from its error, as a failed reindex is

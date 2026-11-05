@@ -30,6 +30,15 @@ describe('reindexOutcome', () => {
     });
 });
 
+describe('a reindex of an empty index', () => {
+    it('says the index is empty and to upload its documents, in orange rather than as a success', () => {
+        expect(reindexOutcome({ indexed: 0, failed: 0 }, startedAt)).toMatchObject({
+            status: 'partial',
+            summary: 'The index is empty: there was nothing to reindex. Upload its documents to fill it.',
+        });
+    });
+});
+
 describe('reindexWriteFailure', () => {
     it('fails a reindex where nothing could be written back, with what to do about a full disk', () => {
         const err = reindexWriteFailure({
