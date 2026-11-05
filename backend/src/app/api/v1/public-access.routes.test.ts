@@ -836,3 +836,27 @@ describe('a request whose body is not JSON', () => {
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn' })]);
   });
 });
+
+describe('a chat turn that fails after the stream started', () => {
+  it("sends the visitor the plain message with a request id, logged once, not the AI provider's error", async () => {
+    logs.length = 0;
+    mocks.runChatPipeline.mockRejectedValueOnce(Object.assign(new Error('connect ECONNREFUSED 10.0.0.7:11434'), { name: 'AdapterError', providerKey: 'ollama' }));
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP });
+    const text = await res.text();
+    const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
+
+    expect(event).toMatchObject({ type: 'error', message: PUBLIC_FAILURE_MESSAGE, requestId: expect.any(String) });
+    expect(text).not.toContain('10.0.0.7');
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: event.requestId, operation: 'chatTurn' }) })]);
+  });
+});
+
+describe('a chat request refused before it starts', () => {
+  it('answers in the shared shape, keeping error for the widget', async () => {
+    const res = await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', { Origin: SHOP }, { message: 'hi' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body).toMatchObject({ success: false, code: 'UNAUTHORIZED', error: 'Access token is required', requestId: expect.any(String) });
+  });
+});
