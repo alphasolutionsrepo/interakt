@@ -25,6 +25,7 @@ import * as repository from '@/features/search-experience/search-experience.repo
 import { summarizeAPIRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import type { SummarizeAPIRequest } from '@/features/search-experience/search-experience.types';
 import { publicRoute } from '@/shared/api/public-route';
+import { readJsonBody } from '@/shared/api/read-json-body';
 
 async function post(
   request: NextRequest,
@@ -64,7 +65,7 @@ async function post(
     const isAdmin = caller === 'admin';
 
     // 4. Parse and validate request
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validated = summarizeAPIRequestSchema.parse(body);
     const trace = (body as { trace?: unknown })?.trace === true;
 

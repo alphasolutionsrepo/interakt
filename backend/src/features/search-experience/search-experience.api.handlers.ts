@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
 import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { AppError } from '@/shared/errors/app-error';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
@@ -62,7 +63,7 @@ export async function handlePublicSearch(request: NextRequest): Promise<NextResp
 
   try {
     // 2. Parse request body
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validated = publicSearchRequestSchema.parse(body) as PublicSearchRequest;
 
     // 3–6. Search every source the experience uses and merge the results
@@ -154,7 +155,7 @@ export async function handleAutocomplete(request: NextRequest): Promise<NextResp
 
   try {
     // 2. Parse request body
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validated = autocompleteRequestSchema.parse(body);
 
     // 3. Check if autocomplete is enabled

@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 
 import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { AppError } from '@/shared/errors/app-error';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
@@ -66,7 +67,7 @@ export async function handleSummarize(request: NextRequest): Promise<Response> {
   }
 
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validated = summarizeAPIRequestSchema.parse(body);
 
     // The summary's model call records where it came from (the stream starts inside this;

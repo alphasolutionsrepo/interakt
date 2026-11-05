@@ -812,3 +812,27 @@ describe('a document lookup that fails after the token is checked', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
   });
 });
+
+describe('a request whose body is not JSON', () => {
+  const broken = (path: string) => new NextRequest(`http://interakt.test${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'X-Access-Token': 'search-token', Origin: SHOP },
+    body: '{"query": "jea',
+  });
+
+  it.each([
+    ['search by token', () => searchByToken(broken('/api/v1/search'))],
+    ['autocomplete', () => autocomplete(broken('/api/v1/autocomplete'))],
+    ['AI summary by token', () => summaryByToken(broken('/api/v1/summarize'))],
+    ['search by slug', () => searchBySlug(broken('/api/v1/search/catalog/search'), slugParams('catalog'))],
+    ['AI summary by slug', () => summaryBySlug(broken('/api/v1/search/catalog/summarize'), slugParams('catalog'))],
+  ])('%s answers 400 "Invalid JSON body", logged once as a warning', async (_name, call) => {
+    logs.length = 0;
+    const res = await call();
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ code: 'INVALID_JSON', message: 'Invalid JSON body' });
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn' })]);
+  });
+});
