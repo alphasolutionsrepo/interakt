@@ -38,7 +38,7 @@ import {
 } from '@/features/search-index';
 import type { WizardFormData } from '@/features/search-index/search-index.wizard-schemas';
 import { getAllProviderUIs } from '../providers';
-import { handleApiResponse } from '@/shared/api/api-error';
+import { searchIndexesApi } from '../../_lib/api-client';
 
 // ============================================================================
 // TYPES
@@ -174,8 +174,8 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
     // enabled (e.g. on an Azure-only deploy, the index never reaches Azure).
     useEffect(() => {
         let cancelled = false;
-        fetch('/api/search-indexes/providers')
-            .then((r) => handleApiResponse<{ providers?: Array<{ type: string; isDefault?: boolean }> }>(r))
+        searchIndexesApi
+            .getProviders()
             .then((data) => {
                 if (cancelled) return;
                 const list = (data?.providers ?? []).map((p) => ({ type: p.type, isDefault: !!p.isDefault }));

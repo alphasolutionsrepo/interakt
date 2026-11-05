@@ -16,6 +16,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { DocBody } from '@/shared/help/DocBody';
 import { HELP_EXPERIENCE_SLUG } from '@/shared/help/help-content';
+import { ApiError, errorText } from '@/shared/api/api-error';
+import { startExperienceChat } from './start-experience-chat';
 
 interface ChatMessage {
   id: string;
@@ -70,23 +72,21 @@ export function useHelpChat(): HelpChat {
       };
 
       try {
-        const res = await fetch(`/api/v1/ai-experiences/${HELP_EXPERIENCE_SLUG}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmed, sessionId: sid }),
-          signal,
-        });
+        let stream: ReadableStream<Uint8Array>;
+        try {
+          stream = await startExperienceChat(HELP_EXPERIENCE_SLUG, trimmed, sid, signal);
+        } catch (e) {
+          // The assistant hasn't been built yet (experience missing) — guide the user.
+          if (!signal.aborted && e instanceof ApiError && e.status === 404) {
+            setMessages((prev) => prev.filter((m) => m.id !== assistantId && m.id !== userMsg.id));
+            setNotReady(true);
+            return;
+          }
+          throw e;
+        }
         if (signal.aborted) return;
 
-        // The assistant hasn't been built yet (experience missing) — guide the user.
-        if (res.status === 404) {
-          setMessages((prev) => prev.filter((m) => m.id !== assistantId && m.id !== userMsg.id));
-          setNotReady(true);
-          return;
-        }
-        if (!res.ok || !res.body) throw new Error(`Request failed (HTTP ${res.status})`);
-
-        const reader = res.body.getReader();
+        const reader = stream.getReader();
         const decoder = new TextDecoder();
         let buf = '';
         while (true) {
@@ -131,7 +131,7 @@ export function useHelpChat(): HelpChat {
       } catch (e) {
         patch((m) => ({
           ...m,
-          content: m.content || `Sorry — I couldn't reach the assistant. ${e instanceof Error ? e.message : ''}`,
+          content: m.content || `Sorry — I couldn't reach the assistant. ${errorText(e, '')}`,
           step: undefined,
         }));
       } finally {

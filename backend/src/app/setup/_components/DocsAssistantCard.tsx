@@ -19,31 +19,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StepProgress } from '@/components/ui/steps-progress';
-import { errorText, handleApiResponse, toApiError } from '@/shared/api/api-error';
+import { errorText } from '@/shared/api/api-error';
 import { DOCS_SEED_STEPS, type DocsSeedProgressEvent } from '@/shared/seeders/docs/docs-steps';
 
-interface DocsStatus {
-  seeded: boolean;
-  seededAt: string | null;
-  documents: number | null;
-  experienceSlug: string;
-  embedding: {
-    configured: boolean;
-    dimensions: number | null;
-    modelKey: string | null;
-    dimensionsOk: boolean;
-    reason: string | null;
-  };
-  ready: boolean;
-  search: {
-    built: boolean;
-    searchType: 'lexical' | 'hybrid' | null;
-    embeddingModelKey: string | null;
-    sections: number | null;
-    hybridFailure: { model: string; error: string } | null;
-    conflict: string | null;
-  };
-}
+import { loadDocsStatus, startDocsBuild, type DocsStatus } from '../_lib/docs-assistant-api';
 
 function describeDocsSearch(search: DocsStatus['search']): string {
   const sections = `${search.sections ?? 0} sections`;
@@ -70,7 +49,7 @@ export function DocsAssistantCard() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await handleApiResponse<DocsStatus>(await fetch('/api/admin/setup-docs'), 'Failed to load the assistant status');
+      const data = await loadDocsStatus();
       setStatus(data);
       setStatusError(null);
       return data;
@@ -86,15 +65,7 @@ export function DocsAssistantCard() {
       setError(null);
       setDoneSteps(new Set());
       try {
-        const res = await fetch('/api/admin/setup-docs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'seed', force, stream: true }),
-        });
-        if (!res.ok) throw await toApiError(res, 'Build failed');
-        if (!res.body) throw new Error('No response body');
-
-        const reader = res.body.getReader();
+        const reader = (await startDocsBuild(force)).getReader();
         const decoder = new TextDecoder();
         let buf = '';
         while (true) {

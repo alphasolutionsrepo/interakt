@@ -30,6 +30,16 @@ export { ApiError };
 // Search Experiences API
 // ============================================================================
 
+/** What custom instructions are written from */
+export interface GenerateInstructionsRequest {
+  experienceName: string;
+  experienceDescription?: string;
+  indexIds: string[];
+  dataSourceIds?: string[];
+  additionalContext?: string;
+  type: 'chat' | 'summary';
+}
+
 export const searchExperiencesApi = {
   // ==========================================================================
   // CRUD
@@ -113,6 +123,18 @@ export const searchExperiencesApi = {
     if (excludeId) params.set('excludeId', excludeId);
     const response = await fetch(`/api/search-experiences/check-slug?${params.toString()}`);
     return handleApiResponse<{ available: boolean }>(response);
+  },
+
+  /**
+   * Write custom instructions with AI, for a search experience's chat or summary
+   */
+  generateInstructions: async (request: GenerateInstructionsRequest): Promise<{ instructions: string }> => {
+    const response = await fetch('/api/search-experiences/generate-instructions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    return handleApiResponse<{ instructions: string }>(response, 'Failed to generate instructions');
   },
 };
 

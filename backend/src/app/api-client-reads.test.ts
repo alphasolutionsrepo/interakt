@@ -21,10 +21,13 @@ import { healthApi } from './health/_lib/api-client';
 import { jobsApi } from './jobs/_lib/api-client';
 import { mcpConnectionsApi } from './mcp-connections/_lib/api-client';
 import { aiServiceApi } from './playground/ai-service/_lib/api-client';
+import { fetchActiveIndexes, fetchSearchContext } from './playground/search/_lib/hooks/useSearchPlayground';
 import { searchExperiencesApi } from './search-experiences/_lib/api-client';
+import { searchIndexesApi } from './search-indexes/_lib/api-client';
 import { secretsApi } from './secrets/_lib/api-client';
 import { globalSearchSettingsApi } from './settings/search/_lib/api-client';
 import { loadDemoStatus, resetDemo, startDemoSeed } from './setup/_lib/demo-setup-api';
+import { loadDocsStatus, startDocsBuild } from './setup/_lib/docs-assistant-api';
 import { toolsApi } from './tools/_lib/api-client';
 
 import { fetchEmbedSnippet } from '@/shared/ui/custom/fetch-embed-snippet';
@@ -32,6 +35,7 @@ import { DocsSearchUnavailableError, loadDocList, searchDocs } from '@/shared/he
 import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
 import { answerWith, apiErrorResponse, apiSuccess, expectApiError, expectGatewayError, gatewayErrorPage } from '@/shared/test/api-responses';
 import { providerChoicesQuery, resolvedDefaultsQuery } from '@/shared/ui/custom/provider-model-queries';
+import { startExperienceChat } from '@/shared/ui/custom/start-experience-chat';
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -71,6 +75,11 @@ const READS: Array<[string, () => Promise<unknown>, () => Response, unknown]> = 
   ['clearing analytics data', () => clearAnalyticsData('e1'), () => apiSuccess({ deleted: 3 }), undefined],
   ['the demo status', () => loadDemoStatus(), () => apiSuccess({ seeded: false }), { seeded: false }],
   ['a demo reset', () => resetDemo(), () => apiSuccess({ action: 'reset', deleted: ['index'] }), { action: 'reset', deleted: ['index'] }],
+  ['the playground index list', () => fetchActiveIndexes(), () => apiSuccess([item]), [item]],
+  ['the playground search context', () => fetchSearchContext('i1'), () => apiSuccess({ indexName: 'products', facetableFields: [] }), { indexName: 'products', facetableFields: [] }],
+  ['the documentation assistant status', () => loadDocsStatus(), () => apiSuccess({ seeded: true, documents: 40 }), { seeded: true, documents: 40 }],
+  ['generated instructions', () => searchExperiencesApi.generateInstructions({ experienceName: 'Store', indexIds: ['i1'], type: 'chat' }), () => apiSuccess({ instructions: 'Answer briefly.' }), { instructions: 'Answer briefly.' }],
+  ['the enabled search providers', () => searchIndexesApi.getProviders(), () => new Response(JSON.stringify({ providers: [{ type: 'elasticsearch', isDefault: true }] }), { status: 200 }), { providers: [{ type: 'elasticsearch', isDefault: true }] }],
   ['a help article', () => loadHelpDoc('concepts/tools'), () => new Response(JSON.stringify({ title: 'Tools', content: '# Tools' }), { status: 200 }), { title: 'Tools', content: '# Tools' }],
 ];
 
@@ -230,5 +239,54 @@ describe('a help article that could not be loaded', () => {
     expect(helpDocError(await loadHelpDoc('concepts/tools').catch((e: unknown) => e))).toBe('Failed to load the article (502)');
     answerWith(() => apiErrorResponse(500));
     expect(helpDocError(await loadHelpDoc('concepts/tools').catch((e: unknown) => e))).toBe('The index was not found. Pick another index.');
+  });
+});
+
+describe('the playground search context request', () => {
+  it('asks for the index chosen', async () => {
+    const fetchStub = answerWith(() => apiSuccess({ indexName: 'products' }));
+    await fetchSearchContext('i1');
+    expect(fetchStub.mock.calls[0][0]).toBe('/api/search/index/i1/context');
+  });
+});
+
+describe('docs search that worked', () => {
+  it('returns the hits, the groups with matches and the time taken', async () => {
+    answerWith(() => apiSuccess({
+      results: [{ id: 'h1', fields: { slug: 'concepts/tools', anchor: 'find-record', group: 'Concepts', docTitle: 'Tools', section: 'Find Record', content: 'Look up one record.' }, highlights: { content: ['Look up one <em>record</em>.'] } }],
+      facets: { group: { buckets: [{ key: 'Concepts', doc_count: 1 }] } },
+      timing: { totalMs: 12 },
+    }));
+    expect(await searchDocs('record')).toEqual({
+      hits: [{
+        id: 'h1', slug: 'concepts/tools', anchor: 'find-record', url: '/docs/concepts/tools', group: 'Concepts',
+        docTitle: 'Tools', section: 'Find Record', titleHtml: 'Tools', sectionHtml: 'Find Record', snippetHtml: 'Look up one <mark>record</mark>.',
+      }],
+      groups: ['Concepts'],
+      tookMs: 12,
+    });
+  });
+});
+
+describe('streams the admin starts', () => {
+  const STARTS: Array<[string, () => Promise<ReadableStream<Uint8Array>>, string, unknown]> = [
+    ['a documentation assistant build', () => startDocsBuild(true), '/api/admin/setup-docs', { action: 'seed', force: true, stream: true }],
+    ['a test chat with an AI experience', () => startExperienceChat('store-help', 'Where is my order?', 's1'), '/api/v1/ai-experiences/store-help/chat', { message: 'Where is my order?', sessionId: 's1' }],
+  ];
+
+  describe.each(STARTS)('%s', (_name, start, url, body) => {
+    it('sends the request and returns the stream to read', async () => {
+      const fetchStub = answerWith(() => new Response('data: [DONE]\n\n', { status: 200 }));
+      expect(await start()).toBeInstanceOf(ReadableStream);
+      expect(fetchStub.mock.calls[0][0]).toBe(url);
+      expect(JSON.parse(String(fetchStub.mock.calls[0][1]?.body))).toEqual(body);
+    });
+
+    it("says why it was refused, and explains a gateway error page", async () => {
+      answerWith(() => apiErrorResponse(404));
+      await expectApiError(start());
+      answerWith(gatewayErrorPage);
+      await expectGatewayError(start());
+    });
   });
 });

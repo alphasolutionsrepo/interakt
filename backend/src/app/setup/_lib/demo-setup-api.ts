@@ -6,7 +6,8 @@
  * ApiError with the server's reason.
  */
 
-import { handleApiResponse, toApiError } from '@/shared/api/api-error';
+import { handleApiResponse } from '@/shared/api/api-error';
+import { postForEvents } from '@/shared/api/stream-events';
 import type { ProviderReadinessView } from '@/shared/seeders/demo/demo-provider-view';
 
 const ENDPOINT = '/api/admin/setup-demo';
@@ -50,14 +51,7 @@ export async function loadDemoStatus(ollamaBaseUrl?: string): Promise<DemoStatus
 
 /** Start setting the demo up: the progress stream to read */
 export async function startDemoSeed(body: Record<string, unknown>): Promise<ReadableStream<Uint8Array>> {
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw await toApiError(res, 'Setup failed');
-  if (!res.body) throw new Error('No response body');
-  return res.body;
+  return postForEvents(ENDPOINT, body, 'Setup failed');
 }
 
 /** Tear the demo down */

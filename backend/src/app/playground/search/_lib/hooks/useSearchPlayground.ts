@@ -164,7 +164,15 @@ export interface SearchResponse {
 // FETCHERS
 // ============================================================================
 
-const fetcher = async <T>(url: string) => handleApiResponse<T>(await fetch(url));
+/** The active search indexes the playground can search */
+export async function fetchActiveIndexes(): Promise<SearchIndex[]> {
+    return handleApiResponse<SearchIndex[]>(await fetch('/api/search-indexes/all'), 'Failed to load search indexes');
+}
+
+/** What the playground offers for one index: its fields, facets and filters */
+export async function fetchSearchContext(indexId: string): Promise<SearchContext> {
+    return handleApiResponse<SearchContext>(await fetch(`/api/search/index/${indexId}/context`), 'Failed to load the index');
+}
 
 // ============================================================================
 // HOOKS
@@ -176,7 +184,7 @@ const fetcher = async <T>(url: string) => handleApiResponse<T>(await fetch(url))
 export function useSearchIndexes() {
     const { data, error, isLoading, mutate } = useSWR<SearchIndex[]>(
         '/api/search-indexes/all',
-        fetcher<SearchIndex[]>
+        fetchActiveIndexes
     );
 
     return {
@@ -193,7 +201,7 @@ export function useSearchIndexes() {
 export function useSearchContext(indexId: string | null) {
     const { data, error, isLoading, mutate } = useSWR<SearchContext>(
         indexId ? `/api/search/index/${indexId}/context` : null,
-        fetcher<SearchContext>
+        () => fetchSearchContext(indexId as string)
     );
 
     return {

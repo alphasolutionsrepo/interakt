@@ -1,5 +1,7 @@
 // src/shared/api/stream-events.ts
 
+import { toApiError } from './api-error';
+
 const DONE = Symbol('done');
 
 /**
@@ -40,4 +42,20 @@ export async function* streamEvents<T = Record<string, unknown>>(response: Respo
     } finally {
         reader.releaseLock();
     }
+}
+
+/**
+ * POST a JSON body to an endpoint that answers with an event stream: the stream to read.
+ * The status is checked first, so a refusal throws an ApiError with the server's reason.
+ */
+export async function postForEvents(url: string, body: unknown, fallback: string, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+    });
+    if (!res.ok) throw await toApiError(res, fallback);
+    if (!res.body) throw new Error('No response body');
+    return res.body;
 }

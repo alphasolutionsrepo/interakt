@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { errorText, toApiError } from '@/shared/api/api-error';
+import { errorText } from '@/shared/api/api-error';
+import { startExperienceChat } from '@/shared/ui/custom/start-experience-chat';
 
 // ============================================================================
 // TYPES
@@ -441,19 +442,7 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
     if (!sessionId) setSessionId(sid);
 
     try {
-      const response = await fetch(
-        `/api/v1/ai-experiences/${experienceSlug}/chat`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, sessionId: sid }),
-        },
-      );
-
-      if (!response.ok) throw await toApiError(response, 'Failed to send message');
-      if (!response.body) throw new Error('No response body');
-
-      const reader = response.body.getReader();
+      const reader = (await startExperienceChat(experienceSlug, text, sid)).getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 
