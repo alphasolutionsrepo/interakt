@@ -27,6 +27,7 @@ import type {
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal } from './types';
+import { withoutUnsupportedReasoning } from './reasoning-fallback';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -373,11 +374,11 @@ export class OpenAIAdapter implements AIProviderAdapter {
             ...reasoningEffortOf(config),
         };
 
-        const response = await this.makeRequest<OpenAIChatResponse>(
+        const response = await withoutUnsupportedReasoning(openaiRequest, 'reasoning_effort', (body) => this.makeRequest<OpenAIChatResponse>(
             `${config.baseUrl}/chat/completions`,
-            openaiRequest,
+            body,
             config
-        );
+        ));
 
         const choice = response.choices[0];
 
@@ -455,12 +456,12 @@ export class OpenAIAdapter implements AIProviderAdapter {
             toolChoice: request.toolChoice,
         });
 
-        const response = await this.makeStreamRequest(
+        const response = await withoutUnsupportedReasoning(openaiRequest, 'reasoning_effort', (body) => this.makeStreamRequest(
             `${config.baseUrl}/chat/completions`,
-            openaiRequest,
+            body,
             config,
             request.signal
-        );
+        ));
 
         let fullContent = '';
         let finishReason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error' = 'stop';

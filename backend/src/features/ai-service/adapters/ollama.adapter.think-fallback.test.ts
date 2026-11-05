@@ -14,6 +14,7 @@ const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 
 import { OllamaAdapter } from './ollama.adapter';
+import { OpenAIAdapter } from './openai.adapter';
 
 const config = (modelKey: string) => ({
   baseUrl: 'http://host', apiKey: '', modelKey, timeout: 5000, settings: {}, capabilities: { reasoningEffort: 'low' },
@@ -65,5 +66,35 @@ describe('another 400 from Ollama', () => {
 
     await expect(new OllamaAdapter().chat(request, config('nope'))).rejects.toThrow('not found');
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+});
+
+describe('a model reached through an OpenAI-compatible API that does not support thinking', () => {
+  // What Ollama's /v1/chat/completions answers for qwen2.5:14b with reasoning_effort (checked live)
+  const openaiRefusal = () => new Response(JSON.stringify({ error: { message: '"qwen2.5:14b" does not support thinking', type: 'invalid_request_error' } }), { status: 400 });
+  const openaiReply = { choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
+
+  function openaiWithoutThinking(answer: () => Response) {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
+      'reasoning_effort' in JSON.parse(init.body as string) ? openaiRefusal() : answer());
+    vi.stubGlobal('fetch', fetchMock);
+    return () => fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string));
+  }
+
+  it('answers a chat once asked again without the reasoning effort', async () => {
+    const sent = openaiWithoutThinking(() => new Response(JSON.stringify(openaiReply)));
+    const result = await new OpenAIAdapter().chat(request, { ...config('qwen2.5:14b'), apiKey: 'k' });
+
+    expect(result.message.content).toBe('ok');
+    expect(sent().map((body) => body.reasoning_effort)).toEqual(['low', undefined]);
+  });
+
+  it('streams a chat once asked again without the reasoning effort', async () => {
+    const stream = [{ choices: [{ index: 0, delta: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] }]
+      .map((c) => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n';
+    openaiWithoutThinking(() => new Response(stream));
+    let text = '';
+    for await (const chunk of new OpenAIAdapter().streamChat(request, { ...config('qwen2.5:14b-stream'), apiKey: 'k' })) text += chunk.content ?? '';
+    expect(text).toBe('ok');
   });
 });

@@ -41,6 +41,12 @@ async function drain(stream: AsyncIterable<unknown>) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Ollama think', () => {
+  it("sends 'minimal' to gpt-oss as think 'low': it takes levels and ignores off", async () => {
+    const sent = captureFetch(ollamaReply);
+    await new OllamaAdapter().chat(request, { ...config({ reasoningEffort: 'minimal' }), modelKey: 'gpt-oss:20b' });
+    expect(sent().think).toBe('low');
+  });
+
   it.each(['none', 'minimal'])("turns thinking off for '%s'", async (effort) => {
     const sent = captureFetch(ollamaReply);
     await new OllamaAdapter().chat(request, config({ reasoningEffort: effort }));

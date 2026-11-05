@@ -24,11 +24,9 @@ import type {
 } from '../ai-service.types';
 
 import { estimateChatUsage } from '../utils/token-counter';
+import { withoutUnsupportedReasoning } from './reasoning-fallback';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal } from './types';
 
-import { createLogger } from '@/shared/logger/logger';
-
-const logger = createLogger('ollama-adapter');
 
 /**
  * Ollama's structured-output `format` field. Ollama 0.5+ accepts a full JSON
@@ -55,35 +53,14 @@ function toOllamaFormat(responseFormat?: ResponseFormat): OllamaFormat | undefin
 /** Ollama's `think`: on/off, or a level for models that take one (gpt-oss). */
 type OllamaThink = boolean | 'low' | 'medium' | 'high';
 
-/** Models already reported as not thinking, so the warning is logged once per model */
-const warnedNoThinking = new Set<string>();
-
-/**
- * Send a request, and when the model has a reasoning level but can't think (Ollama answers
- * 400 "<model> does not support thinking"), send it once more without one: the call works,
- * and a warning says to clear the setting.
- */
-async function withThinkFallback<B extends { model: string; think?: OllamaThink }, T>(body: B, send: (body: B) => Promise<T>): Promise<T> {
-    try {
-        return await send(body);
-    } catch (error) {
-        const refused = error instanceof AdapterError && error.statusCode === 400 && /does not support thinking/i.test(error.message);
-        if (!refused || body.think === undefined) throw error;
-        if (!warnedNoThinking.has(body.model)) {
-            warnedNoThinking.add(body.model);
-            logger.warn('Ollama model does not support thinking; sent without its reasoning level', { model: body.model, think: body.think });
-        }
-        const { think: _think, ...withoutThink } = body;
-        return send(withoutThink as B);
-    }
-}
-
 /** The model's configured reasoning effort as Ollama's `think`, when one is set. */
 function thinkOf(config: AdapterConfig): { think?: OllamaThink } {
     const effort = config.capabilities?.reasoningEffort;
-    // Minimal is as little as possible: on a model that only turns thinking on or off
-    // (deepseek-r1, qwen3), any level turns it on
-    if (effort === 'none' || effort === 'minimal') return { think: false };
+    if (effort === 'none') return { think: false };
+    // Minimal is as little as possible: off on a model that only turns thinking on or off
+    // (deepseek-r1, qwen3), where any level turns it on; low on gpt-oss, which takes levels
+    // and ignores off (checked on Ollama 0.40: it reasons more with false than with low)
+    if (effort === 'minimal') return { think: /^gpt-oss/.test(config.modelKey) ? 'low' : false };
     if (effort === 'low') return { think: 'low' };
     if (effort === 'medium' || effort === 'high') return { think: effort };
     return {};
@@ -204,7 +181,7 @@ export class OllamaAdapter implements AIProviderAdapter {
             ...thinkOf(config),
         };
 
-        const response = await withThinkFallback(ollamaRequest, (body) => this.makeRequest<OllamaGenerateResponse>(
+        const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeRequest<OllamaGenerateResponse>(
             `${config.baseUrl}/api/generate`,
             body,
             config
@@ -255,7 +232,7 @@ export class OllamaAdapter implements AIProviderAdapter {
             ...thinkOf(config),
         };
 
-        const response = await withThinkFallback(ollamaRequest, (body) => this.makeRequest<OllamaChatResponse>(
+        const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeRequest<OllamaChatResponse>(
             `${config.baseUrl}/api/chat`,
             body,
             config
@@ -296,7 +273,7 @@ export class OllamaAdapter implements AIProviderAdapter {
             ...thinkOf(config),
         };
 
-        const response = await withThinkFallback(ollamaRequest, (body) => this.makeStreamRequest(
+        const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeStreamRequest(
             `${config.baseUrl}/api/chat`,
             body,
             config,
