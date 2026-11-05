@@ -67,3 +67,26 @@ describe('a bulk write whose merge lookup the engine could not answer', () => {
         expect((line.context.err as Error).cause).toBe(down);
     });
 });
+
+describe('a bulk write whose embedding model failed', () => {
+    it("fails the documents that needed a vector and logs it once, as an error, with the model's error", async () => {
+        logs.length = 0;
+        const { generateEmbeddings } = await import('@/features/ai-service');
+        const modelError = new Error('model "nomic-embed-text" not found');
+        vi.mocked(generateEmbeddings).mockRejectedValueOnce(modelError);
+        const res = await handleBulkWriteDocuments(
+            new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ operations: [{ action: 'upload', documentId: 'a', document: { name: 'Linen shirt' } }] }),
+            }),
+            { params: Promise.resolve({ id: crypto.randomUUID() }) }
+        );
+        const body = await res.json();
+
+        expect(res.status).toBe(207);
+        expect(body.data.errors).toEqual([expect.objectContaining({ documentId: 'a', error: expect.stringContaining('Embedding failed') })]);
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'error', message: 'Bulk document write completed', context: expect.objectContaining({ err: modelError }) }),
+        ]);
+    });
+});

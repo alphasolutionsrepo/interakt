@@ -522,13 +522,15 @@ function answerWrite(result: DocumentWriteResult, message: string, logMessage: s
     if (result.success) {
         logger.info(logMessage, context);
     } else {
-        logger[writeFailureLevel(result.writeError)](logMessage, {
+        // The write as a whole, or the embedding model that failed its documents
+        const failure = result.writeError ?? result.embeddingError;
+        logger[writeFailureLevel(failure)](logMessage, {
             ...context,
             failed: result.failed,
             // Why the first one failed, when it wasn't the write as a whole
             ...(result.errors[0] && { firstError: result.errors[0].error }),
             ...(response.error && { requestId: response.error.requestId }),
-            ...(result.writeError !== undefined && { err: result.writeError }),
+            ...(failure !== undefined && { err: failure }),
         });
     }
     return apiResponse.success(response, result.success ? 200 : 207); // 207 = Multi-Status
