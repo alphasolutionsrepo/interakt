@@ -35,3 +35,11 @@ describe('AzureEngineProvider.getDocumentById', () => {
     expect(await provider.getDocumentById('idx', 'd1')).toMatchObject({ found: false, error: expect.any(String), cause: down });
   });
 });
+
+describe('AzureEngineProvider.getDocumentById with an id Azure cannot hold as a key', () => {
+  it('answers it as a miss, without asking Azure (it would answer 400, not 404)', async () => {
+    getDocument.mockClear();
+    expect(await provider.getDocumentById('idx', 'Blue & Gold Shirt')).toEqual({ found: false });
+    expect(getDocument).not.toHaveBeenCalled();
+  });
+});

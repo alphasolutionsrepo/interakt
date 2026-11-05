@@ -14,6 +14,12 @@
 export const EMBEDDING_FIELD_NAME = 'content_embedding';
 
 /**
+ * The characters an Azure AI Search document key may contain. Azure answers 400, not
+ * 404, for a key with any other character, so such an id is never a document there.
+ */
+export const AZURE_DOCUMENT_KEY = /^[A-Za-z0-9_\-=]+$/;
+
+/**
  * Mapping from app field types to Azure Edm types.
  */
 export const FIELD_TYPE_TO_EDM: Record<string, string> = {

@@ -30,6 +30,7 @@ import type {
 } from '../search-provider.interface';
 import type { GetDocumentResult } from '../search-engine-provider.interface';
 import { getSearchClient, checkAzureHealth } from './azure-client';
+import { AZURE_DOCUMENT_KEY } from './azure-constants';
 import { buildAzureSearchOptions, type AzureSearchOptions } from './query-builders';
 import { lookupFailure } from '../search-engine-provider.interface';
 
@@ -49,9 +50,6 @@ function isOrderByError(error: unknown): boolean {
         message.includes('not sortable')
     );
 }
-
-/** The characters an Azure AI Search document key may contain. */
-const AZURE_DOCUMENT_KEY = /^[A-Za-z0-9_\-=]+$/;
 
 /**
  * Detect Azure failures caused by a non-searchable field appearing in the highlight

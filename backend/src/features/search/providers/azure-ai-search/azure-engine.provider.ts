@@ -12,7 +12,7 @@ import 'server-only';
 import { createLogger } from '@/shared/logger/logger';
 import { AzureFieldMapper } from './azure-field-mapper';
 import { AZURE_AI_SEARCH_CAPABILITIES } from './azure-capabilities';
-import { AZURE_INDEX_DEFAULTS, EMBEDDING_FIELD_NAME, SORTABLE_EDM_TYPES } from './azure-constants';
+import { AZURE_DOCUMENT_KEY, AZURE_INDEX_DEFAULTS, EMBEDDING_FIELD_NAME, SORTABLE_EDM_TYPES } from './azure-constants';
 import {
     getIndexClient,
     getSearchClient,
@@ -708,6 +708,10 @@ export class AzureEngineProvider implements SearchEngineProvider {
     }
 
     async getDocumentById(indexName: string, documentId: string): Promise<GetDocumentResult> {
+        // An id Azure can't hold as a key isn't there (Azure would answer 400, not 404)
+        if (!AZURE_DOCUMENT_KEY.test(documentId)) {
+            return { found: false };
+        }
         try {
             const client = getSearchClient(indexName);
             const doc = await client.getDocument(documentId) as Record<string, unknown>;
