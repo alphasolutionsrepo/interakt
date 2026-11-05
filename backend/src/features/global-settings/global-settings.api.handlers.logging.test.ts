@@ -10,7 +10,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { expectInternalFailure, failedQuery } from '@/shared/test/error-answers';
+import { expectInternalFailure, expectInvalidJson, failedQuery, notJson } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -53,5 +53,9 @@ describe('a global settings request that fails', () => {
 
     expect(res.status).toBe(500);
     expectInternalFailure(await res.json(), logs, 'updateGlobalSettings', down);
+  });
+
+  it('answers an update whose body is not JSON with 400, logged once as a warning', async () => {
+    await expectInvalidJson(await handleUpdateGlobalSettings(notJson('http://localhost/api/settings/search', 'PUT')), logs);
   });
 });

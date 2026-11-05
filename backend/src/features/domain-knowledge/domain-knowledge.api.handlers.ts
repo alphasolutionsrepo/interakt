@@ -18,6 +18,7 @@ import {
   bulkCreateKnowledgeEntries,
 } from './domain-knowledge.service';
 import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 
 // ============================================================================
 // TYPES
@@ -29,6 +30,15 @@ interface RouteContext {
 
 interface EntryRouteContext {
   params: Promise<{ id: string; entryId: string }>;
+}
+
+/** A knowledge entry as the request sends it; checked by the service */
+interface EntryBody {
+  question?: string;
+  answer?: string;
+  tags?: string[];
+  priority?: number;
+  isActive?: boolean;
 }
 
 // ============================================================================
@@ -79,7 +89,7 @@ export async function handleCreateKnowledgeEntry(
 ): Promise<NextResponse> {
   try {
     const { id: searchIndexId } = await context.params;
-    const body = await request.json();
+    const body = (await readJsonBody(request)) as EntryBody & { entries?: Array<{ question: string; answer: string; tags?: string[]; priority?: number }> };
 
     // Check if bulk create
     if (Array.isArray(body.entries)) {
@@ -178,7 +188,7 @@ export async function handleUpdateKnowledgeEntry(
 ): Promise<NextResponse> {
   try {
     const { entryId } = await context.params;
-    const body = await request.json();
+    const body = (await readJsonBody(request)) as EntryBody;
 
     const { question, answer, tags, priority, isActive } = body;
 

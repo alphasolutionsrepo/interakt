@@ -9,6 +9,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { createLogger } from '@/shared/logger/logger';
 import {
     getGlobalSettingsForApi,
@@ -74,7 +75,7 @@ export async function handleGetGlobalSettings() {
  */
 export async function handleUpdateGlobalSettings(request: NextRequest) {
     try {
-        const body = await request.json();
+        const body = await readJsonBody(request);
 
         // Validate input
         const validation = updateSettingsSchema.safeParse(body);

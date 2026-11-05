@@ -9,7 +9,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { errorEvent, expectInternalFailure, failedQuery } from '@/shared/test/error-answers';
+import { errorEvent, expectInternalFailure, expectInvalidJson, failedQuery, notJson } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -82,6 +82,13 @@ describe('an analytics chat request that is wrong', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ code: 'VALIDATION_ERROR', fields: [expect.objectContaining({ field: expect.any(String) })] });
     expect(reported(logs)).toEqual([]);
+  });
+
+  it.each([
+    ['renaming a session', () => updateSession(notJson(`http://localhost/api/analytics/chat/sessions/${ID}`, 'PATCH'), params)],
+    ['asking a question', () => ask(notJson('http://localhost/api/analytics/chat/stream', 'POST'))],
+  ])('%s with a body that is not JSON answers 400, logged once as a warning', async (_, call) => {
+    await expectInvalidJson(await call(), logs);
   });
 
   it('opening a session that is gone answers 404 as before', async () => {

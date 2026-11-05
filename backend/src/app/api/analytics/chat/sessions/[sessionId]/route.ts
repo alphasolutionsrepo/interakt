@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import {
   getAdminChatSession,
   updateAdminChatSession,
@@ -93,7 +94,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { sessionId } = await params;
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const data = updateBodySchema.parse(body);
 
     // Check session exists

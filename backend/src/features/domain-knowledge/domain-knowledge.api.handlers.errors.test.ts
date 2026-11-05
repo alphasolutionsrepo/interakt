@@ -9,7 +9,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { expectInternalFailure, failedQuery } from '@/shared/test/error-answers';
+import { expectInternalFailure, expectInvalidJson, failedQuery, notJson } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -58,6 +58,13 @@ describe('a knowledge entry request', () => {
 
     expect(res.status).toBe(500);
     expectInternalFailure(await res.json(), logs, operation, down);
+  });
+
+  it.each([
+    ['adding an entry', () => handleCreateKnowledgeEntry(notJson('http://localhost/api/search-indexes/i1/knowledge', 'POST'), index)],
+    ['changing an entry', () => handleUpdateKnowledgeEntry(notJson('http://localhost/api/search-indexes/i1/knowledge/e1', 'PUT'), entry)],
+  ])('%s with a body that is not JSON answers 400, logged once as a warning', async (_, call) => {
+    await expectInvalidJson(await call(), logs);
   });
 
   it('changing an entry that is gone answers 404 as before, logged once as a warning', async () => {

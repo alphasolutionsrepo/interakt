@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { apiResponse, describeError } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { runAnalyticsPipeline } from '@/features/analytics/pipeline/analytics-pipeline-orchestrator';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';
 
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
 
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const parsed = chatRequestSchema.parse(body);
 
     // Stop in the browser closes the connection; stop the turn with it, so it spends no more tokens and isn't saved
