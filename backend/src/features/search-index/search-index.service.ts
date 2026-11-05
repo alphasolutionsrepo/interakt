@@ -1023,7 +1023,7 @@ export async function triggerReindex(
         let embeddingConfig: { fieldName: string; dimensions: number; similarity: string } | undefined;
         if (searchIndex.aiProviderId && searchIndex.aiModelId && searchIndex.embeddingDimensions) {
             embeddingConfig = {
-                fieldName: 'content_embedding',
+                fieldName: EMBEDDING_FIELD_NAME,
                 dimensions: searchIndex.embeddingDimensions,
                 similarity: searchIndex.vectorSimilarity || 'cosine',
             };
@@ -1286,7 +1286,7 @@ export async function recreateEmptyIndex(
         let embeddingConfig: { fieldName: string; dimensions: number; similarity: string } | undefined;
         if (searchIndex.aiProviderId && searchIndex.aiModelId && searchIndex.embeddingDimensions) {
             embeddingConfig = {
-                fieldName: 'content_embedding',
+                fieldName: EMBEDDING_FIELD_NAME,
                 dimensions: searchIndex.embeddingDimensions,
                 similarity: searchIndex.vectorSimilarity || 'cosine',
             };

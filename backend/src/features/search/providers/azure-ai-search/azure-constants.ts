@@ -6,12 +6,7 @@
  * Azure-specific field types, settings, and configurations.
  */
 
-/**
- * Name of the vector field the document indexer writes embeddings to.
- * Must match EMBEDDING_FIELD_NAME in document-indexer.service.ts and the
- * Elasticsearch constant of the same name.
- */
-export const EMBEDDING_FIELD_NAME = 'content_embedding';
+export { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
 
 /**
  * The characters an Azure AI Search document key may contain. Azure answers 400, not

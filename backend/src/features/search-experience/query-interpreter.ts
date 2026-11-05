@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as searchService from '@/features/search/search.service';
@@ -153,7 +154,7 @@ async function loadFieldConstraints(
     }
 
     const filterable = index.fields.filter(
-        (f: SearchIndexField) => f.isIndexed && f.fieldName !== 'content_embedding',
+        (f: SearchIndexField) => f.isIndexed && f.fieldName !== EMBEDDING_FIELD_NAME,
     );
 
     const constraints: Record<string, FieldConstraint> = {};

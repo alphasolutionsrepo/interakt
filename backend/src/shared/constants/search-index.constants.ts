@@ -928,5 +928,4 @@ export function updatesRequireReindex(updatedFields: string[]): boolean {
     return updatedFields.some(field => fieldRequiresReindex(field));
 }
 
-/** The vector field every index stores its embeddings in */
-export const EMBEDDING_FIELD_NAME = 'content_embedding';
+export { EMBEDDING_FIELD_NAME } from './embedding.constants';

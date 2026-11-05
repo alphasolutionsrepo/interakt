@@ -20,6 +20,7 @@ import type {
 } from './search.types';
 import { createLogger } from '@/shared/logger/logger';
 import { isFullTextSearchableFieldType } from '@/shared/constants/field-types';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
 
 // ============================================================================
 // LOGGING CONFIGURATION
@@ -285,7 +286,7 @@ function buildEmbeddingConfig(index: SearchIndexComplete): EmbeddingConfig | und
     return {
         dimensions: index.embeddingDimensions,
         similarity: index.vectorSimilarity as VectorSimilarity,
-        fieldName: 'content_embedding', // Standard field name for vector embeddings
+        fieldName: EMBEDDING_FIELD_NAME,
     };
 }
 
