@@ -32,7 +32,7 @@ vi.mock('./search-index.repository', () => ({
     updateSearchIndex: async (_id: string, values: Record<string, unknown>) => { state.updates.push(values); },
     markMappingSynced: vi.fn(),
 }));
-vi.mock('./search-index.cache', () => ({ cache: { delete: vi.fn(), get: vi.fn(), set: vi.fn() }, clearIndexCache: vi.fn(), SEARCH_INDEX_CACHE_TTL: 1 }));
+vi.mock('./search-index.cache', () => ({ cache: { delete: vi.fn(), get: vi.fn(), set: vi.fn(), update: vi.fn() }, clearIndexCache: vi.fn(), SEARCH_INDEX_CACHE_TTL: 1 }));
 vi.mock('./search-index-fields.service', () => ({ getFieldsBySearchIndexId: async () => [{ fieldName: 'title' }] }));
 vi.mock('./provider-settings.utils', () => ({ buildIndexSettingsContext: () => ({}) }));
 vi.mock('@/features/search-experience', () => ({ invalidateSearchExperienceCacheBySearchIndex: vi.fn() }));

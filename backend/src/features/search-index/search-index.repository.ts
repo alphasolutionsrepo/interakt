@@ -479,8 +479,10 @@ export async function incrementMappingVersion(
  * Record the last long-running job and how it ended. Not an edit of the index, so
  * updatedAt stays as it is.
  */
-export async function setLastJob(id: string, lastJob: IndexLastJob): Promise<void> {
-    await db.update(searchIndex).set({ lastJob }).where(eq(searchIndex.id, id));
+/** Record the last job on an index; gives the index's name, undefined when there is no such index */
+export async function setLastJob(id: string, lastJob: IndexLastJob): Promise<string | undefined> {
+    const [updated] = await db.update(searchIndex).set({ lastJob }).where(eq(searchIndex.id, id)).returning({ name: searchIndex.name });
+    return updated?.name;
 }
 
 export async function markMappingSynced(id: string): Promise<SearchIndex> {

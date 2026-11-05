@@ -95,6 +95,18 @@ export class CacheManager {
   }
 
   /**
+   * Change a cached value in place, keeping when it expires. Nothing happens when the
+   * key isn't cached. An in-flight factory for the key is dropped, as on delete, so
+   * it can't write back what it read before the change.
+   */
+  update<T>(key: string, change: (value: T) => T): void {
+    this.pending.delete(key);
+    const entry = this.cache.get(key);
+    if (!entry || Date.now() > entry.expiresAt) return;
+    this.cache.set(key, { value: change(entry.value as T), expiresAt: entry.expiresAt });
+  }
+
+  /**
    * Delete value from cache
    *
    * Also drops any in-flight factory for the key. A getOrSet that started before

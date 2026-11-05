@@ -9,7 +9,7 @@
  * clearing every other index along with it.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CacheManager } from './cache-manager';
 
 function seeded(): CacheManager {
@@ -87,6 +87,44 @@ describe('delete', () => {
 
         // Invalidation suppresses the write-back, not the caller's own result.
         await expect(inFlight).resolves.toBe('value');
+    });
+});
+
+describe('update', () => {
+    it('changes a cached value and keeps when it expires', async () => {
+        vi.useFakeTimers();
+        try {
+            const cache = new CacheManager('test');
+            cache.set('key', { name: 'shop', job: 'running' }, 1000);
+            vi.advanceTimersByTime(600);
+
+            cache.update<{ name: string; job: string }>('key', (value) => ({ ...value, job: 'done' }));
+            expect(cache.get('key')).toEqual({ name: 'shop', job: 'done' });
+
+            vi.advanceTimersByTime(500);
+            expect(cache.get('key')).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('leaves a key that is not cached uncached', () => {
+        const cache = new CacheManager('test');
+        cache.update('key', () => 'value');
+        expect(cache.get('key')).toBeNull();
+    });
+
+    it('drops an in-flight factory so it cannot write back what it read before the change', async () => {
+        const cache = new CacheManager('test');
+        let resolveFactory: (value: string) => void = () => {};
+        const blocked = new Promise<string>((resolve) => { resolveFactory = resolve; });
+
+        const inFlight = cache.getOrSet('key', () => blocked);
+        cache.update('key', () => 'changed');
+        resolveFactory('stale');
+        await inFlight;
+
+        expect(cache.get('key')).toBeNull();
     });
 });
 
