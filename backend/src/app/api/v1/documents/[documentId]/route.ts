@@ -17,6 +17,7 @@ import { createLogger } from '@/shared/logger/logger';
 import { authenticateAccessToken, handleCorsPreflight, withCors, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
 import type { SearchExperienceWithIndexes } from '@/features/search-experience/search-experience.types';
 import { AppError } from '@/shared/errors/app-error';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import * as searchService from '@/features/search/search.service';
 import { publicRoute } from '@/shared/api/public-route';
 
@@ -72,7 +73,7 @@ async function get(
     }
 
     const logFailure = (failure: (typeof failures)[number], message: string) =>
-      logger.warn(message, { experienceId: exp.id, documentId, indexId: failure.indexId, err: failure.error });
+      logger[failureLevel(failure.error, 'warn')](message, { experienceId: exp.id, documentId, indexId: failure.indexId, err: failure.error });
 
     // A lookup failed and no other index had it: it may be in the one that failed, so
     // the answer is the failure, not "not found". The answer's failure is logged by

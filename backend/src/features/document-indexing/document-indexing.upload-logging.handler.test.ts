@@ -103,6 +103,16 @@ describe('a failed upload', () => {
     });
 });
 
+describe('an upload that threw something unexpected (a bug)', () => {
+    it('is logged once, as an error, with the error', async () => {
+        const bug = new TypeError("Cannot read properties of undefined (reading 'map')");
+        provider.indexExists.mockRejectedValueOnce(bug);
+        await upload();
+
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: bug }) })]);
+    });
+});
+
 describe('an upload the search service refused document by document', () => {
     it('is logged once, as a warning, with the first reason', async () => {
         provider.bulkIndex.mockResolvedValueOnce({ indexed: 0, failed: 1, errors: [{ index: 0, id: 'd0', error: 'mapper_parsing_exception: failed to parse field [price]' }] });

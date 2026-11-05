@@ -621,13 +621,13 @@ describe('a document lookup across indexes, for the log', () => {
 
   beforeEach(() => { logs.length = 0; });
 
-  it('warns about an index that failed when another one had the document', async () => {
+  it('logs an index that failed (the search service is down) as an error when another one had the document', async () => {
     twoIndexes();
     const failed = await down();
     mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(failed).mockResolvedValueOnce({ id: 'd1', fields: {}, indexId: 'i2', indexName: 'two' });
     expect((await lookUp()).status).toBe(200);
     expect(reported(logs)).toEqual([
-      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ indexId: 'i1', experienceId: searchExperience.id, documentId: 'd1', err: failed }) }),
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ indexId: 'i1', experienceId: searchExperience.id, documentId: 'd1', err: failed }) }),
     ]);
   });
 
@@ -647,13 +647,13 @@ describe('a document lookup across indexes, for the log', () => {
     ]);
   });
 
-  it('answers with the first failure and warns about the others', async () => {
+  it('answers with the first failure and logs the others, as errors when the search service is down', async () => {
     twoIndexes();
     const second = await down();
     mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(await down()).mockRejectedValueOnce(second);
     expect((await lookUp()).status).toBe(503);
     expect(reported(logs)).toEqual([
-      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ indexId: 'i2', err: second }) }),
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ indexId: 'i2', err: second }) }),
       expect.objectContaining({ level: 'error', context: expect.objectContaining({ experienceId: searchExperience.id }) }),
     ]);
   });

@@ -19,6 +19,7 @@ import type { FacetResult, FacetType, SearchHit, SearchRequest, SearchResponse, 
 import { SEARCH_DEFAULTS, SearchError } from '@/features/search/search.types';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { createLogger } from '@/shared/logger/logger';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
 import { externalFacetableFields, searchExternalSourceForExperience } from './external-source-search';
 import { applyQueryInterpretation, type QueryInterpretation } from './query-interpreter';
@@ -486,8 +487,10 @@ export function mergeSearchResults(
   }>;
 
   const failedResults = results.filter((r) => r.error);
+  // An error when the source failed on our side (it's down, its AI provider is), so an
+  // outage that only makes answers partial still shows; a warning when it refused the request
   const logFailure = (failed: (typeof results)[number], message: string) =>
-    logger.warn(message, { experienceId: experience.id, sourceId: failed.source.origin.id, err: failed.error });
+    logger[failureLevel(failed.error, 'warn')](message, { experienceId: experience.id, sourceId: failed.source.origin.id, err: failed.error });
 
   if (successfulResults.length === 0) {
     // All searches failed: the answer is the first failure, logged by whoever answers;

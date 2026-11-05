@@ -17,7 +17,7 @@ vi.mock('@/features/search-index/search-index.service', () => ({}));
 vi.mock('./external-source-search', () => ({}));
 vi.mock('./query-interpreter', () => ({}));
 
-import type { SearchHit, SearchResponse } from '@/features/search/search.types';
+import { SearchError, type SearchHit, type SearchResponse } from '@/features/search/search.types';
 import { mergeSearchResults, rankHits, type HitOrigin } from './experience-search';
 
 const hit = (id: string, source: Record<string, unknown> = {}): SearchHit => ({ id, score: 1, source });
@@ -153,6 +153,25 @@ describe('mergeSearchResults', () => {
     );
     expect(reported(logs)).toEqual([
       expect.objectContaining({ level: 'warn', context: expect.objectContaining({ experienceId: 'exp-1', sourceId: 'ds-1', err: refused }) }),
+    ]);
+  });
+
+  it('logs a source that failed on our side as an error, so an outage that only makes answers partial still shows', () => {
+    logs.length = 0;
+    // What a managed index throws when its query embedding's AI provider is down
+    const aiDown = Object.assign(new Error('503 Service Unavailable'), { name: 'AdapterError', providerKey: 'openai', statusCode: 503 });
+    const failed = new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', {}, { cause: aiDown });
+    mergeSearchResults(
+      [
+        { source: { origin: catalog, weight: 1 }, result: null, error: failed },
+        { source: { origin: external, weight: 1 }, result: response([]), error: null },
+      ],
+      { query: 'jeans', page: 1, pageSize: 20 },
+      { id: 'exp-1' },
+      { exact: true, failedSources: [], hitOrigins: new WeakMap() }
+    );
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ sourceId: 'idx-1', err: failed }) }),
     ]);
   });
 });

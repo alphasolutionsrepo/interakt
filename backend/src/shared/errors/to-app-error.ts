@@ -93,8 +93,13 @@ export function failureLevel(err: unknown, otherwise: 'error' | 'warn'): 'error'
     return recognised && isOurFailure(appError) ? 'error' : otherwise;
 }
 
-/** A write that failed: a warning, or an error when the search service failed as a whole (it's down) */
+/**
+ * A write that failed: a warning when documents were refused, an error when the search
+ * service failed as a whole (it's down) or the write threw something unexpected (a bug)
+ */
 export function writeFailureLevel(writeError: unknown): 'error' | 'warn' {
-    return writeError === undefined ? 'warn' : failureLevel(writeError, 'warn');
+    if (writeError === undefined) return 'warn';
+    if (toAppError(writeError).code === 'INTERNAL_ERROR') return 'error';
+    return failureLevel(writeError, 'warn');
 }
 
