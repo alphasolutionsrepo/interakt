@@ -77,6 +77,16 @@ describe('a reindex', () => {
         ]);
     });
 
+    it("that wrote nothing back because the search service failed logs that service's error as the cause", async () => {
+        const timedOut = new Error('Request timed out');
+        state.bulk = { success: false, indexed: 0, failed: 2, errors: [{ index: 0, error: timedOut.message }], took: 1, writeError: timedOut };
+        await reindex();
+
+        const [line] = reported(logs);
+        expect(line).toMatchObject({ level: 'error' });
+        expect((line.context.err as Error).cause).toBe(timedOut);
+    });
+
     it('that partly worked answers success and is logged once, as a warning', async () => {
         state.bulk = { success: true, indexed: 1, failed: 1, errors: [{ index: 1, error: 'mapper_parsing_exception' }], took: 1 };
         const res = await reindex();

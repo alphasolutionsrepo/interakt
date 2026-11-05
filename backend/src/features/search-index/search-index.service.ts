@@ -1225,6 +1225,8 @@ export function reindexWriteFailure(
         code: 'REINDEX_FAILED',
         status: 502,
         ...(hint && { hint }),
+        // The search service's own error, for the log line
+        ...(written.writeError !== undefined && { cause: written.writeError }),
     });
 }
 

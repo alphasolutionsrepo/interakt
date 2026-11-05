@@ -78,7 +78,7 @@ describe('a document write the engine could not take', () => {
         { name: 'deleting', call: () => handleDeleteDocument(new NextRequest(url, { method: 'DELETE' }), params) },
     ];
 
-    it.each(write)('$name is explained, with the request id its one warning has', async ({ call }) => {
+    it.each(write)('$name is explained, with the request id its one log line has (an error: the search service is down)', async ({ call }) => {
         lookup.result = { found: true, document: { name: 'Linen' } };
         const down = unreachable();
         provider.bulkWrite.mockResolvedValueOnce({ success: false, indexed: 0, failed: 1, errors: [{ index: 0, error: 'ConnectionError' }], counts: { upload: 0, merge: 0, delete: 0 }, writeError: down } as never);
@@ -88,7 +88,7 @@ describe('a document write the engine could not take', () => {
         expect(res.status).toBe(207);
         expect(body.data).toMatchObject({ success: false, message: "Elasticsearch couldn't be reached.", error: { code: 'WRITE_FAILED', message: "Elasticsearch couldn't be reached.", requestId: expect.any(String) } });
         expect(reported(logs)).toEqual([
-            expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: down, requestId: body.data.error.requestId }) }),
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down, requestId: body.data.error.requestId }) }),
         ]);
     });
 });

@@ -266,7 +266,7 @@ async function buildWithMode(
     throw new Error(`Docs search indexed no sections: ${result.errors.slice(0, 3).map((e) => JSON.stringify(e)).join('; ')}`);
   }
   if (result.failedDocuments > 0) {
-    logger.warn('Some docs sections failed to index', { failed: result.failedDocuments });
+    logger.warn('Some docs sections failed to index', { failed: result.failedDocuments, ...(result.writeError !== undefined && { err: result.writeError }) });
   }
   const embedded = result.embeddingStats?.generated ?? 0;
   if (mode.searchType === 'hybrid' && embedded < result.indexedDocuments / 2) return 'embeddings-failed';

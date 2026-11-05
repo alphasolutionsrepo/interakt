@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobError, recordLastJob } from '@/features/search-index/search-index.service';
 import { apiResponse } from '@/shared/api/response';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import { createLogger } from '@/shared/logger/logger';
 // Session resolution now happens inside resolveDocumentActor, which handles both
 // session and ingestion-key callers.
@@ -197,14 +198,16 @@ async function runDocumentIndexing(
         response.warnings = result.warnings.slice(0, 50);
     }
 
-    // A failed or partial upload is a warning, so a log filtered by level still shows it
-    const log = outcome.status === 'succeeded' ? logger.info.bind(logger) : logger.warn.bind(logger);
-    log('Document indexing completed', {
+    // A failed or partial upload is a warning (an error when the search service failed),
+    // so a log filtered by level still shows it
+    const level = outcome.status === 'succeeded' ? 'info' : writeFailureLevel(result.writeError);
+    logger[level]('Document indexing completed', {
         searchIndexId,
         // A failed upload's id, shown on the index page, so support can find this line
         ...(outcome.error?.requestId && { requestId: outcome.error.requestId }),
-        // What went wrong, when the write failed as a whole; the indexer leaves logging it to here
+        // What went wrong: the write as a whole (the indexer leaves logging it to here), or the first document
         ...(result.writeError !== undefined && { err: result.writeError }),
+        ...(result.errors[0] && { firstError: result.errors[0].error }),
         batchId: result.batchId,
         indexed: result.indexedDocuments,
         failed: result.failedDocuments,
@@ -506,6 +509,11 @@ function buildWriteResponse(
     return response;
 }
 
+/** A failed write is a warning, or an error when the search service failed as a whole (it's down) */
+function writeFailureLevel(writeError: unknown): 'error' | 'warn' {
+    return writeError === undefined ? 'warn' : failureLevel(writeError, 'warn');
+}
+
 /**
  * The answer to a document write (207 when any of it failed), and its one log line. A
  * failed write is a warning with its error and the request id the answer shows, so
@@ -516,7 +524,7 @@ function answerWrite(result: DocumentWriteResult, message: string, logMessage: s
     if (result.success) {
         logger.info(logMessage, context);
     } else {
-        logger.warn(logMessage, {
+        logger[writeFailureLevel(result.writeError)](logMessage, {
             ...context,
             failed: result.failed,
             // Why the first one failed, when it wasn't the write as a whole

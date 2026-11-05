@@ -80,25 +80,36 @@ beforeEach(() => {
 });
 
 describe('a failed upload', () => {
-    it('that threw is logged once, with the error and the id the index page shows', async () => {
+    it('that threw because the search service is down is logged once, as an error, with the error and the id the index page shows', async () => {
         const down = unreachable();
         provider.indexExists.mockRejectedValueOnce(down);
         const { body } = await upload();
 
         expect(body.data.outcome).toMatchObject({ status: 'failed', error: { message: expect.stringContaining("couldn't be reached") } });
         expect(reported(logs)).toEqual([
-            expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: down, requestId: body.data.outcome.error.requestId }) }),
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down, requestId: body.data.outcome.error.requestId }) }),
         ]);
     });
 
-    it('whose write failed as a whole is explained from that error, and logged once with it', async () => {
+    it('whose write failed as a whole is explained from that error, and logged once with it, as an error', async () => {
         const down = unreachable();
         provider.bulkIndex.mockResolvedValueOnce({ indexed: 0, failed: 1, errors: [{ index: 0, id: 'd0', error: 'ConnectionError' }], writeError: down });
         const { body } = await upload();
 
         expect(body.data.outcome).toMatchObject({ status: 'failed', error: { message: expect.stringContaining("Elasticsearch couldn't be reached") } });
         expect(reported(logs)).toEqual([
-            expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: down, requestId: body.data.outcome.error.requestId }) }),
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down, requestId: body.data.outcome.error.requestId }) }),
+        ]);
+    });
+});
+
+describe('an upload the search service refused document by document', () => {
+    it('is logged once, as a warning, with the first reason', async () => {
+        provider.bulkIndex.mockResolvedValueOnce({ indexed: 0, failed: 1, errors: [{ index: 0, id: 'd0', error: 'mapper_parsing_exception: failed to parse field [price]' }] });
+        await upload();
+
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'warn', context: expect.objectContaining({ firstError: expect.stringContaining('mapper_parsing_exception') }) }),
         ]);
     });
 });
