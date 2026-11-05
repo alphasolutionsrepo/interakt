@@ -166,10 +166,7 @@ export interface SearchResponse {
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
-    if (!res.ok) {
-        const error = await res.json().catch(() => ({ message: 'Request failed' }));
-        throw new Error(error.message || 'Request failed');
-    }
+    if (!res.ok) throw await toApiError(res);
     return res.json();
 };
 

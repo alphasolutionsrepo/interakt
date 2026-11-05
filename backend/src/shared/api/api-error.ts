@@ -73,3 +73,10 @@ export async function handleApiResponse<T>(response: Response, fallback?: string
     if (body !== null && typeof body === 'object' && 'data' in body) return (body as { data: T }).data;
     return body as T;
 }
+
+/** An error as one line for the user: what failed, then what to do about it */
+export function errorText(error: unknown, fallback: string): string {
+    if (!(error instanceof Error)) return fallback;
+    const hint = error instanceof ApiError ? error.hint : undefined;
+    return hint ? `${error.message} ${hint}` : error.message;
+}

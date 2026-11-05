@@ -11,6 +11,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+import { errorText } from '@/shared/api/api-error';
+
+import { readSuggestions } from '../read-suggestions';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -165,21 +169,10 @@ export function useAutocomplete(options: UseAutocompleteOptions): UseAutocomplet
         // null means the request was aborted — bail out silently
         if (!response) return;
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.success && data.data) {
-          const result = data.data as AutocompleteResponse;
-          setSuggestions(result.suggestions);
-          setTook(result.took);
-          setShowSuggestions(result.suggestions.length > 0);
-        } else {
-          throw new Error(data.error || 'Invalid response');
-        }
+        const result = await readSuggestions<AutocompleteResponse>(response);
+        setSuggestions(result.suggestions);
+        setTook(result.took);
+        setShowSuggestions(result.suggestions.length > 0);
       } catch (err) {
         // Ignore abort errors (belt-and-suspenders — caught above, but keep for safety)
         if (
@@ -189,7 +182,7 @@ export function useAutocomplete(options: UseAutocompleteOptions): UseAutocomplet
           return;
         }
 
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch suggestions';
+        const errorMessage = errorText(err, 'Failed to fetch suggestions');
         setError(errorMessage);
         setSuggestions([]);
         setShowSuggestions(false);

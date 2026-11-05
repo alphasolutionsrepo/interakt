@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { reportActionError } from '@/shared/activity/report';
 
 import { toApiError } from '@/shared/api/api-error';
+import { readSummaryStream } from '../_lib/read-summary-stream';
 import { Markdown } from '@/shared/ui/custom/markdown';
 
 // ============================================================================
@@ -137,48 +138,7 @@ export function SummaryPanel({ experienceId, slug, trace = false }: SummaryPanel
         signal: abortControllerRef.current.signal,
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate summary');
-      }
-
-      // Handle SSE stream
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error('No response body');
-      }
-
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-
-            let parsed: { type?: string; text?: string; error?: string };
-            try {
-              parsed = JSON.parse(data);
-            } catch {
-              continue; // partial JSON
-            }
-            if (parsed.type === 'content') {
-              setSummary((prev) => prev + (parsed.text ?? ''));
-            } else if (parsed.type === 'error') {
-              throw new Error(parsed.error || 'Failed to generate summary');
-            }
-          }
-        }
-      }
+      await readSummaryStream(response, (text) => setSummary((prev) => prev + text));
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         toast.info('Summary generation stopped');

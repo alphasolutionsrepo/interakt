@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApiError, apiErrorFrom, handleApiResponse, toApiError } from './api-error';
+import { ApiError, apiErrorFrom, errorText, handleApiResponse, toApiError } from './api-error';
 import { applyServerErrors } from './apply-server-errors';
 
 describe('toApiError', () => {
@@ -93,5 +93,13 @@ describe('the feature API clients', () => {
         vi.unstubAllGlobals();
         expect(err).toBeInstanceOf(ApiError);
         expect((err as ApiError).status).toBe(502);
+    });
+});
+
+describe('errorText', () => {
+    it('says what failed, then what to do about it', () => {
+        expect(errorText(new ApiError('Ollama could not be reached.', 503, { hint: 'Start Ollama.' }), 'x')).toBe('Ollama could not be reached. Start Ollama.');
+        expect(errorText(new Error('Invalid response'), 'x')).toBe('Invalid response');
+        expect(errorText('nope', 'Failed to fetch suggestions')).toBe('Failed to fetch suggestions');
     });
 });

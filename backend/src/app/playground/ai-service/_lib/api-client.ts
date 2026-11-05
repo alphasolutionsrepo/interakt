@@ -1,6 +1,7 @@
 // app/playground/ai-service/_lib/api-client.ts
 
-import { ApiError, apiErrorFrom, handleApiResponse } from '@/shared/api/api-error';
+import { apiErrorFrom, handleApiResponse } from '@/shared/api/api-error';
+import { streamEvents } from '@/shared/api/stream-events';
 
 /**
  * AI Service Playground API Client
@@ -140,12 +141,6 @@ export interface EmbeddingsResponse {
   };
 }
 
-// ============================================================================
-// ERROR HANDLING
-// ============================================================================
-
-export { ApiError };
-
 
 // ============================================================================
 // AI SERVICE API
@@ -201,42 +196,7 @@ export const aiServiceApi = {
       throw apiErrorFrom(errorData, response.status);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new ApiError('No response body', 500);
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              return;
-            }
-            try {
-              const chunk = JSON.parse(data) as ChatStreamChunk;
-              yield chunk;
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    yield* streamEvents<ChatStreamChunk>(response);
   },
 
   /**
