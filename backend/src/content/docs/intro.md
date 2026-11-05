@@ -15,6 +15,8 @@ Interakt adds **search** and **AI chat** to your website or app. You manage ever
 
 Both are configured in the admin UI. When you're ready to put them in front of users, Interakt gives you an embeddable widget — paste a snippet into your site and you're live.
 
+For the full list of what Interakt can do, see [Features](getting-started/features).
+
 ## Who this is for
 
 You're running a product, a store, or a content site. You have a catalog, a library of articles, a knowledge base, support content, or any other body of structured data. You want your customers, employees, or visitors to be able to **find** things in it or **talk to** it.
@@ -40,8 +42,9 @@ The **? icon** in the top-right of every screen (or **Ctrl+K**, **⌘K** on a Ma
 If you're brand new:
 
 1. [What is Interakt](getting-started/what-is-interakt) — the building blocks: data sources, indexes, experiences, tools.
-2. [Architecture — how Interakt fits together](getting-started/architecture) — the mental model with illustrations: how the pieces relate, when you need each one.
-3. [Initial setup](getting-started/initial-setup) — getting through the first-boot wizard.
-4. [Your first experience](getting-started/first-experience) — a 15-minute walkthrough end-to-end.
+2. [Features](getting-started/features) — everything Interakt can do, in plain terms.
+3. [Architecture — how Interakt fits together](getting-started/architecture) — the mental model with illustrations: how the pieces relate, when you need each one.
+4. [Initial setup](getting-started/initial-setup) — getting through the first-boot wizard.
+5. [Your first experience](getting-started/first-experience) — a 15-minute walkthrough end-to-end.
 
 If you're picking up where someone else left off, the **Concepts** section explains every screen and every setting; the **Guides** section gives step-by-step walkthroughs for specific tasks like loading data, embedding the widget, or rebuilding an index.
