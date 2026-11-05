@@ -423,6 +423,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
         const counts: Record<BulkWriteAction, number> = { upload: 0, merge: 0, delete: 0 };
         const errors: Array<{ index: number; id?: string; error: string }> = [];
         const startTime = Date.now();
+        let writeError: unknown;
 
         try {
             const client = getSearchClient(indexName);
@@ -442,7 +443,18 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 const batchSize = 1000;
                 for (let i = 0; i < azureDocs.length; i += batchSize) {
                     const batch = azureDocs.slice(i, i + batchSize);
-                    const result = await this.submitAzureBatch(client, run.action, batch);
+                    let result: Awaited<ReturnType<typeof this.submitAzureBatch>>;
+                    try {
+                        result = await this.submitAzureBatch(client, run.action, batch);
+                    } catch (error) {
+                        // This batch failed as a whole: its documents fail with the same text, and
+                        // the batches already written still count, as on Elasticsearch
+                        writeError ??= error;
+                        totalFailed += batch.length;
+                        const message = error instanceof Error ? error.message : 'Batch failed';
+                        batch.forEach((_, batchIndex) => errors.push({ index: run.indices[i + batchIndex], error: message }));
+                        continue;
+                    }
 
                     result.results.forEach((r, batchIndex) => {
                         // Original position of this operation in the caller's array
@@ -483,6 +495,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 errors,
                 counts,
                 took: Date.now() - startTime,
+                ...(writeError !== undefined && { writeError }),
             };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Bulk write failed';
