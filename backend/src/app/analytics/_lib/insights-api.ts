@@ -6,7 +6,8 @@
  */
 
 import { jobsApi, type ScheduleRecord } from '@/app/jobs/_lib/api-client';
-import { ApiError, handleApiResponse, toApiError } from '@/shared/api/api-error';
+import { ApiError, apiErrorFrom, handleApiResponse, toApiError, type ApiErrorBody } from '@/shared/api/api-error';
+import { streamEvents } from '@/shared/api/stream-events';
 
 /** The background job queue that refreshes insights */
 export const INSIGHTS_QUEUE = 'refresh-insights';
@@ -21,10 +22,18 @@ export async function loadInsightsSchedule(): Promise<ScheduleRecord | null | 'f
   }
 }
 
+/** What the refresh stream sends: progress, then how the run ended, or why it stopped */
+type ProcessEvent =
+  | { type: 'status'; message: string }
+  | { type: 'complete'; result?: { status?: string; error?: string } }
+  | ({ type: 'error' } & ApiErrorBody);
+
+const REFRESH_FAILED = 'Failed to refresh insights';
+
 /**
  * Compute insights now and wait until it finishes, reading the progress stream to its
- * end. A refresh already running (409) is left to the status poll; any other refusal
- * throws an ApiError.
+ * end. A refresh already running (409) is left to the status poll. A refusal, a run
+ * that failed, or a stream that ends before the run does throws an ApiError.
  */
 export async function refreshInsights(experienceId: string | undefined): Promise<void> {
   const res = await fetch('/api/analytics/process', {
@@ -33,16 +42,16 @@ export async function refreshInsights(experienceId: string | undefined): Promise
     body: JSON.stringify({ triggeredBy: 'admin', experienceId }),
   });
   if (res.status === 409) return;
-  if (!res.ok) throw await toApiError(res, 'Failed to refresh insights');
+  if (!res.ok) throw await toApiError(res, REFRESH_FAILED);
 
-  const reader = res.body?.getReader();
-  if (!reader) return;
-  const decoder = new TextDecoder();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (decoder.decode(value).includes('[DONE]')) break;
+  for await (const event of streamEvents<ProcessEvent>(res)) {
+    if (event.type === 'error') throw apiErrorFrom(event, 500, REFRESH_FAILED);
+    if (event.type === 'complete') {
+      if (event.result?.status === 'failed') throw apiErrorFrom({ message: event.result.error }, 500, REFRESH_FAILED);
+      return;
+    }
   }
+  throw new ApiError('The refresh stopped before it finished', 502);
 }
 
 /** Delete recorded analytics for one experience, or for every experience */

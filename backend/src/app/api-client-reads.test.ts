@@ -23,7 +23,7 @@ import { mcpConnectionsApi } from './mcp-connections/_lib/api-client';
 import { aiServiceApi } from './playground/ai-service/_lib/api-client';
 import { fetchActiveIndexes, fetchSearchContext } from './playground/search/_lib/hooks/useSearchPlayground';
 import { searchExperiencesApi } from './search-experiences/_lib/api-client';
-import { searchIndexesApi } from './search-indexes/_lib/api-client';
+import { searchIndexesApi, searchIndexFieldsApi } from './search-indexes/_lib/api-client';
 import { secretsApi } from './secrets/_lib/api-client';
 import { globalSearchSettingsApi } from './settings/search/_lib/api-client';
 import { loadDemoStatus, resetDemo, startDemoSeed } from './setup/_lib/demo-setup-api';
@@ -71,7 +71,7 @@ const READS: Array<[string, () => Promise<unknown>, () => Response, unknown]> = 
   ['the system default model', () => resolvedDefaultsQuery.queryFn(), () => apiSuccess({ chat: { providerKey: 'ollama' } }), { chat: { providerKey: 'ollama' } }],
   ['the embed snippet', () => fetchEmbedSnippet('token', undefined), () => apiSuccess({ html: '<script>' }), { html: '<script>' }],
   ['the insights schedule', () => loadInsightsSchedule(), () => apiSuccess([{ name: 'other' }, { name: 'refresh-insights', cron: '0 2 * * *' }]), { name: 'refresh-insights', cron: '0 2 * * *' }],
-  ['an insights refresh', () => refreshInsights(undefined), () => new Response('data: {"step":"done"}\n\ndata: [DONE]\n\n', { status: 200 }), undefined],
+  ['an insights refresh', () => refreshInsights(undefined), () => events({ type: 'status', message: 'Processing started' }, { type: 'complete', result: { status: 'completed' } }, '[DONE]'), undefined],
   ['clearing analytics data', () => clearAnalyticsData('e1'), () => apiSuccess({ deleted: 3 }), undefined],
   ['the demo status', () => loadDemoStatus(), () => apiSuccess({ seeded: false }), { seeded: false }],
   ['a demo reset', () => resetDemo(), () => apiSuccess({ action: 'reset', deleted: ['index'] }), { action: 'reset', deleted: ['index'] }],
@@ -80,8 +80,19 @@ const READS: Array<[string, () => Promise<unknown>, () => Response, unknown]> = 
   ['the documentation assistant status', () => loadDocsStatus(), () => apiSuccess({ seeded: true, documents: 40 }), { seeded: true, documents: 40 }],
   ['generated instructions', () => searchExperiencesApi.generateInstructions({ experienceName: 'Store', indexIds: ['i1'], type: 'chat' }), () => apiSuccess({ instructions: 'Answer briefly.' }), { instructions: 'Answer briefly.' }],
   ['the enabled search providers', () => searchIndexesApi.getProviders(), () => new Response(JSON.stringify({ providers: [{ type: 'elasticsearch', isDefault: true }] }), { status: 200 }), { providers: [{ type: 'elasticsearch', isDefault: true }] }],
+  ['the active index list for the source pickers', () => searchIndexesApi.getAllActive(), () => apiSuccess({ items: [item], pagination: page }), [item]],
+  ['the fields of an index for the display pickers', () => searchIndexFieldsApi.list('i1'), () => apiSuccess([{ fieldName: 'title' }]), [{ fieldName: 'title' }]],
+  ['setting the insights schedule', () => jobsApi.setSchedule('refresh-insights', '0 2 * * *', 'UTC'), () => apiSuccess({ queue: 'refresh-insights' }), undefined],
+  ['removing the insights schedule', () => jobsApi.removeSchedule('refresh-insights'), () => apiSuccess({ removed: true }), undefined],
+  ['queueing a job', () => jobsApi.enqueue('refresh-insights'), () => apiSuccess({ id: 'j1' }), { id: 'j1' }],
+  ['a job action', () => jobsApi.applyAction('refresh-insights', 'j1', 'retry'), () => apiSuccess({ ok: true }), undefined],
   ['a help article', () => loadHelpDoc('concepts/tools'), () => new Response(JSON.stringify({ title: 'Tools', content: '# Tools' }), { status: 200 }), { title: 'Tools', content: '# Tools' }],
 ];
+
+/** An event stream as our routes send it */
+function events(...sent: Array<Record<string, unknown> | '[DONE]'>): Response {
+  return new Response(sent.map((e) => `data: ${typeof e === 'string' ? e : JSON.stringify(e)}\n\n`).join(''), { status: 200 });
+}
 
 describe.each(READS)('%s', (_name, call, success, expected) => {
   it('explains a gateway error page', async () => {
@@ -200,9 +211,24 @@ describe('an insights refresh', () => {
   });
 
   it('asks for the experience on screen', async () => {
-    const fetchStub = answerWith(() => new Response('data: [DONE]\n\n', { status: 200 }));
+    const fetchStub = answerWith(() => events({ type: 'complete', result: { status: 'completed' } }, '[DONE]'));
     await refreshInsights('e1');
     expect(JSON.parse(String(fetchStub.mock.calls[0][1]?.body))).toEqual({ triggeredBy: 'admin', experienceId: 'e1' });
+  });
+
+  it('throws the error the stream sends, with its request id', async () => {
+    answerWith(() => events({ type: 'error', error: 'Something went wrong', message: 'Something went wrong', code: 'INTERNAL_ERROR', requestId: 'r1' }));
+    await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'Something went wrong', code: 'INTERNAL_ERROR', requestId: 'r1' });
+  });
+
+  it('throws when the run ended failed', async () => {
+    answerWith(() => events({ type: 'complete', result: { status: 'failed', error: 'Analytics DB not configured' } }, '[DONE]'));
+    await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'Analytics DB not configured' });
+  });
+
+  it('throws when the stream ends before the run does', async () => {
+    answerWith(() => events({ type: 'status', message: 'Processing started' }));
+    await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'The refresh stopped before it finished' });
   });
 });
 
