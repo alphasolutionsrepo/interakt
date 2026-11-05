@@ -79,13 +79,16 @@ export async function executeDataSourceSearch(
 
     const source = await resolveDataSource(dataSourceId);
 
+    // Not awaited, so not caught here: a search that throws goes to the tool executor,
+    // which retries it and logs it once. An external source answers its own failures
     if (source.kind === 'file_store') return executeFileStoreSearch(dataSourceId, config, input);
     return source.kind === 'external'
       ? executeExternalSearch(source, searchConfig, searchInput)
       : executeManagedSearch(source, searchConfig, searchInput);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // An error when the search service failed, a warning when it refused the request
+    // The data source couldn't be looked up: an error when our side failed (the
+    // database), a warning when it was refused (not found, not active)
     logger[failureLevel(error, 'warn')]('Data source search failed', { dataSourceId, err: error });
     return { success: false, error: message };
   }
