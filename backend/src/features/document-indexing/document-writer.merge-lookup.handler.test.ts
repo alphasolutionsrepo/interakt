@@ -10,7 +10,10 @@ import { errors as esErrors } from '@elastic/elasticsearch';
 import { NextRequest } from 'next/server';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger([]));
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('./document-actor', () => ({
     resolveDocumentActor: async () => ({ actor: { kind: 'user', userId: 'u1' } }),
     actorCan: () => true,
@@ -39,8 +42,9 @@ vi.mock('@/features/ai-service', () => ({ generateEmbeddings: vi.fn(async (texts
 import { handleBulkWriteDocuments } from './document-indexing.api.handlers';
 
 describe('a bulk write whose merge lookup the engine could not answer', () => {
-    it('fails that merge, explained, and writes the rest', async () => {
-        provider.getDocumentById.mockResolvedValueOnce({ found: false, error: 'ConnectionError', cause: new esErrors.ConnectionError('', { meta: {} } as never) });
+    it('fails that merge, explained, writes the rest, and logs it once as an error with the search service\'s error', async () => {
+        const down = new esErrors.ConnectionError('', { meta: {} } as never);
+        provider.getDocumentById.mockResolvedValueOnce({ found: false, error: 'ConnectionError', cause: down });
         const res = await handleBulkWriteDocuments(
             new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
                 method: 'POST',
@@ -57,5 +61,9 @@ describe('a bulk write whose merge lookup the engine could not answer', () => {
         expect(body.data.summary).toMatchObject({ succeeded: 1, failed: 1 });
         expect(body.data.errors).toEqual([expect.objectContaining({ documentId: 'b', error: expect.stringContaining("Elasticsearch couldn't be reached") })]);
         expect(provider.bulkWrite).toHaveBeenCalledWith('products', [expect.objectContaining({ action: 'upload', _id: 'a' })], expect.anything());
+        const [line, ...more] = reported(logs);
+        expect(more).toEqual([]);
+        expect(line).toMatchObject({ level: 'error', message: 'Bulk document write completed' });
+        expect((line.context.err as Error).cause).toBe(down);
     });
 });

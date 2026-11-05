@@ -84,7 +84,8 @@ export async function executeDataSourceSearch(
       : executeManagedSearch(source, searchConfig, searchInput);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error('Data source search failed', error as Error, { dataSourceId });
+    // An error when the search service failed, a warning when it refused the request
+    logger[failureLevel(error, 'warn')]('Data source search failed', { dataSourceId, err: error });
     return { success: false, error: message };
   }
 }

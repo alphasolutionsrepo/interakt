@@ -124,6 +124,17 @@ describe('an upload the search service refused document by document', () => {
     });
 });
 
+describe('an upload whose embedding model failed and whose document was refused', () => {
+    it("gives the refusal as the first reason, not the embedding's", async () => {
+        row.value = hybrid;
+        embed.fail = new Error('model "nomic-embed-text" not found');
+        provider.bulkIndex.mockResolvedValueOnce({ indexed: 0, failed: 1, errors: [{ index: 0, id: 'd0', error: 'mapper_parsing_exception: failed to parse field [price]' }] });
+        await upload();
+
+        expect(reported(logs).at(-1)?.context).toMatchObject({ firstError: expect.stringContaining('mapper_parsing_exception') });
+    });
+});
+
 describe('an upload whose embedding model failed', () => {
     it('says the documents went in without embeddings, and why', async () => {
         row.value = hybrid;

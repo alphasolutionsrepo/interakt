@@ -514,9 +514,12 @@ async function resolveEmbeddings(
     errors: DocumentWriteError[];
     stats: { generated: number; failed: number; skipped: number };
     warnings: string[];
+    /** The search service's error when it couldn't give a merge its stored document */
+    lookupError?: unknown;
 }> {
     const errors: DocumentWriteError[] = [];
     const warnings: string[] = [];
+    let lookupError: unknown;
     const vectorFieldNames = new Set(vectorSourceFields.map(f => f.fieldName));
 
     // Collect the operations that need a vector, together with the text to embed
@@ -546,6 +549,7 @@ async function resolveEmbeddings(
             } catch (error) {
                 // Its vector can't be rebuilt without the stored document: this merge fails
                 // on its own, explained, and the other operations go ahead
+                lookupError ??= error;
                 const reason = explainWriteFailure(error, undefined).reason ?? (error as Error).message;
                 errors.push({
                     operationIndex: operation.operationIndex,
@@ -574,7 +578,7 @@ async function resolveEmbeddings(
     }
 
     if (pending.length === 0) {
-        return { errors, stats: { generated: 0, failed: 0, skipped }, warnings };
+        return { errors, stats: { generated: 0, failed: 0, skipped }, warnings, lookupError };
     }
 
     try {
@@ -596,6 +600,7 @@ async function resolveEmbeddings(
             errors,
             stats: { generated: result.embeddings.length, failed: 0, skipped },
             warnings,
+            lookupError,
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Embedding generation failed';
@@ -616,6 +621,7 @@ async function resolveEmbeddings(
             errors,
             stats: { generated: 0, failed: pending.length, skipped },
             warnings,
+            lookupError,
         };
     }
 }
@@ -649,6 +655,7 @@ export async function writeDocuments(
 
     // 2. Embeddings for semantic/hybrid indexes
     let embeddingStats: DocumentWriteResult['embeddingStats'];
+    let lookupError: unknown;
 
     if (index.embeddingConfig.enabled) {
         const vectorSourceFields = await fieldsRepository.getVectorSourceFields(searchIndexId);
@@ -660,6 +667,7 @@ export async function writeDocuments(
             embeddingStats = { enabled: true, generated: 0, failed: 0, skipped: prepared.length };
         } else {
             const embeddingResult = await resolveEmbeddings(prepared, index, vectorSourceFields);
+            lookupError = embeddingResult.lookupError;
             errors.push(...embeddingResult.errors);
             warnings.push(...embeddingResult.warnings);
             embeddingStats = { enabled: true, ...embeddingResult.stats };
@@ -670,9 +678,10 @@ export async function writeDocuments(
     const failedOperationIndices = new Set(errors.map(e => e.operationIndex));
     const writable = prepared.filter(op => !failedOperationIndices.has(op.operationIndex));
 
-    // 3. Single bulk write, whatever the action mix
+    // 3. Single bulk write, whatever the action mix. A merge whose stored document the
+    // search service couldn't give is part of this write's failure, with that error
     let succeeded = 0;
-    let writeError: unknown;
+    let writeError: unknown = lookupError;
 
     if (writable.length > 0) {
         const bulkOperations: BulkWriteOperation[] = writable.map(op => ({
@@ -686,7 +695,7 @@ export async function writeDocuments(
         });
 
         succeeded = result.indexed;
-        writeError = result.writeError;
+        writeError = result.writeError ?? writeError;
         counts.upload = result.counts.upload;
         counts.merge = result.counts.merge;
         counts.delete = result.counts.delete;

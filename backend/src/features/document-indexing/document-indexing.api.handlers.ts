@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jobError, recordLastJob } from '@/features/search-index/search-index.service';
 import { apiResponse } from '@/shared/api/response';
 import { writeFailureLevel } from '@/shared/errors/to-app-error';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
 import { createLogger } from '@/shared/logger/logger';
 // Session resolution now happens inside resolveDocumentActor, which handles both
 // session and ingestion-key callers.
@@ -200,6 +201,7 @@ async function runDocumentIndexing(
 
     // A failed or partial upload is a warning (an error when the search service failed),
     // so a log filtered by level still shows it
+    const firstRejection = result.errors.find((e) => e.field !== EMBEDDING_FIELD_NAME);
     const level = outcome.status === 'succeeded' ? 'info' : writeFailureLevel(result.writeError);
     logger[level]('Document indexing completed', {
         searchIndexId,
@@ -207,7 +209,8 @@ async function runDocumentIndexing(
         ...(outcome.error?.requestId && { requestId: outcome.error.requestId }),
         // What went wrong: the write as a whole (the indexer leaves logging it to here), or the first document
         ...(result.writeError !== undefined && { err: result.writeError }),
-        ...(result.errors[0] && { firstError: result.errors[0].error }),
+        // Embedding errors are on documents still indexed (without a vector), so not a reason
+        ...(firstRejection && { firstError: firstRejection.error }),
         batchId: result.batchId,
         indexed: result.indexedDocuments,
         failed: result.failedDocuments,

@@ -61,4 +61,13 @@ describe('a tool call that fails', () => {
 
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: refused }) })]);
   });
+
+  it('because the search engine refused the request (a filter the model wrote) is logged once, as a warning', async () => {
+    const refused = new SearchError('"abc" isn\'t a valid value for rating', 'INVALID_FILTER');
+    run.http.mockRejectedValue(refused);
+
+    await executeTool('tool-1', {});
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: refused }) })]);
+  });
 });
