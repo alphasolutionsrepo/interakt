@@ -88,6 +88,21 @@ describe('a reindex', () => {
         expect((line.context.err as Error).cause).toBe(timedOut);
     });
 
+    it('that a write block stopped is explained by the block, whichever document failed first', async () => {
+        state.bulk = {
+            success: false, indexed: 0, failed: 2, took: 1,
+            errors: [
+                { index: 0, error: 'mapper_parsing_exception: failed to parse field [price]' },
+                { index: 1, error: 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];' },
+            ],
+        };
+        const res = await reindex();
+        const body = await res.json();
+
+        expect(body.message).toContain('blocked by');
+        expect(body.hint).toContain('read-only');
+    });
+
     it('that partly worked answers success and is logged once, as a warning', async () => {
         state.bulk = { success: true, indexed: 1, failed: 1, errors: [{ index: 1, error: 'mapper_parsing_exception' }], took: 1 };
         const res = await reindex();

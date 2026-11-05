@@ -42,7 +42,7 @@ import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/sear
 import { requestIdFor } from '@/shared/api/request-id';
 import { AppError, NotFoundError } from '@/shared/errors/app-error';
 import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
-import { explainWriteFailure, scrub } from '@/shared/errors/upstream';
+import { explainWriteFailure, leadingReason, scrub } from '@/shared/errors/upstream';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
@@ -1076,7 +1076,7 @@ export async function triggerReindex(
         }
 
         // Step 6: Write the prepared documents back
-        let written: { indexed: number; failed: number; firstError?: string; writeError?: unknown } = { indexed: preparedDocs.length, failed: 0 };
+        let written: { indexed: number; failed: number; reason?: string; writeError?: unknown } = { indexed: preparedDocs.length, failed: 0 };
         if (preparedDocs.length > 0) {
             logger.info('Re-indexing documents', {
                 indexName,
@@ -1086,7 +1086,7 @@ export async function triggerReindex(
             const bulkDocs = preparedDocs;
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
-            written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error, writeError: bulkResult.writeError };
+            written = { indexed: bulkResult.indexed, failed: bulkResult.failed, reason: leadingReason(bulkResult.errors.map((e) => e.error)), writeError: bulkResult.writeError };
 
             // Update index stats via updateSearchIndex
             await repository.updateSearchIndex(searchIndexId, {
@@ -1212,10 +1212,10 @@ export interface ReindexResult {
  * when the cause is one we recognise (the service down or timing out, a write block)
  */
 export function reindexWriteFailure(
-    written: { indexed: number; failed: number; firstError?: string; writeError?: unknown }
+    written: { indexed: number; failed: number; reason?: string; writeError?: unknown }
 ): AppError | undefined {
     if (written.indexed > 0 || written.failed === 0) return undefined;
-    const { reason: because, hint } = explainWriteFailure(written.writeError, written.firstError);
+    const { reason: because, hint } = explainWriteFailure(written.writeError, written.reason);
     const reason = because ? `: ${because}` : '';
     // The index was recreated empty and the documents read from it are gone, so another
     // reindex can't bring them back: they have to be uploaded again
@@ -1231,14 +1231,14 @@ export function reindexWriteFailure(
 
 /** How a reindex that finished ended: some documents failing to write back is partial */
 export function reindexOutcome(
-    written: { indexed: number; failed: number; firstError?: string; writeError?: unknown },
+    written: { indexed: number; failed: number; reason?: string; writeError?: unknown },
     startedAt: string
 ): IndexLastJob {
     const base = { kind: 'reindex' as const, startedAt, finishedAt: new Date().toISOString() };
     if (written.failed === 0) return { ...base, status: 'succeeded', summary: `${written.indexed} documents reindexed` };
     const total = written.indexed + written.failed;
     // A batch that failed as a whole is explained from its error, as a failed reindex is
-    const why = explainWriteFailure(written.writeError, written.firstError).reason;
+    const why = explainWriteFailure(written.writeError, written.reason).reason;
     const reason = why ? `: ${why}` : '';
     return { ...base, status: 'partial', summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`) };
 }
