@@ -36,6 +36,9 @@ const provider = vi.hoisted(() => ({
     getIndexMapping: vi.fn(async () => ({ success: true, embeddingDimensions: 3 })),
     bulkIndex: vi.fn(async (): Promise<Record<string, unknown>> => ({ indexed: 1, failed: 0, errors: [] })),
     getIndexStats: vi.fn(async () => null),
+    buildIndexSettings: vi.fn(() => ({})),
+    createIndex: vi.fn(async (): Promise<Record<string, unknown>> => ({ success: true })),
+    deleteIndex: vi.fn(async (): Promise<Record<string, unknown>> => ({ success: true })),
 }));
 vi.mock('@/features/search/providers', () => ({ getSearchEngineProvider: () => provider }));
 vi.mock('@/features/search-index/search-index-fields.service', () => ({ getFieldsBySearchIndexId: async () => [{ fieldName: 'name', sourceFieldName: 'name', sourceFieldPath: 'name', fieldType: 'text', isVectorSource: true }] }));
@@ -77,6 +80,9 @@ beforeEach(() => {
     embed.fail = undefined;
     provider.indexExists.mockReset().mockResolvedValue(true);
     provider.bulkIndex.mockReset().mockResolvedValue({ indexed: 1, failed: 0, errors: [] });
+    provider.getIndexMapping.mockReset().mockResolvedValue({ success: true, embeddingDimensions: 3 });
+    provider.createIndex.mockReset().mockResolvedValue({ success: true });
+    provider.deleteIndex.mockReset().mockResolvedValue({ success: true });
 });
 
 describe('a failed upload', () => {
@@ -99,6 +105,33 @@ describe('a failed upload', () => {
         expect(body.data.outcome).toMatchObject({ status: 'failed', error: { message: expect.stringContaining("Elasticsearch couldn't be reached") } });
         expect(reported(logs)).toEqual([
             expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down, requestId: body.data.outcome.error.requestId }) }),
+        ]);
+    });
+});
+
+describe('an upload whose index the search service failed to set up', () => {
+    it('to create is explained from that error, and logged once with it, as an error', async () => {
+        const down = unreachable();
+        provider.indexExists.mockResolvedValueOnce(false);
+        provider.createIndex.mockResolvedValueOnce({ success: false, error: down.message, cause: down });
+        const { body } = await upload();
+
+        expect(body.data.outcome).toMatchObject({ status: 'failed', error: { message: expect.stringContaining("Elasticsearch couldn't be reached") } });
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down, requestId: body.data.outcome.error.requestId }) }),
+        ]);
+    });
+
+    it('to recreate for another embedding size is logged once with the error, as an error', async () => {
+        const down = unreachable();
+        row.value = hybrid;
+        provider.getIndexMapping.mockResolvedValueOnce({ success: true, embeddingDimensions: 768 });
+        provider.deleteIndex.mockResolvedValueOnce({ success: false, error: down.message, cause: down });
+        await upload();
+
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'warn', message: expect.stringContaining('dimension mismatch') }),
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down }) }),
         ]);
     });
 });

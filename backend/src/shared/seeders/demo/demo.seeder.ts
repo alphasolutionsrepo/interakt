@@ -699,7 +699,8 @@ export async function resetDemo(loaded: LoadedDemoManifest): Promise<DemoResetSu
     await tryStep(`search index ${manifest.index.name} (db)`, () => deleteSearchIndex(index.id, adminId));
     await tryStep(`elasticsearch index ${manifest.index.name}`, async () => {
       const provider = getSearchEngineProvider(manifest.index.searchProvider);
-      await provider.deleteIndex(manifest.index.name);
+      const result = await provider.deleteIndex(manifest.index.name);
+      if (!result.success) throw new Error(result.error, { cause: result.cause });
     });
   }
 

@@ -184,6 +184,8 @@ export async function deleteKnowledgeIndex(
 
     if (result.success) {
       logger.info('Knowledge index deleted', { indexName });
+    } else {
+      logger.error('Failed to delete knowledge index', { indexName, error: result.error });
     }
 
     return result;

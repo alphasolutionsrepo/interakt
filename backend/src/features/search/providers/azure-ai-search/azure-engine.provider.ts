@@ -313,8 +313,8 @@ export class AzureEngineProvider implements SearchEngineProvider {
             logger.info('Azure index created', { indexName });
             return { success: true };
         } catch (error) {
+            // Passed on with its cause: whoever answers the caller logs it
             const message = error instanceof Error ? error.message : 'Failed to create Azure index';
-            logger.error('Failed to create Azure index', { indexName, error: message });
             return { success: false, error: message, cause: error };
         }
     }
@@ -329,8 +329,8 @@ export class AzureEngineProvider implements SearchEngineProvider {
             if (error?.statusCode === 404) {
                 return { success: true }; // Already doesn't exist
             }
+            // Passed on with its cause: whoever answers the caller logs it
             const message = error instanceof Error ? error.message : 'Failed to delete Azure index';
-            logger.error('Failed to delete Azure index', { indexName, error: message });
             return { success: false, error: message, cause: error };
         }
     }

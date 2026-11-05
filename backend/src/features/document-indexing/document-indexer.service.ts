@@ -420,7 +420,7 @@ async function ensureIndex(
         synonyms?: unknown;
         stopWords?: unknown;
     }
-): Promise<{ success: boolean; error?: string; warning?: string }> {
+): Promise<{ success: boolean; error?: string; warning?: string; cause?: unknown }> {
     const provider = getSearchEngineProvider(searchProviderType);
     const exists = await provider.indexExists(indexName);
 
@@ -446,6 +446,7 @@ async function ensureIndex(
                         return {
                             success: false,
                             error: `Failed to delete index with mismatched dimensions: ${deleteResult.error}`,
+                            cause: deleteResult.cause,
                         };
                     }
 
@@ -466,6 +467,7 @@ async function ensureIndex(
                         return {
                             success: false,
                             error: `Failed to delete index missing embedding field: ${deleteResult.error}`,
+                            cause: deleteResult.cause,
                         };
                     }
                 } else {
@@ -682,6 +684,8 @@ export async function indexDocuments(
                 }],
                 durationMs: Date.now() - startTime,
                 warnings: [],
+                // Passed on as writeError, which the caller logs with its request id
+                ...(indexSetup.cause !== undefined && { writeError: indexSetup.cause }),
             };
         }
 

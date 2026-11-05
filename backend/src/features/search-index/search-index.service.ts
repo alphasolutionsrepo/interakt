@@ -568,92 +568,87 @@ export async function changeAIConfiguration(
     input: ChangeAIConfigDTO,
     userId: string
 ): Promise<{ success: boolean; searchIndex: SearchIndexComplete; documentsDeleted: number }> {
-    try {
-        // 1. Get existing search index
-        const existing = await repository.getSearchIndexById(id);
-        if (!existing) {
-            throw new Error(`Search index with ID ${id} not found`);
+    // 1. Get existing search index
+    const existing = await repository.getSearchIndexById(id);
+    if (!existing) {
+        throw new Error(`Search index with ID ${id} not found`);
+    }
+
+    // 2. Verify this is a semantic or hybrid index
+    if (!requiresAIConfiguration(existing.searchType as SearchType)) {
+        throw new Error('Cannot change AI configuration for lexical search indexes');
+    }
+
+    // 3. Get current document count before deletion
+    const provider = getSearchEngineProvider(existing.searchProvider as SearchProviderType);
+    let documentsDeleted = 0;
+    const providerIndexExists = await provider.indexExists(existing.name);
+    if (providerIndexExists) {
+        const stats = await provider.getIndexStats(existing.name);
+        documentsDeleted = stats?.documentCount ?? 0;
+    }
+
+    // 4. Delete the search provider index if it exists
+    if (providerIndexExists) {
+        const deleteResult = await provider.deleteIndex(existing.name);
+        if (!deleteResult.success) {
+            throw new Error(`Failed to delete search index: ${deleteResult.error}`, { cause: deleteResult.cause });
         }
-
-        // 2. Verify this is a semantic or hybrid index
-        if (!requiresAIConfiguration(existing.searchType as SearchType)) {
-            throw new Error('Cannot change AI configuration for lexical search indexes');
-        }
-
-        // 3. Get current document count before deletion
-        const provider = getSearchEngineProvider(existing.searchProvider as SearchProviderType);
-        let documentsDeleted = 0;
-        const providerIndexExists = await provider.indexExists(existing.name);
-        if (providerIndexExists) {
-            const stats = await provider.getIndexStats(existing.name);
-            documentsDeleted = stats?.documentCount ?? 0;
-        }
-
-        // 4. Delete the search provider index if it exists
-        if (providerIndexExists) {
-            const deleteResult = await provider.deleteIndex(existing.name);
-            if (!deleteResult.success) {
-                throw new Error(`Failed to delete search index: ${deleteResult.error}`, { cause: deleteResult.cause });
-            }
-            logger.info('Deleted search index for AI config change', {
-                indexId: id,
-                indexName: existing.name,
-                documentsDeleted,
-            });
-        }
-
-        // 5. Update the database with new AI configuration
-        const updateData: Partial<NewSearchIndex> = {
-            aiProviderId: input.aiProviderId,
-            aiModelId: input.aiModelId,
-            embeddingDimensions: input.embeddingDimensions,
-            vectorSimilarity: input.vectorSimilarity || existing.vectorSimilarity,
-            // Reset document counts since ES index is deleted
-            documentCount: 0,
-            indexSizeBytes: null,
-            lastIndexedAt: null,
-            updatedBy: userId,
-        };
-
-        await repository.updateSearchIndex(id, updateData);
-
-        // 6. Update status to 'ready' (not 'active' since there are no documents)
-        await repository.updateSearchIndexStatus(id, 'ready');
-
-        // 7. Clear caches
-        await clearIndexCache(id, existing.name);
-
-        // 8. Invalidate search experience cache
-        await invalidateSearchExperienceCacheBySearchIndex(id);
-
-        logger.info('Changed AI configuration for search index', {
+        logger.info('Deleted search index for AI config change', {
             indexId: id,
             indexName: existing.name,
-            oldProviderId: existing.aiProviderId,
-            newProviderId: input.aiProviderId,
-            oldModelId: existing.aiModelId,
-            newModelId: input.aiModelId,
-            oldDimensions: existing.embeddingDimensions,
-            newDimensions: input.embeddingDimensions,
             documentsDeleted,
-            changedBy: userId,
         });
-
-        // 9. Return updated search index
-        const updated = await repository.getSearchIndexById(id);
-        if (!updated) {
-            throw new Error('Failed to retrieve updated search index');
-        }
-
-        return {
-            success: true,
-            searchIndex: updated,
-            documentsDeleted,
-        };
-    } catch (error) {
-        logger.error('Failed to change AI configuration', error as Error, { id });
-        throw error;
     }
+
+    // 5. Update the database with new AI configuration
+    const updateData: Partial<NewSearchIndex> = {
+        aiProviderId: input.aiProviderId,
+        aiModelId: input.aiModelId,
+        embeddingDimensions: input.embeddingDimensions,
+        vectorSimilarity: input.vectorSimilarity || existing.vectorSimilarity,
+        // Reset document counts since ES index is deleted
+        documentCount: 0,
+        indexSizeBytes: null,
+        lastIndexedAt: null,
+        updatedBy: userId,
+    };
+
+    await repository.updateSearchIndex(id, updateData);
+
+    // 6. Update status to 'ready' (not 'active' since there are no documents)
+    await repository.updateSearchIndexStatus(id, 'ready');
+
+    // 7. Clear caches
+    await clearIndexCache(id, existing.name);
+
+    // 8. Invalidate search experience cache
+    await invalidateSearchExperienceCacheBySearchIndex(id);
+
+    logger.info('Changed AI configuration for search index', {
+        indexId: id,
+        indexName: existing.name,
+        oldProviderId: existing.aiProviderId,
+        newProviderId: input.aiProviderId,
+        oldModelId: existing.aiModelId,
+        newModelId: input.aiModelId,
+        oldDimensions: existing.embeddingDimensions,
+        newDimensions: input.embeddingDimensions,
+        documentsDeleted,
+        changedBy: userId,
+    });
+
+    // 9. Return updated search index
+    const updated = await repository.getSearchIndexById(id);
+    if (!updated) {
+        throw new Error('Failed to retrieve updated search index');
+    }
+
+    return {
+        success: true,
+        searchIndex: updated,
+        documentsDeleted,
+    };
 }
 
 // ============================================================================
@@ -667,48 +662,43 @@ export async function deleteSearchIndex(
     id: string,
     userId: string
 ): Promise<void> {
-    try {
-        const existing = await repository.getSearchIndexById(id);
-        if (!existing) {
-            throw new Error(`Search index with ID ${id} not found`);
-        }
-
-        // Refuse to delete an index that experiences or data sources still depend on.
-        // (The data_sources FK is ON DELETE SET NULL, so a delete would silently
-        // break those configs rather than fail loudly.)
-        const references = await repository.findSearchIndexReferences(id);
-        if (references.length > 0) {
-            throw new SearchIndexInUseError(references);
-        }
-
-        // Delete the physical provider index (Elasticsearch / Azure AI Search) if present.
-        const provider = getSearchEngineProvider(existing.searchProvider as SearchProviderType);
-        if (await provider.indexExists(existing.name)) {
-            const deleteResult = await provider.deleteIndex(existing.name);
-            if (!deleteResult.success) {
-                throw new Error(`Failed to delete provider index "${existing.name}": ${deleteResult.error}`, { cause: deleteResult.cause });
-            }
-        }
-
-        // Invalidate search experience cache BEFORE deleting
-        // (so we can still look up which experiences use this index)
-        await invalidateSearchExperienceCacheBySearchIndex(id);
-
-        // Delete from database (cascades to search_index_fields)
-        await repository.deleteSearchIndex(id);
-
-        // Clear ALL caches — ensures list totals, stats, etc. are fresh
-        await cache.clear();
-
-        logger.info('Deleted search index', {
-            indexId: id,
-            name: existing.name,
-            deletedBy: userId,
-        });
-    } catch (error) {
-        logger.error('Failed to delete search index', error as Error, { id });
-        throw error;
+    const existing = await repository.getSearchIndexById(id);
+    if (!existing) {
+        throw new Error(`Search index with ID ${id} not found`);
     }
+
+    // Refuse to delete an index that experiences or data sources still depend on.
+    // (The data_sources FK is ON DELETE SET NULL, so a delete would silently
+    // break those configs rather than fail loudly.)
+    const references = await repository.findSearchIndexReferences(id);
+    if (references.length > 0) {
+        throw new SearchIndexInUseError(references);
+    }
+
+    // Delete the physical provider index (Elasticsearch / Azure AI Search) if present.
+    const provider = getSearchEngineProvider(existing.searchProvider as SearchProviderType);
+    if (await provider.indexExists(existing.name)) {
+        const deleteResult = await provider.deleteIndex(existing.name);
+        if (!deleteResult.success) {
+            throw new Error(`Failed to delete provider index "${existing.name}": ${deleteResult.error}`, { cause: deleteResult.cause });
+        }
+    }
+
+    // Invalidate search experience cache BEFORE deleting
+    // (so we can still look up which experiences use this index)
+    await invalidateSearchExperienceCacheBySearchIndex(id);
+
+    // Delete from database (cascades to search_index_fields)
+    await repository.deleteSearchIndex(id);
+
+    // Clear ALL caches — ensures list totals, stats, etc. are fresh
+    await cache.clear();
+
+    logger.info('Deleted search index', {
+        indexId: id,
+        name: existing.name,
+        deletedBy: userId,
+    });
 }
 
 // ============================================================================

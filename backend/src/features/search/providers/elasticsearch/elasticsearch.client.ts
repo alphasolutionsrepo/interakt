@@ -166,8 +166,8 @@ export async function createIndex(
         logger.info('Index created', { indexName });
         return { success: true };
     } catch (error) {
+        // Passed on with its cause: whoever answers the caller logs it
         const message = error instanceof Error ? error.message : 'Failed to create index';
-        logger.error('Failed to create index', { indexName, error: message });
         return { success: false, error: message, cause: error };
     }
 }
@@ -188,8 +188,8 @@ export async function deleteIndex(indexName: string): Promise<{ success: boolean
         logger.info('Index deleted', { indexName });
         return { success: true };
     } catch (error) {
+        // Passed on with its cause: whoever answers the caller logs it
         const message = error instanceof Error ? error.message : 'Failed to delete index';
-        logger.error('Failed to delete index', { indexName, error: message });
         return { success: false, error: message, cause: error };
     }
 }
