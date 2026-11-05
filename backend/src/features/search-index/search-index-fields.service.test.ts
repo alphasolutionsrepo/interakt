@@ -203,6 +203,37 @@ describe('importFields — isSearchable', () => {
     });
 });
 
+describe('a json field on Azure AI Search, where it is a searchable string', () => {
+    const azure = () => vi.mocked(searchIndexRepository.getSearchIndexById).mockResolvedValue(
+        { id: INDEX_ID, searchProvider: 'azure-ai-search' } as Awaited<ReturnType<typeof searchIndexRepository.getSearchIndexById>>,
+    );
+
+    it('keeps the searchable flag on import', async () => {
+        azure();
+        vi.mocked(repository.createFields).mockImplementation(
+            async (rows) => rows as unknown as Awaited<ReturnType<typeof repository.createFields>>,
+        );
+        await importFields(INDEX_ID, [{
+            fieldName: 'variants', fieldType: 'json', isSearchable: true, displayName: null, isSystemField: false, isRequired: false,
+            isFacetable: false, includeInResponse: true, boostValue: 3, isMapped: true, isIndexed: true, isVectorSource: false, isAutocomplete: false,
+        }]);
+        const rows = vi.mocked(repository.createFields).mock.calls.at(-1)?.[0] ?? [];
+        expect(rows.map(r => [r.fieldName, r.isSearchable])).toEqual([['variants', true]]);
+    });
+
+    it('keeps the searchable flag on update', async () => {
+        azure();
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 3, searchIndexId: INDEX_ID, fieldName: 'variants', fieldType: 'json' } as Awaited<ReturnType<typeof repository.getFieldById>>,
+        );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 3, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
+        await updateField(3, { isSearchable: true }, 'user-1');
+        expect(vi.mocked(repository.updateField).mock.calls.at(-1)?.[1]?.isSearchable).toBe(true);
+    });
+});
+
 describe('defaultIsSearchableForType', () => {
     it.each(['text', 'keyword'])('defaults %s to searchable', (fieldType) => {
         expect(defaultIsSearchableForType(fieldType)).toBe(true);

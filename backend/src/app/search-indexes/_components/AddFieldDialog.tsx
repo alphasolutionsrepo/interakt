@@ -120,7 +120,7 @@ export function AddFieldDialog({
     // The type select can change after the box is ticked, so gate the effective
     // value on compatibility rather than trying to reset state on every change.
     const isSearchableCompatible =
-        isFullTextSearchableFieldType(fieldType)
+        isFullTextSearchableFieldType(fieldType, searchProvider || 'elasticsearch')
         && (getProviderUI(searchProvider || 'elasticsearch')?.supportsSearchableFieldType?.(fieldType) ?? true);
     const effectiveIsSearchable = isSearchable && isSearchableCompatible;
 

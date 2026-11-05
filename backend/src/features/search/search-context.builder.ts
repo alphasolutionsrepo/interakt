@@ -62,7 +62,7 @@ export function buildSearchContext(index: SearchIndexComplete): SearchContext {
     }
 
     // Build field configurations
-    const searchableFields = buildSearchableFields(index.fields);
+    const searchableFields = buildSearchableFields(index.fields, index.searchProvider);
     const facetableFields = buildFacetableFields(index.fields);
     const defaultResponseFields = buildDefaultResponseFields(index.fields);
     const allFields = buildAllFieldsMap(index.fields);
@@ -112,11 +112,11 @@ export function buildSearchContext(index: SearchIndexComplete): SearchContext {
  * trusted, so a stale configuration degrades to "that field is not searched"
  * instead of "nothing is searchable".
  */
-function buildSearchableFields(fields: SearchIndexField[]): SearchableFieldConfig[] {
+function buildSearchableFields(fields: SearchIndexField[], searchProvider: string): SearchableFieldConfig[] {
     const flagged = fields.filter(
         field => field.isSearchable && field.isIndexed && hasDataAvailable(field)
     );
-    const ignored = flagged.filter(field => !isFullTextSearchableFieldType(field.fieldType));
+    const ignored = flagged.filter(field => !isFullTextSearchableFieldType(field.fieldType, searchProvider));
     if (ignored.length > 0) {
         fieldConfigLogger.debug('Ignoring searchable flag on non-text fields', {
             fields: ignored.map(f => `${f.fieldName}:${f.fieldType}`),
@@ -124,7 +124,7 @@ function buildSearchableFields(fields: SearchIndexField[]): SearchableFieldConfi
     }
 
     return flagged
-        .filter(field => isFullTextSearchableFieldType(field.fieldType))
+        .filter(field => isFullTextSearchableFieldType(field.fieldType, searchProvider))
         .map(field => ({
             fieldName: field.fieldName,
             fieldType: field.fieldType,

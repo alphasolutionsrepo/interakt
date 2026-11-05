@@ -42,7 +42,13 @@ export const FULL_TEXT_SEARCHABLE_FIELD_TYPES = [
   'array',
 ] as const;
 
-export function isFullTextSearchableFieldType(fieldType: string): boolean {
+/**
+ * Whether a field of this type can take part in a full-text query on the index's engine.
+ * A json field is a string on Azure AI Search (Edm.String, searched like text) and an
+ * object on Elasticsearch, so it is searchable on Azure only.
+ */
+export function isFullTextSearchableFieldType(fieldType: string, searchProvider?: string): boolean {
+  if (fieldType === 'json') return searchProvider === 'azure-ai-search';
   return (FULL_TEXT_SEARCHABLE_FIELD_TYPES as readonly string[]).includes(fieldType);
 }
 
