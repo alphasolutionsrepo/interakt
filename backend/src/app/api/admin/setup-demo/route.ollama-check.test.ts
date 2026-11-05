@@ -40,8 +40,11 @@ beforeEach(() => { fetched.mockClear(); vi.stubGlobal('fetch', fetched); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('Demo Setup checking a typed Ollama URL', () => {
-  it('refuses another host with what to do, and fetches nothing', async () => {
-    const res = await status('http://169.254.169.254/latest');
+  it.each([
+    ['another host', 'http://169.254.169.254/latest'],
+    ['another service on this machine', 'http://localhost:5432'],
+  ])('refuses %s with what to do, and fetches nothing', async (_case, typed) => {
+    const res = await status(typed);
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ hint: expect.stringContaining('Ollama provider') });
     expect(fetched).not.toHaveBeenCalled();
@@ -50,7 +53,7 @@ describe('Demo Setup checking a typed Ollama URL', () => {
   it('checks the configured URL, and Ollama on this machine', async () => {
     expect((await status('http://gpu-box.lan:11434')).status).toBe(200);
     expect(fetched).toHaveBeenLastCalledWith('http://gpu-box.lan:11434/api/tags', expect.anything());
-    expect((await status('http://localhost:11500')).status).toBe(200);
-    expect(fetched).toHaveBeenLastCalledWith('http://localhost:11500/api/tags', expect.anything());
+    expect((await status('http://127.0.0.1:11434')).status).toBe(200);
+    expect(fetched).toHaveBeenLastCalledWith('http://127.0.0.1:11434/api/tags', expect.anything());
   });
 });

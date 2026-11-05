@@ -205,7 +205,7 @@ async function buildProviderReadiness(
     const trusted = trustedOllamaUrl(ollamaBaseUrlOverride, configured);
     if (!trusted) {
       throw new AppError(
-        'Only a configured Ollama URL or Ollama on this machine can be checked here',
+        'Only a configured Ollama URL or Ollama on this machine (port 11434) can be checked here',
         { code: 'BAD_REQUEST', status: 400, hint: 'Save the URL on the Ollama provider (AI Providers), then check again.' },
       );
     }

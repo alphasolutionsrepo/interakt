@@ -11,14 +11,19 @@ describe('trustedOllamaUrl', () => {
     expect(trustedOllamaUrl('http://gpu-box.lan:11434', configured)).toBe('http://gpu-box.lan:11434/');
   });
 
-  it('checks Ollama on this machine or the Docker host, on any port', () => {
-    expect(trustedOllamaUrl('http://localhost:11500/', configured)).toBe('http://localhost:11500');
+  it("checks Ollama on this machine or the Docker host, on Ollama's port", () => {
+    expect(trustedOllamaUrl('http://127.0.0.1:11434/', configured)).toBe('http://127.0.0.1:11434');
     expect(trustedOllamaUrl('http://host.docker.internal:11434', configured)).toBe('http://host.docker.internal:11434');
-    expect(trustedOllamaUrl('http://127.0.0.1', configured)).toBe('http://127.0.0.1');
+  });
+
+  it('checks another port on this machine once it is configured', () => {
+    expect(trustedOllamaUrl('http://localhost:11500', ['http://localhost:11500'])).toBe('http://localhost:11500');
   });
 
   it.each([
     ['another host', 'http://169.254.169.254/latest/meta-data'],
+    ['another service on this machine', 'http://localhost:5432'],
+    ['this machine without a port', 'http://127.0.0.1'],
     ['a host that only starts like a local one', 'http://localhost.evil.example:11434'],
     ['credentials in the URL', 'http://user:pass@localhost:11434'],
     ['another scheme', 'file:///etc/passwd'],
