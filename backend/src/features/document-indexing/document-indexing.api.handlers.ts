@@ -199,10 +199,10 @@ async function runDocumentIndexing(
         response.warnings = result.warnings.slice(0, 50);
     }
 
-    // A failed or partial upload is a warning (an error when the search service failed),
-    // so a log filtered by level still shows it
+    // A failed or partial upload is a warning (an error when the search service failed or
+    // blocked writes), so a log filtered by level still shows it
     const firstRejection = result.errors.find((e) => e.field !== EMBEDDING_FIELD_NAME);
-    const level = outcome.status === 'succeeded' ? 'info' : writeFailureLevel(result.writeError);
+    const level = outcome.status === 'succeeded' ? 'info' : writeFailureLevel(result.writeError, result.errors.map((e) => e.error));
     logger[level]('Document indexing completed', {
         searchIndexId,
         // A failed upload's id, shown on the index page, so support can find this line
@@ -524,7 +524,7 @@ function answerWrite(result: DocumentWriteResult, message: string, logMessage: s
     } else {
         // The write as a whole, or the embedding model that failed its documents
         const failure = result.writeError ?? result.embeddingError;
-        logger[writeFailureLevel(failure)](logMessage, {
+        logger[writeFailureLevel(failure, result.errors.map((e) => e.error))](logMessage, {
             ...context,
             failed: result.failed,
             // Why the first one failed, when it wasn't the write as a whole

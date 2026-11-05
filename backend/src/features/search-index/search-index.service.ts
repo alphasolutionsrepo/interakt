@@ -1102,7 +1102,7 @@ export async function triggerReindex(
             // Partly written: the reindex succeeds, so this is its one line about the rest
             if (bulkResult.failed > 0) {
                 // An error when a batch failed because the search service did, as for an upload
-                logger[writeFailureLevel(bulkResult.writeError)]('Some documents failed to reindex', {
+                logger[writeFailureLevel(bulkResult.writeError, bulkResult.errors.map((e) => e.error))]('Some documents failed to reindex', {
                     indexName,
                     indexed: bulkResult.indexed,
                     failed: bulkResult.failed,

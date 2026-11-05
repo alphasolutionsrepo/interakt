@@ -103,6 +103,14 @@ describe('a reindex', () => {
         expect(body.hint).toContain('read-only');
     });
 
+    it('that partly worked before the search service blocked writes is logged once, as an error', async () => {
+        state.bulk = { success: false, indexed: 1, failed: 1, took: 1, errors: [{ index: 1, error: 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];' }] };
+        const res = await reindex();
+
+        expect(res.ok).toBe(true);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', message: 'Some documents failed to reindex' })]);
+    });
+
     it('that partly worked answers success and is logged once, as a warning', async () => {
         state.bulk = { success: true, indexed: 1, failed: 1, errors: [{ index: 1, error: 'mapper_parsing_exception' }], took: 1 };
         const res = await reindex();

@@ -90,3 +90,21 @@ describe('a bulk write whose embedding model failed', () => {
         ]);
     });
 });
+
+describe('a bulk write the search service blocked (a read-only index, a full disk)', () => {
+    it('is logged once, as an error', async () => {
+        logs.length = 0;
+        const blocked = 'index [products] blocked by: [FORBIDDEN/8/index write (api)];';
+        provider.bulkWrite.mockResolvedValueOnce({ success: false, indexed: 0, failed: 1, errors: [{ index: 0, error: blocked }], counts: { upload: 0, merge: 0, delete: 0 } });
+        const res = await handleBulkWriteDocuments(
+            new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ operations: [{ action: 'upload', documentId: 'a', document: { name: 'Linen shirt' } }] }),
+            }),
+            { params: Promise.resolve({ id: crypto.randomUUID() }) }
+        );
+
+        expect(res.status).toBe(207);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', message: 'Bulk document write completed' })]);
+    });
+});
