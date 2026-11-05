@@ -531,6 +531,8 @@ function answerWrite(result: DocumentWriteResult, message: string, logMessage: s
             ...(result.errors[0] && { firstError: result.errors[0].error }),
             ...(response.error && { requestId: response.error.requestId }),
             ...(failure !== undefined && { err: failure }),
+            // Both failed: the write's error above, and the model's here
+            ...(result.writeError !== undefined && result.embeddingError !== undefined && { embeddingError: result.embeddingError }),
         });
     }
     return apiResponse.success(response, result.success ? 200 : 207); // 207 = Multi-Status

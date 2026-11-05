@@ -108,3 +108,28 @@ describe('a bulk write the search service blocked (a read-only index, a full dis
         expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', message: 'Bulk document write completed' })]);
     });
 });
+
+describe('a bulk write whose embedding model failed and whose write failed as a whole', () => {
+    it('logs both errors on its one line', async () => {
+        logs.length = 0;
+        const { generateEmbeddings } = await import('@/features/ai-service');
+        const modelError = new Error('model "nomic-embed-text" not found');
+        const down = new esErrors.ConnectionError('', { meta: {} } as never);
+        vi.mocked(generateEmbeddings).mockRejectedValueOnce(modelError);
+        provider.bulkWrite.mockResolvedValueOnce({ success: false, indexed: 0, failed: 1, errors: [{ index: 0, error: 'ConnectionError' }], counts: { upload: 0, merge: 0, delete: 0 }, writeError: down } as never);
+        await handleBulkWriteDocuments(
+            new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ operations: [
+                    { action: 'upload', documentId: 'a', document: { name: 'Linen shirt' } },
+                    { action: 'delete', documentId: 'b' },
+                ] }),
+            }),
+            { params: Promise.resolve({ id: crypto.randomUUID() }) }
+        );
+
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down, embeddingError: modelError }) }),
+        ]);
+    });
+});
