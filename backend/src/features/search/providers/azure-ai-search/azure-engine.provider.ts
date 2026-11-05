@@ -714,9 +714,9 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 documents: allDocs,
             };
         } catch (error) {
+            // Passed on with its cause: the reindex it belongs to logs it, with its request id
             const message = error instanceof Error ? error.message : 'Failed to fetch documents';
-            logger.error('Azure fetchAllDocuments failed', { indexName, error: message });
-            return { success: false, error: message, documents: [] };
+            return { success: false, error: message, documents: [], cause: error };
         }
     }
 

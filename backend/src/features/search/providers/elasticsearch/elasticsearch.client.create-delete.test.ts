@@ -23,10 +23,11 @@ vi.mock('@elastic/elasticsearch', async (importOriginal) => ({
             create: async () => { throw es.error; },
             delete: async () => { throw es.error; },
         };
+        search = async () => { throw es.error; };
     },
 }));
 
-import { createIndex, deleteIndex } from './elasticsearch.client';
+import { createIndex, deleteIndex, fetchAllDocuments } from './elasticsearch.client';
 
 beforeEach(() => {
     logs.length = 0;
@@ -43,6 +44,14 @@ describe('an index Elasticsearch fails', () => {
     it('to delete is passed on with its cause, not logged', async () => {
         es.exists = true;
         expect(await deleteIndex('shop')).toEqual({ success: false, error: 'connect ECONNREFUSED 127.0.0.1:9200', cause: es.error });
+        expect(reported(logs)).toEqual([]);
+    });
+});
+
+describe("an index whose documents Elasticsearch fails to give a reindex", () => {
+    it('is passed on with its cause, not logged', async () => {
+        es.exists = true;
+        expect(await fetchAllDocuments('shop')).toEqual({ success: false, documents: [], error: 'connect ECONNREFUSED 127.0.0.1:9200', cause: es.error });
         expect(reported(logs)).toEqual([]);
     });
 });

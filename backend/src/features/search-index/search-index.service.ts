@@ -42,7 +42,7 @@ import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/sear
 import { requestIdFor } from '@/shared/api/request-id';
 import { AppError, NotFoundError } from '@/shared/errors/app-error';
 import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
-import { explainWriteFailure, leadingReason, scrub } from '@/shared/errors/upstream';
+import { classifyUpstream, explainWriteFailure, leadingReason, scrub } from '@/shared/errors/upstream';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
@@ -988,6 +988,8 @@ export async function triggerReindex(
     await repository.updateSearchIndexStatus(searchIndexId, 'indexing');
     const startedAt = new Date().toISOString();
     await recordLastJob(searchIndexId, { kind: 'reindex', status: 'running', startedAt });
+    // Until the index is deleted, a failure leaves it as it was, searchable
+    let changed = false;
 
     try {
         // Step 1: Fetch all existing documents (gracefully handle missing index)
@@ -998,18 +1000,21 @@ export async function triggerReindex(
             logger.info('Fetching existing documents', { indexName });
             const fetchResult = await provider.fetchAllDocuments(indexName);
 
-            if (fetchResult.success) {
-                documents = fetchResult.documents;
-                logger.info('Fetched documents for reindex', {
-                    indexName,
-                    documentCount: documents.length,
-                });
-            } else {
-                logger.warn('Failed to fetch documents, proceeding with empty index', {
-                    indexName,
-                    error: fetchResult.error,
+            if (!fetchResult.success) {
+                // Recreating the index now would lose every document in it
+                const upstream = fetchResult.cause !== undefined ? classifyUpstream(fetchResult.cause) : undefined;
+                throw new AppError(scrub(`Couldn't read the index's documents, so it was left as it is: ${upstream?.message ?? fetchResult.error}`), {
+                    code: 'REINDEX_FAILED',
+                    status: upstream?.status ?? 502,
+                    ...(upstream?.hint && { hint: upstream.hint }),
+                    cause: fetchResult.cause,
                 });
             }
+            documents = fetchResult.documents;
+            logger.info('Fetched documents for reindex', {
+                indexName,
+                documentCount: documents.length,
+            });
 
         } else {
             logger.info('Index does not exist, will create fresh', { indexName });
@@ -1058,6 +1063,7 @@ export async function triggerReindex(
 
         // Step 4: Delete the existing index — the first destructive step, and
         // deliberately the last thing that happens before recreating it.
+        changed = true;
         if (indexExistsNow) {
             logger.info('Deleting existing index', { indexName });
             const deleteResult = await provider.deleteIndex(indexName);
@@ -1151,8 +1157,8 @@ export async function triggerReindex(
         // Not logged here: the error is rethrown, and the response to it logs it once
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-        // Update status to failed
-        await repository.updateSearchIndexStatus(searchIndexId, 'error');
+        // Failed: an index it never changed goes back to how it was
+        await repository.updateSearchIndexStatus(searchIndexId, changed ? 'error' : searchIndex.status);
         await recordLastJob(searchIndexId, {
             kind: 'reindex',
             status: 'failed',

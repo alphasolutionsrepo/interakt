@@ -669,7 +669,7 @@ export async function fetchAllDocuments(
         batchSize?: number;
         scrollTimeout?: string;
     }
-): Promise<{ success: boolean; documents: ScrollDocument[]; error?: string }> {
+): Promise<{ success: boolean; documents: ScrollDocument[]; error?: string; cause?: unknown }> {
     try {
         const es = getElasticsearchClient();
         const batchSize = options?.batchSize ?? 1000;
@@ -731,9 +731,9 @@ export async function fetchAllDocuments(
 
         return { success: true, documents: allDocuments };
     } catch (error) {
+        // Passed on with its cause: the reindex it belongs to logs it, with its request id
         const message = error instanceof Error ? error.message : 'Failed to fetch documents';
-        logger.error('Failed to fetch all documents', { indexName, error: message });
-        return { success: false, documents: [], error: message };
+        return { success: false, documents: [], error: message, cause: error };
     }
 }
 

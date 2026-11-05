@@ -275,6 +275,8 @@ export interface FetchAllResult {
     /** All fetched documents */
     documents: ScrollDocument[];
     error?: string;
+    /** The error the provider threw, so the reindex can keep it as the cause */
+    cause?: unknown;
 }
 
 /**
