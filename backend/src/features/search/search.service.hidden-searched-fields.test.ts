@@ -156,3 +156,14 @@ describe('a provider that is rate limiting, as the caller is told', () => {
     expect(describeError(failed).body).toMatchObject({ code: 'UPSTREAM_RATE_LIMITED', hint: expect.any(String) });
   });
 });
+
+describe('admin autocomplete on an index that is not ready', () => {
+  it("answers with the index's own reason, as a search does, not as a provider failure", async () => {
+    vi.mocked(getSearchIndexById).mockResolvedValueOnce({ id: 'idx', name: 'products', isActive: false, status: 'active', fields: [] } as never);
+
+    const failed = await autocompleteById('idx', { query: 'shi' }).catch((e: unknown) => e);
+    expect(failed).toBeInstanceOf(SearchError);
+    expect((failed as SearchError).code).not.toBe('PROVIDER_ERROR');
+    expect(describeError(failed).body.message).not.toBe(describeError(new Error('x')).body.message);
+  });
+});

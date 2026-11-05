@@ -737,6 +737,11 @@ export async function autocomplete(
             error: error instanceof Error ? error.message : 'Unknown error',
         });
 
+        // Already says what's wrong (the index isn't there or isn't ready), as for a search
+        if (error instanceof SearchError) {
+            throw error;
+        }
+
         throw new SearchError(
             error instanceof Error ? error.message : 'Autocomplete failed',
             'PROVIDER_ERROR',
