@@ -90,7 +90,7 @@ describe('mergeOperatorFieldEdits — schema inferred from a sample', () => {
     discoveredFrom: 'sample',
     fields: [
       { name: 'name', displayName: 'Name', type: 'text', role: 'title', isSearchable: true, isFacetable: false, isFilterable: false, profile: { sampleSize: 25, nullRate: 0, distinctInSample: 25 } },
-      { name: 'keywords', displayName: 'Keywords', type: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+      { name: 'keywords', displayName: 'Keywords', type: 'text', valueType: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
       { name: 'added', displayName: 'Added', type: 'number', role: null, isSearchable: false, isFacetable: false, isFilterable: false },
     ] as DataSourceSchema['fields'],
   };
@@ -106,11 +106,58 @@ describe('mergeOperatorFieldEdits — schema inferred from a sample', () => {
     expect(byName.name.profile?.sampleSize).toBe(25);
   });
 
+  // A source sampled before value types were recorded gets them on rediscovery
+  it('adds the value type a new sample saw', () => {
+    expect(byName.keywords.valueType).toBe('text');
+  });
+
   it('keeps fields this sample missed and adds new ones', () => {
     expect(merged.fields.map((f) => f.name)).toEqual(['name', 'keywords', 'rare', 'added']);
   });
 
   it('records which fields this sample showed, so a kept one it missed can be flagged', () => {
     expect(merged.latestSampleFields).toEqual(['name', 'keywords', 'added']);
+  });
+});
+
+describe('mergeOperatorFieldEdits — a sample with no value for a typed field', () => {
+  it('keeps the value type an earlier sample saw', () => {
+    const stored = schema([
+      { name: 'year', displayName: 'Year', type: 'number', valueType: 'number', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+    ]);
+    // The facet is still listed, but none of this sample's items carry a value
+    const rediscovered: DataSourceSchema = {
+      discoveredFrom: 'sample',
+      fields: [
+        { name: 'year', displayName: 'Year', type: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+      ] as DataSourceSchema['fields'],
+    };
+
+    expect(mergeOperatorFieldEdits(stored, rediscovered).fields[0].valueType).toBe('number');
+  });
+
+  // Sitecore may hold an attribute as a number but return it as text, so the sample guesses text
+  const sampledAsText: DataSourceSchema = {
+    discoveredFrom: 'sample',
+    fields: [
+      { name: 'year', displayName: 'Year', type: 'text', valueType: 'text', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+    ] as DataSourceSchema['fields'],
+  };
+
+  it('keeps a value type set by hand when the sample sees another', () => {
+    const stored = schema([
+      { name: 'year', displayName: 'Year', type: 'text', valueType: 'number', valueTypeLocked: true, role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+    ]);
+
+    expect(mergeOperatorFieldEdits(stored, sampledAsText).fields[0]).toMatchObject({ valueType: 'number', valueTypeLocked: true });
+  });
+
+  // The attribute's type changed, or the source now points at another widget
+  it('replaces a sampled value type with the one a new sample saw', () => {
+    const stored = schema([
+      { name: 'year', displayName: 'Year', type: 'number', valueType: 'number', role: null, isSearchable: false, isFacetable: true, isFilterable: true },
+    ]);
+
+    expect(mergeOperatorFieldEdits(stored, sampledAsText).fields[0].valueType).toBe('text');
   });
 });

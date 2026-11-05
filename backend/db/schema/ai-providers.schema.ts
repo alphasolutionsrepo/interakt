@@ -76,6 +76,14 @@ export interface AIModelCapabilities {
    */
   noTemperature?: boolean;
 
+  /**
+   * Thinking models: how much to reason before answering. Unset sends nothing (the
+   * model's default). 'none' turns thinking off: needed when a thinking model would
+   * spend its token budget reasoning and return no answer (seen with Qwen 3.5 on Ollama).
+   * OpenAI-compatible: `reasoning_effort`. Ollama: `think` (false for 'none').
+   */
+  reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
+
   // Future extensibility
   [key: string]: unknown;
 }
