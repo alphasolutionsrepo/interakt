@@ -25,6 +25,11 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+/** A source parsed once: the checks below each walk every file, so they share it */
+function parse(source: string | ts.SourceFile, fileName = 'file.ts'): ts.SourceFile {
+  return typeof source === 'string' ? ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true) : source;
+}
+
 const LOGGER = /^(logger|log|\w+Logger|console)$/;
 
 /** A call such as logger.error(...), named by the method it calls on what */
@@ -85,8 +90,8 @@ function inOwnCatch(log: ts.Node, handler: ts.Node, answered: string | undefined
 }
 
 /** Places in a source where a failure is logged and answered too: the line of each */
-function loggedTwice(source: string, fileName = 'file.ts'): number[] {
-  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+function loggedTwice(source: string | ts.SourceFile): number[] {
+  const file = parse(source);
   const lines: number[] = [];
   const at = (n: ts.Node) => file.getLineAndCharacterOfPosition(n.getStart(file)).line + 1;
 
@@ -126,8 +131,8 @@ function literals(expression: ts.Expression): string[] {
  * or through a function of its own that takes the operation as a parameter (a helper
  * that maps errors to answers).
  */
-function operationsNamed(source: string): string[] {
-  const file = ts.createSourceFile('file.ts', source, ts.ScriptTarget.Latest, true);
+function operationsNamed(source: string | ts.SourceFile): string[] {
+  const file = parse(source);
   const names: string[] = [];
   // Functions of this file that answer a failure, with a parameter named operation
   const takesOperation = new Map<string, number>();
@@ -162,8 +167,8 @@ function operationsNamed(source: string): string[] {
  * Answers that don't name their operation: the line of each. The name is written where
  * the answer is, as { operation: ... } (a helper passes on the one it takes).
  */
-function unnamed(source: string): number[] {
-  const file = ts.createSourceFile('file.ts', source, ts.ScriptTarget.Latest, true);
+function unnamed(source: string | ts.SourceFile): number[] {
+  const file = parse(source);
   const lines: number[] = [];
   const names = (arg: ts.Expression) =>
     ts.isObjectLiteralExpression(arg) &&
@@ -228,11 +233,13 @@ describe('the scanner', () => {
   });
 });
 
-describe('a failure an API answers', () => {
-  const files = sourceFiles(SRC).map((path) => ({ path: relative(SRC, path), source: readFileSync(path, 'utf8') }));
+// Each check walks every source file: run with the whole suite, that can take longer
+// than the default 5 seconds
+describe('a failure an API answers', { timeout: 30_000 }, () => {
+  const files = sourceFiles(SRC).map((path) => ({ path: relative(SRC, path), source: parse(readFileSync(path, 'utf8'), path) }));
 
   it('is logged once: nothing logs it and answers through apiResponse too', () => {
-    const twice = files.flatMap(({ path, source }) => loggedTwice(source, path).map((line) => `${path}:${line}`));
+    const twice = files.flatMap(({ path, source }) => loggedTwice(source).map((line) => `${path}:${line}`));
     expect(twice).toEqual([]);
   });
 
