@@ -1,13 +1,15 @@
 // app/api/search-experiences/generate-instructions/route.test.ts
 
 /**
- * Generating summary instructions with AI: a failure answers as before and is logged
- * once, with the error, by the error response.
+ * Generating summary instructions with AI: a failure answers as what it is (indexes that
+ * are gone, an AI model that is missing) and is logged once, with the error, by the
+ * error response.
  */
 
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AppError, INTERNAL_MESSAGE } from '@/shared/errors/app-error';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -26,34 +28,35 @@ const ask = () => POST(new NextRequest('http://localhost/api/search-experiences/
 beforeEach(() => { logs.length = 0; });
 
 describe('instructions the AI could not generate', () => {
-  it('answers as before and logs the failure once, as an error with the error', async () => {
+  it('answers a failure it does not recognise with the plain message and logs it once, as an error with the error', async () => {
     const failed = new Error('socket hang up');
     generate.mockRejectedValue(failed);
     const res = await ask();
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body).toMatchObject({ message: 'Failed to generate instructions. Please try again.' });
+    expect(body).toMatchObject({ message: INTERNAL_MESSAGE });
     expect(reported(logs)).toEqual([
       expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: body.requestId, operation: 'generateInstructions', err: failed }) }),
     ]);
   });
 
-  it('answers a missing index with 404 and logs it once, as a warning', async () => {
-    const missing = new Error('Search index 7f1c not found');
-    generate.mockRejectedValue(missing);
+  it('answers indexes that are gone with 404 and logs it once, as a warning', async () => {
+    generate.mockRejectedValue(new AppError('None of the selected indexes could be found', { code: 'NOT_FOUND', status: 404 }));
     const res = await ask();
 
     expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ code: 'NOT_FOUND', message: 'One or more indexes not found' });
+    expect(await res.json()).toMatchObject({ code: 'NOT_FOUND', message: 'None of the selected indexes could be found' });
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ operation: 'generateInstructions' }) })]);
   });
 
-  it('still logs a missing AI model as an error: it says "not found" too, and needs fixing', async () => {
+  it('answers a missing AI model as that, not as missing indexes, and logs it once as an error', async () => {
     const modelDown = Object.assign(new Error('model "qwen2.5:14b" not found'), { name: 'AdapterError', providerKey: 'ollama', statusCode: 404 });
     generate.mockRejectedValue(modelDown);
-    await ask();
+    const res = await ask();
+    const body = await res.json();
 
-    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: expect.objectContaining({ cause: modelDown }) }) })]);
+    expect(body.message).not.toMatch(/index/i);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ operation: 'generateInstructions' }) })]);
   });
 });
