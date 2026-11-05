@@ -12,6 +12,9 @@ import 'server-only';
 import { providerRegistry, initializeSearchProviders } from '@/features/search/providers';
 import type { SearchProvider } from '@/features/search/providers';
 import { createLogger } from '@/shared/logger/logger';
+import { isPublicRequest } from '@/shared/api/public-route';
+import { currentRequestId } from '@/shared/api/request-id';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { getProviderFieldSettings } from '@/features/search-index/provider-settings.utils';
 import type { SearchExperienceWithIndexes } from './search-experience.types';
@@ -107,22 +110,24 @@ export async function getAutocompleteSuggestions(
 
   try {
     // Execute autocomplete queries in parallel across all indexes
-    const results = await Promise.all(
-      indexesToSearch.map((idx) =>
-        executeAutocompleteQuery(idx, request.query, maxSuggestions)
-          .catch((error) => {
-            logger.error('Autocomplete query failed for index', {
-              indexId: idx.indexId,
-              indexName: idx.indexName,
-              error: error instanceof Error ? error.message : 'Unknown error',
-            });
-            return { suggestions: [] as AutocompleteSuggestion[], indexId: idx.indexId };
-          })
-      )
+    const settled = await Promise.allSettled(
+      indexesToSearch.map((idx) => executeAutocompleteQuery(idx, request.query, maxSuggestions))
     );
+    const failed = settled.flatMap((r, i) => (r.status === 'rejected' ? [{ index: indexesToSearch[i], error: r.reason as unknown }] : []));
+    if (failed.length > 0) {
+      // An admin testing the experience gets the error; a visitor's type-ahead the other
+      // indexes' suggestions, with the failure logged once
+      if (!isPublicRequest()) throw failed[0].error;
+      logger[failureLevel(failed[0].error, 'warn')]('Autocomplete failed for an index', {
+        experienceId: experience.id,
+        requestId: currentRequestId(),
+        indexIds: failed.map((f) => f.index.indexId),
+        err: failed[0].error,
+      });
+    }
 
     // Merge and deduplicate suggestions
-    const allSuggestions = results.flatMap((r) => r.suggestions);
+    const allSuggestions = settled.flatMap((r) => (r.status === 'fulfilled' ? r.value.suggestions : []));
     const dedupedSuggestions = deduplicateSuggestions(allSuggestions, maxSuggestions);
 
     logger.debug('Autocomplete completed', {
@@ -140,12 +145,9 @@ export async function getAutocompleteSuggestions(
       took: Date.now() - startTime,
     };
   } catch (error) {
-    logger.error('Autocomplete failed', {
-      experienceId: experience.id,
-      query: request.query,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-
+    // Passed on to an admin; logged once by the answer
+    if (!isPublicRequest()) throw error;
+    logger[failureLevel(error, 'warn')]('Autocomplete failed', { experienceId: experience.id, requestId: currentRequestId(), err: error });
     return {
       suggestions: [],
       query: request.query,
@@ -312,41 +314,33 @@ async function executeStandardPrefixQuery(
 ): Promise<{ suggestions: AutocompleteSuggestion[]; indexId: string }> {
   const provider = resolveProvider(indexInfo.searchProvider);
 
-  try {
-    // Use provider autocomplete without custom analyzer (defaults to phrase_prefix)
-    const result = await provider.autocomplete(
-      indexInfo.providerIndexName,
-      query,
-      fields,
-      { maxSuggestions: maxSuggestions * 2 }
-    );
+  // Use provider autocomplete without custom analyzer (defaults to phrase_prefix)
+  const result = await provider.autocomplete(
+    indexInfo.providerIndexName,
+    query,
+    fields,
+    { maxSuggestions: maxSuggestions * 2 }
+  );
 
-    const suggestions: AutocompleteSuggestion[] = [];
+  const suggestions: AutocompleteSuggestion[] = [];
 
-    for (const hit of result.hits) {
-      for (const fieldName of fields) {
-        const value = hit.source[fieldName];
-        if (typeof value === 'string' && value.trim()) {
-          suggestions.push({
-            text: value.trim(),
-            score: hit.score,
-            field: fieldName,
-            indexId: indexInfo.indexId,
-            indexName: indexInfo.displayName,
-            highlight: hit.highlights?.[fieldName]?.[0],
-          });
-        }
+  for (const hit of result.hits) {
+    for (const fieldName of fields) {
+      const value = hit.source[fieldName];
+      if (typeof value === 'string' && value.trim()) {
+        suggestions.push({
+          text: value.trim(),
+          score: hit.score,
+          field: fieldName,
+          indexId: indexInfo.indexId,
+          indexName: indexInfo.displayName,
+          highlight: hit.highlights?.[fieldName]?.[0],
+        });
       }
     }
-
-    return { suggestions, indexId: indexInfo.indexId };
-  } catch (error) {
-    logger.error('Standard prefix query failed', {
-      indexId: indexInfo.indexId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-    return { suggestions: [], indexId: indexInfo.indexId };
   }
+
+  return { suggestions, indexId: indexInfo.indexId };
 }
 
 /**

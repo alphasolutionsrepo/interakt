@@ -16,7 +16,7 @@ vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-r
 
 const azure = vi.hoisted(() => ({ error: undefined as unknown }));
 vi.mock('./azure-client', () => ({
-    getSearchClient: () => ({ search: async () => { throw azure.error; } }),
+    getSearchClient: () => ({ search: async () => { throw azure.error; }, suggest: async () => { throw azure.error; } }),
     checkAzureHealth: vi.fn(),
 }));
 
@@ -81,5 +81,21 @@ describe('Azure AI Search failures', () => {
             const thrown = await search({ filters: [{ field: 'rating', operator: 'gt', value: 4 }] });
             expect(thrown).toMatchObject({ code: 'PROVIDER_ERROR', cause: error });
         });
+    });
+});
+
+describe('Azure AI Search autocomplete failures', () => {
+    it.each([
+        ['the suggest call', () => Object.assign(new Error('Access denied'), { name: 'RestError', statusCode: 403 })],
+        ['the search it falls back to without a suggester', () => Object.assign(new Error('The specified suggester name sg does not exist in this index definition.'), { name: 'RestError', statusCode: 400 })],
+    ])('in %s are passed on with the Azure error as the cause, without logging an error', async (_case, failure) => {
+        logs.length = 0;
+        azure.error = failure();
+
+        const thrown = await new AzureSearchProvider().autocomplete('products', 'lin', ['name']).catch((e: unknown) => e);
+
+        expect(thrown).toBeInstanceOf(SearchError);
+        expect((thrown as SearchError).cause).toBe(azure.error);
+        expect(reported(logs).filter((l) => l.level === 'error')).toEqual([]);
     });
 });
