@@ -133,3 +133,24 @@ describe('a bulk write whose embedding model failed and whose write failed as a 
         ]);
     });
 });
+
+describe('a bulk write a write block stopped part way', () => {
+    it('answers what to do about it with the partial result', async () => {
+        provider.bulkWrite.mockResolvedValueOnce({ success: false, indexed: 1, failed: 1, errors: [{ index: 1, error: 'index [products] blocked by: [FORBIDDEN/8/index write (api)];' }], counts: { upload: 1, merge: 0, delete: 0 } } as never);
+        const res = await handleBulkWriteDocuments(
+            new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ operations: [
+                    { action: 'delete', documentId: 'a' },
+                    { action: 'delete', documentId: 'b' },
+                ] }),
+            }),
+            { params: Promise.resolve({ id: crypto.randomUUID() }) }
+        );
+        const body = await res.json();
+
+        expect(res.status).toBe(207);
+        expect(body.data).not.toHaveProperty('error');
+        expect(body.data.hint).toContain('read-only');
+    });
+});

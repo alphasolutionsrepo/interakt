@@ -38,6 +38,8 @@ export interface IndexLastJob {
   finishedAt?: string;
   /** What it did, e.g. "1,204 documents reindexed", and for partial what went wrong */
   summary?: string;
+  /** For partial: what to do about what went wrong, when we recognise it (a read-only index) */
+  hint?: string;
   error?: { code: string; message: string; hint?: string; details?: unknown; requestId?: string };
 }
 

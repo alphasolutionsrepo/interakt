@@ -1242,9 +1242,9 @@ export function reindexOutcome(
     if (written.failed === 0) return { ...base, status: 'succeeded', summary: `${written.indexed} documents reindexed` };
     const total = written.indexed + written.failed;
     // A batch that failed as a whole is explained from its error, as a failed reindex is
-    const why = explainWriteFailure(written.writeError, written.reason).reason;
+    const { reason: why, hint } = explainWriteFailure(written.writeError, written.reason);
     const reason = why ? `: ${why}` : '';
-    return { ...base, status: 'partial', summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`) };
+    return { ...base, status: 'partial', summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`), ...(hint && { hint }) };
 }
 
 // ============================================================================

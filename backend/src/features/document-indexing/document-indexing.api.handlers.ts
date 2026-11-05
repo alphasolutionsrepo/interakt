@@ -16,7 +16,7 @@ import { createLogger } from '@/shared/logger/logger';
 // session and ingestion-key callers.
 import { elasticsearchConfig } from '../../../config';
 import { uploadOutcome } from './upload-outcome';
-import { writeFailure } from './write-failure';
+import { partialWriteHint, writeFailure } from './write-failure';
 
 import {
     indexDocuments,
@@ -486,10 +486,12 @@ function buildWriteResponse(
     message: string
 ): WriteDocumentsResponse {
     const error = writeFailure(result);
+    const hint = partialWriteHint(result);
     const response: WriteDocumentsResponse = {
         success: result.success,
         message: error?.message ?? message,
         ...(error && { error }),
+        ...(hint && { hint }),
         summary: {
             total: result.total,
             succeeded: result.succeeded,

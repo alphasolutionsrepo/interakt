@@ -30,6 +30,12 @@ describe('reindexOutcome', () => {
     });
 });
 
+describe('a partial reindex a write block stopped', () => {
+    it('says what to do about it', () => {
+        expect(reindexOutcome({ indexed: 1, failed: 1, reason: 'index [products] blocked by: [FORBIDDEN/8/index write (api)];' }, startedAt)).toMatchObject({ status: 'partial', hint: expect.stringContaining('read-only') });
+    });
+});
+
 describe('a reindex of an empty index', () => {
     it('says the index is empty and to upload its documents, in orange rather than as a success', () => {
         expect(reindexOutcome({ indexed: 0, failed: 0 }, startedAt)).toMatchObject({

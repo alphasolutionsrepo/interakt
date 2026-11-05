@@ -27,3 +27,12 @@ export function writeFailure(result: DocumentWriteResult): WriteFailure | undefi
         requestId: currentRequestId(),
     };
 }
+
+/**
+ * What to do about a write that partly failed, when we recognise why (a read-only index,
+ * a full disk). Undefined when it wrote everything or nothing (writeFailure explains that).
+ */
+export function partialWriteHint(result: DocumentWriteResult): string | undefined {
+    if (result.failed === 0 || result.succeeded === 0) return undefined;
+    return explainWriteFailure(result.writeError, leadingReason(result.errors.map((e) => e.error))).hint;
+}

@@ -38,7 +38,7 @@ function jobResult(action: string, data: unknown): Omit<NewActivityEntry, 'kind'
             action,
             status: outcome.status,
             message: outcome.error?.message ?? outcome.summary ?? (typeof message === 'string' ? message : 'Finished'),
-            hint: outcome.error?.hint,
+            hint: outcome.error?.hint ?? outcome.hint,
             code: outcome.error?.code,
             details: outcome.error?.details,
             requestId: outcome.error?.requestId,
