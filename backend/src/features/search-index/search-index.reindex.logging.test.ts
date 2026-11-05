@@ -7,6 +7,7 @@
  * warning. Storage and the search engine are stubbed, as in trigger-reindex.test.ts.
  */
 
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -99,12 +100,12 @@ describe('a reindex', () => {
         expect(state.lastJobs.at(-1)).toEqual(answer.outcome);
     });
 
-    it('where one batch failed as a whole logs that batch\'s error on its one warning', async () => {
-        const down = new Error('connect ECONNREFUSED 127.0.0.1:9200');
+    it('where one batch failed because the search service did logs it once, as an error, with that error', async () => {
+        const down = new esErrors.ConnectionError('connect ECONNREFUSED 127.0.0.1:9200', { meta: {} } as never);
         state.bulk = { success: false, indexed: 1, failed: 1, errors: [{ index: 1, error: down.message }], took: 1, writeError: down };
         await reindex();
 
-        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: down }) })]);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down }) })]);
     });
 });
 

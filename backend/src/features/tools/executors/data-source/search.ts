@@ -10,6 +10,7 @@
 import * as searchService from '@/features/search/search.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { trackSearch } from '@/features/analytics';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
 import { executeFileStoreSearch } from './file-store';
@@ -219,6 +220,9 @@ async function executeExternalSearch(
       },
     };
   } catch (error) {
+    // Answered to the model as a failed call, so logged here: an error when the source failed
+    // (it's down, it refused the credentials), a warning when it refused this request
+    logger[failureLevel(error, 'warn')]('External source search failed', { dataSourceId: source.dataSourceId, provider: source.provider, err: error });
     result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 

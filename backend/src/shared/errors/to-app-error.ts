@@ -93,3 +93,8 @@ export function failureLevel(err: unknown, otherwise: 'error' | 'warn'): 'error'
     return recognised && isOurFailure(appError) ? 'error' : otherwise;
 }
 
+/** A write that failed: a warning, or an error when the search service failed as a whole (it's down) */
+export function writeFailureLevel(writeError: unknown): 'error' | 'warn' {
+    return writeError === undefined ? 'warn' : failureLevel(writeError, 'warn');
+}
+

@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobError, recordLastJob } from '@/features/search-index/search-index.service';
 import { apiResponse } from '@/shared/api/response';
-import { failureLevel } from '@/shared/errors/to-app-error';
+import { writeFailureLevel } from '@/shared/errors/to-app-error';
 import { createLogger } from '@/shared/logger/logger';
 // Session resolution now happens inside resolveDocumentActor, which handles both
 // session and ingestion-key callers.
@@ -507,11 +507,6 @@ function buildWriteResponse(
     }
 
     return response;
-}
-
-/** A failed write is a warning, or an error when the search service failed as a whole (it's down) */
-function writeFailureLevel(writeError: unknown): 'error' | 'warn' {
-    return writeError === undefined ? 'warn' : failureLevel(writeError, 'warn');
 }
 
 /**

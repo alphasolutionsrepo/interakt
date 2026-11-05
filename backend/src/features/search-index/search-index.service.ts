@@ -41,7 +41,7 @@ import type {
 import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
 import { requestIdFor } from '@/shared/api/request-id';
 import { AppError, NotFoundError } from '@/shared/errors/app-error';
-import { toAppError } from '@/shared/errors/to-app-error';
+import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
 import { explainWriteFailure, scrub } from '@/shared/errors/upstream';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
@@ -1111,7 +1111,8 @@ export async function triggerReindex(
 
             // Partly written: the reindex succeeds, so this is its one line about the rest
             if (bulkResult.failed > 0) {
-                logger.warn('Some documents failed to reindex', {
+                // An error when a batch failed because the search service did, as for an upload
+                logger[writeFailureLevel(bulkResult.writeError)]('Some documents failed to reindex', {
                     indexName,
                     indexed: bulkResult.indexed,
                     failed: bulkResult.failed,

@@ -660,8 +660,9 @@ export async function executeTool(
         }
       }
 
-      // 7. All attempts exhausted: one line, with the error, at error when a service on our
-      // side failed (the search engine, an AI provider); then try the fallback
+      // 7. All attempts exhausted: one line for a call that threw, with the error, at error
+      // when a service on our side failed (a managed index's engine, an AI provider); then
+      // try the fallback. A tool that answers a failure itself logs it (an external source)
       const retriesUsed = attempt - 1;
       logger[failureLevel(lastError, 'warn')]('Tool execution failed', {
         toolId: tool.id,
