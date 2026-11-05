@@ -32,9 +32,17 @@ describe('refusedRequest', () => {
     expect(refused).toMatchObject({ code: 'INVALID_SORT', message: "This search source can't sort on name" });
   });
 
+  it("reads a Sitecore Search 400, in Sitecore's own words", () => {
+    // What Sitecore answers a filter value of the wrong type (checked live, 2 Nov)
+    const sitecore = (value: string) => new ExternalSearchError('Sitecore Search', `Sitecore Search returned HTTP 400: {"message":"filter value '${value}' not of the expected type"}`, 400);
+    const year = (value: unknown): SearchRequest => ({ query: 'x', filters: [{ field: 'year', operator: 'eq', value: value as string }] });
+    expect(refusedRequest(sitecore('2024'), year('2024'), [])).toMatchObject({ code: 'INVALID_FILTER' });
+    expect(refusedRequest(sitecore('80'), year(80), [])).toMatchObject({ code: 'INVALID_FILTER' });
+  });
+
   it('leaves engines whose wording is unknown alone', () => {
-    const sitecore = new ExternalSearchError('Sitecore Search', 'Sitecore Search returned HTTP 400: {"type":"bad_request","field":"rating"}', 400);
-    expect(refusedRequest(sitecore, badRating, [])).toBeUndefined();
+    const other = new ExternalSearchError('Solr', 'Solr returned HTTP 400: {"type":"bad_request","field":"rating"}', 400);
+    expect(refusedRequest(other, badRating, [])).toBeUndefined();
   });
 
   it('leaves anything but a 400 from an engine alone', () => {

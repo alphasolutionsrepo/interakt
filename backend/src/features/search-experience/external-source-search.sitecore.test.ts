@@ -86,3 +86,21 @@ describe('search experience on a Sitecore source', () => {
     expect(sent()).toBeUndefined();
   });
 });
+
+describe('a search experience whose Sitecore source refuses a filter value', () => {
+  it('refuses the filter, as for the other engines, rather than calling the source unavailable', async () => {
+    // Sitecore's own words for a value it can't take (checked live, 2 Nov)
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      text: async () => `{"message":"filter value '2024' not of the expected type"}`,
+    })));
+    const textYear = inferSitecoreFields({ items: [{ id: 'a', year: '2024' }], total: 1, facets: new Map([['year', 'Year']]) });
+
+    const search = searchExternalSourceForExperience(
+      SOURCE, textYear, { query: 'x', filters: [{ field: 'year', operator: 'eq', value: '2024' }] }, EXPERIENCE,
+    );
+
+    await expect(search).rejects.toMatchObject({ code: 'INVALID_FILTER' });
+  });
+});

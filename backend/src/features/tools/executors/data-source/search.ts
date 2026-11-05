@@ -13,7 +13,7 @@ import { trackSearch } from '@/features/analytics';
 import { failureLevel } from '@/shared/errors/to-app-error';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
-import { ExternalSearchError } from '@/features/data-source/external-search/external-search.types';
+import { refusedRequest } from '@/features/search-experience/external-refusal';
 import { executeFileStoreSearch } from './file-store';
 import type { UnappliedClause } from '@/features/data-source/external-search/external-query';
 import {
@@ -232,9 +232,10 @@ async function executeExternalSearch(
     };
   } catch (error) {
     // Answered to the model as a failed call, so logged here: a warning when the source
-    // refused this request (400, say a filter value of the wrong type), an error when the
-    // source failed (it's down, it refused the credentials, it's rate limiting)
-    const refused = error instanceof ExternalSearchError && error.status === 400;
+    // refused this request's filter or sort (a value of the wrong type), by the same rule as
+    // experience search; an error when the source failed (it's down, it refused the
+    // credentials, it's rate limiting) or refused something the request didn't say
+    const refused = !!refusedRequest(error, { query, filters: merged.filters, sort: sorting.sort }, schemaFields ?? []);
     logger[refused ? 'warn' : failureLevel(error, 'warn')]('External source search failed', { dataSourceId: source.dataSourceId, provider: source.provider, err: error });
     result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }

@@ -38,13 +38,14 @@ interface Part { kind: 'filter' | 'sort' | 'other'; field: string; clues: Clue[]
 
 /**
  * Whether the reason marks the clue: a name or text value as [x], 'x' or "x"; a number
- * only as "Value [3000000000] is out of range" or "boolean value [1]", since Elasticsearch's
- * fixed wording has bracketed numbers of its own ("less than or equal to: [10000]")
+ * only as "Value [3000000000] is out of range", "boolean value [1]" or Sitecore's "filter
+ * value '80' not of the expected type", since Elasticsearch's fixed wording has bracketed
+ * numbers of its own ("less than or equal to: [10000]")
  */
 function isMarked(reason: string, clue: Clue): boolean {
     const t = escape(clue.text);
     return clue.numeric
-        ? new RegExp(`value \\[${t}\\]`, 'i').test(reason)
+        ? new RegExp(`value \\[${t}\\]|value '${t}'`, 'i').test(reason)
         : new RegExp(`\\[${t}\\]|'${t}'|"${t}"`).test(reason);
 }
 

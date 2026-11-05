@@ -38,13 +38,24 @@ describe('a chat tool search on an external source', () => {
     ]);
   });
 
-  it('that refused the request (a filter value of the wrong type) is logged once, as a warning', async () => {
+  it('that refused the filter the model wrote (a value of the wrong type) is logged once, as a warning', async () => {
     logs.length = 0;
-    const refused = new ExternalSearchError('Sitecore Search', "filter value '80' not of the expected type", 400);
+    // Sitecore's own words (checked live, 2 Nov)
+    const refused = new ExternalSearchError('Sitecore Search', `Sitecore Search returned HTTP 400: {"message":"filter value '80' not of the expected type"}`, 400);
+    connector.search.mockRejectedValueOnce(refused);
+
+    await executeDataSourceSearch('ds', {}, { query: 'linen shirts', filters: [{ field: 'price', operator: 'gte', value: 80 }] });
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: refused }) })]);
+  });
+
+  it('that refused something the request did not say is logged once, as an error', async () => {
+    logs.length = 0;
+    const refused = new ExternalSearchError('Sitecore Search', 'Sitecore Search returned HTTP 400: {"message":"invalid widget"}', 400);
     connector.search.mockRejectedValueOnce(refused);
 
     await executeDataSourceSearch('ds', {}, { query: 'linen shirts' });
 
-    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: refused }) })]);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: refused }) })]);
   });
 });

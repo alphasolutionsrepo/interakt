@@ -12,7 +12,7 @@ import { refusalFor } from '@/features/search/request-refusal';
 import type { SearchError, SearchRequest } from '@/features/search/search.types';
 
 /** The engines whose 400 wording request-refusal.ts was checked against */
-const KNOWN_WORDING = new Set(['Elasticsearch', 'Azure AI Search']);
+const KNOWN_WORDING = new Set(['Elasticsearch', 'Azure AI Search', 'Sitecore Search']);
 
 /** The 400 to answer when the engine's reason blames the request's filter or sort */
 export function refusedRequest(error: unknown, request: SearchRequest, fields: DataSourceField[]): SearchError | undefined {
