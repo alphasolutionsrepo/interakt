@@ -19,6 +19,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
+import { classifyUpstream } from '@/shared/errors/upstream';
 import { withSpan, ATTR } from '@/features/telemetry';
 import * as toolsService from './tools.service';
 import * as secretsService from '@/features/secrets/secrets.service';
@@ -320,6 +321,8 @@ function getBackoffMs(attempt: number, config: ToolRetryConfig): number {
   return baseMs * Math.pow(2, attempt - 1);
 }
 
+const RETRYABLE_UPSTREAM = new Set(['UPSTREAM_UNAVAILABLE', 'UPSTREAM_TIMEOUT', 'UPSTREAM_RATE_LIMITED']);
+
 function isRetryable(error: unknown, config: ToolRetryConfig): boolean {
   if (error instanceof ToolTimeoutError) return true;
 
@@ -332,7 +335,9 @@ function isRetryable(error: unknown, config: ToolRetryConfig): boolean {
     );
   }
 
-  // Default: retry on network/timeout errors, not on validation errors
+  // Default: retry a service that was down, slow or rate limiting, read from the error
+  // itself (an Elasticsearch that's stopped gives no message), else from its text
+  if (RETRYABLE_UPSTREAM.has(classifyUpstream(error)?.code ?? '')) return true;
   const retryablePatterns = [
     'timeout', 'econnrefused', 'econnreset', 'enotfound',
     'socket hang up', 'network', 'fetch failed', '503', '502', '429',

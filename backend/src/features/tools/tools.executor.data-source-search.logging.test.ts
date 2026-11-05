@@ -68,3 +68,24 @@ describe('a chat tool search on a managed index', () => {
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', message: 'Data source search failed', context: expect.objectContaining({ err: missing }) })]);
   });
 });
+
+describe('a chat tool search the search service failed', () => {
+  it.each([
+    ['stopped (an error with no message)', () => new esErrors.ConnectionError('', { meta: {} } as never)],
+    ['timed out', () => new esErrors.TimeoutError('Request timed out', { meta: {} } as never)],
+  ])('is retried when Elasticsearch was %s', async (_case, cause) => {
+    search.searchById.mockRejectedValue(new SearchError(cause().message, 'PROVIDER_ERROR', {}, { cause: cause() }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(2);
+  });
+
+  it('is not retried when it refused the request (a filter the model wrote)', async () => {
+    search.searchById.mockRejectedValue(new SearchError('"abc" isn\'t a valid value for rating', 'INVALID_FILTER'));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(1);
+  });
+});
