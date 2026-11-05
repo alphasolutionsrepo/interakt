@@ -273,3 +273,15 @@ describe('leadingReason', () => {
         expect(leadingReason([])).toBeUndefined();
     });
 });
+
+describe('explainWriteFailure with an error it has no specific explanation for', () => {
+  it("keeps the search service's own reason instead of '<provider> returned an error.'", () => {
+    const rejected = Object.assign(new Error('Invalid document key: \'SKU 1001/A\'. Keys can only contain letters, digits, underscore (_), dash (-), or equal sign (=).'), { name: 'RestError', statusCode: 400 });
+    expect(explainWriteFailure(rejected, rejected.message).reason).toContain('Invalid document key');
+  });
+
+  it('still explains an error it recognises (the service is down) its own way', () => {
+    const down = Object.assign(new Error('connect ECONNREFUSED'), { name: 'RestError', code: 'ECONNREFUSED' });
+    expect(explainWriteFailure(down, 'connect ECONNREFUSED').reason).toBe("Azure AI Search couldn't be reached.");
+  });
+});

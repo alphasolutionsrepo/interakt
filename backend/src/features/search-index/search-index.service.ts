@@ -1222,10 +1222,13 @@ export function reindexWriteFailure(
     if (written.indexed > 0 || written.failed === 0) return undefined;
     const { reason: because, hint } = explainWriteFailure(written.writeError, written.firstError);
     const reason = because ? `: ${because}` : '';
+    // The index was recreated empty and the documents read from it are gone, so another
+    // reindex can't bring them back: they have to be uploaded again
+    const reupload = 'The index is now empty: upload its documents again once the search service is working.';
     return new AppError(scrub(`None of the ${written.failed} documents could be written back${reason}`), {
         code: 'REINDEX_FAILED',
         status: 502,
-        ...(hint && { hint }),
+        hint: hint ? `${hint.replace(/,? then try again\.?$/, '.')} ${reupload}` : reupload,
         // The search service's own error, for the log line
         ...(written.writeError !== undefined && { cause: written.writeError }),
     });

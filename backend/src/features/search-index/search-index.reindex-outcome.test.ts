@@ -53,3 +53,12 @@ describe('reindexWriteFailure', () => {
         expect(body.hint).toMatch(/read-only/);
     });
 });
+
+describe('a reindex that wrote nothing back', () => {
+  it('says to upload the documents again, since another reindex finds the index empty', () => {
+    const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+    const err = reindexWriteFailure({ indexed: 0, failed: 3, writeError: down });
+    expect(err?.hint).toMatch(/upload its documents again/);
+    expect(err?.hint).not.toMatch(/try again/);
+  });
+});
