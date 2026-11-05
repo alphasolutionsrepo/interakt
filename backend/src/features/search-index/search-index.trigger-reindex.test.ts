@@ -13,6 +13,11 @@ const state = vi.hoisted(() => ({
     bulk: { success: true, indexed: 2, failed: 0, errors: [] as Array<{ index: number; error: string }>, took: 1 } as Record<string, unknown>,
     lastJobs: [] as Array<Record<string, unknown>>,
     updates: [] as Array<Record<string, unknown>>,
+    statuses: [] as string[],
+    status: 'active',
+    documents: [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }] as Array<Record<string, unknown>>,
+    /** Engine calls a test changes, over the defaults below */
+    engine: {} as Record<string, (...args: unknown[]) => Promise<unknown>>,
 }));
 
 vi.mock('server-only', () => ({}));
@@ -20,8 +25,8 @@ vi.mock('@/shared/logger/logger', () => ({
     createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 vi.mock('./search-index.repository', () => ({
-    getSearchIndexById: async () => ({ id: 'i1', name: 'shop', searchProvider: 'elasticsearch' }),
-    updateSearchIndexStatus: vi.fn(),
+    getSearchIndexById: async () => ({ id: 'i1', name: 'shop', searchProvider: 'elasticsearch', status: state.status }),
+    updateSearchIndexStatus: async (_id: string, status: string) => { state.statuses.push(status); },
     setLastJob: async (_id: string, job: Record<string, unknown>) => { state.lastJobs.push(job); },
     updateSearchIndex: async (_id: string, values: Record<string, unknown>) => { state.updates.push(values); },
     markMappingSynced: vi.fn(),
@@ -38,12 +43,13 @@ vi.mock('@/features/document-indexing/document-indexer.service', () => ({
 vi.mock('@/features/search/providers', () => ({
     getSearchEngineProvider: () => ({
         indexExists: async () => true,
-        fetchAllDocuments: async () => ({ success: true, documents: [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }] }),
+        fetchAllDocuments: async () => ({ success: true, documents: state.documents }),
         buildIndexSettings: () => ({}),
         deleteIndex: async () => ({ success: true }),
         createIndex: async () => ({ success: true }),
         bulkIndex: async () => state.bulk,
         refreshIndex: vi.fn(),
+        ...state.engine,
     }),
 }));
 
@@ -52,7 +58,17 @@ import { triggerReindex } from './search-index.service';
 beforeEach(() => {
     state.lastJobs = [];
     state.updates = [];
+    state.statuses = [];
+    state.status = 'active';
+    state.documents = [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }];
+    state.engine = {};
 });
+
+const refused = () => new esErrors.ResponseError({
+    body: { error: { type: 'cluster_block_exception', reason: 'index [shop] blocked by: [FORBIDDEN/5/index read-only (api)];' }, status: 403 },
+    statusCode: 403, headers: {}, meta: {}, warnings: null,
+} as never);
+const unreachable = () => new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
 
 describe('triggerReindex', () => {
     it('succeeds when every document is written back', async () => {
@@ -85,5 +101,47 @@ describe('triggerReindex', () => {
         expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', message: "None of the 2 documents could be written back: Elasticsearch didn't respond in time." });
         expect((thrown as { hint?: string }).hint).toMatch(/fewer documents/);
         expect(state.lastJobs.at(-1)).toMatchObject({ status: 'failed', error: { code: 'REINDEX_FAILED', hint: expect.stringMatching(/fewer documents/) } });
+    });
+
+    it('says an empty index is empty, as a reindex that finished with problems', async () => {
+        state.documents = [];
+        state.bulk = { success: true, indexed: 0, failed: 0, errors: [], took: 1 };
+        const result = await triggerReindex('i1', 'u1');
+        expect(result.outcome).toMatchObject({ status: 'partial', summary: expect.stringMatching(/^The index is empty/) });
+        expect(state.lastJobs.at(-1)).toMatchObject({ status: 'partial' });
+    });
+});
+
+describe('triggerReindex stopped before it changed the index', () => {
+    it('puts the status back and says the index was left as it is when the search service is unreachable', async () => {
+        state.engine = { indexExists: async () => { throw unreachable(); } };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', message: "Couldn't reindex the index, so it was left as it is: Elasticsearch couldn't be reached." });
+        expect(state.statuses).toEqual(['indexing', 'active']);
+        expect(state.lastJobs.at(-1)).toMatchObject({ status: 'failed', error: { code: 'REINDEX_FAILED' } });
+    });
+
+    it('treats a refused delete as no change: the index keeps its status', async () => {
+        state.engine = { deleteIndex: async () => ({ success: false, error: 'blocked', cause: refused() }) };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', message: expect.stringMatching(/^Couldn't reindex the index, so it was left as it is/) });
+        expect(state.statuses).toEqual(['indexing', 'active']);
+    });
+
+    it('marks the index errored when the failed delete took it away', async () => {
+        let exists = true;
+        state.engine = {
+            indexExists: async () => exists,
+            deleteIndex: async () => { exists = false; return { success: false, error: 'timed out', cause: unreachable() }; },
+        };
+        await triggerReindex('i1', 'u1').catch(() => undefined);
+        expect(state.statuses).toEqual(['indexing', 'error']);
+    });
+
+    it("never puts back 'indexing' left by another reindex: no job runs for it now", async () => {
+        state.status = 'indexing';
+        state.engine = { fetchAllDocuments: async () => ({ success: false, error: 'boom', cause: unreachable() }) };
+        await triggerReindex('i1', 'u1').catch(() => undefined);
+        expect(state.statuses).toEqual(['indexing', 'active']);
     });
 });

@@ -1003,12 +1003,7 @@ export async function triggerReindex(
             if (!fetchResult.success) {
                 // Recreating the index now would lose every document in it
                 const upstream = fetchResult.cause !== undefined ? classifyUpstream(fetchResult.cause) : undefined;
-                throw new AppError(scrub(`Couldn't read the index's documents, so it was left as it is: ${upstream?.message ?? fetchResult.error}`), {
-                    code: 'REINDEX_FAILED',
-                    status: upstream?.status ?? 502,
-                    ...(upstream?.hint && { hint: upstream.hint }),
-                    cause: fetchResult.cause,
-                });
+                throw leftAsItIs("Couldn't read the index's documents", upstream?.message ?? fetchResult.error, upstream, fetchResult.cause);
             }
             documents = fetchResult.documents;
             logger.info('Fetched documents for reindex', {
@@ -1069,6 +1064,8 @@ export async function triggerReindex(
             const deleteResult = await provider.deleteIndex(indexName);
 
             if (!deleteResult.success) {
+                // A refused delete leaves the index whole; one that broke off may not have
+                changed = !(await provider.indexExists(indexName).catch(() => false));
                 throw new Error(`Failed to delete index: ${deleteResult.error}`, { cause: deleteResult.cause });
             }
         }
@@ -1153,12 +1150,16 @@ export async function triggerReindex(
             outcome,
         };
 
-    } catch (error) {
+    } catch (caught) {
         // Not logged here: the error is rethrown, and the response to it logs it once
+        const upstream = !changed && !(caught instanceof AppError) ? classifyUpstream(caught) : undefined;
+        const error = upstream ? leftAsItIs("Couldn't reindex the index", upstream.message, upstream, caught) : caught;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-        // Failed: an index it never changed goes back to how it was
-        await repository.updateSearchIndexStatus(searchIndexId, changed ? 'error' : searchIndex.status);
+        // Failed: an index it never changed goes back to how it was. Never back to
+        // 'indexing', which a reindex already running set: no job runs for it now.
+        const before = searchIndex.status === 'indexing' ? 'active' : searchIndex.status;
+        await repository.updateSearchIndexStatus(searchIndexId, changed ? 'error' : before);
         await recordLastJob(searchIndexId, {
             kind: 'reindex',
             status: 'failed',
@@ -1172,6 +1173,16 @@ export async function triggerReindex(
         if (error instanceof AppError) throw error;
         throw new Error(`Reindex failed: ${errorMessage}`, { cause: error });
     }
+}
+
+/** A reindex that stopped before the delete: the index still has every document, and the answer says so */
+function leftAsItIs(what: string, explained: string, upstream: AppError | undefined, cause: unknown): AppError {
+    return new AppError(scrub(`${what}, so it was left as it is: ${explained}`), {
+        code: 'REINDEX_FAILED',
+        status: upstream?.status ?? 502,
+        ...(upstream?.hint && { hint: upstream.hint }),
+        cause,
+    });
 }
 
 /**
