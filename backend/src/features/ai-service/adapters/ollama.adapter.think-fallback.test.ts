@@ -1,0 +1,69 @@
+// src/features/ai-service/adapters/ollama.adapter.think-fallback.test.ts
+
+/**
+ * A model with a reasoning level that can't think (Ollama answers 400 "<model> does not
+ * support thinking", seen with qwen2.5:14b on Ollama 0.40) is asked again once without
+ * one, so the call works; a warning, once per model, says to clear the setting.
+ */
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+
+import { OllamaAdapter } from './ollama.adapter';
+
+const config = (modelKey: string) => ({
+  baseUrl: 'http://host', apiKey: '', modelKey, timeout: 5000, settings: {}, capabilities: { reasoningEffort: 'low' },
+});
+const request = { messages: [{ role: 'user' as const, content: 'hi' }] };
+const reply = { model: 'm', message: { role: 'assistant', content: 'ok' }, done: true, prompt_eval_count: 1, eval_count: 1 };
+const refusal = (model: string) => new Response(JSON.stringify({ error: `"${model}" does not support thinking` }), { status: 400 });
+
+/** Ollama refusing think, then answering without it; the bodies it was sent */
+function ollamaWithoutThinking(model: string, answer: () => Response) {
+  const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
+    'think' in JSON.parse(init.body as string) ? refusal(model) : answer());
+  vi.stubGlobal('fetch', fetchMock);
+  return () => fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string));
+}
+
+afterEach(() => { vi.unstubAllGlobals(); logs.length = 0; });
+
+describe('an Ollama model that does not support thinking', () => {
+  it('answers a chat once asked again without the reasoning level, with one warning per model', async () => {
+    const sent = ollamaWithoutThinking('qwen2.5:14b', () => new Response(JSON.stringify(reply)));
+
+    const first = await new OllamaAdapter().chat(request, config('qwen2.5:14b'));
+    await new OllamaAdapter().chat(request, config('qwen2.5:14b'));
+
+    expect(first.message.content).toBe('ok');
+    expect(sent().map((body) => body.think)).toEqual(['low', undefined, 'low', undefined]);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ model: 'qwen2.5:14b' }) })]);
+  });
+
+  it('streams a chat once asked again without the reasoning level', async () => {
+    ollamaWithoutThinking('llama3.1:8b', () => new Response(JSON.stringify({ ...reply, done_reason: 'stop' }) + '\n'));
+    let text = '';
+    for await (const chunk of new OllamaAdapter().streamChat(request, config('llama3.1:8b'))) text += chunk.content ?? '';
+    expect(text).toBe('ok');
+  });
+
+  it('answers a text generation once asked again without the reasoning level', async () => {
+    ollamaWithoutThinking('mistral:7b', () => new Response(JSON.stringify({ model: 'm', response: 'ok', done: true })));
+    const result = await new OllamaAdapter().generateText({ prompt: 'hi' }, config('mistral:7b'));
+    expect(result.text).toBe('ok');
+  });
+});
+
+describe('another 400 from Ollama', () => {
+  it('is not asked again', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'model "nope" not found' }), { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(new OllamaAdapter().chat(request, config('nope'))).rejects.toThrow('not found');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+});

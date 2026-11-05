@@ -26,6 +26,10 @@ import type {
 import { estimateChatUsage } from '../utils/token-counter';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal } from './types';
 
+import { createLogger } from '@/shared/logger/logger';
+
+const logger = createLogger('ollama-adapter');
+
 /**
  * Ollama's structured-output `format` field. Ollama 0.5+ accepts a full JSON
  * Schema object (constrained decoding); older versions accept the string "json"
@@ -50,6 +54,29 @@ function toOllamaFormat(responseFormat?: ResponseFormat): OllamaFormat | undefin
 
 /** Ollama's `think`: on/off, or a level for models that take one (gpt-oss). */
 type OllamaThink = boolean | 'low' | 'medium' | 'high';
+
+/** Models already reported as not thinking, so the warning is logged once per model */
+const warnedNoThinking = new Set<string>();
+
+/**
+ * Send a request, and when the model has a reasoning level but can't think (Ollama answers
+ * 400 "<model> does not support thinking"), send it once more without one: the call works,
+ * and a warning says to clear the setting.
+ */
+async function withThinkFallback<B extends { model: string; think?: OllamaThink }, T>(body: B, send: (body: B) => Promise<T>): Promise<T> {
+    try {
+        return await send(body);
+    } catch (error) {
+        const refused = error instanceof AdapterError && error.statusCode === 400 && /does not support thinking/i.test(error.message);
+        if (!refused || body.think === undefined) throw error;
+        if (!warnedNoThinking.has(body.model)) {
+            warnedNoThinking.add(body.model);
+            logger.warn('Ollama model does not support thinking; sent without its reasoning level', { model: body.model, think: body.think });
+        }
+        const { think: _think, ...withoutThink } = body;
+        return send(withoutThink as B);
+    }
+}
 
 /** The model's configured reasoning effort as Ollama's `think`, when one is set. */
 function thinkOf(config: AdapterConfig): { think?: OllamaThink } {
@@ -175,11 +202,11 @@ export class OllamaAdapter implements AIProviderAdapter {
             ...thinkOf(config),
         };
 
-        const response = await this.makeRequest<OllamaGenerateResponse>(
+        const response = await withThinkFallback(ollamaRequest, (body) => this.makeRequest<OllamaGenerateResponse>(
             `${config.baseUrl}/api/generate`,
-            ollamaRequest,
+            body,
             config
-        );
+        ));
 
         const usage = this.extractUsage(response);
 
@@ -226,11 +253,11 @@ export class OllamaAdapter implements AIProviderAdapter {
             ...thinkOf(config),
         };
 
-        const response = await this.makeRequest<OllamaChatResponse>(
+        const response = await withThinkFallback(ollamaRequest, (body) => this.makeRequest<OllamaChatResponse>(
             `${config.baseUrl}/api/chat`,
-            ollamaRequest,
+            body,
             config
-        );
+        ));
 
         const usage = this.extractUsageFromChat(response);
 
@@ -267,12 +294,12 @@ export class OllamaAdapter implements AIProviderAdapter {
             ...thinkOf(config),
         };
 
-        const response = await this.makeStreamRequest(
+        const response = await withThinkFallback(ollamaRequest, (body) => this.makeStreamRequest(
             `${config.baseUrl}/api/chat`,
-            ollamaRequest,
+            body,
             config,
             request.signal
-        );
+        ));
 
         let fullContent = '';
         let lastChunk: OllamaChatResponse | null = null;
