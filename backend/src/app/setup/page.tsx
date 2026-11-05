@@ -53,58 +53,10 @@ import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shar
 import { sameOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
 import { reportActionError } from '@/shared/activity/report';
-import { errorText, handleApiResponse, toApiError } from '@/shared/api/api-error';
-
-interface ProviderView {
-  key: string;
-  label: string;
-  tagline?: string;
-  authType: 'none' | 'api_key';
-  requiredModels: string[];
-  defaultBaseUrl?: string;
-  defaults: { chatModel: string; textModel: string; embeddingModel: string };
-  inCatalog: boolean;
-  ready: boolean;
-  hasStoredKey?: boolean;
-  baseUrl?: string;
-  reachable?: boolean;
-  pulledModels?: string[];
-  pulledChatModels?: string[];
-  pulledEmbeddingModels?: string[];
-  missingModels?: string[];
-}
-
-interface DemoStatus {
-  seeded: boolean;
-  seededAt: string | null;
-  seededProvider: string | null;
-  providers: { recommended: string; options: ProviderView[] };
-  manifest: {
-    name: string;
-    indexName: string;
-    documents: number;
-    fields: number;
-    searchExperienceSlug: string;
-    chatExperienceSlug: string;
-    warmupEnabled: boolean;
-  };
-}
-
-interface SeedResult {
-  action: string;
-  skipped?: boolean;
-  reason?: string;
-  provider?: string;
-  index?: { name: string; documents: number; embeddings: number };
-  searchExperience?: { slug: string; accessToken: string };
-  chatExperience?: { slug: string; accessToken: string };
-  warmup?: { searchesRun: number; chatTurnsRun: number; analyticsChatTurnsRun: number };
-  deleted?: string[];
-}
+import { errorText } from '@/shared/api/api-error';
+import { loadDemoStatus, resetDemo, startDemoSeed, type DemoStatus, type ProviderView, type SeedResult } from './_lib/demo-setup-api';
 
 type StepState = 'pending' | 'active' | 'done';
-
-const ENDPOINT = '/api/admin/setup-demo';
 
 const STEP_ICON: Record<DemoStepId, LucideIcon> = {
   provider: Bot,
@@ -138,8 +90,7 @@ export default function SetupDemoPage() {
   async function loadStatus(ollamaBaseUrl?: string) {
     let data: DemoStatus;
     try {
-      const url = ollamaBaseUrl ? `${ENDPOINT}?ollamaBaseUrl=${encodeURIComponent(ollamaBaseUrl)}` : ENDPOINT;
-      data = await handleApiResponse<DemoStatus>(await fetch(url));
+      data = await loadDemoStatus(ollamaBaseUrl);
     } catch (e) {
       // A URL the server won't check says why, and so does a status that couldn't be loaded
       reportActionError(ollamaBaseUrl ? 'Check Ollama' : 'Load demo setup', e);
@@ -245,16 +196,7 @@ export default function SetupDemoPage() {
     if (chatModel) body.chatModel = chatModel;
     if (embeddingModel) body.embeddingModel = embeddingModel;
 
-    const res = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) throw await toApiError(res, 'Setup failed');
-    if (!res.body) throw new Error('No response body');
-
-    const reader = res.body.getReader();
+    const reader = (await startDemoSeed(body)).getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -296,12 +238,7 @@ export default function SetupDemoPage() {
       if (action === 'seed') {
         await streamSeed(force);
       } else {
-        const res = await fetch(ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reset' }),
-        });
-        setResult(await handleApiResponse<SeedResult>(res, 'Reset failed'));
+        setResult(await resetDemo());
         setStepStates({});
         setStepDetails({});
         await loadStatus();

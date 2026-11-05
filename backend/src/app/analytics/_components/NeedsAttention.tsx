@@ -18,6 +18,7 @@ import { useCallback, useState } from 'react';
 
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { useAskPanel } from '../_lib/AskPanelContext';
+import { refreshInsights } from '../_lib/insights-api';
 import {
   fetchAnalytics,
   insightsRangeFor,
@@ -32,7 +33,6 @@ import { formatTimeAgo } from './viz';
 
 import { cn } from '@/lib/utils';
 import { reportActionError } from '@/shared/activity/report';
-import { toApiError } from '@/shared/api/api-error';
 import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
@@ -69,27 +69,9 @@ export function useRefreshInsights(experienceId: string | undefined, onDone: () 
   const refresh = useCallback(async () => {
     setIsProcessing(true);
     try {
-      const res = await fetch('/api/analytics/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ triggeredBy: 'admin', experienceId }),
-      });
-
-      // 409: already running; the status poll picks it up
-      if (res.ok) {
-        // Read the SSE progress stream until processing finishes
-        const reader = res.body?.getReader();
-        const decoder = new TextDecoder();
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (decoder.decode(value).includes('[DONE]')) break;
-          }
-        }
-      } else if (res.status !== 409) {
-        reportActionError('Refresh insights', await toApiError(res, 'Failed to refresh insights'));
-      }
+      await refreshInsights(experienceId);
+    } catch (error) {
+      reportActionError('Refresh insights', error);
     } finally {
       setIsProcessing(false);
       onDone();

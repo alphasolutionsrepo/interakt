@@ -12,10 +12,11 @@ import { useProcessingStatus, useRefreshInsights } from '../_components/NeedsAtt
 import { formatTimeAgo } from '../_components/viz';
 import { fetchAnalytics } from '../_lib/hooks/useAnalytics';
 import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
-import { jobsApi, type ScheduleRecord } from '@/app/jobs/_lib/api-client';
+import { clearAnalyticsData, INSIGHTS_QUEUE, loadInsightsSchedule } from '../_lib/insights-api';
+import { jobsApi } from '@/app/jobs/_lib/api-client';
 
 import { reportActionError } from '@/shared/activity/report';
-import { ApiError, errorText, handleApiResponse } from '@/shared/api/api-error';
+import { errorText } from '@/shared/api/api-error';
 import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
@@ -34,7 +35,6 @@ import {
 // DATA
 // ============================================================================
 
-const INSIGHTS_QUEUE = 'refresh-insights';
 /** Matches the default the server sets at startup (job-registry.ts) */
 const NIGHTLY_CRON = '0 2 * * *';
 
@@ -42,14 +42,7 @@ const NIGHTLY_CRON = '0 2 * * *';
 function useInsightsSchedule() {
   return useQuery({
     queryKey: ['analytics', 'settings', 'schedule'],
-    queryFn: async (): Promise<ScheduleRecord | null | 'forbidden'> => {
-      try {
-        return (await jobsApi.getSchedules()).find((s) => s.name === INSIGHTS_QUEUE) ?? null;
-      } catch (error) {
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return 'forbidden';
-        throw error;
-      }
-    },
+    queryFn: loadInsightsSchedule,
     staleTime: 60000,
   });
 }
@@ -277,14 +270,7 @@ function DataCard() {
   const clearData = async () => {
     setIsClearing(true);
     try {
-      await handleApiResponse(
-        await fetch('/api/analytics/data', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scope: 'all', experienceId }),
-        }),
-        'Failed to clear analytics data',
-      );
+      await clearAnalyticsData(experienceId);
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
     } catch (error) {
       reportActionError('Clear analytics data', error);

@@ -1,4 +1,4 @@
-// features/embed/fetch-embed-snippet.ts
+// shared/ui/custom/fetch-embed-snippet.ts
 
 /**
  * The embed snippet the API serves for an experience (GET /api/v1/embed-snippet), as
@@ -6,7 +6,7 @@
  * access token, not the admin session.
  */
 
-import type { Widget } from './build-snippet';
+import type { Widget } from '@/features/embed/build-snippet';
 
 import { handleApiResponse } from '@/shared/api/api-error';
 

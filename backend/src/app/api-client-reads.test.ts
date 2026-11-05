@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { aiExperiencesApi } from './ai-experiences/_lib/api-client';
 import { loadExperienceOptions } from './analytics/_lib/experience-options';
+import { clearAnalyticsData, loadInsightsSchedule, refreshInsights } from './analytics/_lib/insights-api';
 import { fetchAnalytics } from './analytics/_lib/hooks/useAnalytics';
 import { fetchChatSession, fetchChatSessions } from './analytics/_lib/hooks/useAnalyticsChat';
 import { tracesApi } from './analytics/traces/_lib/api-client';
@@ -23,10 +24,12 @@ import { aiServiceApi } from './playground/ai-service/_lib/api-client';
 import { searchExperiencesApi } from './search-experiences/_lib/api-client';
 import { secretsApi } from './secrets/_lib/api-client';
 import { globalSearchSettingsApi } from './settings/search/_lib/api-client';
+import { loadDemoStatus, resetDemo, startDemoSeed } from './setup/_lib/demo-setup-api';
 import { toolsApi } from './tools/_lib/api-client';
 
-import { fetchEmbedSnippet } from '@/features/embed/fetch-embed-snippet';
+import { fetchEmbedSnippet } from '@/shared/ui/custom/fetch-embed-snippet';
 import { DocsSearchUnavailableError, loadDocList, searchDocs } from '@/shared/help/docs-search';
+import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
 import { answerWith, apiErrorResponse, apiSuccess, expectApiError, expectGatewayError, gatewayErrorPage } from '@/shared/test/api-responses';
 import { providerChoicesQuery, resolvedDefaultsQuery } from '@/shared/ui/custom/provider-model-queries';
 
@@ -63,6 +66,12 @@ const READS: Array<[string, () => Promise<unknown>, () => Response, unknown]> = 
   ['AI providers to pick from', () => providerChoicesQuery.queryFn(), () => apiSuccess({ providers: [item] }), { providers: [item] }],
   ['the system default model', () => resolvedDefaultsQuery.queryFn(), () => apiSuccess({ chat: { providerKey: 'ollama' } }), { chat: { providerKey: 'ollama' } }],
   ['the embed snippet', () => fetchEmbedSnippet('token', undefined), () => apiSuccess({ html: '<script>' }), { html: '<script>' }],
+  ['the insights schedule', () => loadInsightsSchedule(), () => apiSuccess([{ name: 'other' }, { name: 'refresh-insights', cron: '0 2 * * *' }]), { name: 'refresh-insights', cron: '0 2 * * *' }],
+  ['an insights refresh', () => refreshInsights(undefined), () => new Response('data: {"step":"done"}\n\ndata: [DONE]\n\n', { status: 200 }), undefined],
+  ['clearing analytics data', () => clearAnalyticsData('e1'), () => apiSuccess({ deleted: 3 }), undefined],
+  ['the demo status', () => loadDemoStatus(), () => apiSuccess({ seeded: false }), { seeded: false }],
+  ['a demo reset', () => resetDemo(), () => apiSuccess({ action: 'reset', deleted: ['index'] }), { action: 'reset', deleted: ['index'] }],
+  ['a help article', () => loadHelpDoc('concepts/tools'), () => new Response(JSON.stringify({ title: 'Tools', content: '# Tools' }), { status: 200 }), { title: 'Tools', content: '# Tools' }],
 ];
 
 describe.each(READS)('%s', (_name, call, success, expected) => {
@@ -142,5 +151,84 @@ describe('docs search', () => {
     await expectGatewayError(loadDocList());
     answerWith(() => new Response(JSON.stringify({ root: [{ slug: 'intro', title: 'Intro' }], groups: [] }), { status: 200 }));
     expect(await loadDocList()).toEqual([{ slug: 'intro', title: 'Intro', group: 'Overview' }]);
+  });
+});
+
+describe('the embed snippet request', () => {
+  it("sends the experience's access token, not the admin session, and the container asked for", async () => {
+    const fetchStub = answerWith(() => apiSuccess({ html: '<script>' }));
+    await fetchEmbedSnippet('tok-1', 'search-here');
+    await fetchEmbedSnippet('tok-1', undefined);
+    expect(fetchStub.mock.calls.map(([url]) => url)).toEqual(['/api/v1/embed-snippet?containerId=search-here', '/api/v1/embed-snippet']);
+    expect(fetchStub.mock.calls[0][1]).toMatchObject({ method: 'GET', headers: { 'X-Access-Token': 'tok-1' }, credentials: 'omit' });
+  });
+});
+
+describe('the analytics experience list request', () => {
+  it('asks for up to 100 of each kind of experience', async () => {
+    const fetchStub = answerWith(() => apiSuccess([], { pagination: page }));
+    await loadExperienceOptions();
+    expect(fetchStub.mock.calls.map(([url]) => url).sort()).toEqual(['/api/ai-experiences?page=1&pageSize=100', '/api/search-experiences?pageSize=100']);
+  });
+});
+
+describe('the insights schedule', () => {
+  it.each([401, 403])('is hidden from a viewer who may not see schedules (%i)', async (status) => {
+    answerWith(() => apiErrorResponse(status));
+    expect(await loadInsightsSchedule()).toBe('forbidden');
+  });
+
+  it('is null when nothing refreshes insights', async () => {
+    answerWith(() => apiSuccess([{ name: 'other' }]));
+    expect(await loadInsightsSchedule()).toBeNull();
+  });
+});
+
+describe('an insights refresh', () => {
+  it('already running (409) is left to the status poll', async () => {
+    answerWith(() => apiErrorResponse(409));
+    await expect(refreshInsights('e1')).resolves.toBeUndefined();
+  });
+
+  it('asks for the experience on screen', async () => {
+    const fetchStub = answerWith(() => new Response('data: [DONE]\n\n', { status: 200 }));
+    await refreshInsights('e1');
+    expect(JSON.parse(String(fetchStub.mock.calls[0][1]?.body))).toEqual({ triggeredBy: 'admin', experienceId: 'e1' });
+  });
+});
+
+describe('clearing analytics data', () => {
+  it('asks to clear everything for the experience on screen', async () => {
+    const fetchStub = answerWith(() => apiSuccess({ deleted: 3 }));
+    await clearAnalyticsData('e1');
+    expect(fetchStub.mock.calls[0][1]).toMatchObject({ method: 'DELETE', body: JSON.stringify({ scope: 'all', experienceId: 'e1' }) });
+  });
+});
+
+describe('demo setup', () => {
+  it('checks Ollama at the URL given', async () => {
+    const fetchStub = answerWith(() => apiSuccess({ seeded: false }));
+    await loadDemoStatus('http://localhost:11434');
+    expect(fetchStub.mock.calls[0][0]).toBe('/api/admin/setup-demo?ollamaBaseUrl=http%3A%2F%2Flocalhost%3A11434');
+  });
+
+  it('starts a setup and returns its progress stream, or says why it was refused', async () => {
+    answerWith(() => new Response('data: [DONE]\n\n', { status: 200 }));
+    expect(await startDemoSeed({ action: 'seed' })).toBeInstanceOf(ReadableStream);
+    answerWith(() => apiErrorResponse(400));
+    await expectApiError(startDemoSeed({ action: 'seed' }), 400);
+    answerWith(gatewayErrorPage);
+    await expectGatewayError(startDemoSeed({ action: 'seed' }));
+  });
+});
+
+describe('a help article that could not be loaded', () => {
+  it('is not available yet when missing, and says what failed otherwise', async () => {
+    answerWith(() => new Response(JSON.stringify({ error: 'Documentation not found' }), { status: 404 }));
+    expect(helpDocError(await loadHelpDoc('nope').catch((e: unknown) => e))).toBe("This article isn't available yet.");
+    answerWith(gatewayErrorPage);
+    expect(helpDocError(await loadHelpDoc('concepts/tools').catch((e: unknown) => e))).toBe('Failed to load the article (502)');
+    answerWith(() => apiErrorResponse(500));
+    expect(helpDocError(await loadHelpDoc('concepts/tools').catch((e: unknown) => e))).toBe('The index was not found. Pick another index.');
   });
 });

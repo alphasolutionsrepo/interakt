@@ -26,9 +26,9 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { ApiError, errorText, handleApiResponse } from '@/shared/api/api-error';
 import { DocBody } from '@/shared/help/DocBody';
 import type { DocsSearchHit } from '@/shared/help/docs-search';
+import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
 import { resolveHelpForPath } from '@/shared/help/help-content';
 import { OPEN_HELP_EVENT, type HelpMode, type OpenHelpDetail } from '@/shared/help/help-events';
 import { useDocsSearch } from '@/shared/help/useDocsSearch';
@@ -82,15 +82,13 @@ export function HelpButton() {
     }
     setDocs((d) => ({ ...d, [slug]: { title: slug, content: null, loading: true, error: null } }));
     try {
-      const data = await handleApiResponse<{ title: string; content: string }>(await fetch(`/api/help/${slug}`), 'Failed to load the article');
+      const data = await loadHelpDoc(slug);
       cache.current[slug] = { title: data.title, content: data.content };
       setDocs((d) => ({ ...d, [slug]: { title: data.title, content: data.content, loading: false, error: null } }));
     } catch (e) {
-      // A missing article is expected while the docs grow; anything else says what failed
-      const error = e instanceof ApiError && e.status === 404 ? "This article isn't available yet." : errorText(e, 'Failed to load the article');
       setDocs((d) => ({
         ...d,
-        [slug]: { title: 'Not available', content: null, loading: false, error },
+        [slug]: { title: 'Not available', content: null, loading: false, error: helpDocError(e) },
       }));
     }
   }, []);

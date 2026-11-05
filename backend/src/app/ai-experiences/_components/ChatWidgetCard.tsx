@@ -39,7 +39,7 @@ import {
   buildEmbedSnippet,
   type EmbedBrandingConfig,
 } from '@/features/embed/build-snippet';
-import { fetchEmbedSnippet, type EmbedSnippet } from '@/features/embed/fetch-embed-snippet';
+import { fetchEmbedSnippet, type EmbedSnippet } from '@/shared/ui/custom/fetch-embed-snippet';
 import { errorText } from '@/shared/api/api-error';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
 

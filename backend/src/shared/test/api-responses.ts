@@ -22,7 +22,7 @@ export const apiSuccess = (data: unknown, extra: Record<string, unknown> = {}, s
 
 /** Stub fetch to answer every call with a fresh copy of the response; returns the stub */
 export function answerWith(response: () => Response) {
-    const stub = vi.fn(async () => response());
+    const stub = vi.fn(async (_input: string, _init?: RequestInit) => response());
     vi.stubGlobal('fetch', stub);
     return stub;
 }
