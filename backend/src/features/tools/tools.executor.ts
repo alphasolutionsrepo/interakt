@@ -323,8 +323,18 @@ function getBackoffMs(attempt: number, config: ToolRetryConfig): number {
 
 const RETRYABLE_UPSTREAM = new Set(['UPSTREAM_UNAVAILABLE', 'UPSTREAM_TIMEOUT', 'UPSTREAM_RATE_LIMITED']);
 
+/** Whether error is, or wraps, the AI service refusing a call while its circuit breaker is open */
+function circuitOpen(error: unknown): boolean {
+  for (let e: unknown = error, i = 0; e instanceof Error && i < 5; e = (e as Error & { cause?: unknown }).cause, i++) {
+    if ((e as Error & { code?: unknown }).code === 'CIRCUIT_OPEN') return true;
+  }
+  return false;
+}
+
 function isRetryable(error: unknown, config: ToolRetryConfig): boolean {
   if (error instanceof ToolTimeoutError) return true;
+  // The circuit breaker has cut the provider off: another try fails the same way at once
+  if (circuitOpen(error)) return false;
 
   const message = error instanceof Error ? error.message : String(error);
 

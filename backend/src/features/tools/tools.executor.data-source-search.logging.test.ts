@@ -89,3 +89,25 @@ describe('a chat tool search the search service failed', () => {
     expect(search.searchById).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('a chat tool search the circuit breaker refused (semantic search, its embedding provider cut off)', () => {
+  it('is not retried: another try fails the same way at once', async () => {
+    const circuit = Object.assign(new Error('Circuit breaker is open - provider temporarily unavailable'), { name: 'AIServiceError', code: 'CIRCUIT_OPEN', providerKey: 'ollama' });
+    search.searchById.mockRejectedValue(new SearchError('Embedding failed', 'PROVIDER_ERROR', {}, { cause: circuit }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a chat tool search on a managed Azure AI Search index that could not be reached', () => {
+  it('is retried', async () => {
+    const unreachable = Object.assign(new Error('getaddrinfo ENOTFOUND shop.search.windows.net'), { name: 'RestError', code: 'ENOTFOUND' });
+    search.searchById.mockRejectedValue(new SearchError('', 'PROVIDER_ERROR', {}, { cause: unreachable }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(2);
+  });
+});
