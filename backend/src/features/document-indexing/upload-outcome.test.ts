@@ -42,6 +42,13 @@ describe('uploadOutcome', () => {
         expect(outcome.error?.message).toContain('flood-stage');
     });
 
+    it('explains a partial upload whose later batch failed as a whole, from that error', () => {
+        // The client's error for a host with several addresses (localhost) has no message
+        const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        const outcome = uploadOutcome({ ...result(500, 500, Array(500).fill('')), writeError: down }, startedAt);
+        expect(outcome).toMatchObject({ status: 'partial', summary: "500 of 1000 documents indexed, 500 failed: Elasticsearch couldn't be reached." });
+    });
+
     it('explains a write that failed as a whole, from the error itself (the cluster is down)', () => {
         const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
         const outcome = uploadOutcome({ ...result(0, 2, ['', '']), writeError: down }, startedAt, 'upload.json');

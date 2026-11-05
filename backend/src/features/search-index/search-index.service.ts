@@ -1232,13 +1232,15 @@ export function reindexWriteFailure(
 
 /** How a reindex that finished ended: some documents failing to write back is partial */
 export function reindexOutcome(
-    written: { indexed: number; failed: number; firstError?: string },
+    written: { indexed: number; failed: number; firstError?: string; writeError?: unknown },
     startedAt: string
 ): IndexLastJob {
     const base = { kind: 'reindex' as const, startedAt, finishedAt: new Date().toISOString() };
     if (written.failed === 0) return { ...base, status: 'succeeded', summary: `${written.indexed} documents reindexed` };
     const total = written.indexed + written.failed;
-    const reason = written.firstError ? `: ${written.firstError}` : '';
+    // A batch that failed as a whole is explained from its error, as a failed reindex is
+    const why = explainWriteFailure(written.writeError, written.firstError).reason;
+    const reason = why ? `: ${why}` : '';
     return { ...base, status: 'partial', summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`) };
 }
 

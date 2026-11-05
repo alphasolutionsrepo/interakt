@@ -25,10 +25,12 @@ export function uploadOutcome(
     if (result.indexedDocuments > 0) {
         const indexed = `${result.indexedDocuments} of ${result.totalDocuments} documents indexed${from}`;
         if (result.failedDocuments === 0) return { ...base, status: 'succeeded', summary: indexed };
+        // A batch that failed as a whole is explained from its error, as a failed upload is
+        const why = explainWriteFailure(result.writeError, reason).reason;
         return {
             ...base,
             status: 'partial',
-            summary: scrub(`${indexed}, ${result.failedDocuments} failed${reason ? `: ${reason}` : ''}`),
+            summary: scrub(`${indexed}, ${result.failedDocuments} failed${why ? `: ${why}` : ''}`),
         };
     }
     // A write that failed as a whole is explained from its error (the search service

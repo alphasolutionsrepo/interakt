@@ -2,6 +2,7 @@
 
 /** How a reindex ended: some documents failing to write back is partial, with why */
 
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, expect, it } from 'vitest';
 
 import { reindexOutcome, reindexWriteFailure } from './search-index.service';
@@ -11,6 +12,14 @@ const startedAt = '2026-11-02T10:00:00.000Z';
 describe('reindexOutcome', () => {
     it('succeeds when every document was written back', () => {
         expect(reindexOutcome({ indexed: 7, failed: 0 }, startedAt)).toMatchObject({ kind: 'reindex', status: 'succeeded', summary: '7 documents reindexed' });
+    });
+
+    it('explains a partial reindex whose later batch failed as a whole, from that error', () => {
+        const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        expect(reindexOutcome({ indexed: 5, failed: 2, firstError: '', writeError: down }, startedAt)).toMatchObject({
+            status: 'partial',
+            summary: "5 of 7 documents reindexed, 2 failed: Elasticsearch couldn't be reached.",
+        });
     });
 
     it('is partial when some documents failed, with how many and the first reason', () => {
