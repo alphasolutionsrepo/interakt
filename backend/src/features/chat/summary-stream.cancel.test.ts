@@ -84,10 +84,15 @@ describe('cancelling a summary', () => {
     for (let r = await reader.read(); !r.done; r = await reader.read()) events.push(new TextDecoder().decode(r.value));
     await span.settled;
 
-    expect(events.join('')).toContain('"type":"error"');
-    // Logged once, by the shared error path, with the experience it failed for
+    const line = events.join('').split('\n').find((l) => l.includes('"type":"error"'))!;
+    const event = JSON.parse(line.slice('data: '.length));
+    // Logged once, by the shared error path, with the operation, the experience it failed
+    // for and the request id the visitor's error shows
     expect(log.error).toHaveBeenCalledTimes(1);
-    expect(log.error).toHaveBeenCalledWith('Request failed', expect.any(Error), expect.objectContaining({ experienceId: 'exp-1' }));
+    expect(log.error).toHaveBeenCalledWith('Request failed', expect.any(Error), expect.objectContaining({
+      operation: 'summaryStream', experienceId: 'exp-1', requestId: event.requestId,
+    }));
+    expect(event.requestId).toEqual(expect.any(String));
   });
 
   it('aborts the model request when the visitor leaves before the first word', async () => {

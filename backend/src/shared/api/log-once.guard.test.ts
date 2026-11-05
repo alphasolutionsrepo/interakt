@@ -52,11 +52,13 @@ function contains(node: ts.Node, match: (n: ts.Node) => boolean): boolean {
   return found;
 }
 
-/** The statement is a log call, or returns or is an answer through apiResponse */
+/**
+ * The statement is a log call, or answers through apiResponse: directly, wrapped
+ * (withCors(apiResponse.error(...))), or in the if that follows the log line
+ */
 const isLogStatement = (s: ts.Statement) => ts.isExpressionStatement(s) && logsFailure(s.expression, ['error', 'warn', 'info']);
 const isAnswer = (s: ts.Statement) =>
-  (ts.isReturnStatement(s) && !!s.expression && answersFailure(s.expression)) ||
-  (ts.isExpressionStatement(s) && contains(s, answersFailure));
+  (ts.isReturnStatement(s) || ts.isExpressionStatement(s) || ts.isIfStatement(s)) && contains(s, answersFailure);
 
 /** The name a catch gives the failure it handles (catch (e), .catch((e) => ...)) */
 function failureOf(node: ts.Node): string | undefined {
@@ -187,6 +189,8 @@ describe('the scanner', () => {
     ['a helper that logs and answers', `function mapError(e: unknown) {\n  if (a) return apiResponse.notFound('m');\n  logger.error('x', e as Error);\n  return apiResponse.error(e);\n}`],
     ['the failure logged in a catch inside', `try { a(); } catch (e) {\n  try { await rollback(); } catch (r) { logger.error('write failed', e); }\n  return apiResponse.error(e, undefined, { operation: 'x' });\n}`],
     ['an info line before the answer', `function f(e: unknown) {\n  logger.info('blocked');\n  return apiResponse.refused(e, r);\n}`],
+    ['a wrapped answer after the log line', `function f(e: unknown) {\n  logger.warn('x', { e });\n  return withCors(apiResponse.error(e, undefined, { operation: 'x' }), exp, origin);\n}`],
+    ['an if that answers after the log line', `function f(e: unknown) {\n  logger.error('x', e as Error);\n  if (isGone(e)) return apiResponse.refused(e, 'NOT_FOUND', { operation: 'x' });\n  return apiResponse.error(e, undefined, { operation: 'x' });\n}`],
   ])('finds %s', (_shape, source) => {
     expect(loggedTwice(source)).not.toEqual([]);
   });

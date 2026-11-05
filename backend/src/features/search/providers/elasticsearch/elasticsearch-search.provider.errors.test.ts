@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SearchError } from '../../search.types';
 
+import { describeError } from '@/shared/api/response';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -123,6 +124,11 @@ describe('Elasticsearch search failures', () => {
             connectionRefused.error = error;
             const thrown = await search({});
             expect(thrown).toMatchObject({ code: 'PROVIDER_ERROR', cause: error });
+            // A server-side failure: visitors get the plain public message, without details;
+            // the message admins see doesn't name the index either (the details do)
+            const { status, body } = describeError(thrown);
+            expect(status).toBeGreaterThanOrEqual(500);
+            expect(body.message).not.toContain('products');
         });
 
         it.each([
