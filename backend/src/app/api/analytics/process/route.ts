@@ -13,6 +13,7 @@ import {
   getProcessingStatus,
 } from '@/features/analytics/analytics-processing.service';
 import type { TimeRange } from '@/features/analytics/analytics-query.service';
+import { apiResponse, describeError } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('api-analytics-process');
@@ -130,9 +131,8 @@ export async function POST(request: NextRequest) {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          logger.error('Processing stream error', { error: errorMessage });
-          emit({ type: 'error', error: errorMessage });
+          // The same body an error response has, with the request id; describeError logs it
+          emit({ type: 'error', ...describeError(error, 500, { operation: 'runAnalyticsProcessing' }).body });
           controller.close();
         }
       },
@@ -146,14 +146,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    logger.error('Failed to start processing', { error });
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'startAnalyticsProcessing' });
   }
 }
 
@@ -170,13 +163,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: status });
   } catch (error) {
-    logger.error('Failed to get processing status', { error });
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'getAnalyticsProcessingStatus' });
   }
 }

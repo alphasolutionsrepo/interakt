@@ -8,11 +8,16 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ConflictError } from '@/shared/errors/app-error';
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
 const { getSession, executeAnalyticsTool } = vi.hoisted(() => ({
   getSession: vi.fn(),
   executeAnalyticsTool: vi.fn(),
 }));
 
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/db/index', () => ({
   db: {
     select: () => {
@@ -67,6 +72,9 @@ describe('conversation scope', () => {
 
     expect(result.success).toBe(false);
     expect(result.summary).toMatch(/This conversation is about "Experience A"/);
+    // A refusal: the chat answers with this message, not a server failure
+    expect(result.error).toBeInstanceOf(ConflictError);
+    expect((result.error as Error).message).toBe(result.summary);
   });
 
   it('refuses to continue an all-experiences conversation for a single experience', async () => {
@@ -82,6 +90,19 @@ describe('conversation scope', () => {
     const result = await assembleAnalyticsContext({ userMessage: 'hi', sessionId: 'session-1', experienceId: EXP_B });
 
     expect(result.success).toBe(true);
+  });
+});
+
+describe('a conversation whose session fails to load', () => {
+  it('passes the error on for the pipeline to answer and log once, without logging it here', async () => {
+    logs.length = 0;
+    const down = new Error('connect ECONNREFUSED 127.0.0.1:5432');
+    getSession.mockRejectedValueOnce(down);
+
+    const result = await assembleAnalyticsContext({ userMessage: 'How many searches?', sessionId: 'session-1' });
+
+    expect(result).toMatchObject({ success: false, error: down });
+    expect(reported(logs)).toEqual([]);
   });
 });
 

@@ -11,9 +11,7 @@ import {
   clearAnalyticsData,
   type CleanupScope,
 } from '@/features/analytics/analytics-data-management.service';
-import { createLogger } from '@/shared/logger/logger';
-
-const logger = createLogger('api-analytics-data');
+import { apiResponse } from '@/shared/api/response';
 
 const VALID_SCOPES: CleanupScope[] = ['all', 'insights', 'spans', 'events', 'sessions'];
 
@@ -39,10 +37,6 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
-    logger.error('Failed to clear analytics data', { error });
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'clearAnalyticsData' });
   }
 }

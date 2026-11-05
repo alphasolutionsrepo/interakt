@@ -17,9 +17,7 @@ import {
   countKnowledgeEntries,
   bulkCreateKnowledgeEntries,
 } from './domain-knowledge.service';
-import { createLogger } from '@/shared/logger/logger';
-
-const logger = createLogger('domain-knowledge-api');
+import { apiResponse } from '@/shared/api/response';
 
 // ============================================================================
 // TYPES
@@ -67,14 +65,7 @@ export async function handleListKnowledgeEntries(
       },
     });
   } catch (error) {
-    logger.error('Failed to list knowledge entries', error as Error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to list knowledge entries',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'listKnowledgeEntries' });
   }
 }
 
@@ -137,14 +128,7 @@ export async function handleCreateKnowledgeEntry(
       data: entry,
     });
   } catch (error) {
-    logger.error('Failed to create knowledge entry', error as Error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create knowledge entry',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'createKnowledgeEntry' });
   }
 }
 
@@ -180,14 +164,7 @@ export async function handleGetKnowledgeEntry(
       data: entry,
     });
   } catch (error) {
-    logger.error('Failed to get knowledge entry', error as Error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get knowledge entry',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'getKnowledgeEntry' });
   }
 }
 
@@ -218,25 +195,10 @@ export async function handleUpdateKnowledgeEntry(
       data: entry,
     });
   } catch (error) {
-    logger.error('Failed to update knowledge entry', error as Error);
-
     if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Knowledge entry not found',
-        },
-        { status: 404 }
-      );
+      return apiResponse.refused(error, { code: 'NOT_FOUND', message: 'Knowledge entry not found' }, { operation: 'updateKnowledgeEntry' });
     }
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update knowledge entry',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'updateKnowledgeEntry' });
   }
 }
 
@@ -258,13 +220,6 @@ export async function handleDeleteKnowledgeEntry(
       data: { deleted: true },
     });
   } catch (error) {
-    logger.error('Failed to delete knowledge entry', error as Error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete knowledge entry',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'deleteKnowledgeEntry' });
   }
 }

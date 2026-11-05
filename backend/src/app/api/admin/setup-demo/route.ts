@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import { getProviderByKey } from '@/features/ai-providers/ai-providers.service';
-import { apiResponse } from '@/shared/api/response';
+import { apiResponse, describeError } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { loadDemoManifest, seedDemo, resetDemo, runWarmup } from '@/shared/seeders/demo';
@@ -324,8 +324,8 @@ function streamSeed(
         safeEnqueue(encoder.encode('data: [DONE]\n\n'));
         safeClose();
       } catch (e) {
-        logger.error('setup-demo stream failed', e as Error);
-        emit({ type: 'error', error: (e as Error).message });
+        // The same body an error response has, with the request id; describeError logs it
+        emit({ type: 'error', ...describeError(e, 500, { operation: 'setupDemoStream' }).body });
         safeEnqueue(encoder.encode('data: [DONE]\n\n'));
         safeClose();
       }

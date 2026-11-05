@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
+import { apiResponse } from '@/shared/api/response';
 import {
   getAdminChatSession,
   updateAdminChatSession,
@@ -18,8 +18,6 @@ import {
   addAdminChatMessages,
   type AdminChatMessage,
 } from '@/features/analytics';
-
-const logger = createLogger('analytics-chat-session-api');
 
 // ============================================================================
 // SCHEMAS
@@ -84,12 +82,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       data: session,
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Failed to get chat session', err);
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'getAnalyticsChatSession' });
   }
 }
 
@@ -141,19 +134,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       data: session,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: `Invalid request body: ${error.message}` },
-        { status: 400 }
-      );
-    }
-
-    const err = error as Error;
-    logger.error('Failed to update chat session', err);
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
+    return apiResponse.error(error, 500, { operation: 'updateAnalyticsChatSession' });
   }
 }
 
@@ -179,11 +161,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       data: { deleted: true },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Failed to delete chat session', err);
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'deleteAnalyticsChatSession' });
   }
 }

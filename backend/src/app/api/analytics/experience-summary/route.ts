@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getExperienceSummaries } from '@/features/analytics/analytics-experience-summary.service';
 import type { TimeRange } from '@/features/analytics/analytics-query.service';
 import { PeriodError, readRequestedPeriod } from '@/features/analytics/analytics-period';
+import { apiResponse } from '@/shared/api/response';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,12 +17,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: summaries });
   } catch (error) {
-    if (error instanceof PeriodError) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
-    }
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    // The period the caller sent is wrong: its message says how
+    if (error instanceof PeriodError) return apiResponse.badRequest(error.message);
+    return apiResponse.error(error, 500, { operation: 'getExperienceSummaries' });
   }
 }

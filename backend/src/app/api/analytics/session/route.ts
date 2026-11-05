@@ -10,6 +10,7 @@ import {
 } from '@/features/analytics';
 import type { SessionType } from '@/features/analytics';
 import { clientIp } from '@/shared/api/client-ip';
+import { apiResponse } from '@/shared/api/response';
 
 // ============================================================================
 // SCHEMAS
@@ -69,12 +70,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: `Invalid request: ${error.message}` },
-        { status: 400 }
-      );
-    }
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return NextResponse.json(
       { success: false, error: 'Failed to create session' },
       { status: 500 }
@@ -98,12 +94,7 @@ export async function DELETE(request: NextRequest) {
       message: 'Session ended',
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: `Invalid request: ${error.message}` },
-        { status: 400 }
-      );
-    }
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return NextResponse.json(
       { success: false, error: 'Failed to end session' },
       { status: 500 }

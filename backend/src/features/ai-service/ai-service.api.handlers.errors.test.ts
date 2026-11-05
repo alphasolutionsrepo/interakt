@@ -69,15 +69,29 @@ describe('a failed AI Provider playground call', () => {
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, operation }) })]);
   });
 
-  it('a streamed chat that fails sends the error with a request id, logged once', async () => {
-    failWith.error = new Error('connect ECONNREFUSED 127.0.0.1:11434');
+  const streamError = async () => {
     const res = await handleChatStream(post('/api/ai-service/chat/stream', { messages: [{ role: 'user', content: 'hi' }] }));
-    const event = JSON.parse((await res.text()).split('\n').find((line) => line.startsWith('data: '))!.slice(6));
+    return JSON.parse((await res.text()).split('\n').find((line) => line.startsWith('data: '))!.slice(6));
+  };
 
-    expect(event).toMatchObject({ error: 'connect ECONNREFUSED 127.0.0.1:11434', requestId: expect.any(String) });
+  it('a streamed chat that fails sends the shared error body without the error text, with a request id, logged once', async () => {
+    failWith.error = new Error('connect ECONNREFUSED 127.0.0.1:11434');
+    const event = await streamError();
+
+    expect(event).toMatchObject({ code: 'INTERNAL_ERROR', requestId: expect.any(String) });
+    // The playground reads error; message is the same text
+    expect(event.error).toBe(event.message);
+    expect(JSON.stringify(event)).not.toContain('ECONNREFUSED');
     expect(reported(logs)).toEqual([expect.objectContaining({
       level: 'error', context: expect.objectContaining({ requestId: event.requestId, operation: 'chatStream', err: failWith.error }),
     })]);
+  });
+
+  it('a streamed chat that fails in a way we recognise sends its message and code', async () => {
+    failWith.error = new Error('Model "qwen9" not found');
+    const event = await streamError();
+
+    expect(event).toMatchObject({ error: 'Model "qwen9" not found', message: 'Model "qwen9" not found', code: 'NOT_FOUND', requestId: expect.any(String) });
   });
 
   it('a streamed chat that cannot start answers with the shared error and a request id, logged once', async () => {

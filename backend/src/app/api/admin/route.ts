@@ -17,6 +17,7 @@ import {
   verifyAllSeeding,
   getOverallSeedingStatus,
 } from '@/shared/seeders';
+import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
@@ -96,16 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    logger.error('Seeding API failed', error as Error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'runSeeding' });
   }
 }
 
@@ -165,16 +157,7 @@ export async function GET(request: NextRequest) {
     }
 
   } catch (error) {
-    logger.error('Seed status API failed', error as Error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'getSeedingStatus' });
   }
 }
 
@@ -259,15 +242,6 @@ export async function DELETE(request: NextRequest) {
     });
 
   } catch (error) {
-    logger.error('Seed registry clear failed', error as Error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'clearSeedRegistry' });
   }
 }
