@@ -16,9 +16,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import { getProviderByKey } from '@/features/ai-providers/ai-providers.service';
 import { apiResponse } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { loadDemoManifest, seedDemo, resetDemo, runWarmup } from '@/shared/seeders/demo';
 import type { DemoProviderOption, SeedProgressEvent, WarmupSummary } from '@/shared/seeders/demo';
+import { trustedOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { getRegistryEntry } from '@/shared/seeders/seed-registry.service';
 import { getCurrentUser } from '@/shared/utils/auth-utils';
 
@@ -192,12 +194,23 @@ async function buildProviderReadiness(
   }
 
   // Local provider (ollama): live-check reachability + pulled models.
-  const baseUrl =
-    ollamaBaseUrlOverride ||
-    (provider as { baseUrl?: string } | null)?.baseUrl ||
-    (option.baseUrlEnv ? process.env[option.baseUrlEnv] : undefined) ||
-    option.defaultBaseUrl ||
-    'http://localhost:11434';
+  const configured = [
+    (provider as { baseUrl?: string } | null)?.baseUrl,
+    option.baseUrlEnv ? process.env[option.baseUrlEnv] : undefined,
+    option.defaultBaseUrl,
+    'http://localhost:11434',
+  ];
+  let baseUrl = configured.find(Boolean)!;
+  if (ollamaBaseUrlOverride) {
+    const trusted = trustedOllamaUrl(ollamaBaseUrlOverride, configured);
+    if (!trusted) {
+      throw new AppError(
+        'Only a configured Ollama URL or Ollama on this machine can be checked here',
+        { code: 'BAD_REQUEST', status: 400, hint: 'Save the URL on the Ollama provider (AI Providers), then check again.' },
+      );
+    }
+    baseUrl = trusted;
+  }
   const check = await checkOllama(baseUrl, option.requiredModels);
   const pulledChatModels = filterChatModels(check.pulledModels, option.defaults.embeddingModel);
   const pulledEmbeddingModels = filterEmbeddingModels(check.pulledModels, option.defaults.embeddingModel);

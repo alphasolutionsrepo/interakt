@@ -51,6 +51,8 @@ import {
 import { StepProgress } from '@/components/ui/steps-progress';
 import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shared/seeders/demo/demo-steps';
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
+import { reportActionError } from '@/shared/activity/report';
+import { toApiError } from '@/shared/api/api-error';
 
 interface ProviderView {
   key: string;
@@ -136,8 +138,12 @@ export default function SetupDemoPage() {
     try {
       const url = ollamaBaseUrl ? `${ENDPOINT}?ollamaBaseUrl=${encodeURIComponent(ollamaBaseUrl)}` : ENDPOINT;
       const res = await fetch(url);
+      if (!res.ok) {
+        // A URL the server won't check says why; the first load stays best-effort
+        if (ollamaBaseUrl) reportActionError('Check Ollama', await toApiError(res));
+        return;
+      }
       const json = await res.json();
-      if (!res.ok) return;
       const data: DemoStatus = json.data ?? json;
       setStatus(data);
 
