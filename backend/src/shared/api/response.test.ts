@@ -70,6 +70,23 @@ describe('apiResponse.error', () => {
         expect(body.message).toBe('Azure AI Search rejected the credentials.');
     });
 
+    it('answers visitors a failure of our setup (a disabled AI provider) as the service being unavailable', async () => {
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
+        const handler = publicRoute(async () => apiResponse.error(disabled));
+        const response = await handler();
+        const body = await response.json();
+        expect(response.status).toBe(503);
+        expect(body.message).toBe(PUBLIC_FAILURE_MESSAGE);
+        expect(JSON.stringify(body)).not.toContain('openai');
+    });
+
+    it('still tells admins what is wrong with the setup', async () => {
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
+        const response = apiResponse.error(disabled);
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({ message: 'Provider is disabled: openai' });
+    });
+
     it('keeps the message of a public request the caller got wrong', async () => {
         const handler = publicRoute(async () => apiResponse.badRequest('query is required'));
         expect((await (await handler()).json()).message).toBe('query is required');

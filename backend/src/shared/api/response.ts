@@ -168,7 +168,10 @@ export function describeError(
 
     const appError = toAppError(err);
     const recognised = appError.code !== 'INTERNAL_ERROR';
-    const finalStatus = recognised ? appError.status : status;
+    // Our setup at fault (a disabled provider, a missing model) is the request's fault to an
+    // admin, but to a visitor or API client the service is unavailable
+    const ourSetup = appError.ourSide && appError.status < 500 && isPublicRequest();
+    const finalStatus = !recognised ? status : ourSetup ? 503 : appError.status;
     const message = recognised
         ? appError.message
         // The caller chose a 4xx for this error: its message is meant for the user
