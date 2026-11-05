@@ -18,6 +18,7 @@
  * are about how often aiService.chat is reached, which is the whole point.
  */
 
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { reported, type LogLine } from '@/shared/test/log-recorder';
@@ -40,6 +41,7 @@ vi.mock('@/features/search/search.service', () => ({
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as searchService from '@/features/search/search.service';
+import { SearchError } from '@/features/search/search.types';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
@@ -304,5 +306,25 @@ describe('loading a field’s values for the model', () => {
             expect.objectContaining({ query: '*' }),
             { triggerType: 'ai_step', triggerStep: 'query_interpretation' },
         );
+    });
+
+    it("logs an engine failure while loading them as an error, with the error, and carries on", async () => {
+        vi.mocked(searchIndexService.getSearchIndexById).mockResolvedValue(
+            { id: 'idx', fields: [...INDEX_FIELDS, { fieldName: 'colour', fieldType: 'keyword', isIndexed: true, isFacetable: true }] } as unknown as Awaited<
+                ReturnType<typeof searchIndexService.getSearchIndexById>
+            >,
+        );
+        // What the search service throws when Elasticsearch can't be reached
+        const down = new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', { meta: {} } as never) });
+        vi.mocked(searchService.searchById).mockRejectedValue(down);
+        logs.length = 0;
+
+        await applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId: freshIndexId(), aiConfig: aiConfig(), experienceId: 'exp-1',
+        });
+
+        expect(reported(logs).filter((l) => l.message === 'Failed to fetch facet values')).toEqual([
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ field: 'colour', err: down }) }),
+        ]);
     });
 });

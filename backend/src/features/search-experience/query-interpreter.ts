@@ -125,12 +125,9 @@ async function fetchFacetValues(searchIndexId: string, field: string): Promise<s
         return response.facets?.find(f => f.field === field)?.buckets.map(b => String(b.key)) ?? [];
     } catch (err) {
         // A field whose values cannot be listed is still filterable; the model just
-        // loses the vocabulary hint for it.
-        logger.warn('Failed to fetch facet values', {
-            searchIndexId,
-            field,
-            error: err instanceof Error ? err.message : 'Unknown error',
-        });
+        // loses the vocabulary hint for it. The search service passes the failure on, so
+        // this is its line: an error when the engine failed, so the outage still shows
+        logger[failureLevel(err, 'warn')]('Failed to fetch facet values', { searchIndexId, field, err });
         return [];
     }
 }
