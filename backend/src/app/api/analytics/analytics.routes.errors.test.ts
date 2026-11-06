@@ -26,6 +26,11 @@ vi.mock('@/features/analytics/analytics-processing.service', () => ({
   runAnalyticsProcessing: services.runAnalyticsProcessing,
   getProcessingStatus: services.getProcessingStatus,
 }));
+// The experiences with spans that processing everything goes on to process one by one
+const active = vi.hoisted(() => ({ experiences: [] as Array<{ experienceId: string }> }));
+vi.mock('@/db/index', () => ({
+  analyticsDB: { selectDistinct: () => ({ from: () => ({ where: () => ({ limit: async () => active.experiences }) }) }) },
+}));
 const sessions = vi.hoisted(() => ({ getOrCreateSession: vi.fn(), endSession: vi.fn() }));
 vi.mock('@/features/analytics', () => ({ ...sessions, generateSessionId: () => 'generated', hashIP: vi.fn() }));
 
@@ -40,7 +45,18 @@ const request = (path: string, method = 'GET', body?: unknown) =>
 
 beforeEach(() => {
   logs.length = 0;
+  active.experiences = [];
   vi.clearAllMocks();
+});
+
+/** A run that failed as the service returns it: the error's text, which is its SQL, on the run and its step */
+const failedRun = (cause: Error) => ({
+  runId: 'run-1',
+  status: 'failed',
+  steps: [{ step: 'fetch_spans_24h', status: 'failed', error: cause.message }],
+  durationMs: 5,
+  error: cause.message,
+  cause,
 });
 
 describe('an analytics request that fails on our side', () => {
@@ -81,6 +97,36 @@ describe('an analytics request that fails on our side', () => {
 
     expect(res.status).toBe(200);
     expectInternalFailure(await errorEvent(res), logs, 'runAnalyticsProcessing', down);
+  });
+
+  it('a processing run that returns failed sends the error event, with no SQL anywhere in the stream, logged once', async () => {
+    const down = failedQuery();
+    services.getProcessingStatus.mockResolvedValue({ currentRun: null });
+    services.runAnalyticsProcessing.mockResolvedValue(failedRun(down));
+
+    const res = await process(request('/process', 'POST', { experienceId: EXPERIENCE }));
+    const stream = await res.clone().text();
+
+    expect(stream).not.toMatch(/select|admin_chat_sessions|"complete"/);
+    expectInternalFailure(await errorEvent(res), logs, 'runAnalyticsProcessing', down);
+    expect(reported(logs)[0].context).toMatchObject({ runId: 'run-1' });
+  });
+
+  it('an experience whose run returns failed while processing everything is logged once as a warning, and the run completes', async () => {
+    const down = failedQuery();
+    active.experiences = [{ experienceId: EXPERIENCE }];
+    services.getProcessingStatus.mockResolvedValue({ currentRun: null });
+    services.runAnalyticsProcessing
+      .mockResolvedValueOnce({ runId: 'run-all', status: 'completed', steps: [], durationMs: 5 })
+      .mockResolvedValueOnce(failedRun(down));
+
+    const stream = await (await process(request('/process', 'POST', {}))).text();
+
+    expect(stream).toContain('"type":"complete"');
+    expect(stream).not.toMatch(/select|admin_chat_sessions/);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', message: 'Per-experience processing failed', context: expect.objectContaining({ experienceId: EXPERIENCE, err: down }) }),
+    ]);
   });
 });
 

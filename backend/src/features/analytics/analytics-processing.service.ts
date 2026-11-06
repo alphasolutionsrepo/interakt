@@ -45,6 +45,8 @@ export interface ProcessingResult {
   steps: ProcessingStep[];
   durationMs: number;
   error?: string;
+  /** Why a failed run failed, for the caller to log (the run is stored with its message only) */
+  cause?: unknown;
 }
 
 interface SpanData {
@@ -80,6 +82,7 @@ export async function runAnalyticsProcessing(
       steps: [],
       durationMs: Date.now() - startTime,
       error: 'Analytics DB not configured',
+      cause: new Error('Analytics DB not configured'),
     };
   }
 
@@ -392,9 +395,9 @@ export async function runAnalyticsProcessing(
 
     return { runId, status: 'completed', steps, durationMs };
   } catch (error) {
+    // Not logged here: the caller logs the failure once, with the cause returned below
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Analytics processing failed', { runId, error: errorMessage });
 
     // Mark failed steps
     for (const step of steps) {
@@ -420,6 +423,7 @@ export async function runAnalyticsProcessing(
       steps,
       durationMs: Date.now() - startTime,
       error: errorMessage,
+      cause: error,
     };
   }
 }

@@ -95,6 +95,11 @@ export async function POST(request: NextRequest) {
         function emit(msg: Record<string, unknown>) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(msg)}\n\n`));
         }
+        // The same body an error response has, with the request id; describeError logs it
+        function fail(error: unknown, runId?: string) {
+          emit({ type: 'error', ...describeError(error, 500, { operation: 'runAnalyticsProcessing', ...(runId && { runId }) }).body });
+          controller.close();
+        }
 
         try {
           emit({ type: 'status', message: 'Processing started' });
@@ -115,25 +120,29 @@ export async function POST(request: NextRequest) {
               emit({ type: 'status', message: `Processing ${expIds.length} experience(s)...` });
               for (const expId of expIds) {
                 try {
-                  await runAnalyticsProcessing({
+                  const expResult = await runAnalyticsProcessing({
                     experienceId: expId,
                     timeRanges: resolvedRanges,
                     triggeredBy,
                   });
+                  if (expResult.status === 'failed') {
+                    logger.warn('Per-experience processing failed', { experienceId: expId, runId: expResult.runId, err: expResult.cause });
+                  }
                 } catch (err) {
-                  logger.warn('Per-experience processing failed', { experienceId: expId, error: (err as Error).message });
+                  logger.warn('Per-experience processing failed', { experienceId: expId, err });
                 }
               }
             }
           }
 
+          // A failed run is returned, not thrown: its error (often SQL) stays in the log and the run history
+          if (result.status === 'failed') return fail(result.cause, result.runId);
+
           emit({ type: 'complete', result });
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {
-          // The same body an error response has, with the request id; describeError logs it
-          emit({ type: 'error', ...describeError(error, 500, { operation: 'runAnalyticsProcessing' }).body });
-          controller.close();
+          fail(error);
         }
       },
     });

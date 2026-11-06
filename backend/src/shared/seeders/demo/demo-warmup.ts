@@ -115,7 +115,9 @@ export async function runWarmup(
   await safeFlush();
   try {
     const { runAnalyticsProcessing } = await import('@/features/analytics/analytics-processing.service');
-    await runAnalyticsProcessing();
+    const result = await runAnalyticsProcessing();
+    // A failed run is returned, not thrown, and the service leaves logging it to us
+    if (result.status === 'failed') logger.warn('Analytics processing failed (non-fatal)', { err: result.cause });
   } catch (e) {
     logger.warn('Analytics processing failed (non-fatal)', { err: e });
   }
