@@ -45,6 +45,14 @@ describe('a partial reindex', () => {
         expect(hint).toBe('For large jobs, try fewer documents at a time. The 2 that failed are no longer in the index: upload them again.');
     });
 
+    it('the search service rate limited says to wait, then to upload the failed documents again', () => {
+        const busy = new esErrors.ResponseError({ body: { error: { type: 'es_rejected_execution_exception' } }, statusCode: 429, headers: {}, meta: {} as never, warnings: null });
+        const { hint } = reindexOutcome({ indexed: 5, failed: 2, writeError: busy }, startedAt);
+        expect(hint).toMatch(/^Wait a minute\. If it keeps happening, raise the rate limit/);
+        expect(hint).toMatch(/The 2 that failed are no longer in the index: upload them again\.$/);
+        expect(hint).not.toMatch(/try again/i);
+    });
+
     it('with a reason we don\'t recognise still says to upload the failed documents again', () => {
         expect(reindexOutcome({ indexed: 5, failed: 2, reason: 'mapper_parsing_exception: failed to parse field [price]' }, startedAt).hint)
             .toBe('The 2 that failed are no longer in the index: upload them again.');

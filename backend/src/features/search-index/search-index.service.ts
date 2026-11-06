@@ -1255,7 +1255,9 @@ export function reindexWriteFailure(
  * uploaded again. The service's own advice comes first, without its "try again".
  */
 function uploadAgain(hint: string | undefined, reupload: string): string {
-    return hint ? `${hint.replace(/,? then try again\.?$/, '.').replace(/^Try again\.\s*/, '')} ${reupload}`.trim() : reupload;
+    if (!hint) return reupload;
+    const advice = hint.replace(/^Try again\.\s*/, '').replace(/(,? then| and) try again\b/g, '');
+    return `${advice} ${reupload}`.trim();
 }
 
 /** How a reindex that finished ended: some documents failing to write back is partial */
