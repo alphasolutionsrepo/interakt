@@ -54,20 +54,60 @@ function toOllamaFormat(responseFormat?: ResponseFormat): OllamaFormat | undefin
 type OllamaThink = boolean | 'low' | 'medium' | 'high';
 
 /** The model's configured reasoning effort as Ollama's `think`, when one is set. */
-function thinkOf(config: AdapterConfig): { think?: OllamaThink } {
+async function thinkOf(config: AdapterConfig): Promise<{ think?: OllamaThink }> {
     const effort = config.capabilities?.reasoningEffort;
     if (effort === 'none') return { think: false };
     // Minimal is as little as possible: off on a model that only turns thinking on or off
     // (deepseek-r1, qwen3), where any level turns it on; low on gpt-oss, which takes levels
     // and ignores off (checked on Ollama 0.40: it reasons more with false than with low)
-    if (effort === 'minimal') return { think: /^gpt-oss/.test(config.modelKey) ? 'low' : false };
+    if (effort === 'minimal') return { think: (await takesThinkLevels(config)) ? 'low' : false };
     if (effort === 'low') return { think: 'low' };
     if (effort === 'medium' || effort === 'high') return { think: effort };
     return {};
 }
 
+/** gpt-oss, as its key or its family ('gpt-oss' or 'gptoss', by Ollama version) names it */
+const GPT_OSS = /gpt-?oss/i;
+
+/** Whether a model takes reasoning levels, by Ollama address and model key */
+const takesLevels = new Map<string, boolean>();
+
+/**
+ * Whether a model takes reasoning levels (gpt-oss) rather than on/off. Read from the family
+ * Ollama reports, which a renamed copy keeps, and asked once per model. When Ollama can't
+ * say, the model's key decides, and Ollama is asked again next time.
+ */
+async function takesThinkLevels(config: AdapterConfig): Promise<boolean> {
+    const key = `${config.baseUrl}|${config.modelKey}`;
+    const known = takesLevels.get(key);
+    if (known !== undefined) return known;
+    const family = await modelFamily(config);
+    if (family === undefined) return GPT_OSS.test(config.modelKey);
+    const levels = GPT_OSS.test(family);
+    takesLevels.set(key, levels);
+    return levels;
+}
+
+/** The model's family as Ollama's /api/show reports it, or undefined when it can't say */
+async function modelFamily(config: AdapterConfig): Promise<string | undefined> {
+    try {
+        const response = await fetch(`${config.baseUrl}/api/show`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: config.modelKey }),
+            signal: AbortSignal.timeout(Math.min(config.timeout, 5_000)),
+        });
+        if (!response.ok) return undefined;
+        const { details } = (await response.json()) as { details?: { family?: string; families?: string[] | null } };
+        const names = [details?.family, ...(details?.families ?? [])].filter((name): name is string => !!name);
+        return names.length > 0 ? names.join(' ') : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 /** What every generation request carries: sampling options, keep-alive and reasoning */
-function generationSettings(
+async function generationSettings(
     request: { maxTokens?: number; temperature?: number; topP?: number; stopSequences?: string[] },
     config: AdapterConfig,
 ) {
@@ -79,7 +119,7 @@ function generationSettings(
             ...(request.stopSequences?.length && { stop: request.stopSequences }),
         },
         ...(config.settings?.keepAlive && { keep_alive: config.settings.keepAlive as string }),
-        ...thinkOf(config),
+        ...(await thinkOf(config)),
     };
 }
 
@@ -188,7 +228,7 @@ export class OllamaAdapter implements AIProviderAdapter {
             prompt: request.prompt,
             ...(request.systemPrompt && { system: request.systemPrompt }),
             stream: false,
-            ...generationSettings(request, config),
+            ...(await generationSettings(request, config)),
         };
 
         const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeRequest<OllamaGenerateResponse>(
@@ -226,7 +266,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         request: ChatRequest,
         config: AdapterConfig
     ): Promise<AdapterChatResponse> {
-        const ollamaRequest = this.chatRequest(request, config, false);
+        const ollamaRequest = await this.chatRequest(request, config, false);
 
         const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeRequest<OllamaChatResponse>(
             `${config.baseUrl}/api/chat`,
@@ -253,7 +293,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         request: ChatRequest,
         config: AdapterConfig
     ): AsyncGenerator<AdapterStreamChunk, void, unknown> {
-        const ollamaRequest = this.chatRequest(request, config, true);
+        const ollamaRequest = await this.chatRequest(request, config, true);
 
         const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeStreamRequest(
             `${config.baseUrl}/api/chat`,
@@ -367,14 +407,14 @@ export class OllamaAdapter implements AIProviderAdapter {
     // ============================================================================
 
     /** A chat request as Ollama's /api/chat takes it, streamed or not */
-    private chatRequest(request: ChatRequest, config: AdapterConfig, stream: boolean): OllamaChatRequest {
+    private async chatRequest(request: ChatRequest, config: AdapterConfig, stream: boolean): Promise<OllamaChatRequest> {
         const format = toOllamaFormat(request.responseFormat);
         return {
             model: config.modelKey,
             messages: this.convertMessages(request.messages),
             stream,
             ...(format && { format }),
-            ...generationSettings(request, config),
+            ...(await generationSettings(request, config)),
         };
     }
 

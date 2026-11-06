@@ -40,14 +40,64 @@ async function drain(stream: AsyncIterable<unknown>) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('Ollama think', () => {
-  it("sends 'minimal' to gpt-oss as think 'low': it takes levels and ignores off", async () => {
-    const sent = captureFetch(ollamaReply);
-    await new OllamaAdapter().chat(request, { ...config({ reasoningEffort: 'minimal' }), modelKey: 'gpt-oss:20b' });
-    expect(sent().think).toBe('low');
+describe("Ollama think for 'minimal'", () => {
+  /** Ollama answering /api/show with the model's family (or failing to), and the chat */
+  function ollama(family: string | undefined, showStatus = 200) {
+    const chats: Array<Record<string, unknown>> = [];
+    const shows: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (url.endsWith('/api/show')) {
+        shows.push(body.model);
+        return new Response(JSON.stringify({ details: family ? { family, families: [family] } : {} }), { status: showStatus });
+      }
+      chats.push(body);
+      return new Response(JSON.stringify(ollamaReply));
+    }));
+    return { chats, shows };
+  }
+  const minimal = (modelKey: string, baseUrl: string) =>
+    new OllamaAdapter().chat(request, { ...config({ reasoningEffort: 'minimal' }), modelKey, baseUrl });
+
+  it.each([
+    ['gpt-oss:20b', 'gpt-oss'],
+    ['gpt-oss:latest', 'gptoss'],
+    ['my-reasoner', 'gptoss'],
+    ['hf.co/someone/gpt-oss-20b-GGUF:Q4_K_M', 'gpt-oss'],
+  ])("sends %s (family %s) think 'low': gpt-oss takes levels and ignores off", async (modelKey, family) => {
+    const { chats } = ollama(family);
+    await minimal(modelKey, `http://levels-${modelKey}`);
+    expect(chats[0].think).toBe('low');
   });
 
-  it.each(['none', 'minimal'])("turns thinking off for '%s'", async (effort) => {
+  it.each([
+    ['qwen3:8b', 'qwen3'],
+    ['deepseek-r1:14b', 'qwen2'],
+  ])('turns thinking off for %s (family %s), which only turns it on or off', async (modelKey, family) => {
+    const { chats } = ollama(family);
+    await minimal(modelKey, `http://onoff-${modelKey}`);
+    expect(chats[0].think).toBe(false);
+  });
+
+  it("goes by the model's key when Ollama can't say, and asks again next time", async () => {
+    const { chats, shows } = ollama(undefined, 404);
+    await minimal('gpt-oss:20b', 'http://cannot-say');
+    await minimal('qwen3:8b', 'http://cannot-say');
+    await minimal('qwen3:8b', 'http://cannot-say');
+    expect(chats.map((c) => c.think)).toEqual(['low', false, false]);
+    expect(shows).toEqual(['gpt-oss:20b', 'qwen3:8b', 'qwen3:8b']);
+  });
+
+  it('asks Ollama once per model', async () => {
+    const { shows } = ollama('gptoss');
+    await minimal('my-reasoner', 'http://once');
+    await minimal('my-reasoner', 'http://once');
+    expect(shows).toEqual(['my-reasoner']);
+  });
+});
+
+describe('Ollama think', () => {
+  it.each(['none'])("turns thinking off for '%s'", async (effort) => {
     const sent = captureFetch(ollamaReply);
     await new OllamaAdapter().chat(request, config({ reasoningEffort: effort }));
     expect(sent().think).toBe(false);

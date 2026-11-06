@@ -32,6 +32,9 @@ vi.mock('@/features/mcp-connection/mcp-executor', () => ({ executeMcpTool: vi.fn
 const search = vi.hoisted(() => ({ searchById: vi.fn(), resolveDataSource: vi.fn() }));
 vi.mock('@/features/search/search.service', () => ({ searchById: search.searchById, getExperienceContext: () => undefined }));
 vi.mock('@/features/analytics', () => ({ trackSearch: vi.fn() }));
+const external = vi.hoisted(() => ({ search: vi.fn() }));
+vi.mock('@/features/data-source/external-search/external-search.service', () => ({ getConnector: () => external }));
+vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
 vi.mock('./executors/data-source/shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./executors/data-source/shared')>()),
   resolveDataSource: search.resolveDataSource,
@@ -109,5 +112,18 @@ describe('a chat tool search on a managed Azure AI Search index that could not b
     await executeTool('tool-1', { query: 'linen shirts' });
 
     expect(search.searchById).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('a chat tool search on an external source that is down', () => {
+  it('is answered to the model as a failed call at once, not retried: the data source search answers it itself', async () => {
+    const { ExternalSearchError } = await import('@/features/data-source/external-search/external-search.types');
+    search.resolveDataSource.mockResolvedValue({ kind: 'external', provider: 'elasticsearch', dataSourceId: 'ds' });
+    external.search.mockReset().mockRejectedValue(new ExternalSearchError('Elasticsearch', "Elasticsearch couldn't be reached"));
+
+    const result = await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(result.success).toBe(false);
+    expect(external.search).toHaveBeenCalledTimes(1);
   });
 });

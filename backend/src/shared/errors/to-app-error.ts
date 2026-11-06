@@ -55,20 +55,36 @@ export function toAppError(err: unknown): AppError {
             const code = typeof e.code === 'string' ? e.code : codeForStatus(status);
             // The request was wrong: our own message says how
             if (status < 500) return new AppError(err.message, { code, status });
+            // Its AI provider or model is disabled or missing (hybrid search embeds the query): our setup
+            const setup = aiConfigError(err);
+            if (setup) return setup;
             // The engine or its AI provider failed: explained when we recognise it
             const upstream = classifyUpstream(err);
             if (upstream) return upstream;
             // A provider failure we don't recognise may carry the provider's own text
             return new AppError(code === 'PROVIDER_ERROR' ? INTERNAL_MESSAGE : err.message, { code, status, cause: err });
         }
-        case 'AIServiceError':
-            if (typeof e.code === 'string' && AI_CONFIG_CODES.has(e.code)) {
-                return new AppError(err.message, { code: e.code, status: 400, ourSide: true });
-            }
+        case 'AIServiceError': {
+            const setup = aiConfigError(err);
+            if (setup) return setup;
             break;
+        }
     }
 
     return classifyUpstream(err) ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
+}
+
+/** An AIServiceError, err or one of its causes, that points at our own AI configuration */
+function aiConfigError(err: Error): AppError | undefined {
+    let current: unknown = err;
+    for (let depth = 0; current instanceof Error && depth < 5; depth++) {
+        const e = current as Error & Record<string, unknown>;
+        if (e.name === 'AIServiceError' && typeof e.code === 'string' && AI_CONFIG_CODES.has(e.code)) {
+            return new AppError(e.message, { code: e.code, status: 400, ourSide: true, ...(current !== err && { cause: err }) });
+        }
+        current = e.cause;
+    }
+    return undefined;
 }
 
 /**

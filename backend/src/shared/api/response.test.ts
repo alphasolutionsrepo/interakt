@@ -80,6 +80,21 @@ describe('apiResponse.error', () => {
         expect(JSON.stringify(body)).not.toContain('openai');
     });
 
+    it('answers visitors a search whose embedding provider is disabled as the service being unavailable, and tells admins', async () => {
+        const { SearchError } = await import('@/features/search/search.types');
+        // As getQueryEmbedding wraps it for a hybrid or semantic search
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED', providerKey: 'openai' });
+        const failed = () => new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', { indexName: 'shop' }, { cause: disabled });
+
+        const visitor = await publicRoute(async () => apiResponse.error(failed()))();
+        expect(visitor.status).toBe(503);
+        expect((await visitor.json()).message).toBe(PUBLIC_FAILURE_MESSAGE);
+
+        const admin = apiResponse.error(failed());
+        expect(admin.status).toBe(400);
+        expect(await admin.json()).toMatchObject({ code: 'PROVIDER_DISABLED', message: 'Provider is disabled: openai' });
+    });
+
     it('still tells admins what is wrong with the setup', async () => {
         const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
         const response = apiResponse.error(disabled);

@@ -81,12 +81,18 @@ describe('a model reached through an OpenAI-compatible API that does not support
     return () => fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string));
   }
 
-  it('answers a chat once asked again without the reasoning effort', async () => {
+  it('answers a chat once asked again without the reasoning effort, with a warning', async () => {
     const sent = openaiWithoutThinking(() => new Response(JSON.stringify(openaiReply)));
-    const result = await new OpenAIAdapter().chat(request, { ...config('qwen2.5:14b'), apiKey: 'k' });
+    const result = await new OpenAIAdapter().chat(request, { ...config('qwen2.5:7b-v1'), apiKey: 'k' });
 
     expect(result.message.content).toBe('ok');
     expect(sent().map((body) => body.reasoning_effort)).toEqual(['low', undefined]);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ model: 'qwen2.5:7b-v1' }) })]);
+  });
+
+  it("fails with the second answer's error when the call without it fails too", async () => {
+    openaiWithoutThinking(() => new Response(JSON.stringify({ error: { message: 'model "qwen2.5:3b-v1" not found' } }), { status: 404 }));
+    await expect(new OpenAIAdapter().chat(request, { ...config('qwen2.5:3b-v1'), apiKey: 'k' })).rejects.toThrow('not found');
   });
 
   it('streams a chat once asked again without the reasoning effort', async () => {
