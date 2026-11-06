@@ -205,6 +205,28 @@ describe('demo setup when some products fail to index', () => {
     expect(upsertRegistryEntry).not.toHaveBeenCalled();
   });
 
+  it('fails when the search service rejected every product, even with no write error', async () => {
+    products.push({ id: 'p2', title: 'Wool coat' });
+    fields.push({ id: 'f1', fieldName: 'title', fieldType: 'text', sourceFieldName: 'title', transformConfig: { mode: 'source' } });
+    engine.indexExists.mockResolvedValue(true);
+    engine.getIndexStats.mockResolvedValue(null);
+    const rejected = 'mapper_parsing_exception: failed to parse field [price]';
+    engine.bulkIndex.mockResolvedValue({
+      success: false, indexed: 0, failed: 2,
+      errors: [{ index: 0, id: 'p1', error: rejected }, { index: 1, id: 'p2', error: rejected }],
+    });
+
+    const res = await seed();
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toMatchObject({ code: 'INDEXING_FAILED', message: expect.stringMatching(/^None of the 2 documents from products\.json were indexed/) });
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error' })]);
+    expect(logs.find((line) => line.message.includes('Demo seed complete'))).toBeUndefined();
+    expect(later.getDataSourceBySlug).not.toHaveBeenCalled();
+    expect(upsertRegistryEntry).not.toHaveBeenCalled();
+  });
+
   it('warns about the rejected products and finishes the setup', async () => {
     secondProductFails({ error: 'mapper_parsing_exception: failed to parse field [price]' });
     later.getDataSourceBySlug.mockResolvedValue({ id: 'ds1' });
