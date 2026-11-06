@@ -638,9 +638,12 @@ async function processIntentClusters(
   const plannerSpans = pipelineSpans.filter(s => s.operationName === 'pipeline.v2.turn_planner');
   const turnSpans = pipelineSpans.filter(s => s.operationName === 'pipeline.v2.turn');
 
-  // Build traceId → outcome map from turn spans
+  // Build traceId → outcome map from turn spans. A turn the visitor left didn't succeed
+  // or fail, so its intent isn't counted either way
   const outcomeByTrace = new Map<string, string>();
+  const abandoned = new Set<string>();
   for (const s of turnSpans) {
+    if (isAbandonedTurn(s.attributes)) abandoned.add(s.traceId);
     const outcome = getAttrStr(s, 'alpha.v2.outcome');
     if (outcome) outcomeByTrace.set(s.traceId, outcome);
   }
@@ -653,7 +656,7 @@ async function processIntentClusters(
   }
 
   const entries = plannerSpans
-    .filter((s) => getAttrStr(s, 'alpha.v2.plan.reasoning'))
+    .filter((s) => getAttrStr(s, 'alpha.v2.plan.reasoning') && !abandoned.has(s.traceId))
     .map((s) => ({
       reasoning: getAttrStr(s, 'alpha.v2.plan.reasoning')!,
       outcome: outcomeByTrace.get(s.traceId) || 'unknown',

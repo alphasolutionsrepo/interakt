@@ -2,8 +2,9 @@
 
 /**
  * A chat turn the visitor left before it had an outcome neither succeeded nor failed: the AI
- * effectiveness insight doesn't rate it. Runs the insights job on real Postgres (PGlite);
- * clustering and proactive insights (model calls) are stubbed.
+ * effectiveness insight doesn't rate it, and intent clustering doesn't count its intent. Runs
+ * the insights job on real Postgres (PGlite); clustering and proactive insights (model calls)
+ * are stubbed.
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -28,14 +29,16 @@ import { analyticsInsights, otelSpans } from '@/db/analytics-schema';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 
 import { runAnalyticsProcessing } from './analytics-processing.service';
+import { clusterIntents } from './intent-clustering';
 
 let spanCount = 0;
-function turn(attributes: Record<string, unknown>) {
+const traces = { success: 'a'.repeat(32), abandoned: 'b'.repeat(32), planFailed: 'c'.repeat(32) };
+function turn(attributes: Record<string, unknown>, traceId = crypto.randomUUID().replace(/-/g, ''), operationName = 'pipeline.v2.turn') {
   const start = new Date(Date.now() - 10 * 60_000);
   return {
-    traceId: crypto.randomUUID().replace(/-/g, ''),
+    traceId,
     spanId: (++spanCount).toString(16).padStart(16, '0'),
-    operationName: 'pipeline.v2.turn',
+    operationName,
     serviceName: 'interakt',
     startTime: start,
     endTime: new Date(start.getTime() + 100),
@@ -48,11 +51,12 @@ function turn(attributes: Record<string, unknown>) {
 beforeAll(async () => {
   testDb = await createAnalyticsTestDb();
   await testDb.db.insert(otelSpans).values([
-    turn({ 'alpha.v2.outcome': 'success' }),
+    turn({ 'alpha.v2.outcome': 'success' }, traces.success),
     // As the pipeline records a turn the visitor left: no outcome, where it stopped
-    turn({ [ATTR.TURN_ABANDONED]: 'writing the answer' }),
+    turn({ [ATTR.TURN_ABANDONED]: 'writing the answer' }, traces.abandoned),
     // Its plan had failed before the visitor left: that still counts
-    turn({ 'alpha.v2.outcome': 'plan_failed', [ATTR.TURN_ABANDONED]: 'saving the turn' }),
+    turn({ 'alpha.v2.outcome': 'plan_failed', [ATTR.TURN_ABANDONED]: 'saving the turn' }, traces.planFailed),
+    ...Object.entries(traces).map(([name, traceId]) => turn({ 'alpha.v2.plan.reasoning': `find ${name}` }, traceId, 'pipeline.v2.turn_planner')),
   ]);
 });
 afterAll(async () => {
@@ -70,5 +74,14 @@ describe('AI effectiveness', () => {
       successRate: 0.5,
       outcomes: { success: 1, plan_failed: 1, context_assembly_failed: 0, unknown: 0 },
     });
+  });
+});
+
+describe('intent clustering', () => {
+  it("leaves out the intent of a turn the visitor left, and keeps one whose plan had failed", async () => {
+    await runAnalyticsProcessing({ timeRanges: ['24h'] });
+
+    const entries = vi.mocked(clusterIntents).mock.calls.at(-1)?.[0] ?? [];
+    expect(entries.map((e) => [e.reasoning, e.outcome]).sort()).toEqual([['find planFailed', 'plan_failed'], ['find success', 'success']]);
   });
 });
