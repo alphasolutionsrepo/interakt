@@ -150,6 +150,14 @@ describe('triggerReindex stopped before it changed the index', () => {
         expect(state.statuses).toEqual(['indexing', 'active']);
     });
 
+    it('leaves the index as it is when Elasticsearch gave only some of its documents', async () => {
+        const partial = new Error("Elasticsearch couldn't read 1 of the index's 2 shards");
+        state.engine = { fetchAllDocuments: async () => ({ success: false, documents: [], error: partial.message, cause: partial }) };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', status: 502, message: "Couldn't read the index's documents, so it was left as it is: Elasticsearch couldn't read 1 of the index's 2 shards" });
+        expect(state.statuses).toEqual(['indexing', 'active']);
+    });
+
     it('treats a refused delete as no change: the index keeps its status', async () => {
         state.engine = { deleteIndex: async () => ({ success: false, error: 'blocked', cause: refused() }) };
         const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);

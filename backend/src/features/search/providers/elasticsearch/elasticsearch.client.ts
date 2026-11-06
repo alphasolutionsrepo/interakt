@@ -654,6 +654,21 @@ export async function deleteByQuery(
 // SCROLL / FETCH ALL DOCUMENTS
 // ============================================================================
 
+/**
+ * Throws when a page of a scroll misses documents: a shard that failed or a search that
+ * timed out still answers 200, with the hits it has
+ */
+async function refuseIncomplete(response: { timed_out?: boolean; _shards?: { failed?: number; total?: number }; _scroll_id?: string }): Promise<void> {
+    const failed = response._shards?.failed ?? 0;
+    if (!response.timed_out && failed === 0) return;
+    if (response._scroll_id) {
+        await getElasticsearchClient().clearScroll({ scroll_id: response._scroll_id }).catch(() => {});
+    }
+    throw new Error(response.timed_out
+        ? 'Elasticsearch timed out reading the documents and gave only some of them'
+        : `Elasticsearch couldn't read ${failed} of the index's ${response._shards?.total ?? failed} shards`);
+}
+
 export interface ScrollDocument {
     _id: string;
     _source: Record<string, unknown>;
@@ -689,7 +704,10 @@ export async function fetchAllDocuments(
             size: batchSize,
             query: { match_all: {} },
             _source: true,
+            // A reindex writes back only what it read: a shard that failed fails the read
+            allow_partial_search_results: false,
         });
+        await refuseIncomplete(response);
 
         // Collect first batch
         for (const hit of response.hits.hits) {
@@ -708,6 +726,7 @@ export async function fetchAllDocuments(
                 scroll_id: scrollId,
                 scroll: scrollTimeout,
             });
+            await refuseIncomplete(response);
 
             for (const hit of response.hits.hits) {
                 allDocuments.push({
