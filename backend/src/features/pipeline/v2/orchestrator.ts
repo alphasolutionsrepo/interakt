@@ -12,6 +12,8 @@
  * See: docs/platform-evolution/DETERMINISTIC-PIPELINE-V2.md § Pipeline Flow
  */
 
+import { describeUnloggedError } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import type { Span } from '@opentelemetry/api';
 import { withSpan , ATTR } from '@/features/telemetry';
@@ -108,6 +110,15 @@ const DEFAULT_CONFIG: V2PipelineConfig = {
 };
 
 const PIPELINE_TIMEOUT = Symbol('v2-pipeline-timeout');
+
+/** A turn that ran past its wall-clock ceiling */
+function turnTimedOut(maxTotalDurationMs: number): AppError {
+  return new AppError('The answer took too long, so the turn was stopped.', {
+    code: 'TURN_TIMEOUT',
+    status: 504,
+    hint: `A turn may take ${Math.round(maxTotalDurationMs / 1000)} seconds. Try again; if it keeps happening, find the slow step (a model or a search) under Traces.`,
+  });
+}
 
 // ============================================================================
 // TOKEN USAGE TRACKING
@@ -246,7 +257,8 @@ export async function runV2Pipeline(
   if (!ctxResult.success || !ctxResult.data) {
     parentSpan.setAttribute('alpha.v2.outcome', 'context_assembly_failed');
     // Not sent from here: its text can be internal (a database address). The answer to
-    // the caller explains it (plainly to visitors) and logs it once, with the request id.
+    // the caller explains what it recognises (the database being down) to an admin, plainly
+    // to visitors, and logs it once, with the request id.
     throw new Error(ctxResult.summary, { cause: ctxResult.cause });
   }
 
@@ -719,10 +731,13 @@ export async function runV2Pipeline(
   ), input.experience.slug); // end withSpan + withExperienceContext
 
   // The turn stopped before anything was saved: the session it created isn't kept, empty.
-  // A failed delete is logged where it failed and doesn't change how the turn ends.
+  // A failed delete is logged here and doesn't change how the turn ends.
   const turn = work.catch(async (error: unknown) => {
     if (error instanceof TurnAbandonedError && createdSession) {
-      await deps.persistence.discardEmptySession(createdSession).catch(() => {});
+      const sessionId = createdSession;
+      await deps.persistence.discardEmptySession(sessionId).catch((err: unknown) => {
+        logger.error('Could not discard the empty session of a stopped turn', err as Error, { experienceId, sessionId });
+      });
     }
     throw error;
   });
@@ -733,10 +748,15 @@ export async function runV2Pipeline(
   });
 
   if (raced === PIPELINE_TIMEOUT) {
+    // Answered as other failed turns are (a plain message to visitors, the explanation to an
+    // admin testing, the request id), but logged here, once, as a warning: a slow turn isn't
+    // a fault on our side
+    const { body } = describeUnloggedError(turnTimedOut(cfg.maxTotalDurationMs));
     logger.warn('V2 pipeline timed out — returning graceful response', {
       experienceId,
       sessionId: input.sessionId,
       maxTotalDurationMs: cfg.maxTotalDurationMs,
+      requestId: body.requestId,
     });
     // Its answer would never be seen: the turn stops (a model call in flight is aborted,
     // nothing is saved) and is recorded as timed out, not as the visitor leaving
@@ -748,7 +768,7 @@ export async function runV2Pipeline(
       if (err instanceof TurnAbandonedError) return;
       logger.error('V2 turn failed after it timed out', err as Error, { experienceId, sessionId: input.sessionId });
     });
-    onEvent({ type: 'error', message: 'Pipeline execution timed out' });
+    onEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId });
     onEvent({ type: 'done', sessionId: input.sessionId, usage });
     return { sessionId: input.sessionId, responseText: '', usage };
   }

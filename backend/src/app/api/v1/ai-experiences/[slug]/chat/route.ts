@@ -30,40 +30,38 @@ async function post(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> },
 ) {
-  const { slug } = await context.params;
-
-  // ── Parse & validate body ──────────────────────────────────────────────────
-  let rawBody: unknown;
+  // A login lookup or a query that fails is answered like any error, with the request id
   try {
-    rawBody = await readJsonBody(request);
+    const { slug } = await context.params;
+
+    // ── Parse & validate body ──────────────────────────────────────────────────
+    const parsed = chatRequestSchema.safeParse(await readJsonBody(request));
+    if (!parsed.success) {
+      return apiResponse.badRequest(parsed.error.errors[0]?.message ?? 'Invalid request body');
+    }
+
+    const { message, sessionId: clientSessionId } = parsed.data;
+
+    // ── Load experience ────────────────────────────────────────────────────────
+    const experience = await getAIExperienceBySlug(slug);
+    if (!experience) {
+      return apiResponse.notFound('AI Experience not found');
+    }
+    if (!experience.isActive) {
+      return apiResponse.forbidden('AI Experience is not active');
+    }
+
+    // ── Authenticate ───────────────────────────────────────────────────────────
+    // Access token (external/demo-site clients) or dashboard session (admin test panel)
+    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, aiExperienceAccess(experience));
+    if (!caller) {
+      return refused ?? apiResponse.unauthorized();
+    }
+
+    return chatEventStream({ experience, message, sessionId: clientSessionId || undefined, analyticsSource });
   } catch (error) {
-    return apiResponse.error(error, 400, { operation: 'chatBySlug' });
+    return apiResponse.error(error, 500, { operation: 'chatBySlug' });
   }
-
-  const parsed = chatRequestSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return apiResponse.badRequest(parsed.error.errors[0]?.message ?? 'Invalid request body');
-  }
-
-  const { message, sessionId: clientSessionId } = parsed.data;
-
-  // ── Load experience ────────────────────────────────────────────────────────
-  const experience = await getAIExperienceBySlug(slug);
-  if (!experience) {
-    return apiResponse.notFound('AI Experience not found');
-  }
-  if (!experience.isActive) {
-    return apiResponse.forbidden('AI Experience is not active');
-  }
-
-  // ── Authenticate ───────────────────────────────────────────────────────────
-  // Access token (external/demo-site clients) or dashboard session (admin test panel)
-  const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, aiExperienceAccess(experience));
-  if (!caller) {
-    return refused ?? apiResponse.unauthorized();
-  }
-
-  return chatEventStream({ experience, message, sessionId: clientSessionId || undefined, analyticsSource });
 }
 
 export async function OPTIONS() {

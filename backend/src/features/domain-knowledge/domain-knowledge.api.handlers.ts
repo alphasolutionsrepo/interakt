@@ -205,9 +205,7 @@ export async function handleUpdateKnowledgeEntry(
       data: entry,
     });
   } catch (error) {
-    if (error instanceof Error && error.message.includes('not found')) {
-      return apiResponse.refused(error, { code: 'NOT_FOUND', message: 'Knowledge entry not found' }, { operation: 'updateKnowledgeEntry' });
-    }
+    // An entry that is gone is a NotFoundError: 404, logged as a warning
     return apiResponse.error(error, 500, { operation: 'updateKnowledgeEntry' });
   }
 }

@@ -9,6 +9,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { expectInvalidJson, notJson } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -20,7 +21,7 @@ vi.mock('@/features/data-source/data-source.service', () => ({}));
 vi.mock('./tools.executor', () => ({ executeTool: vi.fn() }));
 vi.mock('./lookup-fields.service', () => ({ lookupFieldsStatus: vi.fn() }));
 
-import { handleCreateTool, handleDeleteTool } from './tools.api.handlers';
+import { handleCreateTool, handleDeleteTool, handleTestTool } from './tools.api.handlers';
 
 const TOOL = {
   name: 'My Tool',
@@ -36,6 +37,9 @@ const remove = () => handleDeleteTool(
   new NextRequest('http://localhost/api/tools/t1', { method: 'DELETE' }),
   { params: Promise.resolve({ id: 't1' }) }
 );
+
+const testRun = (request: NextRequest) => handleTestTool(request, { params: Promise.resolve({ id: 't1' }) });
+const testRequest = (body: string) => new NextRequest('http://localhost/api/tools/t1/test', { method: 'POST', body });
 
 beforeEach(() => { logs.length = 0; });
 
@@ -81,5 +85,23 @@ describe('a tool request that fails', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST', message: 'Cannot delete a system tool' });
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ operation: 'deleteTool' }) })]);
+  });
+});
+
+describe('a tool test run with a body it cannot use', () => {
+  it('answers a body that is not JSON 400, logged once as a warning', async () => {
+    await expectInvalidJson(await testRun(notJson('http://localhost/api/tools/t1/test', 'POST')), logs);
+  });
+
+  it.each([
+    ['no input', '{}'],
+    ['an input that is not an object', '{"input": "red shoes"}'],
+    ['an input that is a list', '{"input": ["red shoes"]}'],
+    ['null', 'null'],
+  ])('answers a body with %s 400, saying it needs an input object', async (_, body) => {
+    const res = await testRun(testRequest(body));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST', message: 'Request body must contain an "input" object', requestId: expect.any(String) });
   });
 });

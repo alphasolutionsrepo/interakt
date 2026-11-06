@@ -240,11 +240,6 @@ describe('an insights refresh', () => {
     await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'Analytics DB not configured' });
   });
 
-  it('throws when the run ended failed', async () => {
-    answerWith(() => events({ type: 'complete', result: { status: 'failed', error: 'Analytics DB not configured' } }, '[DONE]'));
-    await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'Analytics DB not configured' });
-  });
-
   it('throws when the stream ends before the run does', async () => {
     answerWith(() => events({ type: 'status', message: 'Processing started' }));
     await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'The refresh stopped before it finished' });

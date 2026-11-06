@@ -1,7 +1,8 @@
 // src/features/pipeline/chat-event-stream.test.ts
 //
-// A visitor who closes the chat mid-answer. The real stream, pipeline and orchestrator
-// run with tracing on; the model, tools and sessions are faked, as in chat-pipeline.test.ts.
+// A visitor who closes the chat mid-answer, and a turn that runs out of time. The real
+// stream, pipeline and orchestrator run with tracing on; the model, tools and sessions are
+// faked, as in chat-pipeline.test.ts.
 
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
@@ -56,7 +57,9 @@ import type { AIExperienceWithTools } from '@/features/ai-experience/ai-experien
 import { CancelledRequestError } from '@/features/ai-service/adapters/types';
 import type { ChatOptions, ChatResult } from '@/features/ai-service/ai-service.types';
 import { ATTR } from '@/features/telemetry/attribute-keys';
-import type { LogLine } from '@/shared/test/log-recorder';
+import { markAdminCaller, publicRoute } from '@/shared/api/public-route';
+import { PUBLIC_FAILURE_MESSAGE } from '@/shared/api/response';
+import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const exporter = new InMemorySpanExporter();
 trace.setGlobalTracerProvider(new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }));
@@ -381,6 +384,23 @@ describe('chatEventStream when the visitor closes the chat', () => {
       expect(mocks.discardEmptySession).toHaveBeenCalledWith('session-2');
     });
 
+    it('is logged once, as an error, when it could not be discarded; the turn still ends as stopped', async () => {
+      mocks.createSession.mockResolvedValue({ id: 'session-2' });
+      const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
+      mocks.discardEmptySession.mockRejectedValue(down);
+      const turn = startTurn();
+      scriptModel({ planner: [plan('red shoes')] }, { step: 'turn-planner', then: turn.leave });
+
+      await turn.over;
+
+      // The sessions repository passes the failure on without a log line of its own
+      expect(errors()).toEqual([expect.objectContaining({
+        service: 'v2:orchestrator',
+        context: expect.objectContaining({ err: down, experienceId: 'exp-1', sessionId: 'session-2' }),
+      })]);
+      expect(logs.filter((l) => l.service === 'chat-event-stream')).toEqual([stopped('calling product-search')]);
+    });
+
     it('is kept when it already existed', async () => {
       mocks.getSessionWithWindow.mockResolvedValue({
         session: { id: 'session-1', summary: null, facts: null, pipelineState: null, userContext: null, messageCount: 2, status: 'active' },
@@ -556,6 +576,48 @@ describe('chatEventStream when the visitor closes the chat', () => {
 
       expect(steps()).toEqual(['lightweight-synthesis']);
       expect(mocks.addMessages).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('a turn that runs out of time (the visitor stays)', () => {
+    /** Runs a turn whose planner call never answers past the turn's 60 seconds; returns the events sent */
+    async function timeOut(asVisitor: boolean) {
+      leaveDuringCall('turn-planner', async () => {});
+      const start = () => Promise.resolve(chatEventStream({ experience: makeExperience(), message: 'Search for red shoes', sessionId: 'session-1' }));
+      const over = new Promise<void>((resolve) => mocks.flushTelemetry.mockImplementationOnce(async () => resolve()));
+      // The public chat routes; an admin testing is marked as the admin's
+      const res = await publicRoute(async () => {
+        if (!asVisitor) markAdminCaller();
+        return start();
+      })();
+      const reader = res.body!.getReader();
+      const read = drain(reader);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const text = await read;
+      await over;
+      return text.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6)) as Record<string, unknown>);
+    }
+
+    it('tells a visitor plainly, with a code and the request id, then ends; logged once as a warning', async () => {
+      const sent = await timeOut(true);
+      const error = sent.find((e) => e.type === 'error')!;
+
+      expect(error).toEqual({ type: 'error', message: PUBLIC_FAILURE_MESSAGE, code: 'TURN_TIMEOUT', requestId: expect.any(String) });
+      expect(sent.at(-1)).toMatchObject({ type: 'done', sessionId: 'session-1' });
+      expect(reported(logs)).toEqual([
+        expect.objectContaining({ level: 'warn', message: 'V2 pipeline timed out — returning graceful response', context: expect.objectContaining({ requestId: error.requestId }) }),
+      ]);
+    });
+
+    it('tells an admin testing that the turn ran out of time, and where to look', async () => {
+      const error = (await timeOut(false)).find((e) => e.type === 'error')!;
+
+      expect(error).toMatchObject({
+        message: 'The answer took too long, so the turn was stopped.',
+        code: 'TURN_TIMEOUT',
+        hint: expect.stringContaining('60 seconds'),
+        requestId: expect.any(String),
+      });
     });
   });
 

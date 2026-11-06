@@ -3,14 +3,14 @@
 /**
  * A knowledge entry request that fails on our side is answered without the error's text
  * (a database error is its SQL), with a request id, and logged once. An entry that is
- * gone is answered 404 as before and logged once as a warning.
+ * gone: domain-knowledge.api.handlers.update.test.ts.
  */
 
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { expectInternalFailure, expectInvalidJson, failedQuery, notJson } from '@/shared/test/error-answers';
-import { reported, type LogLine } from '@/shared/test/log-recorder';
+import { type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
@@ -65,18 +65,5 @@ describe('a knowledge entry request', () => {
     ['changing an entry', () => handleUpdateKnowledgeEntry(notJson('http://localhost/api/search-indexes/i1/knowledge/e1', 'PUT'), entry)],
   ])('%s with a body that is not JSON answers 400, logged once as a warning', async (_, call) => {
     await expectInvalidJson(await call(), logs);
-  });
-
-  it('changing an entry that is gone answers 404 as before, logged once as a warning', async () => {
-    service.updateKnowledgeEntry.mockRejectedValue(new Error('Knowledge entry not found: e1'));
-
-    const res = await handleUpdateKnowledgeEntry(request('PUT', { answer: 'B' }), entry);
-    const body = await res.json();
-
-    expect(res.status).toBe(404);
-    expect(body).toMatchObject({ code: 'NOT_FOUND', error: 'Knowledge entry not found', requestId: expect.any(String) });
-    expect(reported(logs)).toEqual([
-      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ operation: 'updateKnowledgeEntry', requestId: body.requestId }) }),
-    ]);
   });
 });

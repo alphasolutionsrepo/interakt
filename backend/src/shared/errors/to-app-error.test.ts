@@ -1,3 +1,4 @@
+import { DrizzleQueryError } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -50,6 +51,47 @@ describe('toAppError', () => {
         expect(err).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
         expect(err.message).not.toContain('users_pkey');
         expect(err.cause).toBe(cause);
+    });
+});
+
+describe('toAppError for a database that is down', () => {
+    // As the driver throws them for a query; Drizzle wraps each one
+    const refused = () => Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:5432'), { code: 'ECONNREFUSED', syscall: 'connect', address: '10.0.0.5', port: 5432 });
+    const query = (cause: Error) => new DrizzleQueryError('select "id" from "ai_sessions" where "id" = $1', ['s1'], cause);
+    const postgres = (code: string, message: string) => Object.assign(new Error(message), { name: 'PostgresError', code, severity: 'FATAL' });
+
+    it.each([
+        ['refused the connection', refused()],
+        ['closed the connection', Object.assign(new Error('write CONNECTION_CLOSED 10.0.0.5:5432'), { code: 'CONNECTION_CLOSED', address: '10.0.0.5' })],
+        ['timed out connecting', Object.assign(new Error('write CONNECT_TIMEOUT 10.0.0.5:5432'), { code: 'CONNECT_TIMEOUT', address: '10.0.0.5' })],
+        ['was shut down', postgres('57P01', 'terminating connection due to administrator command')],
+        ['lost the connection', postgres('08006', 'connection failure')],
+        ['takes no more connections', postgres('53300', 'sorry, too many clients already')],
+    ])('explains a query whose database %s, without the address', (_, cause) => {
+        const err = query(cause);
+        const appError = toAppError(err);
+        expect(appError).toMatchObject({ code: 'DATABASE_UNAVAILABLE', status: 503, ourSide: true, message: "The database couldn't be reached." });
+        expect(appError.hint).toMatch(/Postgres is running/);
+        expect(JSON.stringify({ message: appError.message, hint: appError.hint, details: appError.details })).not.toContain('10.0.0.5');
+        expect(appError.cause).toBe(err);
+        expect(failureLevel(err, 'warn')).toBe('error');
+    });
+
+    it('explains it when a step wrapped the failed query (the chat context)', () => {
+        const err = new Error('Context assembly failed: Failed query: select ...', { cause: query(refused()) });
+        expect(toAppError(err)).toMatchObject({ code: 'DATABASE_UNAVAILABLE', status: 503 });
+    });
+
+    it("doesn't take a refused connection that isn't a query's for the database", () => {
+        // A fetch to a webhook or an MCP server
+        expect(toAppError(new TypeError('fetch failed', { cause: refused() }))).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
+        // An AI provider: explained as the provider
+        const provider = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama', cause: refused() });
+        expect(toAppError(provider)).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Ollama couldn't be reached." });
+    });
+
+    it('leaves a query the database refused for itself unexplained (a bug of ours)', () => {
+        expect(toAppError(query(postgres('42703', 'column "titel" does not exist')))).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
     });
 });
 

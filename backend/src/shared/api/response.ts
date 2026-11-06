@@ -158,12 +158,44 @@ export function describeError(
     status: number = 500,
     logContext?: Record<string, unknown>
 ): { status: number; body: APIErrorResponse } {
+    const { answer, appError } = explain(err, status);
+    const { requestId, message } = answer.body;
+
+    if (!appError) {
+        if (answer.status >= 500) logger.error(String(err), undefined, { ...logContext, requestId });
+        return answer;
+    }
+
+    // An error when something on our side needs fixing; a warning when the request was wrong
+    if (isOurFailure(appError, answer.status)) {
+        logger.error('Request failed', err instanceof Error ? err : new Error(String(err)), {
+            ...logContext,
+            requestId,
+            code: appError.code,
+            ...(appError.details !== undefined && { details: appError.details }),
+        });
+    } else {
+        logger.warn('Request rejected', { ...logContext, requestId, code: appError.code, message, err });
+    }
+
+    return answer;
+}
+
+/**
+ * The answer describeError gives, without logging it: for a failure logged where it
+ * happened, at its own level (a turn that ran out of time is a warning, though it is a 504).
+ */
+export function describeUnloggedError(err: unknown, status: number = 500): { status: number; body: APIErrorResponse } {
+    return explain(err, status).answer;
+}
+
+/** The answer to err, and the AppError it was read as (none for a string, our own message) */
+function explain(err: unknown, status: number): { answer: { status: number; body: APIErrorResponse }; appError?: AppError } {
     // The same id the failure was recorded with elsewhere (a job on the index)
     const requestId = typeof err === 'string' ? currentRequestId() : requestIdFor(err);
 
     if (typeof err === 'string') {
-        if (status >= 500) logger.error(err, undefined, { ...logContext, requestId });
-        return { status, body: errorPayload({ code: codeForStatus(status), message: err }, status, requestId) };
+        return { answer: { status, body: errorPayload({ code: codeForStatus(status), message: err }, status, requestId) } };
     }
 
     const appError = toAppError(err);
@@ -177,32 +209,23 @@ export function describeError(
         // The caller chose a 4xx for this error: its message is meant for the user
         : finalStatus < 500 && err instanceof Error ? err.message : INTERNAL_MESSAGE;
 
-    // An error when something on our side needs fixing; a warning when the request was wrong
-    if (isOurFailure(appError, finalStatus)) {
-        logger.error('Request failed', err instanceof Error ? err : new Error(String(err)), {
-            ...logContext,
-            requestId,
-            code: appError.code,
-            ...(appError.details !== undefined && { details: appError.details }),
-        });
-    } else {
-        logger.warn('Request rejected', { ...logContext, requestId, code: appError.code, message, err });
-    }
-
     return {
-        status: finalStatus,
-        body: errorPayload(
-            {
-                // The real code (PROVIDER_DISABLED) would say what's misconfigured; the log line keeps it
-                code: recognised && !ourSetup ? appError.code : codeForStatus(finalStatus),
-                message,
-                hint: appError.hint,
-                fields: appError.fields,
-                details: appError.details,
-            },
-            finalStatus,
-            requestId
-        ),
+        appError,
+        answer: {
+            status: finalStatus,
+            body: errorPayload(
+                {
+                    // The real code (PROVIDER_DISABLED) would say what's misconfigured; the log line keeps it
+                    code: recognised && !ourSetup ? appError.code : codeForStatus(finalStatus),
+                    message,
+                    hint: appError.hint,
+                    fields: appError.fields,
+                    details: appError.details,
+                },
+                finalStatus,
+                requestId
+            ),
+        },
     };
 }
 

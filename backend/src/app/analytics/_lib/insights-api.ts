@@ -25,7 +25,8 @@ export async function loadInsightsSchedule(): Promise<ScheduleRecord | null | 'f
 /** What the refresh stream sends: progress, then how the run ended, or why it stopped */
 type ProcessEvent =
   | { type: 'status'; message: string }
-  | { type: 'complete'; result?: { status?: string; error?: string } }
+  // A run that failed is sent as an error event
+  | { type: 'complete' }
   | ({ type: 'error' } & ApiErrorBody);
 
 const REFRESH_FAILED = 'Failed to refresh insights';
@@ -46,10 +47,7 @@ export async function refreshInsights(experienceId: string | undefined): Promise
 
   for await (const event of streamEvents<ProcessEvent>(res)) {
     if (event.type === 'error') throw apiErrorFrom(event, 500, REFRESH_FAILED);
-    if (event.type === 'complete') {
-      if (event.result?.status === 'failed') throw apiErrorFrom({ message: event.result.error }, 500, REFRESH_FAILED);
-      return;
-    }
+    if (event.type === 'complete') return;
   }
   throw new ApiError('The refresh stopped before it finished', 502);
 }

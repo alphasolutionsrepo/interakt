@@ -6,6 +6,8 @@
  * depend on features. Provider errors go through classifyUpstream.
  */
 
+import { DrizzleQueryError } from 'drizzle-orm';
+
 import { AppError, ConflictError, INTERNAL_MESSAGE, NotFoundError, ValidationError, codeForStatus } from './app-error';
 import { classifyUpstream, explainSearchServiceText, findAIServiceError, isAIProviderFailure } from './upstream';
 
@@ -66,8 +68,48 @@ export function toAppError(err: unknown): AppError {
         }
     }
 
-    // A step that wraps an AI call (analytics synthesis) can fail on our AI setup too
-    return aiConfigError(err) ?? classifyUpstream(err) ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
+    // A step that wraps an AI call (analytics synthesis) can fail on our AI setup too. A
+    // provider's refused connection is the provider's, so the database comes after it.
+    return aiConfigError(err)
+        ?? classifyUpstream(err)
+        ?? databaseUnavailable(err)
+        ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
+}
+
+// Postgres refusing the query for its connection: connection exceptions (08…), shutting
+// down or starting up (57P01-57P03), too many connections (53300)
+const DB_UNAVAILABLE_SQLSTATE = /^(08[0-9A-Z]{3}|57P0[1-3]|53300)$/;
+// The connection itself failed: the driver's (postgres.js) codes and the socket's
+const DB_CONNECTION_CODES = new Set([
+    'CONNECTION_CLOSED', 'CONNECTION_DESTROYED', 'CONNECTION_ENDED', 'CONNECT_TIMEOUT',
+    'ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'EHOSTUNREACH',
+]);
+const MAX_CAUSES = 5;
+
+/**
+ * The database couldn't be reached or took no more connections. Only a query's error
+ * counts: Drizzle wraps whatever the driver threw for it, so a refused connection
+ * elsewhere (a webhook, an MCP server) isn't taken for the database. Nothing about the
+ * address is kept; the cause is, for the log.
+ */
+function databaseUnavailable(err: Error): AppError | undefined {
+    let inQuery = false;
+    let current: unknown = err;
+    for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
+        const code = (current as Error & { code?: unknown }).code;
+        if (inQuery && typeof code === 'string' && (DB_UNAVAILABLE_SQLSTATE.test(code) || DB_CONNECTION_CODES.has(code))) {
+            return new AppError("The database couldn't be reached.", {
+                code: 'DATABASE_UNAVAILABLE',
+                status: 503,
+                hint: 'Check that Postgres is running and that its connection URL in the deployment settings (DATABASE_URL, or ANALYTICS_POSTGRES_URL for analytics) points at it, then try again.',
+                ourSide: true,
+                cause: err,
+            });
+        }
+        if (current instanceof DrizzleQueryError) inQuery = true;
+        current = current.cause;
+    }
+    return undefined;
 }
 
 /** An AIServiceError, err or one of its causes, that points at our own AI configuration */

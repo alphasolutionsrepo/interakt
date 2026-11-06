@@ -11,6 +11,7 @@ import { db } from '@/db/index';
 import { domainKnowledge } from '@/db/schema/domain-knowledge.schema';
 import type { DomainKnowledge, NewDomainKnowledge } from '@/db/schema/domain-knowledge.schema';
 import { eq, and, count, asc, desc } from 'drizzle-orm';
+import { NotFoundError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('domain-knowledge-repository');
@@ -154,8 +155,9 @@ export async function updateEntry(
     .where(eq(domainKnowledge.id, id))
     .returning();
 
+  // Deleted since it was read
   if (!updated) {
-    throw new Error(`Knowledge entry not found: ${id}`);
+    throw new NotFoundError('Knowledge entry not found');
   }
 
   logger.info('Updated knowledge entry', { entryId: id });

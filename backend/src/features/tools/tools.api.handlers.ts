@@ -2,6 +2,7 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
@@ -282,19 +283,15 @@ export async function handleTestTool(
 
     const { id } = await context.params;
 
-    let body: { input?: Record<string, unknown> };
-    try {
-      body = await request.json();
-    } catch {
-      return apiResponse.validationError({ message: 'Request body must be valid JSON' } as never);
-    }
-
-    if (!body.input || typeof body.input !== 'object' || Array.isArray(body.input)) {
-      return apiResponse.validationError({ message: 'Request body must contain an "input" object' } as never);
+    // A body that isn't JSON is refused as 400 by apiResponse.error below
+    const body = (await readJsonBody(request)) as { input?: unknown } | null;
+    const input = body?.input;
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return apiResponse.badRequest('Request body must contain an "input" object');
     }
 
     // A test run isn't live traffic
-    const result = await withAnalyticsSource('admin_test', () => executeTool(id, body.input!));
+    const result = await withAnalyticsSource('admin_test', () => executeTool(id, input as Record<string, unknown>));
     return apiResponse.success(result, result.success ? 200 : 422);
   } catch (error) {
     const err = error as Error;

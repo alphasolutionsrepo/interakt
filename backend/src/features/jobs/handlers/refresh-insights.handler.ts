@@ -2,6 +2,7 @@
 
 import type { RefreshInsightsPayload } from '../job-queues';
 
+import { describeUnloggedError } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('job-refresh-insights');
@@ -52,8 +53,11 @@ export async function refreshInsightsWorker(
         triggeredBy: triggeredBy ?? 'scheduler',
       });
       if (result.status === 'failed') {
-        logger.error('Insights refresh failed', { jobId: job.id, experienceId: scope, runId: result.runId, err: result.cause });
-        failures.push({ experienceId: scope ?? null, error: result.error });
+        // The output shows the explanation, or a plain message, and the ids that find the
+        // error in the log; its own text (often SQL) stays in the log and the run history
+        const { code, message, requestId } = describeUnloggedError(result.cause).body;
+        logger.error('Insights refresh failed', { jobId: job.id, experienceId: scope, runId: result.runId, requestId, err: result.cause });
+        failures.push({ experienceId: scope ?? null, runId: result.runId, code, message, requestId });
       } else {
         runs.push({ experienceId: scope ?? null, runId: result.runId, durationMs: result.durationMs });
       }
@@ -62,8 +66,11 @@ export async function refreshInsightsWorker(
     // Throwing marks the job failed and lets pg-boss retry it. Only do that when
     // nothing succeeded: a retry reprocesses every scope, so one failing
     // experience shouldn't redo the others. Partial failures are in the output.
+    // pg-boss stores the thrown error, its cause included, as the job's output, which the
+    // jobs page shows: so it carries the plain message and the ids, not the cause.
     if (runs.length === 0 && failures.length > 0) {
-      throw new Error(failures[0].error ?? 'Insights refresh failed');
+      const { message, runId, requestId } = failures[0];
+      throw Object.assign(new Error(`Insights refresh failed: ${message}`), { runId, requestId });
     }
 
     logger.info('Insights refresh complete', { jobId: job.id, refreshed: runs.length, failed: failures.length });

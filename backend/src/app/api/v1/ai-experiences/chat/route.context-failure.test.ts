@@ -1,9 +1,11 @@
 // src/app/api/v1/ai-experiences/chat/route.context-failure.test.ts
 //
 // A chat turn whose context can't be loaded (the session store is down), run through the
-// public chat routes and the real pipeline. Only the session store and the experience
-// lookup are faked; the error's text names a database address the visitor must not see.
+// public chat routes, the real pipeline and the real sessions service and repository. Only
+// the database and the experience lookup are faked; the error's text names a database
+// address the visitor must not see.
 
+import { DrizzleQueryError } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -11,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   getAIExperienceBySlug: vi.fn(),
   getAIExperienceByAccessToken: vi.fn(),
-  getSessionById: vi.fn(),
+  /** What every database query fails with */
+  dbFailure: undefined as unknown,
 }));
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -21,14 +24,19 @@ vi.mock('@/features/ai-experience/ai-experience.service', () => ({
   getAIExperienceBySlug: mocks.getAIExperienceBySlug,
   getAIExperienceByAccessToken: mocks.getAIExperienceByAccessToken,
 }));
-vi.mock('@/features/sessions/sessions.repository', () => ({ getSessionById: mocks.getSessionById }));
+vi.mock('@/db/index', () => {
+  const query: unknown = new Proxy(() => undefined, {
+    get: (_target, key) => (key === 'then' ? (_resolve: unknown, reject: (err: unknown) => void) => reject(mocks.dbFailure) : query),
+    apply: () => query,
+  });
+  return { db: query, analyticsDB: null };
+});
 
 import { POST as chatBySlug } from '../[slug]/chat/route';
 
 import { POST as chatByToken } from './route';
 
 import { PUBLIC_FAILURE_MESSAGE } from '@/shared/api/response';
-import { INTERNAL_MESSAGE } from '@/shared/errors/app-error';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const experience = {
@@ -37,10 +45,9 @@ const experience = {
   personaConfig: {}, sessionConfig: {}, tools: [], mcpConnections: [],
 };
 
-/** The session store's driver error: its text names the database's address. */
-const storeDown = () => Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:5432'), {
-  code: 'ECONNREFUSED', syscall: 'connect', address: '10.0.0.5', port: 5432,
-});
+/** The session store's driver error, wrapped by Drizzle as the query's: its text names the database's address. */
+const storeDown = () => new DrizzleQueryError('select "id" from "ai_sessions" where "id" = $1', ['b6f1c1de-0000-4000-8000-000000000001'],
+  Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:5432'), { code: 'ECONNREFUSED', syscall: 'connect', address: '10.0.0.5', port: 5432 }));
 
 function chatRequest(path: string, headers: Record<string, string>): NextRequest {
   return new NextRequest(`http://interakt.test${path}`, {
@@ -64,9 +71,9 @@ beforeEach(() => {
 });
 
 describe('a chat turn whose context fails to load', () => {
-  it('tells the visitor plainly, marks the step failed, and logs it once with the cause', async () => {
+  it('tells the visitor plainly, marks the step failed, and logs it once with the cause (not in the repository too)', async () => {
     const down = storeDown();
-    mocks.getSessionById.mockRejectedValueOnce(down);
+    mocks.dbFailure = down;
 
     const sent = await events(await chatByToken(chatRequest('/api/v1/ai-experiences/chat', { 'X-Access-Token': 'chat-token' })));
     const errors = sent.filter((e) => e.type === 'error');
@@ -80,15 +87,17 @@ describe('a chat turn whose context fails to load', () => {
     })]);
   });
 
-  it('answers an admin testing on the slug route with the request id to look it up, not the address', async () => {
+  it('explains the database outage to an admin testing on the slug route, with the request id, not the address', async () => {
     mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
-    mocks.getSessionById.mockRejectedValueOnce(storeDown());
+    mocks.dbFailure = storeDown();
 
     const sent = await events(await chatBySlug(chatRequest('/api/v1/ai-experiences/assistant/chat', {}), { params: Promise.resolve({ slug: 'assistant' }) }));
     const errors = sent.filter((e) => e.type === 'error');
 
-    // A failure we don't recognise isn't explained to anyone; its log line has the cause
-    expect(errors).toEqual([expect.objectContaining({ code: 'INTERNAL_ERROR', message: INTERNAL_MESSAGE, requestId: expect.any(String) })]);
+    // What failed and where to look; the log line has the cause with the address
+    expect(errors).toEqual([expect.objectContaining({
+      code: 'DATABASE_UNAVAILABLE', message: "The database couldn't be reached.", hint: expect.stringContaining('Postgres is running'), requestId: expect.any(String),
+    })]);
     expect(JSON.stringify(sent)).not.toContain('10.0.0.5');
     expect(sent).toContainEqual(expect.objectContaining({ type: 'step_complete', stepId: 'context-assembly', status: 'error' }));
   });
