@@ -36,4 +36,12 @@ describe('a bulk write that fails as a whole', () => {
         // The upload, reindex or write it belongs to logs it, with its request id
         expect(reported(logs)).toEqual([]);
     });
+
+    it('gives each document a reason when the error has no message (Elasticsearch stopped)', async () => {
+        bulk.error = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+
+        const result = await bulkWrite('shop', [{ action: 'upload', _id: '1', document: { title: 'Linen shirt' } }]);
+
+        expect(result.errors).toEqual([{ index: 0, error: 'ConnectionError' }]);
+    });
 });

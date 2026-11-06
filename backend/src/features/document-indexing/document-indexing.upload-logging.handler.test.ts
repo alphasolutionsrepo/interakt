@@ -157,6 +157,16 @@ describe('an upload the search service refused document by document', () => {
     });
 });
 
+describe('an upload the search service blocked (a read-only index, a full disk)', () => {
+    it('is logged once, as an error, with the block', async () => {
+        const blocked = 'index [products] blocked by: [FORBIDDEN/8/index write (api)];';
+        provider.bulkIndex.mockResolvedValueOnce({ indexed: 0, failed: 1, errors: [{ index: 0, id: 'd0', error: blocked }] });
+        await upload();
+
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ firstError: blocked }) })]);
+    });
+});
+
 describe('an upload whose embedding model failed and whose document was refused', () => {
     it("gives the refusal as the first reason, not the embedding's", async () => {
         row.value = hybrid;

@@ -67,3 +67,90 @@ describe('a bulk write whose merge lookup the engine could not answer', () => {
         expect((line.context.err as Error).cause).toBe(down);
     });
 });
+
+describe('a bulk write whose embedding model failed', () => {
+    it("fails the documents that needed a vector and logs it once, as an error, with the model's error", async () => {
+        logs.length = 0;
+        const { generateEmbeddings } = await import('@/features/ai-service');
+        const modelError = new Error('model "nomic-embed-text" not found');
+        vi.mocked(generateEmbeddings).mockRejectedValueOnce(modelError);
+        const res = await handleBulkWriteDocuments(
+            new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ operations: [{ action: 'upload', documentId: 'a', document: { name: 'Linen shirt' } }] }),
+            }),
+            { params: Promise.resolve({ id: crypto.randomUUID() }) }
+        );
+        const body = await res.json();
+
+        expect(res.status).toBe(207);
+        expect(body.data.errors).toEqual([expect.objectContaining({ documentId: 'a', error: expect.stringContaining('Embedding failed') })]);
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'error', message: 'Bulk document write completed', context: expect.objectContaining({ err: modelError }) }),
+        ]);
+    });
+});
+
+describe('a bulk write the search service blocked (a read-only index, a full disk)', () => {
+    it('is logged once, as an error', async () => {
+        logs.length = 0;
+        const blocked = 'index [products] blocked by: [FORBIDDEN/8/index write (api)];';
+        provider.bulkWrite.mockResolvedValueOnce({ success: false, indexed: 0, failed: 1, errors: [{ index: 0, error: blocked }], counts: { upload: 0, merge: 0, delete: 0 } });
+        const res = await handleBulkWriteDocuments(
+            new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ operations: [{ action: 'upload', documentId: 'a', document: { name: 'Linen shirt' } }] }),
+            }),
+            { params: Promise.resolve({ id: crypto.randomUUID() }) }
+        );
+
+        expect(res.status).toBe(207);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', message: 'Bulk document write completed' })]);
+    });
+});
+
+describe('a bulk write whose embedding model failed and whose write failed as a whole', () => {
+    it('logs both errors on its one line', async () => {
+        logs.length = 0;
+        const { generateEmbeddings } = await import('@/features/ai-service');
+        const modelError = new Error('model "nomic-embed-text" not found');
+        const down = new esErrors.ConnectionError('', { meta: {} } as never);
+        vi.mocked(generateEmbeddings).mockRejectedValueOnce(modelError);
+        provider.bulkWrite.mockResolvedValueOnce({ success: false, indexed: 0, failed: 1, errors: [{ index: 0, error: 'ConnectionError' }], counts: { upload: 0, merge: 0, delete: 0 }, writeError: down } as never);
+        await handleBulkWriteDocuments(
+            new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ operations: [
+                    { action: 'upload', documentId: 'a', document: { name: 'Linen shirt' } },
+                    { action: 'delete', documentId: 'b' },
+                ] }),
+            }),
+            { params: Promise.resolve({ id: crypto.randomUUID() }) }
+        );
+
+        expect(reported(logs)).toEqual([
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: down, embeddingError: modelError }) }),
+        ]);
+    });
+});
+
+describe('a bulk write a write block stopped part way', () => {
+    it('answers what to do about it with the partial result', async () => {
+        provider.bulkWrite.mockResolvedValueOnce({ success: false, indexed: 1, failed: 1, errors: [{ index: 1, error: 'index [products] blocked by: [FORBIDDEN/8/index write (api)];' }], counts: { upload: 1, merge: 0, delete: 0 } } as never);
+        const res = await handleBulkWriteDocuments(
+            new NextRequest('http://localhost/api/search-indexes/x/documents/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ operations: [
+                    { action: 'delete', documentId: 'a' },
+                    { action: 'delete', documentId: 'b' },
+                ] }),
+            }),
+            { params: Promise.resolve({ id: crypto.randomUUID() }) }
+        );
+        const body = await res.json();
+
+        expect(res.status).toBe(207);
+        expect(body.data).not.toHaveProperty('error');
+        expect(body.data.hint).toContain('read-only');
+    });
+});
