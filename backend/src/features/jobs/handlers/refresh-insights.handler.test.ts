@@ -123,4 +123,47 @@ describe('refreshInsightsWorker', () => {
     // The log keeps the error itself, under the same request id
     expect(reported(logs)[0].context).toMatchObject({ requestId: output.requestId, err: failed });
   });
+
+  describe('when the analytics database is down before any run starts', () => {
+    // What pg-boss stores as the failed job's output (serialize-error)
+    const stored = (thrown: unknown) => {
+      const error = thrown as Error & Record<string, unknown>;
+      return { ...error, name: error.name, message: error.message, stack: error.stack, cause: error.cause } as Record<string, unknown>;
+    };
+    const down = () => new DrizzleQueryError('insert into "analytics_processing_runs" ("status") values ($1)', ['running'],
+      Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:5432'), { code: 'ECONNREFUSED' }));
+
+    it('fails the job with the explanation and request id, not the SQL or the address, logged once', async () => {
+      const failed = down();
+      runAnalyticsProcessing.mockRejectedValue(failed);
+
+      const thrown = await refreshInsightsWorker([{ id: 'job', data: { experienceId: 'exp-a' } }]).catch((e: unknown) => e);
+
+      const output = stored(thrown);
+      expect(JSON.stringify(output)).not.toMatch(/insert into|10\.0\.0\.5/);
+      expect(output.message).toBe("Insights refresh failed: The database couldn't be reached.");
+      expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: output.requestId, err: failed }) })]);
+    });
+
+    it('does the same when listing the active experiences fails', async () => {
+      const failed = down();
+      listRecentlyActiveExperienceIds.mockRejectedValue(failed);
+
+      const thrown = await refreshInsightsWorker([{ id: 'job', data: {} }]).catch((e: unknown) => e);
+
+      const output = stored(thrown);
+      expect(JSON.stringify(output)).not.toMatch(/insert into|10\.0\.0\.5/);
+      expect(output).toMatchObject({ requestId: expect.any(String) });
+      expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: failed }) })]);
+    });
+  });
+
+  it('says analytics isn\'t set up when there is no analytics database', async () => {
+    const { SetupRequiredError } = await import('@/shared/errors/app-error');
+    // What runAnalyticsProcessing returns without ANALYTICS_POSTGRES_URL
+    runAnalyticsProcessing.mockResolvedValue({ status: 'failed', runId: '', error: 'Analytics DB not configured',
+      cause: new SetupRequiredError("Analytics isn't set up: set ANALYTICS_POSTGRES_URL to the analytics database") });
+
+    await expect(refreshInsightsWorker([{ id: 'job', data: { experienceId: 'exp-a' } }])).rejects.toThrow(/ANALYTICS_POSTGRES_URL/);
+  });
 });

@@ -21,6 +21,7 @@ import 'server-only';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
+import { SetupRequiredError } from '@/shared/errors/app-error';
 import { getDateRange, inExperienceTrace, isAbandonedTurn, notTestTraffic, type TimeRange } from './analytics-query.service';
 import { textAvailability } from './insight-text';
 import { clusterIntents, type IntentClusteringResult } from './intent-clustering';
@@ -82,7 +83,8 @@ export async function runAnalyticsProcessing(
       steps: [],
       durationMs: Date.now() - startTime,
       error: 'Analytics DB not configured',
-      cause: new Error('Analytics DB not configured'),
+      // A setting to fix, explained to admins as such
+      cause: new SetupRequiredError('Analytics isn\'t set up: set ANALYTICS_POSTGRES_URL to the analytics database'),
     };
   }
 

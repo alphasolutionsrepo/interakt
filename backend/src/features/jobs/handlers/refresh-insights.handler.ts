@@ -41,17 +41,20 @@ export async function refreshInsightsWorker(
     const { experienceId, triggeredBy } = job.data ?? {};
     const scopes: Array<string | undefined> = experienceId
       ? [experienceId]
-      : [undefined, ...(await listRecentlyActiveExperienceIds(ACTIVE_WITHIN_DAYS))];
+      : [undefined, ...(await listRecentlyActiveExperienceIds(ACTIVE_WITHIN_DAYS).catch((err: unknown) => {
+        throw jobFailure(job.id, err);
+      }))];
 
     logger.info('Refreshing AI insights', { jobId: job.id, experienceId, scopes: scopes.length });
 
     const runs = [];
     const failures = [];
     for (const scope of scopes) {
+      // A run that can't start (the database is down) throws rather than returning failed
       const result = await runAnalyticsProcessing({
         experienceId: scope,
         triggeredBy: triggeredBy ?? 'scheduler',
-      });
+      }).catch((err: unknown) => ({ status: 'failed' as const, runId: '', cause: err }));
       if (result.status === 'failed') {
         // The output shows the explanation, or a plain message, and the ids that find the
         // error in the log; its own text (often SQL) stays in the log and the run history
@@ -78,4 +81,14 @@ export async function refreshInsightsWorker(
   }
 
   return results;
+}
+
+/**
+ * A job that failed before any run, as the error pg-boss stores and the jobs page shows:
+ * the plain message and the request id, logged once with the error itself (often SQL)
+ */
+function jobFailure(jobId: string, err: unknown): Error {
+  const { message, requestId } = describeUnloggedError(err).body;
+  logger.error('Insights refresh failed', { jobId, requestId, err });
+  return Object.assign(new Error(`Insights refresh failed: ${message}`), { requestId });
 }
