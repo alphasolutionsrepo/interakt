@@ -127,7 +127,7 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     // (an index name, PROVIDER_ERROR) would pick the wrong explanation
     const detail = toErrorDetail(provider.error);
     const serviceCode = aiServiceCode(err) ?? transportCode(err);
-    const found = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
+    const found = serviceCode ?? codeFor(detail.statusCode, detailText(detail));
     // Advice about the index definition is for writes, never for a search: external sources
     // are only searched, a search's failure comes wrapped in a SearchError (Azure's own text
     // doesn't say it was a search), and Elasticsearch names a refused search
@@ -194,6 +194,21 @@ export function explainWriteFailure(writeError: unknown, reason: string | undefi
     return { ...(reason && { reason }) };
 }
 
+const SHARDS_UNAVAILABLE = /no_shard_available|all shards failed|missing shards/;
+
+/**
+ * Whether a search service refused for shards that aren't available. They come back after
+ * a restart or a failover, so another try can succeed.
+ */
+export function shardsUnavailable(err: unknown): boolean {
+    const provider = findProvider(err);
+    return !!provider && SHARDS_UNAVAILABLE.test(detailText(toErrorDetail(provider.error)).toLowerCase());
+}
+
+function detailText(detail: ReturnType<typeof toErrorDetail>): string {
+    return [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' ');
+}
+
 function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     const text = rawText.toLowerCase();
     // Elasticsearch blocks writes with a 403 (read-only index) or a 429 (disk full):
@@ -215,7 +230,7 @@ function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     // An index whose shards aren't available answers 503 from a service that is up: its own
     // reason ("all shards failed", "Search rejected due to missing shards") says more than
     // "couldn't be reached" and a credentials check
-    if (/no_shard_available|all shards failed|missing shards/.test(text)) return 'UPSTREAM_ERROR';
+    if (SHARDS_UNAVAILABLE.test(text)) return 'UPSTREAM_ERROR';
     if (status === 502 || status === 503 || /econnrefused|enotfound|econnreset|fetch failed|socket hang up|getaddrinfo|serviceunavailable|no living connections/.test(text)) {
         return 'UPSTREAM_UNAVAILABLE';
     }

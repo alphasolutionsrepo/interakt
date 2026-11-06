@@ -7,6 +7,7 @@
 // validation surface (those live in tools.validation.test.ts).
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { errors as esErrors } from '@elastic/elasticsearch';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mocks (declare before importing the module under test)
@@ -139,6 +140,19 @@ describe('executeTool', () => {
       const result = await executeTool('tool-1', {});
       expect(result.success).toBe(true);
       expect(result.retriesUsed).toBe(1);
+      expect(mockHttp).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries a search Elasticsearch refused because the index's shards weren't available", async () => {
+      mockGetToolById.mockResolvedValue(makeTool());
+      // What a real Elasticsearch 9 answered (6 Nov) for a search of an index with no shard allocated
+      const body = { error: { root_cause: [{ type: 'no_shard_available_action_exception', reason: null }], type: 'search_phase_execution_exception', reason: 'all shards failed' }, status: 503 };
+      mockHttp
+        .mockRejectedValueOnce(new esErrors.ResponseError({ body, statusCode: 503, headers: {}, meta: {} as never, warnings: null }))
+        .mockResolvedValueOnce({ success: true, data: { ok: true } });
+
+      const result = await executeTool('tool-1', {});
+      expect(result.success).toBe(true);
       expect(mockHttp).toHaveBeenCalledTimes(2);
     });
 

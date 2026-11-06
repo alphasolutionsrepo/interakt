@@ -19,7 +19,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
-import { classifyUpstream, failedAtAIProvider, findAIServiceError } from '@/shared/errors/upstream';
+import { classifyUpstream, failedAtAIProvider, findAIServiceError, shardsUnavailable } from '@/shared/errors/upstream';
 import { withSpan, ATTR } from '@/features/telemetry';
 import * as toolsService from './tools.service';
 import * as secretsService from '@/features/secrets/secrets.service';
@@ -347,6 +347,7 @@ function isRetryable(error: unknown, config: ToolRetryConfig): boolean {
   // Default: retry a service that was down, slow or rate limiting, read from the error
   // itself (an Elasticsearch that's stopped gives no message), else from its text
   if (RETRYABLE_UPSTREAM.has(classifyUpstream(error)?.code ?? '')) return true;
+  if (shardsUnavailable(error)) return true;
   const retryablePatterns = [
     'timeout', 'econnrefused', 'econnreset', 'enotfound',
     'socket hang up', 'network', 'fetch failed', '503', '502', '429',
