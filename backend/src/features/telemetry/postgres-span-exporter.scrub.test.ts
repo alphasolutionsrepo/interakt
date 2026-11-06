@@ -34,18 +34,18 @@ afterAll(async () => {
 
 const failure = 'connect ECONNREFUSED postgres://interakt:hunter2@db.internal:5432/app';
 
-function failedSpan(): ReadableSpan {
+function failedSpan(extra: { attributes?: Record<string, unknown>; events?: unknown[]; spanId?: string } = {}): ReadableSpan {
   const time: [number, number] = [1_762_400_000, 0];
   return {
     name: 'search.execute',
     kind: 0,
-    spanContext: () => ({ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), traceFlags: 1 }),
+    spanContext: () => ({ traceId: 'a'.repeat(32), spanId: extra.spanId ?? 'b'.repeat(16), traceFlags: 1 }),
     parentSpanContext: undefined,
     startTime: time,
     endTime: [time[0] + 1, 0],
     status: { code: 2, message: failure },
-    attributes: { 'alpha.search.query_text': 'linen' },
-    events: [{ name: 'exception', time, attributes: { 'exception.message': failure, 'exception.type': 'Error' } }],
+    attributes: { 'alpha.search.query_text': 'linen', ...extra.attributes },
+    events: [{ name: 'exception', time, attributes: { 'exception.message': failure, 'exception.type': 'Error' } }, ...(extra.events ?? [])],
     resource: { attributes: { 'service.name': 'alpha-search' } },
     links: [], duration: [1, 0], ended: true, instrumentationScope: { name: 'test' }, droppedAttributesCount: 0, droppedEventsCount: 0, droppedLinksCount: 0,
   } as unknown as ReadableSpan;
@@ -58,5 +58,28 @@ describe('a failed span', () => {
     const [row] = await testDb.db.select({ status: otelSpans.statusMessage, events: otelSpans.events }).from(otelSpans);
     expect(row.status).toContain('db.internal:5432');
     expect(JSON.stringify(row)).not.toContain('hunter2');
+  });
+});
+
+describe('a span that keeps content', () => {
+  const time: [number, number] = [1_762_400_000, 0];
+
+  it("keeps the visitor's words as written, and scrubs the error text around them", async () => {
+    await new Promise<void>((resolve) => new PostgresSpanExporter().export([failedSpan({
+      spanId: 'c'.repeat(16),
+      attributes: {
+        'alpha.telemetry.content_recorded': true,
+        'alpha.search.query': 'Basic 12-pack',
+        'alpha.error.detail': [failure, 'token=sk-live-123'],
+      },
+      events: [{ name: 'ai.response', time, attributes: { 'ai.response.text': 'Try the Basic 12-pack' } }],
+    })], () => resolve()));
+
+    const rows = await testDb.db.select({ attributes: otelSpans.attributes, events: otelSpans.events }).from(otelSpans);
+    const row = rows.find((r) => JSON.stringify(r).includes('12-pack'))!;
+    expect(row.attributes).toMatchObject({ 'alpha.search.query': 'Basic 12-pack' });
+    expect(JSON.stringify(row.events)).toContain('Try the Basic 12-pack');
+    expect(JSON.stringify(row)).not.toContain('hunter2');
+    expect(JSON.stringify(row)).not.toContain('sk-live-123');
   });
 });
