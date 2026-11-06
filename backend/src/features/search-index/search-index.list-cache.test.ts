@@ -43,6 +43,13 @@ describe('cached index lists', () => {
         expect(await names()).toEqual([]);
     });
 
+    it('include an index activated since they were cached', async () => {
+        stored.index = { ...stored.index, isActive: false };
+        expect(await names()).toEqual([]);
+        await setSearchIndexActive('i1', true, 'u1');
+        expect(await names()).toEqual(['Shop']);
+    });
+
     it('show the new name of an index renamed since they were cached', async () => {
         expect(await names()).toEqual(['Shop']);
         await updateSearchIndex('i1', { displayName: 'Store' }, 'u1');
