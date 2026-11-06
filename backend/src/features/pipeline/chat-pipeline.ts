@@ -20,6 +20,7 @@ import type {
 } from './pipeline.types';
 import { runV2Pipeline, createProductionV2Deps } from './v2';
 import { synthesizeLightweightResponse, createProductionSynthesisDeps } from './v2/response-synthesis';
+import { stopIfAbandoned } from './turn-abandoned';
 
 import type { SessionConfig, PersonaConfig, GuardrailConfig } from '@/db/schema';
 import type { AIExperienceWithTools } from '@/features/ai-experience/ai-experience.types';
@@ -328,6 +329,7 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
     // ── Short-circuit: greeting | general | off_topic ──────────────────
     if (isShortCircuit) {
       const shortCircuitClassification = classification.classification as 'greeting' | 'general' | 'off_topic';
+      stopIfAbandoned(input.signal, 'writing the answer');
 
       // Resolve/create session for persistence
       const { session } = await resolveSession(
@@ -371,7 +373,8 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
         },
       );
 
-      // Persist user + assistant messages
+      // Persist user + assistant messages, unless the visitor has left
+      stopIfAbandoned(input.signal, 'saving the turn');
       try {
         await sessionsService.addMessages(session.id, [
           { role: 'user', content: message },

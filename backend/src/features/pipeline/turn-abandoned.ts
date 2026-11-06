@@ -5,8 +5,9 @@
  * before its next step: no more model or tool calls, nothing saved. The call already
  * running finishes; only the ones after it are skipped.
  *
- * It is not a failure. Spans record where it stopped instead of an error, and the chat
- * stream logs it once, at info.
+ * It is not a failure. Spans record where it stopped instead of an error, the chat
+ * stream logs it once, at info, and the analytics don't count it as a failed turn
+ * (abandonedTurn in analytics-query.service).
  */
 export class TurnAbandonedError extends Error {
   /** The step that was not started, as the log line and the trace show it */

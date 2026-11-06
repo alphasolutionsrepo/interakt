@@ -110,6 +110,26 @@ describe('getFailedTurns', () => {
     expect(await getTurnsByDay(period, 'UTC', tested)).toEqual([{ day: new Date('2026-10-02T00:00:00Z'), turns: 1, failed: 1 }]);
   });
 
+  it("doesn't count a turn the visitor left as failed, or in the share that failed; it counts as traffic", async () => {
+    const left = crypto.randomUUID();
+    // As the pipeline records a turn the visitor left: no outcome, status unset, where it stopped
+    const abandoned = (n: number, at: string, opts: { outcome?: string } = {}) => {
+      const row = turn(n, at, { ...opts, experienceId: left });
+      return { ...row, statusCode: 'UNSET', attributes: { ...row.attributes, [ATTR.TURN_ABANDONED]: 'calling product-search' } };
+    };
+    await testDb.db.insert(otelSpans).values([
+      turn(21, '2026-10-02T10:00:00Z', { outcome: 'success', experienceId: left }),
+      abandoned(22, '2026-10-02T11:00:00Z'),
+      // Its plan had failed before the visitor left: that still counts
+      abandoned(23, '2026-10-02T12:00:00Z', { outcome: 'plan_failed' }),
+    ]);
+
+    expect(await getFailedTurns(period, left)).toMatchObject({
+      totalTurns: 2, failedTurns: 1, byReason: { plan_failed: 1 }, recent: [{ traceId: hex(23) }],
+    });
+    expect(await getTurnsByDay(period, 'UTC', left)).toEqual([{ day: new Date('2026-10-02T00:00:00Z'), turns: 3, failed: 1 }]);
+  });
+
   it('gives the chat the count, the reasons and trace ids to look into', async () => {
     const text = formatFailedTurnsForAI(await getFailedTurns(period), 'UTC');
 

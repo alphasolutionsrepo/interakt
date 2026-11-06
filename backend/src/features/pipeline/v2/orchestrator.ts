@@ -190,6 +190,8 @@ export async function runV2Pipeline(
   };
 
   // ── S2: Context Assembly ───────────────────────────────────────────────
+  // It can create the session and embed the message for the memory search
+  stopIfAbandoned(signal, 'loading the conversation');
   onEvent({ type: 'step_start', stepId: 'context-assembly', stepType: 'episodic_memory', stepName: 'Loading context' });
 
   // Bound before context assembly, which reads the planner prompt budget from it. The

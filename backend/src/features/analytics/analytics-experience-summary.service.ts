@@ -11,7 +11,7 @@ import 'server-only';
 
 import { sql, count, eq, gte, lte, and, isNotNull, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { buildSearchConditions, countedSearch, getDateRange, notTestTraffic, searchToolCall, toolCallRan, type DateRange, type TimeRange } from './analytics-query.service';
+import { abandonedTurn, buildSearchConditions, countedSearch, getDateRange, notTestTraffic, searchToolCall, toolCallRan, type DateRange, type TimeRange } from './analytics-query.service';
 
 const logger = createLogger('analytics-experience-summary');
 
@@ -56,7 +56,8 @@ export async function getExperienceSummaries(
         experienceId: otelSpans.experienceId,
         experienceType: otelSpans.experienceType,
         totalConversations: sql<number>`COUNT(DISTINCT ${otelSpans.traceId})::int`,
-        totalTurns: sql<number>`COUNT(*)::int`,
+        // The success rate's turns: one the visitor left before an outcome neither succeeded nor failed
+        totalTurns: sql<number>`COUNT(*) FILTER (WHERE NOT ${abandonedTurn(otelSpans)})::int`,
         successCount: sql<number>`COUNT(CASE WHEN ${otelSpans.attributes}->>'alpha.v2.outcome' = 'success' THEN 1 END)::int`,
         avgDurationMs: sql<number>`COALESCE(AVG(${otelSpans.durationMs}), 0)::int`,
       })

@@ -160,7 +160,7 @@ export async function executeLoop(
       const chainResult = await runActionStepChain(
         chain,
         initialCtx,
-        { chat: trackedDeps.chat, executeTool: trackedDeps.executeTool, emit, config: chainConfig },
+        { chat: trackedDeps.chat, executeTool: trackedDeps.executeTool, emit, config: chainConfig, signal: input.signal },
         turnContext.experienceId,
       );
 

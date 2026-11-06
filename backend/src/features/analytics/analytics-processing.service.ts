@@ -21,7 +21,7 @@ import 'server-only';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
-import { getDateRange, inExperienceTrace, notTestTraffic, type TimeRange } from './analytics-query.service';
+import { getDateRange, inExperienceTrace, isAbandonedTurn, notTestTraffic, type TimeRange } from './analytics-query.service';
 import { textAvailability } from './insight-text';
 import { clusterIntents, type IntentClusteringResult } from './intent-clustering';
 import { detectProactiveInsights } from './proactive-insights.service';
@@ -812,8 +812,9 @@ function processCatalogHealthFromSpans(
 // --- AI Effectiveness ---
 
 function processAIEffectiveness(spans: SpanData[]): Record<string, unknown> {
-  // Filter to pipeline.v2.turn spans — these have v2.outcome, v2.preset, token usage
-  const turnSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn');
+  // Filter to pipeline.v2.turn spans — these have v2.outcome, v2.preset, token usage. A turn the
+  // visitor left before an outcome neither succeeded nor failed, so it isn't rated.
+  const turnSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn' && !isAbandonedTurn(s.attributes));
   // Turn planner spans have plan.reasoning and direct_response flag
   const plannerSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn_planner');
 

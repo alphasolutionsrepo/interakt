@@ -433,6 +433,20 @@ export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema')
 }
 
 /**
+ * A chat turn (pipeline.v2.turn span) the visitor left before it had an outcome: it stopped
+ * (TurnAbandonedError), it neither succeeded nor failed. It counts as traffic; success and
+ * failure rates leave it out. A turn that recorded an outcome first, such as a failed plan,
+ * keeps it. isAbandonedTurn is the same check on a fetched span's attributes.
+ */
+export function abandonedTurn(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  return sql`(${otelSpans.attributes}->>${ATTR.TURN_ABANDONED} IS NOT NULL AND ${otelSpans.attributes}->>'alpha.v2.outcome' IS NULL)`;
+}
+
+export function isAbandonedTurn(attributes: Record<string, unknown> | null | undefined): boolean {
+  return attributes?.[ATTR.TURN_ABANDONED] != null && attributes['alpha.v2.outcome'] == null;
+}
+
+/**
  * Tool calls that ran a Search tool: the tool-call counterpart of countedSearch. Calls traced
  * before the span recorded the tool's kind count, as they did then.
  */

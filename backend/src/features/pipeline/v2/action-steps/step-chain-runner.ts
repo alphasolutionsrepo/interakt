@@ -8,11 +8,13 @@
  * - An action_step event emitted for SSE visibility
  * - The accumulated ActionStepContext from prior steps
  *
- * The chain stops when a step returns skipRemaining=true or success=false.
+ * The chain stops when a step returns skipRemaining=true or success=false, and before
+ * the next step when the visitor has left (TurnAbandonedError).
  */
 
 import { createLogger } from '@/shared/logger/logger';
 import { withSpan, ATTR } from '@/features/telemetry';
+import { stopIfAbandoned } from '../../turn-abandoned';
 import type {
   ActionStep,
   ActionStepContext,
@@ -55,6 +57,7 @@ export async function runActionStepChain(
   const stepsExecuted: string[] = [];
 
   for (const step of chain) {
+    stopIfAbandoned(deps.signal, `${step.name.toLowerCase()} for ${ctx.action.toolSlug}`);
     const result = await withSpan(
       {
         name: `pipeline.v2.action.${step.id}`,

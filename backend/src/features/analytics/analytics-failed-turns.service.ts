@@ -2,7 +2,8 @@
 
 /**
  * Conversation turns that went wrong: the turn errored, or it finished without
- * a successful outcome (e.g. the plan failed). Read from the per-turn spans, so
+ * a successful outcome (e.g. the plan failed). A turn the visitor left before it had
+ * an outcome didn't fail and isn't counted (abandonedTurn). Read from the per-turn spans, so
  * each comes with its trace id, which opens the full conversation in Traces or
  * through the chat's conversation-detail tool. No message text is returned.
  * Admin test chats and the playground are left out, as in the other span reports.
@@ -10,10 +11,10 @@
 
 import 'server-only';
 
-import { and, desc, eq, gte, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, not, or, sql } from 'drizzle-orm';
 
 import { fetchExperienceNames } from './analytics-experience-summary.service';
-import { notTestTraffic, type DateRange } from './analytics-query.service';
+import { abandonedTurn, notTestTraffic, type DateRange } from './analytics-query.service';
 
 export interface FailedTurn {
   traceId: string;
@@ -30,7 +31,7 @@ export interface FailedTurn {
 }
 
 export interface FailedTurnsResult {
-  /** All turns in the period, failed or not */
+  /** All turns in the period, failed or not, except those the visitor left before an outcome */
   totalTurns: number;
   failedTurns: number;
   /** Count per reason: an outcome, or "error" */
@@ -39,7 +40,10 @@ export interface FailedTurnsResult {
   recent: FailedTurn[];
 }
 
-/** Conversation turns and failed turns per day, days starting at midnight in `timeZone`; days without turns are left out */
+/**
+ * Conversation turns and failed turns per day, days starting at midnight in `timeZone`; days
+ * without turns are left out. Turns the visitor left count as turns, not as failed.
+ */
 export async function getTurnsByDay(
   range: DateRange,
   timeZone: string,
@@ -55,7 +59,7 @@ export async function getTurnsByDay(
     .select({
       day: sql<Date>`${day} AS turn_day`,
       turns: sql<number>`COUNT(*)::int`,
-      failed: sql<number>`COUNT(*) FILTER (WHERE ${otelSpans.statusCode} = 'ERROR' OR COALESCE(${outcome}, '') <> 'success')::int`,
+      failed: sql<number>`COUNT(*) FILTER (WHERE (${otelSpans.statusCode} = 'ERROR' OR COALESCE(${outcome}, '') <> 'success') AND NOT ${abandonedTurn(otelSpans)})::int`,
     })
     .from(otelSpans)
     .where(
@@ -105,6 +109,8 @@ export async function getFailedTurns(range: DateRange, experienceId?: string, li
     lte(otelSpans.startTime, range.to),
     experienceId ? eq(otelSpans.experienceId, experienceId) : undefined,
     notTestTraffic(otelSpans),
+    // Neither failed nor succeeded, so not in the share that failed
+    not(abandonedTurn(otelSpans)),
   );
   const failed = or(eq(otelSpans.statusCode, 'ERROR'), sql`COALESCE(${outcome}, '') <> 'success'`);
 

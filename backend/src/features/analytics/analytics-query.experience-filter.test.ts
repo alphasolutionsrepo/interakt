@@ -226,6 +226,21 @@ describe('experience comparison table', () => {
   });
 });
 
+describe('experience comparison: chat turns the visitor left', () => {
+  it("counts a turn the visitor left before an outcome as a conversation, but doesn't rate it", async () => {
+    const experience = id();
+    const trace = () => id().replace(/-/g, '');
+    await testDb.db.insert(otelSpans).values([
+      span(trace(), 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experience),
+      // As the pipeline records a turn the visitor left: no outcome, where it stopped
+      span(trace(), 'pipeline.v2.turn', { [ATTR.TURN_ABANDONED]: 'writing the answer' }, experience),
+    ]);
+
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row).toMatchObject({ type: 'ai', volume: 2, successRate: 1 });
+  });
+});
+
 describe('searches counted from tool calls (experiences without stored searches)', () => {
   it('counts searches from live chats only, in the overview and the comparison alike', async () => {
     const experience = id();
