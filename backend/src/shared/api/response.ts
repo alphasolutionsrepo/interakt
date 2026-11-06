@@ -9,10 +9,10 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 
 import { isPublicRequest } from './public-route';
-import { currentRequestId } from './request-id';
+import { currentRequestId, requestIdFor } from './request-id';
 
-import { type FieldError, INTERNAL_MESSAGE, codeForStatus } from '@/shared/errors/app-error';
-import { toAppError } from '@/shared/errors/to-app-error';
+import { AppError, type FieldError, INTERNAL_MESSAGE, codeForStatus } from '@/shared/errors/app-error';
+import { failureLevel, isOurFailure, toAppError } from '@/shared/errors/to-app-error';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('api');
@@ -54,22 +54,31 @@ interface ErrorBody {
     details?: unknown;
 }
 
+/** What visitors of the widget and API clients read when the server side failed */
+export const PUBLIC_FAILURE_MESSAGE = 'The service is temporarily unavailable. Try again in a moment.';
+
 function errorResponse(body: ErrorBody, status: number, requestId: string = currentRequestId()): NextResponse<APIErrorResponse> {
-    // Visitors of the widget and API clients don't get to see which service failed or how
-    const internal = isPublicRequest() && status >= 500;
-    return NextResponse.json(
-        {
-            success: false as const,
-            code: body.code,
-            message: body.message,
-            error: body.message,
-            ...(body.hint && !internal && { hint: body.hint }),
-            ...(body.fields?.length && { fields: body.fields }),
-            ...(body.details !== undefined && !internal && { details: body.details }),
-            requestId,
-        },
-        { status }
-    );
+    return NextResponse.json(errorPayload(body, status, requestId), { status });
+}
+
+function errorPayload(body: ErrorBody, status: number, requestId: string): APIErrorResponse {
+    const publicRequest = isPublicRequest();
+    // Visitors of the widget and API clients don't get to see which service failed or how:
+    // not its name, its hint or its details. The code and request id are kept for support.
+    const internal = publicRequest && status >= 500;
+    const message = internal ? PUBLIC_FAILURE_MESSAGE : body.message;
+    // The public API documents per-field problems as details (OpenAPI ErrorResponse)
+    const details = body.details ?? (publicRequest && body.fields?.length ? body.fields : undefined);
+    return {
+        success: false as const,
+        code: body.code,
+        message,
+        error: message,
+        ...(body.hint && !internal && { hint: body.hint }),
+        ...(body.fields?.length && { fields: body.fields }),
+        ...(details !== undefined && !internal && { details }),
+        requestId,
+    };
 }
 
 /**
@@ -112,45 +121,85 @@ function successWithPagination<T>(
  * Error response for anything thrown. Errors we recognise (AppError, the feature
  * errors, provider errors) answer with their own status, message and hint; others
  * get a generic message. A string is our own message and is shown as it is.
- * status is used when the error doesn't carry one of its own.
+ * status is used when the error doesn't carry one of its own; logContext is added to
+ * the log line (say, which operation failed).
  */
-function error(err: unknown, status: number = 500): NextResponse<APIErrorResponse> {
-    const requestId = currentRequestId();
+function error(err: unknown, status: number = 500, logContext?: Record<string, unknown>): NextResponse<APIErrorResponse> {
+    const described = describeError(err, status, logContext);
+    return NextResponse.json(described.body, { status: described.status });
+}
+
+const REFUSAL_STATUS = { NOT_FOUND: 404, BAD_REQUEST: 400, CONFLICT: 409 } as const;
+type RefusalCode = keyof typeof REFUSAL_STATUS;
+
+/**
+ * A refusal decided from a caught error (its message said "not found", say): the same
+ * answer as notFound, badRequest or conflict, logged once with the error as its cause.
+ * The message is the error's own unless one is given. A cause that is ours to fix (an
+ * AI model that is gone) is logged as an error.
+ */
+function refused(
+    cause: unknown,
+    refusal: RefusalCode | { code: RefusalCode; message?: string; details?: unknown },
+    logContext?: Record<string, unknown>
+): NextResponse<APIErrorResponse> {
+    const { code, message = cause instanceof Error ? cause.message : String(cause), details } = typeof refusal === 'string' ? { code: refusal } : refusal;
+    const status = REFUSAL_STATUS[code];
+    return error(new AppError(message, { code, status, details, cause, ourSide: failureLevel(cause, 'warn') === 'error' }), status, logContext);
+}
+
+/**
+ * The error body and status apiResponse.error answers with, logged the same way, for
+ * answers that aren't a JSON response of their own (an error event in a stream).
+ * logContext is added to the log line (say, which experience failed).
+ */
+export function describeError(
+    err: unknown,
+    status: number = 500,
+    logContext?: Record<string, unknown>
+): { status: number; body: APIErrorResponse } {
+    // The same id the failure was recorded with elsewhere (a job on the index)
+    const requestId = typeof err === 'string' ? currentRequestId() : requestIdFor(err);
 
     if (typeof err === 'string') {
-        if (status >= 500) logger.error(err, undefined, { requestId });
-        return errorResponse({ code: codeForStatus(status), message: err }, status, requestId);
+        if (status >= 500) logger.error(err, undefined, { ...logContext, requestId });
+        return { status, body: errorPayload({ code: codeForStatus(status), message: err }, status, requestId) };
     }
 
     const appError = toAppError(err);
-    const recognised = appError.code !== 'INTERNAL';
+    const recognised = appError.code !== 'INTERNAL_ERROR';
     const finalStatus = recognised ? appError.status : status;
     const message = recognised
         ? appError.message
         // The caller chose a 4xx for this error: its message is meant for the user
         : finalStatus < 500 && err instanceof Error ? err.message : INTERNAL_MESSAGE;
 
-    if (finalStatus >= 500) {
+    // An error when something on our side needs fixing; a warning when the request was wrong
+    if (isOurFailure(appError, finalStatus)) {
         logger.error('Request failed', err instanceof Error ? err : new Error(String(err)), {
+            ...logContext,
             requestId,
             code: appError.code,
             ...(appError.details !== undefined && { details: appError.details }),
         });
     } else {
-        logger.warn('Request rejected', { requestId, code: appError.code, message });
+        logger.warn('Request rejected', { ...logContext, requestId, code: appError.code, message, err });
     }
 
-    return errorResponse(
-        {
-            code: recognised ? appError.code : codeForStatus(finalStatus),
-            message,
-            hint: appError.hint,
-            fields: appError.fields,
-            details: appError.details,
-        },
-        finalStatus,
-        requestId
-    );
+    return {
+        status: finalStatus,
+        body: errorPayload(
+            {
+                code: recognised ? appError.code : codeForStatus(finalStatus),
+                message,
+                hint: appError.hint,
+                fields: appError.fields,
+                details: appError.details,
+            },
+            finalStatus,
+            requestId
+        ),
+    };
 }
 
 /**
@@ -213,7 +262,7 @@ function conflict(message: string, details?: any): NextResponse<APIErrorResponse
  * Internal server error
  */
 function internalError(message: string = 'Internal server error'): NextResponse<APIErrorResponse> {
-    return errorResponse({ code: 'INTERNAL', message }, 500);
+    return errorResponse({ code: 'INTERNAL_ERROR', message }, 500);
 }
 
 // Export all response builders
@@ -221,6 +270,7 @@ export const apiResponse = {
     success,
     successWithPagination,
     error,
+    refused,
     validationError,
     notFound,
     badRequest,

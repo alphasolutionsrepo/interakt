@@ -19,6 +19,7 @@ import type {
     ProviderHit,
     TotalHits,
 } from '../../search.types';
+import { refusedOrFailed } from '../../request-refusal';
 import { SearchError } from '../../search.types';
 import type {
     SearchProvider,
@@ -29,7 +30,9 @@ import type {
 } from '../search-provider.interface';
 import type { GetDocumentResult } from '../search-engine-provider.interface';
 import { getSearchClient, checkAzureHealth } from './azure-client';
+import { AZURE_DOCUMENT_KEY } from './azure-constants';
 import { buildAzureSearchOptions, type AzureSearchOptions } from './query-builders';
+import { lookupFailure } from '../search-engine-provider.interface';
 
 const logger = createLogger('azure-search-provider');
 
@@ -47,9 +50,6 @@ function isOrderByError(error: unknown): boolean {
         message.includes('not sortable')
     );
 }
-
-/** The characters an Azure AI Search document key may contain. */
-const AZURE_DOCUMENT_KEY = /^[A-Za-z0-9_\-=]+$/;
 
 /**
  * Detect Azure failures caused by a non-searchable field appearing in the highlight
@@ -216,7 +216,8 @@ export class AzureSearchProvider implements SearchProvider {
             return await runSearchWithFallbacks();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            logger.error('Azure search failed', {
+            // Passed on: whoever answers the caller logs it
+            logger.debug('Azure search failed', {
                 indexName: context.indexName,
                 searchType,
                 error: errorMessage,
@@ -226,10 +227,13 @@ export class AzureSearchProvider implements SearchProvider {
                 throw error;
             }
 
-            throw new SearchError(errorMessage, 'PROVIDER_ERROR', {
-                provider: 'azure-ai-search',
-                indexName: context.indexName,
-            });
+            const details = { provider: 'azure-ai-search', indexName: context.indexName };
+            // A refused search (400) answers as the filter or sort to fix, or as a failure
+            if ((error as { statusCode?: number } | undefined)?.statusCode === 400) {
+                throw refusedOrFailed(errorMessage, searchRequest, (field) => [field], error, details);
+            }
+
+            throw new SearchError(errorMessage, 'PROVIDER_ERROR', details, { cause: error });
         }
     }
 
@@ -426,9 +430,10 @@ export class AzureSearchProvider implements SearchProvider {
             if ((error as { statusCode?: number } | null)?.statusCode === 404) {
                 return { found: false };
             }
-            const message = error instanceof Error ? error.message : 'Get document failed';
-            logger.error('Azure getDocument failed', { indexName, documentId, error: message });
-            return { found: false, error: message };
+            const message = lookupFailure(error, 'Get document failed');
+            // The search service turns it into a failure, and whoever answers logs it
+            logger.debug('Azure getDocument failed', { indexName, documentId, error: message });
+            return { found: false, error: message, cause: error };
         }
     }
 

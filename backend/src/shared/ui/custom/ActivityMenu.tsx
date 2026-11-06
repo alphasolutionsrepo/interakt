@@ -8,7 +8,7 @@
 // details and request id collapsed and a Copy button for support. The list lives in
 // this browser (shared/activity/activity-store.ts).
 
-import { AlertCircle, CheckCircle2, ExternalLink, History, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ExternalLink, History, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { activityStore, entryAsText, type ActivityEntry } from '@/shared/activity/activity-store';
+import { activityStore, entryAsText, entryState, unreadProblems, type ActivityEntry } from '@/shared/activity/activity-store';
 import { OPEN_ACTIVITY_EVENT, type OpenActivityDetail } from '@/shared/activity/report';
 import { useActivity } from '@/shared/activity/useActivity';
 
@@ -26,7 +26,7 @@ export function ActivityMenu() {
   const entries = useActivity();
   const [open, setOpen] = useState(false);
   const [focusId, setFocusId] = useState<string | undefined>();
-  const unread = entries.filter((e) => !e.read && (e.kind === 'error' || e.status === 'failed')).length;
+  const unread = unreadProblems(entries);
 
   // Details on a notice opens the panel at that entry
   useEffect(() => {
@@ -94,12 +94,16 @@ export function ActivityMenu() {
 }
 
 function ActivityItem({ entry, focused, onNavigate }: { entry: ActivityEntry; focused: boolean; onNavigate: () => void }) {
-  const failed = entry.kind === 'error' || entry.status === 'failed';
+  const state = entryState(entry);
+  const failed = state === 'failed';
+  const partial = state === 'partial';
   return (
     <li id={`activity-${entry.id}`} className={cn('space-y-1 px-4 py-3 text-sm', focused && 'bg-muted/50')}>
       <div className="flex items-start gap-2">
         {failed ? (
           <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+        ) : partial ? (
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
         ) : (
           <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
         )}
@@ -107,13 +111,13 @@ function ActivityItem({ entry, focused, onNavigate }: { entry: ActivityEntry; fo
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-medium">
               {entry.action}
-              {failed ? ' failed' : entry.kind === 'job' ? ' finished' : ''}
+              {failed ? ' failed' : partial ? ' finished with problems' : entry.kind === 'job' ? ' finished' : ''}
             </span>
             <time className="shrink-0 text-xs text-muted-foreground" dateTime={entry.at} title={new Date(entry.at).toLocaleString()}>
               {formatWhen(entry.at)}
             </time>
           </div>
-          <p className={cn(failed ? 'text-foreground' : 'text-muted-foreground')}>{entry.message}</p>
+          <p className={cn(failed || partial ? 'text-foreground' : 'text-muted-foreground')}>{entry.message}</p>
           {entry.hint && <p className="text-muted-foreground">{entry.hint}</p>}
           {entry.href && (
             <Link href={entry.href} onClick={onNavigate} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">

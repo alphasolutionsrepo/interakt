@@ -11,6 +11,7 @@ import { Client, type ClientOptions } from '@elastic/elasticsearch';
 import { elasticsearchConfig } from '@/config';
 import { createLogger } from '@/shared/logger/logger';
 import { EMBEDDING_FIELD_NAME } from './elasticsearch.constants';
+import { lookupFailure, type GetDocumentResult } from '../search-engine-provider.interface';
 
 const logger = createLogger('elasticsearch-client');
 
@@ -165,8 +166,8 @@ export async function createIndex(
         logger.info('Index created', { indexName });
         return { success: true };
     } catch (error) {
+        // Passed on with its cause: whoever answers the caller logs it
         const message = error instanceof Error ? error.message : 'Failed to create index';
-        logger.error('Failed to create index', { indexName, error: message });
         return { success: false, error: message, cause: error };
     }
 }
@@ -187,8 +188,8 @@ export async function deleteIndex(indexName: string): Promise<{ success: boolean
         logger.info('Index deleted', { indexName });
         return { success: true };
     } catch (error) {
+        // Passed on with its cause: whoever answers the caller logs it
         const message = error instanceof Error ? error.message : 'Failed to delete index';
-        logger.error('Failed to delete index', { indexName, error: message });
         return { success: false, error: message, cause: error };
     }
 }
@@ -294,6 +295,11 @@ export interface BulkIndexResult {
         error: string;
     }>;
     took: number;
+    /**
+     * The error that failed a whole batch (the service couldn't be reached, timed out),
+     * so the caller can explain it. Its documents are in errors too, with its message.
+     */
+    writeError?: unknown;
 }
 
 export type BulkWriteAction = 'upload' | 'merge' | 'delete';
@@ -355,6 +361,7 @@ export async function bulkWrite(
     const allErrors: BulkIndexResult['errors'] = [];
     const counts: Record<BulkWriteAction, number> = { upload: 0, merge: 0, delete: 0 };
     const startTime = Date.now();
+    let writeError: unknown;
 
     // Process in batches
     for (let i = 0; i < operations.length; i += batchSize) {
@@ -394,8 +401,9 @@ export async function bulkWrite(
                 });
             }
         } catch (error) {
-            // Entire batch failed
-            logger.error('Bulk write batch failed', {
+            // Entire batch failed. Passed on as writeError; the upload, reindex or write it
+            // belongs to logs it, with its request id
+            logger.debug('Bulk write batch failed', {
                 indexName,
                 batchStart: i,
                 batchSize: batch.length,
@@ -403,6 +411,7 @@ export async function bulkWrite(
             });
 
             totalFailed += batch.length;
+            writeError ??= error;
             batch.forEach((_, batchIndex) => {
                 allErrors.push({
                     index: i + batchIndex,
@@ -430,6 +439,7 @@ export async function bulkWrite(
         errors: allErrors,
         counts,
         took,
+        ...(writeError !== undefined && { writeError }),
     };
 }
 
@@ -733,12 +743,7 @@ export async function fetchAllDocuments(
 // GET DOCUMENT BY ID
 // ============================================================================
 
-export interface GetDocumentResult {
-    found: boolean;
-    id?: string;
-    source?: Record<string, unknown>;
-    error?: string;
-}
+export type { GetDocumentResult };
 
 /**
  * Get a single document by ID
@@ -775,9 +780,10 @@ export async function getDocumentById(
             return { found: false };
         }
 
-        const message = error instanceof Error ? error.message : 'Failed to get document';
-        logger.error('Failed to get document by ID', { indexName, documentId, error: message });
-        return { found: false, error: message };
+        // Passed on with its cause: whoever answers the caller logs it
+        const message = lookupFailure(error, 'Failed to get document');
+        logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
+        return { found: false, error: message, cause: error };
     }
 }
 

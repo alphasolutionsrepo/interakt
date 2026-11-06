@@ -53,9 +53,30 @@ export function apiErrorFrom(body: ApiErrorBody | null | undefined, status: numb
     return new ApiError(message, status, body ?? {});
 }
 
-/** Read a JSON response: its data on success, an ApiError thrown on failure */
-export async function handleApiResponse<T>(response: Response): Promise<T> {
-    if (!response.ok) throw await toApiError(response);
-    const data = await response.json();
-    return data.data ?? data;
+/**
+ * Read an API response: the data on success ({ data } unwrapped, or the body as it is),
+ * an ApiError thrown on failure. The status is checked before the body is read, so an
+ * error page from a gateway or proxy (HTML) still gives a readable error. A success
+ * that isn't JSON comes back as text.
+ */
+export async function handleApiResponse<T>(response: Response, fallback?: string): Promise<T> {
+    if (!response.ok) throw await toApiError(response, fallback);
+    const text = await response.text();
+    if (!text) return undefined as T;
+    let body: unknown;
+    try {
+        body = JSON.parse(text);
+    } catch {
+        return text as T;
+    }
+    // { success, data }: the data, even when it is null
+    if (body !== null && typeof body === 'object' && 'data' in body) return (body as { data: T }).data;
+    return body as T;
+}
+
+/** An error as one line for the user: what failed, then what to do about it */
+export function errorText(error: unknown, fallback: string): string {
+    if (!(error instanceof Error)) return fallback;
+    const hint = error instanceof ApiError ? error.hint : undefined;
+    return hint ? `${error.message} ${hint}` : error.message;
 }

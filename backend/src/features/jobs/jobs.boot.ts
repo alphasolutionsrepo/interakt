@@ -9,6 +9,7 @@ import { JOB_TYPES } from './job-registry';
 
 import { databaseConfig } from '@/config';
 import { createLogger } from '@/shared/logger/logger';
+import { inBackground } from '@/shared/telemetry/background';
 
 const logger = createLogger('jobs');
 
@@ -72,7 +73,9 @@ export async function ensureJobsStarted(): Promise<PgBoss | null> {
     return null;
   }
 
-  store.startPromise = (async () => {
+  // An admin request may start it (when it failed at boot); its workers and timers are
+  // no part of that request's trace
+  store.startPromise = inBackground(async () => {
     const instance = new PgBoss({
       connectionString,
       schema: JOBS_SCHEMA,
@@ -103,7 +106,7 @@ export async function ensureJobsStarted(): Promise<PgBoss | null> {
 
     registerShutdownHooks(instance);
     return instance;
-  })();
+  });
 
   try {
     return await store.startPromise;

@@ -38,8 +38,7 @@ export async function handleListTemplates(request: NextRequest) {
     return apiResponse.success(templates);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list templates', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listTemplates' });
   }
 }
 
@@ -64,8 +63,7 @@ export async function handleGetTemplate(
     return apiResponse.success(template);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get template', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getTemplate' });
   }
 }
 
@@ -82,8 +80,7 @@ export async function handleGetSystemDefaults() {
     return apiResponse.success(defaults);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get system defaults', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getPromptSystemDefaults' });
   }
 }
 
@@ -109,8 +106,7 @@ export async function handleGetVersionHistory(
     return apiResponse.success(history);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get version history', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getVersionHistory' });
   }
 }
 
@@ -148,11 +144,10 @@ export async function handleCreateVersion(request: NextRequest) {
     return apiResponse.success(template, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create template version', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createVersion' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createVersion' });
   }
 }
 
@@ -202,11 +197,10 @@ export async function handleRollback(
     return apiResponse.success(result);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to rollback system default', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'rollback' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'rollback' });
   }
 }
 
@@ -227,8 +221,7 @@ export async function handleListExperienceOverrides(
     return apiResponse.success(overrides);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list experience overrides', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listExperienceOverridesPrompt' });
   }
 }
 
@@ -269,14 +262,13 @@ export async function handleSetExperienceOverride(
     return apiResponse.success(result);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to set experience override', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'setExperienceOverridePrompt' });
     }
     if (err.message.includes('mismatch')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'setExperienceOverridePrompt' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'setExperienceOverridePrompt' });
   }
 }
 
@@ -309,7 +301,6 @@ export async function handleRemoveExperienceOverride(
     return apiResponse.success({ deleted: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to remove experience override', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'removeExperienceOverride' });
   }
 }

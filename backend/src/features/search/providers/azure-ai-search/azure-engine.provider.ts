@@ -12,7 +12,7 @@ import 'server-only';
 import { createLogger } from '@/shared/logger/logger';
 import { AzureFieldMapper } from './azure-field-mapper';
 import { AZURE_AI_SEARCH_CAPABILITIES } from './azure-capabilities';
-import { AZURE_INDEX_DEFAULTS, EMBEDDING_FIELD_NAME, SORTABLE_EDM_TYPES } from './azure-constants';
+import { AZURE_DOCUMENT_KEY, AZURE_INDEX_DEFAULTS, EMBEDDING_FIELD_NAME, SORTABLE_EDM_TYPES } from './azure-constants';
 import {
     getIndexClient,
     getSearchClient,
@@ -23,6 +23,7 @@ import { registerProviderClass } from '../search-engine-provider.factory';
 import { buildAzureFilter } from './query-builders/filter.builder';
 import type { ProviderCapabilities } from '../provider-capabilities';
 import { SearchError, type FilterClause, type SearchContext } from '../../search.types';
+import { lookupFailure } from '../search-engine-provider.interface';
 
 import type {
     SearchEngineProvider,
@@ -312,8 +313,8 @@ export class AzureEngineProvider implements SearchEngineProvider {
             logger.info('Azure index created', { indexName });
             return { success: true };
         } catch (error) {
+            // Passed on with its cause: whoever answers the caller logs it
             const message = error instanceof Error ? error.message : 'Failed to create Azure index';
-            logger.error('Failed to create Azure index', { indexName, error: message });
             return { success: false, error: message, cause: error };
         }
     }
@@ -328,8 +329,8 @@ export class AzureEngineProvider implements SearchEngineProvider {
             if (error?.statusCode === 404) {
                 return { success: true }; // Already doesn't exist
             }
+            // Passed on with its cause: whoever answers the caller logs it
             const message = error instanceof Error ? error.message : 'Failed to delete Azure index';
-            logger.error('Failed to delete Azure index', { indexName, error: message });
             return { success: false, error: message, cause: error };
         }
     }
@@ -422,6 +423,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
         const counts: Record<BulkWriteAction, number> = { upload: 0, merge: 0, delete: 0 };
         const errors: Array<{ index: number; id?: string; error: string }> = [];
         const startTime = Date.now();
+        let writeError: unknown;
 
         try {
             const client = getSearchClient(indexName);
@@ -441,7 +443,18 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 const batchSize = 1000;
                 for (let i = 0; i < azureDocs.length; i += batchSize) {
                     const batch = azureDocs.slice(i, i + batchSize);
-                    const result = await this.submitAzureBatch(client, run.action, batch);
+                    let result: Awaited<ReturnType<typeof this.submitAzureBatch>>;
+                    try {
+                        result = await this.submitAzureBatch(client, run.action, batch);
+                    } catch (error) {
+                        // This batch failed as a whole: its documents fail with the same text, and
+                        // the batches already written still count, as on Elasticsearch
+                        writeError ??= error;
+                        totalFailed += batch.length;
+                        const message = error instanceof Error ? error.message : 'Batch failed';
+                        batch.forEach((_, batchIndex) => errors.push({ index: run.indices[i + batchIndex], error: message }));
+                        continue;
+                    }
 
                     result.results.forEach((r, batchIndex) => {
                         // Original position of this operation in the caller's array
@@ -482,10 +495,13 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 errors,
                 counts,
                 took: Date.now() - startTime,
+                ...(writeError !== undefined && { writeError }),
             };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Bulk write failed';
-            logger.error('Azure bulk write failed', { indexName, error: message });
+            // Passed on as writeError; the upload, reindex or write it belongs to logs it,
+            // with its request id
+            logger.debug('Azure bulk write failed', { indexName, error: message });
             return {
                 success: false,
                 indexed: 0,
@@ -493,6 +509,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 errors: [{ index: 0, error: message }],
                 counts,
                 took: Date.now() - startTime,
+                writeError: error,
             };
         }
     }
@@ -704,6 +721,10 @@ export class AzureEngineProvider implements SearchEngineProvider {
     }
 
     async getDocumentById(indexName: string, documentId: string): Promise<GetDocumentResult> {
+        // An id Azure can't hold as a key isn't there (Azure would answer 400, not 404)
+        if (!AZURE_DOCUMENT_KEY.test(documentId)) {
+            return { found: false };
+        }
         try {
             const client = getSearchClient(indexName);
             const doc = await client.getDocument(documentId) as Record<string, unknown>;
@@ -713,11 +734,11 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 source: doc,
             };
         } catch (error: any) {
+            // Not there: a miss, not a failure (error is for a lookup that couldn't be answered)
             if (error?.statusCode === 404) {
-                return { found: false, error: 'Document not found' };
+                return { found: false };
             }
-            const message = error instanceof Error ? error.message : 'Failed to get document';
-            return { found: false, error: message };
+            return { found: false, error: lookupFailure(error, 'Failed to get document'), cause: error };
         }
     }
 

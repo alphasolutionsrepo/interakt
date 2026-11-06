@@ -14,7 +14,6 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -24,7 +23,6 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
-    AlertCircle,
     ChevronRight,
     ChevronLeft,
     Clock,
@@ -48,13 +46,16 @@ import type {
     FilterClause,
 } from '../_lib/hooks/useSearchPlayground';
 
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
+
 // ============================================================================
 // PROPS
 // ============================================================================
 
 interface SearchResultsPanelProps {
     result: SearchResponse | null;
-    error: string | null;
+    /** What the failed search threw, shown with its hint and details */
+    error: unknown;
     isSearching: boolean;
     onPageChange: (page: number) => void;
     onFacetSelect?: (field: string, value: string | number) => void;
@@ -133,17 +134,7 @@ export function SearchResultsPanel({
     if (error) {
         return (
             <div className="h-full flex items-center justify-center p-8">
-                <Card className="max-w-md w-full p-6">
-                    <div className="flex flex-col items-center text-center gap-4">
-                        <div className="p-3 rounded-full bg-destructive/10">
-                            <AlertCircle className="h-6 w-6 text-destructive" />
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-lg">Search Failed</h3>
-                            <p className="text-sm text-muted-foreground mt-1">{error}</p>
-                        </div>
-                    </div>
-                </Card>
+                <ProblemAlert error={error} title="Search failed" className="max-w-md" />
             </div>
         );
     }

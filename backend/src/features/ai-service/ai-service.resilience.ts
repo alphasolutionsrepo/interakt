@@ -273,10 +273,8 @@ export async function withRetry<T>(
 
             // Don't retry if we've exhausted all attempts
             if (attempt >= fullConfig.maxRetries) {
-                logger.warn('All retry attempts exhausted', {
-                    attempts: attempt + 1,
-                    error: (error as Error).message,
-                });
+                // Passed on: whoever handles it logs it
+                logger.debug('All retry attempts exhausted', { attempts: attempt + 1, err: error });
                 throw error;
             }
 

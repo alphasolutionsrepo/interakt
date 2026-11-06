@@ -34,6 +34,7 @@ import type {
   QueueStats,
   AnalyticsCollectorConfig,
 } from './analytics.types';
+import { inBackground } from '@/shared/telemetry/background';
 
 const logger = createLogger('analytics-collector');
 
@@ -262,9 +263,14 @@ export function trackClick(event: ClickEventData, experienceId?: string): void {
 // ============================================================================
 
 /**
- * Schedule a flush on next tick (non-blocking)
+ * Schedule a flush on next tick (non-blocking), outside the trace of the request that
+ * filled the queue: the batch holds other requests' events too
  */
 function scheduleFlush(): void {
+  inBackground(flushSoon);
+}
+
+function flushSoon(): void {
   if (typeof setImmediate !== 'undefined') {
     setImmediate(() => {
       flushAll().catch(() => {
@@ -585,7 +591,7 @@ export function startAnalyticsCollector(customConfig?: Partial<AnalyticsCollecto
 
   isShuttingDown = false;
 
-  flushTimer = setInterval(() => {
+  flushTimer = inBackground(() => setInterval(() => {
     logger.debug('Flush timer triggered', {
       searchQueueSize: searchEventQueue.length,
       aiQueueSize: aiEventQueue.length,
@@ -593,7 +599,7 @@ export function startAnalyticsCollector(customConfig?: Partial<AnalyticsCollecto
     flushAll().catch((err) => {
       logger.error('flushAll failed in interval', err as Error);
     });
-  }, config.flushIntervalMs);
+  }, config.flushIntervalMs));
 
   // NOTE: Removed .unref() - in Next.js dev mode it can cause the timer to not fire
   // if (flushTimer.unref) {

@@ -178,6 +178,17 @@ describe('seedDocsSearch', () => {
     expect(world.registry?.metadata).toMatchObject({ searchType: 'lexical', sections: 3, hybridFailure: null });
   });
 
+  it("logs a batch that failed as a whole with the search service's error", async () => {
+    const timedOut = new Error('Request timed out');
+    world.indexDocuments = (n) => ({ indexedDocuments: n - 1, failedDocuments: 1, errors: [{ documentIndex: 0, error: timedOut.message }], embeddingStats: { generated: 0 }, writeError: timedOut });
+    const warn = vi.spyOn(log, 'warn');
+
+    await seedDocsSearch();
+
+    expect(warn).toHaveBeenCalledWith('Some docs sections failed to index', expect.objectContaining({ err: timedOut }));
+    warn.mockRestore();
+  });
+
   it('skips when nothing changed', async () => {
     await seedDocsSearch();
     resetCalls();

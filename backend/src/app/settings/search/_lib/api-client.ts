@@ -4,7 +4,7 @@
  * Global Search Settings API Client
  */
 
-import { apiErrorFrom } from '@/shared/api/api-error';
+import { toApiError } from '@/shared/api/api-error';
 import type { GlobalSettingsResponse, UpdateGlobalSettingsInput } from '@/features/global-settings';
 
 const API_BASE = '/api/settings/search';
@@ -24,11 +24,8 @@ async function fetchApi<T>(
         },
     });
 
+    if (!response.ok) throw await toApiError(response);
     const data = await response.json();
-
-    if (!response.ok) {
-        throw apiErrorFrom(data, response.status);
-    }
 
     return data.data;
 }

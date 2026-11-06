@@ -2,13 +2,13 @@
 
 /**
  * Turns any thrown error into something an admin can read: the message, what the
- * provider said (status, code, response body), the chain of causes, and a short hint
- * on what to try. Provider SDK errors carry the useful part in different places
- * (Azure RestError: statusCode/code/details, Elasticsearch: meta.body.error, OpenAI:
- * status/error), and the request headers next to it hold API keys, so everything goes
- * through redactSecrets before it is logged or shown.
+ * provider said (status, code, response body) and the chain of causes. Provider SDK
+ * errors carry the useful part in different places (Azure RestError:
+ * statusCode/code/details, Elasticsearch: meta.body.error, OpenAI: status/error), and
+ * the request headers next to it hold API keys, so everything goes through
+ * redactSecrets before it is shown. upstream.ts builds the explanation and hint from it.
  *
- * No Node-only imports: the logger uses this, and the logger is loaded everywhere.
+ * No Node-only imports, so it stays usable from any code, the logger included.
  */
 
 export interface ErrorDetail {
@@ -23,81 +23,202 @@ export interface ErrorDetail {
     details?: unknown;
     /** Messages of the errors this one wraps, outermost first */
     causes?: string[];
-    /** A suggestion in plain words, when the error is one we recognise */
-    hint?: string;
 }
 
 const MAX_STRING = 4000;
 const MAX_DEPTH = 6;
 const MAX_CAUSES = 5;
+// Fields an error class may define without making them its own (getters, prototype fields)
+const ERROR_FIELDS = ['code', 'statusCode', 'status', 'provider', 'providerKey', 'providerId', 'retryable', 'type', 'param'];
+// Written separately (message, cause, the provider's response as details), or left out: the
+// request and response objects carry credentials, and a query's parameters are already in
+// its message
+const LEFT_OUT = new Set([
+    'name', 'message', 'stack', 'cause', 'details', 'error',
+    'request', 'response', 'headers', 'config', 'options', 'meta', 'body', 'params',
+]);
 // Matched at the end of the key, so apiKey, x-api-key, accessToken and clientSecret are
 // redacted while counts like tokens, maxTokens and tokenCount are not
 const SECRET_KEY = /(api[-_]?key|password|passwd|secret|token|authorization|cookie|connection[-_]?string|credentials?)$/i;
 
-/** Copy a value with secret-looking keys replaced and long strings cut, safe to log or show. */
+// Credentials written inside text: a URL's user and password, a key or signature in a
+// query or connection string (code only in a query: "status code=500" stays), an api-key
+// header written out, an Authorization header's value (raw, or after Bearer, Basic, ApiKey
+// or Token). Credentials inside quotes or brackets count too. After a scheme the value
+// must have mixed case and 12+ characters, or look like a
+// credential (a digit, a symbol or a JWT's dot inside it), so "Basic search.", "Bearer
+// token" and "Bearer token-based" stay.
+// A port followed by a query (host:3000?email=a@b) is not a password
+const URL_USER = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@:]*:(?!\d+[/?#])[^\s/@]+@/gi;
+const KEY_VALUE = /((?:^|[?&;#,\s"'(\[{])(?:api[-_]?key|key|(?:[a-z]+[-_]?)?token|sig|signature|password|passwd|secret|client[-_]?secret|accountkey|sharedaccesskey|authorization)=|[?&]code=)(?:'[^']*'|"[^"]*"|\\?["']?[^&;\s"'\\)\]}]+)/gi;
+const API_KEY_HEADER = /(\b(?:x-)?api-key\s*:\s*)[^\s,;"']+/gi;
+// The whole value, and not one followed by a quote (Basic realm="security" is a challenge)
+const AUTH_HEADER = /\b(Bearer|Basic|ApiKey|Token)\s+([\w.~+/=-]{6,})(?![\w.~+/="'-])/gi;
+
+/** A value after an auth scheme that is a credential, not the next word of a sentence */
+function looksLikeCredential(value: string): boolean {
+    const symbol = /\d|[~+/]|\.\w|=$/.test(value);
+    const mixedCase = value.length >= 12 && /[a-z]/.test(value) && /[A-Z]/.test(value);
+    return symbol || mixedCase;
+}
+
+/** Text with the credentials written inside it replaced */
+export function scrubCredentials(text: string): string {
+    return text
+        .replace(URL_USER, '$1[Redacted]@')
+        .replace(KEY_VALUE, '$1[Redacted]')
+        .replace(API_KEY_HEADER, '$1[Redacted]')
+        .replace(AUTH_HEADER, (match, scheme: string, value: string) => (looksLikeCredential(value) ? `${scheme} [Redacted]` : match));
+}
+
+/** Copy a value with secret-looking keys and credentials in text replaced and long strings cut, safe to log or show. */
 export function redactSecrets(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
+    return redact(value, true, depth, seen);
+}
+
+/**
+ * The fields of a log line with secret-looking keys and credentials in text replaced and
+ * errors expanded. Unlike redactSecrets the fields are not cut; an error keeps the limits
+ * serializeError gives it (a provider's answer can be huge).
+ */
+export function redactLogFields(fields: Record<string, unknown>): Record<string, unknown> {
+    const redacted = redact(fields, false, 0, new WeakSet<object>());
+    return redacted !== null && typeof redacted === 'object' ? (redacted as Record<string, unknown>) : { logFields: redacted };
+}
+
+// Logging never throws: a value that throws when read (a getter, toJSON, a revoked Proxy)
+// is written as this, and the values around it as they are
+const UNREADABLE = '[Unreadable]';
+
+function redact(value: unknown, cut: boolean, depth: number, seen: WeakSet<object>): unknown {
+    try {
+        return redactValue(value, cut, depth, seen);
+    } catch {
+        return UNREADABLE;
+    }
+}
+
+/** An error's name, message or stack as text without credentials, whatever was put there */
+function textOf(err: Error, key: 'name' | 'message' | 'stack'): string | undefined {
+    const value = read(err, key);
+    if (value === undefined || value === null) return undefined;
+    if (typeof value === 'string') return scrubCredentials(value);
+    try {
+        return JSON.stringify(redactSecrets(value)) ?? UNREADABLE;
+    } catch {
+        return UNREADABLE;
+    }
+}
+
+/** A property's value, or UNREADABLE when reading it throws */
+function read(value: object, key: string): unknown {
+    try {
+        return (value as Record<string, unknown>)[key];
+    } catch {
+        return UNREADABLE;
+    }
+}
+
+function redactValue(value: unknown, cut: boolean, depth: number, seen: WeakSet<object>): unknown {
     if (value === null || value === undefined) return value;
     if (typeof value === 'string') {
-        return value.length > MAX_STRING ? `${value.slice(0, MAX_STRING)}… (${value.length - MAX_STRING} more characters)` : value;
+        const text = scrubCredentials(value);
+        return cut && text.length > MAX_STRING ? `${text.slice(0, MAX_STRING)}… (${text.length - MAX_STRING} more characters)` : text;
     }
     if (typeof value !== 'object') return value;
-    if (depth >= MAX_DEPTH) return '[…]';
+    // In a log line an error counts its limits from itself, as it did when pino expanded it
+    if (value instanceof Error) {
+        return serializeError(value, cut ? depth + 1 : 0, seen);
+    }
+    // What JSON would write for it: a Date or URL as its text. Like JSON, toJSON is called
+    // once, not again on what it returns
+    const json = (value as { toJSON?: unknown }).toJSON;
+    if (typeof json !== 'function') return walk(value, cut, depth, seen);
+    const written: unknown = json.call(value);
+    return written !== null && typeof written === 'object' ? walk(written, cut, depth, seen) : redact(written, cut, depth, seen);
+}
+
+function walk(value: object, cut: boolean, depth: number, seen: WeakSet<object>): unknown {
+    if (cut && depth >= MAX_DEPTH) return '[…]';
+    // Only a value inside itself is circular; one reached twice side by side is written twice
     if (seen.has(value)) return '[Circular]';
     seen.add(value);
-
-    if (Array.isArray(value)) {
-        const items = value.slice(0, 50).map((v) => redactSecrets(v, depth + 1, seen));
-        if (value.length > 50) items.push(`… ${value.length - 50} more`);
-        return items;
+    try {
+        if (Array.isArray(value)) {
+            const kept = cut ? value.slice(0, 50) : value;
+            const items = kept.map((v) => redact(v, cut, depth + 1, seen));
+            if (kept.length < value.length) items.push(`… ${value.length - 50} more`);
+            return items;
+        }
+        const out: Record<string, unknown> = {};
+        for (const key of Object.keys(value)) {
+            if (SECRET_KEY.test(key)) {
+                out[key] = '[Redacted]';
+                continue;
+            }
+            const v = read(value, key);
+            if (typeof v !== 'function') out[key] = redact(v, cut, depth + 1, seen);
+        }
+        return out;
+    } finally {
+        seen.delete(value);
     }
-    if (value instanceof Error) {
-        return serializeError(value, depth + 1, seen);
-    }
-
-    const out: Record<string, unknown> = {};
-    for (const [key, v] of Object.entries(value)) {
-        if (typeof v === 'function') continue;
-        out[key] = SECRET_KEY.test(key) ? '[Redacted]' : redactSecrets(v, depth + 1, seen);
-    }
-    return out;
 }
 
 /**
  * An error as a plain object for a log line. Unlike { message, stack, name } it keeps
- * what providers attach (statusCode, code, details, response body) and the cause,
- * and leaves out the request, whose headers carry credentials.
+ * the fields the error carries (statusCode, code, a database error's detail), the
+ * provider's response body and the cause, and leaves out the request and response objects,
+ * whose headers carry credentials.
  */
 export function serializeError(err: unknown, depth = 0, seen = new WeakSet<object>()): Record<string, unknown> {
     if (!(err instanceof Error)) {
-        return { message: typeof err === 'string' ? err : 'Unknown error', value: redactSecrets(err, depth, seen) };
+        return { message: typeof err === 'string' ? scrubCredentials(err) : 'Unknown error', value: redactSecrets(err, depth, seen) };
     }
-    if (seen.has(err)) return { message: err.message, circular: true };
+    if (seen.has(err)) return { message: textOf(err, 'message'), circular: true };
     seen.add(err);
-
-    const out: Record<string, unknown> = { name: err.name, message: err.message, stack: err.stack };
-    const e = err as unknown as Record<string, unknown>;
-    for (const key of ['code', 'statusCode', 'status', 'providerKey', 'providerId', 'retryable', 'type', 'param']) {
-        if (e[key] !== undefined && typeof e[key] !== 'function') out[key] = e[key];
+    try {
+        return expandError(err, depth, seen);
+    } finally {
+        seen.delete(err);
     }
-    const body = providerBody(err);
-    if (body !== undefined) out.details = redactSecrets(body, depth + 1, seen);
-    if (e.cause !== undefined && depth < MAX_DEPTH) out.cause = serializeError(e.cause, depth + 1, seen);
+}
+
+function expandError(err: Error, depth: number, seen: WeakSet<object>): Record<string, unknown> {
+    const out: Record<string, unknown> = { name: textOf(err, 'name'), message: textOf(err, 'message'), stack: textOf(err, 'stack') };
+    // What the error explains itself with (a database error's detail, table and constraint,
+    // a provider's code), whether set as its own fields or on its class
+    for (const key of new Set([...ERROR_FIELDS, ...Object.keys(err)])) {
+        const value = LEFT_OUT.has(key) ? undefined : read(err, key);
+        if (value === undefined || typeof value === 'function') continue;
+        out[key] = redactSecrets(value, depth + 1, seen);
+    }
+    let body: unknown;
+    try {
+        body = redactSecrets(providerBody(err), depth + 1, seen);
+    } catch {
+        body = UNREADABLE;
+    }
+    if (body !== undefined) out.details = body;
+    const cause = read(err, 'cause');
+    if (cause !== undefined && depth < MAX_DEPTH) out.cause = serializeError(cause, depth + 1, seen);
     return out;
 }
 
-/** The structured detail for an error, with its hint. Walks the cause chain for status and code. */
+/** The structured detail for an error. Walks the cause chain for status and code. */
 export function toErrorDetail(err: unknown): ErrorDetail {
     if (!(err instanceof Error)) {
-        return { message: typeof err === 'string' ? err : 'Unknown error' };
+        return { message: typeof err === 'string' ? scrubCredentials(err) : 'Unknown error' };
     }
 
-    const detail: ErrorDetail = { message: err.message, name: err.name };
+    const detail: ErrorDetail = { message: textOf(err, 'message') ?? '', name: textOf(err, 'name') };
     const causes: string[] = [];
     let current: unknown = err;
     for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
         const e = current as unknown as Record<string, unknown>;
-        if (i > 0 && current.message && !causes.includes(current.message) && current.message !== err.message) {
-            causes.push(current.message);
+        const message = textOf(current, 'message');
+        if (i > 0 && message && !causes.includes(message) && message !== detail.message) {
+            causes.push(message);
         }
         const status = numberOf(e.statusCode) ?? numberOf(e.status) ?? numberOf((e.meta as Record<string, unknown> | undefined)?.statusCode);
         if (detail.statusCode === undefined && status !== undefined) detail.statusCode = status;
@@ -111,53 +232,7 @@ export function toErrorDetail(err: unknown): ErrorDetail {
         current = e.cause;
     }
     if (causes.length > 0) detail.causes = causes;
-
-    const hint = hintFor(detail);
-    if (hint) detail.hint = hint;
     return detail;
-}
-
-/**
- * A suggestion for errors we recognise. Matches on status, code and the text of the
- * message and its causes, since providers word the same problem differently.
- */
-export function hintFor(detail: Pick<ErrorDetail, 'message' | 'statusCode' | 'code' | 'causes' | 'details'>): string | undefined {
-    const text = [detail.message, detail.code, ...(detail.causes ?? []), typeof detail.details === 'string' ? detail.details : JSON.stringify(detail.details ?? '')]
-        .join(' ')
-        .toLowerCase();
-    const status = detail.statusCode;
-
-    if (/dimension/.test(text) && /vector|embedding|dims/.test(text)) {
-        return "The embedding model's vector size doesn't match the index. Pick a model with the same dimensions, or change the AI configuration and reindex.";
-    }
-    if (/insufficient_quota|quota exceeded|exceeded your current quota/.test(text)) {
-        return 'The AI provider account is out of quota. Check billing or limits with the provider.';
-    }
-    if (status === 429 || /rate.?limit|too many requests/.test(text)) {
-        return 'The provider is limiting how many requests it accepts. Wait a minute and try again.';
-    }
-    if (status === 401 || status === 403 || /unauthorized|forbidden|authentication|invalid api key|access denied/.test(text)) {
-        return 'The service rejected the credentials. Check the API key or secret configured for the search service or AI provider.';
-    }
-    if (/econnrefused|enotfound|etimedout|econnreset|fetch failed|socket hang up|getaddrinfo/.test(text)) {
-        return "The service couldn't be reached. Check its endpoint URL and that it is running.";
-    }
-    if (status === 413 || /request entity too large|payload too large|request is too large/.test(text)) {
-        return 'The request was too large for the provider. Upload fewer or smaller documents at a time.';
-    }
-    if (/index_not_found|index .* (was )?not found|no such index|index does not exist/.test(text)) {
-        return "The index doesn't exist on the search service. Use Recreate Index, then upload or reindex the documents.";
-    }
-    if (/resource_already_exists|already exists/.test(text)) {
-        return 'Something with this name already exists on the search service.';
-    }
-    if (/mapper_parsing|illegal_argument|invalidrequestparameter|invalid ?field|cannot be changed|is not a valid/.test(text)) {
-        return 'The search service rejected the index definition. Check the field settings named in the log.';
-    }
-    if (status !== undefined && status >= 500) {
-        return 'The provider had an internal error. Trying again usually works.';
-    }
-    return undefined;
 }
 
 function numberOf(value: unknown): number | undefined {
@@ -170,7 +245,8 @@ function providerBody(err: unknown): unknown {
     if (e.details !== undefined) return e.details;
     const meta = e.meta as Record<string, unknown> | undefined;
     const metaBody = meta?.body as Record<string, unknown> | undefined;
-    if (metaBody !== undefined) return metaBody.error ?? metaBody;
+    // null when there was no response at all (connection refused, timeout)
+    if (metaBody !== undefined && metaBody !== null) return metaBody.error ?? metaBody;
     const response = e.response as Record<string, unknown> | undefined;
     if (typeof response?.bodyAsText === 'string') return parseMaybeJson(response.bodyAsText);
     if (e.error !== undefined && typeof e.error === 'object') return e.error;

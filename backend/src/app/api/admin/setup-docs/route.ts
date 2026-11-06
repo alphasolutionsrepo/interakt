@@ -38,8 +38,7 @@ export async function GET() {
     const status = await getDocsSeedStatus();
     return apiResponse.success(status);
   } catch (e) {
-    logger.error('setup-docs status failed', e as Error);
-    return apiResponse.error(e as Error);
+    return apiResponse.error(e as Error, undefined, { operation: 'setupDocsStatus' });
   }
 }
 
@@ -73,8 +72,7 @@ export async function POST(request: NextRequest) {
 
     return apiResponse.badRequest(`Unknown action "${action}". Use "seed" or "reset".`);
   } catch (e) {
-    logger.error('setup-docs failed', e as Error);
-    return apiResponse.error(e as Error);
+    return apiResponse.error(e as Error, undefined, { operation: 'setupDocs' });
   }
 }
 

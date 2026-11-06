@@ -6,12 +6,13 @@
  * Azure-specific field types, settings, and configurations.
  */
 
+export { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
+
 /**
- * Name of the vector field the document indexer writes embeddings to.
- * Must match EMBEDDING_FIELD_NAME in document-indexer.service.ts and the
- * Elasticsearch constant of the same name.
+ * The characters an Azure AI Search document key may contain. Azure answers 400, not
+ * 404, for a key with any other character, so such an id is never a document there.
  */
-export const EMBEDDING_FIELD_NAME = 'content_embedding';
+export const AZURE_DOCUMENT_KEY = /^[A-Za-z0-9_\-=]+$/;
 
 /**
  * Mapping from app field types to Azure Edm types.

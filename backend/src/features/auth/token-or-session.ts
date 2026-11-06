@@ -15,6 +15,7 @@ import 'server-only';
 import type { NextRequest, NextResponse } from 'next/server';
 import { auth } from './auth.api.handlers';
 import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
+import { markAdminCaller } from '@/shared/api/public-route';
 
 /** Who is calling: a client with the experience's token, or a signed-in admin. */
 export type ExperienceCaller = 'api' | 'admin';
@@ -40,7 +41,10 @@ export async function authenticateTokenOrSession(
   }
 
   const session = await auth();
-  return session?.user ? { caller: 'admin', analyticsSource: 'admin_test' } : { caller: null };
+  if (!session?.user) return { caller: null };
+  // The playground: an admin testing the experience gets errors explained in full
+  markAdminCaller();
+  return { caller: 'admin', analyticsSource: 'admin_test' };
 }
 
 /** Marks a request from the admin's Widget playground (the widget's testMode). */

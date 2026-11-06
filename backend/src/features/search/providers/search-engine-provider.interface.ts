@@ -176,6 +176,11 @@ export interface BulkIndexResult {
     }>;
     /** Total operation time in milliseconds */
     took: number;
+    /**
+     * The error that failed a whole batch (the service couldn't be reached, timed out),
+     * so the caller can explain it. Its documents are in errors too, with its message.
+     */
+    writeError?: unknown;
 }
 
 /**
@@ -282,7 +287,10 @@ export interface GetDocumentResult {
     id?: string;
     /** Document source fields */
     source?: Record<string, unknown>;
+    /** Why the lookup failed (never empty): set only when it failed, not when nothing was found */
     error?: string;
+    /** The provider's own error, so the API can explain it */
+    cause?: unknown;
 }
 
 // ============================================================================
@@ -568,4 +576,13 @@ export interface SearchEngineProvider extends IndexProvider, DocumentProvider {
 
     /** Close/cleanup provider connections (for graceful shutdown) */
     close(): Promise<void>;
+}
+
+/**
+ * The error text of a failed document lookup, never empty: an empty one would read
+ * as "not found" (an Elasticsearch ConnectionError has no message, only its name).
+ */
+export function lookupFailure(error: unknown, fallback: string): string {
+    if (error instanceof Error) return error.message || error.name || fallback;
+    return fallback;
 }

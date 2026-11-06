@@ -20,6 +20,8 @@ export interface ModuleResult<T> {
   abort?: boolean;
   summary: string;
   durationMs: number;
+  /** What failed, when success is false, for whoever reports it */
+  error?: unknown;
 }
 
 // ============================================================================

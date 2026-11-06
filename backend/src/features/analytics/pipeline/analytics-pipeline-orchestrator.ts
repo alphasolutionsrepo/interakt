@@ -158,7 +158,7 @@ export async function runAnalyticsPipeline(
     );
 
     if (!synthesisResult.success || !synthesisResult.data) {
-      throw new Error(`Synthesis failed: ${synthesisResult.summary}`);
+      throw new Error(`Synthesis failed: ${synthesisResult.summary}`, { cause: synthesisResult.error });
     }
 
     // A stopped answer ends early without an error; it is not checked or saved
@@ -240,7 +240,7 @@ export async function runAnalyticsPipeline(
       return { sessionId: input.sessionId || '', responseText: '', toolsUsed: [], analyticsData: [], usage };
     }
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Pipeline failed', { error: errorMessage });
+    logger.error('Pipeline failed', { err: error });
 
     emit({ type: 'error', error: errorMessage });
     emit({ type: 'done', sessionId: input.sessionId || '', usage, toolsUsed: [] });

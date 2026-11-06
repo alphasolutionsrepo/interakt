@@ -7,15 +7,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import type { IndexLastJob } from '@/db/schema/search-index.schema';
 import { jobError, recordLastJob } from '@/features/search-index/search-index.service';
-import { currentRequestId } from '@/shared/api/request-id';
 import { apiResponse } from '@/shared/api/response';
-import { scrub } from '@/shared/errors/upstream';
+import { writeFailureLevel } from '@/shared/errors/to-app-error';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
 import { createLogger } from '@/shared/logger/logger';
 // Session resolution now happens inside resolveDocumentActor, which handles both
 // session and ingestion-key callers.
 import { elasticsearchConfig } from '../../../config';
+import { uploadOutcome } from './upload-outcome';
+import { writeFailure } from './write-failure';
 
 import {
     indexDocuments,
@@ -156,7 +157,8 @@ async function runDocumentIndexing(
         await recordLastJob(searchIndexId, { kind: 'upload', status: 'failed', startedAt, finishedAt: new Date().toISOString(), error: jobError(error) });
         throw error;
     }
-    await recordLastJob(searchIndexId, uploadOutcome(result, startedAt, sourceFileName));
+    const outcome = uploadOutcome(result, startedAt, sourceFileName);
+    await recordLastJob(searchIndexId, outcome);
 
     // Build response message
     let message = result.success
@@ -171,6 +173,7 @@ async function runDocumentIndexing(
     // Build response
     const response: IndexDocumentsResponse = {
         success: result.success,
+        outcome,
         batchId: result.batchId,
         message,
         summary: {
@@ -196,8 +199,18 @@ async function runDocumentIndexing(
         response.warnings = result.warnings.slice(0, 50);
     }
 
-    logger.info('Document indexing completed', {
+    // A failed or partial upload is a warning (an error when the search service failed),
+    // so a log filtered by level still shows it
+    const firstRejection = result.errors.find((e) => e.field !== EMBEDDING_FIELD_NAME);
+    const level = outcome.status === 'succeeded' ? 'info' : writeFailureLevel(result.writeError);
+    logger[level]('Document indexing completed', {
         searchIndexId,
+        // A failed upload's id, shown on the index page, so support can find this line
+        ...(outcome.error?.requestId && { requestId: outcome.error.requestId }),
+        // What went wrong: the write as a whole (the indexer leaves logging it to here), or the first document
+        ...(result.writeError !== undefined && { err: result.writeError }),
+        // Embedding errors are on documents still indexed (without a vector), so not a reason
+        ...(firstRejection && { firstError: firstRejection.error }),
         batchId: result.batchId,
         indexed: result.indexedDocuments,
         failed: result.failedDocuments,
@@ -206,33 +219,6 @@ async function runDocumentIndexing(
     });
 
     return apiResponse.success(response, result.success ? 200 : 207); // 207 = Multi-Status
-}
-
-/**
- * How an upload ended, for the index page. Nothing indexed is a failure, with the
- * reason the indexer gave (index setup, mappings) or the first document error.
- */
-function uploadOutcome(
-    result: Awaited<ReturnType<typeof indexDocuments>>,
-    startedAt: string,
-    sourceFileName?: string
-): IndexLastJob {
-    const from = sourceFileName ? ` from ${sourceFileName}` : '';
-    const base = { kind: 'upload' as const, startedAt, finishedAt: new Date().toISOString() };
-    if (result.indexedDocuments > 0) {
-        const failed = result.failedDocuments > 0 ? `, ${result.failedDocuments} failed` : '';
-        return { ...base, status: 'succeeded', summary: `${result.indexedDocuments} of ${result.totalDocuments} documents indexed${from}${failed}` };
-    }
-    const reason = result.errors[0]?.error ?? 'No documents were indexed';
-    return {
-        ...base,
-        status: 'failed',
-        error: {
-            code: 'INDEXING_FAILED',
-            message: scrub(result.totalDocuments > 0 ? `None of the ${result.totalDocuments} documents${from} were indexed: ${reason}` : reason),
-            requestId: currentRequestId(),
-        },
-    };
 }
 
 // ============================================================================
@@ -274,13 +260,12 @@ export async function handleIndexDocuments(
         });
     } catch (error) {
         const err = error as Error;
-        logger.error('Document indexing failed', err);
 
         if (err.message.includes('not found')) {
-            return apiResponse.notFound(err.message);
+            return apiResponse.refused(error, 'NOT_FOUND', { operation: 'indexDocuments' });
         }
 
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'indexDocuments' });
     }
 }
 
@@ -333,8 +318,7 @@ export async function handleListBatches(
         return apiResponse.success(response);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to list batches', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'listBatches' });
     }
 }
 
@@ -411,8 +395,7 @@ export async function handleGetBatchStatus(
         return apiResponse.success(response);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to get batch status', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'getBatchStatus' });
     }
 }
 
@@ -462,8 +445,7 @@ export async function handleCancelBatch(
         return apiResponse.success({ cancelled: true, batchId: params.batchId });
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to cancel batch', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'cancelBatch' });
     }
 }
 
@@ -479,7 +461,7 @@ export async function handleCancelBatch(
  * an index that exists in the database but was never provisioned in the search
  * provider (409 — fixable by running a full upload).
  */
-function mapWriteError(error: unknown, context: string) {
+function mapWriteError(error: unknown, operation: string) {
     if (error instanceof SearchIndexNotFoundError) {
         return apiResponse.notFound(error.message);
     }
@@ -491,21 +473,23 @@ function mapWriteError(error: unknown, context: string) {
         return apiResponse.badRequest(error.message);
     }
 
-    const err = error as Error;
-    logger.error(context, err);
-    return apiResponse.error(err);
+    // apiResponse.error logs it, once
+    return apiResponse.error(error, undefined, { operation });
 }
 
 /**
- * Build the shared response body for the write endpoints.
+ * Build the shared response body for the write endpoints. A write that wrote nothing
+ * is explained (error), and the message says why.
  */
 function buildWriteResponse(
     result: DocumentWriteResult,
     message: string
 ): WriteDocumentsResponse {
+    const error = writeFailure(result);
     const response: WriteDocumentsResponse = {
         success: result.success,
-        message,
+        message: error?.message ?? message,
+        ...(error && { error }),
         summary: {
             total: result.total,
             succeeded: result.succeeded,
@@ -526,6 +510,28 @@ function buildWriteResponse(
     }
 
     return response;
+}
+
+/**
+ * The answer to a document write (207 when any of it failed), and its one log line. A
+ * failed write is a warning with its error and the request id the answer shows, so
+ * support can find the cause.
+ */
+function answerWrite(result: DocumentWriteResult, message: string, logMessage: string, context: Record<string, unknown>) {
+    const response = buildWriteResponse(result, message);
+    if (result.success) {
+        logger.info(logMessage, context);
+    } else {
+        logger[writeFailureLevel(result.writeError)](logMessage, {
+            ...context,
+            failed: result.failed,
+            // Why the first one failed, when it wasn't the write as a whole
+            ...(result.errors[0] && { firstError: result.errors[0].error }),
+            ...(response.error && { requestId: response.error.requestId }),
+            ...(result.writeError !== undefined && { err: result.writeError }),
+        });
+    }
+    return apiResponse.success(response, result.success ? 200 : 207); // 207 = Multi-Status
 }
 
 /**
@@ -611,20 +617,14 @@ async function handleSingleDocumentWrite(
             ? `Document ${verb}`
             : result.errors[0]?.error || `Failed to ${action} document`;
 
-        logger.info('Single document write completed', {
+        return answerWrite(result, message, 'Single document write completed', {
             searchIndexId,
             documentId,
             action,
-            success: result.success,
             ...actorLogContext(actor),
         });
-
-        return apiResponse.success(
-            buildWriteResponse(result, message),
-            result.success ? 200 : 207
-        );
     } catch (error) {
-        return mapWriteError(error, `Failed to ${action} document`);
+        return mapWriteError(error, action === 'upload' ? 'uploadIndexDocument' : 'mergeIndexDocument');
     }
 }
 
@@ -692,7 +692,7 @@ export async function handleListDocuments(
 
         return apiResponse.success(response);
     } catch (error) {
-        return mapWriteError(error, 'Failed to list documents');
+        return mapWriteError(error, 'listIndexDocuments');
     }
 }
 
@@ -733,7 +733,7 @@ export async function handleGetDocument(
 
         return apiResponse.success(response);
     } catch (error) {
-        return mapWriteError(error, 'Failed to get document');
+        return mapWriteError(error, 'getIndexDocument');
     }
 }
 
@@ -796,22 +796,14 @@ export async function handleDeleteDocument(
             documentId,
         }]);
 
-        if (!result.success) {
-            return apiResponse.success(
-                buildWriteResponse(result, result.errors[0]?.error || 'Failed to delete document'),
-                207
-            );
-        }
-
-        logger.info('Document deleted', {
-            searchIndexId,
-            documentId,
-            ...actorLogContext(authResult.actor),
-        });
-
-        return apiResponse.success(buildWriteResponse(result, 'Document deleted'));
+        return answerWrite(
+            result,
+            result.success ? 'Document deleted' : result.errors[0]?.error || 'Failed to delete document',
+            result.success ? 'Document deleted' : 'Document delete failed',
+            { searchIndexId, documentId, ...actorLogContext(authResult.actor) }
+        );
     } catch (error) {
-        return mapWriteError(error, 'Failed to delete document');
+        return mapWriteError(error, 'deleteIndexDocument');
     }
 }
 
@@ -896,21 +888,15 @@ export async function handleBulkWriteDocuments(
             ? `Applied ${result.succeeded} operations (${upload} replaced, ${merge} merged, ${removed} deleted)`
             : `Completed with ${result.failed} failures (${upload} replaced, ${merge} merged, ${removed} deleted)`;
 
-        logger.info('Bulk document write completed', {
+        return answerWrite(result, message, 'Bulk document write completed', {
             searchIndexId,
             succeeded: result.succeeded,
-            failed: result.failed,
             counts: result.counts,
             durationMs: result.durationMs,
             ...actorLogContext(actor),
         });
-
-        return apiResponse.success(
-            buildWriteResponse(result, message),
-            result.success ? 200 : 207 // 207 = Multi-Status
-        );
     } catch (error) {
-        return mapWriteError(error, 'Bulk document write failed');
+        return mapWriteError(error, 'bulkWriteIndexDocuments');
     }
 }
 
@@ -988,6 +974,6 @@ export async function handleDeleteDocumentsByFilter(
 
         return apiResponse.success(response);
     } catch (error) {
-        return mapWriteError(error, 'Delete by filter failed');
+        return mapWriteError(error, 'deleteIndexDocumentsByFilter');
     }
 }

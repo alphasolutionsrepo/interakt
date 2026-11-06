@@ -18,7 +18,13 @@
  * are about how often aiService.chat is reached, which is the whole point.
  */
 
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 
 vi.mock('@/features/ai-service', () => ({
     chat: vi.fn(),
@@ -35,6 +41,7 @@ vi.mock('@/features/search/search.service', () => ({
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as searchService from '@/features/search/search.service';
+import { SearchError } from '@/features/search/search.types';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
@@ -137,6 +144,26 @@ describe('global AI switch', () => {
         expect(aiService.chat).toHaveBeenCalledTimes(1);
         expect(result.query).toBe('waterproof jackets');
         expect(result.filters).toEqual([{ field: 'price', operator: 'lte', value: 200 }]);
+    });
+});
+
+describe('a model call that fails', () => {
+    it('searches with the raw query and logs the error, the only record of it, as an error: a model that fails needs fixing', async () => {
+        logs.length = 0;
+        // What the Ollama adapter throws for a model it doesn't have
+        const modelDown = Object.assign(new Error('model "qwen2.5:14b" not found', { cause: new Error('404 from Ollama') }), { name: 'AdapterError', providerKey: 'ollama', statusCode: 404 });
+        vi.mocked(aiService.chat).mockRejectedValue(modelDown);
+
+        const result = await applyQueryInterpretation({
+            query: QUERY,
+            clientFilters: undefined,
+            searchIndexId: freshIndexId(),
+            aiConfig: aiConfig(),
+            experienceId: 'exp-1',
+        });
+
+        expect(result.query).toBe(QUERY);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: modelDown }) })]);
     });
 });
 
@@ -279,5 +306,25 @@ describe('loading a field’s values for the model', () => {
             expect.objectContaining({ query: '*' }),
             { triggerType: 'ai_step', triggerStep: 'query_interpretation' },
         );
+    });
+
+    it("logs an engine failure while loading them as an error, with the error, and carries on", async () => {
+        vi.mocked(searchIndexService.getSearchIndexById).mockResolvedValue(
+            { id: 'idx', fields: [...INDEX_FIELDS, { fieldName: 'colour', fieldType: 'keyword', isIndexed: true, isFacetable: true }] } as unknown as Awaited<
+                ReturnType<typeof searchIndexService.getSearchIndexById>
+            >,
+        );
+        // What the search service throws when Elasticsearch can't be reached
+        const down = new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', { meta: {} } as never) });
+        vi.mocked(searchService.searchById).mockRejectedValue(down);
+        logs.length = 0;
+
+        await applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId: freshIndexId(), aiConfig: aiConfig(), experienceId: 'exp-1',
+        });
+
+        expect(reported(logs).filter((l) => l.message === 'Failed to fetch facet values')).toEqual([
+            expect.objectContaining({ level: 'error', context: expect.objectContaining({ field: 'colour', err: down }) }),
+        ]);
     });
 });

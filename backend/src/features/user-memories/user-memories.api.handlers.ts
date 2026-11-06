@@ -54,8 +54,7 @@ export async function handleListMemories(request: NextRequest) {
     });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list user memories', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listMemories' });
   }
 }
 
@@ -79,8 +78,7 @@ export async function handleDeleteAllMemories(request: NextRequest) {
     return apiResponse.success({ deleted: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete all user memories', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteAllMemories' });
   }
 }
 
@@ -107,7 +105,6 @@ export async function handleDeleteMemory(
     return apiResponse.success({ deleted: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete user memory', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteMemory' });
   }
 }

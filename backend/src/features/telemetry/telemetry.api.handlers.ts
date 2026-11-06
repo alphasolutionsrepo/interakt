@@ -9,7 +9,6 @@
 
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import { apiResponse } from '@/shared/api/response';
 import { PeriodError, readRequestedPeriod } from '@/features/analytics/analytics-period';
@@ -28,8 +27,6 @@ import {
   deleteAllSpans,
   type TimeRange,
 } from './telemetry-query.service';
-
-const logger = createLogger('telemetry-api');
 
 // ============================================================================
 // VALIDATION
@@ -85,8 +82,7 @@ export async function handleGetTelemetryConfig() {
     const status = getTelemetryStatus();
     return apiResponse.success(status);
   } catch (error) {
-    logger.error('Failed to get telemetry config', error as Error);
-    return apiResponse.error('Failed to get telemetry config', 500);
+    return apiResponse.error('Failed to get telemetry config', 500, { operation: 'getTelemetryConfig', err: error });
   }
 }
 
@@ -111,10 +107,9 @@ export async function handleSetExperienceOverride(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiResponse.badRequest(`Invalid request: ${error.message}`);
+      return apiResponse.refused(error, { code: 'BAD_REQUEST', message: `Invalid request: ${error.message}` }, { operation: 'setExperienceOverrideTelemetry' });
     }
-    logger.error('Failed to set telemetry experience override', error as Error);
-    return apiResponse.error('Failed to set telemetry experience override', 500);
+    return apiResponse.error('Failed to set telemetry experience override', 500, { operation: 'setExperienceOverrideTelemetry', err: error });
   }
 }
 
@@ -143,8 +138,7 @@ export async function handleClearExperienceOverride(
       config: status,
     });
   } catch (error) {
-    logger.error('Failed to clear telemetry experience override', error as Error);
-    return apiResponse.error('Failed to clear telemetry experience override', 500);
+    return apiResponse.error('Failed to clear telemetry experience override', 500, { operation: 'clearExperienceOverrideTelemetry', err: error });
   }
 }
 
@@ -165,8 +159,7 @@ export async function handleClearAllOverrides() {
       config: status,
     });
   } catch (error) {
-    logger.error('Failed to clear all telemetry overrides', error as Error);
-    return apiResponse.error('Failed to clear all telemetry overrides', 500);
+    return apiResponse.error('Failed to clear all telemetry overrides', 500, { operation: 'clearAllOverrides', err: error });
   }
 }
 
@@ -227,11 +220,10 @@ export async function handleGetSpans(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiResponse.badRequest(`Invalid parameters: ${error.message}`);
+      return apiResponse.refused(error, { code: 'BAD_REQUEST', message: `Invalid parameters: ${error.message}` }, { operation: 'getSpans' });
     }
-    if (error instanceof PeriodError) return apiResponse.badRequest(error.message);
-    logger.error('Failed to get spans', error as Error);
-    return apiResponse.error('Failed to get spans', 500);
+    if (error instanceof PeriodError) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'getSpans' });
+    return apiResponse.error('Failed to get spans', 500, { operation: 'getSpans', err: error });
   }
 }
 
@@ -251,8 +243,7 @@ export async function handleGetSpanById(_request: NextRequest, spanId: string) {
 
     return apiResponse.success(span);
   } catch (error) {
-    logger.error('Failed to get span by ID', error as Error);
-    return apiResponse.error('Failed to get span', 500);
+    return apiResponse.error('Failed to get span', 500, { operation: 'getSpanById', err: error });
   }
 }
 
@@ -267,8 +258,7 @@ export async function handleGetTraceSpans(_request: NextRequest, traceId: string
     const spans = await getTraceSpans(traceId);
     return apiResponse.success(spans);
   } catch (error) {
-    logger.error('Failed to get trace spans', error as Error);
-    return apiResponse.error('Failed to get trace spans', 500);
+    return apiResponse.error('Failed to get trace spans', 500, { operation: 'getTraceSpans', err: error });
   }
 }
 
@@ -283,10 +273,9 @@ export async function handleGetSpanMetrics(request: NextRequest) {
     const metrics = await getSpanMetrics(timeRange, readRequestedPeriod(request.nextUrl.searchParams), experienceId);
     return apiResponse.success(metrics);
   } catch (error) {
-    if (error instanceof PeriodError) return apiResponse.badRequest(error.message);
-    if (error instanceof z.ZodError) return apiResponse.badRequest('experienceId must be a UUID');
-    logger.error('Failed to get span metrics', error as Error);
-    return apiResponse.error('Failed to get span metrics', 500);
+    if (error instanceof PeriodError) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'getSpanMetrics' });
+    if (error instanceof z.ZodError) return apiResponse.refused(error, { code: 'BAD_REQUEST', message: 'experienceId must be a UUID' }, { operation: 'getSpanMetrics' });
+    return apiResponse.error('Failed to get span metrics', 500, { operation: 'getSpanMetrics', err: error });
   }
 }
 
@@ -304,8 +293,7 @@ export async function handleDeleteSpan(_request: NextRequest, spanId: string) {
 
     return apiResponse.success({ deleted: true, spanId });
   } catch (error) {
-    logger.error('Failed to delete span', error as Error);
-    return apiResponse.error('Failed to delete span', 500);
+    return apiResponse.error('Failed to delete span', 500, { operation: 'deleteSpan', err: error });
   }
 }
 
@@ -318,7 +306,6 @@ export async function handleDeleteAllSpans() {
     const count = await deleteAllSpans();
     return apiResponse.success({ deleted: true, count });
   } catch (error) {
-    logger.error('Failed to delete all spans', error as Error);
-    return apiResponse.error('Failed to delete all spans', 500);
+    return apiResponse.error('Failed to delete all spans', 500, { operation: 'deleteAllSpans', err: error });
   }
 }

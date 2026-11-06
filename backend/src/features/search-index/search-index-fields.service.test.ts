@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // pure unit tests of the attribute defaults createField persists.
 vi.mock('./search-index-fields.repository', () => ({
     createField: vi.fn(),
+    createFields: vi.fn(),
     fieldNameExists: vi.fn(),
     getFieldById: vi.fn(),
     sourceFieldExists: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('./search-index-fields.repository', () => ({
 
 vi.mock('./search-index.repository', () => ({
     getSearchIndexById: vi.fn(),
+    getSearchProviderById: vi.fn(),
     incrementMappingVersion: vi.fn(),
 }));
 
@@ -37,7 +39,7 @@ vi.mock('./search-index.cache', () => ({
 import * as repository from './search-index-fields.repository';
 import * as searchIndexRepository from './search-index.repository';
 import { clearIndexCache } from './search-index.cache';
-import { createField, updateField, defaultIsSearchableForType } from './search-index-fields.service';
+import { createField, updateField, importFields, defaultIsSearchableForType } from './search-index-fields.service';
 
 const INDEX_ID = 'idx-1';
 
@@ -86,13 +88,15 @@ describe('createField', () => {
             .toBe(true);
     });
 
-    it('still honours an explicit true on a numeric field', async () => {
-        // The API contract is unchanged — the UI is what stops producing this payload.
+    it('turns an explicit true on a numeric field off instead of storing it', async () => {
+        // A stored searchable numeric field makes Elasticsearch fail every query on
+        // the index. Rejecting the request instead broke the Add Field dialog (which
+        // ticks the box by default) and mapping imports, so the flag is coerced.
         expect(await persistedIsSearchable({
             fieldName: 'priceAmount',
             fieldType: 'number',
             isSearchable: true,
-        })).toBe(true);
+        })).toBe(false);
     });
 
     it('honours an explicit false on a text field', async () => {
@@ -128,6 +132,142 @@ describe('schema-change invalidation', () => {
         await updateField(1, { isFacetable: true }, 'user-1');
 
         expect(clearIndexCache).toHaveBeenCalledWith(INDEX_ID, 'test-index');
+    });
+});
+
+describe('updateField — isSearchable', () => {
+    // The update schema carries no field type, so the stored row's type is the
+    // only thing that can stop a date or number field being flagged searchable.
+    it('stores false when asked to mark a stored date field searchable', async () => {
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 2, searchIndexId: INDEX_ID, fieldName: 'birthDate', fieldType: 'date' } as Awaited<
+                ReturnType<typeof repository.getFieldById>
+            >,
+        );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 2, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
+
+        // The demo seed passes mapping-file flags straight here; a throw aborted it.
+        await updateField(2, { isSearchable: true }, 'user-1');
+
+        const written = vi.mocked(repository.updateField).mock.calls.at(-1)?.[1];
+        expect(written?.isSearchable).toBe(false);
+    });
+
+    it('still allows turning the flag off on a date field', async () => {
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 2, searchIndexId: INDEX_ID, fieldName: 'birthDate', fieldType: 'date' } as Awaited<
+                ReturnType<typeof repository.getFieldById>
+            >,
+        );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 2, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
+
+        await updateField(2, { isSearchable: false }, 'user-1');
+
+        expect(repository.updateField).toHaveBeenCalled();
+    });
+});
+
+describe('importFields — isSearchable', () => {
+    // Whole-index import writes rows directly, below createField, so it needs the
+    // same guard: an export taken before the flag was policed brings it back.
+    it('turns the flag off on a json field and keeps it on a text field', async () => {
+        vi.mocked(repository.createFields).mockImplementation(
+            async (rows) => rows as unknown as Awaited<ReturnType<typeof repository.createFields>>,
+        );
+        const base = {
+            displayName: null,
+            isSystemField: false,
+            isRequired: false,
+            isFacetable: false,
+            includeInResponse: true,
+            boostValue: 1,
+            isMapped: true,
+            isIndexed: true,
+            isVectorSource: false,
+            isAutocomplete: false,
+        };
+
+        await importFields(INDEX_ID, [
+            { ...base, fieldName: 'variants', fieldType: 'json', isSearchable: true },
+            { ...base, fieldName: 'title', fieldType: 'text', isSearchable: true },
+        ]);
+
+        const rows = vi.mocked(repository.createFields).mock.calls.at(-1)?.[0] ?? [];
+        expect(rows.map(r => [r.fieldName, r.isSearchable])).toEqual([
+            ['variants', false],
+            ['title', true],
+        ]);
+    });
+});
+
+describe('a json field on Azure AI Search, where it is a searchable string', () => {
+    const azure = () => {
+        vi.mocked(searchIndexRepository.getSearchIndexById).mockResolvedValue(
+            { id: INDEX_ID, searchProvider: 'azure-ai-search' } as Awaited<ReturnType<typeof searchIndexRepository.getSearchIndexById>>,
+        );
+        vi.mocked(searchIndexRepository.getSearchProviderById).mockResolvedValue('azure-ai-search');
+    };
+
+    it('keeps the searchable flag on import', async () => {
+        azure();
+        vi.mocked(repository.createFields).mockImplementation(
+            async (rows) => rows as unknown as Awaited<ReturnType<typeof repository.createFields>>,
+        );
+        await importFields(INDEX_ID, [{
+            fieldName: 'variants', fieldType: 'json', isSearchable: true, displayName: null, isSystemField: false, isRequired: false,
+            isFacetable: false, includeInResponse: true, boostValue: 3, isMapped: true, isIndexed: true, isVectorSource: false, isAutocomplete: false,
+        }]);
+        const rows = vi.mocked(repository.createFields).mock.calls.at(-1)?.[0] ?? [];
+        expect(rows.map(r => [r.fieldName, r.isSearchable])).toEqual([['variants', true]]);
+    });
+
+    it('keeps the searchable flag on update', async () => {
+        azure();
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 3, searchIndexId: INDEX_ID, fieldName: 'variants', fieldType: 'json' } as Awaited<ReturnType<typeof repository.getFieldById>>,
+        );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 3, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
+        await updateField(3, { isSearchable: true }, 'user-1');
+        expect(vi.mocked(repository.updateField).mock.calls.at(-1)?.[1]?.isSearchable).toBe(true);
+    });
+});
+
+describe('updateField — reading the index', () => {
+    const stored = (fieldType: string) => {
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 4, searchIndexId: INDEX_ID, fieldName: 'f', fieldType } as Awaited<ReturnType<typeof repository.getFieldById>>,
+        );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 4, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
+    };
+
+    // Only turning a json field searchable depends on the engine
+    it.each([
+        ['a json field, not changing searchable', 'json', { isFacetable: true }],
+        ['a json field, turning searchable off', 'json', { isSearchable: false }],
+        ['a text field, turning searchable on', 'text', { isSearchable: true }],
+    ])('reads nothing about the index for %s', async (_case, fieldType, input) => {
+        stored(fieldType);
+        await updateField(4, input, 'user-1');
+        expect(searchIndexRepository.getSearchIndexById).not.toHaveBeenCalled();
+        expect(searchIndexRepository.getSearchProviderById).not.toHaveBeenCalled();
+        expect(repository.updateField).toHaveBeenCalled();
+    });
+
+    it("reads only the engine to turn a json field searchable, and keeps it off on Elasticsearch", async () => {
+        stored('json');
+        vi.mocked(searchIndexRepository.getSearchProviderById).mockResolvedValue('elasticsearch');
+        await updateField(4, { isSearchable: true }, 'user-1');
+        expect(searchIndexRepository.getSearchProviderById).toHaveBeenCalledTimes(1);
+        expect(searchIndexRepository.getSearchIndexById).not.toHaveBeenCalled();
+        expect(vi.mocked(repository.updateField).mock.calls.at(-1)?.[1]?.isSearchable).toBe(false);
     });
 });
 

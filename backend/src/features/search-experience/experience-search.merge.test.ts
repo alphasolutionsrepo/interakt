@@ -7,13 +7,17 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/data-source/data-source.service', () => ({}));
 vi.mock('@/features/search/search.service', () => ({}));
 vi.mock('@/features/search-index/search-index.service', () => ({}));
 vi.mock('./external-source-search', () => ({}));
 vi.mock('./query-interpreter', () => ({}));
 
-import type { SearchHit, SearchResponse } from '@/features/search/search.types';
+import { SearchError, type SearchHit, type SearchResponse } from '@/features/search/search.types';
 import { mergeSearchResults, rankHits, type HitOrigin } from './experience-search';
 
 const hit = (id: string, source: Record<string, unknown> = {}): SearchHit => ({ id, score: 1, source });
@@ -115,5 +119,59 @@ describe('mergeSearchResults', () => {
     );
     expect(merged.hits).toEqual([]);
     expect(failedSources).toEqual([external]);
+  });
+
+  it('logs why each other source failed when every source failed, since the answer carries only the first', () => {
+    logs.length = 0;
+    const down = new Error('connect ECONNREFUSED');
+    const rejected = new Error('Azure AI Search rejected the request — check the API key');
+    expect(() => mergeSearchResults(
+      [
+        { source: { origin: catalog, weight: 1 }, result: null, error: down },
+        { source: { origin: external, weight: 1 }, result: null, error: rejected },
+      ],
+      { query: 'jeans', page: 1, pageSize: 20 },
+      { id: 'exp-1' },
+      { exact: true, failedSources: [], hitOrigins: new WeakMap() }
+    )).toThrow(down);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ sourceId: 'ds-1', err: rejected }) }),
+    ]);
+  });
+
+  it('logs why a source failed when the others still answered, since nothing else does', () => {
+    logs.length = 0;
+    const refused = new Error('failed to create query: For input string: "zzz"');
+    mergeSearchResults(
+      [
+        { source: { origin: catalog, weight: 1 }, result: response([]), error: null },
+        { source: { origin: external, weight: 1 }, result: null, error: refused },
+      ],
+      { query: 'jeans', page: 1, pageSize: 20 },
+      { id: 'exp-1' },
+      { exact: true, failedSources: [], hitOrigins: new WeakMap() }
+    );
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ experienceId: 'exp-1', sourceId: 'ds-1', err: refused }) }),
+    ]);
+  });
+
+  it('logs a source that failed on our side as an error, so an outage that only makes answers partial still shows', () => {
+    logs.length = 0;
+    // What a managed index throws when its query embedding's AI provider is down
+    const aiDown = Object.assign(new Error('503 Service Unavailable'), { name: 'AdapterError', providerKey: 'openai', statusCode: 503 });
+    const failed = new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', {}, { cause: aiDown });
+    mergeSearchResults(
+      [
+        { source: { origin: catalog, weight: 1 }, result: null, error: failed },
+        { source: { origin: external, weight: 1 }, result: response([]), error: null },
+      ],
+      { query: 'jeans', page: 1, pageSize: 20 },
+      { id: 'exp-1' },
+      { exact: true, failedSources: [], hitOrigins: new WeakMap() }
+    );
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ sourceId: 'idx-1', err: failed }) }),
+    ]);
   });
 });

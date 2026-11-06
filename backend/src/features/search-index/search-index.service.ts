@@ -39,9 +39,10 @@ import type {
     SearchIndexImportDTO,
  ChangeAIConfigDTO } from './search-index.validation';
 import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
-import { currentRequestId } from '@/shared/api/request-id';
-import { NotFoundError } from '@/shared/errors/app-error';
-import { toAppError } from '@/shared/errors/to-app-error';
+import { requestIdFor } from '@/shared/api/request-id';
+import { AppError, NotFoundError } from '@/shared/errors/app-error';
+import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
+import { explainWriteFailure, scrub } from '@/shared/errors/upstream';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
@@ -567,92 +568,87 @@ export async function changeAIConfiguration(
     input: ChangeAIConfigDTO,
     userId: string
 ): Promise<{ success: boolean; searchIndex: SearchIndexComplete; documentsDeleted: number }> {
-    try {
-        // 1. Get existing search index
-        const existing = await repository.getSearchIndexById(id);
-        if (!existing) {
-            throw new Error(`Search index with ID ${id} not found`);
+    // 1. Get existing search index
+    const existing = await repository.getSearchIndexById(id);
+    if (!existing) {
+        throw new Error(`Search index with ID ${id} not found`);
+    }
+
+    // 2. Verify this is a semantic or hybrid index
+    if (!requiresAIConfiguration(existing.searchType as SearchType)) {
+        throw new Error('Cannot change AI configuration for lexical search indexes');
+    }
+
+    // 3. Get current document count before deletion
+    const provider = getSearchEngineProvider(existing.searchProvider as SearchProviderType);
+    let documentsDeleted = 0;
+    const providerIndexExists = await provider.indexExists(existing.name);
+    if (providerIndexExists) {
+        const stats = await provider.getIndexStats(existing.name);
+        documentsDeleted = stats?.documentCount ?? 0;
+    }
+
+    // 4. Delete the search provider index if it exists
+    if (providerIndexExists) {
+        const deleteResult = await provider.deleteIndex(existing.name);
+        if (!deleteResult.success) {
+            throw new Error(`Failed to delete search index: ${deleteResult.error}`, { cause: deleteResult.cause });
         }
-
-        // 2. Verify this is a semantic or hybrid index
-        if (!requiresAIConfiguration(existing.searchType as SearchType)) {
-            throw new Error('Cannot change AI configuration for lexical search indexes');
-        }
-
-        // 3. Get current document count before deletion
-        const provider = getSearchEngineProvider(existing.searchProvider as SearchProviderType);
-        let documentsDeleted = 0;
-        const providerIndexExists = await provider.indexExists(existing.name);
-        if (providerIndexExists) {
-            const stats = await provider.getIndexStats(existing.name);
-            documentsDeleted = stats?.documentCount ?? 0;
-        }
-
-        // 4. Delete the search provider index if it exists
-        if (providerIndexExists) {
-            const deleteResult = await provider.deleteIndex(existing.name);
-            if (!deleteResult.success) {
-                throw new Error(`Failed to delete search index: ${deleteResult.error}`, { cause: deleteResult.cause });
-            }
-            logger.info('Deleted search index for AI config change', {
-                indexId: id,
-                indexName: existing.name,
-                documentsDeleted,
-            });
-        }
-
-        // 5. Update the database with new AI configuration
-        const updateData: Partial<NewSearchIndex> = {
-            aiProviderId: input.aiProviderId,
-            aiModelId: input.aiModelId,
-            embeddingDimensions: input.embeddingDimensions,
-            vectorSimilarity: input.vectorSimilarity || existing.vectorSimilarity,
-            // Reset document counts since ES index is deleted
-            documentCount: 0,
-            indexSizeBytes: null,
-            lastIndexedAt: null,
-            updatedBy: userId,
-        };
-
-        await repository.updateSearchIndex(id, updateData);
-
-        // 6. Update status to 'ready' (not 'active' since there are no documents)
-        await repository.updateSearchIndexStatus(id, 'ready');
-
-        // 7. Clear caches
-        await clearIndexCache(id, existing.name);
-
-        // 8. Invalidate search experience cache
-        await invalidateSearchExperienceCacheBySearchIndex(id);
-
-        logger.info('Changed AI configuration for search index', {
+        logger.info('Deleted search index for AI config change', {
             indexId: id,
             indexName: existing.name,
-            oldProviderId: existing.aiProviderId,
-            newProviderId: input.aiProviderId,
-            oldModelId: existing.aiModelId,
-            newModelId: input.aiModelId,
-            oldDimensions: existing.embeddingDimensions,
-            newDimensions: input.embeddingDimensions,
             documentsDeleted,
-            changedBy: userId,
         });
-
-        // 9. Return updated search index
-        const updated = await repository.getSearchIndexById(id);
-        if (!updated) {
-            throw new Error('Failed to retrieve updated search index');
-        }
-
-        return {
-            success: true,
-            searchIndex: updated,
-            documentsDeleted,
-        };
-    } catch (error) {
-        logger.error('Failed to change AI configuration', error as Error, { id });
-        throw error;
     }
+
+    // 5. Update the database with new AI configuration
+    const updateData: Partial<NewSearchIndex> = {
+        aiProviderId: input.aiProviderId,
+        aiModelId: input.aiModelId,
+        embeddingDimensions: input.embeddingDimensions,
+        vectorSimilarity: input.vectorSimilarity || existing.vectorSimilarity,
+        // Reset document counts since ES index is deleted
+        documentCount: 0,
+        indexSizeBytes: null,
+        lastIndexedAt: null,
+        updatedBy: userId,
+    };
+
+    await repository.updateSearchIndex(id, updateData);
+
+    // 6. Update status to 'ready' (not 'active' since there are no documents)
+    await repository.updateSearchIndexStatus(id, 'ready');
+
+    // 7. Clear caches
+    await clearIndexCache(id, existing.name);
+
+    // 8. Invalidate search experience cache
+    await invalidateSearchExperienceCacheBySearchIndex(id);
+
+    logger.info('Changed AI configuration for search index', {
+        indexId: id,
+        indexName: existing.name,
+        oldProviderId: existing.aiProviderId,
+        newProviderId: input.aiProviderId,
+        oldModelId: existing.aiModelId,
+        newModelId: input.aiModelId,
+        oldDimensions: existing.embeddingDimensions,
+        newDimensions: input.embeddingDimensions,
+        documentsDeleted,
+        changedBy: userId,
+    });
+
+    // 9. Return updated search index
+    const updated = await repository.getSearchIndexById(id);
+    if (!updated) {
+        throw new Error('Failed to retrieve updated search index');
+    }
+
+    return {
+        success: true,
+        searchIndex: updated,
+        documentsDeleted,
+    };
 }
 
 // ============================================================================
@@ -666,48 +662,43 @@ export async function deleteSearchIndex(
     id: string,
     userId: string
 ): Promise<void> {
-    try {
-        const existing = await repository.getSearchIndexById(id);
-        if (!existing) {
-            throw new Error(`Search index with ID ${id} not found`);
-        }
-
-        // Refuse to delete an index that experiences or data sources still depend on.
-        // (The data_sources FK is ON DELETE SET NULL, so a delete would silently
-        // break those configs rather than fail loudly.)
-        const references = await repository.findSearchIndexReferences(id);
-        if (references.length > 0) {
-            throw new SearchIndexInUseError(references);
-        }
-
-        // Delete the physical provider index (Elasticsearch / Azure AI Search) if present.
-        const provider = getSearchEngineProvider(existing.searchProvider as SearchProviderType);
-        if (await provider.indexExists(existing.name)) {
-            const deleteResult = await provider.deleteIndex(existing.name);
-            if (!deleteResult.success) {
-                throw new Error(`Failed to delete provider index "${existing.name}": ${deleteResult.error}`, { cause: deleteResult.cause });
-            }
-        }
-
-        // Invalidate search experience cache BEFORE deleting
-        // (so we can still look up which experiences use this index)
-        await invalidateSearchExperienceCacheBySearchIndex(id);
-
-        // Delete from database (cascades to search_index_fields)
-        await repository.deleteSearchIndex(id);
-
-        // Clear ALL caches — ensures list totals, stats, etc. are fresh
-        await cache.clear();
-
-        logger.info('Deleted search index', {
-            indexId: id,
-            name: existing.name,
-            deletedBy: userId,
-        });
-    } catch (error) {
-        logger.error('Failed to delete search index', error as Error, { id });
-        throw error;
+    const existing = await repository.getSearchIndexById(id);
+    if (!existing) {
+        throw new Error(`Search index with ID ${id} not found`);
     }
+
+    // Refuse to delete an index that experiences or data sources still depend on.
+    // (The data_sources FK is ON DELETE SET NULL, so a delete would silently
+    // break those configs rather than fail loudly.)
+    const references = await repository.findSearchIndexReferences(id);
+    if (references.length > 0) {
+        throw new SearchIndexInUseError(references);
+    }
+
+    // Delete the physical provider index (Elasticsearch / Azure AI Search) if present.
+    const provider = getSearchEngineProvider(existing.searchProvider as SearchProviderType);
+    if (await provider.indexExists(existing.name)) {
+        const deleteResult = await provider.deleteIndex(existing.name);
+        if (!deleteResult.success) {
+            throw new Error(`Failed to delete provider index "${existing.name}": ${deleteResult.error}`, { cause: deleteResult.cause });
+        }
+    }
+
+    // Invalidate search experience cache BEFORE deleting
+    // (so we can still look up which experiences use this index)
+    await invalidateSearchExperienceCacheBySearchIndex(id);
+
+    // Delete from database (cascades to search_index_fields)
+    await repository.deleteSearchIndex(id);
+
+    // Clear ALL caches — ensures list totals, stats, etc. are fresh
+    await cache.clear();
+
+    logger.info('Deleted search index', {
+        indexId: id,
+        name: existing.name,
+        deletedBy: userId,
+    });
 }
 
 // ============================================================================
@@ -1032,7 +1023,7 @@ export async function triggerReindex(
         let embeddingConfig: { fieldName: string; dimensions: number; similarity: string } | undefined;
         if (searchIndex.aiProviderId && searchIndex.aiModelId && searchIndex.embeddingDimensions) {
             embeddingConfig = {
-                fieldName: 'content_embedding',
+                fieldName: EMBEDDING_FIELD_NAME,
                 dimensions: searchIndex.embeddingDimensions,
                 similarity: searchIndex.vectorSimilarity || 'cosine',
             };
@@ -1085,6 +1076,7 @@ export async function triggerReindex(
         }
 
         // Step 6: Write the prepared documents back
+        let written: { indexed: number; failed: number; firstError?: string; writeError?: unknown } = { indexed: preparedDocs.length, failed: 0 };
         if (preparedDocs.length > 0) {
             logger.info('Re-indexing documents', {
                 indexName,
@@ -1094,21 +1086,31 @@ export async function triggerReindex(
             const bulkDocs = preparedDocs;
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
-
-            if (bulkResult.failed > 0) {
-                logger.warn('Some documents failed to reindex', {
-                    indexName,
-                    indexed: bulkResult.indexed,
-                    failed: bulkResult.failed,
-                    errors: bulkResult.errors.slice(0, 5),
-                });
-            }
+            written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error, writeError: bulkResult.writeError };
 
             // Update index stats via updateSearchIndex
             await repository.updateSearchIndex(searchIndexId, {
                 documentCount: bulkResult.indexed,
                 lastIndexedAt: new Date(),
             });
+
+            // Nothing went back in: the reindex failed (the index is now empty, and its
+            // count says so), not partly. The error response logs it.
+            const nothingWritten = reindexWriteFailure(written);
+            if (nothingWritten) throw nothingWritten;
+
+            // Partly written: the reindex succeeds, so this is its one line about the rest
+            if (bulkResult.failed > 0) {
+                // An error when a batch failed because the search service did, as for an upload
+                logger[writeFailureLevel(bulkResult.writeError)]('Some documents failed to reindex', {
+                    indexName,
+                    indexed: bulkResult.indexed,
+                    failed: bulkResult.failed,
+                    errors: bulkResult.errors.slice(0, 5),
+                    // A batch that failed as a whole: the search service's own error
+                    ...(bulkResult.writeError !== undefined && { err: bulkResult.writeError }),
+                });
+            }
         }
 
         // Refresh index to make all docs searchable
@@ -1135,29 +1137,19 @@ export async function triggerReindex(
             triggeredBy: userId,
         });
 
-        await recordLastJob(searchIndexId, {
-            kind: 'reindex',
-            status: 'succeeded',
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            summary: `${documents.length} documents reindexed`,
-        });
+        const outcome = reindexOutcome(written, startedAt);
+        await recordLastJob(searchIndexId, outcome);
 
         return {
             success: true,
-            documentCount: documents.length,
+            documentCount: written.indexed,
             durationMs,
+            outcome,
         };
 
     } catch (error) {
+        // Not logged here: the error is rethrown, and the response to it logs it once
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-        logger.error('Reindex failed', {
-            searchIndexId,
-            indexName,
-            error: errorMessage,
-            triggeredBy: userId,
-        });
 
         // Update status to failed
         await repository.updateSearchIndexStatus(searchIndexId, 'error');
@@ -1170,6 +1162,8 @@ export async function triggerReindex(
         });
         await clearIndexCache(searchIndexId, indexName);
 
+        // An error that already says what happened answers as it is
+        if (error instanceof AppError) throw error;
         throw new Error(`Reindex failed: ${errorMessage}`, { cause: error });
     }
 }
@@ -1195,7 +1189,8 @@ export function jobError(error: unknown): NonNullable<IndexLastJob['error']> {
         message: appError.message,
         ...(appError.hint && { hint: appError.hint }),
         ...(appError.details !== undefined && { details: appError.details }),
-        requestId: currentRequestId(),
+        // The id the error response and its log line will show too
+        requestId: requestIdFor(error),
     };
 }
 
@@ -1203,6 +1198,44 @@ export interface ReindexResult {
     success: boolean;
     documentCount: number;
     durationMs: number;
+    /** How it ended, as recorded on the index: partial when some documents failed */
+    outcome: IndexLastJob;
+}
+
+/**
+ * The error for a reindex where no document could be written back, with what to do
+ * when the cause is one we recognise (the service down or timing out, a write block)
+ */
+export function reindexWriteFailure(
+    written: { indexed: number; failed: number; firstError?: string; writeError?: unknown }
+): AppError | undefined {
+    if (written.indexed > 0 || written.failed === 0) return undefined;
+    const { reason: because, hint } = explainWriteFailure(written.writeError, written.firstError);
+    const reason = because ? `: ${because}` : '';
+    // The index was recreated empty and the documents read from it are gone, so another
+    // reindex can't bring them back: they have to be uploaded again
+    const reupload = 'The index is now empty: upload its documents again once the search service is working.';
+    return new AppError(scrub(`None of the ${written.failed} documents could be written back${reason}`), {
+        code: 'REINDEX_FAILED',
+        status: 502,
+        hint: hint ? `${hint.replace(/,? then try again\.?$/, '.')} ${reupload}` : reupload,
+        // The search service's own error, for the log line
+        ...(written.writeError !== undefined && { cause: written.writeError }),
+    });
+}
+
+/** How a reindex that finished ended: some documents failing to write back is partial */
+export function reindexOutcome(
+    written: { indexed: number; failed: number; firstError?: string; writeError?: unknown },
+    startedAt: string
+): IndexLastJob {
+    const base = { kind: 'reindex' as const, startedAt, finishedAt: new Date().toISOString() };
+    if (written.failed === 0) return { ...base, status: 'succeeded', summary: `${written.indexed} documents reindexed` };
+    const total = written.indexed + written.failed;
+    // A batch that failed as a whole is explained from its error, as a failed reindex is
+    const why = explainWriteFailure(written.writeError, written.firstError).reason;
+    const reason = why ? `: ${why}` : '';
+    return { ...base, status: 'partial', summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`) };
 }
 
 // ============================================================================
@@ -1253,7 +1286,7 @@ export async function recreateEmptyIndex(
         let embeddingConfig: { fieldName: string; dimensions: number; similarity: string } | undefined;
         if (searchIndex.aiProviderId && searchIndex.aiModelId && searchIndex.embeddingDimensions) {
             embeddingConfig = {
-                fieldName: 'content_embedding',
+                fieldName: EMBEDDING_FIELD_NAME,
                 dimensions: searchIndex.embeddingDimensions,
                 similarity: searchIndex.vectorSimilarity || 'cosine',
             };
@@ -1294,12 +1327,8 @@ export async function recreateEmptyIndex(
 
         return { success: true };
     } catch (error) {
+        // Not logged here: the handler answers the failure, and the response logs it once
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger.error('Failed to recreate empty index', {
-            searchIndexId,
-            indexName,
-            error: errorMessage,
-        });
         await repository.updateSearchIndexStatus(searchIndexId, 'error');
         await recordLastJob(searchIndexId, {
             kind: 'recreate',

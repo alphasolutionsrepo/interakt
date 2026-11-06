@@ -52,4 +52,17 @@ describe('getDocumentByIdFromIndex on an Azure index', () => {
 
     await expect(getDocumentByIdFromIndex('idx', 'PROD-1')).rejects.toThrow('Service Unavailable');
   });
+
+  it("keeps Azure's error underneath, so the failure can be explained", async () => {
+    const unavailable = Object.assign(new Error('Service Unavailable'), { name: 'RestError', statusCode: 503 });
+    getDocument.mockRejectedValueOnce(unavailable);
+
+    const thrown = await getDocumentByIdFromIndex('idx', 'PROD-1').catch((e: unknown) => e);
+    let cause: unknown = thrown;
+    while (cause instanceof Error && cause !== unavailable) cause = cause.cause;
+    expect(cause).toBe(unavailable);
+
+    const { toAppError } = await import('@/shared/errors/to-app-error');
+    expect(toAppError(thrown)).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Azure AI Search couldn't be reached." });
+  });
 });

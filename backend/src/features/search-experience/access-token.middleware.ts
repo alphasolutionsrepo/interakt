@@ -137,6 +137,15 @@ export async function authenticateAccessToken(
 // ============================================================================
 
 /**
+ * A response with the experience's CORS headers, so the widget on the allowed site can
+ * read it (errors included)
+ */
+export function withCors(response: NextResponse, experience: SearchExperienceWithIndexes, origin: string | null): NextResponse {
+  createCorsHeaders(experience, origin).forEach((value, key) => response.headers.set(key, value));
+  return response;
+}
+
+/**
  * Create CORS headers for response
  */
 export function createCorsHeaders(

@@ -49,3 +49,19 @@ describe('hidden searched fields in the response', () => {
         expect(body._source).toEqual({ includes: [], excludes: ['content_embedding'] });
     });
 });
+
+describe('multi_match leniency', () => {
+    // A field whose type cannot hold the query text (a number asked for "test")
+    // used to fail the whole request: "failed to create query: For input string".
+    it('marks the best_fields and cross_fields clauses lenient', () => {
+        const body = buildLexicalSearchBody({ query: 'test' } as SearchRequest, context);
+        const json = JSON.stringify(body.query);
+        const clauses = [...json.matchAll(/"multi_match":\{[^}]*\}/g)].map(m => m[0]);
+
+        const typed = (type: string) => clauses.filter(c => c.includes(`"type":"${type}"`));
+        expect(typed('best_fields')).toHaveLength(1);
+        expect(typed('cross_fields')).toHaveLength(1);
+        expect(typed('best_fields')[0]).toContain('"lenient":true');
+        expect(typed('cross_fields')[0]).toContain('"lenient":true');
+    });
+});

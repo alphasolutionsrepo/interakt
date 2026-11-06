@@ -1,16 +1,9 @@
 // app/prompt-templates/_lib/api-client.ts
 
-import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+import { ApiError, handleApiResponse } from '@/shared/api/api-error';
 
 export { ApiError };
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw apiErrorFrom(data, response.status);
-  }
-  return data.data ?? data;
-}
 
 // ============================================================================
 // TYPES
@@ -104,22 +97,22 @@ export const promptTemplatesApi = {
 
     const url = `/api/prompt-templates${p.toString() ? `?${p.toString()}` : ''}`;
     const response = await fetch(url);
-    return handleResponse<PromptTemplate[]>(response);
+    return handleApiResponse<PromptTemplate[]>(response);
   },
 
   getById: async (id: string): Promise<PromptTemplate> => {
     const response = await fetch(`/api/prompt-templates/${id}`);
-    return handleResponse<PromptTemplate>(response);
+    return handleApiResponse<PromptTemplate>(response);
   },
 
   getDefaults: async (): Promise<Record<string, PromptTemplate>> => {
     const response = await fetch('/api/prompt-templates/defaults');
-    return handleResponse<Record<string, PromptTemplate>>(response);
+    return handleApiResponse<Record<string, PromptTemplate>>(response);
   },
 
   getHistory: async (id: string): Promise<PromptTemplate[]> => {
     const response = await fetch(`/api/prompt-templates/${id}/history`);
-    return handleResponse<PromptTemplate[]>(response);
+    return handleApiResponse<PromptTemplate[]>(response);
   },
 
   createVersion: async (data: CreateVersionPayload): Promise<PromptTemplate> => {
@@ -128,7 +121,7 @@ export const promptTemplatesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<PromptTemplate>(response);
+    return handleApiResponse<PromptTemplate>(response);
   },
 
   rollback: async (id: string, data: RollbackPayload): Promise<PromptTemplate> => {
@@ -137,13 +130,13 @@ export const promptTemplatesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<PromptTemplate>(response);
+    return handleApiResponse<PromptTemplate>(response);
   },
 
   // Experience overrides
   getExperienceOverrides: async (experienceId: string): Promise<ExperienceOverride[]> => {
     const response = await fetch(`/api/ai-experiences/${experienceId}/prompt-overrides`);
-    return handleResponse<ExperienceOverride[]>(response);
+    return handleApiResponse<ExperienceOverride[]>(response);
   },
 
   setExperienceOverride: async (experienceId: string, data: SetExperienceOverridePayload): Promise<ExperienceOverride> => {
@@ -152,13 +145,13 @@ export const promptTemplatesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<ExperienceOverride>(response);
+    return handleApiResponse<ExperienceOverride>(response);
   },
 
   removeExperienceOverride: async (experienceId: string, step: PromptTemplateStep): Promise<void> => {
     const response = await fetch(`/api/ai-experiences/${experienceId}/prompt-overrides/${step}`, {
       method: 'DELETE',
     });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 };

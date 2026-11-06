@@ -31,6 +31,7 @@ import { generateEmbeddings } from '@/features/ai-service';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { buildIndexSettingsContext } from '@/features/search-index/provider-settings.utils';
 import { getEmbeddingText } from './embedding-text';
+import { embeddingWarnings } from './embedding-warnings';
 
 const logger = createLogger('document-indexer');
 
@@ -42,7 +43,8 @@ const logger = createLogger('document-indexer');
  * Standard field name for storing document embeddings in Elasticsearch
  * Used across all semantic and hybrid search indexes for consistency
  */
-export const EMBEDDING_FIELD_NAME = 'content_embedding';
+export { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
 
 /**
  * Search types that require embedding generation
@@ -105,6 +107,11 @@ export interface IndexingResult {
     }>;
     durationMs: number;
     warnings: string[];
+    /**
+     * The error that failed the write (the search service couldn't be reached, timed
+     * out), so the outcome can explain it; its text is in errors too. Never sent as is.
+     */
+    writeError?: unknown;
 }
 
 // ============================================================================
@@ -363,7 +370,7 @@ export async function generateDocumentEmbeddings(
         };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Embedding generation failed';
-        logger.error('Embedding generation failed', { batchId, error: errorMessage });
+        logger.error('Embedding generation failed', { batchId, err: error });
 
         // Mark all documents as having embedding errors
         nonEmptyIndices.forEach(index => {
@@ -413,7 +420,7 @@ async function ensureIndex(
         synonyms?: unknown;
         stopWords?: unknown;
     }
-): Promise<{ success: boolean; error?: string; warning?: string }> {
+): Promise<{ success: boolean; error?: string; warning?: string; cause?: unknown }> {
     const provider = getSearchEngineProvider(searchProviderType);
     const exists = await provider.indexExists(indexName);
 
@@ -439,6 +446,7 @@ async function ensureIndex(
                         return {
                             success: false,
                             error: `Failed to delete index with mismatched dimensions: ${deleteResult.error}`,
+                            cause: deleteResult.cause,
                         };
                     }
 
@@ -459,6 +467,7 @@ async function ensureIndex(
                         return {
                             success: false,
                             error: `Failed to delete index missing embedding field: ${deleteResult.error}`,
+                            cause: deleteResult.cause,
                         };
                     }
                 } else {
@@ -675,6 +684,8 @@ export async function indexDocuments(
                 }],
                 durationMs: Date.now() - startTime,
                 warnings: [],
+                // Passed on as writeError, which the caller logs with its request id
+                ...(indexSetup.cause !== undefined && { writeError: indexSetup.cause }),
             };
         }
 
@@ -767,11 +778,8 @@ export async function indexDocuments(
                 skipped: embeddingStats.skipped,
             });
 
-            // Count docs without embeddings as warnings (not failures)
-            const docsWithoutEmbedding = embeddingResult.embeddings.filter(e => e === null).length;
-            if (docsWithoutEmbedding > 0) {
-                warnings.push(`${docsWithoutEmbedding} documents indexed without embeddings (no vector source content)`);
-            }
+            // Docs without embeddings are warnings (not failures), saying why
+            warnings.push(...embeddingWarnings(embeddingResult.stats, embeddingResult.errors[0]?.error));
         } else if (embeddingConfig.enabled && vectorSourceFields.length === 0) {
             // Embedding enabled but no vector source fields configured
             embeddingStats = {
@@ -785,6 +793,7 @@ export async function indexDocuments(
         // Index to Elasticsearch
         let indexed = 0;
         let indexFailed = 0;
+        let writeError: unknown;
 
         if (successfulDocs.length > 0) {
             logger.info('Indexing documents to search provider', {
@@ -800,6 +809,7 @@ export async function indexDocuments(
 
             indexed = bulkResult.indexed;
             indexFailed = bulkResult.failed;
+            writeError = bulkResult.writeError;
 
             // Add ES errors
             bulkResult.errors.forEach(err => {
@@ -848,17 +858,14 @@ export async function indexDocuments(
             errors: allErrors,
             durationMs,
             warnings,
+            ...(writeError !== undefined && { writeError }),
         };
 
     } catch (error) {
         const durationMs = Date.now() - startTime;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-        logger.error('Indexing failed', {
-            batchId: batch.id,
-            error: errorMessage,
-        });
-
+        // Passed on as writeError, which the caller logs with its request id
         await updateBatch(batch.id, {
             status: 'failed',
             errorMessage,
@@ -878,6 +885,7 @@ export async function indexDocuments(
             }],
             durationMs,
             warnings: [],
+            writeError: error,
         };
     }
 }

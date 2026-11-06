@@ -8,6 +8,8 @@
  * - db/schema/enums.schema.ts (fieldTypeEnum)
  */
 
+import { capabilitiesOf } from '@/features/search/providers/capabilities-by-provider';
+
 export const FIELD_TYPES = [
   'text',
   'keyword',
@@ -23,6 +25,33 @@ export const FIELD_TYPES = [
 ] as const;
 
 export type FieldType = typeof FIELD_TYPES[number];
+
+/**
+ * Types whose values are strings in the search engine and can therefore take
+ * part in a full-text query. Sending the query text to a number, date or
+ * boolean field makes Elasticsearch reject the whole request ("failed to create
+ * query: For input string") and Azure refuse the field in searchFields.
+ *
+ * `array` is included because tag-style string arrays are common and searched
+ * today; a numeric array is tolerated at query time by the lenient multi_match.
+ */
+export const FULL_TEXT_SEARCHABLE_FIELD_TYPES = [
+  'text',
+  'keyword',
+  'url',
+  'email',
+  'image_url',
+  'array',
+] as const;
+
+/**
+ * Whether a field of this type can take part in a full-text query on the index's engine.
+ * A json field can only where the engine stores it as text (storesJsonAsText).
+ */
+export function isFullTextSearchableFieldType(fieldType: string, searchProvider?: string): boolean {
+  if (fieldType === 'json') return capabilitiesOf(searchProvider)?.storesJsonAsText ?? false;
+  return (FULL_TEXT_SEARCHABLE_FIELD_TYPES as readonly string[]).includes(fieldType);
+}
 
 /**
  * Field type metadata for UI and documentation

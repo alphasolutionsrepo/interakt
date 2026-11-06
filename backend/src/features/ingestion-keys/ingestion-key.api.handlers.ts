@@ -55,8 +55,7 @@ export async function handleListIngestionKeys(
         return apiResponse.success({ keys });
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to list ingestion keys', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'listIngestionKeys' });
     }
 }
 
@@ -120,8 +119,7 @@ export async function handleCreateIngestionKey(
         return apiResponse.success(created, 201);
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to create ingestion key', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'createIngestionKey' });
     }
 }
 
@@ -171,7 +169,6 @@ export async function handleRevokeIngestionKey(
         return apiResponse.success({ key: revoked });
     } catch (error) {
         const err = error as Error;
-        logger.error('Failed to revoke ingestion key', err);
-        return apiResponse.error(err);
+        return apiResponse.error(err, undefined, { operation: 'revokeIngestionKey' });
     }
 }

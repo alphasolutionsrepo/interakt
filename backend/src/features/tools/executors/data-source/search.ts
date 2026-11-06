@@ -10,8 +10,10 @@
 import * as searchService from '@/features/search/search.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { trackSearch } from '@/features/analytics';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
+import { ExternalSearchError } from '@/features/data-source/external-search/external-search.types';
 import { executeFileStoreSearch } from './file-store';
 import type { UnappliedClause } from '@/features/data-source/external-search/external-query';
 import {
@@ -19,6 +21,7 @@ import {
   mergeDefaultSort,
   describeAppliedConfig,
   annotateResult,
+  unappliedDefaults,
 } from '../filter-defaults';
 import {
   resolveDataSource,
@@ -76,13 +79,17 @@ export async function executeDataSourceSearch(
 
     const source = await resolveDataSource(dataSourceId);
 
+    // Not awaited, so not caught here: a search that throws goes to the tool executor,
+    // which retries it and logs it once. An external source answers its own failures
     if (source.kind === 'file_store') return executeFileStoreSearch(dataSourceId, config, input);
     return source.kind === 'external'
       ? executeExternalSearch(source, searchConfig, searchInput)
       : executeManagedSearch(source, searchConfig, searchInput);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error('Data source search failed', error as Error, { dataSourceId });
+    // The data source couldn't be looked up: an error when our side failed (the
+    // database), a warning when it was refused (not found, not active)
+    logger[failureLevel(error, 'warn')]('Data source search failed', { dataSourceId, err: error });
     return { success: false, error: message };
   }
 }
@@ -205,6 +212,11 @@ async function executeExternalSearch(
     );
     unappliedFilters = searched.unappliedFilters;
     unappliedSort = searched.unappliedSort;
+    const brokenDefaults = unappliedDefaults(merged.appliedDefaults, unappliedFilters);
+    if (brokenDefaults.length > 0) {
+      const reasons = brokenDefaults.map((u) => `${u.field}: ${u.reason}`).join('; ');
+      throw new Error(`The tool's default filter can't be applied (${reasons}). Fix it in the tool's settings.`);
+    }
     result = {
       success: true,
       data: {
@@ -219,6 +231,11 @@ async function executeExternalSearch(
       },
     };
   } catch (error) {
+    // Answered to the model as a failed call, so logged here: a warning when the source
+    // refused this request (400, say a filter value of the wrong type), an error when the
+    // source failed (it's down, it refused the credentials, it's rate limiting)
+    const refused = error instanceof ExternalSearchError && error.status === 400;
+    logger[refused ? 'warn' : failureLevel(error, 'warn')]('External source search failed', { dataSourceId: source.dataSourceId, provider: source.provider, err: error });
     result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 

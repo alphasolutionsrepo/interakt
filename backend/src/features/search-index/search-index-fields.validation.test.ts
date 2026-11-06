@@ -31,7 +31,9 @@ describe('createSearchIndexFieldSchema — isSearchable', () => {
         expect(parsed.isSearchable).toBeUndefined();
     });
 
-    it('preserves an explicit true', () => {
+    it('preserves an explicit true, leaving the type check to the service', () => {
+        // The schema stays passive on this flag: the service turns it off for types
+        // the engine cannot search, with a warning, so old mapping files still import.
         const parsed = createSearchIndexFieldSchema.parse({
             ...numericFieldInput(),
             isSearchable: true,

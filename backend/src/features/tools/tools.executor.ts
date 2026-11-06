@@ -18,6 +18,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import { withSpan, ATTR } from '@/features/telemetry';
 import * as toolsService from './tools.service';
 import * as secretsService from '@/features/secrets/secrets.service';
@@ -632,7 +633,8 @@ export async function executeTool(
             span.setAttribute(ATTR.TOOL_TIMED_OUT, true);
           }
 
-          logger.warn('Tool execution attempt failed', {
+          // The last attempt's failure is logged once, below
+          logger.debug('Tool execution attempt failed', {
             toolId: tool.id,
             toolSlug: tool.slug,
             attempt,
@@ -658,8 +660,17 @@ export async function executeTool(
         }
       }
 
-      // 7. All attempts exhausted — try fallback
+      // 7. All attempts exhausted: one line for a call that threw, with the error, at error
+      // when a service on our side failed (a managed index's engine, an AI provider); then
+      // try the fallback. A tool that answers a failure itself logs it (an external source)
       const retriesUsed = attempt - 1;
+      logger[failureLevel(lastError, 'warn')]('Tool execution failed', {
+        toolId: tool.id,
+        toolSlug: tool.slug,
+        attempts: attempt,
+        timedOut: lastError instanceof ToolTimeoutError,
+        err: lastError,
+      });
       const fallbackConfig = tool.fallbackConfig as ToolFallbackConfig | null | undefined;
 
       if (fallbackConfig) {

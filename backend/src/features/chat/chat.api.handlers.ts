@@ -10,13 +10,17 @@
 import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createLogger } from '@/shared/logger/logger';
+import { ZodError } from 'zod';
+
+import { apiResponse } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
 import {
   authenticateAccessToken,
   createCorsHeaders,
   handleCorsPreflight,
+  withCors,
 } from '@/features/search-experience/access-token.middleware';
 import {
   summarizeAPIRequestSchema,
@@ -26,8 +30,6 @@ import type {
   SummarizeAPIRequest,
 } from '@/features/search-experience/search-experience.types';
 import { createSummaryStream } from './summary-stream';
-
-const logger = createLogger('search-experience-ai');
 
 // ============================================================================
 // AI SUMMARY HANDLER
@@ -56,10 +58,8 @@ export async function handleSummarize(request: NextRequest): Promise<Response> {
 
   // Check if AI is enabled
   if (!experience.aiConfig.enabled || !experience.aiConfig.summary.enabled) {
-    return createErrorResponse(
-      'AI summarization is not enabled for this search experience',
-      'AI_UNAVAILABLE',
-      403,
+    return withCors(
+      apiResponse.error(new AppError('AI summarization is not enabled for this search experience', { code: 'AI_UNAVAILABLE', status: 403 }), undefined, { operation: 'summarize', experienceId: experience.id }),
       experience,
       origin
     );
@@ -93,61 +93,15 @@ export async function handleSummarize(request: NextRequest): Promise<Response> {
 // ============================================================================
 
 /**
- * Handle AI-related errors
+ * Handle AI-related errors: the shared error shape with a request id and the
+ * experience's CORS headers. Visitors get a plain message on server failures.
+ * apiResponse.error logs the failure, once.
  */
 function handleAIError(
   error: unknown,
   experience: SearchExperienceWithIndexes,
   origin: string | null
 ): NextResponse {
-  logger.error('AI error', {
-    experienceId: experience.id,
-    error: error instanceof Error ? error.message : 'Unknown error',
-  });
-
-  if (error instanceof Error && error.name === 'ZodError') {
-    return createErrorResponse(
-      'Invalid request',
-      'VALIDATION_ERROR',
-      400,
-      experience,
-      origin,
-      (error as unknown as { errors: unknown[] }).errors
-    );
-  }
-
-  return createErrorResponse(
-    error instanceof Error ? error.message : 'An error occurred',
-    'AI_ERROR',
-    500,
-    experience,
-    origin
-  );
-}
-
-/**
- * Create error response with CORS headers
- */
-function createErrorResponse(
-  message: string,
-  code: string,
-  status: number,
-  experience: SearchExperienceWithIndexes,
-  origin: string | null,
-  details?: unknown
-): NextResponse {
-  const corsHeaders = createCorsHeaders(experience, origin);
-
-  return NextResponse.json(
-    {
-      success: false,
-      error: message,
-      code,
-      details,
-    },
-    {
-      status,
-      headers: corsHeaders,
-    }
-  );
+  if (error instanceof ZodError) return withCors(apiResponse.validationError(error), experience, origin);
+  return withCors(apiResponse.error(error, undefined, { experienceId: experience.id, operation: 'summarize' }), experience, origin);
 }

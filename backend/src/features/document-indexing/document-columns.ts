@@ -17,6 +17,7 @@
 
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { buildBrowsableFields } from '@/features/search/search-context.builder';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
 import type { FieldType } from '@/shared/constants/field-types';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 
@@ -53,13 +54,6 @@ const TIMESTAMP_FIELD_PREFERENCE = ['updatedAt', 'createdAt'] as const;
 function isTimestampColumn(field: SearchIndexField): boolean {
     return (TIMESTAMP_FIELD_PREFERENCE as readonly string[]).includes(field.fieldName);
 }
-
-/**
- * The dense vector field. Duplicated from document-indexer.service rather than
- * imported, because that module pulls in the db and the AI service and this one
- * is deliberately dependency-free.
- */
-const EMBEDDING_FIELD = 'content_embedding';
 
 // ============================================================================
 // TYPES
@@ -217,7 +211,7 @@ export function resolveDisplayColumns(
 
     const candidates = browsable.filter(field =>
         field.fieldName !== DOCUMENT_KEY_FIELD
-        && field.fieldName !== EMBEDDING_FIELD
+        && field.fieldName !== EMBEDDING_FIELD_NAME
         && !field.isVectorSource
         && !isTimestampColumn(field)
     );

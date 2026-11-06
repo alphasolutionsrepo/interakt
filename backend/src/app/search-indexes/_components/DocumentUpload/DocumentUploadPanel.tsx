@@ -25,6 +25,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     Upload,
     FileJson,
+    AlertTriangle,
     CheckCircle2,
     AlertCircle,
     XCircle,
@@ -40,6 +41,8 @@ import { reportActionError } from '@/shared/activity/report';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 import { useIndexDocuments, useBatchStatus, useCancelBatch } from '../../_lib/hooks';
 import type { IndexingStatusResponse } from '../../_lib/api-client';
+
+import { uploadNotice, uploadProgressState } from './upload-notices';
 
 // ============================================================================
 // TYPES
@@ -228,7 +231,9 @@ function IndexingProgress({
     onCancel: () => void;
 }) {
     const isProcessing = status.status === 'pending' || status.status === 'processing';
-    const isComplete = status.status === 'completed';
+    // Finished, but some documents were rejected: orange, as in the Activity panel
+    const isPartial = uploadProgressState(status) === 'partial';
+    const isComplete = status.status === 'completed' && !isPartial;
     const isFailed = status.status === 'failed';
 
     const statusConfig = {
@@ -239,13 +244,16 @@ function IndexingProgress({
         cancelled: { icon: X, color: 'text-amber-500', label: 'Cancelled' },
     };
 
-    const config = statusConfig[status.status];
+    const config = isPartial
+        ? { icon: AlertTriangle, color: 'text-amber-500', label: 'Completed with problems' }
+        : statusConfig[status.status];
     const Icon = config.icon;
 
     return (
         <Card className={cn(
             'border',
             isComplete && 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/40',
+            isPartial && 'border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/40',
             isFailed && 'border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-950/40'
         )}>
             <CardContent className="p-6">
@@ -438,29 +446,9 @@ export function DocumentUploadPanel({
             setActiveBatchId(result.batchId);
             setParsedData(null);
 
-            // Build detailed toast message
-            let toastMessage = result.message;
-            if (result.embeddingStats?.enabled) {
-                if (result.embeddingStats.generated > 0) {
-                    toastMessage += `\n✨ ${result.embeddingStats.generated} embeddings generated`;
-                } else if (result.embeddingStats.skipped > 0) {
-                    toastMessage += `\n⚠️ No embeddings generated (${result.embeddingStats.skipped} skipped)`;
-                }
-            }
-
-            if (result.success) {
-                toast.success(toastMessage, {
-                    duration: 5000,
-                    description: result.embeddingStats?.enabled
-                        ? `Embeddings: ${result.embeddingStats.generated} generated, ${result.embeddingStats.skipped} skipped`
-                        : undefined,
-                });
-                onComplete?.();
-            } else {
-                toast.warning(toastMessage, {
-                    duration: 5000,
-                });
-            }
+            const notice = uploadNotice(result);
+            if (notice) toast.success(notice.message, { duration: 5000, description: notice.description });
+            if (result.success) onComplete?.();
 
             // Show warnings if any
             if (result.warnings && result.warnings.length > 0) {

@@ -1,6 +1,7 @@
 // app/playground/ai-service/_lib/api-client.ts
 
-import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+import { apiErrorFrom, handleApiResponse } from '@/shared/api/api-error';
+import { streamEvents } from '@/shared/api/stream-events';
 
 /**
  * AI Service Playground API Client
@@ -140,38 +141,6 @@ export interface EmbeddingsResponse {
   };
 }
 
-// ============================================================================
-// ERROR HANDLING
-// ============================================================================
-
-export { ApiError };
-
-async function handleResponse<T>(response: Response): Promise<T> {
-  const contentType = response.headers.get('content-type');
-
-  if (!contentType?.includes('application/json')) {
-    if (!response.ok) {
-      throw new ApiError(
-        `HTTP ${response.status}: ${response.statusText}`,
-        response.status
-      );
-    }
-    return response.text() as unknown as T;
-  }
-
-  const json = await response.json();
-
-  if (!response.ok) {
-    throw apiErrorFrom(json, response.status);
-  }
-
-  // Handle { success: true, data: {...} } format
-  if (json.success !== undefined && json.data !== undefined) {
-    return json.data;
-  }
-
-  return json;
-}
 
 // ============================================================================
 // AI SERVICE API
@@ -183,7 +152,7 @@ export const aiServiceApi = {
    */
   getProviders: async (): Promise<ProvidersResponse> => {
     const response = await fetch('/api/ai-service/providers');
-    return handleResponse<ProvidersResponse>(response);
+    return handleApiResponse<ProvidersResponse>(response);
   },
 
   /**
@@ -195,7 +164,7 @@ export const aiServiceApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
-    return handleResponse<TextGenerationResponse>(response);
+    return handleApiResponse<TextGenerationResponse>(response);
   },
 
   /**
@@ -207,7 +176,7 @@ export const aiServiceApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
-    return handleResponse<ChatResponse>(response);
+    return handleApiResponse<ChatResponse>(response);
   },
 
   /**
@@ -227,42 +196,7 @@ export const aiServiceApi = {
       throw apiErrorFrom(errorData, response.status);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new ApiError('No response body', 500);
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              return;
-            }
-            try {
-              const chunk = JSON.parse(data) as ChatStreamChunk;
-              yield chunk;
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    yield* streamEvents<ChatStreamChunk>(response);
   },
 
   /**
@@ -274,6 +208,6 @@ export const aiServiceApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
-    return handleResponse<EmbeddingsResponse>(response);
+    return handleApiResponse<EmbeddingsResponse>(response);
   },
 };

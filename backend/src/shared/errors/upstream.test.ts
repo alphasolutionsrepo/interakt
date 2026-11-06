@@ -1,6 +1,10 @@
+import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, expect, it } from 'vitest';
 
-import { classifyUpstream, scrub } from './upstream';
+import { AdapterError } from '@/features/ai-service/adapters/types';
+import { SearchError } from '@/features/search/search.types';
+
+import { classifyUpstream, explainWriteFailure, leadingReason, scrub } from './upstream';
 
 /** Shaped like @azure/core-rest-pipeline's RestError */
 function azureError(statusCode: number, message: string, code?: string) {
@@ -73,6 +77,14 @@ describe('classifyUpstream', () => {
         expect(err?.hint).toMatch(/Try again/);
     });
 
+    it("takes the details from our adapter's error and the provider's response", () => {
+        const apiError = openAIError(429, 'rate_limit_exceeded', 'Rate limit reached for text-embedding-3-small');
+        const adapterError = new AdapterError('Rate limit reached', 'openai', 429, true, apiError);
+        const err = classifyUpstream(new Error('Failed to generate embeddings', { cause: adapterError }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_RATE_LIMITED', message: 'OpenAI is limiting requests right now.' });
+        expect(err?.details).toEqual({ provider: 'OpenAI', status: 429, message: 'Rate limit reached for text-embedding-3-small' });
+    });
+
     it('maps AIServiceError codes', () => {
         const cause = Object.assign(new Error('401'), { name: 'AdapterError', providerKey: 'azure-openai', statusCode: 401 });
         const err = Object.assign(new Error('Authentication failed'), { name: 'AIServiceError', code: 'AUTHENTICATION_FAILED', cause });
@@ -99,4 +111,177 @@ describe('scrub', () => {
         expect(scrub('key AbCdEf0123456789AbCdEf0123456789XyZ was rejected')).not.toContain('AbCdEf0123456789');
         expect(scrub('x'.repeat(1000)).length).toBeLessThanOrEqual(301);
     });
+});
+
+describe('classifyUpstream with the Elasticsearch client errors', () => {
+    // The real classes: a ConnectionError has an empty message, status 0 and a null body
+    const meta = { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never;
+
+    it('says Elasticsearch could not be reached when the cluster is down', () => {
+        const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', {}, { cause: new esErrors.ConnectionError('', meta) }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', status: 503, message: "Elasticsearch couldn't be reached." });
+        expect(err?.hint).toMatch(/running/);
+        // Only what Elasticsearch said: no status 0 (it never answered), not our own PROVIDER_ERROR
+        expect(err?.details).toEqual({ provider: 'Elasticsearch' });
+    });
+
+    it('is not swayed by the details of the search error around it', () => {
+        // An index named like a schema problem, and an Elasticsearch error that isn't one
+        const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', { indexName: 'fashion-mapping' }, { cause: elasticError(500, 'internal_error', 'shard failure') }));
+        expect(err?.code).toBe('UPSTREAM_ERROR');
+        expect(err?.details).toMatchObject({ provider: 'Elasticsearch', status: 500 });
+        expect(err?.details).not.toHaveProperty('code');
+    });
+
+    it("shows Azure's own code, not the code of the search error around it", () => {
+        const err = classifyUpstream(new SearchError('Invalid field', 'PROVIDER_ERROR', {}, { cause: azureError(400, 'Invalid field', 'InvalidRequestParameter') }));
+        expect(err?.details).toMatchObject({ provider: 'Azure AI Search', status: 400, code: 'InvalidRequestParameter' });
+    });
+
+    it('says Elasticsearch timed out, and finds no cluster as unreachable', () => {
+        expect(classifyUpstream(new esErrors.TimeoutError('Request timed out', meta))?.code).toBe('UPSTREAM_TIMEOUT');
+        expect(classifyUpstream(new esErrors.NoLivingConnectionsError('', meta))?.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
+
+    it('explains a reindex that failed because the cluster is down', () => {
+        const createFailed = new Error('Failed to create index: ', { cause: new esErrors.ConnectionError('', meta) });
+        const err = classifyUpstream(new Error('Reindex failed: ', { cause: createFailed }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
+    });
+
+    // The errors a real Elasticsearch 9 returned (2 Nov) for a write to a blocked index
+    const blocked = (statusCode: number, reason: string) =>
+        new esErrors.ResponseError({ body: { error: { type: 'cluster_block_exception', reason }, status: statusCode }, statusCode, headers: {}, meta: {} as never, warnings: null });
+
+    it('explains a read-only index as such, not as rejected credentials', () => {
+        const err = classifyUpstream(new Error('Failed to index documents', { cause: blocked(403, 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];') }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_READ_ONLY', status: 503, message: 'Elasticsearch is refusing writes to this index.' });
+        expect(err?.hint).toMatch(/disk space/);
+    });
+
+    it('explains an index set to read-only the same way', () => {
+        expect(classifyUpstream(blocked(403, 'index [shop] blocked by: [FORBIDDEN/5/index read-only (api)];'))?.code).toBe('UPSTREAM_READ_ONLY');
+    });
+
+    it('does not call a block on reading an index a credentials problem', () => {
+        const err = classifyUpstream(blocked(403, 'index [shop] blocked by: [FORBIDDEN/7/index read (api)];'));
+        expect(err?.code).toBe('UPSTREAM_ERROR');
+        expect(err?.details).toMatchObject({ message: 'index [shop] blocked by: [FORBIDDEN/7/index read (api)];' });
+    });
+
+    it('leaves blocks that are about availability to the availability explanation', () => {
+        const err = classifyUpstream(blocked(503, 'blocked by: [SERVICE_UNAVAILABLE/1/state not recovered / initialized];'));
+        expect(err?.code).toBe('UPSTREAM_UNAVAILABLE');
+    });
+
+    it('explains a full disk as a read-only index, not as a rate limit', () => {
+        const err = classifyUpstream(blocked(429, 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];'));
+        expect(err?.code).toBe('UPSTREAM_READ_ONLY');
+    });
+});
+
+describe('classifyUpstream with a search Elasticsearch refused', () => {
+    // The real client error: the message names the exception, the body has the root cause
+    const refused = Object.assign(
+        new esErrors.ResponseError({
+            body: {
+                error: {
+                    type: 'search_phase_execution_exception',
+                    reason: 'all shards failed',
+                    root_cause: [{ type: 'illegal_argument_exception', reason: 'Result window is too large, from + size must be less than or equal to: [10000] but was [12000].' }],
+                },
+                status: 400,
+            },
+            statusCode: 400, headers: {}, meta: {} as never, warnings: null,
+        } as never),
+    );
+
+    it('says what failed at the root, not "all shards failed"', () => {
+        const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', {}, { cause: refused }));
+        expect(err?.details).toMatchObject({ provider: 'Elasticsearch', status: 400, message: expect.stringMatching(/^Result window is too large/) });
+    });
+
+    it('does not give index-definition advice for a search', () => {
+        const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', {}, { cause: refused }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Elasticsearch returned an error.' });
+    });
+});
+
+describe('classifyUpstream with an external search source', () => {
+    // What the external connectors throw (ExternalSearchError), matched by name
+    const external = (provider: string, message: string, status?: number) =>
+        Object.assign(new Error(message), { name: 'ExternalSearchError', provider, ...(status !== undefined && { status }) });
+    const unavailable = (cause: Error) =>
+        new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE', {}, { cause });
+
+    it('names the engine and points at the data source when it rejects the key', () => {
+        const err = classifyUpstream(unavailable(external('Sitecore Search', 'Sitecore Search returned HTTP 401: invalid key', 401)));
+        expect(err).toMatchObject({ code: 'UPSTREAM_AUTH', message: 'Sitecore Search rejected the credentials.' });
+        expect(err?.hint).toMatch(/data source/);
+        expect(err?.hint).not.toMatch(/deployment settings/);
+        expect(err?.details).toMatchObject({ provider: 'Sitecore Search', status: 401 });
+    });
+
+    it('does not give index-definition advice for a search it only reads', () => {
+        const err = classifyUpstream(unavailable(external('Elasticsearch', 'Elasticsearch returned HTTP 400: No mapping found for [title.keyword] in order to sort on', 400)));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Elasticsearch returned an error.' });
+        expect(err?.details).toMatchObject({ message: expect.stringMatching(/No mapping found/) });
+    });
+
+    it('says the engine could not be reached', () => {
+        const err = classifyUpstream(unavailable(external('Elasticsearch', 'Network error connecting to Elasticsearch: fetch failed')));
+        expect(err).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
+    });
+});
+
+describe('explainWriteFailure', () => {
+    const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+    const blockText = 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];';
+
+    it('explains the error that failed the write, in place of its text', () => {
+        const explained = explainWriteFailure(down, 'connect ECONNREFUSED 127.0.0.1:9200');
+        expect(explained.reason).toBe("Elasticsearch couldn't be reached.");
+        expect(explained.hint).toMatch(/running/);
+    });
+
+    it('keeps the service reason and adds the write-block hint', () => {
+        const explained = explainWriteFailure(undefined, blockText);
+        expect(explained.reason).toBe(blockText);
+        expect(explained.hint).toMatch(/read-only/);
+    });
+
+    it('keeps a reason it does not recognise, with no hint', () => {
+        expect(explainWriteFailure(undefined, 'mapper_parsing_exception: failed to parse field [price]')).toEqual({
+            reason: 'mapper_parsing_exception: failed to parse field [price]',
+        });
+    });
+
+    it('falls back to the reason when the error is not from a provider', () => {
+        expect(explainWriteFailure(new Error('boom'), 'boom')).toEqual({ reason: 'boom' });
+    });
+
+    it('has nothing to say without an error or a reason', () => {
+        expect(explainWriteFailure(undefined, undefined)).toEqual({});
+    });
+});
+
+describe('leadingReason', () => {
+    it('picks a write block over a reason given before it, and the first reason otherwise', () => {
+        const block = 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];';
+        expect(leadingReason(['Required field "sku" has no value', block])).toBe(block);
+        expect(leadingReason(['a', 'b'])).toBe('a');
+        expect(leadingReason([])).toBeUndefined();
+    });
+});
+
+describe('explainWriteFailure with an error it has no specific explanation for', () => {
+  it("keeps the search service's own reason instead of '<provider> returned an error.'", () => {
+    const rejected = Object.assign(new Error('Invalid document key: \'SKU 1001/A\'. Keys can only contain letters, digits, underscore (_), dash (-), or equal sign (=).'), { name: 'RestError', statusCode: 400 });
+    expect(explainWriteFailure(rejected, rejected.message).reason).toContain('Invalid document key');
+  });
+
+  it('still explains an error it recognises (the service is down) its own way', () => {
+    const down = Object.assign(new Error('connect ECONNREFUSED'), { name: 'RestError', code: 'ECONNREFUSED' });
+    expect(explainWriteFailure(down, 'connect ECONNREFUSED').reason).toBe("Azure AI Search couldn't be reached.");
+  });
 });

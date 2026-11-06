@@ -36,8 +36,7 @@ export async function handleList(request: NextRequest) {
       totalItems: result.total,
     });
   } catch (error) {
-    logger.error('list failed', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'listMcpConnections' });
   }
 }
 
@@ -67,9 +66,8 @@ export async function handleCreate(request: NextRequest) {
     return apiResponse.success(final, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('create failed', err);
-    if (err.message.includes('already exists')) return apiResponse.badRequest(err.message);
-    return apiResponse.error(err);
+    if (err.message.includes('already exists')) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createMcpConnection' });
+    return apiResponse.error(err, undefined, { operation: 'createMcpConnection' });
   }
 }
 
@@ -87,8 +85,7 @@ export async function handleGet(_request: NextRequest, context: { params: Promis
     if (!conn) return apiResponse.notFound('MCP connection not found');
     return apiResponse.success(conn);
   } catch (error) {
-    logger.error('get failed', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getMcpConnection' });
   }
 }
 
@@ -106,9 +103,8 @@ export async function handleUpdate(request: NextRequest, context: { params: Prom
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;
-    logger.error('update failed', err);
-    if (err.message.includes('not found')) return apiResponse.notFound(err.message);
-    return apiResponse.error(err);
+    if (err.message.includes('not found')) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateMcpConnection' });
+    return apiResponse.error(err, undefined, { operation: 'updateMcpConnection' });
   }
 }
 
@@ -122,9 +118,8 @@ export async function handleDelete(_request: NextRequest, context: { params: Pro
     return apiResponse.success({ id });
   } catch (error) {
     const err = error as Error;
-    logger.error('delete failed', err);
-    if (err.message.includes('not found')) return apiResponse.notFound(err.message);
-    return apiResponse.error(err);
+    if (err.message.includes('not found')) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'deleteMcpConnection' });
+    return apiResponse.error(err, undefined, { operation: 'deleteMcpConnection' });
   }
 }
 
@@ -142,9 +137,8 @@ export async function handleSync(_request: NextRequest, context: { params: Promi
     return apiResponse.success(result);
   } catch (error) {
     const err = error as Error;
-    logger.error('sync failed', err);
-    if (err.message.includes('not found')) return apiResponse.notFound(err.message);
-    return apiResponse.error(err);
+    if (err.message.includes('not found')) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'syncMcpConnection' });
+    return apiResponse.error(err, undefined, { operation: 'syncMcpConnection' });
   }
 }
 
@@ -158,9 +152,8 @@ export async function handleTest(_request: NextRequest, context: { params: Promi
     return apiResponse.success(result);
   } catch (error) {
     const err = error as Error;
-    logger.error('test failed', err);
-    if (err.message.includes('not found')) return apiResponse.notFound(err.message);
-    return apiResponse.error(err);
+    if (err.message.includes('not found')) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'testMcpConnection' });
+    return apiResponse.error(err, undefined, { operation: 'testMcpConnection' });
   }
 }
 
@@ -180,8 +173,7 @@ export async function handleListAttachments(
     const items = await service.listAttachmentsForExperience(id);
     return apiResponse.success(items);
   } catch (error) {
-    logger.error('listAttachments failed', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'listMcpConnectionAttachments' });
   }
 }
 
@@ -199,10 +191,9 @@ export async function handleAttach(request: NextRequest, context: { params: Prom
     return apiResponse.success(attachment, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('attach failed', err);
-    if (err.message.includes('already attached')) return apiResponse.badRequest(err.message);
-    if (err.message.includes('not found')) return apiResponse.notFound(err.message);
-    return apiResponse.error(err);
+    if (err.message.includes('already attached')) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'attachMcpConnection' });
+    if (err.message.includes('not found')) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'attachMcpConnection' });
+    return apiResponse.error(err, undefined, { operation: 'attachMcpConnection' });
   }
 }
 
@@ -223,9 +214,8 @@ export async function handleUpdateAttachment(
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;
-    logger.error('updateAttachment failed', err);
-    if (err.message.includes('not found')) return apiResponse.notFound(err.message);
-    return apiResponse.error(err);
+    if (err.message.includes('not found')) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateMcpConnectionAttachment' });
+    return apiResponse.error(err, undefined, { operation: 'updateMcpConnectionAttachment' });
   }
 }
 
@@ -242,8 +232,7 @@ export async function handleDetach(
     return apiResponse.success({ aiExperienceId: id, mcpConnectionId: connectionId });
   } catch (error) {
     const err = error as Error;
-    logger.error('detach failed', err);
-    if (err.message.includes('not found')) return apiResponse.notFound(err.message);
-    return apiResponse.error(err);
+    if (err.message.includes('not found')) return apiResponse.refused(error, 'NOT_FOUND', { operation: 'detachMcpConnection' });
+    return apiResponse.error(err, undefined, { operation: 'detachMcpConnection' });
   }
 }

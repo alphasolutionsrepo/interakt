@@ -9,9 +9,10 @@
  * Failures are logged but never crash the application.
  */
 
+import { ROOT_CONTEXT, context } from '@opentelemetry/api';
 import type { SpanExporter, ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import type { ExportResult } from '@opentelemetry/core';
-import { ExportResultCode } from '@opentelemetry/core';
+import { ExportResultCode, suppressTracing } from '@opentelemetry/core';
 import { createLogger } from '@/shared/logger/logger';
 import { ATTR } from './attribute-keys';
 import { storableSpanData } from './content-policy';
@@ -77,7 +78,10 @@ export class PostgresSpanExporter implements SpanExporter {
       return;
     }
 
-    this.writeSpans(appSpans)
+    // OpenTelemetry's batch timer runs export in the span that ended first; the batch
+    // holds many requests' spans, so its log lines belong to none of them. Tracing stays
+    // suppressed, as OpenTelemetry has it, so the exporter's own writes are never traced
+    context.with(suppressTracing(ROOT_CONTEXT), () => this.writeSpans(appSpans))
       .then(() => resultCallback({ code: ExportResultCode.SUCCESS }))
       .catch((error) => {
         const rootCause = (error as { cause?: Error }).cause;

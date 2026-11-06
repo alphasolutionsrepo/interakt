@@ -46,6 +46,13 @@ export interface ProviderCapabilities {
     /** Whether the provider supports autocomplete via custom analyzers */
     supportsAutocomplete: boolean;
 
+    /**
+     * Whether a json field is stored as a string (Azure: Edm.String). Its objects are
+     * serialized on write, and it is searched like text. When false (ES: object), the
+     * value is sent as it is and the field can't take part in a full-text query.
+     */
+    storesJsonAsText: boolean;
+
     /** Vector/embedding search configuration */
     vectorConfig: {
         /** Similarity functions the provider supports */

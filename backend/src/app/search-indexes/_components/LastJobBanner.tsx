@@ -4,12 +4,13 @@
  * What happened to the last reindex, recreate or upload of this index, kept on the
  * index itself (lastJob), so the answer is still here after the user left the page
  * or reloaded. Running jobs show progress; a failed one says why and what to try,
+ * and a partial one (some documents failed) how much went in and the first reason,
  * until the next job replaces it. Successes show nothing: the page already does.
  */
 
 'use client';
 
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 
 import type { IndexLastJob } from '@/db/schema/search-index.schema';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
@@ -43,6 +44,18 @@ export function LastJobBanner({ lastJob }: { lastJob?: IndexLastJob | null }) {
                 {stale
                     ? `${name} started at ${formatTime(lastJob.startedAt)} and never reported back. The server may have restarted; run it again.`
                     : `${name} running since ${formatTime(lastJob.startedAt)}…`}
+            </div>
+        );
+    }
+
+    if (lastJob.status === 'partial') {
+        return (
+            <div className="flex items-start gap-2 rounded-2xl border border-amber-500/30 bg-amber-50/50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <span>
+                    {name} finished with problems at {formatTime(lastJob.finishedAt ?? lastJob.startedAt)}
+                    {lastJob.summary && `: ${lastJob.summary}`}
+                </span>
             </div>
         );
     }

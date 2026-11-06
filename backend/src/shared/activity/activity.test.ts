@@ -2,7 +2,13 @@ import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const toastError = vi.fn();
-vi.mock('sonner', () => ({ toast: { error: (...args: unknown[]) => toastError(...args) } }));
+const toastWarning = vi.fn();
+vi.mock('sonner', () => ({
+    toast: {
+        error: (...args: unknown[]) => toastError(...args),
+        warning: (...args: unknown[]) => toastWarning(...args),
+    },
+}));
 
 /** A window with a working or a broken localStorage, enough for the store */
 function stubWindow(storage: 'ok' | 'broken' = 'ok') {
@@ -31,6 +37,7 @@ async function loadModules() {
 
 beforeEach(() => {
     toastError.mockClear();
+    toastWarning.mockClear();
     vi.unstubAllGlobals();
 });
 
@@ -134,5 +141,48 @@ describe('the mutation cache', () => {
         const entries = await runMutation({ label: 'Reindex', job: true }, async () => ({ message: 'Reindex completed successfully' }));
         expect(entries[0]).toMatchObject({ action: 'Reindex', kind: 'job', status: 'succeeded', message: 'Reindex completed successfully' });
         expect(toastError).not.toHaveBeenCalled();
+    });
+
+    // What the upload endpoint answers (HTTP 207) when documents were rejected
+    const upload = (outcome: object) => async () => ({ success: false, message: 'Indexing completed with 2 failures', outcome });
+
+    it('records an upload where nothing was indexed as failed, with a notice that stays', async () => {
+        stubWindow();
+        const entries = await runMutation({ label: 'Index documents', job: true }, upload({
+            kind: 'upload', status: 'failed', startedAt: '',
+            error: { code: 'INDEXING_FAILED', message: 'None of the 2 documents were indexed: No source field configured', requestId: 'r1' },
+        }));
+        expect(entries[0]).toMatchObject({
+            kind: 'job', status: 'failed', code: 'INDEXING_FAILED', requestId: 'r1',
+            message: 'None of the 2 documents were indexed: No source field configured',
+        });
+        expect(toastError).toHaveBeenCalledWith('Index documents failed', expect.objectContaining({ duration: Infinity }));
+    });
+
+    it('records an upload where some documents failed as partial, with a warning', async () => {
+        stubWindow();
+        const entries = await runMutation({ label: 'Index documents', job: true }, upload({
+            kind: 'upload', status: 'partial', startedAt: '', summary: '1 of 2 documents indexed, 1 failed: Required field has no value',
+        }));
+        expect(entries[0]).toMatchObject({ kind: 'job', status: 'partial', message: '1 of 2 documents indexed, 1 failed: Required field has no value' });
+        expect(toastWarning).toHaveBeenCalledWith('Index documents finished with problems', expect.anything());
+        // It goes away by itself, unlike a failure
+        expect(toastWarning.mock.calls[0][1]).not.toHaveProperty('duration', Infinity);
+        expect(toastError).not.toHaveBeenCalled();
+    });
+});
+
+describe('entryState and unreadProblems', () => {
+    it('reads failures red, partial results orange and the rest as fine', async () => {
+        stubWindow();
+        const { entryState, unreadProblems } = await loadModules().then(async () => import('./activity-store'));
+        expect(entryState({ kind: 'error' })).toBe('failed');
+        expect(entryState({ kind: 'job', status: 'failed' })).toBe('failed');
+        expect(entryState({ kind: 'job', status: 'partial' })).toBe('partial');
+        expect(entryState({ kind: 'job', status: 'succeeded' })).toBe('ok');
+
+        const entry = (kind: 'error' | 'job', status?: 'failed' | 'partial' | 'succeeded', read = false) =>
+            ({ id: '', at: '', action: '', message: '', kind, status, read });
+        expect(unreadProblems([entry('error'), entry('job', 'partial'), entry('job', 'succeeded'), entry('job', 'failed', true)])).toBe(2);
     });
 });

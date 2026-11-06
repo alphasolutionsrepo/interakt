@@ -10,6 +10,7 @@
 import { createLogger } from '@/shared/logger/logger';
 import type { AIUsageMetrics } from './ai-service.types';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
+import { inBackground } from '@/shared/telemetry/background';
 
 const logger = createLogger('ai-service-analytics');
 
@@ -31,11 +32,11 @@ let flushTimer: NodeJS.Timeout | null = null;
 function startFlushTimer(): void {
     if (flushTimer) return;
 
-    flushTimer = setInterval(() => {
+    flushTimer = inBackground(() => setInterval(() => {
         flushAnalytics().catch(err => {
             logger.error('Failed to flush analytics', err);
         });
-    }, FLUSH_INTERVAL_MS);
+    }, FLUSH_INTERVAL_MS));
 
     // Unref so it doesn't keep the process alive
     if (flushTimer.unref) {
@@ -71,8 +72,9 @@ export async function trackUsage(metrics: AIUsageMetrics): Promise<void> {
     startFlushTimer();
 
     // Flush if batch size reached
+    // The batch holds other requests' calls too, so it is written outside this one's trace
     if (analyticsQueue.length >= BATCH_SIZE) {
-        await flushAnalytics();
+        await inBackground(() => flushAnalytics());
     }
 }
 

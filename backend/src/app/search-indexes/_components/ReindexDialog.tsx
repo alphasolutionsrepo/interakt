@@ -43,6 +43,8 @@ type ReindexState = 'idle' | 'confirming' | 'reindexing' | 'success' | 'error';
 interface ReindexResult {
     documentCount: number;
     durationMs: number;
+    /** How it ended: partial when some documents failed to write back */
+    outcome?: { status: string; summary?: string };
 }
 
 interface ReindexDialogProps {
@@ -74,6 +76,8 @@ export function ReindexDialog({
 }: ReindexDialogProps) {
     const [state, setState] = useState<ReindexState>('confirming');
     const [result, setResult] = useState<ReindexResult | null>(null);
+    // Finished, but some documents failed: orange, as in the Activity panel
+    const partial = state === 'success' && result?.outcome?.status === 'partial';
     const [error, setError] = useState<unknown>(null);
     const [startTime, setStartTime] = useState<number | null>(null);
 
@@ -121,12 +125,13 @@ export function ReindexDialog({
                         <RotateCcw className={cn(
                             "h-5 w-5",
                             state === 'reindexing' && "animate-spin text-blue-500",
-                            state === 'success' && "text-emerald-500",
+                            state === 'success' && !partial && "text-emerald-500",
+                            partial && "text-amber-500",
                             state === 'error' && "text-red-500"
                         )} />
                         {state === 'confirming' && 'Reindex Search Index'}
                         {state === 'reindexing' && 'Reindexing...'}
-                        {state === 'success' && 'Reindex Complete'}
+                        {state === 'success' && (partial ? 'Reindex Finished with Problems' : 'Reindex Complete')}
                         {state === 'error' && 'Reindex Failed'}
                     </DialogTitle>
                     <DialogDescription>
@@ -136,9 +141,7 @@ export function ReindexDialog({
                         {state === 'reindexing' && (
                             <>Please wait while documents are being reindexed.</>
                         )}
-                        {state === 'success' && (
-                            <>The index has been successfully rebuilt.</>
-                        )}
+                        {state === 'success' && (partial ? <>{result?.outcome?.summary}</> : <>The index has been successfully rebuilt.</>)}
                         {state === 'error' && (
                             <>An error occurred during reindexing.</>
                         )}
@@ -210,9 +213,15 @@ export function ReindexDialog({
                     {state === 'success' && result && (
                         <div className="space-y-4">
                             <div className="flex flex-col items-center justify-center py-4">
-                                <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mb-4">
-                                    <CheckCircle2 className="h-8 w-8 text-emerald-600" />
-                                </div>
+                                {partial ? (
+                                    <div className="h-16 w-16 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mb-4">
+                                        <AlertTriangle className="h-8 w-8 text-amber-600" />
+                                    </div>
+                                ) : (
+                                    <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mb-4">
+                                        <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="bg-slate-50 dark:bg-muted/40 rounded-lg p-4 space-y-3">

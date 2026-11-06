@@ -1,17 +1,10 @@
 // app/tools/_lib/api-client.ts
 
-import { ApiError, apiErrorFrom } from '@/shared/api/api-error';
+import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
 import type { LookupFieldCandidate, LookupFieldRules } from '@/features/tools/executors/data-source/lookup-field-rules';
 
 export { ApiError };
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw apiErrorFrom(data, response.status);
-  }
-  return data.data ?? data;
-}
 
 // ============================================================================
 // TYPES
@@ -191,8 +184,8 @@ export const toolsApi = {
 
     const url = `/api/tools${p.toString() ? `?${p.toString()}` : ''}`;
     const response = await fetch(url);
+    if (!response.ok) throw await toApiError(response);
     const json = await response.json();
-    if (!response.ok) throw apiErrorFrom(json, response.status);
     return {
       tools: json.data ?? [],
       pagination: json.pagination,
@@ -201,7 +194,7 @@ export const toolsApi = {
 
   getById: async (id: string): Promise<ToolWithUsage> => {
     const response = await fetch(`/api/tools/${id}`);
-    return handleResponse<ToolWithUsage>(response);
+    return handleApiResponse<ToolWithUsage>(response);
   },
 
   create: async (data: CreateToolPayload): Promise<ToolWithUsage> => {
@@ -210,7 +203,7 @@ export const toolsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<ToolWithUsage>(response);
+    return handleApiResponse<ToolWithUsage>(response);
   },
 
   update: async (id: string, data: UpdateToolPayload): Promise<ToolWithUsage> => {
@@ -219,18 +212,18 @@ export const toolsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<ToolWithUsage>(response);
+    return handleApiResponse<ToolWithUsage>(response);
   },
 
   delete: async (id: string): Promise<void> => {
     const response = await fetch(`/api/tools/${id}`, { method: 'DELETE' });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   getAllActive: async (): Promise<ToolWithUsage[]> => {
     const response = await fetch('/api/tools/all');
+    if (!response.ok) throw await toApiError(response);
     const json = await response.json();
-    if (!response.ok) throw apiErrorFrom(json, response.status);
     return json.data ?? json;
   },
 
@@ -238,19 +231,19 @@ export const toolsApi = {
     const p = new URLSearchParams({ slug });
     if (excludeId) p.set('excludeId', excludeId);
     const response = await fetch(`/api/tools/check-slug?${p.toString()}`);
-    return handleResponse<{ available: boolean }>(response);
+    return handleApiResponse<{ available: boolean }>(response);
   },
 
   /** A Find Record tool's fields status; null for tools that don't take name or code fields */
   getLookupFields: async (id: string): Promise<LookupFieldsStatus | null> => {
     const response = await fetch(`/api/tools/${id}/lookup-fields`);
-    return handleResponse<LookupFieldsStatus | null>(response);
+    return handleApiResponse<LookupFieldsStatus | null>(response);
   },
 
   getExperiences: async (id: string): Promise<{ id: string; name: string; slug: string; isActive: boolean }[]> => {
     const response = await fetch(`/api/tools/${id}/experiences`);
+    if (!response.ok) throw await toApiError(response);
     const json = await response.json();
-    if (!response.ok) throw apiErrorFrom(json, response.status);
     return json.data ?? json;
   },
 
@@ -259,7 +252,7 @@ export const toolsApi = {
   /** Get platform capabilities (supported operations per data source type, standalone executors) */
   getCapabilities: async (): Promise<CapabilitiesResponse> => {
     const response = await fetch('/api/tools/capabilities');
-    return handleResponse<CapabilitiesResponse>(response);
+    return handleApiResponse<CapabilitiesResponse>(response);
   },
 
   /** Generate AI description + enriched input schema for a data source tool */
@@ -272,7 +265,7 @@ export const toolsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dataSourceId, operation }),
     });
-    return handleResponse<GenerateDescriptionResponse>(response);
+    return handleApiResponse<GenerateDescriptionResponse>(response);
   },
 
   /** Scaffold all supported tools for a data source */
@@ -282,12 +275,12 @@ export const toolsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dataSourceId }),
     });
-    return handleResponse<ScaffoldToolsResponse>(response);
+    return handleApiResponse<ScaffoldToolsResponse>(response);
   },
 
   /** Get tools linked to a data source */
   getByDataSource: async (dataSourceId: string): Promise<ToolWithUsage[]> => {
     const response = await fetch(`/api/tools/by-data-source/${dataSourceId}`);
-    return handleResponse<ToolWithUsage[]>(response);
+    return handleApiResponse<ToolWithUsage[]>(response);
   },
 };

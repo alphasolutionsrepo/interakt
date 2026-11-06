@@ -1093,13 +1093,8 @@ export default function FieldMappingsPage() {
                 onOpenChange={setReindexDialogOpen}
                 indexName={searchIndex.name}
                 currentDocumentCount={searchIndex.documentCount ?? 0}
-                onReindex={async () => {
-                    const result = await triggerReindex();
-                    return {
-                        documentCount: result.documentCount,
-                        durationMs: result.durationMs,
-                    };
-                }}
+                // The whole result: the dialog shows a partial reindex from its outcome
+                onReindex={() => triggerReindex()}
                 onSuccess={() => {
                     setReindexNeeded(false);
                 }}

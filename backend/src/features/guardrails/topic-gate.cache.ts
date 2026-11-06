@@ -11,6 +11,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
+import { inBackground } from '@/shared/telemetry/background';
 
 const logger = createLogger('topic-gate-cache');
 
@@ -55,7 +56,7 @@ export class TopicGateCache {
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    this.sweepTimer = setInterval(() => this.sweep(), SWEEP_INTERVAL_MS);
+    this.sweepTimer = inBackground(() => setInterval(() => this.sweep(), SWEEP_INTERVAL_MS));
     // Allow Node to exit even if the timer is running
     if (this.sweepTimer.unref) this.sweepTimer.unref();
   }

@@ -39,8 +39,7 @@ export async function handleListDataSources(request: NextRequest) {
     });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list data sources', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listDataSources' });
   }
 }
 
@@ -64,11 +63,10 @@ export async function handleCreateDataSource(request: NextRequest) {
     return apiResponse.success(dataSource, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create data source', err);
     if (err.message.includes('already exists')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createDataSource' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createDataSource' });
   }
 }
 
@@ -93,8 +91,7 @@ export async function handleGetDataSource(
     return apiResponse.success(dataSource);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get data source', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getDataSource' });
   }
 }
 
@@ -135,11 +132,10 @@ export async function handleUpdateDataSource(
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update data source', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateDataSource' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateDataSource' });
   }
 }
 
@@ -160,11 +156,10 @@ export async function handleDeleteDataSource(
     return apiResponse.success({ deleted: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete data source', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'deleteDataSource' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteDataSource' });
   }
 }
 
@@ -188,8 +183,7 @@ export async function handleCheckSlug(request: NextRequest) {
     return apiResponse.success({ slug, available });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to check slug', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'checkDataSourceSlug' });
   }
 }
 
@@ -216,11 +210,10 @@ export async function handleUpdateHealth(
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update data source health', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateHealth' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateHealth' });
   }
 }
 
@@ -241,10 +234,9 @@ export async function handlePerformHealthCheck(
     return apiResponse.success(result);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to perform health check', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'performHealthCheck' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'performHealthCheck' });
   }
 }

@@ -11,6 +11,9 @@
 import { useState, useCallback } from 'react';
 import useSWR from 'swr';
 
+import { reportActionError } from '@/shared/activity/report';
+import { toApiError } from '@/shared/api/api-error';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -163,10 +166,7 @@ export interface SearchResponse {
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
-    if (!res.ok) {
-        const error = await res.json().catch(() => ({ message: 'Request failed' }));
-        throw new Error(error.message || 'Request failed');
-    }
+    if (!res.ok) throw await toApiError(res);
     return res.json();
 };
 
@@ -209,12 +209,52 @@ export function useSearchContext(indexId: string | null) {
 }
 
 /**
+ * Search an index from the playground. A failed search throws an ApiError, which
+ * carries what went wrong and what to try.
+ */
+export async function searchIndex(
+    indexId: string,
+    request: SearchRequest,
+    options?: { trace?: boolean }
+): Promise<SearchResponse> {
+    const response = await fetch(`/api/search/index/${indexId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        // Playground searches are untraced unless `trace` asks for a full trace
+        body: JSON.stringify({ ...request, ...(options?.trace ? { trace: true } : {}) }),
+    });
+    if (!response.ok) throw await toApiError(response, 'Search failed');
+    const data = await response.json();
+    return data.data;
+}
+
+/**
+ * Search a search experience from the playground, as its visitors would (the server
+ * treats the admin session as a test). A failed search throws an ApiError.
+ */
+export async function searchExperience<T>(slug: string, body: Record<string, unknown>): Promise<T> {
+    // Sent with the admin session, not the experience's access token, so the server
+    // treats it as a test: not counted as real traffic, not traced unless asked.
+    const response = await fetch(`/api/v1/search/${slug}/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) throw await toApiError(response, 'Search failed');
+    const data = await response.json();
+    return data.data;
+}
+
+/**
  * Hook to execute search
  */
 export function useSearch() {
     const [isSearching, setIsSearching] = useState(false);
     const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
-    const [searchError, setSearchError] = useState<string | null>(null);
+    /** What the failed search threw: an ApiError carries the hint and details */
+    const [searchError, setSearchError] = useState<unknown>(null);
 
     const executeSearch = useCallback(async (
         indexId: string,
@@ -225,26 +265,13 @@ export function useSearch() {
         setSearchError(null);
 
         try {
-            const response = await fetch(`/api/search/index/${indexId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                // Playground searches are untraced unless `trace` asks for a full trace
-                body: JSON.stringify({ ...request, ...(options?.trace ? { trace: true } : {}) }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || 'Search failed');
-            }
-
-            setSearchResult(data.data);
-            return data.data;
+            const data = await searchIndex(indexId, request, options);
+            setSearchResult(data);
+            return data;
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Search failed';
-            setSearchError(message);
+            // Shown in the results panel, so recorded without a notice
+            reportActionError('Search', err, { inline: true });
+            setSearchError(err);
             return null;
         } finally {
             setIsSearching(false);

@@ -26,6 +26,8 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 
 import { createLogger } from '@/shared/logger/logger';
+import { failureLevel } from '@/shared/errors/to-app-error';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as searchService from '@/features/search/search.service';
@@ -124,12 +126,9 @@ async function fetchFacetValues(searchIndexId: string, field: string): Promise<s
         return response.facets?.find(f => f.field === field)?.buckets.map(b => String(b.key)) ?? [];
     } catch (err) {
         // A field whose values cannot be listed is still filterable; the model just
-        // loses the vocabulary hint for it.
-        logger.warn('Failed to fetch facet values', {
-            searchIndexId,
-            field,
-            error: err instanceof Error ? err.message : 'Unknown error',
-        });
+        // loses the vocabulary hint for it. The search service passes the failure on, so
+        // this is its line: an error when the engine failed, so the outage still shows
+        logger[failureLevel(err, 'warn')]('Failed to fetch facet values', { searchIndexId, field, err });
         return [];
     }
 }
@@ -155,7 +154,7 @@ async function loadFieldConstraints(
     }
 
     const filterable = index.fields.filter(
-        (f: SearchIndexField) => f.isIndexed && f.fieldName !== 'content_embedding',
+        (f: SearchIndexField) => f.isIndexed && f.fieldName !== EMBEDDING_FIELD_NAME,
     );
 
     const constraints: Record<string, FieldConstraint> = {};
@@ -374,11 +373,9 @@ export async function interpretQuery(
 
         return { ...result, durationMs: Date.now() - startedAt };
     } catch (err) {
-        // Fail open — a search that returns loose results beats one that errors.
-        logger.warn('Query interpretation failed; searching with the raw query', {
-            searchIndexId,
-            error: err instanceof Error ? err.message : 'Unknown error',
-        });
+        // Fail open — a search that returns loose results beats one that errors. A model
+        // that is down or misconfigured still needs fixing, so it is logged as an error.
+        logger[failureLevel(err, 'warn')]('Query interpretation failed; searching with the raw query', { searchIndexId, err });
         return passthrough(query, startedAt);
     }
 }

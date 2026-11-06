@@ -11,9 +11,11 @@
  * POST /api/v1/search/:slug/summarize
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+
+import { apiResponse } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { ZodError } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
 import { searchExperienceAccess } from '@/features/auth/public-access';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
@@ -23,8 +25,6 @@ import * as repository from '@/features/search-experience/search-experience.repo
 import { summarizeAPIRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import type { SummarizeAPIRequest } from '@/features/search-experience/search-experience.types';
 import { publicRoute } from '@/shared/api/public-route';
-
-const logger = createLogger('summarize-api-slug');
 
 async function post(
   request: NextRequest,
@@ -37,44 +37,29 @@ async function post(
     const baseExperience = await repository.getSearchExperienceBySlug(slug);
 
     if (!baseExperience) {
-      return NextResponse.json(
-        { success: false, error: 'Search experience not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
+      return apiResponse.notFound('Search experience not found');
     }
 
     if (!baseExperience.isActive) {
-      return NextResponse.json(
-        { success: false, error: 'Search experience is not active', code: 'INACTIVE' },
-        { status: 403 }
-      );
+      return apiResponse.error(new AppError('Search experience is not active', { code: 'INACTIVE', status: 403 }), undefined, { operation: 'summarizeBySlug', slug });
     }
 
     // Get experience with indexes for AI config
     const experience = await repository.getSearchExperienceWithIndexes(baseExperience.id);
     if (!experience) {
-      return NextResponse.json(
-        { success: false, error: 'Search experience not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
+      return apiResponse.notFound('Search experience not found');
     }
 
     // 2. Check if AI summary is enabled
     if (!experience.aiConfig.enabled || !experience.aiConfig.summary.enabled) {
-      return NextResponse.json(
-        { success: false, error: 'AI summarization is not enabled for this search experience', code: 'AI_UNAVAILABLE' },
-        { status: 403 }
-      );
+      return apiResponse.error(new AppError('AI summarization is not enabled for this search experience', { code: 'AI_UNAVAILABLE', status: 403 }), undefined, { operation: 'summarizeBySlug', slug });
     }
 
     // 3. Authenticate: the experience's access token, or an admin session. Admin
     //    summaries are not traced unless the request asks for it (then in full).
     const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
     if (!caller) {
-      return refused ?? NextResponse.json(
-        { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
-        { status: 401 }
-      );
+      return refused ?? apiResponse.unauthorized('Unauthorized');
     }
     const isAdmin = caller === 'admin';
 
@@ -99,22 +84,8 @@ async function post(
       },
     });
   } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request', code: 'VALIDATION_ERROR' },
-        { status: 400 }
-      );
-    }
-
-    logger.error('Summarize error', {
-      slug,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-
-    return NextResponse.json(
-      { success: false, error: 'An unexpected error occurred', code: 'INTERNAL_ERROR' },
-      { status: 500 }
-    );
+    if (error instanceof ZodError) return apiResponse.validationError(error);
+    return apiResponse.error(error, undefined, { slug, operation: 'summarizeBySlug' });
   }
 }
 

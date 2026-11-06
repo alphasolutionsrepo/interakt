@@ -13,7 +13,7 @@
 
 import { toast } from 'sonner';
 
-import { activityStore, errorEntry, type NewActivityEntry } from './activity-store';
+import { activityStore, errorEntry, type ActivityEntry, type NewActivityEntry } from './activity-store';
 
 export interface ActionMeta extends Record<string, unknown> {
     /** What the user did, shown in the Activity panel, e.g. "Delete search index" */
@@ -54,27 +54,27 @@ export function reportActionError(action: string, error: unknown, options: { inl
     const entry = activityStore.add(errorEntry(action, error));
     if (options.inline) return entry;
 
-    toast.error(`${action} failed`, {
-        id: entry.id,
-        description: entry.hint ? `${entry.message} ${entry.hint}` : entry.message,
-        duration: Infinity,
-        closeButton: true,
-        action: { label: 'Details', onClick: () => openActivity({ entryId: entry.id }) },
-    });
+    notify(entry, 'failed');
     return entry;
 }
 
-/** Record how a background job ended, with a notice when it failed */
+/**
+ * Record how a background job ended. A failure gets a notice that stays until it is
+ * closed; a partial result (some of the work failed) one that goes away by itself.
+ */
 export function reportJobResult(entry: Omit<NewActivityEntry, 'kind'>) {
     const added = activityStore.add({ ...entry, kind: 'job' });
-    if (entry.status === 'failed') {
-        toast.error(`${entry.action} failed`, {
-            id: added.id,
-            description: entry.hint ? `${entry.message} ${entry.hint}` : entry.message,
-            duration: Infinity,
-            closeButton: true,
-            action: { label: 'Details', onClick: () => openActivity({ entryId: added.id }) },
-        });
-    }
+    if (entry.status === 'failed' || entry.status === 'partial') notify(added, entry.status);
     return added;
+}
+
+function notify(entry: ActivityEntry, status: 'failed' | 'partial') {
+    const options = {
+        id: entry.id,
+        description: entry.hint ? `${entry.message} ${entry.hint}` : entry.message,
+        closeButton: true,
+        action: { label: 'Details', onClick: () => openActivity({ entryId: entry.id }) },
+    };
+    if (status === 'failed') toast.error(`${entry.action} failed`, { ...options, duration: Infinity });
+    else toast.warning(`${entry.action} finished with problems`, options);
 }

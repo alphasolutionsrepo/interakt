@@ -16,7 +16,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAnalyticsContext } from '../AnalyticsContext';
 import { resolvePeriod } from '../period';
-import { toApiError } from '@/shared/api/api-error';
+import { errorText, toApiError } from '@/shared/api/api-error';
+import { streamEvents } from '@/shared/api/stream-events';
 
 // ============================================================================
 // TYPES
@@ -302,173 +303,145 @@ export function useAnalyticsChat({ providerId, modelId }: UseAnalyticsChatOption
         signal: abortControllerRef.current.signal,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
+      if (!response.ok) throw await toApiError(response, 'Chat request failed');
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
       let streamedContent = '';
       const finalToolsUsed: string[] = [];
       const collectedAnalyticsData: AnalyticsDataBlock[] = [];
       let collectedSuggestedFollowUps: string[] = [];
       let collectedDataStatus: 'has_data' | 'no_data' | 'sparse_data' | 'anomaly' | undefined;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      for await (const chunk of streamEvents<StreamChunk>(response)) {
+        switch (chunk.type) {
+          case 'status':
+            setStreamStatus(chunk.message || '');
+            break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+          case 'tool_start':
+            setActiveTool(chunk.tool || '');
+            setStreamStatus(`Querying ${chunk.tool}...`);
+            break;
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-
-            try {
-              const chunk = JSON.parse(data) as StreamChunk;
-
-              switch (chunk.type) {
-                case 'status':
-                  setStreamStatus(chunk.message || '');
-                  break;
-
-                case 'tool_start':
-                  setActiveTool(chunk.tool || '');
-                  setStreamStatus(`Querying ${chunk.tool}...`);
-                  break;
-
-                case 'tool_data':
-                  if (chunk.tool && chunk.dataType && chunk.data) {
-                    // Deduplicate: replace existing entry with same dataType, or add new
-                    const existingIndex = collectedAnalyticsData.findIndex(
-                      (d) => d.dataType === chunk.dataType
-                    );
-                    if (existingIndex >= 0) {
-                      // Replace with latest data
-                      collectedAnalyticsData[existingIndex] = {
-                        tool: chunk.tool,
-                        dataType: chunk.dataType,
-                        data: chunk.data,
-                        periodLabel: chunk.periodLabel,
-                      };
-                    } else {
-                      collectedAnalyticsData.push({
-                        tool: chunk.tool,
-                        dataType: chunk.dataType,
-                        data: chunk.data,
-                        periodLabel: chunk.periodLabel,
-                      });
-                    }
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === streamingMessageId
-                          ? { ...m, analyticsData: [...collectedAnalyticsData] }
-                          : m
-                      )
-                    );
-                  }
-                  break;
-
-                case 'tool_result':
-                  if (chunk.tool) {
-                    setToolsExecuted((prev) => [...prev, chunk.tool!]);
-                    finalToolsUsed.push(chunk.tool);
-                  }
-                  setActiveTool('');
-                  setStreamStatus('Processing results...');
-                  break;
-
-                case 'response_metadata':
-                  // Store the metadata for the final message
-                  if (chunk.suggestedFollowUps) {
-                    collectedSuggestedFollowUps = chunk.suggestedFollowUps;
-                  }
-                  if (chunk.dataStatus) {
-                    collectedDataStatus = chunk.dataStatus;
-                  }
-                  // Update message with metadata immediately
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId
-                        ? {
-                            ...m,
-                            suggestedFollowUps: chunk.suggestedFollowUps || [],
-                            dataStatus: chunk.dataStatus,
-                          }
-                        : m
-                    )
-                  );
-                  break;
-
-                case 'content':
-                  streamedContent += chunk.content || '';
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId
-                        ? { ...m, content: streamedContent }
-                        : m
-                    )
-                  );
-                  setStreamStatus('');
-                  break;
-
-                case 'done':
-                  if (chunk.sessionId && chunk.sessionId !== sessionId) {
-                    streamedSessionIdRef.current = chunk.sessionId;
-                    setSessionId(chunk.sessionId);
-                    queryClient.invalidateQueries({ queryKey: ['admin-chat-sessions'] });
-                  }
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId
-                        ? {
-                            ...m,
-                            content: withoutFollowUps(streamedContent, collectedSuggestedFollowUps),
-                            isStreaming: false,
-                            toolsUsed: chunk.toolsUsed || finalToolsUsed,
-                            analyticsData: collectedAnalyticsData.length > 0 ? collectedAnalyticsData : undefined,
-                            suggestedFollowUps: collectedSuggestedFollowUps.length > 0 ? collectedSuggestedFollowUps : undefined,
-                            dataStatus: collectedDataStatus,
-                          }
-                        : m
-                    )
-                  );
-                  break;
-
-                case 'verification':
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId ? { ...m, unverifiedFigures: chunk.unverifiedFigures ?? [] } : m
-                    )
-                  );
-                  break;
-
-                case 'error':
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === streamingMessageId
-                        ? {
-                            ...m,
-                            content: chunk.error || 'An error occurred',
-                            isStreaming: false,
-                            error: true,
-                          }
-                        : m
-                    )
-                  );
-                  break;
+          case 'tool_data':
+            if (chunk.tool && chunk.dataType && chunk.data) {
+              // Deduplicate: replace existing entry with same dataType, or add new
+              const existingIndex = collectedAnalyticsData.findIndex(
+                (d) => d.dataType === chunk.dataType
+              );
+              if (existingIndex >= 0) {
+                // Replace with latest data
+                collectedAnalyticsData[existingIndex] = {
+                  tool: chunk.tool,
+                  dataType: chunk.dataType,
+                  data: chunk.data,
+                  periodLabel: chunk.periodLabel,
+                };
+              } else {
+                collectedAnalyticsData.push({
+                  tool: chunk.tool,
+                  dataType: chunk.dataType,
+                  data: chunk.data,
+                  periodLabel: chunk.periodLabel,
+                });
               }
-            } catch {
-              // Ignore parse errors
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === streamingMessageId
+                    ? { ...m, analyticsData: [...collectedAnalyticsData] }
+                    : m
+                )
+              );
             }
-          }
+            break;
+
+          case 'tool_result':
+            if (chunk.tool) {
+              setToolsExecuted((prev) => [...prev, chunk.tool!]);
+              finalToolsUsed.push(chunk.tool);
+            }
+            setActiveTool('');
+            setStreamStatus('Processing results...');
+            break;
+
+          case 'response_metadata':
+            // Store the metadata for the final message
+            if (chunk.suggestedFollowUps) {
+              collectedSuggestedFollowUps = chunk.suggestedFollowUps;
+            }
+            if (chunk.dataStatus) {
+              collectedDataStatus = chunk.dataStatus;
+            }
+            // Update message with metadata immediately
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === streamingMessageId
+                  ? {
+                      ...m,
+                      suggestedFollowUps: chunk.suggestedFollowUps || [],
+                      dataStatus: chunk.dataStatus,
+                    }
+                  : m
+              )
+            );
+            break;
+
+          case 'content':
+            streamedContent += chunk.content || '';
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === streamingMessageId
+                  ? { ...m, content: streamedContent }
+                  : m
+              )
+            );
+            setStreamStatus('');
+            break;
+
+          case 'done':
+            if (chunk.sessionId && chunk.sessionId !== sessionId) {
+              streamedSessionIdRef.current = chunk.sessionId;
+              setSessionId(chunk.sessionId);
+              queryClient.invalidateQueries({ queryKey: ['admin-chat-sessions'] });
+            }
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === streamingMessageId
+                  ? {
+                      ...m,
+                      content: withoutFollowUps(streamedContent, collectedSuggestedFollowUps),
+                      isStreaming: false,
+                      toolsUsed: chunk.toolsUsed || finalToolsUsed,
+                      analyticsData: collectedAnalyticsData.length > 0 ? collectedAnalyticsData : undefined,
+                      suggestedFollowUps: collectedSuggestedFollowUps.length > 0 ? collectedSuggestedFollowUps : undefined,
+                      dataStatus: collectedDataStatus,
+                    }
+                  : m
+              )
+            );
+            break;
+
+          case 'verification':
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === streamingMessageId ? { ...m, unverifiedFigures: chunk.unverifiedFigures ?? [] } : m
+              )
+            );
+            break;
+
+          case 'error':
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === streamingMessageId
+                  ? {
+                      ...m,
+                      content: chunk.error || 'An error occurred',
+                      isStreaming: false,
+                      error: true,
+                    }
+                  : m
+              )
+            );
+            break;
         }
       }
 
@@ -486,7 +459,7 @@ export function useAnalyticsChat({ providerId, modelId }: UseAnalyticsChatOption
         const errorMessage: ChatMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: (error as Error).message || 'Failed to connect to the analytics service.',
+          content: errorText(error, 'Failed to connect to the analytics service.'),
           timestamp: new Date(),
           error: true,
         };

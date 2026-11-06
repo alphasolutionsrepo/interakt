@@ -50,7 +50,10 @@ import {
 } from '@/components/ui/select';
 import { StepProgress } from '@/components/ui/steps-progress';
 import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shared/seeders/demo/demo-steps';
+import { sameOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
+import { reportActionError } from '@/shared/activity/report';
+import { toApiError } from '@/shared/api/api-error';
 
 interface ProviderView {
   key: string;
@@ -97,6 +100,8 @@ interface SeedResult {
   chatExperience?: { slug: string; accessToken: string };
   warmup?: { searchesRun: number; chatTurnsRun: number; analyticsChatTurnsRun: number };
   deleted?: string[];
+  /** Reset only: what could not be removed */
+  failed?: string[];
 }
 
 type StepState = 'pending' | 'active' | 'done';
@@ -136,8 +141,12 @@ export default function SetupDemoPage() {
     try {
       const url = ollamaBaseUrl ? `${ENDPOINT}?ollamaBaseUrl=${encodeURIComponent(ollamaBaseUrl)}` : ENDPOINT;
       const res = await fetch(url);
+      if (!res.ok) {
+        // A URL the server won't check says why; the first load stays best-effort
+        if (ollamaBaseUrl) reportActionError('Check Ollama', await toApiError(res));
+        return;
+      }
       const json = await res.json();
-      if (!res.ok) return;
       const data: DemoStatus = json.data ?? json;
       setStatus(data);
 
@@ -164,7 +173,7 @@ export default function SetupDemoPage() {
   }
 
   const selected = status?.providers.options.find((o) => o.key === selectedProvider);
-  const baseUrlDirty = selected?.authType === 'none' && baseUrl.trim() !== checkedBaseUrl.trim();
+  const baseUrlDirty = selected?.authType === 'none' && !sameOllamaUrl(baseUrl, checkedBaseUrl);
 
   // Keep the chosen models valid for the selected provider. For Ollama the
   // pickers offer the pulled models (prefer the current pick, then the
@@ -750,18 +759,30 @@ export default function SetupDemoPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Check className="h-4 w-4 text-emerald-600" />
+              {result.failed?.length ? (
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+              ) : (
+                <Check className="h-4 w-4 text-emerald-600" />
+              )}
               {result.action === 'reset'
-                ? 'Demo reset'
+                ? result.failed?.length
+                  ? 'Demo only partly reset'
+                  : 'Demo reset'
                 : result.skipped
                   ? 'Already configured'
                   : 'Demo ready 🎉'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            {result.action === 'reset' && (
+            {result.action === 'reset' && !result.failed?.length && (
               <p className="text-muted-foreground">
                 Removed {result.deleted?.length ?? 0} item(s). You can set the demo up again above.
+              </p>
+            )}
+            {result.action === 'reset' && !!result.failed?.length && (
+              <p className="text-muted-foreground">
+                Removed {result.deleted?.length ?? 0} item(s), but couldn&apos;t remove {result.failed.join(', ')}. The server
+                log says why; reset again once it&apos;s fixed.
               </p>
             )}
             {result.skipped && (

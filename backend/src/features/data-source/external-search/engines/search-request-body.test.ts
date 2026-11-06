@@ -18,10 +18,7 @@ const fetchMock = vi.fn();
 
 beforeEach(() => {
   fetchMock.mockReset();
-  fetchMock.mockResolvedValue({
-    ok: true,
-    json: async () => ({ value: [], hits: { hits: [], total: { value: 0 } } }),
-  });
+  fetchMock.mockImplementation(async () => Response.json({ value: [], hits: { hits: [], total: { value: 0 } } }));
   vi.stubGlobal('fetch', fetchMock);
 });
 
@@ -69,7 +66,7 @@ describe('callElasticsearchSearch', () => {
 
     expect(sentBody().query).toEqual({
       bool: {
-        must: { multi_match: { query: 'sweater', fields: ['title'] } },
+        must: { multi_match: { query: 'sweater', fields: ['title'], lenient: true } },
         filter: [{ term: { 'brand.keyword': 'Vesper' } }],
       },
     });

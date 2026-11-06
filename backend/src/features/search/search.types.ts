@@ -486,14 +486,35 @@ export interface ProviderHit {
 /**
  * Search error with details
  */
+/** Marks a SearchError from any copy of this module (Symbol.for is shared across bundles) */
+const SEARCH_ERROR = Symbol.for('interakt.SearchError');
+
 export class SearchError extends Error {
+    readonly [SEARCH_ERROR] = true;
+
+    /**
+     * Next.js bundles instrumentation, which registers the search providers, apart from
+     * the routes: a provider's SearchError comes from another copy of this class. Checking
+     * the mark instead of the prototype keeps instanceof true for it.
+     */
+    static [Symbol.hasInstance](value: unknown): boolean {
+        return typeof value === 'object' && value !== null && (value as Record<symbol, unknown>)[SEARCH_ERROR] === true;
+    }
+
     constructor(
         message: string,
         public code: SearchErrorCode,
-        public details?: Record<string, unknown>
+        public details?: Record<string, unknown>,
+        /** cause: the provider's own error, so the API response can say what it was */
+        options?: { cause?: unknown }
     ) {
-        super(message);
+        super(message, options);
         this.name = 'SearchError';
+    }
+
+    /** The HTTP status this error answers with (SEARCH_ERROR_STATUS) */
+    get status(): number {
+        return SEARCH_ERROR_STATUS[this.code] ?? 500;
     }
 }
 
@@ -509,7 +530,30 @@ export type SearchErrorCode =
     | 'FIELD_NOT_FACETABLE'
     | 'EMBEDDING_FAILED'
     | 'PROVIDER_ERROR'
+    | 'SOURCE_UNAVAILABLE'
     | 'TIMEOUT';
+
+/**
+ * The HTTP status of each search error. Typed as Record<SearchErrorCode, …> on purpose:
+ * adding a code without deciding its status is a compile error, not a silent 500 that
+ * reads a bad filter or field name as "search is down".
+ */
+export const SEARCH_ERROR_STATUS: Record<SearchErrorCode, number> = {
+    INDEX_NOT_FOUND: 404,
+    INDEX_NOT_READY: 503,
+    INVALID_QUERY: 400,
+    INVALID_FILTER: 400,
+    INVALID_FACET: 400,
+    INVALID_SORT: 400,
+    FIELD_NOT_FOUND: 400,
+    FIELD_NOT_SEARCHABLE: 400,
+    FIELD_NOT_FACETABLE: 400,
+    EMBEDDING_FAILED: 503,
+    PROVIDER_ERROR: 503,
+    // An external search source failed; the message is ours, so it is kept for admins
+    SOURCE_UNAVAILABLE: 503,
+    TIMEOUT: 504,
+};
 
 // ============================================================================
 // UTILITY TYPES

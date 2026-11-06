@@ -5,7 +5,7 @@
  * Type-safe API calls for cache operations
  */
 
-import { toApiError } from '@/shared/api/api-error';
+import { handleApiResponse } from '@/shared/api/api-error';
 
 // ============================================================================
 // Types
@@ -59,11 +59,6 @@ export const CACHE_FEATURES: CacheFeatureInfo[] = [
 // API Functions
 // ============================================================================
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) throw await toApiError(response);
-  const json = await response.json();
-  return json.data ?? json;
-}
 
 /**
  * Get cache statistics for a specific feature
@@ -84,7 +79,7 @@ export async function getCacheStats(featureId: string): Promise<CacheStats> {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   });
-  return handleResponse<CacheStats>(response);
+  return handleApiResponse<CacheStats>(response);
 }
 
 /**
@@ -106,7 +101,7 @@ export async function clearCache(featureId: string): Promise<ClearCacheResponse>
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
-  return handleResponse<ClearCacheResponse>(response);
+  return handleApiResponse<ClearCacheResponse>(response);
 }
 
 /**
