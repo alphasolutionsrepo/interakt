@@ -1240,16 +1240,22 @@ export function reindexWriteFailure(
     if (written.indexed > 0 || written.failed === 0) return undefined;
     const { reason: because, hint } = explainWriteFailure(written.writeError, written.reason);
     const reason = because ? `: ${because}` : '';
-    // The index was recreated empty and the documents read from it are gone, so another
-    // reindex can't bring them back: they have to be uploaded again
-    const reupload = 'The index is now empty: upload its documents again once the search service is working.';
     return new AppError(scrub(`None of the ${written.failed} documents could be written back${reason}`), {
         code: 'REINDEX_FAILED',
         status: 502,
-        hint: hint ? `${hint.replace(/,? then try again\.?$/, '.')} ${reupload}` : reupload,
+        hint: uploadAgain(hint, 'The index is now empty: upload its documents again once the search service is working.'),
         // The search service's own error, for the log line
         ...(written.writeError !== undefined && { cause: written.writeError }),
     });
+}
+
+/**
+ * What to do after a reindex lost documents: the index was recreated and the documents
+ * read from it are gone, so another reindex can't bring them back; they have to be
+ * uploaded again. The service's own advice comes first, without its "try again".
+ */
+function uploadAgain(hint: string | undefined, reupload: string): string {
+    return hint ? `${hint.replace(/,? then try again\.?$/, '.').replace(/^Try again\.\s*/, '')} ${reupload}`.trim() : reupload;
 }
 
 /** How a reindex that finished ended: some documents failing to write back is partial */
@@ -1268,7 +1274,12 @@ export function reindexOutcome(
     // A batch that failed as a whole is explained from its error, as a failed reindex is
     const { reason: why, hint } = explainWriteFailure(written.writeError, written.reason);
     const reason = why ? `: ${why}` : '';
-    return { ...base, status: 'partial', summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`), ...(hint && { hint }) };
+    return {
+        ...base,
+        status: 'partial',
+        summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`),
+        hint: uploadAgain(hint, `The ${written.failed} that failed are no longer in the index: upload them again.`),
+    };
 }
 
 // ============================================================================

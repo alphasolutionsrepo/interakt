@@ -30,9 +30,24 @@ describe('reindexOutcome', () => {
     });
 });
 
-describe('a partial reindex a write block stopped', () => {
-    it('says what to do about it', () => {
-        expect(reindexOutcome({ indexed: 1, failed: 1, reason: 'index [products] blocked by: [FORBIDDEN/8/index write (api)];' }, startedAt)).toMatchObject({ status: 'partial', hint: expect.stringContaining('read-only') });
+describe('a partial reindex', () => {
+    const block = 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];';
+
+    it('a write block stopped says what to do about the block, then to upload the failed documents again', () => {
+        const { hint } = reindexOutcome({ indexed: 1, failed: 1, reason: block }, startedAt);
+        expect(hint).toMatch(/clear the read-only block on the index\. The 1 that failed are no longer in the index: upload them again/);
+        expect(hint).not.toMatch(/try again/i);
+    });
+
+    it('whose later batch timed out says to upload the failed documents again, not to try again', () => {
+        const timedOut = new esErrors.TimeoutError('Request timed out', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        const { hint } = reindexOutcome({ indexed: 5, failed: 2, writeError: timedOut }, startedAt);
+        expect(hint).toBe('For large jobs, try fewer documents at a time. The 2 that failed are no longer in the index: upload them again.');
+    });
+
+    it('with a reason we don\'t recognise still says to upload the failed documents again', () => {
+        expect(reindexOutcome({ indexed: 5, failed: 2, reason: 'mapper_parsing_exception: failed to parse field [price]' }, startedAt).hint)
+            .toBe('The 2 that failed are no longer in the index: upload them again.');
     });
 });
 
