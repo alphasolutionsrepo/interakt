@@ -129,8 +129,10 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     const serviceCode = aiServiceCode(err) ?? transportCode(err);
     const found = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
     // Advice about the index definition is for writes, never for a search: external sources
-    // are only searched, and Elasticsearch names a refused search search_phase_execution_exception
-    const searched = provider.kind === 'external' || /search_phase_execution_exception/.test(detail.message);
+    // are only searched, a search's failure comes wrapped in a SearchError (Azure's own text
+    // doesn't say it was a search), and Elasticsearch names a refused search
+    // search_phase_execution_exception
+    const searched = provider.kind === 'external' || cameFromSearch(err) || /search_phase_execution_exception/.test(detail.message);
     const code = searched && found === 'UPSTREAM_SCHEMA_MISMATCH' ? 'UPSTREAM_ERROR' : found;
     const copy = COPY[code];
     const fill = (text: string) => text.replaceAll('{provider}', provider.name).replaceAll('{settings}', SETTINGS[provider.kind]);
@@ -182,11 +184,14 @@ export function leadingReason(reasons: string[]): string | undefined {
  */
 export function explainWriteFailure(writeError: unknown, reason: string | undefined): { reason?: string; hint?: string } {
     const upstream = writeError !== undefined ? classifyUpstream(writeError) : undefined;
+    const block = reason ? explainSearchServiceText(reason) : undefined;
+    // A write block stops every later write until an operator clears it, so it leads
+    // whatever else failed (a batch that timed out), unless the error itself is the block
+    if (block && upstream?.code !== 'UPSTREAM_READ_ONLY') return { reason, ...(block.hint && { hint: block.hint }) };
     // "<provider> returned an error." says less than the service's own reason, when there is one
     const generic = upstream?.code === 'UPSTREAM_ERROR' && !!reason;
     if (upstream && !generic) return { reason: upstream.message, ...(upstream.hint && { hint: upstream.hint }) };
-    const hint = reason ? explainSearchServiceText(reason)?.hint : undefined;
-    return { ...(reason && { reason }), ...(hint && { hint }) };
+    return { ...(reason && { reason }) };
 }
 
 function codeFor(status: number | undefined, rawText: string): UpstreamCode {
@@ -207,6 +212,10 @@ function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     if (status === 429 || /rate.?limit|too many requests/.test(text)) return 'UPSTREAM_RATE_LIMITED';
     if (status === 401 || status === 403 || /unauthorized|forbidden|authentication|invalid api key|access denied/.test(text)) return 'UPSTREAM_AUTH';
     if (status === 408 || status === 504 || /timed? ?out|etimedout|timeout/.test(text)) return 'UPSTREAM_TIMEOUT';
+    // An index whose shards aren't available answers 503 from a service that is up: its own
+    // reason ("all shards failed", "Search rejected due to missing shards") says more than
+    // "couldn't be reached" and a credentials check
+    if (/no_shard_available|all shards failed|missing shards/.test(text)) return 'UPSTREAM_ERROR';
     if (status === 502 || status === 503 || /econnrefused|enotfound|econnreset|fetch failed|socket hang up|getaddrinfo|serviceunavailable|no living connections/.test(text)) {
         return 'UPSTREAM_UNAVAILABLE';
     }
@@ -233,6 +242,16 @@ function findProvider(err: unknown): Provider | undefined {
         current = e.cause;
     }
     return undefined;
+}
+
+/** Whether err is, or wraps, the search service's SearchError: it failed during a search */
+function cameFromSearch(err: unknown): boolean {
+    let current: unknown = err;
+    for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
+        if (current.name === 'SearchError') return true;
+        current = (current as Error & { cause?: unknown }).cause;
+    }
+    return false;
 }
 
 function isElasticsearchError(e: Record<string, unknown>): boolean {
@@ -296,9 +315,16 @@ function upstreamMessage(err: unknown, body: unknown): string {
         const inner = (b.error && typeof b.error === 'object' ? b.error : b) as Record<string, unknown>;
         // Elasticsearch's root cause says what failed; its top-level reason is often "all shards failed"
         const rootCause = Array.isArray(inner.root_cause) ? (inner.root_cause[0] as Record<string, unknown> | undefined)?.reason : undefined;
-        if (typeof rootCause === 'string') return rootCause;
+        if (typeof rootCause === 'string' && rootCause) return rootCause;
         for (const key of ['message', 'reason']) {
-            if (typeof inner[key] === 'string') return inner[key] as string;
+            if (typeof inner[key] === 'string' && inner[key]) return inner[key] as string;
+        }
+        // A search refused for missing shards gives its reason one level down, and an empty one on top
+        const causedBy = (inner.caused_by as Record<string, unknown> | undefined)?.reason;
+        if (typeof causedBy === 'string' && causedBy) {
+            // Its advice to accept partial results is one a reindex must not take
+            const advice = causedBy.indexOf(' Consider using `allow_partial_search_results`');
+            return advice >= 0 ? causedBy.slice(0, advice) : causedBy;
         }
     }
     if (typeof body === 'string' && body.trim()) return body;

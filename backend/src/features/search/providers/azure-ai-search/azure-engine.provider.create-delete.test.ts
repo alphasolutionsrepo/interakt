@@ -19,7 +19,7 @@ vi.mock('./azure-client', () => ({
     createIndex: async () => { throw azure.error; },
     deleteIndex: async () => { throw azure.error; },
   }),
-  getSearchClient: vi.fn(),
+  getSearchClient: () => ({ search: async () => { throw azure.error; } }),
   checkAzureHealth: vi.fn(),
 }));
 
@@ -40,6 +40,14 @@ describe('an index Azure fails', () => {
   it('to delete is passed on with its cause, not logged', async () => {
     const result = await new AzureEngineProvider().deleteIndex('shop');
     expect(result).toEqual({ success: false, error: 'getaddrinfo ENOTFOUND shop.search.windows.net', cause: azure.error });
+    expect(reported(logs)).toEqual([]);
+  });
+});
+
+describe('an index whose documents Azure fails to give a reindex', () => {
+  it('is passed on with its cause, not logged', async () => {
+    const result = await new AzureEngineProvider().fetchAllDocuments('shop');
+    expect(result).toEqual({ success: false, documents: [], error: 'getaddrinfo ENOTFOUND shop.search.windows.net', cause: azure.error });
     expect(reported(logs)).toEqual([]);
   });
 });

@@ -21,10 +21,10 @@ import { getAIExperienceBySlug } from '@/features/ai-experience/ai-experience.se
 import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
 import { aiExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
-import { runChatPipeline } from '@/features/pipeline/chat-pipeline';
-import type { PipelineStreamEvent } from '@/features/pipeline/pipeline.types';
-import { flushTelemetry } from '@/features/telemetry';
+import { chatEventStream } from '@/features/pipeline/chat-event-stream';
 import { publicRoute } from '@/shared/api/public-route';
+import { readJsonBody } from '@/shared/api/read-json-body';
+import { apiResponse } from '@/shared/api/response';
 
 async function post(
   request: NextRequest,
@@ -35,17 +35,14 @@ async function post(
   // ── Parse & validate body ──────────────────────────────────────────────────
   let rawBody: unknown;
   try {
-    rawBody = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    rawBody = await readJsonBody(request);
+  } catch (error) {
+    return apiResponse.error(error, 400, { operation: 'chatBySlug' });
   }
 
   const parsed = chatRequestSchema.safeParse(rawBody);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.errors[0]?.message ?? 'Invalid request body' },
-      { status: 400 },
-    );
+    return apiResponse.badRequest(parsed.error.errors[0]?.message ?? 'Invalid request body');
   }
 
   const { message, sessionId: clientSessionId } = parsed.data;
@@ -53,61 +50,20 @@ async function post(
   // ── Load experience ────────────────────────────────────────────────────────
   const experience = await getAIExperienceBySlug(slug);
   if (!experience) {
-    return NextResponse.json({ error: 'AI Experience not found' }, { status: 404 });
+    return apiResponse.notFound('AI Experience not found');
   }
   if (!experience.isActive) {
-    return NextResponse.json({ error: 'AI Experience is not active' }, { status: 403 });
+    return apiResponse.forbidden('AI Experience is not active');
   }
 
   // ── Authenticate ───────────────────────────────────────────────────────────
   // Access token (external/demo-site clients) or dashboard session (admin test panel)
   const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, aiExperienceAccess(experience));
   if (!caller) {
-    return refused ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return refused ?? apiResponse.unauthorized();
   }
 
-  // ── Stream pipeline ────────────────────────────────────────────────────────
-  const encoder = new TextEncoder();
-
-  function sseEvent(event: PipelineStreamEvent): Uint8Array {
-    return encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
-  }
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        await runChatPipeline({
-          experience,
-          message,
-          sessionId: clientSessionId || undefined,
-          analyticsSource,
-          onEvent: (event) => controller.enqueue(sseEvent(event)),
-        });
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : 'Unexpected error';
-        try {
-          controller.enqueue(
-            sseEvent({ type: 'error', message: errorMessage }),
-          );
-        } catch {
-          // Controller may already be closed
-        }
-      } finally {
-        await flushTelemetry();
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no', // Disable Nginx buffering for SSE
-    },
-  });
+  return chatEventStream({ experience, message, sessionId: clientSessionId || undefined, analyticsSource });
 }
 
 export async function OPTIONS() {

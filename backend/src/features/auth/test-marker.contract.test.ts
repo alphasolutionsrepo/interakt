@@ -14,8 +14,7 @@ import path from 'path';
 import { describe, it, expect } from 'vitest';
 
 import { handleCorsPreflight } from '@/features/search-experience/access-token.middleware';
-
-import { TEST_MARKER_HEADER as SERVER_READS } from './token-or-session';
+import { TEST_MARKER_HEADER as SERVER_READS } from '@/shared/constants/test-marker.constants';
 
 const BUNDLE = path.resolve(__dirname, '../../../public/embed/v1/widgets.js');
 

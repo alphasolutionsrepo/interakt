@@ -180,6 +180,19 @@ export function handleCorsPreflightWithExperience(
 }
 
 /**
+ * Opens a public request: the experience its access token is for, with the request's
+ * origin, or the answer to send instead (a CORS preflight, or the token refused)
+ */
+export async function openPublicRequest(
+  request: NextRequest,
+): Promise<{ response: NextResponse } | { experience: SearchExperienceWithIndexes; origin: string | null }> {
+  if (request.method === 'OPTIONS') return { response: handleCorsPreflight() };
+  const authResult = await authenticateAccessToken(request);
+  if (!authResult.success) return { response: (authResult as MiddlewareError).response };
+  return { experience: (authResult as MiddlewareResult).experience, origin: request.headers.get('origin') };
+}
+
+/**
  * Handle OPTIONS preflight request (without experience - for when we can't validate token)
  */
 export function handleCorsPreflight(): NextResponse {

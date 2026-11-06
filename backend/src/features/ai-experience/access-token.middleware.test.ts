@@ -30,21 +30,31 @@ describe('authenticateAIAccessToken', () => {
     mocks.getAIExperienceByAccessToken.mockImplementation(async (token: string) => (token === 'tok' ? experience : null));
   });
 
+  // Every refusal answers in the shared shape, keeping error for the widget
+  const refusal = (code: string, message: string) => ({ success: false, code, message, error: message, requestId: expect.any(String) });
+
   it('answers 401 without a token or with an unknown one', async () => {
-    expect((await authenticateAIAccessToken(req({}))).response?.status).toBe(401);
-    expect((await authenticateAIAccessToken(req({ 'X-Access-Token': 'nope' }))).response?.status).toBe(401);
+    const missing = (await authenticateAIAccessToken(req({}))).response;
+    expect(missing?.status).toBe(401);
+    expect(await missing?.json()).toMatchObject(refusal('UNAUTHORIZED', 'Access token is required'));
+    const unknown = (await authenticateAIAccessToken(req({ 'X-Access-Token': 'nope' }))).response;
+    expect(unknown?.status).toBe(401);
+    expect(await unknown?.json()).toMatchObject(refusal('UNAUTHORIZED', 'Invalid access token'));
   });
 
   it('answers 403 for an inactive experience', async () => {
     mocks.getAIExperienceByAccessToken.mockResolvedValue({ ...experience, isActive: false });
     const result = await authenticateAIAccessToken(req({ 'X-Access-Token': 'tok' }));
     expect(result.response?.status).toBe(403);
-    expect(await result.response?.json()).toEqual({ error: 'AI Experience is not active' });
+    expect(await result.response?.json()).toMatchObject(refusal('FORBIDDEN', 'AI Experience is not active'));
   });
 
   it("returns the experience within its settings, and refuses outside them", async () => {
     expect((await authenticateAIAccessToken(req({ 'X-Access-Token': 'tok', Origin: 'https://other.example' }))).response?.status).toBe(403);
     expect(await authenticateAIAccessToken(req({ Authorization: 'Bearer tok', Origin: 'https://shop.example' }))).toEqual({ experience });
-    expect((await authenticateAIAccessToken(req({ Authorization: 'Bearer tok', Origin: 'https://shop.example' }))).response?.status).toBe(429);
+    const limited = (await authenticateAIAccessToken(req({ Authorization: 'Bearer tok', Origin: 'https://shop.example' }))).response;
+    expect(limited?.status).toBe(429);
+    expect(limited?.headers.get('Retry-After')).toMatch(/^\d+$/);
+    expect(await limited?.json()).toMatchObject({ ...refusal('RATE_LIMIT_EXCEEDED', 'Rate limit exceeded'), retryAfter: expect.any(Number) });
   });
 });

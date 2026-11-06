@@ -30,7 +30,7 @@ import type {
     AutocompleteResult,
 } from '../search-provider.interface';
 import type { GetDocumentResult } from '../search-engine-provider.interface';
-import { lookupFailure } from '../search-engine-provider.interface';
+import { failureText } from '../search-engine-provider.interface';
 import {
     buildSearchBody,
     buildLexicalSearchBody,
@@ -245,12 +245,8 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
             return { hits };
         } catch (error) {
-            logger.error('Autocomplete query failed', {
-                indexName,
-                query,
-                error: error instanceof Error ? error.message : 'Unknown error',
-            });
-            return { hits: [] };
+            // Passed on: the caller decides (a visitor's type-ahead stays quiet) and logs it once
+            throw new SearchError(error instanceof Error ? error.message : 'Autocomplete failed', 'PROVIDER_ERROR', { provider: this.name, indexName }, { cause: error });
         }
     }
 
@@ -289,7 +285,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                 return { found: false };
             }
 
-            const message = lookupFailure(error, 'Failed to get document');
+            const message = failureText(error, 'Failed to get document');
             // The search service turns it into a failure, and whoever answers logs it
             logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
             return { found: false, error: message, cause: error };

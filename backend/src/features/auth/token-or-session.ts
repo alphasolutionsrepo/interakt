@@ -16,6 +16,7 @@ import type { NextRequest, NextResponse } from 'next/server';
 import { auth } from './auth.api.handlers';
 import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
 import { markAdminCaller } from '@/shared/api/public-route';
+import { TEST_MARKER_HEADER } from '@/shared/constants/test-marker.constants';
 
 /** Who is calling: a client with the experience's token, or a signed-in admin. */
 export type ExperienceCaller = 'api' | 'admin';
@@ -47,17 +48,23 @@ export async function authenticateTokenOrSession(
   return { caller: 'admin', analyticsSource: 'admin_test' };
 }
 
-/** Marks a request from the admin's Widget playground (the widget's testMode). */
-export const TEST_MARKER_HEADER = 'x-interakt-test';
-
 /**
- * Where a request with a valid access token came from. The real widget in the admin's Widget
- * playground sends a test marker and, being on the admin's origin, the admin's login: only both
- * together make it a test. A visitor can send the marker but not the login, and a signed-in
- * admin using a live widget sends the login but not the marker; both are live traffic.
+ * Whether a request with a valid access token is the admin testing, and if so marks it as
+ * the admin's, so a failure is explained rather than given the visitors' plain message.
+ * The admin's playgrounds send a test marker and, being on the admin's origin, the admin's
+ * login: only both together make it a test. A visitor can send the marker but not the
+ * login, and a signed-in admin using a live widget sends the login but not the marker;
+ * both are live traffic.
  */
-export async function analyticsSourceOfTokenCaller(request: NextRequest): Promise<'api' | 'admin_test'> {
-  if (request.headers.get(TEST_MARKER_HEADER) !== '1') return 'api';
+export async function markIfAdminTest(request: NextRequest): Promise<boolean> {
+  if (request.headers.get(TEST_MARKER_HEADER) !== '1') return false;
   const session = await auth();
-  return session?.user ? 'admin_test' : 'api';
+  if (!session?.user) return false;
+  markAdminCaller();
+  return true;
+}
+
+/** Where a request with a valid access token came from (see markIfAdminTest, which it calls) */
+export async function analyticsSourceOfTokenCaller(request: NextRequest): Promise<'api' | 'admin_test'> {
+  return (await markIfAdminTest(request)) ? 'admin_test' : 'api';
 }

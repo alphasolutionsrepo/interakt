@@ -113,7 +113,8 @@ export type PipelineStreamEvent =
   | { type: 'action_step'; toolSlug: string; step: ActionSubStep; durationMs: number; detail?: string }
   | { type: 'preset'; preset: string; data: unknown }
   | { type: 'sources'; sources: Array<{ id: string; title?: string; dataSource?: string }> }
-  | { type: 'error'; message: string; stepId?: string }
+  /** code, hint and requestId when a failed turn is answered as an error response is */
+  | { type: 'error'; message: string; stepId?: string; code?: string; hint?: string; requestId?: string }
   | { type: 'done'; sessionId: string; usage?: TokenUsage }
   // Message classification result (emitted by S1 input guardrail)
   | { type: 'classification'; classification: string; debug: {

@@ -7,7 +7,7 @@
  */
 
 import { AppError, ConflictError, INTERNAL_MESSAGE, NotFoundError, ValidationError, codeForStatus } from './app-error';
-import { classifyUpstream, findAIServiceError, isAIProviderFailure } from './upstream';
+import { classifyUpstream, explainSearchServiceText, findAIServiceError, isAIProviderFailure } from './upstream';
 
 // AIServiceError codes that point at our own configuration
 const AI_CONFIG_CODES = new Set(['PROVIDER_NOT_FOUND', 'MODEL_NOT_FOUND', 'PROVIDER_DISABLED']);
@@ -100,9 +100,11 @@ export function failureLevel(err: unknown, otherwise: 'error' | 'warn'): 'error'
 
 /**
  * A write that failed: a warning when documents were refused, an error when the search
- * service failed as a whole (it's down) or the write threw something unexpected (a bug)
+ * service failed as a whole (it's down), blocked writes (a read-only index, a full disk:
+ * only an operator can clear it), or the write threw something unexpected (a bug)
  */
-export function writeFailureLevel(writeError: unknown): 'error' | 'warn' {
+export function writeFailureLevel(writeError: unknown, reasons: string[] = []): 'error' | 'warn' {
+    if (reasons.some((reason) => explainSearchServiceText(reason))) return 'error';
     if (writeError === undefined) return 'warn';
     if (toAppError(writeError).code === 'INTERNAL_ERROR') return 'error';
     return failureLevel(writeError, 'warn');

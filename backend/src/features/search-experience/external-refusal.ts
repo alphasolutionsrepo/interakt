@@ -9,14 +9,24 @@
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { ExternalSearchError } from '@/features/data-source/external-search/external-search.types';
 import { refusalFor } from '@/features/search/request-refusal';
-import type { SearchError, SearchRequest } from '@/features/search/search.types';
+import type { FilterClause, SearchError, SearchRequest, SortClause } from '@/features/search/search.types';
 
 /** The engines whose 400 wording request-refusal.ts was checked against */
-const KNOWN_WORDING = new Set(['Elasticsearch', 'Azure AI Search']);
+const KNOWN_WORDING = new Set(['Elasticsearch', 'Azure AI Search', 'Sitecore Search']);
 
-/** The 400 to answer when the engine's reason blames the request's filter or sort */
-export function refusedRequest(error: unknown, request: SearchRequest, fields: DataSourceField[]): SearchError | undefined {
+/**
+ * The 400 to answer when the engine's reason blames the request's filter or sort. fixed is
+ * what was sent with it that the caller didn't write (a tool's default filters and sort);
+ * the source's own fixed filters come with the error.
+ */
+export function refusedRequest(
+  error: unknown,
+  request: SearchRequest,
+  fields: DataSourceField[],
+  fixed: { filters?: FilterClause[]; sort?: SortClause[] } = {},
+): SearchError | undefined {
   if (!(error instanceof ExternalSearchError) || error.status !== 400 || !KNOWN_WORDING.has(error.provider)) return undefined;
   // The engine names a field as it was sent: the schema's filterField when there is one
-  return refusalFor(error.message, request, (name) => [name, fields.find((f) => f.name === name)?.filterField], error);
+  const sentAs = (name: string) => [name, fields.find((f) => f.name === name)?.filterField];
+  return refusalFor(error.message, request, sentAs, error, [...error.fixedFilters, ...(fixed.filters ?? [])], fixed.sort);
 }

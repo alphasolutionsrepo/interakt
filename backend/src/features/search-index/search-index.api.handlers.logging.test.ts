@@ -9,6 +9,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ConflictError } from '@/shared/errors/app-error';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -17,6 +18,7 @@ vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUserId: async () => 'adm
 const service = vi.hoisted(() => ({
   deleteSearchIndex: vi.fn(),
   getSearchIndexById: vi.fn(),
+  triggerReindex: vi.fn(),
   SearchIndexInUseError: class SearchIndexInUseError extends Error {},
 }));
 vi.mock('./search-index.service', () => service);
@@ -29,7 +31,7 @@ const fieldsService = vi.hoisted(() => ({
 vi.mock('./search-index-fields.service', () => fieldsService);
 vi.mock('@/features/data-source/data-source.service', () => ({ refreshSchemaForSearchIndex: vi.fn() }));
 
-import { handleDeleteField, handleDeleteSearchIndex, handleGetSearchIndex } from './search-index.api.handlers';
+import { handleDeleteField, handleDeleteSearchIndex, handleGetSearchIndex, handleTriggerReindex } from './search-index.api.handlers';
 
 const ID = '7f1c0c56-3a9e-4a51-9b3f-2f7b8c1d2e3f';
 const req = (method: string) => new NextRequest(`http://localhost/api/search-indexes/${ID}`, { method });
@@ -79,5 +81,14 @@ describe('a search index request that fails', () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ code: 'CONFLICT', message: 'Field is used by 2 fields', details: { dependents: ['title_ngram', 'title_exact'] } });
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ operation: 'deleteField' }) })]);
+  });
+
+  it('answers a reindex already running as a conflict and logs it once, as a warning', async () => {
+    service.triggerReindex.mockRejectedValue(new ConflictError('A reindex is already running for this index'));
+    const res = await handleTriggerReindex(req('POST'), params);
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'CONFLICT', message: 'A reindex is already running for this index' });
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ operation: 'triggerReindex' }) })]);
   });
 });

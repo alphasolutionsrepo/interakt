@@ -16,16 +16,54 @@ describe('reindexOutcome', () => {
 
     it('explains a partial reindex whose later batch failed as a whole, from that error', () => {
         const down = new esErrors.ConnectionError('', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
-        expect(reindexOutcome({ indexed: 5, failed: 2, firstError: '', writeError: down }, startedAt)).toMatchObject({
+        expect(reindexOutcome({ indexed: 5, failed: 2, reason: '', writeError: down }, startedAt)).toMatchObject({
             status: 'partial',
             summary: "5 of 7 documents reindexed, 2 failed: Elasticsearch couldn't be reached.",
         });
     });
 
     it('is partial when some documents failed, with how many and the first reason', () => {
-        expect(reindexOutcome({ indexed: 5, failed: 2, firstError: 'mapper_parsing_exception: failed to parse field [price]' }, startedAt)).toMatchObject({
+        expect(reindexOutcome({ indexed: 5, failed: 2, reason: 'mapper_parsing_exception: failed to parse field [price]' }, startedAt)).toMatchObject({
             status: 'partial',
             summary: '5 of 7 documents reindexed, 2 failed: mapper_parsing_exception: failed to parse field [price]',
+        });
+    });
+});
+
+describe('a partial reindex', () => {
+    const block = 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];';
+
+    it('a write block stopped says what to do about the block, then to upload the failed documents again', () => {
+        const { hint } = reindexOutcome({ indexed: 1, failed: 1, reason: block }, startedAt);
+        expect(hint).toMatch(/clear the read-only block on the index\. The 1 that failed are no longer in the index: upload them again/);
+        expect(hint).not.toMatch(/try again/i);
+    });
+
+    it('whose later batch timed out says to upload the failed documents again, not to try again', () => {
+        const timedOut = new esErrors.TimeoutError('Request timed out', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        const { hint } = reindexOutcome({ indexed: 5, failed: 2, writeError: timedOut }, startedAt);
+        expect(hint).toBe('For large jobs, try fewer documents at a time. The 2 that failed are no longer in the index: upload them again.');
+    });
+
+    it('the search service rate limited says to wait, then to upload the failed documents again', () => {
+        const busy = new esErrors.ResponseError({ body: { error: { type: 'es_rejected_execution_exception' } }, statusCode: 429, headers: {}, meta: {} as never, warnings: null });
+        const { hint } = reindexOutcome({ indexed: 5, failed: 2, writeError: busy }, startedAt);
+        expect(hint).toMatch(/^Wait a minute\. If it keeps happening, raise the rate limit/);
+        expect(hint).toMatch(/The 2 that failed are no longer in the index: upload them again\.$/);
+        expect(hint).not.toMatch(/try again/i);
+    });
+
+    it('with a reason we don\'t recognise still says to upload the failed documents again', () => {
+        expect(reindexOutcome({ indexed: 5, failed: 2, reason: 'mapper_parsing_exception: failed to parse field [price]' }, startedAt).hint)
+            .toBe('The 2 that failed are no longer in the index: upload them again.');
+    });
+});
+
+describe('a reindex of an empty index', () => {
+    it('says the index is empty and to upload its documents, in orange rather than as a success', () => {
+        expect(reindexOutcome({ indexed: 0, failed: 0 }, startedAt)).toMatchObject({
+            status: 'partial',
+            summary: 'The index is empty: there was nothing to reindex. Upload its documents to fill it.',
         });
     });
 });
@@ -34,7 +72,7 @@ describe('reindexWriteFailure', () => {
     it('fails a reindex where nothing could be written back, with what to do about a full disk', () => {
         const err = reindexWriteFailure({
             indexed: 0, failed: 7,
-            firstError: 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];',
+            reason: 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];',
         });
         expect(err).toMatchObject({ code: 'REINDEX_FAILED', status: 502 });
         expect(err?.message).toMatch(/^None of the 7 documents could be written back: index \[shop\] blocked by/);
@@ -48,7 +86,7 @@ describe('reindexWriteFailure', () => {
 
     it('answers through the API with its own message and hint', async () => {
         const { apiResponse } = await import('@/shared/api/response');
-        const body = await apiResponse.error(reindexWriteFailure({ indexed: 0, failed: 2, firstError: 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];' })).json();
+        const body = await apiResponse.error(reindexWriteFailure({ indexed: 0, failed: 2, reason: 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];' })).json();
         expect(body).toMatchObject({ code: 'REINDEX_FAILED', message: expect.stringMatching(/could be written back/) });
         expect(body.hint).toMatch(/read-only/);
     });

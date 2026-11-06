@@ -25,6 +25,7 @@ import { executeExperienceSearch, NoSourcesError } from '@/features/search-exper
 import type { PublicSearchRequest } from '@/features/search-experience/search-experience.types';
 import { publicRoute } from '@/shared/api/public-route';
 import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { AppError } from '@/shared/errors/app-error';
 
 // Extended schema: playground-only switches
@@ -70,7 +71,7 @@ async function post(
     const isAdmin = caller === 'admin';
 
     // 3. Parse and validate request body
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validated = searchRequestSchema.parse(body);
 
     // 4. Search through the experience (same flow as the public search API)

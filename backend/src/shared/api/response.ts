@@ -252,6 +252,16 @@ function forbidden(message: string = 'Forbidden'): NextResponse<APIErrorResponse
 }
 
 /**
+ * Too many requests (429): when to try again, in seconds, in the body and in Retry-After
+ */
+function tooManyRequests(retryAfter: number, message: string = 'Rate limit exceeded'): NextResponse<APIErrorResponse & { retryAfter: number }> {
+    return NextResponse.json(
+        { ...errorPayload({ code: 'RATE_LIMIT_EXCEEDED', message }, 429, currentRequestId()), retryAfter },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+    );
+}
+
+/**
  * Conflict error (409)
  *
  * `details` carries machine-readable context about what conflicted — e.g. the
@@ -280,6 +290,7 @@ export const apiResponse = {
     badRequest,
     unauthorized,
     forbidden,
+    tooManyRequests,
     conflict,
     internalError,
 };

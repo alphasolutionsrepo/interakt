@@ -169,6 +169,23 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         expect(err?.details).toMatchObject({ message: 'index [shop] blocked by: [FORBIDDEN/7/index read (api)];' });
     });
 
+    it("explains an index whose shards aren't available by Elasticsearch's reason, not as unreachable", () => {
+        // What a real Elasticsearch 9 answered (6 Nov) for a search of an index with no shard allocated
+        const body = { error: { root_cause: [{ type: 'no_shard_available_action_exception', reason: null }], type: 'search_phase_execution_exception', reason: 'all shards failed', phase: 'query', grouped: true }, status: 503 };
+        const err = classifyUpstream(new esErrors.ResponseError({ body, statusCode: 503, headers: {}, meta: {} as never, warnings: null }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Elasticsearch returned an error.', details: { message: 'all shards failed' } });
+        expect(err?.hint).toBeUndefined();
+    });
+
+    it('explains a search refused for missing shards by the reason Elasticsearch gives under it', () => {
+        // What a real Elasticsearch 9 answered (6 Nov) with allow_partial_search_results=false, as reindex reads
+        const body = { error: { root_cause: [], type: 'search_phase_execution_exception', reason: '', phase: 'query', grouped: true, failed_shards: [],
+            caused_by: { type: 'search_phase_execution_exception', reason: 'Search rejected due to missing shards [[shop][0]]. Consider using `allow_partial_search_results` setting to bypass this error.', phase: 'query', grouped: true, failed_shards: [] } }, status: 503 };
+        const err = classifyUpstream(new esErrors.ResponseError({ body, statusCode: 503, headers: {}, meta: {} as never, warnings: null }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', details: { message: 'Search rejected due to missing shards [[shop][0]].' } });
+        expect(err?.hint).toBeUndefined();
+    });
+
     it('leaves blocks that are about availability to the availability explanation', () => {
         const err = classifyUpstream(blocked(503, 'blocked by: [SERVICE_UNAVAILABLE/1/state not recovered / initialized];'));
         expect(err?.code).toBe('UPSTREAM_UNAVAILABLE');
@@ -204,6 +221,20 @@ describe('classifyUpstream with a search Elasticsearch refused', () => {
     it('does not give index-definition advice for a search', () => {
         const err = classifyUpstream(new SearchError('', 'PROVIDER_ERROR', {}, { cause: refused }));
         expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Elasticsearch returned an error.' });
+    });
+});
+
+describe('classifyUpstream with a managed Azure AI Search index', () => {
+    it('does not give index-definition advice for a search Azure refused', () => {
+        // Azure's 400 doesn't say it was a search; the SearchError around it does
+        const refused = Object.assign(new Error("Invalid expression: 'x' is not a valid value for the search mode."), { name: 'RestError', statusCode: 400, code: 'InvalidRequestParameter' });
+        const err = classifyUpstream(new SearchError(refused.message, 'PROVIDER_ERROR', {}, { cause: refused }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Azure AI Search returned an error.' });
+    });
+
+    it('still explains an index-definition problem on a write', () => {
+        const refused = Object.assign(new Error("The property 'colour' is not a valid field of the index."), { name: 'RestError', statusCode: 400, code: 'InvalidRequestParameter' });
+        expect(classifyUpstream(refused)).toMatchObject({ code: 'UPSTREAM_SCHEMA_MISMATCH' });
     });
 });
 
@@ -246,6 +277,13 @@ describe('explainWriteFailure', () => {
 
     it('keeps the service reason and adds the write-block hint', () => {
         const explained = explainWriteFailure(undefined, blockText);
+        expect(explained.reason).toBe(blockText);
+        expect(explained.hint).toMatch(/read-only/);
+    });
+
+    it('leads with a write block another batch hit, over a batch that timed out', () => {
+        const timedOut = new esErrors.TimeoutError('Request timed out', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        const explained = explainWriteFailure(timedOut, blockText);
         expect(explained.reason).toBe(blockText);
         expect(explained.hint).toMatch(/read-only/);
     });
