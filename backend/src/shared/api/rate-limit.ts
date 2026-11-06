@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { clientIp } from './client-ip';
+import { apiResponse } from './response';
 
 // ============================================================================
 // TYPES
@@ -140,22 +141,10 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
     const result = rateLimiter.check(routeKey, maxRequests, windowMs);
 
     if (!result.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Too many requests',
-          code: 'RATE_LIMIT_EXCEEDED',
-          retryAfter: result.retryAfter,
-        },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(result.retryAfter ?? 60),
-            'X-RateLimit-Limit': String(maxRequests),
-            'X-RateLimit-Remaining': '0',
-          },
-        }
-      );
+      const refused = apiResponse.tooManyRequests(result.retryAfter ?? 60, 'Too many requests');
+      refused.headers.set('X-RateLimit-Limit', String(maxRequests));
+      refused.headers.set('X-RateLimit-Remaining', '0');
+      return refused;
     }
 
     const response = await handler(...args);

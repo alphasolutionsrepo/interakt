@@ -228,11 +228,10 @@ export async function runV2Pipeline(
   onEvent({ type: 'step_complete', stepId: 'context-assembly', stepType: 'episodic_memory', durationMs: ctxResult.durationMs, status: 'ok' });
 
   if (!ctxResult.success || !ctxResult.data) {
-    const errorMsg = ctxResult.summary;
     parentSpan.setAttribute('alpha.v2.outcome', 'context_assembly_failed');
-    onEvent({ type: 'error', message: errorMsg });
-    onEvent({ type: 'done', sessionId: input.sessionId, usage });
-    return { sessionId: input.sessionId, responseText: '', usage };
+    // Not sent from here: its text can be internal (a database address). The answer to
+    // the caller explains it (plainly to visitors) and logs it once, with the request id.
+    throw new Error(ctxResult.summary, { cause: ctxResult.cause });
   }
 
   const turnContext: TurnContext = ctxResult.data;

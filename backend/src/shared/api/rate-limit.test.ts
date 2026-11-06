@@ -43,4 +43,20 @@ describe('withRateLimit', () => {
     expect((await from('10.0.0.2, 7.7.7.7')).status).toBe(429);
     expect((await from('10.0.0.2, 6.6.6.6')).status).toBe(200);
   });
+
+  it('refuses in the shared shape, with a request id, when to try again and the limit', async () => {
+    const handler = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
+    const ask = () => handler(new NextRequest('http://interakt.test/api/x'));
+    await ask();
+    const refused = await ask();
+
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toMatchObject({
+      success: false, code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests', error: 'Too many requests',
+      requestId: expect.any(String), retryAfter: expect.any(Number),
+    });
+    expect(refused.headers.get('Retry-After')).toMatch(/^\d+$/);
+    expect(refused.headers.get('X-RateLimit-Limit')).toBe('1');
+    expect(refused.headers.get('X-RateLimit-Remaining')).toBe('0');
+  });
 });

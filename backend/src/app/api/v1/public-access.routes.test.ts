@@ -863,15 +863,40 @@ describe('a chat turn that fails after the stream started', () => {
     expect(event.message).not.toBe(PUBLIC_FAILURE_MESSAGE);
   });
 
-  it("isn't logged when the visitor closed the chat before it finished", async () => {
+  it('sends the Widget playground (the token, the test marker and the admin login) the explanation', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.runChatPipeline.mockRejectedValueOnce(Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama' }));
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP, 'x-interakt-test': '1' });
+    const text = await res.text();
+    const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
+
+    expect(event).toMatchObject({ type: 'error', code: 'UPSTREAM_UNAVAILABLE', hint: expect.any(String) });
+  });
+
+  it("sends a visitor who sends the test marker without the login the plain message", async () => {
+    mocks.runChatPipeline.mockRejectedValueOnce(Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama' }));
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP, 'x-interakt-test': '1' });
+    const text = await res.text();
+    const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
+
+    expect(event).toMatchObject({ type: 'error', message: PUBLIC_FAILURE_MESSAGE });
+  });
+
+  it("isn't logged when the visitor closed the chat before it finished, even by a step that logs a failed send", async () => {
     logs.length = 0;
     let finished!: () => void;
     const done = new Promise<void>((resolve) => { finished = resolve; });
+    const { createLogger } = await import('@/shared/logger/logger');
     mocks.runChatPipeline.mockImplementationOnce(async ({ onEvent }: { onEvent: (e: unknown) => void }) => {
       try {
         onEvent({ type: 'content', content: 'Hel' });
         await new Promise((resolve) => setTimeout(resolve, 10));
-        onEvent({ type: 'content', content: 'lo' });
+        // As response synthesis does: a send that throws is logged as a failed step
+        try {
+          onEvent({ type: 'content', content: 'lo' });
+        } catch (error) {
+          createLogger('response-synthesis').error('Synthesis failed', error as Error);
+        }
       } finally {
         finished();
       }

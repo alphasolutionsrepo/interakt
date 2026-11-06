@@ -258,17 +258,19 @@ describe('V2 Pipeline Orchestrator', () => {
   });
 
   describe('context assembly failure', () => {
-    it('emits error and returns early', async () => {
+    it('fails the turn with the error as its cause, sending no error text of its own', async () => {
       const deps = makeDeps();
-      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockRejectedValue(new Error('DB down'));
-      deps.contextAssembly.sessionLoader.createSession = vi.fn().mockRejectedValue(new Error('DB down'));
+      const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
+      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockRejectedValue(down);
+      deps.contextAssembly.sessionLoader.createSession = vi.fn().mockRejectedValue(down);
 
       const input = makeInput({ sessionId: '' });
-      const result = await runV2Pipeline(input, deps);
+      const thrown = await runV2Pipeline(input, deps).catch((e: unknown) => e);
 
-      expect(result.responseText).toBe('');
+      // The answer to the caller (chatEventStream) explains and logs it
+      expect((thrown as Error).cause).toBe(down);
       const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
-      expect(events.some((e: PipelineStreamEvent) => e.type === 'error')).toBe(true);
+      expect(events.some((e: PipelineStreamEvent) => e.type === 'error')).toBe(false);
     });
   });
 });

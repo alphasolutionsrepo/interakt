@@ -49,18 +49,22 @@ export async function authenticateTokenOrSession(
 }
 
 /**
- * Whether a request with a valid access token is the admin testing. The admin's playgrounds
- * send a test marker and, being on the admin's origin, the admin's login: only both together
- * make it a test. A visitor can send the marker but not the login, and a signed-in admin
- * using a live widget sends the login but not the marker; both are live traffic.
+ * Whether a request with a valid access token is the admin testing, and if so marks it as
+ * the admin's, so a failure is explained rather than given the visitors' plain message.
+ * The admin's playgrounds send a test marker and, being on the admin's origin, the admin's
+ * login: only both together make it a test. A visitor can send the marker but not the
+ * login, and a signed-in admin using a live widget sends the login but not the marker;
+ * both are live traffic.
  */
-export async function isAdminTest(request: NextRequest): Promise<boolean> {
+export async function markIfAdminTest(request: NextRequest): Promise<boolean> {
   if (request.headers.get(TEST_MARKER_HEADER) !== '1') return false;
   const session = await auth();
-  return Boolean(session?.user);
+  if (!session?.user) return false;
+  markAdminCaller();
+  return true;
 }
 
-/** Where a request with a valid access token came from: see isAdminTest */
+/** Where a request with a valid access token came from (see markIfAdminTest, which it calls) */
 export async function analyticsSourceOfTokenCaller(request: NextRequest): Promise<'api' | 'admin_test'> {
-  return (await isAdminTest(request)) ? 'admin_test' : 'api';
+  return (await markIfAdminTest(request)) ? 'admin_test' : 'api';
 }

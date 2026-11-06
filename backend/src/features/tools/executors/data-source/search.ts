@@ -106,7 +106,8 @@ async function executeManagedSearch(
   const query = input.query ?? '';
   const maxResults = config.maxResults ?? 10;
 
-  const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
+  const requested = buildFilterClauses(input.filters);
+  const merged = mergeDefaultFilters(config.defaultFilters, requested);
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
   // The AI's Search tool, not a visitor's search: reports list it under Assistant Searches.
@@ -182,7 +183,8 @@ async function executeExternalSearch(
     }
   }
 
-  const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
+  const requested = buildFilterClauses(input.filters);
+  const merged = mergeDefaultFilters(config.defaultFilters, requested);
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
   const connector = getConnector(source.provider);
@@ -234,8 +236,9 @@ async function executeExternalSearch(
     // Answered to the model as a failed call, so logged here: a warning when the source
     // refused this request's filter or sort (a value of the wrong type), by the same rule as
     // experience search; an error when the source failed (it's down, it refused the
-    // credentials, it's rate limiting) or refused something the request didn't say
-    const refused = !!refusedRequest(error, { query, filters: merged.filters, sort: sorting.sort }, schemaFields ?? []);
+    // credentials, it's rate limiting) or refused something the request didn't say. The
+    // tool's defaults are the admin's: a refused default is a misconfiguration, not the model's.
+    const refused = !!refusedRequest(error, { query, filters: requested, sort: sorting.sort }, schemaFields ?? [], merged.appliedDefaults);
     logger[refused ? 'warn' : failureLevel(error, 'warn')]('External source search failed', { dataSourceId: source.dataSourceId, provider: source.provider, err: error });
     result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }

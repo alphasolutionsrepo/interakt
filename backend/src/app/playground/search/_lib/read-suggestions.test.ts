@@ -5,11 +5,11 @@
  * hint and request id the server sent, so the input can say what to do about it.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/shared/api/api-error';
 
-import { readSuggestions } from './read-suggestions';
+import { askForSuggestions, readSuggestions } from './read-suggestions';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -30,5 +30,26 @@ describe('readSuggestions', () => {
 
   it('throws an answer without suggestions as invalid', async () => {
     await expect(readSuggestions(json({ success: true, data: {} }))).rejects.toThrow('Invalid response');
+  });
+});
+
+describe('askForSuggestions', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('asks with the token and the test marker, so the admin gets a failure explained', async () => {
+    const fetchStub = vi.fn(async () => json({ success: true, data: { suggestions: [] } }));
+    vi.stubGlobal('fetch', fetchStub);
+
+    await askForSuggestions('/api/v1/autocomplete', 'tok', { query: 'lin' }, new AbortController().signal);
+
+    const [url, init] = fetchStub.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/v1/autocomplete');
+    expect(init.headers).toMatchObject({ 'X-Access-Token': 'tok', 'x-interakt-test': '1' });
+    expect(JSON.parse(String(init.body))).toEqual({ query: 'lin' });
+  });
+
+  it('gives null for a request that was aborted', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw Object.assign(new Error('aborted'), { name: 'AbortError' }); }));
+    expect(await askForSuggestions('/api/v1/autocomplete', 'tok', { query: 'lin' }, new AbortController().signal)).toBeNull();
   });
 });

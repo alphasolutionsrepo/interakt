@@ -257,17 +257,13 @@ export async function assembleContext(
       durationMs,
     };
   } catch (error) {
-    const durationMs = Date.now() - startTime;
+    // Not logged here: the turn fails with it, and the answer to the caller logs it once
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Context assembly failed', err, {
-      experienceId: input.experienceId,
-      sessionId: input.sessionId,
-    });
-
     return {
       success: false,
       summary: `Context assembly failed: ${err.message}`,
-      durationMs,
+      cause: error,
+      durationMs: Date.now() - startTime,
     };
   }
 }

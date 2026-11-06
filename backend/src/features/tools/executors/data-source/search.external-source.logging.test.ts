@@ -58,4 +58,14 @@ describe('a chat tool search on an external source', () => {
 
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: refused }) })]);
   });
+
+  it("that refused the tool's own default filter is logged once, as an error: the admin's setup, not the model's request", async () => {
+    logs.length = 0;
+    const refused = new ExternalSearchError('Sitecore Search', `Sitecore Search returned HTTP 400: {"message":"filter value '2024' not of the expected type"}`, 400);
+    connector.search.mockRejectedValueOnce(refused);
+
+    await executeDataSourceSearch('ds', { defaultFilters: [{ field: 'year', operator: 'eq', value: 2024 }] }, { query: 'linen shirts' });
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: refused }) })]);
+  });
 });

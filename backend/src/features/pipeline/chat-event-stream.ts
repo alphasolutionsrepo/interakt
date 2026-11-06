@@ -17,15 +17,16 @@ export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent'>): Resp
   const encoder = new TextEncoder();
   const sseEvent = (event: PipelineStreamEvent) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
-  // The visitor closed the chat: the next event can't be sent, which ends the turn
+  // The visitor closed the chat. The turn finishes unseen and is saved like any other:
+  // its events are dropped rather than failing to send, which the steps would log as errors.
   let gone = false;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        await runChatPipeline({ ...input, onEvent: (event) => controller.enqueue(sseEvent(event)) });
+        await runChatPipeline({ ...input, onEvent: (event) => { if (!gone) controller.enqueue(sseEvent(event)); } });
       } catch (err) {
-        // Not a failure: nobody is left to answer
+        // Nobody is left to answer
         if (gone) return;
         const { body } = describeError(err, 500, { operation: 'chatTurn', experienceId: input.experience.id });
         controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));

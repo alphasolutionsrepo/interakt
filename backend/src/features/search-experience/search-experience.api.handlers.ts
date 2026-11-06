@@ -18,8 +18,7 @@ import { apiResponse } from '@/shared/api/response';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { AppError } from '@/shared/errors/app-error';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
-import { analyticsSourceOfTokenCaller, isAdminTest } from '@/features/auth/token-or-session';
-import { markAdminCaller } from '@/shared/api/public-route';
+import { analyticsSourceOfTokenCaller, markIfAdminTest } from '@/features/auth/token-or-session';
 import {
   authenticateAccessToken,
   createCorsHeaders,
@@ -154,7 +153,7 @@ export async function handleAutocomplete(request: NextRequest): Promise<NextResp
   const { experience } = authResult as { success: true; experience: SearchExperienceWithIndexes };
   const origin = request.headers.get('origin');
   // The search playground: an admin testing gets a failure explained, not empty suggestions
-  if (await isAdminTest(request)) markAdminCaller();
+  await markIfAdminTest(request);
 
   try {
     // 2. Parse request body
