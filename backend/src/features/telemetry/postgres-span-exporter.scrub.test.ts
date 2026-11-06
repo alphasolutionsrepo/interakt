@@ -73,6 +73,8 @@ describe('a span that keeps content', () => {
         'alpha.error.detail': [failure, 'token=sk-live-123'],
         // A content attribute, but a failure's text: scrubbed like any error
         'alpha.v2.step.error': 'Search failed: postgres://interakt:s3cret-step@db.internal:5432/app',
+        // The retry log holds the visitor's queries and each attempt's failure
+        'alpha.v2.step.retry_log': JSON.stringify([{ query: 'Basic 12-pack', error: 'postgres://interakt:s3cret-retry@db.internal:5432/app' }]),
       },
       events: [{ name: 'ai.response', time, attributes: { 'ai.response.text': 'Try the Basic 12-pack' } }],
     })], () => resolve()));
@@ -84,5 +86,7 @@ describe('a span that keeps content', () => {
     expect(JSON.stringify(row)).not.toContain('hunter2');
     expect(JSON.stringify(row)).not.toContain('sk-live-123');
     expect(JSON.stringify(row)).not.toContain('s3cret-step');
+    expect(JSON.stringify(row)).not.toContain('s3cret-retry');
+    expect(String((row.attributes as Record<string, unknown>)['alpha.v2.step.retry_log'])).toContain('Basic 12-pack');
   });
 });
