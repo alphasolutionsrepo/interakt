@@ -258,7 +258,7 @@ describe('V2 Pipeline Orchestrator', () => {
   });
 
   describe('context assembly failure', () => {
-    it('fails the turn with the error as its cause, sending no error text of its own, and stops its timer', async () => {
+    it('fails the turn with the error as its cause, marks the step failed, sends no error text of its own, and stops its timer', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const deps = makeDeps();
       const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
@@ -275,6 +275,7 @@ describe('V2 Pipeline Orchestrator', () => {
       vi.useRealTimers();
       const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
       expect(events.some((e: PipelineStreamEvent) => e.type === 'error')).toBe(false);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'step_complete', stepId: 'context-assembly', status: 'error' }));
     });
   });
 });
