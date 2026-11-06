@@ -250,6 +250,13 @@ describe('explainWriteFailure', () => {
         expect(explained.hint).toMatch(/read-only/);
     });
 
+    it('leads with a write block another batch hit, over a batch that timed out', () => {
+        const timedOut = new esErrors.TimeoutError('Request timed out', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+        const explained = explainWriteFailure(timedOut, blockText);
+        expect(explained.reason).toBe(blockText);
+        expect(explained.hint).toMatch(/read-only/);
+    });
+
     it('keeps a reason it does not recognise, with no hint', () => {
         expect(explainWriteFailure(undefined, 'mapper_parsing_exception: failed to parse field [price]')).toEqual({
             reason: 'mapper_parsing_exception: failed to parse field [price]',

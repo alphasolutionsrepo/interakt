@@ -18,6 +18,9 @@ const state = vi.hoisted(() => ({
     documents: [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }] as Array<Record<string, unknown>>,
     /** Engine calls a test changes, over the defaults below */
     engine: {} as Record<string, (...args: unknown[]) => Promise<unknown>>,
+    embeddings: { enabled: false } as Record<string, unknown>,
+    embedded: vi.fn(),
+    deletes: 0,
 }));
 
 vi.mock('server-only', () => ({}));
@@ -32,20 +35,23 @@ vi.mock('./search-index.repository', () => ({
     markMappingSynced: vi.fn(),
 }));
 vi.mock('./search-index.cache', () => ({ cache: { delete: vi.fn(), get: vi.fn(), set: vi.fn() }, clearIndexCache: vi.fn(), SEARCH_INDEX_CACHE_TTL: 1 }));
-vi.mock('./search-index-fields.service', () => ({ getFieldsBySearchIndexId: async () => [{ fieldName: 'title' }] }));
+vi.mock('./search-index-fields.service', () => ({
+    getFieldsBySearchIndexId: async () => [{ fieldName: 'title' }],
+    getVectorSourceFields: async () => [{ fieldName: 'title' }],
+}));
 vi.mock('./provider-settings.utils', () => ({ buildIndexSettingsContext: () => ({}) }));
 vi.mock('@/features/search-experience', () => ({ invalidateSearchExperienceCacheBySearchIndex: vi.fn() }));
 vi.mock('@/features/document-indexing/document-indexer.service', () => ({
     EMBEDDING_FIELD_NAME: 'content_embedding',
-    getEmbeddingConfig: () => ({ enabled: false }),
-    generateDocumentEmbeddings: vi.fn(),
+    getEmbeddingConfig: () => state.embeddings,
+    generateDocumentEmbeddings: (...args: unknown[]) => state.embedded(...args),
 }));
 vi.mock('@/features/search/providers', () => ({
     getSearchEngineProvider: () => ({
         indexExists: async () => true,
         fetchAllDocuments: async () => ({ success: true, documents: state.documents }),
         buildIndexSettings: () => ({}),
-        deleteIndex: async () => ({ success: true }),
+        deleteIndex: async () => { state.deletes++; return { success: true }; },
         createIndex: async () => ({ success: true }),
         bulkIndex: async () => state.bulk,
         refreshIndex: vi.fn(),
@@ -62,6 +68,8 @@ beforeEach(() => {
     state.status = 'active';
     state.documents = [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }];
     state.engine = {};
+    state.embeddings = { enabled: false };
+    state.deletes = 0;
 });
 
 const refused = () => new esErrors.ResponseError({
@@ -116,15 +124,29 @@ describe('triggerReindex stopped before it changed the index', () => {
     it('puts the status back and says the index was left as it is when the search service is unreachable', async () => {
         state.engine = { indexExists: async () => { throw unreachable(); } };
         const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
-        expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', message: "Couldn't reindex the index, so it was left as it is: Elasticsearch couldn't be reached." });
+        expect(thrown).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Couldn't reindex the index, so it was left as it is: Elasticsearch couldn't be reached." });
         expect(state.statuses).toEqual(['indexing', 'active']);
-        expect(state.lastJobs.at(-1)).toMatchObject({ status: 'failed', error: { code: 'REINDEX_FAILED' } });
+        expect(state.lastJobs.at(-1)).toMatchObject({ status: 'failed', error: { code: 'UPSTREAM_UNAVAILABLE', details: { provider: 'Elasticsearch' } } });
+    });
+
+    it("gives Azure AI Search's own reason when it refuses reading the documents", async () => {
+        const refusal = Object.assign(new Error("Invalid expression: '$skip' must be less than 100000."), {
+            name: 'RestError', statusCode: 400,
+            response: { status: 400, bodyAsText: JSON.stringify({ error: { message: "Invalid expression: '$skip' must be less than 100000." } }) },
+        });
+        state.engine = { fetchAllDocuments: async () => ({ success: false, error: refusal.message, cause: refusal }) };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(thrown).toMatchObject({
+            message: "Couldn't read the index's documents, so it was left as it is: Invalid expression: '$skip' must be less than 100000.",
+            details: { provider: 'Azure AI Search', status: 400 },
+        });
+        expect(state.statuses).toEqual(['indexing', 'active']);
     });
 
     it('treats a refused delete as no change: the index keeps its status', async () => {
         state.engine = { deleteIndex: async () => ({ success: false, error: 'blocked', cause: refused() }) };
         const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
-        expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', message: expect.stringMatching(/^Couldn't reindex the index, so it was left as it is/) });
+        expect(thrown).toMatchObject({ code: 'UPSTREAM_READ_ONLY', message: expect.stringMatching(/^Couldn't reindex the index, so it was left as it is/), details: { status: 403 } });
         expect(state.statuses).toEqual(['indexing', 'active']);
     });
 
@@ -136,6 +158,26 @@ describe('triggerReindex stopped before it changed the index', () => {
         };
         await triggerReindex('i1', 'u1').catch(() => undefined);
         expect(state.statuses).toEqual(['indexing', 'error']);
+    });
+
+    it('marks the index errored when the search service went away at the delete: it may be gone', async () => {
+        let checks = 0;
+        state.engine = {
+            indexExists: async () => { if (checks++ === 0) return true; throw unreachable(); },
+            deleteIndex: async () => ({ success: false, error: 'connection lost', cause: unreachable() }),
+        };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(state.statuses).toEqual(['indexing', 'error']);
+        expect((thrown as Error).message).toMatch(/Failed to delete index/);
+    });
+
+    it('puts the status back when embedding the documents fails, before anything was deleted', async () => {
+        state.embeddings = { enabled: true };
+        state.embedded.mockResolvedValue({ stats: { failed: 2, generated: 0, skipped: 0 }, errors: [{ error: 'model not found' }], embeddings: [] });
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect((thrown as Error).message).toMatch(/Embedding generation failed for 2 of 2 documents/);
+        expect(state.statuses).toEqual(['indexing', 'active']);
+        expect(state.deletes).toBe(0);
     });
 
     it("never puts back 'indexing' left by another reindex: no job runs for it now", async () => {

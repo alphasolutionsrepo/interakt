@@ -182,11 +182,14 @@ export function leadingReason(reasons: string[]): string | undefined {
  */
 export function explainWriteFailure(writeError: unknown, reason: string | undefined): { reason?: string; hint?: string } {
     const upstream = writeError !== undefined ? classifyUpstream(writeError) : undefined;
+    const block = reason ? explainSearchServiceText(reason) : undefined;
+    // A write block stops every later write until an operator clears it, so it leads
+    // whatever else failed (a batch that timed out), unless the error itself is the block
+    if (block && upstream?.code !== 'UPSTREAM_READ_ONLY') return { reason, ...(block.hint && { hint: block.hint }) };
     // "<provider> returned an error." says less than the service's own reason, when there is one
     const generic = upstream?.code === 'UPSTREAM_ERROR' && !!reason;
     if (upstream && !generic) return { reason: upstream.message, ...(upstream.hint && { hint: upstream.hint }) };
-    const hint = reason ? explainSearchServiceText(reason)?.hint : undefined;
-    return { ...(reason && { reason }), ...(hint && { hint }) };
+    return { ...(reason && { reason }) };
 }
 
 function codeFor(status: number | undefined, rawText: string): UpstreamCode {

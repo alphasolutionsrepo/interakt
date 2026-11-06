@@ -1003,7 +1003,7 @@ export async function triggerReindex(
             if (!fetchResult.success) {
                 // Recreating the index now would lose every document in it
                 const upstream = fetchResult.cause !== undefined ? classifyUpstream(fetchResult.cause) : undefined;
-                throw leftAsItIs("Couldn't read the index's documents", upstream?.message ?? fetchResult.error, upstream, fetchResult.cause);
+                throw leftAsItIs("Couldn't read the index's documents", upstream, fetchResult.cause, fetchResult.error);
             }
             documents = fetchResult.documents;
             logger.info('Fetched documents for reindex', {
@@ -1153,7 +1153,7 @@ export async function triggerReindex(
     } catch (caught) {
         // Not logged here: the error is rethrown, and the response to it logs it once
         const upstream = !changed && !(caught instanceof AppError) ? classifyUpstream(caught) : undefined;
-        const error = upstream ? leftAsItIs("Couldn't reindex the index", upstream.message, upstream, caught) : caught;
+        const error = upstream ? leftAsItIs("Couldn't reindex the index", upstream, caught) : caught;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
         // Failed: an index it never changed goes back to how it was. Never back to
@@ -1175,12 +1175,19 @@ export async function triggerReindex(
     }
 }
 
-/** A reindex that stopped before the delete: the index still has every document, and the answer says so */
-function leftAsItIs(what: string, explained: string, upstream: AppError | undefined, cause: unknown): AppError {
+/**
+ * A reindex that stopped before the delete: the index still has every document, and the
+ * answer says so, keeping the search service's code and details when it was the cause
+ */
+function leftAsItIs(what: string, upstream: AppError | undefined, cause: unknown, fallback = ''): AppError {
+    // "<provider> returned an error." says less than the service's own words
+    const own = (upstream?.details as { message?: string } | undefined)?.message;
+    const explained = upstream ? (upstream.code === 'UPSTREAM_ERROR' && own ? own : upstream.message) : fallback;
     return new AppError(scrub(`${what}, so it was left as it is: ${explained}`), {
-        code: 'REINDEX_FAILED',
+        code: upstream?.code ?? 'REINDEX_FAILED',
         status: upstream?.status ?? 502,
         ...(upstream?.hint && { hint: upstream.hint }),
+        ...(upstream?.details !== undefined && { details: upstream.details }),
         cause,
     });
 }
