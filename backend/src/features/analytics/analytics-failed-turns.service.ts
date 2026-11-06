@@ -34,6 +34,8 @@ export interface FailedTurnsResult {
   /** All turns in the period, failed or not, except those the visitor left before an outcome */
   totalTurns: number;
   failedTurns: number;
+  /** Turns the visitor left before an outcome: neither succeeded nor failed, so not in totalTurns */
+  abandonedTurns: number;
   /** Count per reason: an outcome, or "error" */
   byReason: Record<string, number>;
   /** The most recent failures, newest first */
@@ -97,7 +99,7 @@ export async function countRecentRequests(minutes = 5): Promise<number> {
 }
 
 export async function getFailedTurns(range: DateRange, experienceId?: string, limit = 20): Promise<FailedTurnsResult> {
-  const empty: FailedTurnsResult = { totalTurns: 0, failedTurns: 0, byReason: {}, recent: [] };
+  const empty: FailedTurnsResult = { totalTurns: 0, failedTurns: 0, abandonedTurns: 0, byReason: {}, recent: [] };
   const { analyticsDB } = await import('@/db/index');
   if (!analyticsDB) return empty;
   const { otelSpans } = await import('@/db/analytics-schema');
@@ -109,16 +111,17 @@ export async function getFailedTurns(range: DateRange, experienceId?: string, li
     lte(otelSpans.startTime, range.to),
     experienceId ? eq(otelSpans.experienceId, experienceId) : undefined,
     notTestTraffic(otelSpans),
-    // Neither failed nor succeeded, so not in the share that failed
-    not(abandonedTurn(otelSpans)),
   );
+  // Neither failed nor succeeded, so not in the share that failed; counted on their own
+  const finished = and(inScope, not(abandonedTurn(otelSpans)));
   const failed = or(eq(otelSpans.statusCode, 'ERROR'), sql`COALESCE(${outcome}, '') <> 'success'`);
 
   const [totals, reasons, rows] = await Promise.all([
     analyticsDB
       .select({
-        total: sql<number>`COUNT(*)::int`,
-        failed: sql<number>`COUNT(*) FILTER (WHERE ${failed})::int`,
+        total: sql<number>`COUNT(*) FILTER (WHERE NOT ${abandonedTurn(otelSpans)})::int`,
+        failed: sql<number>`COUNT(*) FILTER (WHERE ${failed} AND NOT ${abandonedTurn(otelSpans)})::int`,
+        abandoned: sql<number>`COUNT(*) FILTER (WHERE ${abandonedTurn(otelSpans)})::int`,
       })
       .from(otelSpans)
       .where(inScope),
@@ -129,7 +132,7 @@ export async function getFailedTurns(range: DateRange, experienceId?: string, li
         count: sql<number>`COUNT(*)::int`,
       })
       .from(otelSpans)
-      .where(and(inScope, failed))
+      .where(and(finished, failed))
       .groupBy(sql`1`),
     analyticsDB
       .select({
@@ -143,7 +146,7 @@ export async function getFailedTurns(range: DateRange, experienceId?: string, li
         durationMs: otelSpans.durationMs,
       })
       .from(otelSpans)
-      .where(and(inScope, failed))
+      .where(and(finished, failed))
       .orderBy(desc(otelSpans.startTime))
       .limit(limit),
   ]);
@@ -153,6 +156,7 @@ export async function getFailedTurns(range: DateRange, experienceId?: string, li
   return {
     totalTurns: totals[0]?.total ?? 0,
     failedTurns: totals[0]?.failed ?? 0,
+    abandonedTurns: totals[0]?.abandoned ?? 0,
     byReason: Object.fromEntries(reasons.map((r) => [r.reason, r.count])),
     recent: rows.map((r) => ({
       traceId: r.traceId,

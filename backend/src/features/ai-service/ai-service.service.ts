@@ -20,7 +20,7 @@ import {
     getModelById,
     getResolvedDefaults,
 } from '@/features/ai-providers/ai-providers.service';
-import { getAdapter } from './adapters';
+import { CancelledRequestError, getAdapter } from './adapters';
 import { withResilience, withRetry } from './ai-service.resilience';
 import { trackUsage, updateRealtimeMetrics } from './ai-service.analytics';
 import { processEmbeddingBatches } from './utils/batch-processor';
@@ -372,32 +372,43 @@ export async function chat(
             config,
             { messageCount: messages.length, hasTools: !!options?.tools?.length, experienceId: options?.experienceId, feature: options?.feature, messages },
             async (span) => {
-                const result = await withResilience(
-                    () => adapter.chat(
+                let result;
+                try {
+                    result = await withResilience(
+                        () => adapter.chat(
+                            {
+                                messages,
+                                maxTokens: options?.maxTokens,
+                                temperature: options?.temperature,
+                                topP: options?.topP,
+                                stopSequences: options?.stopSequences,
+                                stream: false,
+                                tools: options?.tools,
+                                toolChoice: options?.toolChoice,
+                                responseFormat: options?.responseFormat,
+                                signal: options?.signal,
+                            },
+                            toAdapterConfig(config!)
+                        ),
                         {
-                            messages,
-                            maxTokens: options?.maxTokens,
-                            temperature: options?.temperature,
-                            topP: options?.topP,
-                            stopSequences: options?.stopSequences,
-                            stream: false,
-                            tools: options?.tools,
-                            toolChoice: options?.toolChoice,
-                            responseFormat: options?.responseFormat,
-                        },
-                        toAdapterConfig(config!)
-                    ),
-                    {
-                        providerId: config!.providerId,
-                        retry: { maxRetries: config!.maxRetries },
-                    }
-                );
+                            providerId: config!.providerId,
+                            retry: { maxRetries: config!.maxRetries },
+                        }
+                    );
+                } catch (error) {
+                    // The caller went away: the call stopped, it didn't fail, so the span isn't
+                    // an error. Thrown again below, once the span has ended.
+                    if (!(error instanceof CancelledRequestError)) throw error;
+                    span.setAttribute(ATTR.AI_CANCELLED, true);
+                    return { cancelled: error };
+                }
                 span.setAttribute(ATTR.AI_INPUT_TOKENS, result.usage.inputTokens);
                 span.setAttribute(ATTR.AI_OUTPUT_TOKENS, result.usage.outputTokens);
                 span.setAttribute(ATTR.AI_TOTAL_TOKENS, result.usage.totalTokens);
                 return result;
             }
         );
+        if ('cancelled' in response) throw response.cancelled;
 
         const durationMs = Date.now() - startTime;
 
@@ -442,7 +453,30 @@ export async function chat(
     } catch (error) {
         const durationMs = Date.now() - startTime;
 
-        if (config) {
+        if (config && error instanceof CancelledRequestError) {
+            // Not a failure: recorded as a cancelled call, like a stream the caller left. The
+            // model read the prompt before the cancel; what it wrote is unknown.
+            const usage = estimateChatUsage(messages, '', config.modelKey);
+            const metrics: AIUsageMetrics = {
+                requestId,
+                operation: 'chat',
+                providerId: config.providerId,
+                providerKey: config.providerKey,
+                modelId: config.modelId,
+                modelKey: config.modelKey,
+                inputTokens: usage.inputTokens,
+                outputTokens: 0,
+                totalTokens: usage.inputTokens,
+                durationMs,
+                success: true,
+                userId: options?.userId,
+                sessionId: options?.sessionId,
+                feature: options?.feature,
+                metadata: { messageCount: messages.length, cancelled: true, usageEstimated: true },
+            };
+            void trackUsage(metrics);
+            updateRealtimeMetrics(metrics);
+        } else if (config) {
             const err = error as AIServiceError;
             const metrics: AIUsageMetrics = {
                 requestId,

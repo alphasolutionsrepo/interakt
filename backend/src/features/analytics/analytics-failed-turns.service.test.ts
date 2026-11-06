@@ -125,9 +125,26 @@ describe('getFailedTurns', () => {
     ]);
 
     expect(await getFailedTurns(period, left)).toMatchObject({
-      totalTurns: 2, failedTurns: 1, byReason: { plan_failed: 1 }, recent: [{ traceId: hex(23) }],
+      totalTurns: 2, failedTurns: 1, abandonedTurns: 1, byReason: { plan_failed: 1 }, recent: [{ traceId: hex(23) }],
     });
     expect(await getTurnsByDay(period, 'UTC', left)).toEqual([{ day: new Date('2026-10-02T00:00:00Z'), turns: 3, failed: 1 }]);
+  });
+
+  it('tells the chat about the turns the visitor left, rather than leaving them out of the story', async () => {
+    const left = crypto.randomUUID();
+    const abandoned = (n: number, at: string) => {
+      const row = turn(n, at, { experienceId: left });
+      return { ...row, statusCode: 'UNSET', attributes: { [ATTR.TURN_ABANDONED]: 'writing the answer' } };
+    };
+    await testDb.db.insert(otelSpans).values([abandoned(31, '2026-10-02T10:00:00Z'), abandoned(32, '2026-10-02T11:00:00Z')]);
+    expect(formatFailedTurnsForAI(await getFailedTurns(period, left), 'UTC')).toBe(
+      'No conversation turn finished in this period: the visitor left all 2 before the answer, so none succeeded or failed.',
+    );
+
+    await testDb.db.insert(otelSpans).values(turn(33, '2026-10-02T12:00:00Z', { outcome: 'success', experienceId: left }));
+    expect(formatFailedTurnsForAI(await getFailedTurns(period, left), 'UTC')).toBe(
+      'All 1 finished conversation turns in this period succeeded. Another 2 turns ended when the visitor left before the answer; those count as neither succeeded nor failed.',
+    );
   });
 
   it('gives the chat the count, the reasons and trace ids to look into', async () => {

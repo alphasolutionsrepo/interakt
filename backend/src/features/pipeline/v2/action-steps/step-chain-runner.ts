@@ -56,8 +56,9 @@ export async function runActionStepChain(
   let ctx = initialContext;
   const stepsExecuted: string[] = [];
 
-  for (const step of chain) {
-    stopIfAbandoned(deps.signal, `${step.name.toLowerCase()} for ${ctx.action.toolSlug}`);
+  for (const [i, step] of chain.entries()) {
+    // Before each step after the first: the action loop checks just before the chain starts
+    if (i > 0) stopIfAbandoned(deps.signal, `${step.name.toLowerCase()} for ${ctx.action.toolSlug}`);
     const result = await withSpan(
       {
         name: `pipeline.v2.action.${step.id}`,

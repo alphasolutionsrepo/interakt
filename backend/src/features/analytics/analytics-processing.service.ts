@@ -626,6 +626,11 @@ function getAttrNum(span: SpanData, key: string): number {
   return typeof val === 'number' ? val : 0;
 }
 
+/** Traces of chat turns the visitor left before an outcome: they neither succeeded nor failed */
+function abandonedTraces(turnSpans: SpanData[]): Set<string> {
+  return new Set(turnSpans.filter((s) => isAbandonedTurn(s.attributes)).map((s) => s.traceId));
+}
+
 // --- Intent Clustering ---
 
 async function processIntentClusters(
@@ -641,9 +646,8 @@ async function processIntentClusters(
   // Build traceId → outcome map from turn spans. A turn the visitor left didn't succeed
   // or fail, so its intent isn't counted either way
   const outcomeByTrace = new Map<string, string>();
-  const abandoned = new Set<string>();
+  const abandoned = abandonedTraces(turnSpans);
   for (const s of turnSpans) {
-    if (isAbandonedTurn(s.attributes)) abandoned.add(s.traceId);
     const outcome = getAttrStr(s, 'alpha.v2.outcome');
     if (outcome) outcomeByTrace.set(s.traceId, outcome);
   }
@@ -816,10 +820,13 @@ function processCatalogHealthFromSpans(
 
 function processAIEffectiveness(spans: SpanData[]): Record<string, unknown> {
   // Filter to pipeline.v2.turn spans — these have v2.outcome, v2.preset, token usage. A turn the
-  // visitor left before an outcome neither succeeded nor failed, so it isn't rated.
-  const turnSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn' && !isAbandonedTurn(s.attributes));
+  // visitor left before an outcome neither succeeded nor failed, so it isn't rated, and its
+  // plan isn't counted among the decisions either.
+  const allTurnSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn');
+  const abandoned = abandonedTraces(allTurnSpans);
+  const turnSpans = allTurnSpans.filter(s => !abandoned.has(s.traceId));
   // Turn planner spans have plan.reasoning and direct_response flag
-  const plannerSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn_planner');
+  const plannerSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn_planner' && !abandoned.has(s.traceId));
 
   const outcomes = { success: 0, plan_failed: 0, context_assembly_failed: 0, unknown: 0 };
   const decisions = { direct_response: 0, tool_call: 0, unknown: 0 };

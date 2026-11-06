@@ -31,6 +31,7 @@ export const ATTR = {
   AI_OPERATION: 'alpha.ai.operation', // 'text' | 'chat' | 'embedding'
   AI_STREAMING: 'alpha.ai.streaming',
   AI_HAS_TOOLS: 'alpha.ai.has_tools',
+  AI_CANCELLED: 'alpha.ai.cancelled', // the caller went away and the request was stopped (not an error)
   AI_EMBEDDING_FEATURE: 'alpha.ai.embedding_feature', // 'search_query' | 'session_message' | 'embedding_service'
 
   // === Token Usage ===
@@ -89,7 +90,7 @@ export const ATTR = {
   CHAT_AI_DECISION: 'alpha.chat.ai_decision_type', // 'direct_response' | 'tool_call' | 'error'
   CHAT_RESPONSE_PRESET: 'alpha.chat.response_preset', // 'item_grid' | 'single_card' | 'markdown_rich'
   CHAT_CONTEXT_SOURCE: 'alpha.chat.context_source',
-  TURN_ABANDONED: 'alpha.chat.abandoned_before', // the visitor left: the step the turn stopped before (not an error)
+  TURN_ABANDONED: 'alpha.chat.abandoned_before', // the visitor left, or the turn timed out (outcome timed_out): where it stopped (not an error)
 
   // === Error ===
   ERROR_CODE: 'alpha.error.code',

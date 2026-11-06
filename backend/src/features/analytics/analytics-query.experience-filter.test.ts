@@ -239,6 +239,28 @@ describe('experience comparison: chat turns the visitor left', () => {
     const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
     expect(row).toMatchObject({ type: 'ai', volume: 2, successRate: 1 });
   });
+
+  it("times only the turns that finished: a turn the visitor left lasted as long as they stayed", async () => {
+    const experience = id();
+    const trace = () => id().replace(/-/g, '');
+    const left = { ...span(trace(), 'pipeline.v2.turn', { [ATTR.TURN_ABANDONED]: 'writing the answer' }, experience), durationMs: 90_000 };
+    await testDb.db.insert(otelSpans).values([span(trace(), 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experience), left]);
+
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row).toMatchObject({ volume: 2, avgLatencyMs: 500 });
+  });
+
+  it('has no success rate or time, rather than 0%, when the visitor left every turn', async () => {
+    const experience = id();
+    const trace = () => id().replace(/-/g, '');
+    await testDb.db.insert(otelSpans).values([
+      span(trace(), 'pipeline.v2.turn', { [ATTR.TURN_ABANDONED]: 'writing the answer' }, experience),
+      span(trace(), 'pipeline.v2.turn', { [ATTR.TURN_ABANDONED]: 'calling product-search' }, experience),
+    ]);
+
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row).toMatchObject({ type: 'ai', volume: 2, successRate: null, avgLatencyMs: null });
+  });
 });
 
 describe('searches counted from tool calls (experiences without stored searches)', () => {

@@ -229,7 +229,8 @@ export class OllamaAdapter implements AIProviderAdapter {
         const response = await this.makeRequest<OllamaChatResponse>(
             `${config.baseUrl}/api/chat`,
             ollamaRequest,
-            config
+            config,
+            request.signal
         );
 
         const usage = this.extractUsageFromChat(response);
@@ -379,59 +380,21 @@ export class OllamaAdapter implements AIProviderAdapter {
     // ============================================================================
 
     /**
-     * Make a non-streaming request
+     * Make a non-streaming request: the same request as a streaming one, its body read whole
      */
     private async makeRequest<T>(
         url: string,
         body: unknown,
-        config: AdapterConfig
+        config: AdapterConfig,
+        signal?: AbortSignal
     ): Promise<T> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), config.timeout);
-
+        const response = await this.makeStreamRequest(url, body, config, signal);
         try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(body),
-                signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                await this.handleErrorResponse(response);
-            }
-
             return await response.json() as T;
         } catch (error) {
-            clearTimeout(timeoutId);
-
-            if (error instanceof AdapterError) {
-                throw error;
-            }
-
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new AdapterError(
-                    'Request timed out',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
+                throw abortedRequestError(this.providerKey, signal);
             }
-
-            // Check if Ollama is not running
-            if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
-                throw new AdapterError(
-                    'Ollama is not running. Please start Ollama and try again.',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
-            }
-
             throw new AdapterError(
                 `Network error: ${(error as Error).message}`,
                 this.providerKey,

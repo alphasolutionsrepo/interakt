@@ -27,9 +27,10 @@ interface ExperienceSummary {
   /** Conversations for AI experiences, searches for search experiences */
   volume: number;
   deleted: boolean;
-  successRate: number;
+  /** AI: null when no turn finished (the visitor left every one) */
+  successRate: number | null;
   zeroResultRate: number;
-  avgLatencyMs: number;
+  avgLatencyMs: number | null;
 }
 
 /** Rows shown before "Show all" */
@@ -67,7 +68,8 @@ function healthOf(rate: number, goodWhenHigh: boolean): Health {
   return 'critical';
 }
 
-function Rate({ rate, goodWhenHigh, label }: { rate: number; goodWhenHigh: boolean; label: string }) {
+function Rate({ rate, goodWhenHigh, label }: { rate: number | null; goodWhenHigh: boolean; label: string }) {
+  if (rate === null) return <span className="tabular-nums text-muted-foreground" title="No turn finished in this period">—</span>;
   const health = healthOf(rate, goodWhenHigh);
   const Icon = health === 'critical' ? CircleAlert : AlertTriangle;
   return (

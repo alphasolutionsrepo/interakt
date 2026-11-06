@@ -1297,9 +1297,10 @@ interface ExperienceComparisonRow {
   type: 'ai' | 'search';
   volume: number;
   deleted: boolean;
-  successRate: number;
+  /** AI: null when no turn finished (the visitor left every one) */
+  successRate: number | null;
   zeroResultRate: number;
-  avgLatencyMs: number;
+  avgLatencyMs: number | null;
 }
 
 function ExperienceComparisonRenderer({ data }: { data: ExperienceComparisonRow[] }) {
@@ -1327,9 +1328,9 @@ function ExperienceComparisonRenderer({ data }: { data: ExperienceComparisonRow[
               <td className="py-1.5 text-right tabular-nums">
                 {formatNumber(e.volume)} <span className="text-xs text-muted-foreground">{e.type === 'ai' ? 'conv.' : 'searches'}</span>
               </td>
-              <td className="py-1.5 text-right tabular-nums">{e.type === 'ai' ? formatPercent(e.successRate) : '—'}</td>
+              <td className="py-1.5 text-right tabular-nums">{e.type === 'ai' && e.successRate !== null ? formatPercent(e.successRate) : '—'}</td>
               <td className="py-1.5 text-right tabular-nums">{formatPercent(e.zeroResultRate)}</td>
-              <td className="py-1.5 text-right tabular-nums">{formatDuration(e.avgLatencyMs)}</td>
+              <td className="py-1.5 text-right tabular-nums">{e.avgLatencyMs !== null ? formatDuration(e.avgLatencyMs) : '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -1343,8 +1344,10 @@ function ExperienceComparisonRenderer({ data }: { data: ExperienceComparisonRow[
 // ============================================================================
 
 interface FailedTurnsData {
+  /** Turns that finished: the ones the visitor left before an answer are in abandonedTurns */
   totalTurns: number;
   failedTurns: number;
+  abandonedTurns?: number;
   byReason: Record<string, number>;
   recent: Array<{ traceId: string; at: string; experienceName: string | null; outcome: string | null; error: string | null }>;
 }
@@ -1357,7 +1360,8 @@ function FailedTurnsRenderer({ data }: { data: FailedTurnsData }) {
     return (
       <p className="flex items-center gap-2 text-sm">
         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-        All {formatNumber(data.totalTurns)} turns succeeded
+        All {formatNumber(data.totalTurns)} finished turns succeeded
+        {!!data.abandonedTurns && <span className="text-muted-foreground"> ({formatNumber(data.abandonedTurns)} more left by the visitor before the answer)</span>}
       </p>
     );
   }

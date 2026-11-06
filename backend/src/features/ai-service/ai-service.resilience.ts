@@ -8,6 +8,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
+import { CancelledRequestError } from './adapters/types';
 import type {
     CircuitBreakerConfig,
     CircuitBreakerState,
@@ -345,8 +346,8 @@ export async function withResilience<T>(
 
         return result;
     } catch (error) {
-        // Record failure
-        recordFailure(providerId, cbConfig);
+        // A caller that went away (a chat the visitor left) isn't the provider failing
+        if (!(error instanceof CancelledRequestError)) recordFailure(providerId, cbConfig);
 
         throw error;
     }

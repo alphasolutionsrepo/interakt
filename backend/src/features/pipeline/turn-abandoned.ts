@@ -1,20 +1,26 @@
 // src/features/pipeline/turn-abandoned.ts
 
+import type { ChatFn } from './v2/turn-planner';
+
+import { CancelledRequestError } from '@/features/ai-service/adapters/types';
+
 /**
- * The visitor closed the chat mid-turn. Nobody will read the answer, so the turn stops
- * before its next step: no more model or tool calls, nothing saved. The call already
- * running finishes; only the ones after it are skipped.
+ * Nobody will read the answer: the visitor closed the chat mid-turn, or the turn ran out
+ * of time and the visitor was already told. The turn stops: a model call in flight is
+ * aborted (chatUntilAbandoned), and no further step starts, so no more model or tool
+ * calls, nothing saved. A tool call already running finishes first.
  *
- * It is not a failure. Spans record where it stopped instead of an error, the chat
- * stream logs it once, at info, and the analytics don't count it as a failed turn
- * (abandonedTurn in analytics-query.service).
+ * It is not an error. Spans record where it stopped instead, and the chat stream logs a
+ * visitor leaving once, at info. The analytics don't count a turn the visitor left as
+ * failed (abandonedTurn in analytics-query.service); one that timed out keeps its
+ * timed_out outcome, a failure.
  */
 export class TurnAbandonedError extends Error {
-  /** The step that was not started, as the log line and the trace show it */
+  /** Where the turn stopped, as the log line and the trace show it */
   readonly step: string;
 
   constructor(step: string) {
-    super(`The visitor left before ${step}`);
+    super(`Stopped before ${step}: nobody is waiting for the answer`);
     this.name = 'TurnAbandonedError';
     this.step = step;
   }
@@ -23,4 +29,32 @@ export class TurnAbandonedError extends Error {
 /** Stops the turn here when the visitor has gone */
 export function stopIfAbandoned(signal: AbortSignal | undefined, step: string): void {
   if (signal?.aborted) throw new TurnAbandonedError(step);
+}
+
+/**
+ * A step's caught error, as an Error, with how long the step ran. The turn stopping
+ * (TurnAbandonedError) isn't the step failing: it is thrown on, with no fallback or log.
+ */
+export function stepFailure(error: unknown, startTime: number): { err: Error; durationMs: number } {
+  if (error instanceof TurnAbandonedError) throw error;
+  return { err: error instanceof Error ? error : new Error(String(error)), durationMs: Date.now() - startTime };
+}
+
+/**
+ * The turn's model calls, stopped by the visitor leaving: each gets the signal, so leaving
+ * aborts the provider request mid-call and no more tokens are spent on it, and a call
+ * stopped that way ends the turn. A call that fails for another reason fails as before.
+ */
+export function chatUntilAbandoned(chat: ChatFn, signal: AbortSignal | undefined): ChatFn {
+  if (!signal) return chat;
+  return async (messages, options) => {
+    const step = `the ${options?.feature ?? 'model'} call finished`;
+    stopIfAbandoned(signal, step);
+    try {
+      return await chat(messages, { ...options, signal });
+    } catch (error) {
+      if (error instanceof CancelledRequestError) stopIfAbandoned(signal, step);
+      throw error;
+    }
+  };
 }

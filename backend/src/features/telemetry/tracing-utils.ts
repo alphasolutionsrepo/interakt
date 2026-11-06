@@ -22,7 +22,6 @@ import {
   type Span,
 } from '@opentelemetry/api';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
-import { TurnAbandonedError } from '@/features/pipeline/turn-abandoned';
 
 import { ATTR } from './attribute-keys';
 import { isTelemetryEnabled } from './telemetry.config';
@@ -69,6 +68,16 @@ function withSource(attributes: SpanOptions['attributes']): SpanOptions['attribu
   return { ...attributes, [ATTR.ANALYTICS_SOURCE]: source };
 }
 
+/**
+ * Where a chat turn nobody waits for stopped (TurnAbandonedError in features/pipeline),
+ * recognised by name so telemetry doesn't depend on the pipeline
+ */
+function turnAbandonedStep(error: unknown): string | undefined {
+  if (!(error instanceof Error) || error.name !== 'TurnAbandonedError') return undefined;
+  const { step } = error as Error & { step?: unknown };
+  return typeof step === 'string' ? step : undefined;
+}
+
 // ============================================================================
 // withSpan — Wrap an async function in a span
 // ============================================================================
@@ -112,10 +121,12 @@ export async function withSpan<T>(
         span.setStatus({ code: SpanStatusCode.OK });
         return result;
       } catch (error) {
-        // The visitor left mid-turn: the turn stopped, it didn't fail, so traces and error
-        // counts don't show it as one. The status stays unset; the attribute says why.
-        if (error instanceof TurnAbandonedError) {
-          span.setAttribute(ATTR.TURN_ABANDONED, error.step);
+        // Nobody waits for the turn any more (the visitor left, or it timed out): it stopped
+        // rather than failed, so traces and error counts don't show an error. The status
+        // stays unset; the attribute says where it stopped.
+        const abandonedAt = turnAbandonedStep(error);
+        if (abandonedAt !== undefined) {
+          span.setAttribute(ATTR.TURN_ABANDONED, abandonedAt);
           throw error;
         }
         span.setStatus({

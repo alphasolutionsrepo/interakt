@@ -376,7 +376,8 @@ export class OpenAIAdapter implements AIProviderAdapter {
         const response = await this.makeRequest<OpenAIChatResponse>(
             `${config.baseUrl}/chat/completions`,
             openaiRequest,
-            config
+            config,
+            request.signal
         );
 
         const choice = response.choices[0];
@@ -610,47 +611,21 @@ export class OpenAIAdapter implements AIProviderAdapter {
     // ============================================================================
 
     /**
-     * Make a non-streaming request
+     * Make a non-streaming request: the same request as a streaming one, its body read whole
      */
     private async makeRequest<T>(
         url: string,
         body: unknown,
-        config: AdapterConfig
+        config: AdapterConfig,
+        signal?: AbortSignal
     ): Promise<T> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), config.timeout);
-
+        const response = await this.makeStreamRequest(url, body, config, signal);
         try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: this.getHeaders(config),
-                body: JSON.stringify(body),
-                signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                await this.handleErrorResponse(response);
-            }
-
             return await response.json() as T;
         } catch (error) {
-            clearTimeout(timeoutId);
-
-            if (error instanceof AdapterError) {
-                throw error;
-            }
-
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new AdapterError(
-                    'Request timed out',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
+                throw abortedRequestError(this.providerKey, signal);
             }
-
             throw new AdapterError(
                 `Network error: ${(error as Error).message}`,
                 this.providerKey,

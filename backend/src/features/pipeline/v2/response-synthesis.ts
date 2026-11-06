@@ -26,6 +26,7 @@ import type { ChatMessage } from '@/features/ai-service/ai-service.types';
 import type { ChatFn } from './turn-planner';
 import type { PipelineStreamEvent } from '../pipeline.types';
 import { classifyLlmFailure } from '../fallback-messages';
+import { stepFailure } from '../turn-abandoned';
 
 const logger = createLogger('v2:response-synthesis');
 
@@ -119,8 +120,8 @@ export async function synthesizeResponse(
       durationMs,
     };
   } catch (error) {
-    const durationMs = Date.now() - startTime;
-    const err = error instanceof Error ? error : new Error(String(error));
+    // A turn nobody waits for any more stops here instead (TurnAbandonedError)
+    const { err, durationMs } = stepFailure(error, startTime);
     logger.error('Synthesis failed', err);
 
     // Fallback: prefer a provider-error-aware message (TPM, context length) when
@@ -692,7 +693,8 @@ export async function synthesizeLightweightResponse(
 
     return text;
   } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
+    // A turn nobody waits for any more stops here instead (TurnAbandonedError)
+    const { err } = stepFailure(error, Date.now());
     logger.error('Lightweight synthesis failed', err);
 
     // Fallback per classification

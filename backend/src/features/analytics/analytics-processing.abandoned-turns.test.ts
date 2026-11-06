@@ -2,7 +2,8 @@
 
 /**
  * A chat turn the visitor left before it had an outcome neither succeeded nor failed: the AI
- * effectiveness insight doesn't rate it, and intent clustering doesn't count its intent. Runs
+ * effectiveness insight doesn't rate it or count its plan, and intent clustering doesn't
+ * count its intent. Runs
  * the insights job on real Postgres (PGlite); clustering and proactive insights (model calls)
  * are stubbed.
  */
@@ -73,6 +74,8 @@ describe('AI effectiveness', () => {
       totalConversations: 2,
       successRate: 0.5,
       outcomes: { success: 1, plan_failed: 1, context_assembly_failed: 0, unknown: 0 },
+      // The same turns' plans: the one the visitor left isn't among the decisions either
+      decisions: { direct_response: 0, tool_call: 2, unknown: 0 },
     });
   });
 });

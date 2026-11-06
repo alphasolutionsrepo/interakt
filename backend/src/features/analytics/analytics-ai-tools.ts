@@ -1146,16 +1146,27 @@ export function formatExperienceComparisonForAI(data: ExperienceSummary[]): stri
   const lines = sorted.map((e) => {
     const unit = e.type === 'ai' ? 'conversations' : 'searches';
     const parts = [`${e.volume.toLocaleString()} ${unit}`];
-    if (e.type === 'ai') parts.push(`${(e.successRate * 100).toFixed(1)}% of turns succeeded`);
-    parts.push(`${(e.zeroResultRate * 100).toFixed(1)}% of searches found nothing`, `${e.avgLatencyMs}ms average`);
+    if (e.type === 'ai') {
+      parts.push(e.successRate === null
+        ? 'no turn finished (the visitor left each one before the answer)'
+        : `${(e.successRate * 100).toFixed(1)}% of finished turns succeeded`);
+    }
+    parts.push(`${(e.zeroResultRate * 100).toFixed(1)}% of searches found nothing`);
+    if (e.avgLatencyMs !== null) parts.push(`${e.avgLatencyMs}ms average`);
     return `- ${e.name}${e.deleted ? ' (deleted)' : ''} [${e.type === 'ai' ? 'chat' : 'search'}]: ${parts.join(', ')}`;
   });
   return `Experiences with activity in this period (${data.length}), busiest first:\n${lines.join('\n')}`;
 }
 
 export function formatFailedTurnsForAI(data: FailedTurnsResult, timeZone = 'UTC'): string {
-  if (data.totalTurns === 0) return 'No conversation turns were recorded in this period.';
-  if (data.failedTurns === 0) return `All ${data.totalTurns.toLocaleString()} conversation turns in this period succeeded.`;
+  const left = data.abandonedTurns;
+  if (data.totalTurns === 0 && left === 0) return 'No conversation turns were recorded in this period.';
+  // Left out of the counts below: they neither succeeded nor failed
+  const leftNote = left > 0
+    ? ` Another ${left.toLocaleString()} ${left === 1 ? 'turn' : 'turns'} ended when the visitor left before the answer; those count as neither succeeded nor failed.`
+    : '';
+  if (data.totalTurns === 0) return `No conversation turn finished in this period: the visitor left all ${left.toLocaleString()} before the answer, so none succeeded or failed.`;
+  if (data.failedTurns === 0) return `All ${data.totalTurns.toLocaleString()} finished conversation turns in this period succeeded.${leftNote}`;
   const share = ((data.failedTurns / data.totalTurns) * 100).toFixed(1);
   const reasons = Object.entries(data.byReason)
     .sort((a, b) => b[1] - a[1])
@@ -1167,7 +1178,7 @@ export function formatFailedTurnsForAI(data: FailedTurnsResult, timeZone = 'UTC'
     return `- ${at.format(new Date(t.at))}${t.experienceName ? ` in ${t.experienceName}` : ''}: ${why} (trace ${t.traceId})`;
   });
   return [
-    `${data.failedTurns.toLocaleString()} of ${data.totalTurns.toLocaleString()} conversation turns failed (${share}%).`,
+    `${data.failedTurns.toLocaleString()} of ${data.totalTurns.toLocaleString()} conversation turns failed (${share}%).${leftNote}`,
     `By reason: ${reasons}.`,
     `Most recent failures (times in ${timeZone}); get_conversation_detail with a trace id shows what happened:`,
     ...recent,

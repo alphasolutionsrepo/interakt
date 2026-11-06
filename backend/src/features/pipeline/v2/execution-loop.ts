@@ -30,7 +30,7 @@ import { EMPTY_PARAMETER_CONTEXT } from './parameter-context.types';
 import type { ChatFn } from './turn-planner';
 import { buildStepChain, getToolTypeKey, runActionStepChain } from './action-steps';
 import { withToolAnalytics } from './tool-analytics';
-import { stopIfAbandoned, TurnAbandonedError } from '../turn-abandoned';
+import { stopIfAbandoned, stepFailure } from '../turn-abandoned';
 import type { ActionStepContext, ActionStepChainConfig } from './action-steps';
 
 const logger = createLogger('v2:execution-loop');
@@ -219,10 +219,8 @@ export async function executeLoop(
       durationMs,
     };
   } catch (error) {
-    // Not a failure: the turn stops, with no partial results to answer from
-    if (error instanceof TurnAbandonedError) throw error;
-    const durationMs = Date.now() - startTime;
-    const err = error instanceof Error ? error : new Error(String(error));
+    // A turn nobody waits for any more stops here instead (TurnAbandonedError)
+    const { err, durationMs } = stepFailure(error, startTime);
     logger.error('Execution loop failed', err);
 
     return {

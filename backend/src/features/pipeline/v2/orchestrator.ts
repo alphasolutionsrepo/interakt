@@ -13,6 +13,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
+import type { Span } from '@opentelemetry/api';
 import { withSpan , ATTR } from '@/features/telemetry';
 import type { AIFeature } from '@/features/analytics/analytics.types';
 import { withExperienceContext } from '@/features/search/search.service';
@@ -35,7 +36,7 @@ import type {
   PlanningRoundSummary,
 } from './v2.types';
 import type { PipelineStreamEvent, TokenUsage } from '../pipeline.types';
-import { stopIfAbandoned } from '../turn-abandoned';
+import { chatUntilAbandoned, stopIfAbandoned, TurnAbandonedError } from '../turn-abandoned';
 import type { ContextAssemblyDeps } from './context-assembly';
 import type { TurnPlannerDeps, ChatFn } from './turn-planner';
 import type { ExecutionLoopDeps } from './execution-loop';
@@ -58,7 +59,7 @@ export interface V2PipelineInput {
   sessionId: string;
   /** SSE event callback */
   onEvent: (event: PipelineStreamEvent) => void;
-  /** Aborted when the visitor leaves: checked before each step, which then throws TurnAbandonedError */
+  /** Aborted when the visitor leaves: the turn stops at once (TurnAbandonedError); its time running out stops it too */
   signal?: AbortSignal;
 }
 
@@ -152,7 +153,11 @@ export async function runV2Pipeline(
   config: Partial<V2PipelineConfig> = {},
 ): Promise<V2PipelineResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
-  const { onEvent, signal } = input;
+  const { onEvent } = input;
+  // Stops the turn when the visitor leaves or its time runs out: nobody is waiting for the
+  // answer either way (TurnAbandonedError)
+  const outOfTime = new AbortController();
+  const signal = input.signal ? AbortSignal.any([input.signal, outOfTime.signal]) : outOfTime.signal;
   const experienceId = input.experience.id;
   const usage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -161,10 +166,13 @@ export async function runV2Pipeline(
   // the extra executions a re-plan or a filter relaxation produces.
   const turnRequestId = crypto.randomUUID();
 
-  // Wall-clock ceiling. If we cross it, abandon waiting on whatever's in flight
-  // and return a graceful timeout response. Losing work continues in the
-  // background but is no longer awaited — matches V1 semantics (orchestrator.ts).
+  // Wall-clock ceiling. If we cross it, stop waiting on whatever's in flight and return a
+  // graceful timeout response; the turn itself is stopped too (outOfTime).
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  // A session this turn created: empty until the turn is saved to it
+  let createdSession: string | undefined;
+  // Labelled when the turn times out, while its work is still stopping
+  let turnSpan: Span | undefined;
   const timeoutPromise = new Promise<typeof PIPELINE_TIMEOUT>((resolve) => {
     timeoutHandle = setTimeout(() => resolve(PIPELINE_TIMEOUT), cfg.maxTotalDurationMs);
   });
@@ -180,13 +188,16 @@ export async function runV2Pipeline(
       },
     },
     async (parentSpan) => {
+  turnSpan = parentSpan;
 
-  // Wrap all chat functions to accumulate token usage + inject experienceId/feature
+  // Wrap all chat functions to accumulate token usage + inject experienceId/feature, and so
+  // the visitor leaving aborts a call in flight
+  const tracked = (chat: ChatFn, feature: AIFeature) => trackUsage(chatUntilAbandoned(chat, signal), usage, experienceId, feature);
   const trackedDeps: V2PipelineDeps = {
     ...deps,
-    turnPlanner: { chat: trackUsage(deps.turnPlanner.chat, usage, experienceId, 'turn-planner') },
-    executionLoop: { ...deps.executionLoop, chat: trackUsage(deps.executionLoop.chat, usage, experienceId, 'param-extraction') },
-    synthesis: { chat: trackUsage(deps.synthesis.chat, usage, experienceId, 'response-synthesis') },
+    turnPlanner: { chat: tracked(deps.turnPlanner.chat, 'turn-planner') },
+    executionLoop: { ...deps.executionLoop, chat: tracked(deps.executionLoop.chat, 'param-extraction') },
+    synthesis: { chat: tracked(deps.synthesis.chat, 'response-synthesis') },
   };
 
   // ── S2: Context Assembly ───────────────────────────────────────────────
@@ -240,6 +251,7 @@ export async function runV2Pipeline(
   }
 
   const turnContext: TurnContext = ctxResult.data;
+  if (turnContext.sessionId !== input.sessionId) createdSession = turnContext.sessionId;
 
   // ── D1/D2: bounded plan → execute → assess rounds ─────────────────────
   //
@@ -688,7 +700,8 @@ export async function runV2Pipeline(
   triggerPostTurnTasks(turnContext, input.experience, onEvent);
 
   // ── Done ──────────────────────────────────────────────────────────────
-  parentSpan.setAttribute('alpha.v2.outcome', 'success');
+  // Unless it timed out while being saved: the visitor was told it failed
+  if (!outOfTime.signal.aborted) parentSpan.setAttribute('alpha.v2.outcome', 'success');
   parentSpan.setAttribute(ATTR.AI_TOTAL_TOKENS, usage.totalTokens);
   parentSpan.setAttribute(ATTR.AI_INPUT_TOKENS, usage.promptTokens);
   parentSpan.setAttribute(ATTR.AI_OUTPUT_TOKENS, usage.completionTokens);
@@ -705,8 +718,17 @@ export async function runV2Pipeline(
     }, // end withSpan callback
   ), input.experience.slug); // end withSpan + withExperienceContext
 
+  // The turn stopped before anything was saved: the session it created isn't kept, empty.
+  // A failed delete is logged where it failed and doesn't change how the turn ends.
+  const turn = work.catch(async (error: unknown) => {
+    if (error instanceof TurnAbandonedError && createdSession) {
+      await deps.persistence.discardEmptySession(createdSession).catch(() => {});
+    }
+    throw error;
+  });
+
   // Cleared however the turn ends, a failure included
-  const raced = await Promise.race([work, timeoutPromise]).finally(() => {
+  const raced = await Promise.race([turn, timeoutPromise]).finally(() => {
     if (timeoutHandle) clearTimeout(timeoutHandle);
   });
 
@@ -715,6 +737,16 @@ export async function runV2Pipeline(
       experienceId,
       sessionId: input.sessionId,
       maxTotalDurationMs: cfg.maxTotalDurationMs,
+    });
+    // Its answer would never be seen: the turn stops (a model call in flight is aborted,
+    // nothing is saved) and is recorded as timed out, not as the visitor leaving
+    turnSpan?.setAttribute('alpha.v2.outcome', 'timed_out');
+    outOfTime.abort();
+    // No longer awaited, so a failure after this would otherwise go unreported; the stop
+    // above isn't one
+    turn.catch((err: unknown) => {
+      if (err instanceof TurnAbandonedError) return;
+      logger.error('V2 turn failed after it timed out', err as Error, { experienceId, sessionId: input.sessionId });
     });
     onEvent({ type: 'error', message: 'Pipeline execution timed out' });
     onEvent({ type: 'done', sessionId: input.sessionId, usage });
@@ -938,6 +970,10 @@ export function createProductionV2Deps(): V2PipelineDeps {
       async updateSession(sessionId, updates) {
         const sessionsService = await import('@/features/sessions/sessions.service');
         await sessionsService.updateSession(sessionId, updates as any);
+      },
+      async discardEmptySession(sessionId) {
+        const sessionsService = await import('@/features/sessions/sessions.service');
+        await sessionsService.discardEmptySession(sessionId);
       },
     },
   };

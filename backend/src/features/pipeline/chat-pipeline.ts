@@ -20,7 +20,7 @@ import type {
 } from './pipeline.types';
 import { runV2Pipeline, createProductionV2Deps } from './v2';
 import { synthesizeLightweightResponse, createProductionSynthesisDeps } from './v2/response-synthesis';
-import { stopIfAbandoned } from './turn-abandoned';
+import { chatUntilAbandoned, stopIfAbandoned } from './turn-abandoned';
 
 import type { SessionConfig, PersonaConfig, GuardrailConfig } from '@/db/schema';
 import type { AIExperienceWithTools } from '@/features/ai-experience/ai-experience.types';
@@ -331,15 +331,9 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
       const shortCircuitClassification = classification.classification as 'greeting' | 'general' | 'off_topic';
       stopIfAbandoned(input.signal, 'writing the answer');
 
-      // Resolve/create session for persistence
-      const { session } = await resolveSession(
-        input.sessionId,
-        experience.id,
-        sessionConfig,
-      );
-
-      // Lightweight AI synthesis with persona tone (wrapped in its own span)
-      const synthDeps = createProductionSynthesisDeps();
+      // Lightweight AI synthesis with persona tone (wrapped in its own span). The visitor
+      // leaving aborts it mid-call.
+      const synthDeps = { chat: chatUntilAbandoned(createProductionSynthesisDeps().chat, input.signal) };
       const responseText = await withSpan(
         {
           name: 'pipeline.v2.guardrail.lightweight_synthesis',
@@ -373,8 +367,14 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
         },
       );
 
-      // Persist user + assistant messages, unless the visitor has left
+      // Persist user + assistant messages, unless the visitor has left. The session is
+      // resolved (or created) only now, so a turn that isn't saved leaves no empty one.
       stopIfAbandoned(input.signal, 'saving the turn');
+      const { session } = await resolveSession(
+        input.sessionId,
+        experience.id,
+        sessionConfig,
+      );
       try {
         await sessionsService.addMessages(session.id, [
           { role: 'user', content: message },

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   createSession: vi.fn(),
   addMessages: vi.fn(),
   updateSession: vi.fn(),
+  discardEmptySession: vi.fn(),
   flushTelemetry: vi.fn(),
 }));
 
@@ -45,13 +46,15 @@ vi.mock('@/features/sessions/sessions.service', () => ({
   createSession: mocks.createSession,
   addMessages: mocks.addMessages,
   updateSession: mocks.updateSession,
+  discardEmptySession: mocks.discardEmptySession,
   shouldSummarize: vi.fn().mockReturnValue(false),
 }));
 
 import { chatEventStream } from './chat-event-stream';
 
 import type { AIExperienceWithTools } from '@/features/ai-experience/ai-experience.types';
-import type { ChatResult } from '@/features/ai-service/ai-service.types';
+import { CancelledRequestError } from '@/features/ai-service/adapters/types';
+import type { ChatOptions, ChatResult } from '@/features/ai-service/ai-service.types';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 import type { LogLine } from '@/shared/test/log-recorder';
 
@@ -136,6 +139,22 @@ function scriptModel(replies: { planner: ChatResult[]; params?: Record<string, u
   });
 }
 
+/**
+ * The named step's model call is still running when the visitor leaves: like the AI service,
+ * it ends only when its signal aborts it. The other calls answer as scriptModel's do.
+ */
+function leaveDuringCall(step: string, leave: () => Promise<void>, replies: { planner: ChatResult[] } = { planner: [plan('red shoes')] }) {
+  scriptModel(replies);
+  const answer = mocks.chat.getMockImplementation()!;
+  mocks.chat.mockImplementation(async (messages: unknown, options?: ChatOptions) => {
+    if (options?.feature !== step) return answer(messages, options);
+    return new Promise((_resolve, reject) => {
+      options.signal?.addEventListener('abort', () => reject(new CancelledRequestError('openai')));
+      void leave();
+    });
+  });
+}
+
 // The fake data source has no schema, which is warned about on every search: not what these tests are about
 const errors = () => logs.filter((l) => l.level === 'error');
 const steps = () => mocks.chat.mock.calls.map(([, options]) => options?.feature);
@@ -178,6 +197,7 @@ describe('chatEventStream when the visitor closes the chat', () => {
     mocks.createSession.mockResolvedValue({ id: 'session-1' });
     mocks.addMessages.mockResolvedValue(undefined);
     mocks.updateSession.mockResolvedValue(undefined);
+    mocks.discardEmptySession.mockResolvedValue(undefined);
     mocks.flushTelemetry.mockResolvedValue(undefined);
     logs.length = 0;
     exporter.reset();
@@ -297,6 +317,83 @@ describe('chatEventStream when the visitor closes the chat', () => {
     expect(errors()).toEqual([expect.objectContaining({ level: 'error', message: 'Turn planning failed', context: expect.objectContaining({ err: down }) })]);
     expect(mocks.addMessages).not.toHaveBeenCalled();
     expect(logs.filter((l) => l.service === 'chat-event-stream')).toEqual([stopped('saving the turn')]);
+  });
+
+  describe('a model call still running when the visitor leaves', () => {
+    const signals = () => mocks.chat.mock.calls.map(([, options]) => (options as ChatOptions | undefined)?.signal);
+
+    it('is aborted: the planner call ends there, with no search, answer or save, one info line', async () => {
+      mocks.executeTool.mockResolvedValue({ success: true, data: [{ id: 'p1', title: 'Red Shoes' }], resultCount: 1 });
+      const turn = startTurn();
+      leaveDuringCall('turn-planner', turn.leave);
+
+      await turn.over;
+
+      expect(steps()).toEqual(['turn-planner']);
+      expect(signals()[0]?.aborted).toBe(true);
+      expect(mocks.executeTool).not.toHaveBeenCalled();
+      expect(mocks.addMessages).not.toHaveBeenCalled();
+      expect(logs.filter((l) => l.service === 'chat-event-stream')).toEqual([stopped('the turn-planner call finished')]);
+      expect(errors()).toEqual([]);
+      expect(span('pipeline.v2.turn')?.attributes['alpha.v2.outcome']).toBeUndefined();
+      expect(exporter.getFinishedSpans().filter((s) => s.status.code === SpanStatusCode.ERROR)).toEqual([]);
+      expect(await timersLeft()).toBe(0);
+    });
+
+    it('is aborted while the parameters are worked out: no search', async () => {
+      const turn = startTurn();
+      leaveDuringCall('param-extraction', turn.leave);
+
+      await turn.over;
+
+      expect(steps()).toEqual(['turn-planner', 'param-extraction']);
+      expect(mocks.executeTool).not.toHaveBeenCalled();
+      expect(mocks.addMessages).not.toHaveBeenCalled();
+      expect(logs.filter((l) => l.service === 'chat-event-stream')).toEqual([stopped('the param-extraction call finished')]);
+      expect(errors()).toEqual([]);
+    });
+
+    it('is aborted while the answer is written: no fallback answer, nothing saved', async () => {
+      mocks.executeTool.mockResolvedValue({ success: true, data: [{ id: 'p1', title: 'Red Shoes' }], resultCount: 1 });
+      const turn = startTurn();
+      leaveDuringCall('response-synthesis', turn.leave);
+
+      await turn.over;
+
+      expect(steps()).toEqual(['turn-planner', 'param-extraction', 'response-synthesis']);
+      expect(mocks.addMessages).not.toHaveBeenCalled();
+      // Not "Synthesis failed" with a fallback text
+      expect(errors()).toEqual([]);
+      expect(logs.filter((l) => l.service === 'chat-event-stream')).toEqual([stopped('the response-synthesis call finished')]);
+    });
+  });
+
+  describe('the session a turn created', () => {
+    it("isn't kept, empty, when the visitor left before the turn was saved", async () => {
+      // An expired session: the turn starts a new one
+      mocks.createSession.mockResolvedValue({ id: 'session-2' });
+      const turn = startTurn();
+      scriptModel({ planner: [plan('red shoes')] }, { step: 'turn-planner', then: turn.leave });
+
+      await turn.over;
+
+      expect(mocks.createSession).toHaveBeenCalledOnce();
+      expect(mocks.discardEmptySession).toHaveBeenCalledWith('session-2');
+    });
+
+    it('is kept when it already existed', async () => {
+      mocks.getSessionWithWindow.mockResolvedValue({
+        session: { id: 'session-1', summary: null, facts: null, pipelineState: null, userContext: null, messageCount: 2, status: 'active' },
+        messages: [],
+      });
+      const turn = startTurn();
+      scriptModel({ planner: [plan('red shoes')] }, { step: 'turn-planner', then: turn.leave });
+
+      await turn.over;
+
+      expect(mocks.createSession).not.toHaveBeenCalled();
+      expect(mocks.discardEmptySession).not.toHaveBeenCalled();
+    });
   });
 
   it("doesn't search when the visitor left while its parameters were being worked out", async () => {
@@ -429,8 +526,25 @@ describe('chatEventStream when the visitor closes the chat', () => {
 
       expect(steps()).toEqual(['lightweight-synthesis']);
       expect(mocks.addMessages).not.toHaveBeenCalled();
+      // Nor is a session started for it
+      expect(mocks.createSession).not.toHaveBeenCalled();
       expect(logs.filter((l) => l.service === 'chat-event-stream')).toEqual([stopped('saving the turn')]);
       expect(errors()).toEqual([]);
+    });
+
+    it('stops the reply being written, mid-call, with no session started for it', async () => {
+      mocks.classifyMessage.mockResolvedValue(greeting);
+      leaveDuringCall('lightweight-synthesis', () => current!.leave(), { planner: [] });
+      const turn = started(startTurn(guarded()));
+
+      await turn.over;
+
+      expect(steps()).toEqual(['lightweight-synthesis']);
+      expect(mocks.createSession).not.toHaveBeenCalled();
+      expect(mocks.addMessages).not.toHaveBeenCalled();
+      // Not "Lightweight synthesis failed" with a fallback greeting
+      expect(errors()).toEqual([]);
+      expect(logs.filter((l) => l.service === 'chat-event-stream')).toEqual([stopped('the lightweight-synthesis call finished')]);
     });
 
     it('is answered and saved when the visitor stays, as before', async () => {

@@ -46,6 +46,9 @@ export interface PersistenceDeps {
       lastToolResults?: Record<string, unknown>;
     },
   ) => Promise<void>;
+
+  /** Delete a session that has no messages (one created for a turn that was never saved) */
+  discardEmptySession: (sessionId: string) => Promise<void>;
 }
 
 // ============================================================================
