@@ -485,16 +485,13 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
     .map((e) => {
       const s = volumeById.get(e.id);
       const volume = s?.volume ?? 0;
-      let issue: string | null = null;
-      if (s && e.type === 'ai' && volume >= 10 && s.successRate < 0.9) issue = `${Math.round((1 - s.successRate) * 100)}% of turns failed`;
-      else if (s && volume >= 10 && s.zeroResultRate >= 0.2) issue = `${Math.round(s.zeroResultRate * 100)}% of searches found nothing`;
       return {
         id: e.id,
         name: e.name,
         type: e.type,
         active: e.isActive,
         volume,
-        issue,
+        issue: experienceIssue(e.type, s),
         href: `/experiences/${e.type}/${e.id}`,
         analyticsHref: `/analytics/overview?range=7d&experience=${e.id}`,
       };
@@ -791,6 +788,15 @@ export function buildRecent(setup: Setup, jobs: Array<{ id: string; name: string
 // ============================================================================
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The problem the home page shows next to a busy experience (10 or more conversations or searches), if any */
+export function experienceIssue(type: 'ai' | 'search', s: ExperienceSummary | undefined): string | null {
+  if (!s || s.volume < 10) return null;
+  // No success rate when no turn finished (the visitor left each one): nothing failed
+  if (type === 'ai' && s.successRate !== null && s.successRate < 0.9) return `${Math.round((1 - s.successRate) * 100)}% of turns failed`;
+  if (s.zeroResultRate >= 0.2) return `${Math.round(s.zeroResultRate * 100)}% of searches found nothing`;
+  return null;
+}
 
 export function buildTips({
   setup,

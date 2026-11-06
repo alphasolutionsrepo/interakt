@@ -330,6 +330,8 @@ export interface ExecutionLoopInput {
     turnRequestId: string;
   };
   emit: (event: PipelineStreamEvent) => void;
+  /** Aborted when the visitor leaves: no further action starts (TurnAbandonedError) */
+  signal?: AbortSignal;
 }
 
 export interface ExecutionLoopResult {

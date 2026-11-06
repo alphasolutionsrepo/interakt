@@ -68,6 +68,16 @@ function withSource(attributes: SpanOptions['attributes']): SpanOptions['attribu
   return { ...attributes, [ATTR.ANALYTICS_SOURCE]: source };
 }
 
+/**
+ * Where a chat turn nobody waits for stopped (TurnAbandonedError in features/pipeline),
+ * recognised by name so telemetry doesn't depend on the pipeline
+ */
+function turnAbandonedStep(error: unknown): string | undefined {
+  if (!(error instanceof Error) || error.name !== 'TurnAbandonedError') return undefined;
+  const { step } = error as Error & { step?: unknown };
+  return typeof step === 'string' ? step : undefined;
+}
+
 // ============================================================================
 // withSpan — Wrap an async function in a span
 // ============================================================================
@@ -111,6 +121,14 @@ export async function withSpan<T>(
         span.setStatus({ code: SpanStatusCode.OK });
         return result;
       } catch (error) {
+        // Nobody waits for the turn any more (the visitor left, or it timed out): it stopped
+        // rather than failed, so traces and error counts don't show an error. The status
+        // stays unset; the attribute says where it stopped.
+        const abandonedAt = turnAbandonedStep(error);
+        if (abandonedAt !== undefined) {
+          span.setAttribute(ATTR.TURN_ABANDONED, abandonedAt);
+          throw error;
+        }
         span.setStatus({
           code: SpanStatusCode.ERROR,
           message: error instanceof Error ? error.message : 'Unknown error',

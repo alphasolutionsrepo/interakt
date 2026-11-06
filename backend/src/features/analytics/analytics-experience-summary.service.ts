@@ -11,7 +11,7 @@ import 'server-only';
 
 import { sql, count, eq, gte, lte, and, isNotNull, type SQL } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
-import { buildSearchConditions, countedSearch, getDateRange, notTestTraffic, searchToolCall, toolCallRan, type DateRange, type TimeRange } from './analytics-query.service';
+import { abandonedTurn, buildSearchConditions, countedSearch, getDateRange, notTestTraffic, searchToolCall, toolCallRan, type DateRange, type TimeRange } from './analytics-query.service';
 
 const logger = createLogger('analytics-experience-summary');
 
@@ -27,9 +27,11 @@ export interface ExperienceSummary {
   volume: number;
   /** Experience no longer exists in the main database */
   deleted: boolean;
-  successRate: number;
+  /** AI: null when no turn finished, as when the visitor left every one before an answer */
+  successRate: number | null;
   zeroResultRate: number;
-  avgLatencyMs: number;
+  /** AI: average time of the turns that finished; null when none did */
+  avgLatencyMs: number | null;
 }
 
 // ============================================================================
@@ -56,9 +58,11 @@ export async function getExperienceSummaries(
         experienceId: otelSpans.experienceId,
         experienceType: otelSpans.experienceType,
         totalConversations: sql<number>`COUNT(DISTINCT ${otelSpans.traceId})::int`,
-        totalTurns: sql<number>`COUNT(*)::int`,
+        // The turns that finished: one the visitor left before an outcome neither succeeded nor
+        // failed, and its time is how long they stayed, not how long an answer took
+        totalTurns: sql<number>`COUNT(*) FILTER (WHERE NOT ${abandonedTurn(otelSpans)})::int`,
         successCount: sql<number>`COUNT(CASE WHEN ${otelSpans.attributes}->>'alpha.v2.outcome' = 'success' THEN 1 END)::int`,
-        avgDurationMs: sql<number>`COALESCE(AVG(${otelSpans.durationMs}), 0)::int`,
+        avgDurationMs: sql<number | null>`(AVG(${otelSpans.durationMs}) FILTER (WHERE NOT ${abandonedTurn(otelSpans)}))::int`,
       })
       .from(otelSpans)
       .where(
@@ -176,7 +180,7 @@ export async function getExperienceSummaries(
         type: (row.experienceType as 'ai' | 'search') || nameInfo?.type || 'ai',
         volume: row.totalConversations,
         deleted: !nameInfo,
-        successRate: row.totalTurns > 0 ? row.successCount / row.totalTurns : 0,
+        successRate: row.totalTurns > 0 ? row.successCount / row.totalTurns : null,
         zeroResultRate: zeroInfo && zeroInfo.ran > 0 ? zeroInfo.zero / zeroInfo.ran : 0,
         avgLatencyMs: row.avgDurationMs,
       });

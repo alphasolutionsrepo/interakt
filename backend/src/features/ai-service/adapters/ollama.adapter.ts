@@ -277,7 +277,8 @@ export class OllamaAdapter implements AIProviderAdapter {
         const response = await withoutUnsupportedReasoning(config.baseUrl, ollamaRequest, 'think', (body) => this.makeRequest<OllamaChatResponse>(
             `${config.baseUrl}/api/chat`,
             body,
-            config
+            config,
+            request.signal
         ));
 
         const usage = this.extractUsageFromChat(response);
@@ -425,12 +426,12 @@ export class OllamaAdapter implements AIProviderAdapter {
     }
 
     /** Make a non-streaming request: its answer, read as JSON */
-    private async makeRequest<T>(url: string, body: unknown, config: AdapterConfig): Promise<T> {
-        const response = await this.send(url, body, config);
+    private async makeRequest<T>(url: string, body: unknown, config: AdapterConfig, signal?: AbortSignal): Promise<T> {
+        const response = await this.send(url, body, config, signal);
         try {
             return await response.json() as T;
         } catch (error) {
-            throw this.requestFailure(error);
+            throw this.requestFailure(error, signal);
         }
     }
 

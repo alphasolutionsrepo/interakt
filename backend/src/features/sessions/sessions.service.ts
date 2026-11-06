@@ -47,6 +47,17 @@ export async function createSession(input: CreateSessionDTO) {
 }
 
 /**
+ * Delete a session that has no messages, such as one created for a chat turn the visitor
+ * left before it was saved. A session with messages is kept.
+ */
+export async function discardEmptySession(sessionId: string): Promise<void> {
+  if (await repository.deleteEmptySession(sessionId)) {
+    // The turn that created it logs that the visitor left
+    logger.debug('Discarded empty session', { sessionId });
+  }
+}
+
+/**
  * Get a session by ID. Returns null if not found or expired.
  * Performs lazy expiry check — if session is past expiresAt, marks it expired.
  */

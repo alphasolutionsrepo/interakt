@@ -62,6 +62,19 @@ export async function deleteSession(id: string) {
   }
 }
 
+/** Deletes the session only while it has no messages; returns whether it did */
+export async function deleteEmptySession(id: string): Promise<boolean> {
+  try {
+    const deleted = await db.delete(aiSessions)
+      .where(and(eq(aiSessions.id, id), eq(aiSessions.messageCount, 0)))
+      .returning({ id: aiSessions.id });
+    return deleted.length > 0;
+  } catch (error) {
+    logger.error('Failed to delete empty session', error as Error, { id });
+    throw error;
+  }
+}
+
 export async function listSessions(query: ListSessionsQuery) {
   try {
     const conditions = [];

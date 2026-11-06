@@ -147,6 +147,8 @@ export interface ActionStepDeps {
   emit: (event: PipelineStreamEvent) => void;
   /** Chain-level configuration */
   config: ActionStepChainConfig;
+  /** Aborted when the visitor leaves: no further step or retry starts (TurnAbandonedError) */
+  signal?: AbortSignal;
 }
 
 // ============================================================================
