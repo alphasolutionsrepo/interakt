@@ -87,3 +87,19 @@ describe('an Azure bulk write that fails before any batch is sent, with an error
     }
   });
 });
+
+describe('an Azure bulk write that fails before any batch is sent', () => {
+  it('fails every document with the reason, each by its position, as a failed batch does', async () => {
+    const noClient = Object.assign(new Error('getaddrinfo ENOTFOUND shop.search.windows.net'), { name: 'RestError', code: 'ENOTFOUND' });
+    azure.clientError = noClient;
+
+    try {
+      const result = await new AzureEngineProvider().bulkIndex('shop', [{ _id: 'a', title: 'Linen' }, { _id: 'b', title: 'Wool' }, { _id: 'c', title: 'Silk' }]);
+
+      expect(result).toMatchObject({ success: false, indexed: 0, failed: 3, writeError: noClient });
+      expect(result.errors).toEqual([0, 1, 2].map((index) => ({ index, error: 'getaddrinfo ENOTFOUND shop.search.windows.net' })));
+    } finally {
+      azure.clientError = undefined;
+    }
+  });
+});

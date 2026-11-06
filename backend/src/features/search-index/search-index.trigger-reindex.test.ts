@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
     updates: [] as Array<Record<string, unknown>>,
     statuses: [] as string[],
     status: 'active',
+    /** The job recorded on the index before this reindex */
+    lastJob: undefined as Record<string, unknown> | undefined,
     documents: [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }] as Array<Record<string, unknown>>,
     /** Engine calls a test changes, over the defaults below */
     engine: {} as Record<string, (...args: unknown[]) => Promise<unknown>>,
@@ -28,7 +30,7 @@ vi.mock('@/shared/logger/logger', () => ({
     createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 vi.mock('./search-index.repository', () => ({
-    getSearchIndexById: async () => ({ id: 'i1', name: 'shop', searchProvider: 'elasticsearch', status: state.status }),
+    getSearchIndexById: async () => ({ id: 'i1', name: 'shop', searchProvider: 'elasticsearch', status: state.status, lastJob: state.lastJob }),
     updateSearchIndexStatus: async (_id: string, status: string) => { state.statuses.push(status); },
     setLastJob: async (_id: string, job: Record<string, unknown>) => { state.lastJobs.push(job); },
     updateSearchIndex: async (_id: string, values: Record<string, unknown>) => { state.updates.push(values); },
@@ -59,13 +61,14 @@ vi.mock('@/features/search/providers', () => ({
     }),
 }));
 
-import { DELETE_SETTLE, triggerReindex } from './search-index.service';
+import { DELETE_SETTLE, REINDEX_RUNNING_LIMIT_MS, triggerReindex } from './search-index.service';
 
 beforeEach(() => {
     state.lastJobs = [];
     state.updates = [];
     state.statuses = [];
     state.status = 'active';
+    state.lastJob = undefined;
     state.documents = [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }];
     state.engine = {};
     state.embeddings = { enabled: false };
@@ -241,14 +244,33 @@ describe('triggerReindex stopped before it changed the index', () => {
             expect(result).toMatchObject({ documentCount: 2, outcome: { status: 'succeeded' } });
         });
 
-        it("doesn't say 'left as it is' when the second delete breaks off too: the index is marked errored", async () => {
+        it('puts the status back when the second delete breaks off too and the index is still there, and says the delete may still go through', async () => {
             state.engine = {
                 indexExists: async () => true,
                 deleteIndex: async () => ({ success: false, error: 'timed out', cause: timedOut() }),
             };
             const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+            // Not 'as it is': the delete may yet take it
             expect((thrown as Error).message).not.toMatch(/left as it is/);
+            expect((thrown as Error).message).toMatch(/still there at the last check/);
+            expect(state.statuses).toEqual(['indexing', 'active']);
+            expect(state.lastJobs.at(-1)).toMatchObject({
+                status: 'failed',
+                error: { code: 'UPSTREAM_TIMEOUT', hint: expect.stringMatching(/^The delete may still go through on the search service\. Check the index/) },
+            });
+        });
+
+        it("marks the index errored when the second delete breaks off and whether the index is there can't be checked", async () => {
+            // The first look, five while waiting (still there), then none after the second delete
+            let checks = 0;
+            state.engine = {
+                indexExists: async () => { if (++checks > 6) throw unreachable(); return true; },
+                deleteIndex: async () => ({ success: false, error: 'timed out', cause: timedOut() }),
+            };
+            const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+            expect(checks).toBe(7);
             expect(state.statuses).toEqual(['indexing', 'error']);
+            expect((thrown as { hint?: string }).hint).toMatch(/upload its documents again/);
         });
     });
 
@@ -271,7 +293,11 @@ describe('triggerReindex stopped before it changed the index', () => {
         };
         const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
         expect(state.statuses).toEqual(['indexing', 'error']);
-        expect((thrown as Error).message).toMatch(/Failed to delete index/);
+        expect(thrown).toMatchObject({
+            code: 'UPSTREAM_UNAVAILABLE',
+            message: "Reindex failed. Couldn't tell whether the index was deleted: Elasticsearch couldn't be reached.",
+            hint: expect.stringMatching(/if it is gone, reindex it and upload its documents again\.$/),
+        });
     });
 
     it('puts the status back when embedding the documents fails, before anything was deleted', async () => {
@@ -283,10 +309,57 @@ describe('triggerReindex stopped before it changed the index', () => {
         expect(state.deletes).toBe(0);
     });
 
+    it('says the documents must be uploaded again when the index was deleted and creating it again was refused', async () => {
+        state.engine = { createIndex: async () => ({ success: false, error: 'blocked', cause: refused() }) };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(state.deletes).toBe(1);
+        expect(thrown).toMatchObject({
+            code: 'UPSTREAM_READ_ONLY',
+            message: "Reindex failed. The index was deleted to rebuild it, but couldn't be created again: Elasticsearch is refusing writes to this index.",
+            details: { status: 403 },
+        });
+        // The search service's advice, then the upload, and no "try again": another reindex has nothing to read
+        const hint = (thrown as { hint?: string }).hint ?? '';
+        expect(hint).toMatch(/clear the read-only block on the index\. Its documents were deleted with it: upload them again once it's created\.$/);
+        expect(hint).not.toMatch(/try again/);
+        expect(state.statuses).toEqual(['indexing', 'error']);
+        expect(state.lastJobs.at(-1)).toMatchObject({ status: 'failed', error: { code: 'UPSTREAM_READ_ONLY', hint } });
+    });
+
     it("never puts back 'indexing' left by another reindex: no job runs for it now", async () => {
         state.status = 'indexing';
         state.engine = { fetchAllDocuments: async () => ({ success: false, error: 'boom', cause: unreachable() }) };
         await triggerReindex('i1', 'u1').catch(() => undefined);
         expect(state.statuses).toEqual(['indexing', 'active']);
+    });
+});
+
+describe('triggerReindex while another reindex is running', () => {
+    const running = (minutesAgo: number) => ({ kind: 'reindex', status: 'running', startedAt: new Date(Date.now() - minutesAgo * 60_000).toISOString() });
+
+    it('is refused as a conflict, changing nothing', async () => {
+        state.status = 'indexing';
+        state.lastJob = running(2);
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(thrown).toMatchObject({ code: 'CONFLICT', status: 409, message: 'A reindex is already running for this index' });
+        expect(state.statuses).toEqual([]);
+        expect(state.lastJobs).toEqual([]);
+        expect(state.deletes).toBe(0);
+    });
+
+    it('goes ahead when the running reindex started longer ago than the limit: it was cut off', async () => {
+        expect(REINDEX_RUNNING_LIMIT_MS).toBe(30 * 60_000);
+        state.status = 'indexing';
+        state.lastJob = running(31);
+        const result = await triggerReindex('i1', 'u1');
+        expect(result.outcome).toMatchObject({ status: 'succeeded' });
+        expect(state.statuses).toEqual(['indexing', 'active']);
+    });
+
+    it('goes ahead when the index is indexing for something other than a running reindex', async () => {
+        state.status = 'indexing';
+        state.lastJob = { kind: 'reindex', status: 'failed', startedAt: new Date().toISOString() };
+        const result = await triggerReindex('i1', 'u1');
+        expect(result.outcome).toMatchObject({ status: 'succeeded' });
     });
 });

@@ -44,7 +44,7 @@ interface ReindexResult {
     documentCount: number;
     durationMs: number;
     /** How it ended: partial when some documents failed to write back */
-    outcome?: { status: string; summary?: string };
+    outcome?: { status: string; summary?: string; hint?: string };
 }
 
 interface ReindexDialogProps {
@@ -141,7 +141,12 @@ export function ReindexDialog({
                         {state === 'reindexing' && (
                             <>Please wait while documents are being reindexed.</>
                         )}
-                        {state === 'success' && (partial ? <>{result?.outcome?.summary}</> : <>The index has been successfully rebuilt.</>)}
+                        {state === 'success' && (partial ? (
+                            <>
+                                {result?.outcome?.summary}
+                                {result?.outcome?.hint && <span className="mt-1 block">{result.outcome.hint}</span>}
+                            </>
+                        ) : <>The index has been successfully rebuilt.</>)}
                         {state === 'error' && (
                             <>An error occurred during reindexing.</>
                         )}

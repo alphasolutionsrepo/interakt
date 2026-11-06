@@ -10,6 +10,9 @@
  *   let testDb: AppTestDb;
  *   vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
  *   beforeAll(async () => { testDb = await createAppTestDb(); });
+ *
+ * Mocking '@/db/index' holds for the repositories, which import it statically; code that
+ * imports it dynamically, two calls at once, can get the real one (see analytics-test-db.ts).
  */
 
 import fs from 'fs';

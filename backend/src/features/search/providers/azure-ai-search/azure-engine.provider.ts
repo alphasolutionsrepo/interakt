@@ -506,7 +506,8 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 success: false,
                 indexed: 0,
                 failed: operations.length,
-                errors: [{ index: 0, error: message }],
+                // Every operation failed with it, each with its reason, as when a batch fails
+                errors: operations.map((_, index) => ({ index, error: message })),
                 counts,
                 took: Date.now() - startTime,
                 writeError: error,
