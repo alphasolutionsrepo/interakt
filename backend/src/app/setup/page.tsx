@@ -196,37 +196,16 @@ export default function SetupDemoPage() {
     if (chatModel) body.chatModel = chatModel;
     if (embeddingModel) body.embeddingModel = embeddingModel;
 
-    const reader = (await startDemoSeed(body)).getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split('\n\n');
-      buffer = parts.pop() ?? '';
-      for (const part of parts) {
-        const line = part.trim();
-        if (!line.startsWith('data:')) continue;
-        const payload = line.slice(5).trim();
-        if (payload === '[DONE]') return;
-        let msg: { type?: string; data?: SeedResult; error?: string } & Partial<SeedProgressEvent>;
-        try {
-          msg = JSON.parse(payload);
-        } catch {
-          continue;
-        }
-        if (msg.type === 'progress' && msg.step) {
-          applyProgress(msg as SeedProgressEvent);
-        } else if (msg.type === 'complete' && msg.data) {
-          setResult(msg.data);
-          setApiKey(''); // don't keep the key in component state after use
-          await loadStatus();
-        } else if (msg.type === 'error') {
-          // With its request id, which the Activity panel shows
-          throw apiErrorFrom(msg, 500, 'Setup failed');
-        }
+    for await (const msg of await startDemoSeed(body)) {
+      if (msg.type === 'progress' && msg.step) {
+        applyProgress(msg as SeedProgressEvent);
+      } else if (msg.type === 'complete' && msg.data) {
+        setResult(msg.data);
+        setApiKey(''); // don't keep the key in component state after use
+        await loadStatus();
+      } else if (msg.type === 'error') {
+        // With its request id, which the Activity panel shows
+        throw apiErrorFrom(msg, 500, 'Setup failed');
       }
     }
   }

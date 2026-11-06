@@ -20,8 +20,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StepProgress } from '@/components/ui/steps-progress';
 import { reportActionError } from '@/shared/activity/report';
-import { apiErrorFrom, errorText, type ApiErrorBody } from '@/shared/api/api-error';
-import { DOCS_SEED_STEPS, type DocsSeedProgressEvent } from '@/shared/seeders/docs/docs-steps';
+import { apiErrorFrom, errorText } from '@/shared/api/api-error';
+import { DOCS_SEED_STEPS } from '@/shared/seeders/docs/docs-steps';
 
 import { loadDocsStatus, startDocsBuild, type DocsStatus } from '../_lib/docs-assistant-api';
 
@@ -66,29 +66,12 @@ export function DocsAssistantCard() {
       setError(null);
       setDoneSteps(new Set());
       try {
-        const reader = (await startDocsBuild(force)).getReader();
-        const decoder = new TextDecoder();
-        let buf = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split('\n');
-          buf = lines.pop() ?? '';
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (payload === '[DONE]') continue;
-            const ev = JSON.parse(payload) as
-              | ({ type: 'progress' } & DocsSeedProgressEvent)
-              | { type: 'complete' }
-              | ({ type: 'error' } & ApiErrorBody);
-            if (ev.type === 'progress' && ev.status === 'done') {
-              setDoneSteps((prev) => new Set(prev).add(ev.step));
-            } else if (ev.type === 'error') {
-              // With its request id, which the Activity panel shows
-              throw apiErrorFrom(ev, 500, 'Build failed');
-            }
+        for await (const ev of await startDocsBuild(force)) {
+          if (ev.type === 'progress' && ev.status === 'done') {
+            setDoneSteps((prev) => new Set(prev).add(ev.step));
+          } else if (ev.type === 'error') {
+            // With its request id, which the Activity panel shows
+            throw apiErrorFrom(ev, 500, 'Build failed');
           }
         }
       } catch (e) {

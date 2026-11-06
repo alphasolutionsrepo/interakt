@@ -45,10 +45,16 @@ export async function* streamEvents<T = Record<string, unknown>>(response: Respo
 }
 
 /**
- * POST a JSON body to an endpoint that answers with an event stream: the stream to read.
- * The status is checked first, so a refusal throws an ApiError with the server's reason.
+ * POST a JSON body to an endpoint that answers with an event stream: its events, read
+ * with streamEvents. The status is checked first, so a refusal throws an ApiError with
+ * the server's reason before any event is read.
  */
-export async function postForEvents(url: string, body: unknown, fallback: string, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+export async function postForEvents<T = Record<string, unknown>>(
+    url: string,
+    body: unknown,
+    fallback: string,
+    signal?: AbortSignal,
+): Promise<AsyncGenerator<T>> {
     const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -57,5 +63,5 @@ export async function postForEvents(url: string, body: unknown, fallback: string
     });
     if (!res.ok) throw await toApiError(res, fallback);
     if (!res.body) throw new Error('No response body');
-    return res.body;
+    return streamEvents<T>(res);
 }

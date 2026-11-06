@@ -443,128 +443,104 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
     if (!sessionId) setSessionId(sid);
 
     try {
-      const reader = (await startExperienceChat(experienceSlug, text, sid)).getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const raw = line.slice(6).trim();
-          if (!raw) continue;
-
-          let event: SSEEvent;
-          try {
-            event = JSON.parse(raw) as SSEEvent;
-          } catch {
-            continue;
+      for await (const event of await startExperienceChat<SSEEvent>(experienceSlug, text, sid)) {
+        if (event.type === 'step_start') {
+          // Pipeline phase started — show label next to spinner
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId && m.role === 'assistant'
+                ? { ...m, pipelineStep: event.stepName }
+                : m,
+            ),
+          );
+          scrollToBottom();
+        } else if (event.type === 'step_complete') {
+          // Phase done — clear label (next step_start will set a new one)
+        } else if (event.type === 'content' && (event.text || event.content)) {
+          const chunk = event.text ?? event.content ?? '';
+          // Flush buffered preset data together with the first content chunk
+          const flushedPreset = pendingPresetRef.current;
+          pendingPresetRef.current = null;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId && m.role === 'assistant'
+                ? { ...m, content: m.content + chunk, pipelineStep: undefined, ...(flushedPreset && !m.presetData ? { presetData: flushedPreset } : {}) }
+                : m,
+            ),
+          );
+          scrollToBottom();
+        } else if (event.type === 'tool_call') {
+          const callId = event.id ?? '';
+          const callName = event.name ?? '';
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId && m.role === 'assistant'
+                ? {
+                    ...m,
+                    toolCalls: [
+                      ...m.toolCalls,
+                      {
+                        id: callId,
+                        name: callName,
+                        displayName: event.displayName ?? callName,
+                        input: event.arguments ?? event.input ?? {},
+                        done: false,
+                      },
+                    ],
+                  }
+                : m,
+            ),
+          );
+          scrollToBottom();
+        } else if (event.type === 'tool_result') {
+          const resultId = event.id ?? '';
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== assistantMsgId || m.role !== 'assistant') return m;
+              return {
+                ...m,
+                toolCalls: m.toolCalls.map((tc) =>
+                  tc.id === resultId
+                    ? { ...tc, done: true, success: event.success, durationMs: event.durationMs }
+                    : tc,
+                ),
+              };
+            }),
+          );
+          scrollToBottom();
+        } else if (event.type === 'classification') {
+          // Store classification on assistant message for badge display
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId && m.role === 'assistant'
+                ? { ...m, classification: event.classification, shortCircuited: event.debug?.shortCircuited === true }
+                : m,
+            ),
+          );
+        } else if (event.type === 'preset' && event.preset && event.data) {
+          // Buffer preset data — will be flushed when first content chunk arrives
+          const payload = event.data as { items?: Array<{ id?: string; fields: Record<string, unknown> }>; displayConfig?: PresetData['displayConfig'] };
+          if (payload.items && payload.displayConfig) {
+            pendingPresetRef.current = { preset: event.preset!, items: payload.items!, displayConfig: payload.displayConfig! };
           }
-
-          if (event.type === 'step_start') {
-            // Pipeline phase started — show label next to spinner
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId && m.role === 'assistant'
-                  ? { ...m, pipelineStep: event.stepName }
-                  : m,
-              ),
-            );
-            scrollToBottom();
-          } else if (event.type === 'step_complete') {
-            // Phase done — clear label (next step_start will set a new one)
-          } else if (event.type === 'content' && (event.text || event.content)) {
-            const chunk = event.text ?? event.content ?? '';
-            // Flush buffered preset data together with the first content chunk
-            const flushedPreset = pendingPresetRef.current;
-            pendingPresetRef.current = null;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId && m.role === 'assistant'
-                  ? { ...m, content: m.content + chunk, pipelineStep: undefined, ...(flushedPreset && !m.presetData ? { presetData: flushedPreset } : {}) }
-                  : m,
-              ),
-            );
-            scrollToBottom();
-          } else if (event.type === 'tool_call') {
-            const callId = event.id ?? '';
-            const callName = event.name ?? '';
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId && m.role === 'assistant'
-                  ? {
-                      ...m,
-                      toolCalls: [
-                        ...m.toolCalls,
-                        {
-                          id: callId,
-                          name: callName,
-                          displayName: event.displayName ?? callName,
-                          input: event.arguments ?? event.input ?? {},
-                          done: false,
-                        },
-                      ],
-                    }
-                  : m,
-              ),
-            );
-            scrollToBottom();
-          } else if (event.type === 'tool_result') {
-            const resultId = event.id ?? '';
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantMsgId || m.role !== 'assistant') return m;
-                return {
-                  ...m,
-                  toolCalls: m.toolCalls.map((tc) =>
-                    tc.id === resultId
-                      ? { ...tc, done: true, success: event.success, durationMs: event.durationMs }
-                      : tc,
-                  ),
-                };
-              }),
-            );
-            scrollToBottom();
-          } else if (event.type === 'classification') {
-            // Store classification on assistant message for badge display
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId && m.role === 'assistant'
-                  ? { ...m, classification: event.classification, shortCircuited: event.debug?.shortCircuited === true }
-                  : m,
-              ),
-            );
-          } else if (event.type === 'preset' && event.preset && event.data) {
-            // Buffer preset data — will be flushed when first content chunk arrives
-            const payload = event.data as { items?: Array<{ id?: string; fields: Record<string, unknown> }>; displayConfig?: PresetData['displayConfig'] };
-            if (payload.items && payload.displayConfig) {
-              pendingPresetRef.current = { preset: event.preset!, items: payload.items!, displayConfig: payload.displayConfig! };
-            }
-          } else if (event.type === 'done') {
-            if (event.sessionId) setSessionId(event.sessionId);
-            // Flush any buffered preset that wasn't attached during content streaming
-            const remainingPreset = pendingPresetRef.current;
-            pendingPresetRef.current = null;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId && m.role === 'assistant'
-                  ? { ...m, pipelineStep: undefined, ...(remainingPreset && !m.presetData ? { presetData: remainingPreset } : {}) }
-                  : m,
-              ),
-            );
-            scrollToBottom(true);
-          } else if (event.type === 'error') {
-            setErrorMsg(event.message ?? 'An error occurred');
-            // The Activity panel keeps its request id
-            reportActionError('Test chat', apiErrorFrom(event, 500, 'An error occurred'), { inline: true });
-            scrollToBottom(true);
-          }
+        } else if (event.type === 'done') {
+          if (event.sessionId) setSessionId(event.sessionId);
+          // Flush any buffered preset that wasn't attached during content streaming
+          const remainingPreset = pendingPresetRef.current;
+          pendingPresetRef.current = null;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId && m.role === 'assistant'
+                ? { ...m, pipelineStep: undefined, ...(remainingPreset && !m.presetData ? { presetData: remainingPreset } : {}) }
+                : m,
+            ),
+          );
+          scrollToBottom(true);
+        } else if (event.type === 'error') {
+          setErrorMsg(event.message ?? 'An error occurred');
+          // The Activity panel keeps its request id
+          reportActionError('Test chat', apiErrorFrom(event, 500, 'An error occurred'), { inline: true });
+          scrollToBottom(true);
         }
       }
     } catch (err) {

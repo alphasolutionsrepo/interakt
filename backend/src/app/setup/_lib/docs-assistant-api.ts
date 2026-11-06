@@ -5,8 +5,9 @@
  * a progress stream. A refusal throws an ApiError with the server's reason.
  */
 
-import { handleApiResponse } from '@/shared/api/api-error';
+import { handleApiResponse, type ApiErrorBody } from '@/shared/api/api-error';
 import { postForEvents } from '@/shared/api/stream-events';
+import type { DocsSeedProgressEvent } from '@/shared/seeders/docs/docs-steps';
 import type { DocsSeedStatus } from '@/shared/seeders/docs/docs.seeder';
 
 const ENDPOINT = '/api/admin/setup-docs';
@@ -18,7 +19,13 @@ export async function loadDocsStatus(): Promise<DocsStatus> {
   return handleApiResponse<DocsStatus>(await fetch(ENDPOINT), 'Failed to load the assistant status');
 }
 
-/** Build (or with force, rebuild) the assistant: the progress stream to read */
-export async function startDocsBuild(force: boolean): Promise<ReadableStream<Uint8Array>> {
-  return postForEvents(ENDPOINT, { action: 'seed', force, stream: true }, 'Build failed');
+/** One event of a build's progress stream, as the setup-docs route sends it */
+export type DocsBuildEvent =
+  | ({ type: 'progress' } & DocsSeedProgressEvent)
+  | { type: 'complete' }
+  | ({ type: 'error' } & ApiErrorBody);
+
+/** Build (or with force, rebuild) the assistant: its progress events */
+export async function startDocsBuild(force: boolean): Promise<AsyncGenerator<DocsBuildEvent>> {
+  return postForEvents<DocsBuildEvent>(ENDPOINT, { action: 'seed', force, stream: true }, 'Build failed');
 }

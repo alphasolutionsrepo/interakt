@@ -94,6 +94,13 @@ function events(...sent: Array<Record<string, unknown> | '[DONE]'>): Response {
   return new Response(sent.map((e) => `data: ${typeof e === 'string' ? e : JSON.stringify(e)}\n\n`).join(''), { status: 200 });
 }
 
+/** Every event a stream gives */
+async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
+  const all: T[] = [];
+  for await (const event of stream) all.push(event);
+  return all;
+}
+
 describe.each(READS)('%s', (_name, call, success, expected) => {
   it('explains a gateway error page', async () => {
     answerWith(gatewayErrorPage);
@@ -259,9 +266,9 @@ describe('demo setup', () => {
     expect(fetchStub.mock.calls[0][0]).toBe('/api/admin/setup-demo?ollamaBaseUrl=http%3A%2F%2Flocalhost%3A11434');
   });
 
-  it('starts a setup and returns its progress stream, or says why it was refused', async () => {
-    answerWith(() => new Response('data: [DONE]\n\n', { status: 200 }));
-    expect(await startDemoSeed({ action: 'seed' })).toBeInstanceOf(ReadableStream);
+  it('starts a setup and returns its progress events, or says why it was refused', async () => {
+    answerWith(() => events({ type: 'progress', step: 'provider', status: 'done' }, '[DONE]'));
+    expect(await collect(await startDemoSeed({ action: 'seed' }))).toEqual([{ type: 'progress', step: 'provider', status: 'done' }]);
     answerWith(() => apiErrorResponse(400));
     await expectApiError(startDemoSeed({ action: 'seed' }), 400);
     answerWith(gatewayErrorPage);
@@ -307,15 +314,15 @@ describe('docs search that worked', () => {
 });
 
 describe('streams the admin starts', () => {
-  const STARTS: Array<[string, () => Promise<ReadableStream<Uint8Array>>, string, unknown]> = [
+  const STARTS: Array<[string, () => Promise<AsyncGenerator<unknown>>, string, unknown]> = [
     ['a documentation assistant build', () => startDocsBuild(true), '/api/admin/setup-docs', { action: 'seed', force: true, stream: true }],
     ['a test chat with an AI experience', () => startExperienceChat('store-help', 'Where is my order?', 's1'), '/api/v1/ai-experiences/store-help/chat', { message: 'Where is my order?', sessionId: 's1' }],
   ];
 
   describe.each(STARTS)('%s', (_name, start, url, body) => {
-    it('sends the request and returns the stream to read', async () => {
-      const fetchStub = answerWith(() => new Response('data: [DONE]\n\n', { status: 200 }));
-      expect(await start()).toBeInstanceOf(ReadableStream);
+    it('sends the request and returns its events, up to [DONE]', async () => {
+      const fetchStub = answerWith(() => events({ type: 'content', text: 'a' }, '[DONE]', { type: 'late' }));
+      expect(await collect(await start())).toEqual([{ type: 'content', text: 'a' }]);
       expect(fetchStub.mock.calls[0][0]).toBe(url);
       expect(JSON.parse(String(fetchStub.mock.calls[0][1]?.body))).toEqual(body);
     });
@@ -326,5 +333,12 @@ describe('streams the admin starts', () => {
       answerWith(gatewayErrorPage);
       await expectGatewayError(start());
     });
+  });
+});
+
+describe('a documentation assistant build', () => {
+  it('reads past a line that is not JSON, and keeps the events after it', async () => {
+    answerWith(() => new Response('data: {oops\n\ndata: {"type":"progress","step":"index","status":"done"}\n\ndata: {"type":"complete"}\n\n', { status: 200 }));
+    expect(await collect(await startDocsBuild(false))).toEqual([{ type: 'progress', step: 'index', status: 'done' }, { type: 'complete' }]);
   });
 });

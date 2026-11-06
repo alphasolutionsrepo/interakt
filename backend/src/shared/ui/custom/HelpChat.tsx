@@ -75,9 +75,9 @@ export function useHelpChat(): HelpChat {
       };
 
       try {
-        let stream: ReadableStream<Uint8Array>;
+        let events: AsyncGenerator<Record<string, unknown>>;
         try {
-          stream = await startExperienceChat(HELP_EXPERIENCE_SLUG, trimmed, sid, signal);
+          events = await startExperienceChat(HELP_EXPERIENCE_SLUG, trimmed, sid, signal);
         } catch (e) {
           // The assistant hasn't been built yet (experience missing) — guide the user.
           if (!signal.aborted && e instanceof ApiError && e.status === 404) {
@@ -89,43 +89,24 @@ export function useHelpChat(): HelpChat {
         }
         if (signal.aborted) return;
 
-        const reader = stream.getReader();
-        const decoder = new TextDecoder();
-        let buf = '';
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split('\n');
-          buf = lines.pop() ?? '';
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
-            const raw = line.slice(5).trim();
-            if (!raw || raw === '[DONE]') continue;
-            let ev: Record<string, unknown>;
-            try {
-              ev = JSON.parse(raw);
-            } catch {
-              continue;
+        for await (const ev of events) {
+          const type = ev.type as string;
+          if (type === 'step_start' && typeof ev.name === 'string') {
+            patch((m) => ({ ...m, step: ev.name as string }));
+          } else if (type === 'content') {
+            const chunk = (ev.text as string) ?? (ev.content as string) ?? '';
+            if (chunk) patch((m) => ({ ...m, content: m.content + chunk, step: undefined }));
+          } else if (type === 'done') {
+            if (typeof ev.responseText === 'string' && ev.responseText) {
+              patch((m) => ({ ...m, content: ev.responseText as string, step: undefined }));
+            } else {
+              patch((m) => ({ ...m, step: undefined }));
             }
-            const type = ev.type as string;
-            if (type === 'step_start' && typeof ev.name === 'string') {
-              patch((m) => ({ ...m, step: ev.name as string }));
-            } else if (type === 'content') {
-              const chunk = (ev.text as string) ?? (ev.content as string) ?? '';
-              if (chunk) patch((m) => ({ ...m, content: m.content + chunk, step: undefined }));
-            } else if (type === 'done') {
-              if (typeof ev.responseText === 'string' && ev.responseText) {
-                patch((m) => ({ ...m, content: ev.responseText as string, step: undefined }));
-              } else {
-                patch((m) => ({ ...m, step: undefined }));
-              }
-            } else if (type === 'error') {
-              // The Activity panel keeps its request id
-              const { error, reply } = helpChatError(ev);
-              reportActionError('Ask the help assistant', error, { inline: true });
-              patch((m) => ({ ...m, content: m.content || reply, step: undefined }));
-            }
+          } else if (type === 'error') {
+            // The Activity panel keeps its request id
+            const { error, reply } = helpChatError(ev);
+            reportActionError('Ask the help assistant', error, { inline: true });
+            patch((m) => ({ ...m, content: m.content || reply, step: undefined }));
           }
         }
         // Safety net: clear any lingering step indicator.
