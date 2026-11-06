@@ -38,6 +38,7 @@ import {
   createSearchExperience,
   getSearchExperienceBySlug,
   deleteSearchExperience,
+  NotFoundError as SearchExperienceNotFound,
 } from '@/features/search-experience/search-experience.service';
 import {
   getFieldsBySearchIndexId,
@@ -176,46 +177,67 @@ export async function seedDemo(loaded: LoadedDemoManifest, options: DemoSeedOpti
   });
   emit({ step: 'provider', status: 'done', detail: `${providerOption.label}: ${chatModel} · ${providerOption.defaults.embeddingModel}` });
 
-  // 2. Index + 3. fields + 4. documents
-  const index = await seedIndexWithDocs(loaded, { providerId, embeddingModelId, embeddingDimensions }, adminId, emit);
+  // A setup that fails from here on may leave an index and other pieces behind: the demo
+  // is registered as incomplete, so Reset can clear them and setting up again re-runs
+  try {
+    // 2. Index + 3. fields + 4. documents
+    const index = await seedIndexWithDocs(loaded, { providerId, embeddingModelId, embeddingDimensions }, adminId, emit);
 
-  // 5. Data source + tools
-  emit({ step: 'tools', status: 'start' });
-  const { dataSourceId, toolIds } = await seedDataSourceAndTools(manifest, index.id, adminId);
-  emit({ step: 'tools', status: 'done', detail: `${toolIds.length} tools` });
+    // 5. Data source + tools
+    emit({ step: 'tools', status: 'start' });
+    const { dataSourceId, toolIds } = await seedDataSourceAndTools(manifest, index.id, adminId);
+    emit({ step: 'tools', status: 'done', detail: `${toolIds.length} tools` });
 
-  // 6. Search experience
-  emit({ step: 'search', status: 'start' });
-  const searchExp = await seedSearchExperience(manifest, index.id, adminId);
-  emit({ step: 'search', status: 'done', detail: `/${searchExp.slug}` });
+    // 6. Search experience
+    emit({ step: 'search', status: 'start' });
+    const searchExp = await seedSearchExperience(manifest, index.id, adminId);
+    emit({ step: 'search', status: 'done', detail: `/${searchExp.slug}` });
 
-  // 7. Chat experience
-  emit({ step: 'chat', status: 'start' });
-  const chatExp = await seedChatExperience(manifest, dataSourceId, adminId);
-  emit({ step: 'chat', status: 'done', detail: `/${chatExp.slug}` });
+    // 7. Chat experience
+    emit({ step: 'chat', status: 'start' });
+    const chatExp = await seedChatExperience(manifest, dataSourceId, adminId);
+    emit({ step: 'chat', status: 'done', detail: `/${chatExp.slug}` });
 
-  await upsertRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key, checksum, {
-    provider: providerKey,
-    indexId: index.id,
-    dataSourceId,
-    searchExperienceSlug: searchExp.slug,
-    chatExperienceSlug: chatExp.slug,
-    seededAt: new Date().toISOString(),
-  });
+    await upsertRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key, checksum, {
+      provider: providerKey,
+      indexId: index.id,
+      dataSourceId,
+      searchExperienceSlug: searchExp.slug,
+      chatExperienceSlug: chatExp.slug,
+      seededAt: new Date().toISOString(),
+    });
 
-  logger.info('✅ Demo seed complete', { provider: providerKey, index: index.name, search: searchExp.slug, chat: chatExp.slug });
+    logger.info('✅ Demo seed complete', { provider: providerKey, index: index.name, search: searchExp.slug, chat: chatExp.slug });
 
-  return {
-    skipped: false,
-    adminEmail: admin?.email,
-    provider: providerKey,
-    index: { id: index.id, name: index.name, documents: index.documents, embeddings: index.embeddings },
-    dataSourceId,
-    toolIds,
-    searchExperience: searchExp,
-    chatExperience: chatExp,
-  };
+    return {
+      skipped: false,
+      adminEmail: admin?.email,
+      provider: providerKey,
+      index: { id: index.id, name: index.name, documents: index.documents, embeddings: index.embeddings },
+      dataSourceId,
+      toolIds,
+      searchExperience: searchExp,
+      chatExperience: chatExp,
+    };
+  } catch (e) {
+    try {
+      await upsertRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key, INCOMPLETE_SEED, {
+        provider: providerKey,
+        incomplete: true,
+        seededAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn('Could not register the incomplete demo', { err });
+    }
+    throw e;
+  }
 }
+
+/**
+ * The checksum a demo is registered with when its setup or reset didn't finish: it never
+ * matches a real one, so setting up again re-runs, and while it's registered Reset stays on.
+ */
+export const INCOMPLETE_SEED = 'incomplete';
 
 // ---------------------------------------------------------------------------
 // Step 1 — provider + defaults
@@ -724,12 +746,12 @@ export async function resetDemo(loaded: LoadedDemoManifest): Promise<DemoResetSu
   const chat = await find(chatLabel, () => getAIExperienceBySlug(manifest.chatExperience.slug));
   if (chat) await tryStep(chatLabel, () => deleteAIExperience(chat.id, adminId));
 
-  // Search experience (cascades search_experience_indexes). Its getter throws
-  // NotFoundError when there is none.
+  // Search experience (cascades search_experience_indexes). Its getter throws its
+  // service's own NotFoundError when there is none.
   const searchLabel = `search experience ${manifest.searchExperience.slug}`;
   const search = await find(searchLabel, () =>
     getSearchExperienceBySlug(manifest.searchExperience.slug).catch((e) => {
-      if (e instanceof NotFoundError) return null;
+      if (e instanceof SearchExperienceNotFound || e instanceof NotFoundError) return null;
       throw e;
     }),
   );
@@ -762,9 +784,16 @@ export async function resetDemo(loaded: LoadedDemoManifest): Promise<DemoResetSu
     });
   }
 
-  // Kept while anything is left, so the demo still shows as set up and Reset stays on
+  // Kept while anything is left, as incomplete: Reset stays on, and setting up again re-runs
   if (failed.length === 0) await tryStep('seed-registry entry', () => deleteRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key));
-  else logger.info('Kept the seed-registry entry so the demo can be reset again', { failed });
+  else {
+    try {
+      await upsertRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key, INCOMPLETE_SEED, { incomplete: true, failed });
+      logger.info('Kept the demo registered as incomplete so it can be reset again', { failed });
+    } catch (e) {
+      report('Could not mark the demo incomplete', e, 'warn');
+    }
+  }
 
   return { deleted, failed };
 }

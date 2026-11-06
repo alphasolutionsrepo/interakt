@@ -106,6 +106,7 @@ vi.mock('@/features/tools/tools.service', () => ({
 }));
 vi.mock('@/features/search-experience/search-experience.service', () => ({
   createSearchExperience: vi.fn(), getSearchExperienceBySlug: later.getSearchExperienceBySlug, deleteSearchExperience: vi.fn(),
+  NotFoundError: class NotFoundError extends Error {},
 }));
 vi.mock('@/features/ai-experience/ai-experience.service', () => ({
   createAIExperience: vi.fn(), getAIExperienceBySlug: later.getAIExperienceBySlug, deleteAIExperience: vi.fn(),
@@ -202,7 +203,8 @@ describe('demo setup when some products fail to index', () => {
     expect((reported(logs)[0].context.err as Error).cause).toBe(timedOut);
     expect(logs.find((line) => line.message.includes('Demo seed complete'))).toBeUndefined();
     expect(later.getDataSourceBySlug).not.toHaveBeenCalled();
-    expect(upsertRegistryEntry).not.toHaveBeenCalled();
+    // Registered as incomplete, so Reset can clear what's left and setting up again re-runs
+    expect(upsertRegistryEntry).toHaveBeenCalledWith('demo', expect.any(String), 'incomplete', expect.objectContaining({ incomplete: true }));
   });
 
   it('fails when the search service rejected every product, even with no write error', async () => {
@@ -224,7 +226,8 @@ describe('demo setup when some products fail to index', () => {
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error' })]);
     expect(logs.find((line) => line.message.includes('Demo seed complete'))).toBeUndefined();
     expect(later.getDataSourceBySlug).not.toHaveBeenCalled();
-    expect(upsertRegistryEntry).not.toHaveBeenCalled();
+    // Registered as incomplete, so Reset can clear what's left and setting up again re-runs
+    expect(upsertRegistryEntry).toHaveBeenCalledWith('demo', expect.any(String), 'incomplete', expect.objectContaining({ incomplete: true }));
   });
 
   it('warns about the rejected products and finishes the setup', async () => {

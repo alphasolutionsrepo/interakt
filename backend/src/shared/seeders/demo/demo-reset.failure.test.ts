@@ -12,7 +12,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { NotFoundError } from '@/shared/errors/app-error';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 vi.mock('server-only', () => ({}));
@@ -35,6 +34,8 @@ vi.mock('@/features/ai-experience/ai-experience.service', () => ({
 }));
 vi.mock('@/features/search-experience/search-experience.service', () => ({
   getSearchExperienceBySlug: records.getSearchExperienceBySlug, deleteSearchExperience: records.deleteSearchExperience,
+  // The service's own, not the shared app error
+  NotFoundError: class NotFoundError extends Error {},
 }));
 vi.mock('@/features/data-source/data-source.service', () => ({
   getDataSourceBySlug: records.getDataSourceBySlug, deleteDataSource: records.deleteDataSource,
@@ -57,10 +58,12 @@ const repository = vi.hoisted(() => ({
   deleteSearchIndex: vi.fn(async () => undefined),
 }));
 vi.mock('@/features/search-index/search-index.repository', () => repository);
-const registry = vi.hoisted(() => ({ deleteRegistryEntry: vi.fn(async () => undefined) }));
+const registry = vi.hoisted(() => ({ deleteRegistryEntry: vi.fn(async () => undefined), upsertRegistryEntry: vi.fn(async () => undefined) }));
 vi.mock('@/shared/seeders/seed-registry.service', () => registry);
 const engine = vi.hoisted(() => ({ indexExists: vi.fn(), deleteIndex: vi.fn() }));
 vi.mock('@/features/search/providers', () => ({ getSearchEngineProvider: () => engine }));
+
+import { NotFoundError } from '@/features/search-experience/search-experience.service';
 
 import { resetDemo } from './demo.seeder';
 import type { LoadedDemoManifest } from './demo-manifest';
@@ -88,9 +91,9 @@ const allInPlace = () => {
 beforeEach(() => {
   logs.length = 0;
   vi.clearAllMocks();
-  // Nothing but the index by default: the getters answer none (the search experience's throws NotFoundError)
+  // Nothing but the index by default: the getters answer none (the search experience's throws its service's NotFoundError)
   records.getAIExperienceBySlug.mockResolvedValue(null);
-  records.getSearchExperienceBySlug.mockRejectedValue(new NotFoundError('Search experience not found'));
+  records.getSearchExperienceBySlug.mockRejectedValue(new NotFoundError('Search experience', 'search'));
   records.getDataSourceBySlug.mockResolvedValue(null);
   records.getToolsByDataSourceId.mockResolvedValue([]);
   for (const remove of [records.deleteAIExperience, records.deleteSearchExperience, records.deleteDataSource, records.deleteTool]) {
@@ -134,6 +137,28 @@ describe('a demo reset whose index the search engine fails to delete', () => {
     expect(engine.deleteIndex).toHaveBeenCalledWith('shop');
     expect(deleted).toEqual(['Elasticsearch index shop', 'seed-registry entry']);
     expect(registry.deleteRegistryEntry).toHaveBeenCalled();
+  });
+});
+
+describe('a demo reset after a setup that never created its search experience', () => {
+  it("takes the missing search experience as nothing to delete and unregisters the demo", async () => {
+    const { failed } = await reset();
+
+    expect(failed).toEqual([]);
+    expect(registry.deleteRegistryEntry).toHaveBeenCalled();
+    expect(registry.upsertRegistryEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('a demo reset that leaves something behind', () => {
+  it('keeps the demo registered as incomplete, so setting it up again re-runs instead of skipping', async () => {
+    allInPlace();
+    records.deleteDataSource.mockRejectedValue(new Error('data source in use'));
+
+    await reset();
+
+    expect(registry.deleteRegistryEntry).not.toHaveBeenCalled();
+    expect(registry.upsertRegistryEntry).toHaveBeenCalledWith('demo', 'demo', 'incomplete', expect.objectContaining({ incomplete: true, failed: ['data source source'] }));
   });
 });
 
