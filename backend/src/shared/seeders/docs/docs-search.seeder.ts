@@ -53,6 +53,7 @@ import {
   recreateEmptyIndex,
 } from '@/features/search-index/search-index.service';
 import { DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
+import { ConflictError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { calculateChecksum, getRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-registry.service';
 
@@ -144,7 +145,7 @@ interface DocsSearchMeta {
 }
 
 /** An index or experience named like ours exists that the seeder didn't create. Not retried. */
-export class DocsSearchConflictError extends Error {}
+export class DocsSearchConflictError extends ConflictError {}
 
 // ---------------------------------------------------------------------------
 // Orchestrator

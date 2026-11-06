@@ -6,12 +6,19 @@ import type { TimeRange } from '@/features/analytics/analytics-query.service';
 import { PeriodError, readRequestedPeriod } from '@/features/analytics/analytics-period';
 import { apiResponse } from '@/shared/api/response';
 
+/** The time ranges a caller can name; a custom one comes as from and to */
+const PRESETS: TimeRange[] = ['1h', '24h', '7d', '30d', '90d'];
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     // An explicit period (from/to, as the analytics pages send) wins over the preset
     const period = readRequestedPeriod(searchParams);
-    const timeRange = period ? 'custom' : ((searchParams.get('timeRange') || '7d') as TimeRange);
+    const preset = searchParams.get('timeRange') || '7d';
+    if (!period && !PRESETS.includes(preset as TimeRange)) {
+      return apiResponse.badRequest(`timeRange must be one of ${PRESETS.join(', ')}, or send from and to`);
+    }
+    const timeRange = period ? 'custom' : (preset as TimeRange);
 
     const summaries = await getExperienceSummaries(timeRange, period);
 

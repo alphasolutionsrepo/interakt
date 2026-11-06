@@ -11,23 +11,22 @@ import {
   clearAnalyticsData,
   type CleanupScope,
 } from '@/features/analytics/analytics-data-management.service';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 
 const VALID_SCOPES: CleanupScope[] = ['all', 'insights', 'spans', 'events', 'sessions'];
 
 export async function DELETE(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => ({}));
+    // A body that can't be read is refused: read as {}, its scope would be all
+    const body = await readJsonBody(request);
     const { scope = 'all', experienceId } = body as {
       scope?: string;
       experienceId?: string;
     };
 
     if (!VALID_SCOPES.includes(scope as CleanupScope)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid scope: ${scope}. Must be one of: ${VALID_SCOPES.join(', ')}` },
-        { status: 400 }
-      );
+      return apiResponse.badRequest(`Invalid scope: ${scope}. Must be one of: ${VALID_SCOPES.join(', ')}`);
     }
 
     const result = await clearAnalyticsData({

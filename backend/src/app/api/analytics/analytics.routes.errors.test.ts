@@ -9,7 +9,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { errorEvent, expectInternalFailure, failedQuery } from '@/shared/test/error-answers';
+import { errorEvent, expectInternalFailure, expectInvalidJson, failedQuery, notJson } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -79,11 +79,24 @@ describe('an analytics request that is wrong', () => {
     expect(reported(logs)).toEqual([]);
   });
 
-  it('clearing an unknown scope answers 400 as before', async () => {
+  it('a time range that is not one of the presets answers 400, and nothing is looked up', async () => {
+    const res = await experienceSummary(request('/experience-summary?timeRange=custom'));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST', message: expect.stringContaining('timeRange must be one of 1h, 24h, 7d, 30d, 90d') });
+    expect(services.getExperienceSummaries).not.toHaveBeenCalled();
+  });
+
+  it('clearing an unknown scope answers 400 in the shared shape', async () => {
     const res = await clearData(request('/data', 'DELETE', { scope: 'everything' }));
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ error: expect.stringContaining('Invalid scope: everything') });
+    expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST', error: expect.stringContaining('Invalid scope: everything'), requestId: expect.any(String) });
+  });
+
+  it('clearing with a body that is not JSON answers 400 and clears nothing (read as {}, it would clear all)', async () => {
+    await expectInvalidJson(await clearData(notJson('http://localhost/api/analytics/data', 'DELETE')), logs);
+    expect(services.clearAnalyticsData).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -61,6 +61,20 @@ describe('an analytics chat turn that fails', () => {
     ]);
   });
 
+  it("tells the asker a context it couldn't assemble without its text, logged once with the error as the cause", async () => {
+    const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
+    steps.assemble.mockResolvedValue({ success: false, summary: `Context assembly failed: ${down.message}`, error: down, durationMs: 0 });
+    const emit = vi.fn();
+    await runAnalyticsPipeline({ message: 'How many searches today?', sessionId: 's1' } as never, emit);
+
+    const event = emit.mock.calls.map(([e]) => e).find((e) => e.type === 'error');
+    expect(event).toMatchObject({ code: 'INTERNAL_ERROR', requestId: expect.any(String) });
+    expect(JSON.stringify(event)).not.toContain('10.0.0.5');
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ operation: 'analyticsChatTurn', err: expect.objectContaining({ cause: down }) }) }),
+    ]);
+  });
+
   it('tells the asker a refusal in its own words, logged once as a warning', async () => {
     const summary = 'This conversation is about "Catalog". Start a new conversation to ask about a different experience.';
     steps.assemble.mockResolvedValue({ success: false, summary, error: new ConflictError(summary), durationMs: 0 });

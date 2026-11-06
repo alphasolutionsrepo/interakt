@@ -32,7 +32,7 @@ interface EntryRouteContext {
   params: Promise<{ id: string; entryId: string }>;
 }
 
-/** A knowledge entry as the request sends it; checked by the service */
+/** A knowledge entry as the request sends it: not validated beyond a create's question and answer */
 interface EntryBody {
   question?: string;
   answer?: string;
