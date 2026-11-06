@@ -8,6 +8,8 @@
  * - db/schema/enums.schema.ts (fieldTypeEnum)
  */
 
+import { capabilitiesOf } from '@/features/search/providers/capabilities-by-provider';
+
 export const FIELD_TYPES = [
   'text',
   'keyword',
@@ -44,11 +46,10 @@ export const FULL_TEXT_SEARCHABLE_FIELD_TYPES = [
 
 /**
  * Whether a field of this type can take part in a full-text query on the index's engine.
- * A json field is a string on Azure AI Search (Edm.String, searched like text) and an
- * object on Elasticsearch, so it is searchable on Azure only.
+ * A json field can only where the engine stores it as text (storesJsonAsText).
  */
 export function isFullTextSearchableFieldType(fieldType: string, searchProvider?: string): boolean {
-  if (fieldType === 'json') return searchProvider === 'azure-ai-search';
+  if (fieldType === 'json') return capabilitiesOf(searchProvider)?.storesJsonAsText ?? false;
   return (FULL_TEXT_SEARCHABLE_FIELD_TYPES as readonly string[]).includes(fieldType);
 }
 

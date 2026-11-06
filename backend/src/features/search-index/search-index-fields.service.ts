@@ -71,7 +71,7 @@ function normalizeIsSearchable(
     fieldName: string,
     fieldType: string,
     isSearchable: boolean | undefined,
-    searchProvider: string
+    searchProvider: string | undefined
 ): boolean | undefined {
     if (isSearchable === true && !isFullTextSearchableFieldType(fieldType, searchProvider)) {
         logger.warn('Ignoring searchable flag on a field type that cannot be full-text searched', {
@@ -906,8 +906,11 @@ export async function updateField(
             throw new Error(`Field with ID ${fieldId} not found`);
         }
 
-        // The engine decides whether a json field can be searched (Azure only)
-        const searchProvider = (await searchIndexRepository.getSearchIndexById(existing.searchIndexId))?.searchProvider ?? 'elasticsearch';
+        // Only a json field's searchable flag depends on the index's engine
+        // (storesJsonAsText), so the engine is read only to turn that flag on
+        const searchProvider = input.isSearchable === true && existing.fieldType === 'json'
+            ? (await searchIndexRepository.getSearchProviderById(existing.searchIndexId)) ?? 'elasticsearch'
+            : undefined;
         const isSearchable = normalizeIsSearchable(existing.fieldName, existing.fieldType, input.isSearchable, searchProvider);
 
         // Check for duplicate source field if changing mapping
