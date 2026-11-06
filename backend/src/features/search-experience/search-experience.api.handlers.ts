@@ -152,10 +152,11 @@ export async function handleAutocomplete(request: NextRequest): Promise<NextResp
 
   const { experience } = authResult as { success: true; experience: SearchExperienceWithIndexes };
   const origin = request.headers.get('origin');
-  // The search playground: an admin testing gets a failure explained, not empty suggestions
-  await markIfAdminTest(request);
 
   try {
+    // The search playground: an admin testing gets a failure explained, not empty suggestions
+    await markIfAdminTest(request);
+
     // 2. Parse request body
     const body = await readJsonBody(request);
     const validated = autocompleteRequestSchema.parse(body);

@@ -5,7 +5,8 @@
  * Elasticsearch provider (only the client is stubbed): a visitor's type-ahead gets no
  * suggestions, quietly, and the failure is logged once with the request id; an admin
  * testing the experience gets the error. An index made without the autocomplete
- * analyzer is still asked again without it.
+ * analyzer is still asked again without it. A failed login lookup gets the route's error
+ * answer.
  */
 
 import { errors as esErrors } from '@elastic/elasticsearch';
@@ -31,8 +32,13 @@ vi.mock('@/features/search/providers/azure-ai-search/azure-client', () => ({
   checkAzureHealth: vi.fn(),
 }));
 vi.mock('@/features/search-index/provider-settings.utils', () => ({ getProviderFieldSettings: () => ({ isAutocomplete: true }) }));
-const session = vi.hoisted(() => ({ user: null as { id: string } | null }));
-vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => (session.user ? { user: session.user } : null) }));
+const session = vi.hoisted(() => ({ user: null as { id: string } | null, lookupFails: null as Error | null }));
+vi.mock('@/features/auth/auth.api.handlers', () => ({
+  auth: async () => {
+    if (session.lookupFails) throw session.lookupFails;
+    return session.user ? { user: session.user } : null;
+  },
+}));
 vi.mock('./search-experience.service', () => ({
   getSearchExperienceByAccessToken: async () => ({ ...(experience as object), isActive: true, accessToken: 'search-token', allowedOrigins: [] }),
   UnauthorizedError: class UnauthorizedError extends Error {},
@@ -57,12 +63,17 @@ const experience = {
 const down = () => new esErrors.ConnectionError('connect ECONNREFUSED 127.0.0.1:9200', { meta: {} } as never);
 const asVisitor = <T>(work: () => Promise<T>) => publicRoute(work)();
 const asAdmin = <T>(work: () => Promise<T>) => publicRoute(async () => { markAdminCaller(); return work(); })();
+const ask = (headers: Record<string, string>) => autocompleteRoute(new NextRequest('http://interakt.test/api/v1/autocomplete', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'X-Access-Token': 'search-token', ...headers },
+  body: JSON.stringify({ query: 'lin' }),
+}));
 
 // The real providers, registered as the app's startup does (its require() doesn't resolve under the test runner)
 if (!providerRegistry.get('elasticsearch')) providerRegistry.register('elasticsearch', new ElasticsearchSearchProvider(), true);
 if (!providerRegistry.get('azure_ai_search')) providerRegistry.register('azure_ai_search', new AzureSearchProvider());
 
-beforeEach(() => { logs.length = 0; es.search.mockReset(); azure.suggest.mockReset(); session.user = null; });
+beforeEach(() => { logs.length = 0; es.search.mockReset(); azure.suggest.mockReset(); session.user = null; session.lookupFails = null; });
 
 describe('autocomplete when Elasticsearch is down', () => {
   it("gives a visitor no suggestions, quietly, and logs it once with the request id", async () => {
@@ -129,12 +140,6 @@ describe('autocomplete on an index whose search provider is not set up', () => {
 });
 
 describe('autocomplete through the route when Elasticsearch is down', () => {
-  const ask = (headers: Record<string, string>) => autocompleteRoute(new NextRequest('http://interakt.test/api/v1/autocomplete', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'X-Access-Token': 'search-token', ...headers },
-    body: JSON.stringify({ query: 'lin' }),
-  }));
-
   it('gives a visitor no suggestions, even one sending the test marker without the login', async () => {
     es.search.mockRejectedValue(down());
     const res = await ask({ [TEST_MARKER_HEADER]: '1' });
@@ -151,6 +156,20 @@ describe('autocomplete through the route when Elasticsearch is down', () => {
     expect(res.status).toBe(503);
     expect(body).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached.", requestId: expect.any(String) });
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: body.requestId }) })]);
+  });
+});
+
+describe('autocomplete through the route when the login lookup fails', () => {
+  it("answers like the route's other failures: request id and CORS headers", async () => {
+    session.lookupFails = new Error('session store unreachable');
+    const res = await ask({ [TEST_MARKER_HEADER]: '1' });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toMatchObject({ success: false, requestId: expect.any(String) });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: body.requestId }) })]);
+    expect(es.search).not.toHaveBeenCalled();
   });
 });
 
