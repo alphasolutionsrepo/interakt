@@ -106,8 +106,7 @@ async function executeManagedSearch(
   const query = input.query ?? '';
   const maxResults = config.maxResults ?? 10;
 
-  const requested = buildFilterClauses(input.filters);
-  const merged = mergeDefaultFilters(config.defaultFilters, requested);
+  const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
   // The AI's Search tool, not a visitor's search: reports list it under Assistant Searches.
