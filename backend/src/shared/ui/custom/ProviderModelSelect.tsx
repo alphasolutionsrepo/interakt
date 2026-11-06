@@ -10,17 +10,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-interface AIProvider {
-  id: string;
-  key: string;
-  name: string;
-  models: Array<{ id: number; key: string; name: string; type: string }>;
-}
-
-interface ResolvedDefaults {
-  chat: { providerId: string | null; providerKey: string | null; modelId: number | null; modelKey: string | null };
-}
+import { errorText } from '@/shared/api/api-error';
+import { providerChoicesQuery, resolvedDefaultsQuery } from './provider-model-queries';
 
 interface ProviderModelSelectProps {
   providerId: string | null;
@@ -31,23 +22,8 @@ interface ProviderModelSelectProps {
 const DEFAULT = '__default__';
 
 export function ProviderModelSelect({ providerId, modelId, onChange }: ProviderModelSelectProps) {
-  const { data: providersData, isLoading } = useQuery({
-    queryKey: ['ai-providers-for-experience'],
-    queryFn: async () => {
-      const res = await fetch('/api/ai-service/providers');
-      const json = await res.json() as { data?: { providers: AIProvider[] }; providers?: AIProvider[] };
-      return (json.data || json) as { providers: AIProvider[] };
-    },
-  });
-
-  const { data: resolvedData } = useQuery({
-    queryKey: ['system-defaults-ai-resolved'],
-    queryFn: async () => {
-      const res = await fetch('/api/system-defaults/ai/resolved');
-      const json = await res.json() as { data?: ResolvedDefaults } & ResolvedDefaults;
-      return (json.data || json) as ResolvedDefaults;
-    },
-  });
+  const { data: providersData, isLoading, error } = useQuery(providerChoicesQuery);
+  const { data: resolvedData } = useQuery(resolvedDefaultsQuery);
 
   const providers = providersData?.providers ?? [];
   const selectedProvider = providers.find((p) => p.id === providerId);
@@ -103,6 +79,7 @@ export function ProviderModelSelect({ providerId, modelId, onChange }: ProviderM
           </SelectContent>
         </Select>
       </div>
+      {error && <p className="text-xs text-destructive">{errorText(error, 'Failed to load AI providers')}</p>}
       {!providerId && defaultChat?.providerKey && (
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
           <span className="inline-block size-1.5 rounded-full bg-emerald-500 shrink-0" />

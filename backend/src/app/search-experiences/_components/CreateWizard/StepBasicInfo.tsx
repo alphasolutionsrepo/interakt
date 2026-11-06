@@ -50,7 +50,7 @@ export function StepBasicInfo({
   const [slugTouched, setSlugTouched] = useState(false);
 
   // Search indexes and external indexes that can be attached
-  const { indexOptions, externalOptions, isLoading: isLoadingSources } = useSourceOptions();
+  const { indexOptions, externalOptions, isLoading: isLoadingSources, loadError } = useSourceOptions();
 
   // Check slug availability
   const { isAvailable, isChecking, isDebouncing } = useSlugAvailability(
@@ -200,7 +200,7 @@ export function StepBasicInfo({
           indexOptions={indexOptions}
           externalOptions={externalOptions}
           isLoading={isLoadingSources}
-          error={errors.indexes}
+          error={errors.indexes ?? loadError}
           onAddIndex={handleAddIndex}
           onRemoveIndex={(id) => updateField('indexes', formData.indexes.filter((i) => i.searchIndexId !== id))}
           onRoleChange={(id, role) =>

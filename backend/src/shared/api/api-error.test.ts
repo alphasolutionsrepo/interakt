@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApiError, apiErrorFrom, errorText, handleApiResponse, toApiError } from './api-error';
+import { ApiError, apiData, apiErrorFrom, errorText, handleApiPage, handleApiResponse, readApiBody, toApiError } from './api-error';
 import { applyServerErrors } from './apply-server-errors';
 
 describe('toApiError', () => {
@@ -77,6 +77,35 @@ describe('handleApiResponse', () => {
     it('returns a success that is not JSON as text, and an empty one as undefined', async () => {
         expect(await handleApiResponse(respond('name,price', 200, 'text/csv'))).toBe('name,price');
         expect(await handleApiResponse(new Response(null, { status: 204 }))).toBeUndefined();
+    });
+});
+
+describe('handleApiPage', () => {
+    const page = { page: 1, pageSize: 20, totalPages: 1, totalItems: 2 };
+
+    it('returns the items with the pagination sent beside them', async () => {
+        const response = new Response(JSON.stringify({ success: true, data: [{ id: 1 }, { id: 2 }], pagination: page }), { status: 200 });
+        expect(await handleApiPage(response)).toEqual({ data: [{ id: 1 }, { id: 2 }], pagination: page });
+    });
+
+    it('returns no items when the data is missing', async () => {
+        expect(await handleApiPage(new Response(JSON.stringify({ success: true, pagination: page }), { status: 200 }))).toEqual({ data: [], pagination: page });
+    });
+
+    it('explains a gateway error page, and keeps an error body', async () => {
+        const gateway = await handleApiPage(new Response('<html>502 Bad Gateway</html>', { status: 502 }), 'Failed to load tools').catch((e: unknown) => e);
+        expect(gateway).toMatchObject({ name: 'ApiError', status: 502, message: 'Failed to load tools (502)' });
+        const refused = await handleApiPage(new Response(JSON.stringify({ success: false, message: 'Not allowed', hint: 'Sign in.', requestId: 'r1' }), { status: 403 })).catch((e: unknown) => e);
+        expect(refused).toMatchObject({ name: 'ApiError', status: 403, message: 'Not allowed', hint: 'Sign in.', requestId: 'r1' });
+    });
+});
+
+describe('readApiBody and apiData', () => {
+    it('read a body whatever the status', async () => {
+        const body = await readApiBody(new Response(JSON.stringify({ success: true, data: { ok: false } }), { status: 422 }));
+        expect(apiData(body)).toEqual({ ok: false });
+        expect(await readApiBody(new Response('<html>502</html>', { status: 502 }))).toBe('<html>502</html>');
+        expect(await readApiBody(new Response(null, { status: 204 }))).toBeUndefined();
     });
 });
 

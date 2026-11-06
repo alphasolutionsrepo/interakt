@@ -11,6 +11,7 @@
 import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { dataSourcesApi } from '@/app/data-sources/_lib/api-client';
+import { searchIndexFieldsApi } from '@/app/search-indexes/_lib/api-client';
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 
 export interface DisplayFieldOption {
@@ -25,12 +26,7 @@ export function useAvailableDisplayFields(searchIndexIds: string[], externalSour
   const indexFieldQueries = useQueries({
     queries: searchIndexIds.map((searchIndexId) => ({
       queryKey: ['search-index-fields', searchIndexId],
-      queryFn: async () => {
-        const response = await fetch(`/api/search-indexes/${searchIndexId}/fields`);
-        if (!response.ok) throw new Error('Failed to fetch fields');
-        const data = await response.json();
-        return { indexId: searchIndexId, fields: (data.data || data.fields || []) as DisplayFieldOption[] };
-      },
+      queryFn: async () => ({ indexId: searchIndexId, fields: (await searchIndexFieldsApi.list(searchIndexId)) as DisplayFieldOption[] }),
       enabled: !!searchIndexId,
     })),
   });
@@ -44,6 +40,8 @@ export function useAvailableDisplayFields(searchIndexIds: string[], externalSour
   });
 
   const isLoading = indexFieldQueries.some((q) => q.isLoading) || externalQueries.some((q) => q.isLoading);
+  /** The first source whose fields couldn't be loaded, so the list may be missing some */
+  const error = [...indexFieldQueries, ...externalQueries].find((q) => q.error)?.error ?? null;
 
   const availableFields = useMemo(() => {
     const fieldMap = new Map<string, DisplayFieldOption>();
@@ -72,5 +70,5 @@ export function useAvailableDisplayFields(searchIndexIds: string[], externalSour
     return Array.from(fieldMap.values());
   }, [indexFieldQueries, externalQueries]);
 
-  return { availableFields, isLoading };
+  return { availableFields, isLoading, error };
 }

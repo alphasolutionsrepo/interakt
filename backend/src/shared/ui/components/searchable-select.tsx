@@ -5,6 +5,7 @@ import { Check, ChevronDown, Search, Loader2, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { errorText, handleApiResponse } from "@/shared/api/api-error";
 
 interface SearchableSelectOption {
   id: string | number;
@@ -100,18 +101,13 @@ export function SearchableSelect({
         url.searchParams.set(key, val);
       });
 
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        throw new Error(`Failed to fetch options: ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (result.success && Array.isArray(result.data)) {
-        setOptions(result.data);
+      const data = await handleApiResponse<SearchableSelectOption[]>(await fetch(url.toString()), 'Failed to fetch options');
+      if (Array.isArray(data)) {
+        setOptions(data);
         
         // Cache the selected option if it's in the results and we don't have it cached
         if (value) {
-          const foundSelected = result.data.find((opt: SearchableSelectOption) => 
+          const foundSelected = data.find((opt: SearchableSelectOption) => 
             compareValues(opt, value)
           );
           if (foundSelected) {
@@ -121,11 +117,11 @@ export function SearchableSelect({
           }
         }
       } else {
-        throw new Error(result.error || 'Invalid response format');
+        throw new Error('Invalid response format');
       }
     } catch (err) {
       console.error('Error fetching options:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load options');
+      setError(errorText(err, 'Failed to load options'));
       setOptions([]);
     } finally {
       setLoading(false);
