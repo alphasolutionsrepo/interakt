@@ -14,7 +14,6 @@ import type { SearchProvider } from '@/features/search/providers';
 import { createLogger } from '@/shared/logger/logger';
 import { isPublicRequest } from '@/shared/api/public-route';
 import { currentRequestId } from '@/shared/api/request-id';
-import { failureLevel } from '@/shared/errors/to-app-error';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import { getProviderFieldSettings } from '@/features/search-index/provider-settings.utils';
 import type { SearchExperienceWithIndexes } from './search-experience.types';
@@ -118,7 +117,7 @@ export async function getAutocompleteSuggestions(
       // An admin testing the experience gets the error; a visitor's type-ahead the other
       // indexes' suggestions, with the failure logged once
       if (!isPublicRequest()) throw failed[0].error;
-      logger[failureLevel(failed[0].error, 'warn')]('Autocomplete failed for an index', {
+      logger.error('Autocomplete failed for an index', {
         experienceId: experience.id,
         requestId: currentRequestId(),
         indexIds: failed.map((f) => f.index.indexId),
@@ -147,7 +146,7 @@ export async function getAutocompleteSuggestions(
   } catch (error) {
     // Passed on to an admin; logged once by the answer
     if (!isPublicRequest()) throw error;
-    logger[failureLevel(error, 'warn')]('Autocomplete failed', { experienceId: experience.id, requestId: currentRequestId(), err: error });
+    logger.error('Autocomplete failed', { experienceId: experience.id, requestId: currentRequestId(), err: error });
     return {
       suggestions: [],
       query: request.query,

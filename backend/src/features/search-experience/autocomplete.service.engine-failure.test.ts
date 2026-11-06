@@ -117,6 +117,17 @@ describe('autocomplete across an Elasticsearch and an Azure AI Search index', ()
   });
 });
 
+describe('autocomplete on an index whose search provider is not set up', () => {
+  it('gives a visitor no suggestions and logs it as an error: the fault is ours', async () => {
+    const unknown = { ...(experience as object), indexes: [{ searchIndexId: 'i1', searchIndex: { name: 'shop', displayName: 'Shop', isActive: true, searchProvider: 'no_such_provider' } }] } as never;
+
+    const result = await asVisitor(() => getAutocompleteSuggestions(unknown, { query: 'lin' }));
+
+    expect(result.suggestions).toEqual([]);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ indexIds: ['i1'] }) })]);
+  });
+});
+
 describe('autocomplete through the route when Elasticsearch is down', () => {
   const ask = (headers: Record<string, string>) => autocompleteRoute(new NextRequest('http://interakt.test/api/v1/autocomplete', {
     method: 'POST',
