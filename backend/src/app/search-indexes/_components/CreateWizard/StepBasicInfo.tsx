@@ -37,7 +37,9 @@ import {
     type SearchType,
 } from '@/features/search-index';
 import type { WizardFormData } from '@/features/search-index/search-index.wizard-schemas';
+import { errorText } from '@/shared/api/api-error';
 import { getAllProviderUIs } from '../providers';
+import { searchIndexesApi } from '../../_lib/api-client';
 
 // ============================================================================
 // TYPES
@@ -137,6 +139,7 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
     const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
     // Providers actually enabled for THIS deployment (env-driven), with which is default.
     const [enabledProviders, setEnabledProviders] = useState<Array<{ type: string; isDefault: boolean }> | null>(null);
+    const [providersError, setProvidersError] = useState<string | null>(null);
 
     const { isAvailable, isChecking, isDebouncing } = useNameAvailability(
         formData.name || '',
@@ -173,9 +176,9 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
     // enabled (e.g. on an Azure-only deploy, the index never reaches Azure).
     useEffect(() => {
         let cancelled = false;
-        fetch('/api/search-indexes/providers')
-            .then((r) => (r.ok ? r.json() : Promise.reject(r)))
-            .then((data: { providers?: Array<{ type: string; isDefault?: boolean }> }) => {
+        searchIndexesApi
+            .getProviders()
+            .then((data) => {
                 if (cancelled) return;
                 const list = (data?.providers ?? []).map((p) => ({ type: p.type, isDefault: !!p.isDefault }));
                 setEnabledProviders(list);
@@ -184,8 +187,10 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
                     updateField('searchProvider', def);
                 }
             })
-            .catch(() => {
-                // Leave the form default; the server applies the configured default as a backstop.
+            .catch((e) => {
+                // The form keeps its 'elasticsearch' default, and the wizard sends it as chosen,
+                // so say the list couldn't be checked rather than guess
+                if (!cancelled) setProvidersError(errorText(e, 'Failed to load search providers'));
             });
         return () => { cancelled = true; };
         // Run once on mount; intentionally not keyed on formData.searchProvider.
@@ -281,7 +286,7 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
             {/* Search Provider Selection */}
             {(() => {
                 // Show only providers enabled for this deployment (env-driven). Until
-                // the fetch resolves, fall back to the full registry.
+                // the fetch resolves, or when it failed, fall back to the full registry.
                 const enabledTypes = enabledProviders?.map((p) => p.type) ?? null;
                 const providers = enabledTypes
                     ? getAllProviderUIs().filter((p) => enabledTypes.includes(p.type))
@@ -318,6 +323,11 @@ export function StepBasicInfo({ formData, errors, updateField, setExternalError 
                     </div>
                 );
             })()}
+            {providersError && (
+                <p className="text-sm text-destructive font-medium">
+                    {providersError} Every provider is listed, so check the one you pick is enabled for this deployment.
+                </p>
+            )}
 
             {/* AI Info Alert */}
             {(formData.searchType === 'semantic' || formData.searchType === 'hybrid') && (

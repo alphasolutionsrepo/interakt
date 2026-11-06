@@ -61,15 +61,36 @@ export function apiErrorFrom(body: ApiErrorBody | null | undefined, status: numb
  */
 export async function handleApiResponse<T>(response: Response, fallback?: string): Promise<T> {
     if (!response.ok) throw await toApiError(response, fallback);
+    return apiData<T>(await readApiBody(response));
+}
+
+/**
+ * Read a list the API answers a page at a time ({ data, pagination }): the items and
+ * the pagination, an ApiError thrown on failure as handleApiResponse does.
+ */
+export async function handleApiPage<T, P>(response: Response, fallback?: string): Promise<{ data: T[]; pagination: P }> {
+    if (!response.ok) throw await toApiError(response, fallback);
+    const body = (await readApiBody(response)) as { data?: T[] | null; pagination: P } | undefined;
+    return { data: body?.data ?? [], pagination: body?.pagination as P };
+}
+
+/**
+ * The body of a response, whatever its status: JSON parsed, anything else as text,
+ * undefined when empty. For a response whose failure carries a result to show (a
+ * test run that failed); check the status first everywhere else.
+ */
+export async function readApiBody(response: Response): Promise<unknown> {
     const text = await response.text();
-    if (!text) return undefined as T;
-    let body: unknown;
+    if (!text) return undefined;
     try {
-        body = JSON.parse(text);
+        return JSON.parse(text);
     } catch {
-        return text as T;
+        return text;
     }
-    // { success, data }: the data, even when it is null
+}
+
+/** The data of a body: { success, data } unwrapped, even when the data is null, or the body as it is */
+export function apiData<T>(body: unknown): T {
     if (body !== null && typeof body === 'object' && 'data' in body) return (body as { data: T }).data;
     return body as T;
 }

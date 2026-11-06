@@ -1,6 +1,6 @@
 // app/tools/_lib/api-client.ts
 
-import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
+import { ApiError, apiErrorFrom, handleApiPage, handleApiResponse, readApiBody, type ApiErrorBody } from '@/shared/api/api-error';
 import type { LookupFieldCandidate, LookupFieldRules } from '@/features/tools/executors/data-source/lookup-field-rules';
 
 export { ApiError };
@@ -168,6 +168,14 @@ export interface LookupFieldsStatus {
   suggested: { nameFields: string[]; codeFields: string[] };
 }
 
+/** What a test run of a tool returned */
+export interface ToolTestResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+  durationMs: number;
+}
+
 export const toolsApi = {
   list: async (params?: ListToolsParams): Promise<ToolListResponse> => {
     const p = new URLSearchParams();
@@ -183,13 +191,8 @@ export const toolsApi = {
     if (params?.sortOrder) p.set('sortOrder', params.sortOrder);
 
     const url = `/api/tools${p.toString() ? `?${p.toString()}` : ''}`;
-    const response = await fetch(url);
-    if (!response.ok) throw await toApiError(response);
-    const json = await response.json();
-    return {
-      tools: json.data ?? [],
-      pagination: json.pagination,
-    };
+    const { data, pagination } = await handleApiPage<ToolWithUsage, ToolListResponse['pagination']>(await fetch(url));
+    return { tools: data, pagination };
   },
 
   getById: async (id: string): Promise<ToolWithUsage> => {
@@ -222,9 +225,7 @@ export const toolsApi = {
 
   getAllActive: async (): Promise<ToolWithUsage[]> => {
     const response = await fetch('/api/tools/all');
-    if (!response.ok) throw await toApiError(response);
-    const json = await response.json();
-    return json.data ?? json;
+    return handleApiResponse<ToolWithUsage[]>(response);
   },
 
   checkSlug: async (slug: string, excludeId?: string): Promise<{ available: boolean }> => {
@@ -232,6 +233,25 @@ export const toolsApi = {
     if (excludeId) p.set('excludeId', excludeId);
     const response = await fetch(`/api/tools/check-slug?${p.toString()}`);
     return handleApiResponse<{ available: boolean }>(response);
+  },
+
+  /**
+   * Run a tool with test input. A run that failed answers 422 with its result, returned
+   * like any other; a 422 without a result (from a proxy, say) throws like any failure.
+   */
+  test: async (id: string, input: Record<string, unknown>): Promise<ToolTestResult> => {
+    const response = await fetch(`/api/tools/${id}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input }),
+    });
+    if (response.status === 422) {
+      const body = await readApiBody(response);
+      const json = body !== null && typeof body === 'object' ? (body as ApiErrorBody & { data?: Partial<ToolTestResult> }) : undefined;
+      if (typeof json?.data?.success === 'boolean') return json.data as ToolTestResult;
+      throw apiErrorFrom(json, 422, 'The test run failed');
+    }
+    return handleApiResponse<ToolTestResult>(response, 'The test run failed');
   },
 
   /** A Find Record tool's fields status; null for tools that don't take name or code fields */
@@ -242,9 +262,7 @@ export const toolsApi = {
 
   getExperiences: async (id: string): Promise<{ id: string; name: string; slug: string; isActive: boolean }[]> => {
     const response = await fetch(`/api/tools/${id}/experiences`);
-    if (!response.ok) throw await toApiError(response);
-    const json = await response.json();
-    return json.data ?? json;
+    return handleApiResponse<{ id: string; name: string; slug: string; isActive: boolean }[]>(response);
   },
 
   // ── New executor model endpoints ──────────────────────────────────────────

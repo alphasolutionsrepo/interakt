@@ -15,6 +15,7 @@ import { useChatSessions, useDeleteChatSession } from '../../_lib/hooks/useAnaly
 import { formatTimeAgo, pluralize } from '../viz';
 
 import { cn } from '@/lib/utils';
+import { errorText } from '@/shared/api/api-error';
 import { Button } from '@/shared/ui/components/button';
 import { Input } from '@/shared/ui/components/input';
 
@@ -50,7 +51,7 @@ export function ChatHistoryList({
 
   const sessions = useChatSessions({ search });
   const remove = useDeleteChatSession();
-  const all = sessions.data?.data?.sessions ?? [];
+  const all = sessions.data?.sessions ?? [];
   const list = search.trim() || !limit ? all : all.slice(0, limit);
   const searching = sessions.isFetching && search !== '';
 
@@ -84,6 +85,8 @@ export function ChatHistoryList({
         <p className="flex items-center gap-2 px-3 py-4 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden /> Loading…
         </p>
+      ) : sessions.isError && !sessions.data ? (
+        <p className="px-3 py-4 text-sm text-destructive">{errorText(sessions.error, 'Failed to fetch sessions')}</p>
       ) : list.length === 0 ? (
         <p className="px-3 py-4 text-sm text-muted-foreground">
           {search.trim() ? `No conversations mention “${search.trim()}”.` : 'No earlier conversations yet.'}

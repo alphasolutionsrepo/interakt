@@ -19,30 +19,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StepProgress } from '@/components/ui/steps-progress';
-import { DOCS_SEED_STEPS, type DocsSeedProgressEvent } from '@/shared/seeders/docs/docs-steps';
+import { reportActionError } from '@/shared/activity/report';
+import { apiErrorFrom, errorText } from '@/shared/api/api-error';
+import { DOCS_SEED_STEPS } from '@/shared/seeders/docs/docs-steps';
 
-interface DocsStatus {
-  seeded: boolean;
-  seededAt: string | null;
-  documents: number | null;
-  experienceSlug: string;
-  embedding: {
-    configured: boolean;
-    dimensions: number | null;
-    modelKey: string | null;
-    dimensionsOk: boolean;
-    reason: string | null;
-  };
-  ready: boolean;
-  search: {
-    built: boolean;
-    searchType: 'lexical' | 'hybrid' | null;
-    embeddingModelKey: string | null;
-    sections: number | null;
-    hybridFailure: { model: string; error: string } | null;
-    conflict: string | null;
-  };
-}
+import { loadDocsStatus, startDocsBuild, type DocsStatus } from '../_lib/docs-assistant-api';
 
 function describeDocsSearch(search: DocsStatus['search']): string {
   const sections = `${search.sections ?? 0} sections`;
@@ -64,14 +45,19 @@ export function DocsAssistantCard() {
   const [building, setBuilding] = useState(false);
   const [doneSteps, setDoneSteps] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const autoTried = useRef(false);
 
   const refresh = useCallback(async () => {
-    const res = await fetch('/api/admin/setup-docs');
-    const json = await res.json().catch(() => null);
-    const data = json?.data as DocsStatus | undefined;
-    if (data) setStatus(data);
-    return data;
+    try {
+      const data = await loadDocsStatus();
+      setStatus(data);
+      setStatusError(null);
+      return data;
+    } catch (e) {
+      setStatusError(errorText(e, 'Failed to load the assistant status'));
+      return undefined;
+    }
   }, []);
 
   const build = useCallback(
@@ -80,39 +66,17 @@ export function DocsAssistantCard() {
       setError(null);
       setDoneSteps(new Set());
       try {
-        const res = await fetch('/api/admin/setup-docs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'seed', force, stream: true }),
-        });
-        if (!res.ok || !res.body) throw new Error(`Build failed (HTTP ${res.status})`);
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split('\n');
-          buf = lines.pop() ?? '';
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (payload === '[DONE]') continue;
-            const ev = JSON.parse(payload) as
-              | ({ type: 'progress' } & DocsSeedProgressEvent)
-              | { type: 'complete' }
-              | { type: 'error'; error: string };
-            if (ev.type === 'progress' && ev.status === 'done') {
-              setDoneSteps((prev) => new Set(prev).add(ev.step));
-            } else if (ev.type === 'error') {
-              setError(ev.error);
-            }
+        for await (const ev of await startDocsBuild(force)) {
+          if (ev.type === 'progress' && ev.status === 'done') {
+            setDoneSteps((prev) => new Set(prev).add(ev.step));
+          } else if (ev.type === 'error') {
+            // With its request id, which the Activity panel shows
+            throw apiErrorFrom(ev, 500, 'Build failed');
           }
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Build failed');
+        setError(errorText(e, 'Build failed'));
+        reportActionError('Build the docs assistant', e, { inline: true });
       } finally {
         setBuilding(false);
         await refresh();
@@ -242,6 +206,7 @@ export function DocsAssistantCard() {
         )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {statusError && <p className="text-sm text-destructive">{statusError}</p>}
       </CardContent>
     </Card>
   );

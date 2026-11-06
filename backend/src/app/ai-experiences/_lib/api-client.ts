@@ -1,6 +1,6 @@
 // app/ai-experiences/_lib/api-client.ts
 
-import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
+import { ApiError, handleApiPage, handleApiResponse } from '@/shared/api/api-error';
 
 export { ApiError };
 
@@ -155,10 +155,8 @@ export const aiExperiencesApi = {
     if (params?.sortOrder) p.set('sortOrder', params.sortOrder);
 
     const url = `/api/ai-experiences${p.toString() ? `?${p.toString()}` : ''}`;
-    const response = await fetch(url);
-    if (!response.ok) throw await toApiError(response);
-    const json = await response.json();
-    return { experiences: json.data ?? [], pagination: json.pagination };
+    const { data, pagination } = await handleApiPage<AIExperienceWithTools, AIExperienceListResponse['pagination']>(await fetch(url));
+    return { experiences: data, pagination };
   },
 
   getById: async (id: string): Promise<AIExperienceWithTools> => {

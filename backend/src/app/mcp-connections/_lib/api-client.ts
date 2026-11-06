@@ -1,6 +1,6 @@
 // app/mcp-connections/_lib/api-client.ts
 
-import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
+import { ApiError, handleApiPage, handleApiResponse } from '@/shared/api/api-error';
 
 export { ApiError };
 
@@ -133,13 +133,8 @@ export const mcpConnectionsApi = {
     if (params?.sortOrder) p.set('sortOrder', params.sortOrder);
 
     const url = `/api/mcp-connections${p.toString() ? `?${p.toString()}` : ''}`;
-    const response = await fetch(url);
-    if (!response.ok) throw await toApiError(response);
-    const json = await response.json();
-    return {
-      connections: json.data ?? [],
-      pagination: json.pagination,
-    };
+    const { data, pagination } = await handleApiPage<McpConnection, McpConnectionListResponse['pagination']>(await fetch(url));
+    return { connections: data, pagination };
   },
 
   getById: async (id: string): Promise<McpConnection> => {
