@@ -27,6 +27,7 @@ import {
 } from './document-transformer.service';
 import * as fieldsService from '@/features/search-index/search-index-fields.service';
 import * as fieldsRepository from '@/features/search-index/search-index-fields.repository';
+import { clearCachedIndexRecord } from '@/features/search-index/search-index.cache';
 import { generateEmbeddings } from '@/features/ai-service';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { buildIndexSettingsContext } from '@/features/search-index/provider-settings.utils';
@@ -246,6 +247,9 @@ export async function updateIndexStats(
             updatedAt: new Date(),
         })
         .where(eq(searchIndex.id, searchIndexId));
+
+    // The index page and the lists show the new count and status straight away
+    await clearCachedIndexRecord(searchIndexId, index.name);
 }
 
 // ============================================================================

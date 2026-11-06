@@ -8,7 +8,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
-import { cache, clearIndexCache, SEARCH_INDEX_CACHE_TTL } from './search-index.cache';
+import { cache, clearCachedIndexRecord, clearIndexCache, SEARCH_INDEX_CACHE_TTL } from './search-index.cache';
 import * as repository from './search-index.repository';
 import type { SearchIndexReference } from './search-index.repository';
 import * as fieldsService from './search-index-fields.service';
@@ -30,15 +30,13 @@ import type {
     SearchIndexListResponse,
     IndexStats,
     MappingSyncStatus,
-    // Enum types
-    IndexStatus,
 } from './search-index.types';
 import type {
     SearchIndexExportDTO,
     SearchIndexFieldExportDTO,
     SearchIndexImportDTO,
  ChangeAIConfigDTO } from './search-index.validation';
-import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
+import type { IndexLastJob, NewSearchIndex } from '@/db/schema/search-index.schema';
 import { requestIdFor } from '@/shared/api/request-id';
 import { AppError, NotFoundError } from '@/shared/errors/app-error';
 import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
@@ -477,40 +475,6 @@ export async function updateSearchIndex(
 }
 
 /**
- * Update search index status
- */
-export async function updateSearchIndexStatus(
-    id: string,
-    status: IndexStatus,
-    additionalData?: {
-        documentCount?: number;
-        indexSizeBytes?: number;
-        lastIndexedAt?: Date;
-    }
-): Promise<SearchIndex> {
-    try {
-        const updated = await repository.updateSearchIndexStatus(id, status, additionalData);
-
-        // Clear cache
-        await cache.delete(`index:${id}`);
-
-        // Invalidate search experience cache for any experiences using this index
-        await invalidateSearchExperienceCacheBySearchIndex(id);
-
-        logger.info('Updated search index status', {
-            indexId: id,
-            status,
-            ...additionalData,
-        });
-
-        return updated;
-    } catch (error) {
-        logger.error('Failed to update search index status', error as Error, { id, status });
-        throw error;
-    }
-}
-
-/**
  * Activate or deactivate a search index
  */
 export async function setSearchIndexActive(
@@ -770,18 +734,6 @@ export async function getMappingSyncStatus(
     };
 }
 
-/**
- * Mark mapping as synced (after ES update)
- */
-export async function markMappingSynced(
-    searchIndexId: string
-): Promise<void> {
-    await repository.markMappingSynced(searchIndexId);
-    await cache.delete(`index:${searchIndexId}`);
-
-    logger.info('Marked mapping as synced', { searchIndexId });
-}
-
 // ============================================================================
 // INDEXING OPERATIONS (Placeholders for ES integration)
 // ============================================================================
@@ -821,9 +773,11 @@ export async function getIndexStats(
                     updateData.status = 'ready';
                 }
 
-                await repository.updateSearchIndex(searchIndexId, updateData as Partial<typeof searchIndex>).catch(err => {
-                    logger.warn('Failed to sync provider stats to DB', { searchIndexId, error: (err as Error).message });
-                });
+                await repository.updateSearchIndex(searchIndexId, updateData as Partial<typeof searchIndex>)
+                    .then(() => clearCachedIndexRecord(searchIndexId, searchIndex.name))
+                    .catch(err => {
+                        logger.warn('Failed to sync provider stats to DB', { searchIndexId, error: (err as Error).message });
+                    });
             }
 
             return {
@@ -984,8 +938,9 @@ export async function triggerReindex(
         triggeredBy: userId,
     });
 
-    // Update status to indexing
+    // Update status to indexing, and show it in the lists too
     await repository.updateSearchIndexStatus(searchIndexId, 'indexing');
+    await clearCachedIndexRecord(searchIndexId, indexName);
     const startedAt = new Date().toISOString();
     await recordLastJob(searchIndexId, { kind: 'reindex', status: 'running', startedAt });
     // Until the index is deleted, a failure leaves it as it was, searchable
@@ -1204,11 +1159,9 @@ function leftAsItIs(what: string, upstream: AppError | undefined, cause: unknown
 export async function recordLastJob(searchIndexId: string, job: IndexLastJob): Promise<void> {
     try {
         const name = await repository.setLastJob(searchIndexId, job);
-        // Cleared by id and by name, so both show the job and what the job changed with it
-        // (status, stats). Not clearIndexCache: an upload records a job per batch, and query
-        // interpretations don't depend on either
-        await cache.delete(`index:${searchIndexId}`);
-        if (name) await cache.delete(`index:name:${name}`);
+        // Cleared by id, by name and in the lists, so all show the job and what the job
+        // changed with it (status, stats)
+        await clearCachedIndexRecord(searchIndexId, name);
     } catch (error) {
         logger.warn('Could not record the last job', { searchIndexId, kind: job.kind, error: (error as Error).message });
     }
