@@ -59,3 +59,18 @@ export async function clearIndexCacheById(id: string): Promise<void> {
         invalidateQueryInterpreterCache(id),
     ]);
 }
+
+/**
+ * Clear the cached index record after a write to its status, document count or last job:
+ * by id, by name when it is known, and the cached lists, which show the status and count.
+ *
+ * Not clearIndexCache: an upload calls this for every batch, and the query interpreter's
+ * cache doesn't depend on any of these.
+ */
+export async function clearCachedIndexRecord(id: string, name?: string | null): Promise<void> {
+    await Promise.all([
+        cache.delete(`index:${id}`),
+        name ? cache.delete(`index:name:${name}`) : undefined,
+        cache.deleteByPrefix('list:'),
+    ]);
+}

@@ -119,6 +119,8 @@ export interface DocumentWriteResult {
     durationMs: number;
     /** The error a write that failed as a whole ended with (the search service couldn't be reached) */
     writeError?: unknown;
+    /** The embedding model's error, when it failed the documents that needed a vector */
+    embeddingError?: unknown;
 }
 
 export interface DocumentReadResult {
@@ -516,6 +518,8 @@ async function resolveEmbeddings(
     warnings: string[];
     /** The search service's error when it couldn't give a merge its stored document */
     lookupError?: unknown;
+    /** The embedding model's error, passed on for the write's one log line */
+    embeddingError?: unknown;
 }> {
     const errors: DocumentWriteError[] = [];
     const warnings: string[] = [];
@@ -603,8 +607,8 @@ async function resolveEmbeddings(
             lookupError,
         };
     } catch (error) {
+        // Not logged here: the write's answer logs it once, with its request id
         const message = error instanceof Error ? error.message : 'Embedding generation failed';
-        logger.error('Embedding generation failed', { indexName: index.name, err: error });
 
         // Writing the document without a vector would leave it unreachable by
         // semantic search, so fail those operations instead.
@@ -622,6 +626,7 @@ async function resolveEmbeddings(
             stats: { generated: 0, failed: pending.length, skipped },
             warnings,
             lookupError,
+            embeddingError: error,
         };
     }
 }
@@ -656,6 +661,7 @@ export async function writeDocuments(
     // 2. Embeddings for semantic/hybrid indexes
     let embeddingStats: DocumentWriteResult['embeddingStats'];
     let lookupError: unknown;
+    let embeddingError: unknown;
 
     if (index.embeddingConfig.enabled) {
         const vectorSourceFields = await fieldsRepository.getVectorSourceFields(searchIndexId);
@@ -668,6 +674,7 @@ export async function writeDocuments(
         } else {
             const embeddingResult = await resolveEmbeddings(prepared, index, vectorSourceFields);
             lookupError = embeddingResult.lookupError;
+            embeddingError = embeddingResult.embeddingError;
             errors.push(...embeddingResult.errors);
             warnings.push(...embeddingResult.warnings);
             embeddingStats = { enabled: true, ...embeddingResult.stats };
@@ -743,6 +750,7 @@ export async function writeDocuments(
         warnings,
         durationMs,
         ...(writeError !== undefined && { writeError }),
+        ...(embeddingError !== undefined && { embeddingError }),
     };
 }
 

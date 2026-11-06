@@ -13,15 +13,18 @@ import { reported, type LogLine } from '@/shared/test/log-recorder';
 vi.mock('server-only', () => ({}));
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
-const azure = vi.hoisted(() => ({ error: undefined as unknown, failFromCall: 1, calls: 0 }));
+const azure = vi.hoisted(() => ({ error: undefined as unknown, failFromCall: 1, calls: 0, clientError: undefined as unknown }));
 vi.mock('./azure-client', () => ({
   getIndexClient: vi.fn(),
-  getSearchClient: () => ({
-    uploadDocuments: async (batch: Array<{ id: string }>) => {
-      if (++azure.calls >= azure.failFromCall) throw azure.error;
-      return { results: batch.map((d) => ({ key: d.id, succeeded: true, statusCode: 201 })) };
-    },
-  }),
+  getSearchClient: () => {
+    if (azure.clientError !== undefined) throw azure.clientError;
+    return {
+      uploadDocuments: async (batch: Array<{ id: string }>) => {
+        if (++azure.calls >= azure.failFromCall) throw azure.error;
+        return { results: batch.map((d) => ({ key: d.id, succeeded: true, statusCode: 201 })) };
+      },
+    };
+  },
   checkAzureHealth: vi.fn(),
 }));
 
@@ -42,6 +45,18 @@ describe('an Azure bulk write that fails as a whole', () => {
   });
 });
 
+describe('an Azure bulk write that fails as a whole with an error that has no message', () => {
+  it('still gives each document a reason', async () => {
+    azure.error = Object.assign(new Error(''), { name: 'RestError' });
+    azure.calls = 0;
+    azure.failFromCall = 1;
+
+    const result = await new AzureEngineProvider().bulkIndex('shop', [{ _id: 'a', title: 'Linen' }]);
+
+    expect(result.errors).toEqual([{ index: 0, error: 'RestError' }]);
+  });
+});
+
 describe('an Azure bulk write where a later batch fails as a whole', () => {
   it('still counts the batches already written, so a reindex is partial, not failed', async () => {
     const timedOut = Object.assign(new Error('Request timed out'), { name: 'RestError' });
@@ -54,5 +69,37 @@ describe('an Azure bulk write where a later batch fails as a whole', () => {
 
     expect(result).toMatchObject({ success: false, indexed: 1000, failed: 1, writeError: timedOut });
     expect(result.errors).toEqual([{ index: 1000, error: 'Request timed out' }]);
+  });
+});
+
+describe('an Azure bulk write that fails before any batch is sent, with an error that has no message', () => {
+  it('still gives the failure a reason', async () => {
+    const noClient = Object.assign(new Error(''), { name: 'RestError' });
+    azure.clientError = noClient;
+
+    try {
+      const result = await new AzureEngineProvider().bulkIndex('shop', [{ _id: 'a', title: 'Linen' }]);
+
+      expect(result).toMatchObject({ success: false, indexed: 0, failed: 1, writeError: noClient });
+      expect(result.errors).toEqual([{ index: 0, error: 'RestError' }]);
+    } finally {
+      azure.clientError = undefined;
+    }
+  });
+});
+
+describe('an Azure bulk write that fails before any batch is sent', () => {
+  it('fails every document with the reason, each by its position, as a failed batch does', async () => {
+    const noClient = Object.assign(new Error('getaddrinfo ENOTFOUND shop.search.windows.net'), { name: 'RestError', code: 'ENOTFOUND' });
+    azure.clientError = noClient;
+
+    try {
+      const result = await new AzureEngineProvider().bulkIndex('shop', [{ _id: 'a', title: 'Linen' }, { _id: 'b', title: 'Wool' }, { _id: 'c', title: 'Silk' }]);
+
+      expect(result).toMatchObject({ success: false, indexed: 0, failed: 3, writeError: noClient });
+      expect(result.errors).toEqual([0, 1, 2].map((index) => ({ index, error: 'getaddrinfo ENOTFOUND shop.search.windows.net' })));
+    } finally {
+      azure.clientError = undefined;
+    }
   });
 });

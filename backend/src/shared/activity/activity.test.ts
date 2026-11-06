@@ -170,6 +170,14 @@ describe('the mutation cache', () => {
         expect(toastWarning.mock.calls[0][1]).not.toHaveProperty('duration', Infinity);
         expect(toastError).not.toHaveBeenCalled();
     });
+
+    it('keeps the hint on a partial upload', async () => {
+        stubWindow();
+        const entries = await runMutation({ label: 'Index documents', job: true }, upload({
+            kind: 'upload', status: 'partial', startedAt: '', summary: '1 of 2 documents indexed, 1 failed', hint: 'The index is read-only.',
+        }));
+        expect(entries[0]).toMatchObject({ status: 'partial', hint: 'The index is read-only.' });
+    });
 });
 
 describe('entryState and unreadProblems', () => {

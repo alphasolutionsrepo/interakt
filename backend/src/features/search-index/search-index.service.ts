@@ -8,7 +8,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
-import { cache, clearIndexCache, SEARCH_INDEX_CACHE_TTL } from './search-index.cache';
+import { cache, clearCachedIndexRecord, clearIndexCache, SEARCH_INDEX_CACHE_TTL } from './search-index.cache';
 import * as repository from './search-index.repository';
 import type { SearchIndexReference } from './search-index.repository';
 import * as fieldsService from './search-index-fields.service';
@@ -30,19 +30,17 @@ import type {
     SearchIndexListResponse,
     IndexStats,
     MappingSyncStatus,
-    // Enum types
-    IndexStatus,
 } from './search-index.types';
 import type {
     SearchIndexExportDTO,
     SearchIndexFieldExportDTO,
     SearchIndexImportDTO,
  ChangeAIConfigDTO } from './search-index.validation';
-import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
+import type { IndexLastJob, NewSearchIndex } from '@/db/schema/search-index.schema';
 import { requestIdFor } from '@/shared/api/request-id';
-import { AppError, NotFoundError } from '@/shared/errors/app-error';
+import { AppError, ConflictError, NotFoundError } from '@/shared/errors/app-error';
 import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
-import { explainWriteFailure, scrub } from '@/shared/errors/upstream';
+import { classifyUpstream, explainWriteFailure, leadingReason, scrub } from '@/shared/errors/upstream';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import * as fieldsRepository from './search-index-fields.repository';
@@ -477,40 +475,6 @@ export async function updateSearchIndex(
 }
 
 /**
- * Update search index status
- */
-export async function updateSearchIndexStatus(
-    id: string,
-    status: IndexStatus,
-    additionalData?: {
-        documentCount?: number;
-        indexSizeBytes?: number;
-        lastIndexedAt?: Date;
-    }
-): Promise<SearchIndex> {
-    try {
-        const updated = await repository.updateSearchIndexStatus(id, status, additionalData);
-
-        // Clear cache
-        await cache.delete(`index:${id}`);
-
-        // Invalidate search experience cache for any experiences using this index
-        await invalidateSearchExperienceCacheBySearchIndex(id);
-
-        logger.info('Updated search index status', {
-            indexId: id,
-            status,
-            ...additionalData,
-        });
-
-        return updated;
-    } catch (error) {
-        logger.error('Failed to update search index status', error as Error, { id, status });
-        throw error;
-    }
-}
-
-/**
  * Activate or deactivate a search index
  */
 export async function setSearchIndexActive(
@@ -770,18 +734,6 @@ export async function getMappingSyncStatus(
     };
 }
 
-/**
- * Mark mapping as synced (after ES update)
- */
-export async function markMappingSynced(
-    searchIndexId: string
-): Promise<void> {
-    await repository.markMappingSynced(searchIndexId);
-    await cache.delete(`index:${searchIndexId}`);
-
-    logger.info('Marked mapping as synced', { searchIndexId });
-}
-
 // ============================================================================
 // INDEXING OPERATIONS (Placeholders for ES integration)
 // ============================================================================
@@ -821,9 +773,11 @@ export async function getIndexStats(
                     updateData.status = 'ready';
                 }
 
-                await repository.updateSearchIndex(searchIndexId, updateData as Partial<typeof searchIndex>).catch(err => {
-                    logger.warn('Failed to sync provider stats to DB', { searchIndexId, error: (err as Error).message });
-                });
+                await repository.updateSearchIndex(searchIndexId, updateData as Partial<typeof searchIndex>)
+                    .then(() => clearCachedIndexRecord(searchIndexId, searchIndex.name))
+                    .catch(err => {
+                        logger.warn('Failed to sync provider stats to DB', { searchIndexId, error: (err as Error).message });
+                    });
             }
 
             return {
@@ -973,6 +927,29 @@ export async function triggerReindex(
         throw new NotFoundError(`Search index with ID ${searchIndexId} not found`);
     }
 
+    // A second reindex would rebuild the index under the first, and one that failed early
+    // would set it back to 'active' while the first is still rebuilding it. Checked and
+    // taken with no await between, so two requests to this server can't both pass; the
+    // recorded job covers another server's reindex (until an upload records its own job)
+    if (reindexesHere.has(searchIndexId) || reindexRunning(searchIndex)) {
+        throw new ConflictError('A reindex is already running for this index');
+    }
+    reindexesHere.add(searchIndexId);
+    try {
+        return await reindex(searchIndex, userId);
+    } finally {
+        reindexesHere.delete(searchIndexId);
+    }
+}
+
+/** Indexes this server is reindexing now */
+const reindexesHere = new Set<string>();
+
+async function reindex(
+    searchIndex: NonNullable<Awaited<ReturnType<typeof repository.getSearchIndexById>>>,
+    userId: string
+): Promise<ReindexResult> {
+    const searchIndexId = searchIndex.id;
     const provider = getSearchEngineProvider(searchIndex.searchProvider as SearchProviderType);
 
     const indexName = searchIndex.name;
@@ -984,10 +961,13 @@ export async function triggerReindex(
         triggeredBy: userId,
     });
 
-    // Update status to indexing
+    // Update status to indexing. Recording the job clears the cached index and the lists,
+    // so they show it, even when the job itself can't be recorded
     await repository.updateSearchIndexStatus(searchIndexId, 'indexing');
     const startedAt = new Date().toISOString();
-    await recordLastJob(searchIndexId, { kind: 'reindex', status: 'running', startedAt });
+    await recordLastJob(searchIndexId, { kind: 'reindex', status: 'running', startedAt }, indexName);
+    // Until the index is deleted, a failure leaves it as it was, searchable
+    let changed = false;
 
     try {
         // Step 1: Fetch all existing documents (gracefully handle missing index)
@@ -998,18 +978,16 @@ export async function triggerReindex(
             logger.info('Fetching existing documents', { indexName });
             const fetchResult = await provider.fetchAllDocuments(indexName);
 
-            if (fetchResult.success) {
-                documents = fetchResult.documents;
-                logger.info('Fetched documents for reindex', {
-                    indexName,
-                    documentCount: documents.length,
-                });
-            } else {
-                logger.warn('Failed to fetch documents, proceeding with empty index', {
-                    indexName,
-                    error: fetchResult.error,
-                });
+            if (!fetchResult.success) {
+                // Recreating the index now would lose every document in it
+                const upstream = fetchResult.cause !== undefined ? classifyUpstream(fetchResult.cause) : undefined;
+                throw leftAsItIs("Couldn't read the index's documents", upstream, fetchResult.cause, fetchResult.error);
             }
+            documents = fetchResult.documents;
+            logger.info('Fetched documents for reindex', {
+                indexName,
+                documentCount: documents.length,
+            });
 
         } else {
             logger.info('Index does not exist, will create fresh', { indexName });
@@ -1058,12 +1036,30 @@ export async function triggerReindex(
 
         // Step 4: Delete the existing index — the first destructive step, and
         // deliberately the last thing that happens before recreating it.
+        changed = true;
         if (indexExistsNow) {
             logger.info('Deleting existing index', { indexName });
             const deleteResult = await provider.deleteIndex(indexName);
 
             if (!deleteResult.success) {
-                throw new Error(`Failed to delete index: ${deleteResult.error}`, { cause: deleteResult.cause });
+                const outcome = await deleteOutcome(provider, indexName, deleteResult.cause);
+                if (outcome === 'pending') {
+                    // Still there with every document, so its status goes back, but the delete
+                    // may yet go through
+                    changed = false;
+                    throw deleteMayFinish(deleteResult.cause, deleteResult.error);
+                }
+                if (outcome === 'unknown') {
+                    // It may be gone with its documents, so not 'as it is'
+                    throw afterDelete("Couldn't tell whether the index was deleted", deleteResult.cause, deleteResult.error,
+                        'Check the index: if it is gone, reindex it and upload its documents again.');
+                }
+                if (outcome === 'whole') {
+                    changed = false;
+                    throw new Error(`Failed to delete index: ${deleteResult.error}`, { cause: deleteResult.cause });
+                }
+                // It went through after all, and the documents are still in hand: carry on
+                logger.warn('The index delete broke off but went through; carrying on with the reindex', { indexName });
             }
         }
 
@@ -1072,11 +1068,16 @@ export async function triggerReindex(
         const createResult = await provider.createIndex(indexName, indexConfig);
 
         if (!createResult.success) {
+            // Deleted with its documents: they can only come back by uploading them again
+            if (indexExistsNow) {
+                throw afterDelete("The index was deleted to rebuild it, but couldn't be created again", createResult.cause, createResult.error,
+                    "Its documents were deleted with it: upload them again once it's created.");
+            }
             throw new Error(`Failed to create index: ${createResult.error}`, { cause: createResult.cause });
         }
 
         // Step 6: Write the prepared documents back
-        let written: { indexed: number; failed: number; firstError?: string; writeError?: unknown } = { indexed: preparedDocs.length, failed: 0 };
+        let written: { indexed: number; failed: number; reason?: string; writeError?: unknown } = { indexed: preparedDocs.length, failed: 0 };
         if (preparedDocs.length > 0) {
             logger.info('Re-indexing documents', {
                 indexName,
@@ -1086,7 +1087,7 @@ export async function triggerReindex(
             const bulkDocs = preparedDocs;
 
             const bulkResult = await provider.bulkIndex(indexName, bulkDocs, { refresh: true });
-            written = { indexed: bulkResult.indexed, failed: bulkResult.failed, firstError: bulkResult.errors[0]?.error, writeError: bulkResult.writeError };
+            written = { indexed: bulkResult.indexed, failed: bulkResult.failed, reason: leadingReason(bulkResult.errors.map((e) => e.error)), writeError: bulkResult.writeError };
 
             // Update index stats via updateSearchIndex
             await repository.updateSearchIndex(searchIndexId, {
@@ -1102,7 +1103,7 @@ export async function triggerReindex(
             // Partly written: the reindex succeeds, so this is its one line about the rest
             if (bulkResult.failed > 0) {
                 // An error when a batch failed because the search service did, as for an upload
-                logger[writeFailureLevel(bulkResult.writeError)]('Some documents failed to reindex', {
+                logger[writeFailureLevel(bulkResult.writeError, bulkResult.errors.map((e) => e.error))]('Some documents failed to reindex', {
                     indexName,
                     indexed: bulkResult.indexed,
                     failed: bulkResult.failed,
@@ -1147,12 +1148,16 @@ export async function triggerReindex(
             outcome,
         };
 
-    } catch (error) {
+    } catch (caught) {
         // Not logged here: the error is rethrown, and the response to it logs it once
+        const upstream = !changed && !(caught instanceof AppError) ? classifyUpstream(caught) : undefined;
+        const error = upstream ? leftAsItIs("Couldn't reindex the index", upstream, caught) : caught;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-        // Update status to failed
-        await repository.updateSearchIndexStatus(searchIndexId, 'error');
+        // Failed: an index it never changed goes back to how it was. Never back to
+        // 'indexing', which a reindex already running set: no job runs for it now.
+        const before = searchIndex.status === 'indexing' ? 'active' : searchIndex.status;
+        await repository.updateSearchIndexStatus(searchIndexId, changed ? 'error' : before);
         await recordLastJob(searchIndexId, {
             kind: 'reindex',
             status: 'failed',
@@ -1169,16 +1174,85 @@ export async function triggerReindex(
 }
 
 /**
+ * A reindex that stopped before the delete: the index still has every document, and the
+ * answer says so, keeping the search service's code and details when it was the cause
+ */
+function leftAsItIs(what: string, upstream: AppError | undefined, cause: unknown, fallback = ''): AppError {
+    return reindexError(`${what}, so it was left as it is: ${explained(upstream, fallback)}`, upstream, cause, upstream?.hint);
+}
+
+/**
+ * A reindex that failed after the delete: the documents read from the index went with it
+ * (or may have), so another reindex can't bring them back. Keeps the search service's
+ * explanation and its advice, without "try again", and says to upload them again.
+ */
+function afterDelete(what: string, cause: unknown, fallback: string | undefined, reupload: string): AppError {
+    const upstream = cause !== undefined ? classifyUpstream(cause) : undefined;
+    return reindexError(`Reindex failed. ${what}: ${explained(upstream, fallback ?? 'unknown error')}`, upstream, cause, uploadAgain(upstream?.hint, reupload));
+}
+
+/**
+ * A delete that broke off twice, with the index still there at the last check: it has
+ * every document, so its status goes back, but the delete may still go through on the
+ * search service later
+ */
+function deleteMayFinish(cause: unknown, fallback: string | undefined): AppError {
+    const upstream = cause !== undefined ? classifyUpstream(cause) : undefined;
+    return reindexError(
+        `Couldn't reindex the index: the search service didn't finish deleting it, and it was still there at the last check: ${explained(upstream, fallback ?? 'unknown error')}`,
+        upstream, cause,
+        "The delete may still go through on the search service. Check the index: if it's gone, reindex it and upload its documents again."
+    );
+}
+
+/** What the search service said went wrong; "<provider> returned an error." says less than its own words */
+function explained(upstream: AppError | undefined, fallback: string): string {
+    const own = (upstream?.details as { message?: string } | undefined)?.message;
+    return upstream ? (upstream.code === 'UPSTREAM_ERROR' && own ? own : upstream.message) : fallback;
+}
+
+/** A failed reindex's error, with the search service's code, status and details when it was the cause */
+function reindexError(message: string, upstream: AppError | undefined, cause: unknown, hint: string | undefined): AppError {
+    return new AppError(scrub(message), {
+        code: upstream?.code ?? 'REINDEX_FAILED',
+        status: upstream?.status ?? 502,
+        ...(hint && { hint }),
+        ...(upstream?.details !== undefined && { details: upstream.details }),
+        cause,
+    });
+}
+
+/**
  * Record the last reindex, recreate or upload on the index, for the index page.
  * Never fails the job itself: the job's own outcome matters more than the record.
  */
-export async function recordLastJob(searchIndexId: string, job: IndexLastJob): Promise<void> {
+export async function recordLastJob(searchIndexId: string, job: IndexLastJob, indexName?: string): Promise<void> {
+    let name = indexName;
     try {
-        await repository.setLastJob(searchIndexId, job);
-        await cache.delete(`index:${searchIndexId}`);
+        name = (await repository.setLastJob(searchIndexId, job)) ?? name;
     } catch (error) {
         logger.warn('Could not record the last job', { searchIndexId, kind: job.kind, error: (error as Error).message });
     }
+    // Cleared by id, by name and in the lists, so all show the job and what the job
+    // changed with it (status, stats). Those changes were made even when the job
+    // couldn't be recorded, so it is cleared then too.
+    await clearCachedIndexRecord(searchIndexId, name);
+}
+
+/**
+ * How long a reindex marked running holds the index against another one. A reindex runs
+ * within its request, and a large one (reading every document, embedding them again,
+ * writing them back) takes minutes, not half an hour. One still marked running after
+ * that was cut off (the server stopped mid-run), and must not block the index for good.
+ */
+export const REINDEX_RUNNING_LIMIT_MS = 30 * 60 * 1000;
+
+/** Whether a reindex is running on the index now: it is indexing, for a recent reindex */
+function reindexRunning(searchIndex: { status: string; lastJob?: IndexLastJob | null }): boolean {
+    const job = searchIndex.lastJob;
+    if (searchIndex.status !== 'indexing' || job?.kind !== 'reindex' || job.status !== 'running') return false;
+    const started = Date.parse(job.startedAt);
+    return Number.isFinite(started) && Date.now() - started < REINDEX_RUNNING_LIMIT_MS;
 }
 
 /** A failed job's error in the shape the API returns: what happened, what to try, details */
@@ -1207,35 +1281,95 @@ export interface ReindexResult {
  * when the cause is one we recognise (the service down or timing out, a write block)
  */
 export function reindexWriteFailure(
-    written: { indexed: number; failed: number; firstError?: string; writeError?: unknown }
+    written: { indexed: number; failed: number; reason?: string; writeError?: unknown }
 ): AppError | undefined {
     if (written.indexed > 0 || written.failed === 0) return undefined;
-    const { reason: because, hint } = explainWriteFailure(written.writeError, written.firstError);
+    const { reason: because, hint } = explainWriteFailure(written.writeError, written.reason);
     const reason = because ? `: ${because}` : '';
-    // The index was recreated empty and the documents read from it are gone, so another
-    // reindex can't bring them back: they have to be uploaded again
-    const reupload = 'The index is now empty: upload its documents again once the search service is working.';
     return new AppError(scrub(`None of the ${written.failed} documents could be written back${reason}`), {
         code: 'REINDEX_FAILED',
         status: 502,
-        hint: hint ? `${hint.replace(/,? then try again\.?$/, '.')} ${reupload}` : reupload,
+        hint: uploadAgain(hint, 'The index is now empty: upload its documents again once the search service is working.'),
         // The search service's own error, for the log line
         ...(written.writeError !== undefined && { cause: written.writeError }),
     });
 }
 
+/**
+ * What to do after a reindex lost documents: the index was recreated and the documents
+ * read from it are gone, so another reindex can't bring them back; they have to be
+ * uploaded again. The service's own advice comes first, without its "try again".
+ */
+function uploadAgain(hint: string | undefined, reupload: string): string {
+    if (!hint) return reupload;
+    const advice = hint.replace(/^Try again\.\s*/, '').replace(/(,? then| and) try again\b/g, '');
+    return `${advice} ${reupload}`.trim();
+}
+
+/** How long, and how often, to look for a delete that broke off going through anyway */
+export const DELETE_SETTLE = { checks: 5, intervalMs: 1000 };
+
+/**
+ * Whether a delete that failed took the index away. A refused delete leaves it whole.
+ * One that broke off with no answer (a timeout, a dropped connection) can still go
+ * through on the service after we gave up: it is watched for a few seconds, then, if the
+ * index is still there, asked for again, since deleting it is what the reindex is doing.
+ * Only the service refusing it says the index was left whole; still there after a second
+ * delete broke off too is pending (whole now, the delete may yet go through). Unknown is
+ * only when the check itself failed, so it may be gone.
+ */
+async function deleteOutcome(
+    provider: { indexExists(name: string): Promise<boolean>; deleteIndex(name: string): Promise<{ success: boolean; cause?: unknown }> },
+    indexName: string,
+    cause: unknown
+): Promise<'deleted' | 'whole' | 'pending' | 'unknown'> {
+    // A status the service gave itself; a gateway or proxy timing out (408, 502-504) says
+    // nothing about whether the delete went through
+    const answered = (error: unknown) => {
+        const status = (toAppError(error).details as { status?: number } | undefined)?.status;
+        return !!status && ![408, 502, 503, 504].includes(status);
+    };
+    const exists = () => provider.indexExists(indexName).catch(() => undefined);
+    const outcome = (found: boolean | undefined) => (found === undefined ? 'unknown' : found ? 'whole' : 'deleted');
+
+    if (answered(cause)) return outcome(await exists());
+    for (let i = 0; i < DELETE_SETTLE.checks; i++) {
+        if (i > 0) await new Promise((resolve) => setTimeout(resolve, DELETE_SETTLE.intervalMs));
+        const found = await exists();
+        if (found !== true) return outcome(found);
+    }
+    // Still there: the delete never reached it, or is queued behind other work. Ask again
+    const again = await provider.deleteIndex(indexName);
+    if (again.success) return 'deleted';
+    const found = await exists();
+    if (found === undefined) return 'unknown';
+    if (found === false) return 'deleted';
+    // There, and refused: left whole. There, with no answer again: a delete may still be on its way
+    return answered(again.cause) ? 'whole' : 'pending';
+}
+
 /** How a reindex that finished ended: some documents failing to write back is partial */
 export function reindexOutcome(
-    written: { indexed: number; failed: number; firstError?: string; writeError?: unknown },
+    written: { indexed: number; failed: number; reason?: string; writeError?: unknown },
     startedAt: string
 ): IndexLastJob {
     const base = { kind: 'reindex' as const, startedAt, finishedAt: new Date().toISOString() };
+    // Nothing lost by it, but an empty index needs its documents (after a failed reindex, say),
+    // so it shows in orange rather than as a success
+    if (written.indexed === 0 && written.failed === 0) {
+        return { ...base, status: 'partial', summary: 'The index is empty: there was nothing to reindex. Upload its documents to fill it.' };
+    }
     if (written.failed === 0) return { ...base, status: 'succeeded', summary: `${written.indexed} documents reindexed` };
     const total = written.indexed + written.failed;
     // A batch that failed as a whole is explained from its error, as a failed reindex is
-    const why = explainWriteFailure(written.writeError, written.firstError).reason;
+    const { reason: why, hint } = explainWriteFailure(written.writeError, written.reason);
     const reason = why ? `: ${why}` : '';
-    return { ...base, status: 'partial', summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`) };
+    return {
+        ...base,
+        status: 'partial',
+        summary: scrub(`${written.indexed} of ${total} documents reindexed, ${written.failed} failed${reason}`),
+        hint: uploadAgain(hint, `The ${written.failed} that failed are no longer in the index: upload them again.`),
+    };
 }
 
 // ============================================================================

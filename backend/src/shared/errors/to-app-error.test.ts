@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { AppError, ConflictError } from './app-error';
-import { failureLevel, toAppError } from './to-app-error';
+import { failureLevel, toAppError, writeFailureLevel } from './to-app-error';
 
 import { SearchError } from '@/features/search/search.types';
 
@@ -75,5 +75,17 @@ describe('failureLevel', () => {
 
     it('is a warning when the request was wrong', () => {
         expect(failureLevel(new AppError('Unknown filter field "colour"', { code: 'INVALID_FILTER', status: 400 }), 'warn')).toBe('warn');
+    });
+});
+
+describe('writeFailureLevel', () => {
+    const blocked = 'index [shop] blocked by: [TOO_MANY_REQUESTS/12/disk usage exceeded flood-stage watermark, index has read-only-allow-delete block];';
+
+    it('is a warning when the search service refused documents', () => {
+        expect(writeFailureLevel(undefined, ['mapper_parsing_exception: failed to parse field [price]'])).toBe('warn');
+    });
+
+    it('is an error when the search service blocked writes, whichever document hit the block', () => {
+        expect(writeFailureLevel(undefined, ['mapper_parsing_exception: failed to parse field [price]', blocked])).toBe('error');
     });
 });
