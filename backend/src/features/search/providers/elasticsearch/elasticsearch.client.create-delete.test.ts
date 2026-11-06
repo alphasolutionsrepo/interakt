@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
-const es = vi.hoisted(() => ({ exists: false, error: undefined as unknown, pages: [] as Record<string, unknown>[], cleared: [] as string[] }));
+const es = vi.hoisted(() => ({ exists: false, error: undefined as unknown, pages: [] as Record<string, unknown>[], cleared: [] as string[], asked: [] as Record<string, unknown>[] }));
 vi.mock('server-only', () => ({}));
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
@@ -23,7 +23,7 @@ vi.mock('@elastic/elasticsearch', async (importOriginal) => ({
             create: async () => { throw es.error; },
             delete: async () => { throw es.error; },
         };
-        search = async () => { if (es.pages.length === 0) throw es.error; return es.pages.shift(); };
+        search = async (params: Record<string, unknown>) => { es.asked.push(params); if (es.pages.length === 0) throw es.error; return es.pages.shift(); };
         scroll = async () => es.pages.shift();
         clearScroll = async ({ scroll_id }: { scroll_id: string }) => { es.cleared.push(scroll_id); };
     },
@@ -35,6 +35,7 @@ beforeEach(() => {
     logs.length = 0;
     es.pages = [];
     es.cleared = [];
+    es.asked = [];
     es.error = new esErrors.ConnectionError('connect ECONNREFUSED 127.0.0.1:9200', { meta: {} } as never);
 });
 
@@ -91,5 +92,7 @@ describe('an index Elasticsearch gives a reindex only part of', () => {
 
         expect(result).toMatchObject({ success: true });
         expect(result.documents.map((d) => d._id)).toEqual(['a', 'b', 'c']);
+        // Elasticsearch fails a search missing a shard instead of answering with what it has
+        expect(es.asked[0]).toMatchObject({ allow_partial_search_results: false });
     });
 });

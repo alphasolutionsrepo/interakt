@@ -158,6 +158,16 @@ describe('triggerReindex stopped before it changed the index', () => {
         expect(state.statuses).toEqual(['indexing', 'active']);
     });
 
+    it("leaves the index as it is when its shards aren't available, with Elasticsearch's reason", async () => {
+        const body = { error: { root_cause: [{ type: 'no_shard_available_action_exception', reason: null }], type: 'search_phase_execution_exception', reason: 'all shards failed' }, status: 503 };
+        const noShards = new esErrors.ResponseError({ body, statusCode: 503, headers: {}, meta: {} as never, warnings: null });
+        state.engine = { fetchAllDocuments: async () => ({ success: false, documents: [], error: noShards.message, cause: noShards }) };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(thrown).toMatchObject({ message: "Couldn't read the index's documents, so it was left as it is: all shards failed" });
+        expect((thrown as { hint?: string }).hint ?? '').not.toMatch(/endpoint|admin key/);
+        expect(state.statuses).toEqual(['indexing', 'active']);
+    });
+
     it('treats a refused delete as no change: the index keeps its status', async () => {
         state.engine = { deleteIndex: async () => ({ success: false, error: 'blocked', cause: refused() }) };
         const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);

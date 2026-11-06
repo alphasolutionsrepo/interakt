@@ -169,6 +169,14 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         expect(err?.details).toMatchObject({ message: 'index [shop] blocked by: [FORBIDDEN/7/index read (api)];' });
     });
 
+    it("explains an index whose shards aren't available by Elasticsearch's reason, not as unreachable", () => {
+        // What a real Elasticsearch 9 answered (6 Nov) for a search of an index with no shard allocated
+        const body = { error: { root_cause: [{ type: 'no_shard_available_action_exception', reason: null }], type: 'search_phase_execution_exception', reason: 'all shards failed', phase: 'query', grouped: true }, status: 503 };
+        const err = classifyUpstream(new esErrors.ResponseError({ body, statusCode: 503, headers: {}, meta: {} as never, warnings: null }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Elasticsearch returned an error.', details: { message: 'all shards failed' } });
+        expect(err?.hint).toBeUndefined();
+    });
+
     it('leaves blocks that are about availability to the availability explanation', () => {
         const err = classifyUpstream(blocked(503, 'blocked by: [SERVICE_UNAVAILABLE/1/state not recovered / initialized];'));
         expect(err?.code).toBe('UPSTREAM_UNAVAILABLE');

@@ -210,6 +210,9 @@ function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     if (status === 429 || /rate.?limit|too many requests/.test(text)) return 'UPSTREAM_RATE_LIMITED';
     if (status === 401 || status === 403 || /unauthorized|forbidden|authentication|invalid api key|access denied/.test(text)) return 'UPSTREAM_AUTH';
     if (status === 408 || status === 504 || /timed? ?out|etimedout|timeout/.test(text)) return 'UPSTREAM_TIMEOUT';
+    // An index whose shards aren't available answers 503 from a service that is up: its own
+    // reason ("all shards failed") says more than "couldn't be reached" and a credentials check
+    if (/no_shard_available|all shards failed/.test(text)) return 'UPSTREAM_ERROR';
     if (status === 502 || status === 503 || /econnrefused|enotfound|econnreset|fetch failed|socket hang up|getaddrinfo|serviceunavailable|no living connections/.test(text)) {
         return 'UPSTREAM_UNAVAILABLE';
     }
