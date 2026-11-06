@@ -7,7 +7,7 @@
  */
 
 import { errors as esErrors } from '@elastic/elasticsearch';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
     bulk: { success: true, indexed: 2, failed: 0, errors: [] as Array<{ index: number; error: string }>, took: 1 } as Record<string, unknown>,
@@ -59,7 +59,7 @@ vi.mock('@/features/search/providers', () => ({
     }),
 }));
 
-import { triggerReindex } from './search-index.service';
+import { DELETE_SETTLE, triggerReindex } from './search-index.service';
 
 beforeEach(() => {
     state.lastJobs = [];
@@ -175,14 +175,57 @@ describe('triggerReindex stopped before it changed the index', () => {
         expect(state.statuses).toEqual(['indexing', 'active']);
     });
 
-    it('marks the index errored when the failed delete took it away', async () => {
-        let exists = true;
+    describe('when the delete breaks off with no answer', () => {
+        beforeEach(() => { DELETE_SETTLE.intervalMs = 1; });
+        afterEach(() => { DELETE_SETTLE.intervalMs = 1000; });
+        const timedOut = () => new esErrors.TimeoutError('Request timed out', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+
+        it('carries on when the delete had gone through: the documents are written back', async () => {
+            state.bulk = { success: true, indexed: 2, failed: 0, errors: [], took: 1 };
+            let exists = true;
+            state.engine = {
+                indexExists: async () => exists,
+                deleteIndex: async () => { exists = false; return { success: false, error: 'timed out', cause: timedOut() }; },
+            };
+            const result = await triggerReindex('i1', 'u1');
+            expect(result).toMatchObject({ documentCount: 2, outcome: { status: 'succeeded' } });
+        });
+
+        it('carries on when the delete goes through a moment after we gave up', async () => {
+            // What Elasticsearch 9 did (6 Nov): the index still there right after the client timed out, gone soon after
+            state.bulk = { success: true, indexed: 2, failed: 0, errors: [], took: 1 };
+            let checksAfterDelete = 0;
+            let deleted = false;
+            state.engine = {
+                indexExists: async () => !deleted || checksAfterDelete++ < 2,
+                deleteIndex: async () => { deleted = true; return { success: false, error: 'timed out', cause: timedOut() }; },
+            };
+            const result = await triggerReindex('i1', 'u1');
+            expect(result).toMatchObject({ documentCount: 2, outcome: { status: 'succeeded' } });
+        });
+
+        it('leaves the index as it is when it is still there after the wait', async () => {
+            let checks = 0;
+            state.engine = {
+                indexExists: async () => { checks++; return true; },
+                deleteIndex: async () => ({ success: false, error: 'timed out', cause: timedOut() }),
+            };
+            const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+            expect((thrown as Error).message).toMatch(/left as it is/);
+            expect(state.statuses).toEqual(['indexing', 'active']);
+            expect(checks).toBeGreaterThan(DELETE_SETTLE.checks);
+        });
+    });
+
+    it('looks once after a delete the search service refused', async () => {
+        let checksAfterDelete = 0;
+        let asked = false;
         state.engine = {
-            indexExists: async () => exists,
-            deleteIndex: async () => { exists = false; return { success: false, error: 'timed out', cause: unreachable() }; },
+            indexExists: async () => { if (asked) checksAfterDelete++; return true; },
+            deleteIndex: async () => { asked = true; return { success: false, error: 'blocked', cause: refused() }; },
         };
         await triggerReindex('i1', 'u1').catch(() => undefined);
-        expect(state.statuses).toEqual(['indexing', 'error']);
+        expect(checksAfterDelete).toBe(1);
     });
 
     it('marks the index errored when the search service went away at the delete: it may be gone', async () => {
