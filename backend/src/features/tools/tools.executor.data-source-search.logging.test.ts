@@ -11,6 +11,8 @@
 import { errors as esErrors } from '@elastic/elasticsearch';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AdapterError } from '@/features/ai-service/adapters/types';
+import { AIServiceError } from '@/features/ai-service/ai-service.types';
 import { SearchError } from '@/features/search/search.types';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
@@ -23,7 +25,7 @@ vi.mock('@/features/telemetry', () => ({
 const tool = vi.hoisted(() => ({
   id: 'tool-1', name: 'Search', slug: 'search', executorType: 'data_source', operation: 'search', dataSourceId: 'ds', isActive: true,
   executorConfig: {}, inputSchema: { type: 'object', properties: {} }, outputSchema: null, timeout: 30_000,
-  retryConfig: { count: 1, backoff: 'fixed' as const, initialDelayMs: 1 }, fallbackConfig: null,
+  retryConfig: { count: 1, backoff: 'fixed', initialDelayMs: 1 } as { count: number; backoff: 'fixed'; initialDelayMs: number; retryableErrors?: string[] }, fallbackConfig: null,
 }));
 vi.mock('./tools.service', () => ({ getToolById: async () => tool }));
 vi.mock('@/features/secrets/secrets.service', () => ({ resolveSecret: vi.fn() }));
@@ -44,6 +46,7 @@ import { executeTool } from './tools.executor';
 
 beforeEach(() => {
   logs.length = 0;
+  tool.retryConfig = { count: 1, backoff: 'fixed', initialDelayMs: 1 };
   search.searchById.mockReset();
   search.resolveDataSource.mockReset().mockResolvedValue({ kind: 'managed', searchIndexId: 'i1', dataSourceId: 'ds' });
 });
@@ -129,9 +132,24 @@ describe('a chat tool search on an external source that is down', () => {
 });
 
 describe('a chat tool search whose query embedding failed', () => {
-  it("is not retried: the AI service retried its own call already", async () => {
-    const timedOut = Object.assign(new Error('Request timed out'), { name: 'AIServiceError', code: 'TIMEOUT', providerKey: 'openai' });
-    search.searchById.mockRejectedValue(new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', {}, { cause: timedOut }));
+  it.each([
+    ['timed out', () => new AdapterError('Request timed out', 'openai', undefined, true)],
+    ['was rate limited', () => new AdapterError('Rate limit exceeded', 'openai', 429, true)],
+    ['was unavailable', () => new AdapterError('Service unavailable', 'ollama', 503, true)],
+  ])('%s: is not retried, the AI service retried its own call already', async (_case, failure) => {
+    search.searchById.mockRejectedValue(new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', {}, { cause: failure() }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a chat tool search the circuit breaker refused, on a tool whose own retry patterns match it', () => {
+  it('is not retried: the provider is cut off', async () => {
+    tool.retryConfig = { ...tool.retryConfig, retryableErrors: ['embedding'] };
+    const circuit = new AIServiceError('Circuit breaker is open - provider temporarily unavailable', 'CIRCUIT_OPEN', 'p1', 'ollama');
+    search.searchById.mockRejectedValue(new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', {}, { cause: circuit }));
 
     await executeTool('tool-1', { query: 'linen shirts' });
 

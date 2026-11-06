@@ -248,6 +248,11 @@ export function isAIProviderFailure(err: unknown): boolean {
     return aiServiceCode(err) !== undefined;
 }
 
+/** Whether err is, or wraps, a failure of an AI provider: the AI service has retried it already */
+export function failedAtAIProvider(err: unknown): boolean {
+    return isAIProviderFailure(err) || findProvider(err)?.kind === 'ai';
+}
+
 function aiServiceCode(err: unknown): UpstreamCode | undefined {
     let current: unknown = err;
     for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
