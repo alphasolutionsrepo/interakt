@@ -127,3 +127,14 @@ describe('a chat tool search on an external source that is down', () => {
     expect(external.search).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('a chat tool search whose query embedding failed', () => {
+  it("is not retried: the AI service retried its own call already", async () => {
+    const timedOut = Object.assign(new Error('Request timed out'), { name: 'AIServiceError', code: 'TIMEOUT', providerKey: 'openai' });
+    search.searchById.mockRejectedValue(new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', {}, { cause: timedOut }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(1);
+  });
+});

@@ -69,22 +69,24 @@ async function thinkOf(config: AdapterConfig): Promise<{ think?: OllamaThink }> 
 /** gpt-oss, as its key or its family ('gpt-oss' or 'gptoss', by Ollama version) names it */
 const GPT_OSS = /gpt-?oss/i;
 
-/** Whether a model takes reasoning levels, by Ollama address and model key */
-const takesLevels = new Map<string, boolean>();
+/** Whether a model takes reasoning levels, by Ollama address and model key, and until when that holds */
+const takesLevels = new Map<string, { levels: boolean; until: number }>();
+/** How long Ollama's answer holds (a name can be copied over another model), and a guess when it couldn't answer */
+const FAMILY_TTL_MS = 10 * 60_000;
+const GUESS_TTL_MS = 60_000;
 
 /**
  * Whether a model takes reasoning levels (gpt-oss) rather than on/off. Read from the family
- * Ollama reports, which a renamed copy keeps, and asked once per model. When Ollama can't
- * say, the model's key decides, and Ollama is asked again next time.
+ * Ollama reports, which a renamed copy keeps, asked again after a while. When Ollama can't
+ * say, the model's key decides for a minute, so requests don't each wait on it.
  */
 async function takesThinkLevels(config: AdapterConfig): Promise<boolean> {
     const key = `${config.baseUrl}|${config.modelKey}`;
     const known = takesLevels.get(key);
-    if (known !== undefined) return known;
+    if (known && known.until > Date.now()) return known.levels;
     const family = await modelFamily(config);
-    if (family === undefined) return GPT_OSS.test(config.modelKey);
-    const levels = GPT_OSS.test(family);
-    takesLevels.set(key, levels);
+    const levels = GPT_OSS.test(family ?? config.modelKey);
+    takesLevels.set(key, { levels, until: Date.now() + (family === undefined ? GUESS_TTL_MS : FAMILY_TTL_MS) });
     return levels;
 }
 

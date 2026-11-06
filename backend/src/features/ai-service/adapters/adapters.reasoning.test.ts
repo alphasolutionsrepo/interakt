@@ -79,20 +79,34 @@ describe("Ollama think for 'minimal'", () => {
     expect(chats[0].think).toBe(false);
   });
 
-  it("goes by the model's key when Ollama can't say, and asks again next time", async () => {
-    const { chats, shows } = ollama(undefined, 404);
-    await minimal('gpt-oss:20b', 'http://cannot-say');
-    await minimal('qwen3:8b', 'http://cannot-say');
-    await minimal('qwen3:8b', 'http://cannot-say');
-    expect(chats.map((c) => c.think)).toEqual(['low', false, false]);
-    expect(shows).toEqual(['gpt-oss:20b', 'qwen3:8b', 'qwen3:8b']);
+  it("goes by the model's key when Ollama can't say, and asks again after a minute, not on every request", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { chats, shows } = ollama(undefined, 404);
+      await minimal('gpt-oss:20b', 'http://cannot-say');
+      await minimal('qwen3:8b', 'http://cannot-say');
+      await minimal('qwen3:8b', 'http://cannot-say');
+      vi.advanceTimersByTime(61_000);
+      await minimal('qwen3:8b', 'http://cannot-say');
+      expect(chats.map((c) => c.think)).toEqual(['low', false, false, false]);
+      expect(shows).toEqual(['gpt-oss:20b', 'qwen3:8b', 'qwen3:8b']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it('asks Ollama once per model', async () => {
-    const { shows } = ollama('gptoss');
-    await minimal('my-reasoner', 'http://once');
-    await minimal('my-reasoner', 'http://once');
-    expect(shows).toEqual(['my-reasoner']);
+  it('asks Ollama once per model, and again after ten minutes (a name can be copied over another model)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { shows } = ollama('gptoss');
+      await minimal('my-reasoner', 'http://once');
+      await minimal('my-reasoner', 'http://once');
+      vi.advanceTimersByTime(11 * 60_000);
+      await minimal('my-reasoner', 'http://once');
+      expect(shows).toEqual(['my-reasoner', 'my-reasoner']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

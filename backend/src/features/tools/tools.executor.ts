@@ -19,7 +19,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
-import { classifyUpstream } from '@/shared/errors/upstream';
+import { classifyUpstream, isAIProviderFailure } from '@/shared/errors/upstream';
 import { withSpan, ATTR } from '@/features/telemetry';
 import * as toolsService from './tools.service';
 import * as secretsService from '@/features/secrets/secrets.service';
@@ -345,6 +345,8 @@ function isRetryable(error: unknown, config: ToolRetryConfig): boolean {
     );
   }
 
+  // The AI service retried its own call already (a search's query embedding): not again
+  if (isAIProviderFailure(error)) return false;
   // Default: retry a service that was down, slow or rate limiting, read from the error
   // itself (an Elasticsearch that's stopped gives no message), else from its text
   if (RETRYABLE_UPSTREAM.has(classifyUpstream(error)?.code ?? '')) return true;
