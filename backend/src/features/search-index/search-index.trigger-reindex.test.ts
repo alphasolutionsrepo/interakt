@@ -143,6 +143,13 @@ describe('triggerReindex stopped before it changed the index', () => {
         expect(state.statuses).toEqual(['indexing', 'active']);
     });
 
+    it("gives the engine's text when a failed read carries no error to explain", async () => {
+        state.engine = { fetchAllDocuments: async () => ({ success: false, error: 'scroll context lost' }) };
+        const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', status: 502, message: "Couldn't read the index's documents, so it was left as it is: scroll context lost" });
+        expect(state.statuses).toEqual(['indexing', 'active']);
+    });
+
     it('treats a refused delete as no change: the index keeps its status', async () => {
         state.engine = { deleteIndex: async () => ({ success: false, error: 'blocked', cause: refused() }) };
         const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
