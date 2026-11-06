@@ -20,6 +20,7 @@ import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { loadDemoManifest, seedDemo, resetDemo, runWarmup } from '@/shared/seeders/demo';
 import type { DemoProviderOption, SeedProgressEvent, WarmupSummary } from '@/shared/seeders/demo';
+import type { ProviderReadinessView } from '@/shared/seeders/demo/demo-provider-view';
 import { trustedOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { getRegistryEntry } from '@/shared/seeders/seed-registry.service';
 import { getCurrentUser } from '@/shared/utils/auth-utils';
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'reset') {
       const result = await resetDemo(loaded);
-      logger.info('Demo reset via API', { deleted: result.deleted.length });
+      logger.info('Demo reset via API', { deleted: result.deleted.length, failed: result.failed.length });
       return apiResponse.success({ action: 'reset', ...result });
     }
 
@@ -144,29 +145,6 @@ export async function POST(request: NextRequest) {
 // ---------------------------------------------------------------------------
 // Readiness helpers
 // ---------------------------------------------------------------------------
-
-interface ProviderReadinessView {
-  key: string;
-  label: string;
-  tagline?: string;
-  authType: 'none' | 'api_key';
-  requiredModels: string[];
-  defaultBaseUrl?: string;
-  defaults: DemoProviderOption['defaults'];
-  inCatalog: boolean;
-  ready: boolean;
-  // api_key providers
-  hasStoredKey?: boolean;
-  // local providers (ollama)
-  baseUrl?: string;
-  reachable?: boolean;
-  pulledModels?: string[];
-  // Pulled models split by role — the Demo Setup page offers these in the chat
-  // and embedding pickers. (Chat = everything that doesn't look like an embedder.)
-  pulledChatModels?: string[];
-  pulledEmbeddingModels?: string[];
-  missingModels?: string[];
-}
 
 async function buildProviderReadiness(
   id: string,

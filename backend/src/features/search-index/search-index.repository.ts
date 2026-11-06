@@ -179,6 +179,19 @@ export async function getSearchIndexById(id: string): Promise<SearchIndexComplet
 }
 
 /**
+ * The search engine an index is on, or null when there is no such index: one
+ * column, for callers that need nothing else.
+ */
+export async function getSearchProviderById(id: string): Promise<string | null> {
+    const [result] = await db
+        .select({ searchProvider: searchIndex.searchProvider })
+        .from(searchIndex)
+        .where(eq(searchIndex.id, id))
+        .limit(1);
+    return result?.searchProvider ?? null;
+}
+
+/**
  * Get search index by name
  */
 export async function getSearchIndexByName(name: string): Promise<SearchIndexComplete | null> {
@@ -477,10 +490,11 @@ export async function incrementMappingVersion(
  */
 /**
  * Record the last long-running job and how it ended. Not an edit of the index, so
- * updatedAt stays as it is.
+ * updatedAt stays as it is. Gives the index's name, undefined when there is no such index.
  */
-export async function setLastJob(id: string, lastJob: IndexLastJob): Promise<void> {
-    await db.update(searchIndex).set({ lastJob }).where(eq(searchIndex.id, id));
+export async function setLastJob(id: string, lastJob: IndexLastJob): Promise<string | undefined> {
+    const [updated] = await db.update(searchIndex).set({ lastJob }).where(eq(searchIndex.id, id)).returning({ name: searchIndex.name });
+    return updated?.name;
 }
 
 export async function markMappingSynced(id: string): Promise<SearchIndex> {

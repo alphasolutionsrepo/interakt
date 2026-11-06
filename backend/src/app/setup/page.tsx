@@ -53,58 +53,10 @@ import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shar
 import { sameOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
 import { reportActionError } from '@/shared/activity/report';
-import { toApiError } from '@/shared/api/api-error';
-
-interface ProviderView {
-  key: string;
-  label: string;
-  tagline?: string;
-  authType: 'none' | 'api_key';
-  requiredModels: string[];
-  defaultBaseUrl?: string;
-  defaults: { chatModel: string; textModel: string; embeddingModel: string };
-  inCatalog: boolean;
-  ready: boolean;
-  hasStoredKey?: boolean;
-  baseUrl?: string;
-  reachable?: boolean;
-  pulledModels?: string[];
-  pulledChatModels?: string[];
-  pulledEmbeddingModels?: string[];
-  missingModels?: string[];
-}
-
-interface DemoStatus {
-  seeded: boolean;
-  seededAt: string | null;
-  seededProvider: string | null;
-  providers: { recommended: string; options: ProviderView[] };
-  manifest: {
-    name: string;
-    indexName: string;
-    documents: number;
-    fields: number;
-    searchExperienceSlug: string;
-    chatExperienceSlug: string;
-    warmupEnabled: boolean;
-  };
-}
-
-interface SeedResult {
-  action: string;
-  skipped?: boolean;
-  reason?: string;
-  provider?: string;
-  index?: { name: string; documents: number; embeddings: number };
-  searchExperience?: { slug: string; accessToken: string };
-  chatExperience?: { slug: string; accessToken: string };
-  warmup?: { searchesRun: number; chatTurnsRun: number; analyticsChatTurnsRun: number };
-  deleted?: string[];
-}
+import { apiErrorFrom, errorText } from '@/shared/api/api-error';
+import { loadDemoStatus, resetDemo, startDemoSeed, type DemoStatus, type ProviderView, type SeedResult } from './_lib/demo-setup-api';
 
 type StepState = 'pending' | 'active' | 'done';
-
-const ENDPOINT = '/api/admin/setup-demo';
 
 const STEP_ICON: Record<DemoStepId, LucideIcon> = {
   provider: Bot,
@@ -136,27 +88,22 @@ export default function SetupDemoPage() {
   const [stepDetails, setStepDetails] = useState<Record<string, string>>({});
 
   async function loadStatus(ollamaBaseUrl?: string) {
+    let data: DemoStatus;
     try {
-      const url = ollamaBaseUrl ? `${ENDPOINT}?ollamaBaseUrl=${encodeURIComponent(ollamaBaseUrl)}` : ENDPOINT;
-      const res = await fetch(url);
-      if (!res.ok) {
-        // A URL the server won't check says why; the first load stays best-effort
-        if (ollamaBaseUrl) reportActionError('Check Ollama', await toApiError(res));
-        return;
-      }
-      const json = await res.json();
-      const data: DemoStatus = json.data ?? json;
-      setStatus(data);
+      data = await loadDemoStatus(ollamaBaseUrl);
+    } catch (e) {
+      // A URL the server won't check says why, and so does a status that couldn't be loaded
+      reportActionError(ollamaBaseUrl ? 'Check Ollama' : 'Load demo setup', e);
+      return;
+    }
+    setStatus(data);
 
-      // Initialise selection + base URL on first load (don't clobber edits).
-      setSelectedProvider((prev) => prev || data.providers.recommended);
-      const ollama = data.providers.options.find((o) => o.authType === 'none');
-      if (ollama?.baseUrl) {
-        setBaseUrl((prev) => prev || ollama.baseUrl!);
-        setCheckedBaseUrl(ollama.baseUrl);
-      }
-    } catch {
-      /* status is best-effort */
+    // Initialise selection + base URL on first load (don't clobber edits).
+    setSelectedProvider((prev) => prev || data.providers.recommended);
+    const ollama = data.providers.options.find((o) => o.authType === 'none');
+    if (ollama?.baseUrl) {
+      setBaseUrl((prev) => prev || ollama.baseUrl!);
+      setCheckedBaseUrl(ollama.baseUrl);
     }
   }
 
@@ -249,47 +196,16 @@ export default function SetupDemoPage() {
     if (chatModel) body.chatModel = chatModel;
     if (embeddingModel) body.embeddingModel = embeddingModel;
 
-    const res = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok || !res.body) {
-      const json = await res.json().catch(() => null);
-      throw new Error(json?.error?.message ?? json?.message ?? `Request failed (${res.status})`);
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split('\n\n');
-      buffer = parts.pop() ?? '';
-      for (const part of parts) {
-        const line = part.trim();
-        if (!line.startsWith('data:')) continue;
-        const payload = line.slice(5).trim();
-        if (payload === '[DONE]') return;
-        let msg: { type?: string; data?: SeedResult; error?: string } & Partial<SeedProgressEvent>;
-        try {
-          msg = JSON.parse(payload);
-        } catch {
-          continue;
-        }
-        if (msg.type === 'progress' && msg.step) {
-          applyProgress(msg as SeedProgressEvent);
-        } else if (msg.type === 'complete' && msg.data) {
-          setResult(msg.data);
-          setApiKey(''); // don't keep the key in component state after use
-          await loadStatus();
-        } else if (msg.type === 'error') {
-          throw new Error(msg.error ?? 'Setup failed');
-        }
+    for await (const msg of await startDemoSeed(body)) {
+      if (msg.type === 'progress' && msg.step) {
+        applyProgress(msg as SeedProgressEvent);
+      } else if (msg.type === 'complete' && msg.data) {
+        setResult(msg.data);
+        setApiKey(''); // don't keep the key in component state after use
+        await loadStatus();
+      } else if (msg.type === 'error') {
+        // With its request id, which the Activity panel shows
+        throw apiErrorFrom(msg, 500, 'Setup failed');
       }
     }
   }
@@ -302,23 +218,14 @@ export default function SetupDemoPage() {
       if (action === 'seed') {
         await streamSeed(force);
       } else {
-        const res = await fetch(ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reset' }),
-        });
-        const json = await res.json();
-        if (!res.ok) {
-          setError(json.error?.message ?? json.message ?? `Request failed (${res.status})`);
-        } else {
-          setResult(json.data ?? json);
-          setStepStates({});
-          setStepDetails({});
-          await loadStatus();
-        }
+        setResult(await resetDemo());
+        setStepStates({});
+        setStepDetails({});
+        await loadStatus();
       }
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e, 'Setup failed'));
+      reportActionError(action === 'seed' ? 'Set up the demo' : 'Reset the demo', e, { inline: true });
     } finally {
       setBusy(null);
     }
@@ -757,18 +664,30 @@ export default function SetupDemoPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Check className="h-4 w-4 text-emerald-600" />
+              {result.failed?.length ? (
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+              ) : (
+                <Check className="h-4 w-4 text-emerald-600" />
+              )}
               {result.action === 'reset'
-                ? 'Demo reset'
+                ? result.failed?.length
+                  ? 'Demo only partly reset'
+                  : 'Demo reset'
                 : result.skipped
                   ? 'Already configured'
                   : 'Demo ready 🎉'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            {result.action === 'reset' && (
+            {result.action === 'reset' && !result.failed?.length && (
               <p className="text-muted-foreground">
                 Removed {result.deleted?.length ?? 0} item(s). You can set the demo up again above.
+              </p>
+            )}
+            {result.action === 'reset' && !!result.failed?.length && (
+              <p className="text-muted-foreground">
+                Removed {result.deleted?.length ?? 0} item(s), but couldn&apos;t remove {result.failed.join(', ')}. The server
+                log says why; reset again once it&apos;s fixed.
               </p>
             )}
             {result.skipped && (

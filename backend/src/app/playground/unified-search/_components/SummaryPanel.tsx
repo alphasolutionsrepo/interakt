@@ -33,8 +33,8 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { reportActionError } from '@/shared/activity/report';
 
-import { toApiError } from '@/shared/api/api-error';
 import { readSummaryStream } from '../_lib/read-summary-stream';
+import { searchExperience } from '../../search/_lib/hooks/useSearchPlayground';
 import { Markdown } from '@/shared/ui/custom/markdown';
 
 // ============================================================================
@@ -77,22 +77,8 @@ export function SummaryPanel({ experienceId, slug, trace = false }: SummaryPanel
 
   // Search mutation
   const searchMutation = useMutation({
-    mutationFn: async () => {
-      // Admin session, not the experience token: a test, untraced unless asked.
-      const response = await fetch(`/api/v1/search/${slug}/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query,
-          pageSize: 10,
-          ...(trace ? { trace: true } : {}),
-        }),
-      });
-
-      if (!response.ok) throw await toApiError(response, 'Search failed');
-      const json = await response.json();
-      return json.data as SearchResponse;
-    },
+    // Admin session, not the experience token: a test, untraced unless asked.
+    mutationFn: () => searchExperience<SearchResponse>(slug, { query, pageSize: 10, ...(trace ? { trace: true } : {}) }),
     onSuccess: (data) => {
       setSearchResults(data);
       setSummary('');

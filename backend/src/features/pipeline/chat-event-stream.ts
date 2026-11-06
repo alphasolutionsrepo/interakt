@@ -22,10 +22,11 @@ export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent' | 'sign
   const encoder = new TextEncoder();
   const sseEvent = (event: PipelineStreamEvent) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
-  // The visitor closed the chat. The turn stops before its next step and isn't saved
-  // (see TurnAbandonedError); until then its events are dropped rather than failing to
-  // send, which the steps would log as errors.
-  let gone = false;
+  // Closed by the visitor, or by us once the turn answered. A visitor closing it stops
+  // the turn before its next step or mid-call, unsaved (see TurnAbandonedError); until
+  // then its events are dropped rather than failing to send, which the steps would log
+  // as errors.
+  let open = true;
   const visitor = new AbortController();
 
   const stream = new ReadableStream({
@@ -33,7 +34,7 @@ export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent' | 'sign
       try {
         await runChatPipeline({
           ...input,
-          onEvent: (event) => { if (!gone) controller.enqueue(sseEvent(event)); },
+          onEvent: (event) => { if (open) controller.enqueue(sseEvent(event)); },
           signal: visitor.signal,
         });
       } catch (err) {
@@ -43,17 +44,20 @@ export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent' | 'sign
         }
         // Logged even when the visitor has gone: it failed all the same
         const { body } = describeError(err, 500, { operation: 'chatTurn', experienceId: input.experience.id });
-        if (!gone) controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
+        if (open) controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
       } finally {
         // Flush telemetry spans before closing — in serverless environments (Vercel)
         // the runtime freezes after the response, so the BatchSpanProcessor's background
         // timer never fires and spans are lost without an explicit flush.
         await flushTelemetry();
-        if (!gone) controller.close();
+        if (open) {
+          open = false;
+          controller.close();
+        }
       }
     },
     cancel() {
-      gone = true;
+      open = false;
       visitor.abort();
     },
   });

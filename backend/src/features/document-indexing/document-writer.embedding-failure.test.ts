@@ -2,8 +2,9 @@
 
 /**
  * When the embedding model fails on a document write, the documents are refused with the
- * reason, and the log says why with the model's error and its causes: the AI service
- * passes the failure on without logging it.
+ * reason, and the model's error (with its causes) is passed on for the write's one log
+ * line, which the answer writes with its request id: neither the AI service nor the
+ * writer logs it.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -26,12 +27,11 @@ vi.mock('@/features/ai-service', () => ({ generateEmbeddings: vi.fn(async () => 
 import { writeDocuments } from './document-writer.service';
 
 describe('an embedding model that fails on a document write', () => {
-  it('refuses the document and logs the error itself, once', async () => {
+  it('refuses the document and passes the error on, without logging it', async () => {
     const result = await writeDocuments('idx', [{ action: 'upload', documentId: 'a', document: { name: 'Linen shirt' } }] as never);
 
     expect(result.errors).toEqual([expect.objectContaining({ operationIndex: 0, error: expect.stringContaining('not found') })]);
-    expect(reported(logs)).toEqual([
-      expect.objectContaining({ level: 'error', context: expect.objectContaining({ indexName: 'products', err: modelDown }) }),
-    ]);
+    expect(result.embeddingError).toBe(modelDown);
+    expect(reported(logs)).toEqual([]);
   });
 });
