@@ -17,6 +17,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import type { ToolExecutionResultV2 } from '../v2.types';
+import { stopIfAbandoned } from '../../turn-abandoned';
 import type { ActionStep, ActionStepContext, ActionStepDeps, ActionStepResult } from './action-step.types';
 
 const logger = createLogger('v2:step:zero-result-retry');
@@ -61,6 +62,20 @@ export class ZeroResultRetryStep implements ActionStep {
     const getResultCount = (r: ToolExecutionResultV2): number | null =>
       r.resultCount ?? (Array.isArray((r.data as any)?.results) ? (r.data as any).results.length : null);
 
+    // One retry, kept when it finds something. A retry failing is not fatal; the visitor
+    // leaving is, so that check is outside the try.
+    const retry = async (retryParams: Record<string, unknown>, step: string, action: string) => {
+      stopIfAbandoned(deps.signal, `retrying ${ctx.action.toolSlug}`);
+      try {
+        const retryResult = await deps.executeTool(ctx.toolId, ctx.action.toolSlug, retryParams);
+        retryLog.push({ step, action, resultCount: getResultCount(retryResult) });
+        if (retryResult.success && !isEmptyResult(retryResult)) {
+          toolResult = retryResult;
+          finalParams = retryParams;
+        }
+      } catch { /* non-fatal */ }
+    };
+
     // Step 1: Relax query (strip filter-value words)
     const relaxedQuery = relaxQueryForFilters(originalQuery, originalFilters);
     const workingQuery = (relaxedQuery && relaxedQuery !== originalQuery) ? relaxedQuery : originalQuery;
@@ -72,16 +87,7 @@ export class ZeroResultRetryStep implements ActionStep {
         relaxedQuery: workingQuery,
       });
 
-      const retryParams = { ...params, query: workingQuery };
-      try {
-        const retryResult = await deps.executeTool(ctx.toolId, ctx.action.toolSlug, retryParams);
-        const count = getResultCount(retryResult);
-        retryLog.push({ step: 'relax_query', action: `"${originalQuery}" → "${workingQuery}"`, resultCount: count });
-        if (retryResult.success && !isEmptyResult(retryResult)) {
-          toolResult = retryResult;
-          finalParams = retryParams;
-        }
-      } catch { /* non-fatal */ }
+      await retry({ ...params, query: workingQuery }, 'relax_query', `"${originalQuery}" → "${workingQuery}"`);
     }
 
     // Step 2: Progressive filter drop (last-added first)
@@ -98,20 +104,11 @@ export class ZeroResultRetryStep implements ActionStep {
           remainingFilters: remainingFilters.map((f) => `${f.field}=${f.value}`),
         });
 
-        const retryParams = { ...params, query: workingQuery, filters: remainingFilters };
-        try {
-          const retryResult = await deps.executeTool(ctx.toolId, ctx.action.toolSlug, retryParams);
-          const count = getResultCount(retryResult);
-          retryLog.push({
-            step: 'drop_filter',
-            action: `Dropped ${droppedFilter.field}=${droppedFilter.value}, ${remainingFilters.length} remaining`,
-            resultCount: count,
-          });
-          if (retryResult.success && !isEmptyResult(retryResult)) {
-            toolResult = retryResult;
-            finalParams = retryParams;
-          }
-        } catch { /* non-fatal */ }
+        await retry(
+          { ...params, query: workingQuery, filters: remainingFilters },
+          'drop_filter',
+          `Dropped ${droppedFilter.field}=${droppedFilter.value}, ${remainingFilters.length} remaining`,
+        );
       }
     }
 
@@ -128,16 +125,7 @@ export class ZeroResultRetryStep implements ActionStep {
         droppedFilters: originalFilters.map((f) => `${f.field}=${f.value}`),
       });
 
-      const retryParams = { ...params, query: enrichedQuery, filters: undefined };
-      try {
-        const retryResult = await deps.executeTool(ctx.toolId, ctx.action.toolSlug, retryParams);
-        const count = getResultCount(retryResult);
-        retryLog.push({ step: 'semantic_fallback', action: `query="${enrichedQuery}", no filters`, resultCount: count });
-        if (retryResult.success && !isEmptyResult(retryResult)) {
-          toolResult = retryResult;
-          finalParams = retryParams;
-        }
-      } catch { /* non-fatal */ }
+      await retry({ ...params, query: enrichedQuery, filters: undefined }, 'semantic_fallback', `query="${enrichedQuery}", no filters`);
     }
 
     const durationMs = Date.now() - start;

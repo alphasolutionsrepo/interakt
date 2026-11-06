@@ -1,17 +1,20 @@
 // src/features/ai-service/ai-service.stream-cancel.test.ts
 
 /**
- * A caller that goes away (a summary the visitor cancelled) aborts its signal,
- * and the model request stops at once, even while the model is still reading a
- * long prompt and has sent nothing. The stream then just ends: a cancel is not
- * an error, not a failed call in usage analytics, and not something to retry.
- * The work the model did up to the cancel is still recorded in usage, as a
- * cancelled call with estimated tokens.
+ * A caller that goes away (a summary the visitor cancelled, a chat they left) aborts
+ * its signal, and the model request stops at once, even while the model is still
+ * reading a long prompt and has sent nothing. A stream then just ends; a chat call
+ * rejects with CancelledRequestError. A cancel is not an error, not a failed call in
+ * usage analytics or the circuit breaker, and not something to retry. The work the
+ * model did up to the cancel is still recorded in usage, as a cancelled call with
+ * estimated tokens.
  *
  * Runs the real AI service and both adapters (Ollama-native and OpenAI-compatible);
  * only the network is faked.
  */
 
+import { SpanStatusCode, trace } from '@opentelemetry/api';
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
@@ -19,6 +22,10 @@ vi.mock('@/shared/logger/logger', () => ({ createLogger: () => log }));
 
 const usage = vi.hoisted(() => ({ trackUsage: vi.fn(), updateRealtimeMetrics: vi.fn() }));
 vi.mock('./ai-service.analytics', () => usage);
+vi.mock('@/features/telemetry/telemetry.config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/telemetry/telemetry.config')>()),
+  isTelemetryEnabled: () => true,
+}));
 
 const provider = vi.hoisted(() => ({ key: 'ollama' }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
@@ -30,8 +37,14 @@ vi.mock('@/features/ai-providers/ai-providers.service', () => ({
   getResolvedDefaults: vi.fn(),
 }));
 
-import { OllamaAdapter, OpenAIAdapter } from './adapters';
-import { streamChat } from './ai-service.service';
+import { CancelledRequestError, OllamaAdapter, OpenAIAdapter } from './adapters';
+import { getCircuitStatus } from './ai-service.resilience';
+import { chat, streamChat } from './ai-service.service';
+
+import { ATTR } from '@/features/telemetry/attribute-keys';
+
+const exporter = new InMemorySpanExporter();
+trace.setGlobalTracerProvider(new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }));
 
 const abortError = () => new DOMException('This operation was aborted', 'AbortError');
 
@@ -192,6 +205,51 @@ describe('cancelling a streaming chat call', () => {
     expect(log.warn).not.toHaveBeenCalled();
     expect(log.error).not.toHaveBeenCalled();
     expect(recorded()).toMatchObject({ success: false });
+  });
+});
+
+describe('cancelling a chat call (not streamed)', () => {
+  const ask = (signal: AbortSignal) => chat([{ role: 'user', content: prompt }], { providerId: 'prov-1', modelId: 7, signal });
+
+  it.each(['ollama', 'openai'])('stops the request and rejects as cancelled, recorded as cancelled usage (%s API style)', async (key) => {
+    provider.key = key;
+    vi.stubGlobal('fetch', silentModel);
+    exporter.reset();
+    const caller = new AbortController();
+
+    const pending = ask(caller.signal);
+    await vi.waitFor(() => expect(silentModel).toHaveBeenCalled());
+    caller.abort();
+
+    await expect(pending).rejects.toBeInstanceOf(CancelledRequestError);
+    expect(silentModel).toHaveBeenCalledOnce(); // not retried
+    expect((silentModel.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
+    expect(log.error).not.toHaveBeenCalled();
+    expect(recorded()).toMatchObject({
+      operation: 'chat',
+      success: true,
+      inputTokens: PROMPT_ESTIMATE,
+      outputTokens: 0,
+      metadata: { cancelled: true, usageEstimated: true },
+    });
+    // Its span says it was cancelled, not that it failed
+    const [span] = exporter.getFinishedSpans().filter((s) => s.name === 'ai.chat');
+    expect(span.status.code).not.toBe(SpanStatusCode.ERROR);
+    expect(span.attributes[ATTR.AI_CANCELLED]).toBe(true);
+  });
+
+  it("doesn't count toward opening the provider's circuit", async () => {
+    vi.stubGlobal('fetch', silentModel);
+
+    for (let i = 0; i < 6; i++) {
+      const caller = new AbortController();
+      const pending = ask(caller.signal);
+      await vi.waitFor(() => expect(silentModel).toHaveBeenCalledTimes(i + 1));
+      caller.abort();
+      await expect(pending).rejects.toBeInstanceOf(CancelledRequestError);
+    }
+
+    expect(getCircuitStatus('prov-1')).toMatchObject({ state: 'closed', failures: 0 });
   });
 });
 

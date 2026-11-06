@@ -56,6 +56,7 @@ function makeDeps(overrides: Partial<PersistenceDeps> = {}): PersistenceDeps {
   return {
     addMessages: vi.fn().mockResolvedValue(undefined),
     updateSession: vi.fn().mockResolvedValue(undefined),
+    discardEmptySession: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

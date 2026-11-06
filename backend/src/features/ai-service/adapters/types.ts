@@ -147,6 +147,13 @@ export function requestSignal(timeout: AbortSignal, caller?: AbortSignal): Abort
     return caller ? AbortSignal.any([timeout, caller]) : timeout;
 }
 
+/** A provider request its caller cancelled (it went away): the call stopped, it didn't fail */
+export class CancelledRequestError extends AdapterError {
+    constructor(providerKey: string) {
+        super('Request cancelled by the caller', providerKey, undefined, false);
+    }
+}
+
 /**
  * The error for a provider request that was aborted. A caller's cancel (a summary
  * the visitor left) is not a timeout: it is not retried and not a provider failure.
@@ -154,7 +161,7 @@ export function requestSignal(timeout: AbortSignal, caller?: AbortSignal): Abort
  */
 export function abortedRequestError(providerKey: string, caller?: AbortSignal): AdapterError {
     return caller?.aborted
-        ? new AdapterError('Request cancelled by the caller', providerKey, undefined, false)
+        ? new CancelledRequestError(providerKey)
         : new AdapterError('Request timed out', providerKey, undefined, true);
 }
 

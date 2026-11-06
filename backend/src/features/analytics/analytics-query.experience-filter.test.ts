@@ -226,6 +226,45 @@ describe('experience comparison table', () => {
   });
 });
 
+describe('experience comparison: chat turns the visitor left', () => {
+  it("counts a turn the visitor left before an outcome as a conversation, but doesn't rate it", async () => {
+    const experience = id();
+    const trace = () => id().replace(/-/g, '');
+    await testDb.db.insert(otelSpans).values([
+      span(trace(), 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experience),
+      // As the pipeline records a turn the visitor left: no outcome, where it stopped
+      span(trace(), 'pipeline.v2.turn', { [ATTR.TURN_ABANDONED]: 'writing the answer' }, experience),
+    ]);
+
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row).toMatchObject({ type: 'ai', volume: 2, successRate: 1 });
+  });
+
+  it("times only the turns that finished: a turn the visitor left lasted as long as they stayed", async () => {
+    const experience = id();
+    const trace = () => id().replace(/-/g, '');
+    const left = { ...span(trace(), 'pipeline.v2.turn', { [ATTR.TURN_ABANDONED]: 'writing the answer' }, experience), durationMs: 90_000 };
+    await testDb.db.insert(otelSpans).values([span(trace(), 'pipeline.v2.turn', { 'alpha.v2.outcome': 'success' }, experience), left]);
+
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row).toMatchObject({ volume: 2, avgLatencyMs: 500 });
+    // The overview's AI time for the experience agrees
+    expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalAIRequests: 2, avgAIDurationMs: 500 });
+  });
+
+  it('has no success rate or time, rather than 0%, when the visitor left every turn', async () => {
+    const experience = id();
+    const trace = () => id().replace(/-/g, '');
+    await testDb.db.insert(otelSpans).values([
+      span(trace(), 'pipeline.v2.turn', { [ATTR.TURN_ABANDONED]: 'writing the answer' }, experience),
+      span(trace(), 'pipeline.v2.turn', { [ATTR.TURN_ABANDONED]: 'calling product-search' }, experience),
+    ]);
+
+    const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
+    expect(row).toMatchObject({ type: 'ai', volume: 2, successRate: null, avgLatencyMs: null });
+  });
+});
+
 describe('searches counted from tool calls (experiences without stored searches)', () => {
   it('counts searches from live chats only, in the overview and the comparison alike', async () => {
     const experience = id();
