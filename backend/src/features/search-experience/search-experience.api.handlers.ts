@@ -19,12 +19,7 @@ import { readJsonBody } from '@/shared/api/read-json-body';
 import { AppError } from '@/shared/errors/app-error';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { analyticsSourceOfTokenCaller, markIfAdminTest } from '@/features/auth/token-or-session';
-import {
-  authenticateAccessToken,
-  createCorsHeaders,
-  handleCorsPreflight,
-  withCors,
-} from './access-token.middleware';
+import { createCorsHeaders, openPublicRequest, withCors } from './access-token.middleware';
 import { publicSearchRequestSchema, autocompleteRequestSchema } from './search-experience.schemas';
 import type {
   SearchExperienceWithIndexes,
@@ -45,21 +40,12 @@ const logger = createLogger('search-experience-api');
  * POST /api/v1/search
  */
 export async function handlePublicSearch(request: NextRequest): Promise<NextResponse> {
-  // Handle CORS preflight
-  if (request.method === 'OPTIONS') {
-    return handleCorsPreflight();
-  }
-
   const startTime = Date.now();
 
-  // 1. Authenticate using access token
-  const authResult = await authenticateAccessToken(request);
-  if (!authResult.success) {
-    return (authResult as { success: false; response: NextResponse }).response;
-  }
-
-  const { experience } = authResult as { success: true; experience: SearchExperienceWithIndexes };
-  const origin = request.headers.get('origin');
+  // 1. CORS preflight, or the access token's experience
+  const opened = await openPublicRequest(request);
+  if ('response' in opened) return opened.response;
+  const { experience, origin } = opened;
 
   try {
     // 2. Parse request body
@@ -137,21 +123,12 @@ function handleSearchError(
  * POST /api/v1/autocomplete
  */
 export async function handleAutocomplete(request: NextRequest): Promise<NextResponse> {
-  // Handle CORS preflight
-  if (request.method === 'OPTIONS') {
-    return handleCorsPreflight();
-  }
-
   const startTime = Date.now();
 
-  // 1. Authenticate using access token
-  const authResult = await authenticateAccessToken(request);
-  if (!authResult.success) {
-    return (authResult as { success: false; response: NextResponse }).response;
-  }
-
-  const { experience } = authResult as { success: true; experience: SearchExperienceWithIndexes };
-  const origin = request.headers.get('origin');
+  // 1. CORS preflight, or the access token's experience
+  const opened = await openPublicRequest(request);
+  if ('response' in opened) return opened.response;
+  const { experience, origin } = opened;
 
   try {
     // The search playground: an admin testing gets a failure explained, not empty suggestions
