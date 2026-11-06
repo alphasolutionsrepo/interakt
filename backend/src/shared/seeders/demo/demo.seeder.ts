@@ -31,6 +31,7 @@ import {
   deleteDataSource,
 } from '@/features/data-source/data-source.service';
 import { indexDocuments } from '@/features/document-indexing/document-indexer.service';
+import { uploadOutcome } from '@/features/document-indexing/upload-outcome';
 import { getSearchEngineProvider } from '@/features/search/providers';
 import {
   createSearchExperience,
@@ -46,7 +47,7 @@ import {
 } from '@/features/search-index/search-index-fields.service';
 import { createSearchIndex, getSearchIndexByName, deleteSearchIndex } from '@/features/search-index/search-index.service';
 import { createToolsForDataSource, getToolsByDataSourceId, splitReadyToAssign, updateTool, deleteTool } from '@/features/tools/tools.service';
-import { ConflictError, SetupRequiredError, ValidationError } from '@/shared/errors/app-error';
+import { AppError, ConflictError, SetupRequiredError, ValidationError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
   calculateChecksum,
@@ -400,6 +401,7 @@ async function seedIndexWithDocs(
   // Bulk-load + embed the documents. indexDocuments reads embedding config and
   // the vector-source field(s) from the index record.
   emit({ step: 'documents', status: 'start', detail: `${documents.length} products` });
+  const startedAt = new Date().toISOString();
   const result = await indexDocuments({
     searchIndexId: indexRecord.id,
     documents,
@@ -412,8 +414,21 @@ async function seedIndexWithDocs(
     failed: result.failedDocuments,
     embeddings: result.embeddingStats?.generated ?? 0,
   });
+  // A demo without its products is broken: nothing indexed, or a write that failed as a
+  // whole (the search service couldn't be reached), fails the setup. The answer logs it
+  // once, with the write error as its cause.
+  const outcome = uploadOutcome(result, startedAt, cfg.documentsFile);
+  if (documents.length > 0 && (outcome.status === 'failed' || result.writeError !== undefined)) {
+    throw new AppError(outcome.error?.message ?? outcome.summary ?? 'The demo products could not be indexed', {
+      code: 'INDEXING_FAILED',
+      status: 500,
+      hint: outcome.error?.hint,
+      cause: result.writeError,
+      ourSide: true,
+    });
+  }
   if (result.failedDocuments > 0) {
-    logger.warn('Some documents failed to index', { failed: result.failedDocuments, sample: result.errors.slice(0, 3), ...(result.writeError !== undefined && { err: result.writeError }) });
+    logger.warn('Some documents failed to index', { failed: result.failedDocuments, sample: result.errors.slice(0, 3) });
   }
   emit({
     step: 'documents',
@@ -655,26 +670,35 @@ async function getAdminUserId(): Promise<string> {
 
 export interface DemoResetSummary {
   deleted: string[];
+  /** What could not be removed: the reset didn't fully complete when any are listed */
+  failed: string[];
 }
 
 /**
  * Delete everything the demo created, in reverse dependency order, then drop
- * the physical Elasticsearch index (which deleteSearchIndex does NOT do) and
- * clear the seed-registry entry. Each step is best-effort so a partial state
- * still cleans up. Provider/system-defaults are intentionally left intact.
+ * the physical search-engine index and clear the seed-registry entry. Each step
+ * is best-effort so a partial state still cleans up; what failed is listed in
+ * the summary. When the index record can't be removed, the registry entry is
+ * kept so the demo still shows as set up and can be reset again.
+ * Provider/system-defaults are intentionally left intact.
  */
 export async function resetDemo(loaded: LoadedDemoManifest): Promise<DemoResetSummary> {
   const { manifest } = loaded;
   const adminId = await getAdminUserId().catch(() => 'system');
   const deleted: string[] = [];
+  const failed: string[] = [];
 
-  const tryStep = async (label: string, fn: () => Promise<unknown>) => {
+  const tryStep = async (label: string, fn: () => Promise<unknown>, level: 'warn' | 'error' = 'warn') => {
     try {
       await fn();
       deleted.push(label);
       logger.info('Deleted', { what: label });
+      return true;
     } catch (e) {
-      logger.warn(`Could not delete ${label} (non-fatal)`, { error: (e as Error).message });
+      failed.push(label);
+      if (level === 'error') logger.error(`Could not delete ${label}`, e as Error);
+      else logger.warn(`Could not delete ${label} (non-fatal)`, { err: e });
+      return false;
     }
   };
 
@@ -694,10 +718,13 @@ export async function resetDemo(loaded: LoadedDemoManifest): Promise<DemoResetSu
     await tryStep(`data source ${manifest.dataSource.slug}`, () => deleteDataSource(ds.id, adminId));
   }
 
-  // Search index (DB record + fields), then the physical ES index.
+  // Search index: deleteSearchIndex drops the engine's index, then the DB record
+  // (+ fields). When it fails the record is still there and still points at the
+  // engine's index, so that is left alone too, and so is the registry entry.
   const index = await getSearchIndexByName(manifest.index.name).catch(() => null);
   if (index) {
-    await tryStep(`search index ${manifest.index.name} (db)`, () => deleteSearchIndex(index.id, adminId));
+    const removed = await tryStep(`search index ${manifest.index.name} (db)`, () => deleteSearchIndex(index.id, adminId), 'error');
+    if (!removed) return { deleted, failed };
     await tryStep(`elasticsearch index ${manifest.index.name}`, async () => {
       const provider = getSearchEngineProvider(manifest.index.searchProvider);
       const result = await provider.deleteIndex(manifest.index.name);
@@ -707,5 +734,5 @@ export async function resetDemo(loaded: LoadedDemoManifest): Promise<DemoResetSu
 
   await tryStep('seed-registry entry', () => deleteRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key));
 
-  return { deleted };
+  return { deleted, failed };
 }

@@ -25,6 +25,9 @@ export const ELASTICSEARCH_CAPABILITIES: ProviderCapabilities = {
     // ES supports autocomplete via edge_ngram analyzer
     supportsAutocomplete: true,
 
+    // ES maps json to object and needs the native shape, which a text query can't search
+    storesJsonAsText: false,
+
     vectorConfig: {
         supportedSimilarities: ['cosine', 'dot_product', 'euclidean'],
         supportedAlgorithms: ['hnsw'],

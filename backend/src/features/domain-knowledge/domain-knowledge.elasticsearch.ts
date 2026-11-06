@@ -174,7 +174,7 @@ export async function createKnowledgeIndex(
  */
 export async function deleteKnowledgeIndex(
   searchIndexId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; cause?: unknown }> {
   const indexName = getKnowledgeIndexName(searchIndexId);
 
   logger.info('Deleting knowledge index', { indexName, searchIndexId });
@@ -185,14 +185,14 @@ export async function deleteKnowledgeIndex(
     if (result.success) {
       logger.info('Knowledge index deleted', { indexName });
     } else {
-      logger.error('Failed to delete knowledge index', { indexName, error: result.error });
+      logger.error('Failed to delete knowledge index', { indexName, err: result.cause ?? result.error });
     }
 
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Error deleting knowledge index', { indexName, error: message });
-    return { success: false, error: message };
+    logger.error('Error deleting knowledge index', { indexName, err: error });
+    return { success: false, error: message, cause: error };
   }
 }
 
