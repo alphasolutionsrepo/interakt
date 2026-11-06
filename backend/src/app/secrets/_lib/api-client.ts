@@ -1,6 +1,6 @@
 // app/secrets/_lib/api-client.ts
 
-import { ApiError, toApiError, handleApiResponse } from '@/shared/api/api-error';
+import { ApiError, handleApiResponse } from '@/shared/api/api-error';
 
 export { ApiError };
 
@@ -30,9 +30,7 @@ export const secretsApi = {
     if (search) params.set('search', search);
     const url = `/api/secrets${params.toString() ? `?${params.toString()}` : ''}`;
     const response = await fetch(url);
-    if (!response.ok) throw await toApiError(response);
-    const json = await response.json();
-    return json.data ?? json;
+    return handleApiResponse<SecretMetadata[]>(response);
   },
 
   create: async (data: CreateSecretPayload): Promise<SecretMetadata> => {

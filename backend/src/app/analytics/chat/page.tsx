@@ -44,38 +44,8 @@ import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ExperienceSelector } from '../_components/ExperienceSelector';
 import { PeriodPicker } from '../_components/PeriodPicker';
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-
-interface AIProvider {
-  id: string;
-  key: string;
-  name: string;
-  type: 'cloud' | 'local';
-  isEnabled: boolean;
-  models: AIModel[];
-}
-
-interface AIModel {
-  id: number;
-  key: string;
-  name: string;
-  type: string;
-  contextWindow?: number;
-}
-
-interface ProvidersResponse {
-  providers: AIProvider[];
-  defaults: {
-    textGeneration: { providerId: string; modelId: number } | null;
-    embedding: { providerId: string; modelId: number } | null;
-    chat: { providerId: string; modelId: number } | null;
-  };
-}
-
+import { aiServiceApi } from '@/app/playground/ai-service/_lib/api-client';
+import { errorText } from '@/shared/api/api-error';
 
 // ============================================================================
 // BACK LINK
@@ -142,12 +112,7 @@ const SUGGESTED_QUESTIONS = [
 function useAIProviders() {
   return useQuery({
     queryKey: ['ai-providers-for-chat'],
-    queryFn: async (): Promise<ProvidersResponse> => {
-      const response = await fetch('/api/ai-service/providers');
-      if (!response.ok) throw new Error('Failed to fetch providers');
-      const data = await response.json();
-      return data.success ? data.data : data;
-    },
+    queryFn: aiServiceApi.getProviders,
     staleTime: 60000,
   });
 }
@@ -229,7 +194,7 @@ export default function AnalyticsChatPage() {
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { data: providersData, isLoading: isLoadingProviders } = useAIProviders();
+  const { data: providersData, isLoading: isLoadingProviders, error: providersError } = useAIProviders();
   const chat = useAnalyticsChat({ providerId: selectedProviderId, modelId: selectedModelId });
   const {
     messages,
@@ -330,6 +295,7 @@ export default function AnalyticsChatPage() {
               </SelectContent>
             </Select>
           )}
+          {providersError && <p className="text-xs text-destructive">{errorText(providersError, 'Failed to load AI providers')}</p>}
         </div>
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Model</label>
