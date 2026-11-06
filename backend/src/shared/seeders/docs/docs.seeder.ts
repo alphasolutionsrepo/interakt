@@ -140,7 +140,7 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
   // Read the docs from disk and compute an idempotency checksum.
   const docs = await readDocs();
   if (docs.length === 0) {
-    throw new Error(`No documentation found at ${DOCS_ROOT}.`);
+    throw new SetupRequiredError(`No documentation found at ${DOCS_ROOT}.`);
   }
   const checksum = calculateChecksum({
     docs: docs.map((d) => ({ slug: d.slug, content: d.content })),

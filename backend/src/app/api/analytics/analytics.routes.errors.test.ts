@@ -26,7 +26,8 @@ vi.mock('@/features/analytics/analytics-processing.service', () => ({
   runAnalyticsProcessing: services.runAnalyticsProcessing,
   getProcessingStatus: services.getProcessingStatus,
 }));
-vi.mock('@/features/analytics', () => ({ getOrCreateSession: vi.fn(), endSession: vi.fn(), generateSessionId: () => 'generated', hashIP: vi.fn() }));
+const sessions = vi.hoisted(() => ({ getOrCreateSession: vi.fn(), endSession: vi.fn() }));
+vi.mock('@/features/analytics', () => ({ ...sessions, generateSessionId: () => 'generated', hashIP: vi.fn() }));
 
 import { DELETE as clearData } from './data/route';
 import { GET as experienceSummary } from './experience-summary/route';
@@ -51,6 +52,19 @@ describe('an analytics request that fails on our side', () => {
   ] as const)('%s answers 500 without the SQL, with a request id, logged once', async (_, failing, call, operation) => {
     const down = failedQuery();
     services[failing].mockRejectedValue(down);
+
+    const res = await call();
+
+    expect(res.status).toBe(500);
+    expectInternalFailure(await res.json(), logs, operation, down);
+  });
+
+  it.each([
+    ['starting a session', 'getOrCreateSession', () => startSession(request('/session', 'POST', { sessionType: 'chat' })), 'startAnalyticsSession'],
+    ['ending a session', 'endSession', () => endSession(request('/session', 'DELETE', { sessionId: 's1' })), 'endAnalyticsSession'],
+  ] as const)('%s that fails answers 500 without the SQL, with a request id, logged once', async (_, failing, call, operation) => {
+    const down = failedQuery();
+    sessions[failing].mockRejectedValueOnce(down);
 
     const res = await call();
 
@@ -92,6 +106,20 @@ describe('an analytics request that is wrong', () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST', error: expect.stringContaining('Invalid scope: everything'), requestId: expect.any(String) });
+  });
+
+  it.each([['null', null], ['a list', []], ['text', 'all']])('clearing with %s for a body answers 400 and clears nothing', async (_, body) => {
+    const res = await clearData(request('/data', 'DELETE', body));
+
+    expect(res.status).toBe(400);
+    expect(services.clearAnalyticsData).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['starting a session', () => startSession(notJson('http://localhost/api/analytics/session', 'POST'))],
+    ['ending a session', () => endSession(notJson('http://localhost/api/analytics/session', 'DELETE'))],
+  ])('%s with a body that is not JSON answers 400, logged once as a warning', async (_, call) => {
+    await expectInvalidJson(await call(), logs);
   });
 
   it('clearing with a body that is not JSON answers 400 and clears nothing (read as {}, it would clear all)', async () => {

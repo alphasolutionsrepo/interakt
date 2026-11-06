@@ -53,7 +53,7 @@ import {
   recreateEmptyIndex,
 } from '@/features/search-index/search-index.service';
 import { DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
-import { ConflictError } from '@/shared/errors/app-error';
+import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { calculateChecksum, getRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-registry.service';
 
@@ -167,7 +167,7 @@ export async function seedDocsSearch(options: { force?: boolean } = {}): Promise
 async function build(force: boolean): Promise<DocsSearchSeedSummary> {
   const adminId = await getAdminUserId();
   const records = buildDocsSearchRecords(await readDocs());
-  if (records.length === 0) throw new Error('No documentation found to index.');
+  if (records.length === 0) throw new SetupRequiredError('No documentation found to index.');
 
   const mode = await resolveSearchMode();
   const previous = await readMeta();

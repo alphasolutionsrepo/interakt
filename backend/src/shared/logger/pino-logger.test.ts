@@ -45,6 +45,14 @@ describe('an error in a log line', () => {
         });
     });
 
+    it("doesn't read a ZodError's issues as errors", async () => {
+        const { z } = await import('zod');
+        const invalid = z.object({ name: z.string() }).safeParse({});
+        const { lines, logger } = capture();
+        logger.error('Request failed', invalid.success ? new Error() : invalid.error);
+        expect(lines[0].err).not.toHaveProperty('errors');
+    });
+
     it('logs text passed as the error as err, not spread into letters', () => {
         const { lines, logger } = capture();
         logger.error('Request failed', 'socket hang up' as unknown as Error, { requestId: 'r1' });

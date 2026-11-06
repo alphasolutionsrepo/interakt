@@ -204,7 +204,8 @@ function expandError(err: Error, depth: number, seen: WeakSet<object>): Record<s
     if (cause !== undefined && depth < MAX_DEPTH) out.cause = serializeError(cause, depth + 1, seen);
     // An AggregateError's own errors aren't enumerable: Node's fetch to localhost fails with
     // one per address tried (::1, 127.0.0.1), and they are what says ECONNREFUSED where
-    const errors = read(err, 'errors');
+    // (a ZodError's errors are its issues, not errors, and are in its details)
+    const errors = err instanceof AggregateError ? read(err, 'errors') : undefined;
     if (Array.isArray(errors) && errors.length > 0 && depth < MAX_DEPTH) {
         out.errors = errors.slice(0, 5).map((e) => serializeError(e, depth + 1, seen));
     }

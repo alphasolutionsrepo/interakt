@@ -20,6 +20,9 @@ export async function DELETE(request: NextRequest) {
   try {
     // A body that can't be read is refused: read as {}, its scope would be all
     const body = await readJsonBody(request);
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return apiResponse.badRequest('The body must be an object: { scope, experienceId }');
+    }
     const { scope = 'all', experienceId } = body as {
       scope?: string;
       experienceId?: string;
