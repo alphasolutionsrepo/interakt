@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'reset') {
       const result = await resetDemo(loaded);
-      logger.info('Demo reset via API', { deleted: result.deleted.length });
+      logger.info('Demo reset via API', { deleted: result.deleted.length, failed: result.failed.length });
       return apiResponse.success({ action: 'reset', ...result });
     }
 

@@ -42,6 +42,8 @@ export interface SeedResult {
   chatExperience?: { slug: string; accessToken: string };
   warmup?: { searchesRun: number; chatTurnsRun: number; analyticsChatTurnsRun: number };
   deleted?: string[];
+  /** Reset only: what could not be removed */
+  failed?: string[];
 }
 
 /** The demo's status; with a URL, also whether Ollama answers there */

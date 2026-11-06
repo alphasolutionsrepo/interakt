@@ -21,6 +21,7 @@ import {
     type GeneratorType,
 } from '@/shared/constants/search-index.constants';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
+import { capabilitiesOf } from '@/features/search/providers/capabilities-by-provider';
 import type { SearchProviderType } from '@/features/search/providers/search-engine-provider.interface';
 
 const logger = createLogger('document-transformer');
@@ -430,16 +431,16 @@ export function transformDocument(
         // Only include fields with values (or null for explicit null)
         if (value !== undefined) {
             // json-typed fields: Azure has no native JSON column, so we serialize
-            // objects/arrays into a string for Edm.String storage. Elasticsearch
-            // maps json → object/nested and REQUIRES the native shape — sending
-            // a string into an object-mapped field is what triggers the runtime
+            // objects/arrays into a string for Edm.String storage (storesJsonAsText).
+            // Elasticsearch maps json → object/nested and REQUIRES the native shape —
+            // sending a string into an object-mapped field is what triggers the runtime
             // error "object mapping for [X] tried to parse field [X] as object,
             // but found a concrete value." Pass through as-is for ES.
             if (
                 field.fieldType === 'json'
                 && value !== null
                 && typeof value === 'object'
-                && provider === 'azure-ai-search'
+                && capabilitiesOf(provider)?.storesJsonAsText
             ) {
                 result.document[field.fieldName] = JSON.stringify(value);
             } else {

@@ -1,0 +1,148 @@
+// src/app/api/admin/setup-demo/route.seed-failure.test.ts
+
+/**
+ * Demo setup with the search service down: the products can't be indexed, so the setup
+ * fails there instead of finishing with "0 indexed". The answer (the JSON response, or
+ * the stream's error event) logs it once, as an error caused by the search service's
+ * error, and nothing after the products step runs. Runs the real seeder and indexer,
+ * with the engine failing the way Elasticsearch does when it can't be reached.
+ */
+
+import { errors } from '@elastic/elasticsearch';
+import { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUser: async () => ({ id: 'admin', role: 'admin' }) }));
+
+const INDEX = { id: 'i1', name: 'shop', searchType: 'keyword', searchProvider: 'elasticsearch' };
+vi.mock('@/shared/seeders/demo/demo-manifest', () => ({
+  loadDemoManifest: async () => ({
+    manifest: {
+      demo: { key: 'demo', name: 'Demo' },
+      provider: {
+        recommended: 'ollama',
+        options: { ollama: { key: 'ollama', label: 'Ollama', authType: 'none', requiredModels: [], defaults: { chatModel: 'chat', embeddingModel: 'embed' } } },
+      },
+      index: { name: 'shop', searchType: 'keyword', searchProvider: 'elasticsearch', documentsFile: 'products.json' },
+      dataSource: { slug: 'source', name: 'Source' },
+      tools: {},
+      searchExperience: { slug: 'search' },
+      chatExperience: { slug: 'chat' },
+      warmup: { enabled: false },
+    },
+    mapping: { fields: [] },
+    documents: [{ id: 'p1', title: 'Linen shirt' }],
+  }),
+}));
+vi.mock('@/shared/seeders/demo/demo-warmup', () => ({ runWarmup: vi.fn() }));
+vi.mock('@/shared/seeders/seed-registry.service', () => ({
+  calculateChecksum: () => 'sum',
+  getRegistryEntry: async () => null,
+  upsertRegistryEntry: vi.fn(),
+  deleteRegistryEntry: vi.fn(),
+}));
+
+// Database: the admin, the index record and the indexing batch
+vi.mock('@/db/index', () => {
+  const chain = (rows: unknown[]) => ({ from: () => ({ where: () => ({ limit: async () => rows }) }) });
+  return {
+    db: {
+      query: { user: { findFirst: async () => ({ id: 'admin', email: 'admin@example.com' }) } },
+      select: () => chain([INDEX]),
+      insert: () => ({ values: () => ({ returning: async () => [{ id: 'b1' }] }) }),
+      update: () => ({ set: () => ({ where: async () => undefined }) }),
+    },
+  };
+});
+vi.mock('@/features/ai-providers/ai-providers.service', () => ({
+  getProviderByKey: async () => ({ id: 'ollama-id' }),
+  updateProvider: vi.fn(),
+  updateModel: vi.fn(),
+  createModel: vi.fn(),
+  formatModelDisplayName: (key: string) => key,
+  updateSystemDefaults: vi.fn(),
+}));
+vi.mock('@/features/ai-providers/ai-providers.repository', () => ({
+  getModelByProviderAndKey: async () => ({ id: 1, isAvailable: true, dimensions: null }),
+}));
+vi.mock('@/features/ai-service', () => ({ generateEmbeddings: vi.fn() }));
+vi.mock('@/features/search-index/search-index.service', () => ({
+  getSearchIndexByName: async () => INDEX,
+  createSearchIndex: vi.fn(),
+  deleteSearchIndex: vi.fn(),
+}));
+vi.mock('@/features/search-index/search-index-fields.service', () => ({
+  getFieldsBySearchIndexId: async () => [],
+  createFieldsFromMappingEntries: async () => ({ created: [], errors: [] }),
+  updateFieldMappingConfig: vi.fn(),
+  updateField: vi.fn(),
+}));
+vi.mock('@/features/search-index/search-index-fields.repository', () => ({ getVectorSourceFields: async () => [] }));
+const later = vi.hoisted(() => ({ getDataSourceBySlug: vi.fn(), createDataSource: vi.fn() }));
+vi.mock('@/features/data-source/data-source.service', () => ({ ...later, performHealthCheck: vi.fn(), deleteDataSource: vi.fn() }));
+vi.mock('@/features/tools/tools.service', () => ({
+  createToolsForDataSource: vi.fn(), getToolsByDataSourceId: vi.fn(), splitReadyToAssign: vi.fn(), updateTool: vi.fn(), deleteTool: vi.fn(),
+}));
+vi.mock('@/features/search-experience/search-experience.service', () => ({
+  createSearchExperience: vi.fn(), getSearchExperienceBySlug: vi.fn(), deleteSearchExperience: vi.fn(),
+}));
+vi.mock('@/features/ai-experience/ai-experience.service', () => ({
+  createAIExperience: vi.fn(), getAIExperienceBySlug: vi.fn(), deleteAIExperience: vi.fn(),
+}));
+
+// What the Elasticsearch client throws when the service can't be reached
+const down = vi.hoisted(() => ({ error: undefined as unknown }));
+vi.mock('@/features/search/providers', () => ({
+  getSearchEngineProvider: () => ({ indexExists: async () => { throw down.error; } }),
+}));
+
+import { POST } from './route';
+
+const seed = (body: Record<string, unknown> = {}) => POST(new NextRequest('http://localhost/api/admin/setup-demo', {
+  method: 'POST',
+  body: JSON.stringify({ action: 'seed', warmup: false, ...body }),
+}));
+
+beforeEach(() => {
+  logs.length = 0;
+  vi.clearAllMocks();
+  down.error = new errors.ConnectionError('connect ECONNREFUSED 127.0.0.1:9200', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+});
+
+const loggedOnce = () => {
+  expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error' })]);
+  const err = reported(logs)[0].context.err as Error;
+  expect(err.message).toBe("None of the 1 documents from products.json were indexed: Elasticsearch couldn't be reached.");
+  expect(err.cause).toBe(down.error);
+  expect(logs.find((line) => line.message.includes('Demo seed complete'))).toBeUndefined();
+  expect(later.getDataSourceBySlug).not.toHaveBeenCalled();
+};
+
+describe('demo setup when the search service is down', () => {
+  it('answers a failure with what happened and what to do, logged once', async () => {
+    const res = await seed();
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toMatchObject({
+      code: 'INDEXING_FAILED',
+      message: "None of the 1 documents from products.json were indexed: Elasticsearch couldn't be reached.",
+      hint: expect.stringContaining('Check that the service is running'),
+    });
+    loggedOnce();
+  });
+
+  it('ends the progress stream with an error event, logged once', async () => {
+    const res = await seed({ stream: true });
+    const text = await res.text();
+
+    expect(text).toContain('"type":"error"');
+    expect(text).toContain("None of the 1 documents from products.json were indexed: Elasticsearch couldn't be reached.");
+    expect(text).not.toContain('"type":"complete"');
+    loggedOnce();
+  });
+});

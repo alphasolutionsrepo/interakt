@@ -664,18 +664,30 @@ export default function SetupDemoPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Check className="h-4 w-4 text-emerald-600" />
+              {result.failed?.length ? (
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+              ) : (
+                <Check className="h-4 w-4 text-emerald-600" />
+              )}
               {result.action === 'reset'
-                ? 'Demo reset'
+                ? result.failed?.length
+                  ? 'Demo only partly reset'
+                  : 'Demo reset'
                 : result.skipped
                   ? 'Already configured'
                   : 'Demo ready 🎉'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            {result.action === 'reset' && (
+            {result.action === 'reset' && !result.failed?.length && (
               <p className="text-muted-foreground">
                 Removed {result.deleted?.length ?? 0} item(s). You can set the demo up again above.
+              </p>
+            )}
+            {result.action === 'reset' && !!result.failed?.length && (
+              <p className="text-muted-foreground">
+                Removed {result.deleted?.length ?? 0} item(s), but couldn&apos;t remove {result.failed.join(', ')}. The server
+                log says why; reset again once it&apos;s fixed.
               </p>
             )}
             {result.skipped && (
