@@ -52,7 +52,7 @@ export async function refreshInsightsWorker(
         triggeredBy: triggeredBy ?? 'scheduler',
       });
       if (result.status === 'failed') {
-        logger.error('Insights refresh failed', { jobId: job.id, experienceId: scope, error: result.error });
+        logger.error('Insights refresh failed', { jobId: job.id, experienceId: scope, runId: result.runId, err: result.cause });
         failures.push({ experienceId: scope ?? null, error: result.error });
       } else {
         runs.push({ experienceId: scope ?? null, runId: result.runId, durationMs: result.durationMs });

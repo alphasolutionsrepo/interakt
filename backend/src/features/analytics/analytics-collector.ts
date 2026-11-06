@@ -35,6 +35,16 @@ import type {
   AnalyticsCollectorConfig,
 } from './analytics.types';
 import { inBackground } from '@/shared/telemetry/background';
+import { scrubCredentials } from '@/shared/errors/error-detail';
+
+/**
+ * An event's error as stored: without credentials. The text comes from errors that can
+ * carry a connection URL with its password or a key in a query string, which the logs
+ * leave out and the analytics database mustn't keep either.
+ */
+function storedError(message: string | undefined): string | undefined {
+  return message === undefined ? undefined : scrubCredentials(message);
+}
 
 const logger = createLogger('analytics-collector');
 
@@ -377,7 +387,7 @@ async function flushSearchEvents(): Promise<void> {
         embeddingDurationMs: e.embeddingDurationMs,
         success: e.success,
         errorCode: e.errorCode,
-        errorMessage: e.errorMessage,
+        errorMessage: storedError(e.errorMessage),
         metadata: e.metadata,
       }))
     );
@@ -437,7 +447,7 @@ async function flushAIEvents(): Promise<void> {
           timeToFirstToken: e.timeToFirstToken,
           success: e.success,
           errorCode: e.errorCode,
-          errorMessage: e.errorMessage,
+          errorMessage: storedError(e.errorMessage),
           userId: undefined, // TODO: Add user tracking if needed
           sessionId: e.sessionId,
           feature: e.feature,
@@ -496,7 +506,7 @@ async function flushToolEvents(): Promise<void> {
         durationMs: e.durationMs,
         success: e.success,
         errorCode: e.errorCode,
-        errorMessage: e.errorMessage,
+        errorMessage: storedError(e.errorMessage),
         searchEventId: e.searchEventId,
         actionEventId: e.actionEventId,
         metadata: e.metadata,

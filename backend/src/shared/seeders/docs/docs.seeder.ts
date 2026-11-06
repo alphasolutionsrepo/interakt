@@ -49,6 +49,7 @@ import {
   getToolsByDataSourceId,
   deleteTool,
 } from '@/features/tools/tools.service';
+import { SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
   calculateChecksum,
@@ -105,13 +106,13 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
   const defaults = await getResolvedDefaults();
   const embedding = defaults.embedding;
   if (!embedding.providerId || !embedding.modelId) {
-    throw new Error(
+    throw new SetupRequiredError(
       'No system default embedding model is configured. Configure an AI provider and set ' +
         'system defaults first — the Help Assistant needs it to embed the docs.',
     );
   }
   if (embedding.dimensions && embedding.dimensions !== REQUIRED_EMBEDDING_DIMS) {
-    throw new Error(
+    throw new SetupRequiredError(
       `The system default embedding model ("${embedding.modelKey ?? embedding.modelId}") produces ` +
         `${embedding.dimensions}-dim vectors, but the knowledge base requires ${REQUIRED_EMBEDDING_DIMS}-dim ` +
         `(e.g. OpenAI text-embedding-3-small). Pick a ${REQUIRED_EMBEDDING_DIMS}-dim embedding model, then retry.`,
@@ -139,7 +140,7 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
   // Read the docs from disk and compute an idempotency checksum.
   const docs = await readDocs();
   if (docs.length === 0) {
-    throw new Error(`No documentation found at ${DOCS_ROOT}.`);
+    throw new SetupRequiredError(`No documentation found at ${DOCS_ROOT}.`);
   }
   const checksum = calculateChecksum({
     docs: docs.map((d) => ({ slug: d.slug, content: d.content })),

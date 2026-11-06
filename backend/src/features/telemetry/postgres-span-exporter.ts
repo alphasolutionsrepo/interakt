@@ -14,8 +14,9 @@ import type { SpanExporter, ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import type { ExportResult } from '@opentelemetry/core';
 import { ExportResultCode, suppressTracing } from '@opentelemetry/core';
 import { createLogger } from '@/shared/logger/logger';
-import { ATTR } from './attribute-keys';
+import { ATTR, CONTENT_ATTRIBUTES, CONTENT_EVENTS } from './attribute-keys';
 import { storableSpanData } from './content-policy';
+import { scrubCredentials } from '@/shared/errors/error-detail';
 
 const logger = createLogger('postgres-span-exporter');
 
@@ -138,7 +139,7 @@ export class PostgresSpanExporter implements SpanExporter {
       endTime: new Date(endMs),
       durationMs: Math.round(endMs - startMs),
       statusCode: STATUS_CODES[span.status.code] ?? 'UNSET',
-      statusMessage: span.status.message || null,
+      statusMessage: span.status.message ? scrubCredentials(span.status.message) : null,
 
       // Denormalized fields — use undefined for missing values so Drizzle
       // omits them from the INSERT (avoids passing empty string to uuid columns)
@@ -149,11 +150,11 @@ export class PostgresSpanExporter implements SpanExporter {
       sessionId: (attrs[ATTR.SESSION_ID] as string) || undefined,
 
       // Full payloads
-      attributes: attrs,
+      attributes: scrubbed(attrs),
       events: events.map((e) => ({
         name: e.name,
         timestamp: new Date(hrTimeToMs(e.time)).toISOString(),
-        attributes: (e.attributes as Record<string, unknown>) ?? {},
+        attributes: CONTENT_EVENTS.has(e.name) ? (e.attributes ?? {}) : scrubbed((e.attributes as Record<string, unknown>) ?? {}),
       })),
     };
   }
@@ -161,4 +162,23 @@ export class PostgresSpanExporter implements SpanExporter {
 
 function hrTimeToMs(hrTime: [number, number]): number {
   return hrTime[0] * 1000 + hrTime[1] / 1_000_000;
+}
+
+/**
+ * Attributes with credentials scrubbed from their text, as the logs and the analytics
+ * events are: an error's message or stack (exception events) can carry a connection URL
+ * with its password, or a key in a query string. A visitor's own words (content) are kept
+ * as written: "Basic 12-pack" is a search, not a credential.
+ */
+// Content attributes that hold a failure's text, which is scrubbed like any error's
+const ERROR_TEXT = /\.error$|\.retry_log$/;
+
+function scrubbed(attributes: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(attributes).map(([key, value]) => [
+    key,
+    CONTENT_ATTRIBUTES.has(key) && !ERROR_TEXT.test(key) ? value
+      : typeof value === 'string' ? scrubCredentials(value)
+      : Array.isArray(value) ? value.map((v) => (typeof v === 'string' ? scrubCredentials(v) : v))
+      : value,
+  ]));
 }

@@ -70,6 +70,14 @@ export class ConflictError extends AppError {
     }
 }
 
+/** Something the admin has to set up first (a default model, an API key); the message says what */
+export class SetupRequiredError extends AppError {
+    constructor(message: string) {
+        super(message, { code: 'SETUP_REQUIRED', status: 400 });
+        this.name = 'SetupRequiredError';
+    }
+}
+
 /** A third-party service (search engine, AI provider) failed; details say which and how */
 export class UpstreamError extends AppError {
     constructor(message: string, options: AppErrorOptions) {

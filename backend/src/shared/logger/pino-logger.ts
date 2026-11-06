@@ -240,7 +240,8 @@ export class ServiceLogger implements LoggerInstance {
   }
 
   error(message: string, error?: Error | LogContext, context?: LogContext): void {
-    const fields = error instanceof Error ? { err: error } : error;
+    // An error, or text passed in its place, goes in err; an object is the line's context
+    const fields = error === undefined || (typeof error === 'object' && error !== null && !(error instanceof Error)) ? error : { err: error };
     this.write('error', message, fields || context ? { ...fields, ...context } : undefined);
   }
 

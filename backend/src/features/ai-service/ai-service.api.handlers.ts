@@ -241,10 +241,10 @@ export async function handleChatStream(request: NextRequest) {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {
-          const err = error as Error;
-          // Logged once, with the request id the event carries
-          const { body } = describeError(err, 500, { operation: 'chatStream' });
-          const errorData = JSON.stringify({ error: err.message, requestId: body.requestId });
+          // The same body an error response has (message, also as error, code, hint and
+          // request id); describeError logs it
+          const { body } = describeError(aiCallError(error), 500, { operation: 'chatStream' });
+          const errorData = JSON.stringify(body);
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
           controller.close();
         }
@@ -391,14 +391,17 @@ export async function handleGetProviders(request: NextRequest) {
 }
 
 /**
- * The answer for a failed AI call, logged once (by apiResponse) with the operation: a
- * missing provider or model is 404 (our setup, so logged as an error), anything else the
- * shared error (an open circuit breaker answers 503, the provider being unavailable).
+ * A failed AI call as the error to answer with: a missing provider or model is 404 (our
+ * setup, so logged as an error), anything else the shared error (an open circuit breaker
+ * answers 503, the provider being unavailable).
  */
-function aiCallFailure(error: unknown, operation: string) {
+function aiCallError(error: unknown): unknown {
   const err = error as Error;
-  if (err.message.includes('not found')) {
-    return apiResponse.error(new AppError(err.message, { code: 'NOT_FOUND', status: 404, cause: err, ourSide: true }), undefined, { operation });
-  }
-  return apiResponse.error(err, undefined, { operation });
+  if (err.message.includes('not found')) return new AppError(err.message, { code: 'NOT_FOUND', status: 404, cause: err, ourSide: true });
+  return err;
+}
+
+/** The answer for a failed AI call, logged once (by apiResponse) with the operation */
+function aiCallFailure(error: unknown, operation: string) {
+  return apiResponse.error(aiCallError(error), undefined, { operation });
 }

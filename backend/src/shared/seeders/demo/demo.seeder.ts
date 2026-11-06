@@ -49,7 +49,7 @@ import {
 } from '@/features/search-index/search-index-fields.service';
 import { createSearchIndex, getSearchIndexByName, deleteSearchIndex } from '@/features/search-index/search-index.service';
 import { createToolsForDataSource, getToolsByDataSourceId, splitReadyToAssign, updateTool, deleteTool } from '@/features/tools/tools.service';
-import { AppError, NotFoundError } from '@/shared/errors/app-error';
+import { AppError, ConflictError, NotFoundError, SetupRequiredError, ValidationError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
   calculateChecksum,
@@ -109,7 +109,7 @@ export async function seedDemo(loaded: LoadedDemoManifest, options: DemoSeedOpti
   const providerKey = options.provider ?? manifest.provider.recommended;
   const providerOption = manifest.provider.options[providerKey];
   if (!providerOption) {
-    throw new Error(
+    throw new ValidationError(
       `Unknown provider "${providerKey}". Available: ${Object.keys(manifest.provider.options).join(', ')}.`,
     );
   }
@@ -155,7 +155,7 @@ export async function seedDemo(loaded: LoadedDemoManifest, options: DemoSeedOpti
     const existingIndex = await getSearchIndexByName(manifest.index.name).catch(() => null);
     const existingDims = (existingIndex as { embeddingDimensions?: number | null } | null)?.embeddingDimensions;
     if (existingDims && existingDims !== effectiveEmbeddingDimensions) {
-      throw new Error(
+      throw new ConflictError(
         `The demo index already exists with ${existingDims}-dim embeddings, but "${embeddingModel}" produces ` +
           `${effectiveEmbeddingDimensions}-dim. Reset the demo first, then set it up with "${embeddingModel}".`,
       );
@@ -271,7 +271,7 @@ async function seedProvider(
 
   const provider = await getProviderByKey(key);
   if (!provider) {
-    throw new Error(
+    throw new SetupRequiredError(
       `AI provider "${key}" is not in the catalog. The provider catalog is seeded on app boot — ` +
         `start the app once, then try again.`,
     );
@@ -282,7 +282,7 @@ async function seedProvider(
     // Use the supplied key, or keep the one already stored on the provider.
     const newKey = creds.apiKey?.trim();
     if (!newKey && !provider.hasApiKey) {
-      throw new Error(
+      throw new SetupRequiredError(
         `${option.label} needs an API key. Enter it on the Demo Setup page — hybrid search needs it to embed the catalog.`,
       );
     }
@@ -381,7 +381,7 @@ async function seedIndexWithDocs(
     // user resets first, rather than producing an index/embedding mismatch.
     const existingDims = (indexRecord as { embeddingDimensions?: number | null }).embeddingDimensions;
     if (existingDims && existingDims !== ai.embeddingDimensions) {
-      throw new Error(
+      throw new ConflictError(
         `The demo index already exists with ${existingDims}-dim embeddings, but the selected provider produces ` +
           `${ai.embeddingDimensions}-dim. Reset the demo first, then set it up with the other provider.`,
       );
@@ -679,7 +679,7 @@ async function seedChatExperience(manifest: LoadedDemoManifest['manifest'], data
 async function getAdminUserId(): Promise<string> {
   const admin = await db.query.user.findFirst({ where: eq(user.role, 'admin') });
   if (!admin) {
-    throw new Error(
+    throw new SetupRequiredError(
       'No admin user found. setup:demo seeds the admin from setup/setup.config.yaml — ' +
         'copy setup.config.example.yaml → setup.config.yaml and set an email + password first.',
     );

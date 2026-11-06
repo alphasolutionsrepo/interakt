@@ -13,6 +13,7 @@ import {
   getProcessingStatus,
 } from '@/features/analytics/analytics-processing.service';
 import type { TimeRange } from '@/features/analytics/analytics-query.service';
+import { apiResponse, describeError } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('api-analytics-process');
@@ -94,6 +95,11 @@ export async function POST(request: NextRequest) {
         function emit(msg: Record<string, unknown>) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(msg)}\n\n`));
         }
+        // The same body an error response has, with the request id; describeError logs it
+        function fail(error: unknown, runId?: string) {
+          emit({ type: 'error', ...describeError(error, 500, { operation: 'runAnalyticsProcessing', ...(runId && { runId }) }).body });
+          controller.close();
+        }
 
         try {
           emit({ type: 'status', message: 'Processing started' });
@@ -114,26 +120,29 @@ export async function POST(request: NextRequest) {
               emit({ type: 'status', message: `Processing ${expIds.length} experience(s)...` });
               for (const expId of expIds) {
                 try {
-                  await runAnalyticsProcessing({
+                  const expResult = await runAnalyticsProcessing({
                     experienceId: expId,
                     timeRanges: resolvedRanges,
                     triggeredBy,
                   });
+                  if (expResult.status === 'failed') {
+                    logger.warn('Per-experience processing failed', { experienceId: expId, runId: expResult.runId, err: expResult.cause });
+                  }
                 } catch (err) {
-                  logger.warn('Per-experience processing failed', { experienceId: expId, error: (err as Error).message });
+                  logger.warn('Per-experience processing failed', { experienceId: expId, err });
                 }
               }
             }
           }
 
+          // A failed run is returned, not thrown: its error (often SQL) stays in the log and the run history
+          if (result.status === 'failed') return fail(result.cause, result.runId);
+
           emit({ type: 'complete', result });
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          logger.error('Processing stream error', { error: errorMessage });
-          emit({ type: 'error', error: errorMessage });
-          controller.close();
+          fail(error);
         }
       },
     });
@@ -146,14 +155,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    logger.error('Failed to start processing', { error });
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'startAnalyticsProcessing' });
   }
 }
 
@@ -170,13 +172,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: status });
   } catch (error) {
-    logger.error('Failed to get processing status', { error });
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'getAnalyticsProcessingStatus' });
   }
 }

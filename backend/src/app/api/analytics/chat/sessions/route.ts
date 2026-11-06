@@ -9,14 +9,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
+import { apiResponse } from '@/shared/api/response';
 import {
   listAdminChatSessions,
   createAdminChatSession,
   getAdminChatSessionCount,
 } from '@/features/analytics';
-
-const logger = createLogger('analytics-chat-sessions-api');
 
 // ============================================================================
 // SCHEMAS
@@ -65,19 +63,8 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: `Invalid query parameters: ${error.message}` },
-        { status: 400 }
-      );
-    }
-
-    const err = error as Error;
-    logger.error('Failed to list chat sessions', err);
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
+    return apiResponse.error(error, 500, { operation: 'listAnalyticsChatSessions' });
   }
 }
 
@@ -97,18 +84,7 @@ export async function POST(request: NextRequest) {
       data: session,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: `Invalid request body: ${error.message}` },
-        { status: 400 }
-      );
-    }
-
-    const err = error as Error;
-    logger.error('Failed to create chat session', err);
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
+    return apiResponse.error(error, 500, { operation: 'createAnalyticsChatSession' });
   }
 }

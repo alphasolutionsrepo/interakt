@@ -11,11 +11,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
+import { apiResponse, describeError } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { runAnalyticsPipeline } from '@/features/analytics/pipeline/analytics-pipeline-orchestrator';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';
-
-const logger = createLogger('analytics-chat-stream-api');
 
 // ============================================================================
 // SCHEMA
@@ -54,7 +53,7 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
 
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const parsed = chatRequestSchema.parse(body);
 
     // Stop in the browser closes the connection; stop the turn with it, so it spends no more tokens and isn't saved
@@ -96,10 +95,8 @@ export async function POST(request: NextRequest) {
             emit
           );
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : 'Unknown error';
-          logger.error('Pipeline error', { error: errorMessage });
-          emit({ type: 'error', error: errorMessage });
+          // The same body an error response has, with the request id; describeError logs it
+          emit({ type: 'error', ...describeError(error, 500, { operation: 'analyticsChatStream' }).body });
           emit({ type: 'done', sessionId: parsed.sessionId || '', usage: {}, toolsUsed: [] });
         }
 
@@ -121,18 +118,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    logger.error('Request parsing failed', { error });
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request', details: error.errors },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
+    return apiResponse.error(error, 500, { operation: 'analyticsChatRequest' });
   }
 }

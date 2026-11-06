@@ -15,7 +15,7 @@ vi.mock('server-only', () => ({}));
 const searchDown = vi.hoisted(() => new Error('connect ECONNREFUSED 127.0.0.1:9200'));
 const steps = vi.hoisted(() => ({
   chat: { fn: vi.fn(), error: new Error('chat model not found') },
-  processing: { fn: vi.fn(), error: new Error('analytics database unreachable') },
+  processing: { fn: vi.fn(async () => ({ status: 'completed' })), error: new Error('analytics database unreachable') },
   analyticsChat: { fn: vi.fn(), error: new Error('analytics model not found') },
   flush: { fn: vi.fn(), error: new Error('span exporter down') },
 }));
@@ -56,5 +56,15 @@ describe('a warm-up step that fails', () => {
     step.fn.mockRejectedValueOnce(step.error);
     await runWarmup({ manifest } as never);
     expect(reported(logs).find((line) => line.message === message)?.context).toMatchObject({ err: step.error });
+  });
+
+  it('carries on past analytics processing that returns failed and warns once with its cause', async () => {
+    logs.length = 0;
+    const cause = steps.processing.error;
+    steps.processing.fn.mockResolvedValueOnce({ status: 'failed', error: cause.message, cause } as never);
+    await runWarmup({ manifest } as never);
+    expect(reported(logs).filter((line) => line.message === 'Analytics processing failed (non-fatal)')).toEqual([
+      expect.objectContaining({ level: 'warn', context: { err: cause } }),
+    ]);
   });
 });

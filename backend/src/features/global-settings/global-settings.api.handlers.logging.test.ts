@@ -1,14 +1,16 @@
 // src/features/global-settings/global-settings.api.handlers.logging.test.ts
 
 /**
- * A global settings request that fails answers as before and is logged once, by the error
- * response, with the request id, the operation and the error itself (its stack and
- * causes), not only its message.
+ * A global settings request that fails is logged once, by the error response, with the
+ * request id, the operation and the error itself (its stack and causes), not only its
+ * message. A failure on our side is answered without the error's text (a database error
+ * is its SQL); settings the service refuses are answered with its message.
  */
 
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { expectInternalFailure, expectInvalidJson, failedQuery, notJson } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -26,17 +28,13 @@ const update = () => handleUpdateGlobalSettings(new NextRequest('http://localhos
 beforeEach(() => { logs.length = 0; });
 
 describe('a global settings request that fails', () => {
-  it('answers a failed read as before and logs it once, as an error with the request id, the operation and the error', async () => {
-    const down = new Error('connect ECONNREFUSED 127.0.0.1:5432');
+  it('answers a failed read without the SQL, with a request id, and logs it once, as an error with the operation and the error', async () => {
+    const down = failedQuery();
     service.getGlobalSettingsForApi.mockRejectedValue(down);
     const res = await handleGetGlobalSettings();
-    const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body).toMatchObject({ message: down.message });
-    expect(reported(logs)).toEqual([
-      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: body.requestId, operation: 'getGlobalSettings', err: down }) }),
-    ]);
+    expectInternalFailure(await res.json(), logs, 'getGlobalSettings', down);
   });
 
   it('answers settings the service refuses as before and logs it once, as a warning', async () => {
@@ -48,14 +46,16 @@ describe('a global settings request that fails', () => {
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ operation: 'updateGlobalSettings' }) })]);
   });
 
-  it('logs a failed update once, as an error with the error', async () => {
-    const down = new Error('connect ECONNREFUSED 127.0.0.1:5432');
+  it('answers a failed update without the SQL, with a request id, and logs it once, as an error with the error', async () => {
+    const down = failedQuery();
     service.updateGlobalSettings.mockRejectedValue(down);
     const res = await update();
 
     expect(res.status).toBe(500);
-    expect(reported(logs)).toEqual([
-      expect.objectContaining({ level: 'error', context: expect.objectContaining({ operation: 'updateGlobalSettings', err: down }) }),
-    ]);
+    expectInternalFailure(await res.json(), logs, 'updateGlobalSettings', down);
+  });
+
+  it('answers an update whose body is not JSON with 400, logged once as a warning', async () => {
+    await expectInvalidJson(await handleUpdateGlobalSettings(notJson('http://localhost/api/settings/search', 'PUT')), logs);
   });
 });

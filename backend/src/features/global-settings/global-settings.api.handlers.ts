@@ -9,6 +9,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { createLogger } from '@/shared/logger/logger';
 import {
     getGlobalSettingsForApi,
@@ -60,11 +61,7 @@ export async function handleGetGlobalSettings() {
         const settings = await getGlobalSettingsForApi();
         return apiResponse.success(settings);
     } catch (error) {
-        return apiResponse.error(
-            error instanceof Error ? error.message : 'Failed to get global settings',
-            500,
-            { operation: 'getGlobalSettings', err: error }
-        );
+        return apiResponse.error(error, 500, { operation: 'getGlobalSettings' });
     }
 }
 
@@ -78,7 +75,7 @@ export async function handleGetGlobalSettings() {
  */
 export async function handleUpdateGlobalSettings(request: NextRequest) {
     try {
-        const body = await request.json();
+        const body = await readJsonBody(request);
 
         // Validate input
         const validation = updateSettingsSchema.safeParse(body);
@@ -109,10 +106,6 @@ export async function handleUpdateGlobalSettings(request: NextRequest) {
             return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'updateGlobalSettings' });
         }
 
-        return apiResponse.error(
-            error instanceof Error ? error.message : 'Failed to update global settings',
-            500,
-            { operation: 'updateGlobalSettings', err: error }
-        );
+        return apiResponse.error(error, 500, { operation: 'updateGlobalSettings' });
     }
 }

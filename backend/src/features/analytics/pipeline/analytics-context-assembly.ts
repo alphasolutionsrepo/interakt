@@ -9,7 +9,7 @@
 
 import 'server-only';
 
-import { createLogger } from '@/shared/logger/logger';
+import { ConflictError } from '@/shared/errors/app-error';
 import { getAnalyticsConfig } from '../analytics-config';
 import { ANALYTICS_TOOL_SUMMARIES } from './analytics-turn-planner';
 import type {
@@ -19,7 +19,6 @@ import type {
   AnalyticsToolSummary,
 } from './analytics-pipeline.types';
 
-const logger = createLogger('analytics-context-assembly');
 
 // ============================================================================
 // HELPERS
@@ -81,11 +80,9 @@ export async function assembleAnalyticsContext(input: {
       const sessionExperienceId = session?.experienceId ?? null;
       if (session && (session.messageCount ?? 0) > 0 && sessionExperienceId !== (input.experienceId ?? null)) {
         const scope = sessionExperienceId ? `"${session.experienceName ?? 'another experience'}"` : 'all experiences';
-        return {
-          success: false,
-          summary: `This conversation is about ${scope}. Start a new conversation to ask about a different experience.`,
-          durationMs: Date.now() - startTime,
-        };
+        const summary = `This conversation is about ${scope}. Start a new conversation to ask about a different experience.`;
+        // A refusal the asker reads as it is
+        return { success: false, summary, error: new ConflictError(summary), durationMs: Date.now() - startTime };
       }
 
       if (session) {
@@ -143,10 +140,11 @@ export async function assembleAnalyticsContext(input: {
       durationMs: Date.now() - startTime,
     };
   } catch (error) {
-    logger.error('Context assembly failed', { error });
+    // Not logged here: the pipeline answers with it, which logs it once
     return {
       success: false,
       summary: `Context assembly failed: ${error instanceof Error ? error.message : 'Unknown'}`,
+      error,
       durationMs: Date.now() - startTime,
     };
   }

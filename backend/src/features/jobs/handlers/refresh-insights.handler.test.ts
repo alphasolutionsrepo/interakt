@@ -8,6 +8,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { refreshInsightsWorker } from './refresh-insights.handler';
+
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 const { runAnalyticsProcessing, listRecentlyActiveExperienceIds } = vi.hoisted(() => ({
   runAnalyticsProcessing: vi.fn(),
   listRecentlyActiveExperienceIds: vi.fn(),
@@ -15,9 +21,8 @@ const { runAnalyticsProcessing, listRecentlyActiveExperienceIds } = vi.hoisted((
 vi.mock('@/features/analytics/analytics-processing.service', () => ({ runAnalyticsProcessing }));
 vi.mock('@/features/analytics/analytics-insights.service', () => ({ listRecentlyActiveExperienceIds }));
 
-import { refreshInsightsWorker } from './refresh-insights.handler';
-
 beforeEach(() => {
+  logs.length = 0;
   runAnalyticsProcessing.mockReset();
   listRecentlyActiveExperienceIds.mockReset().mockResolvedValue(['exp-a', 'exp-b']);
 });
@@ -50,6 +55,20 @@ describe('refreshInsightsWorker', () => {
 
     expect(result.runs.map((r) => r.experienceId)).toEqual([null, 'exp-b']);
     expect(result.failures).toEqual([{ experienceId: 'exp-a', error: 'model timeout' }]);
+  });
+
+  it('logs a failing experience once, with the error itself so its stack is kept', async () => {
+    const timeout = new Error('model timeout');
+    runAnalyticsProcessing
+      .mockResolvedValueOnce({ status: 'completed', runId: 'r0', durationMs: 5 })
+      .mockResolvedValueOnce({ status: 'failed', runId: 'r1', error: timeout.message, cause: timeout })
+      .mockResolvedValueOnce({ status: 'completed', runId: 'r2', durationMs: 5 });
+
+    await refreshInsightsWorker([{ id: 'job', data: {} }]);
+
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', message: 'Insights refresh failed', context: expect.objectContaining({ experienceId: 'exp-a', runId: 'r1', err: timeout }) }),
+    ]);
   });
 
   it('fails the job when nothing could be refreshed, so it is retried', async () => {
