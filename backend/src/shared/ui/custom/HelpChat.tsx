@@ -17,7 +17,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DocBody } from '@/shared/help/DocBody';
 import { HELP_EXPERIENCE_SLUG } from '@/shared/help/help-content';
 import { reportActionError } from '@/shared/activity/report';
-import { ApiError, apiErrorFrom, errorText } from '@/shared/api/api-error';
+import { ApiError, errorText } from '@/shared/api/api-error';
+
+import { helpChatError } from './help-chat-error';
 import { startExperienceChat } from './start-experience-chat';
 
 interface ChatMessage {
@@ -120,12 +122,9 @@ export function useHelpChat(): HelpChat {
               }
             } else if (type === 'error') {
               // The Activity panel keeps its request id
-              reportActionError('Ask the help assistant', apiErrorFrom(ev, 500, 'unknown error'), { inline: true });
-              patch((m) => ({
-                ...m,
-                content: m.content || `Sorry — something went wrong: ${String(ev.error ?? 'unknown error')}`,
-                step: undefined,
-              }));
+              const { error, reply } = helpChatError(ev);
+              reportActionError('Ask the help assistant', error, { inline: true });
+              patch((m) => ({ ...m, content: m.content || reply, step: undefined }));
             }
           }
         }
