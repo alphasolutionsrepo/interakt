@@ -106,8 +106,7 @@ async function executeManagedSearch(
   const query = input.query ?? '';
   const maxResults = config.maxResults ?? 10;
 
-  const requested = buildFilterClauses(input.filters);
-  const merged = mergeDefaultFilters(config.defaultFilters, requested);
+  const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
   // The AI's Search tool, not a visitor's search: reports list it under Assistant Searches.
@@ -186,6 +185,8 @@ async function executeExternalSearch(
   const requested = buildFilterClauses(input.filters);
   const merged = mergeDefaultFilters(config.defaultFilters, requested);
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
+  // The fields returned and highlighted are sent too, so a refusal can be about them
+  const sentFields = { selectFields: config.responseFields, highlightFields: highlightFields?.split(',') };
 
   const connector = getConnector(source.provider);
   if (!connector) {
@@ -207,8 +208,7 @@ async function executeExternalSearch(
         limit: maxResults,
         filters: merged.filters,
         sort: sorting.sort,
-        selectFields: config.responseFields,
-        highlightFields: highlightFields?.split(','),
+        ...sentFields,
       },
       schemaFields,
     );
@@ -238,8 +238,11 @@ async function executeExternalSearch(
     // experience search; an error when the source failed (it's down, it refused the
     // credentials, it's rate limiting) or refused something the request didn't say. The
     // tool's defaults are the admin's: a refused default is a misconfiguration, not the model's.
+    // So are the fields it returns and highlights: a name the model's filter shares with one
+    // could be about either, so it isn't blamed on the model.
     const sort = sorting.fromDefault ? { fixed: sorting.sort } : { requested: sorting.sort };
-    const refused = !!refusedRequest(error, { query, filters: requested, sort: sort.requested }, schemaFields ?? [], { filters: merged.appliedDefaults, sort: sort.fixed });
+    const includeFields = [...(sentFields.selectFields ?? []), ...(sentFields.highlightFields ?? [])];
+    const refused = !!refusedRequest(error, { query, filters: requested, sort: sort.requested, includeFields }, schemaFields ?? [], { filters: merged.appliedDefaults, sort: sort.fixed });
     logger[refused ? 'warn' : failureLevel(error, 'warn')]('External source search failed', { dataSourceId: source.dataSourceId, provider: source.provider, err: error });
     result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }

@@ -7,6 +7,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { getDataSourceById } from '@/features/data-source/data-source.service';
 import { ExternalSearchError } from '@/features/data-source/external-search/external-search.types';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
@@ -87,5 +88,40 @@ describe('a chat tool search on an external source', () => {
     await executeDataSourceSearch('ds', { defaultSort: [{ field: 'price', direction: 'asc' }] }, { query: 'linen shirts', sort: [{ field: 'rating', direction: 'desc' }] });
 
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: refused }) })]);
+  });
+
+  // Azure AI Search's wording for a field it doesn't have
+  const unknownRating = () => new ExternalSearchError('Azure AI Search', "Azure AI Search returned HTTP 400: Invalid expression: Could not find a property named 'rating' on type 'search.document'.", 400);
+
+  it('that refused a field the model filtered on is logged once, as a warning', async () => {
+    logs.length = 0;
+    const refused = unknownRating();
+    connector.search.mockRejectedValueOnce(refused);
+
+    await executeDataSourceSearch('ds', { responseFields: ['name'] }, { query: 'linen shirts', filters: [{ field: 'rating', operator: 'gte', value: 4 }] });
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: refused }) })]);
+  });
+
+  it("that refused a field the model filtered on and the tool returns is logged once, as an error: it may be the tool's", async () => {
+    logs.length = 0;
+    const refused = unknownRating();
+    connector.search.mockRejectedValueOnce(refused);
+
+    await executeDataSourceSearch('ds', { responseFields: ['name', 'rating'] }, { query: 'linen shirts', filters: [{ field: 'rating', operator: 'gte', value: 4 }] });
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: refused }) })]);
+  });
+
+  it("that refused a field the model filtered on and the tool highlights is logged once, as an error: it may be the tool's", async () => {
+    logs.length = 0;
+    vi.mocked(getDataSourceById).mockResolvedValueOnce({ schema: { fields: [{ name: 'rating', type: 'string', isSearchable: true }] } } as never);
+    const refused = unknownRating();
+    connector.search.mockRejectedValueOnce(refused);
+
+    await executeDataSourceSearch('ds', {}, { query: 'linen shirts', filters: [{ field: 'rating', operator: 'gte', value: 4 }] });
+
+    expect(connector.search).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ highlightFields: ['rating'] }), expect.anything());
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: refused }) })]);
   });
 });

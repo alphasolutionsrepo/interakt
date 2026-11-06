@@ -106,6 +106,7 @@ vi.mock('@/features/tools/tools.service', () => ({
 }));
 vi.mock('@/features/search-experience/search-experience.service', () => ({
   createSearchExperience: vi.fn(), getSearchExperienceBySlug: later.getSearchExperienceBySlug, deleteSearchExperience: vi.fn(),
+  NotFoundError: class NotFoundError extends Error {},
 }));
 vi.mock('@/features/ai-experience/ai-experience.service', () => ({
   createAIExperience: vi.fn(), getAIExperienceBySlug: later.getAIExperienceBySlug, deleteAIExperience: vi.fn(),
@@ -202,7 +203,31 @@ describe('demo setup when some products fail to index', () => {
     expect((reported(logs)[0].context.err as Error).cause).toBe(timedOut);
     expect(logs.find((line) => line.message.includes('Demo seed complete'))).toBeUndefined();
     expect(later.getDataSourceBySlug).not.toHaveBeenCalled();
-    expect(upsertRegistryEntry).not.toHaveBeenCalled();
+    // Registered as incomplete, so Reset can clear what's left and setting up again re-runs
+    expect(upsertRegistryEntry).toHaveBeenCalledWith('demo', expect.any(String), 'incomplete', expect.objectContaining({ incomplete: true }));
+  });
+
+  it('fails when the search service rejected every product, even with no write error', async () => {
+    products.push({ id: 'p2', title: 'Wool coat' });
+    fields.push({ id: 'f1', fieldName: 'title', fieldType: 'text', sourceFieldName: 'title', transformConfig: { mode: 'source' } });
+    engine.indexExists.mockResolvedValue(true);
+    engine.getIndexStats.mockResolvedValue(null);
+    const rejected = 'mapper_parsing_exception: failed to parse field [price]';
+    engine.bulkIndex.mockResolvedValue({
+      success: false, indexed: 0, failed: 2,
+      errors: [{ index: 0, id: 'p1', error: rejected }, { index: 1, id: 'p2', error: rejected }],
+    });
+
+    const res = await seed();
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toMatchObject({ code: 'INDEXING_FAILED', message: expect.stringMatching(/^None of the 2 documents from products\.json were indexed/) });
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error' })]);
+    expect(logs.find((line) => line.message.includes('Demo seed complete'))).toBeUndefined();
+    expect(later.getDataSourceBySlug).not.toHaveBeenCalled();
+    // Registered as incomplete, so Reset can clear what's left and setting up again re-runs
+    expect(upsertRegistryEntry).toHaveBeenCalledWith('demo', expect.any(String), 'incomplete', expect.objectContaining({ incomplete: true }));
   });
 
   it('warns about the rejected products and finishes the setup', async () => {

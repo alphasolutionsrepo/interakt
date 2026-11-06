@@ -225,7 +225,7 @@ export async function runV2Pipeline(
     },
   );
 
-  onEvent({ type: 'step_complete', stepId: 'context-assembly', stepType: 'episodic_memory', durationMs: ctxResult.durationMs, status: 'ok' });
+  onEvent({ type: 'step_complete', stepId: 'context-assembly', stepType: 'episodic_memory', durationMs: ctxResult.durationMs, status: ctxResult.success ? 'ok' : 'error' });
 
   if (!ctxResult.success || !ctxResult.data) {
     parentSpan.setAttribute('alpha.v2.outcome', 'context_assembly_failed');
