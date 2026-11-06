@@ -83,7 +83,8 @@ export default function AnalyticsConversationsPage() {
             <StatTile label="Conversation turns" value={formatCompact(eff.totalConversations)} hint="Questions the assistant answered" />
             <StatTile
               label="Completed"
-              value={formatPercent(eff.successRate)}
+              // No rate when no turn finished (the visitor left each one)
+              value={eff.successRate === null ? '—' : formatPercent(eff.successRate)}
               hint={`${formatCompact(eff.totalConversations - eff.outcomes.success)} turns didn't complete`}
             />
             <StatTile
