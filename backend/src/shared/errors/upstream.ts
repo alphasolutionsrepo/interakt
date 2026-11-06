@@ -211,8 +211,9 @@ function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     if (status === 401 || status === 403 || /unauthorized|forbidden|authentication|invalid api key|access denied/.test(text)) return 'UPSTREAM_AUTH';
     if (status === 408 || status === 504 || /timed? ?out|etimedout|timeout/.test(text)) return 'UPSTREAM_TIMEOUT';
     // An index whose shards aren't available answers 503 from a service that is up: its own
-    // reason ("all shards failed") says more than "couldn't be reached" and a credentials check
-    if (/no_shard_available|all shards failed/.test(text)) return 'UPSTREAM_ERROR';
+    // reason ("all shards failed", "Search rejected due to missing shards") says more than
+    // "couldn't be reached" and a credentials check
+    if (/no_shard_available|all shards failed|missing shards/.test(text)) return 'UPSTREAM_ERROR';
     if (status === 502 || status === 503 || /econnrefused|enotfound|econnreset|fetch failed|socket hang up|getaddrinfo|serviceunavailable|no living connections/.test(text)) {
         return 'UPSTREAM_UNAVAILABLE';
     }
@@ -291,10 +292,13 @@ function upstreamMessage(err: unknown, body: unknown): string {
         const inner = (b.error && typeof b.error === 'object' ? b.error : b) as Record<string, unknown>;
         // Elasticsearch's root cause says what failed; its top-level reason is often "all shards failed"
         const rootCause = Array.isArray(inner.root_cause) ? (inner.root_cause[0] as Record<string, unknown> | undefined)?.reason : undefined;
-        if (typeof rootCause === 'string') return rootCause;
+        if (typeof rootCause === 'string' && rootCause) return rootCause;
         for (const key of ['message', 'reason']) {
-            if (typeof inner[key] === 'string') return inner[key] as string;
+            if (typeof inner[key] === 'string' && inner[key]) return inner[key] as string;
         }
+        // A search refused for missing shards gives its reason one level down, and an empty one on top
+        const causedBy = (inner.caused_by as Record<string, unknown> | undefined)?.reason;
+        if (typeof causedBy === 'string' && causedBy) return causedBy.replace(/\s*Consider using `allow_partial_search_results`[^.]*\./, '');
     }
     if (typeof body === 'string' && body.trim()) return body;
 

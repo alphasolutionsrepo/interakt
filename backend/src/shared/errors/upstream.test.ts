@@ -177,6 +177,15 @@ describe('classifyUpstream with the Elasticsearch client errors', () => {
         expect(err?.hint).toBeUndefined();
     });
 
+    it('explains a search refused for missing shards by the reason Elasticsearch gives under it', () => {
+        // What a real Elasticsearch 9 answered (6 Nov) with allow_partial_search_results=false, as reindex reads
+        const body = { error: { root_cause: [], type: 'search_phase_execution_exception', reason: '', phase: 'query', grouped: true, failed_shards: [],
+            caused_by: { type: 'search_phase_execution_exception', reason: 'Search rejected due to missing shards [[shop][0]]. Consider using `allow_partial_search_results` setting to bypass this error.', phase: 'query', grouped: true, failed_shards: [] } }, status: 503 };
+        const err = classifyUpstream(new esErrors.ResponseError({ body, statusCode: 503, headers: {}, meta: {} as never, warnings: null }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', details: { message: 'Search rejected due to missing shards [[shop][0]].' } });
+        expect(err?.hint).toBeUndefined();
+    });
+
     it('leaves blocks that are about availability to the availability explanation', () => {
         const err = classifyUpstream(blocked(503, 'blocked by: [SERVICE_UNAVAILABLE/1/state not recovered / initialized];'));
         expect(err?.code).toBe('UPSTREAM_UNAVAILABLE');

@@ -1269,24 +1269,33 @@ function uploadAgain(hint: string | undefined, reupload: string): string {
 export const DELETE_SETTLE = { checks: 5, intervalMs: 1000 };
 
 /**
- * Whether a delete that failed took the index away. A refused delete leaves it whole;
- * one that broke off with no answer (a timeout, a dropped connection) can still go
- * through on the service after we gave up, so it is watched for a few seconds.
+ * Whether a delete that failed took the index away. A refused delete leaves it whole.
+ * One that broke off with no answer (a timeout, a dropped connection) can still go
+ * through on the service after we gave up: it is watched for a few seconds, then, if the
+ * index is still there, asked for again, since deleting it is what the reindex is doing.
+ * Only an answer from the service says the index was left whole.
  */
 async function deleteOutcome(
-    provider: { indexExists(name: string): Promise<boolean> },
+    provider: { indexExists(name: string): Promise<boolean>; deleteIndex(name: string): Promise<{ success: boolean; cause?: unknown }> },
     indexName: string,
     cause: unknown
 ): Promise<'deleted' | 'whole' | 'unknown'> {
-    const answered = (toAppError(cause).details as { status?: number } | undefined)?.status;
-    const checks = answered ? 1 : DELETE_SETTLE.checks;
-    for (let i = 0; i < checks; i++) {
+    const answered = (error: unknown) => !!(toAppError(error).details as { status?: number } | undefined)?.status;
+    const exists = () => provider.indexExists(indexName).catch(() => undefined);
+    const outcome = (found: boolean | undefined) => (found === undefined ? 'unknown' : found ? 'whole' : 'deleted');
+
+    if (answered(cause)) return outcome(await exists());
+    for (let i = 0; i < DELETE_SETTLE.checks; i++) {
         if (i > 0) await new Promise((resolve) => setTimeout(resolve, DELETE_SETTLE.intervalMs));
-        const exists = await provider.indexExists(indexName).catch(() => undefined);
-        if (exists === undefined) return 'unknown';
-        if (!exists) return 'deleted';
+        const found = await exists();
+        if (found !== true) return outcome(found);
     }
-    return 'whole';
+    // Still there: the delete never reached it, or is queued behind other work. Ask again
+    const again = await provider.deleteIndex(indexName);
+    if (again.success) return 'deleted';
+    const found = await exists();
+    if (found === false) return 'deleted';
+    return found === true && answered(again.cause) ? 'whole' : 'unknown';
 }
 
 /** How a reindex that finished ended: some documents failing to write back is partial */

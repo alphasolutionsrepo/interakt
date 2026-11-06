@@ -159,11 +159,12 @@ describe('triggerReindex stopped before it changed the index', () => {
     });
 
     it("leaves the index as it is when its shards aren't available, with Elasticsearch's reason", async () => {
-        const body = { error: { root_cause: [{ type: 'no_shard_available_action_exception', reason: null }], type: 'search_phase_execution_exception', reason: 'all shards failed' }, status: 503 };
+        // What the read gets from a real Elasticsearch 9 (6 Nov), asking for complete results
+        const body = { error: { root_cause: [], type: 'search_phase_execution_exception', reason: '', caused_by: { type: 'search_phase_execution_exception', reason: 'Search rejected due to missing shards [[shop][0]]. Consider using `allow_partial_search_results` setting to bypass this error.' } }, status: 503 };
         const noShards = new esErrors.ResponseError({ body, statusCode: 503, headers: {}, meta: {} as never, warnings: null });
         state.engine = { fetchAllDocuments: async () => ({ success: false, documents: [], error: noShards.message, cause: noShards }) };
         const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
-        expect(thrown).toMatchObject({ message: "Couldn't read the index's documents, so it was left as it is: all shards failed" });
+        expect(thrown).toMatchObject({ message: "Couldn't read the index's documents, so it was left as it is: Search rejected due to missing shards [[shop][0]]." });
         expect((thrown as { hint?: string }).hint ?? '').not.toMatch(/endpoint|admin key/);
         expect(state.statuses).toEqual(['indexing', 'active']);
     });
@@ -204,16 +205,37 @@ describe('triggerReindex stopped before it changed the index', () => {
             expect(result).toMatchObject({ documentCount: 2, outcome: { status: 'succeeded' } });
         });
 
-        it('leaves the index as it is when it is still there after the wait', async () => {
-            let checks = 0;
+        it('asks again when the index is still there after the wait, and carries on when that goes through', async () => {
+            state.bulk = { success: true, indexed: 2, failed: 0, errors: [], took: 1 };
+            let deletes = 0;
             state.engine = {
-                indexExists: async () => { checks++; return true; },
-                deleteIndex: async () => ({ success: false, error: 'timed out', cause: timedOut() }),
+                indexExists: async () => true,
+                deleteIndex: async () => (++deletes === 1 ? { success: false, error: 'timed out', cause: timedOut() } : { success: true }),
+            };
+            const result = await triggerReindex('i1', 'u1');
+            expect(deletes).toBe(2);
+            expect(result).toMatchObject({ documentCount: 2, outcome: { status: 'succeeded' } });
+        });
+
+        it('leaves the index as it is when the service refuses the second delete and the index is there', async () => {
+            let deletes = 0;
+            state.engine = {
+                indexExists: async () => true,
+                deleteIndex: async () => (++deletes === 1 ? { success: false, error: 'timed out', cause: timedOut() } : { success: false, error: 'blocked', cause: refused() }),
             };
             const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
             expect((thrown as Error).message).toMatch(/left as it is/);
             expect(state.statuses).toEqual(['indexing', 'active']);
-            expect(checks).toBeGreaterThan(DELETE_SETTLE.checks);
+        });
+
+        it("doesn't say 'left as it is' when the second delete breaks off too: the index is marked errored", async () => {
+            state.engine = {
+                indexExists: async () => true,
+                deleteIndex: async () => ({ success: false, error: 'timed out', cause: timedOut() }),
+            };
+            const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+            expect((thrown as Error).message).not.toMatch(/left as it is/);
+            expect(state.statuses).toEqual(['indexing', 'error']);
         });
     });
 
