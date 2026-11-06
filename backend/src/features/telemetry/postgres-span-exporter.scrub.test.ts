@@ -71,6 +71,8 @@ describe('a span that keeps content', () => {
         'alpha.telemetry.content_recorded': true,
         'alpha.search.query': 'Basic 12-pack',
         'alpha.error.detail': [failure, 'token=sk-live-123'],
+        // A content attribute, but a failure's text: scrubbed like any error
+        'alpha.v2.step.error': 'Search failed: postgres://interakt:s3cret-step@db.internal:5432/app',
       },
       events: [{ name: 'ai.response', time, attributes: { 'ai.response.text': 'Try the Basic 12-pack' } }],
     })], () => resolve()));
@@ -81,5 +83,6 @@ describe('a span that keeps content', () => {
     expect(JSON.stringify(row.events)).toContain('Try the Basic 12-pack');
     expect(JSON.stringify(row)).not.toContain('hunter2');
     expect(JSON.stringify(row)).not.toContain('sk-live-123');
+    expect(JSON.stringify(row)).not.toContain('s3cret-step');
   });
 });

@@ -170,10 +170,13 @@ function hrTimeToMs(hrTime: [number, number]): number {
  * with its password, or a key in a query string. A visitor's own words (content) are kept
  * as written: "Basic 12-pack" is a search, not a credential.
  */
+// Content attributes that hold a failure's text, which is scrubbed like any error's
+const ERROR_TEXT = /\.error$|\.retry_log$/;
+
 function scrubbed(attributes: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(attributes).map(([key, value]) => [
     key,
-    CONTENT_ATTRIBUTES.has(key) ? value
+    CONTENT_ATTRIBUTES.has(key) && !ERROR_TEXT.test(key) ? value
       : typeof value === 'string' ? scrubCredentials(value)
       : Array.isArray(value) ? value.map((v) => (typeof v === 'string' ? scrubCredentials(v) : v))
       : value,

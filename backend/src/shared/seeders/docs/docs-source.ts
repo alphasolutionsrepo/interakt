@@ -28,7 +28,11 @@ export interface DocFile {
 
 /** Recursively read every .md under DOCS_ROOT, frontmatter-stripped. */
 export async function readDocs(): Promise<DocFile[]> {
-  const entries = await fs.readdir(DOCS_ROOT, { recursive: true, withFileTypes: true });
+  const entries = await fs.readdir(DOCS_ROOT, { recursive: true, withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    // A deployment built without the docs folder: a setup step, not a server failure
+    if (error.code === 'ENOENT') throw new SetupRequiredError(`No documentation found at ${DOCS_ROOT}.`);
+    throw error;
+  });
   const docs: DocFile[] = [];
 
   for (const entry of entries) {
