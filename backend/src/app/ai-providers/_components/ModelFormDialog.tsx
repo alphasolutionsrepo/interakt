@@ -404,7 +404,7 @@ export function ModelFormDialog({
                                         Reasoning
                                     </Label>
                                     <p className="text-xs text-slate-500">
-                                        For thinking models. If replies come back empty, try a lower level; not every model accepts every level. On Ollama, Minimal turns thinking off (Low on gpt-oss)
+                                        For thinking models. If replies come back empty, try a lower level; not every model accepts every level. With the Ollama provider, Minimal turns thinking off (Low on gpt-oss)
                                     </p>
                                 </div>
                                 <Select
