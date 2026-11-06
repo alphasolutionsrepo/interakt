@@ -38,8 +38,9 @@ import { Switch } from '@/components/ui/switch';
 import {
   buildEmbedSnippet,
   type EmbedBrandingConfig,
-  type Widget,
 } from '@/features/embed/build-snippet';
+import { fetchEmbedSnippet, type EmbedSnippet } from '@/shared/ui/custom/fetch-embed-snippet';
+import { errorText } from '@/shared/api/api-error';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
 
 
@@ -52,18 +53,9 @@ interface ChatWidgetCardProps {
   defaultOpen?: boolean;
 }
 
-interface ServerPayload {
-  widget: Widget;
-  experienceName: string;
-  scriptUrl: string;
-  containerId: string;
-  globalName: string;
-  html: string;
-}
-
 type FetchState =
   | { status: 'loading' }
-  | { status: 'ok'; snippet: ServerPayload }
+  | { status: 'ok'; snippet: EmbedSnippet }
   | { status: 'error'; error: string };
 
 /**
@@ -139,27 +131,11 @@ export function ChatWidgetCard({
     const ac = new AbortController();
     setState({ status: 'loading' });
 
-    const url = new URL('/api/v1/embed-snippet', window.location.origin);
-    if (containerId) url.searchParams.set('containerId', containerId);
-
-    fetch(url.toString(), {
-      method: 'GET',
-      headers: { 'X-Access-Token': accessToken },
-      signal: ac.signal,
-      credentials: 'omit',
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body?.error ?? `HTTP ${res.status}`);
-        }
-        const body = await res.json();
-        return body?.data as ServerPayload;
-      })
+    fetchEmbedSnippet(accessToken, containerId, ac.signal)
       .then((snippet) => setState({ status: 'ok', snippet }))
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setState({ status: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
+        setState({ status: 'error', error: errorText(err, 'Unknown error') });
       });
 
     return () => ac.abort();

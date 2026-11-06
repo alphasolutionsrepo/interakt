@@ -37,11 +37,13 @@ export const cache: CacheManager = (globalThis as Record<string, unknown>)[globa
  *
  * Both keys must go: reads happen by id and by name, and leaving either behind
  * serves a stale index definition — including a field that was just deleted.
+ * The lists go too: they show the index's name and whether it is active.
  */
 export async function clearIndexCache(id: string, name: string): Promise<void> {
     await Promise.all([
         cache.delete(`index:${id}`),
         cache.delete(`index:name:${name}`),
+        cache.deleteByPrefix('list:'),
         invalidateQueryInterpreterCache(id),
     ]);
 }

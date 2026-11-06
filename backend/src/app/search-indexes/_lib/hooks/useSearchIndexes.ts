@@ -16,7 +16,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { searchIndexesApi } from '../api-client';
 import type {
@@ -44,6 +44,15 @@ export const searchIndexKeys = {
     cache: () => [...searchIndexKeys.all, 'cache'] as const,
     cacheStats: () => [...searchIndexKeys.cache(), 'stats'] as const,
 };
+
+/**
+ * Refresh the index lists after an index changes, the active indexes the experience
+ * screens pick from included (kept for five minutes otherwise)
+ */
+function refreshIndexLists(queryClient: QueryClient) {
+    queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+    queryClient.invalidateQueries({ queryKey: searchIndexKeys.allActive() });
+}
 
 // ============================================================================
 // Debounce Hook (internal utility)
@@ -92,8 +101,7 @@ export function useSearchIndexes(params?: UseSearchIndexesParams) {
     const createMutation = useMutation({
         mutationFn: (data: CreateSearchIndexDTO) => searchIndexesApi.create(data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.allActive() });
+            refreshIndexLists(queryClient);
             toast.success('Search index created successfully');
         },
         meta: { label: 'Create search index' },
@@ -103,7 +111,7 @@ export function useSearchIndexes(params?: UseSearchIndexesParams) {
         mutationFn: ({ id, data }: { id: string; data: UpdateSearchIndexDTO }) =>
             searchIndexesApi.update(id, data),
         onSuccess: (updated) => {
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            refreshIndexLists(queryClient);
             queryClient.invalidateQueries({ queryKey: searchIndexKeys.detail(updated.id) });
             toast.success('Search index updated successfully');
         },
@@ -113,8 +121,7 @@ export function useSearchIndexes(params?: UseSearchIndexesParams) {
     const deleteMutation = useMutation({
         mutationFn: (id: string) => searchIndexesApi.delete(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.allActive() });
+            refreshIndexLists(queryClient);
             toast.success('Search index deleted successfully');
         },
         meta: { label: 'Delete search index' },
@@ -181,7 +188,7 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
         mutationFn: (data: UpdateSearchIndexDTO) => searchIndexesApi.update(id, data),
         onSuccess: (updated) => {
             queryClient.setQueryData(searchIndexKeys.detail(id), updated);
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            refreshIndexLists(queryClient);
             toast.success('Search index updated successfully');
         },
         meta: { label: 'Update search index' },
@@ -190,8 +197,7 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
     const deleteMutation = useMutation({
         mutationFn: () => searchIndexesApi.delete(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.allActive() });
+            refreshIndexLists(queryClient);
             toast.success('Search index deleted successfully');
         },
         meta: { label: 'Delete search index' },
@@ -201,7 +207,7 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
         mutationFn: () => searchIndexesApi.activate(id),
         onSuccess: (updated) => {
             queryClient.setQueryData(searchIndexKeys.detail(id), updated);
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            refreshIndexLists(queryClient);
             toast.success('Search index activated');
         },
         meta: { label: 'Activate search index' },
@@ -211,7 +217,7 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
         mutationFn: () => searchIndexesApi.deactivate(id),
         onSuccess: (updated) => {
             queryClient.setQueryData(searchIndexKeys.detail(id), updated);
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            refreshIndexLists(queryClient);
             toast.success('Search index deactivated');
         },
         meta: { label: 'Deactivate search index' },

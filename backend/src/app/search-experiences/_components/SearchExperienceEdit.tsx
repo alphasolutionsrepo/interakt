@@ -54,6 +54,7 @@ import { toast } from 'sonner';
 import { useSearchExperience, useSlugAvailability } from '../_lib/hooks';
 import { useAvailableDisplayFields } from '../_lib/hooks/useAvailableDisplayFields';
 import { ExperienceSourcesCard } from './ExperienceSources';
+import { errorText } from '@/shared/api/api-error';
 import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 import {
   MULTI_INDEX_STRATEGY_INFO,
@@ -142,7 +143,7 @@ interface DisplayConfigTabProps {
 
 function DisplayConfigTab({ experience, displayConfig, onDisplayConfigChange }: DisplayConfigTabProps) {
   // Fields from all attached indexes and external indexes
-  const { availableFields, isLoading: isLoadingFields } = useAvailableDisplayFields(
+  const { availableFields, isLoading: isLoadingFields, error: fieldsError } = useAvailableDisplayFields(
     experience.indexes.map((idx) => idx.searchIndexId),
     (experience.externalSources ?? []).map((src) => src.dataSourceId)
   );
@@ -386,6 +387,7 @@ function DisplayConfigTab({ experience, displayConfig, onDisplayConfigChange }: 
               )}
             </>
           )}
+          {fieldsError && <p className="text-sm text-destructive">{errorText(fieldsError, 'Failed to fetch fields')}</p>}
         </CardContent>
       </Card>
 

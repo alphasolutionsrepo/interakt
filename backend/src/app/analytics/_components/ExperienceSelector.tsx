@@ -15,18 +15,8 @@ import {
 } from '@/shared/ui/components/select';
 import { Bot, Search, Layers } from 'lucide-react';
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-interface ExperienceOption {
-  id: string;
-  name: string;
-  slug: string;
-  type: 'ai' | 'search';
-  isActive: boolean;
-}
+import { loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
+import { errorText } from '@/shared/api/api-error';
 
 // ============================================================================
 // DATA FETCHING
@@ -35,64 +25,7 @@ interface ExperienceOption {
 function useExperiences() {
   return useQuery({
     queryKey: ['analytics-experiences'],
-    queryFn: async (): Promise<{ experiences: ExperienceOption[]; complete: boolean }> => {
-      const results: ExperienceOption[] = [];
-      // False when either list failed to load — a missing experience may then just be unloaded
-      let complete = true;
-
-      // Fetch AI experiences
-      // Response: { success: true, data: AIExperience[], pagination: {...} }
-      try {
-        const aiRes = await fetch('/api/ai-experiences?page=1&pageSize=100');
-        if (!aiRes.ok) complete = false;
-        if (aiRes.ok) {
-          const aiJson = await aiRes.json();
-          // data is the array directly (from successWithPagination)
-          const experiences = Array.isArray(aiJson.data) ? aiJson.data : (aiJson.data?.experiences || []);
-          for (const exp of experiences) {
-            if (exp.id && exp.name) {
-              results.push({
-                id: exp.id,
-                name: exp.name,
-                slug: exp.slug || '',
-                type: 'ai',
-                isActive: exp.isActive !== false,
-              });
-            }
-          }
-        }
-      } catch {
-        complete = false;
-        // Continue even if AI experiences fail
-      }
-
-      // Fetch search experiences (inactive ones too — they can still have historical data)
-      // Response: { success: true, data: SearchExperience[], pagination: {...} }
-      try {
-        const searchRes = await fetch('/api/search-experiences?pageSize=100');
-        if (!searchRes.ok) complete = false;
-        if (searchRes.ok) {
-          const searchJson = await searchRes.json();
-          const experiences = Array.isArray(searchJson.data) ? searchJson.data : [];
-          for (const exp of experiences) {
-            if (exp.id && exp.name) {
-              results.push({
-                id: exp.id,
-                name: exp.name,
-                slug: exp.slug || '',
-                type: 'search',
-                isActive: exp.isActive !== false,
-              });
-            }
-          }
-        }
-      } catch {
-        complete = false;
-        // Continue even if search experiences fail
-      }
-
-      return { experiences: results, complete };
-    },
+    queryFn: loadExperienceOptions,
     staleTime: 60000,
   });
 }
@@ -162,6 +95,10 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
             All Experiences
           </span>
         </SelectItem>
+
+        {data?.errors.map((error, i) => (
+          <p key={i} className="px-2 py-1.5 text-xs text-destructive">{errorText(error, 'Failed to load experiences')}</p>
+        ))}
 
         {missingSelection && (
           <SelectItem value={experienceId}>

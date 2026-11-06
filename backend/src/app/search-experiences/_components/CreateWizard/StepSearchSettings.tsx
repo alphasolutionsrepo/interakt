@@ -38,7 +38,7 @@ import {
   Info,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
-import { useQuery } from '@tanstack/react-query';
+import { useAllActiveSearchIndexes } from '@/app/search-indexes/_lib/hooks/useSearchIndexes';
 import {
   MULTI_INDEX_STRATEGY_INFO,
   RESULT_MERGE_STRATEGY_INFO,
@@ -78,14 +78,7 @@ export function StepSearchSettings({
   const { searchConfig, allowedOrigins } = formData;
 
   // Fetch available indexes (cached from Step 1 via React Query)
-  const { data: indexesData } = useQuery({
-    queryKey: ['search-indexes', 'all-active'],
-    queryFn: async () => {
-      const response = await fetch('/api/search-indexes?isActive=true&pageSize=100');
-      const data = await response.json();
-      return data.data?.items || [];
-    },
-  });
+  const { data: indexesData } = useAllActiveSearchIndexes();
 
   // Determine if any selected index uses a provider with custom (non-native) hybrid
   const { hasCustomHybridProvider, allNativeHybrid, selectedProviders } = useMemo(() => {

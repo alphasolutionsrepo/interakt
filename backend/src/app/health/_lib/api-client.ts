@@ -1,5 +1,7 @@
 // app/health/_lib/api-client.ts
 
+import { handleApiResponse } from '@/shared/api/api-error';
+
 export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy';
 
 export interface ServiceHealth {
@@ -20,38 +22,18 @@ export interface SystemHealth {
 
 export const healthApi = {
   async getSystemHealth(): Promise<SystemHealth> {
-    const response = await fetch('/api/health');
-    if (!response.ok) {
-      throw new Error('Failed to fetch system health');
-    }
-    const json = await response.json();
-    return json.data;
+    return handleApiResponse<SystemHealth>(await fetch('/api/health'), 'Failed to fetch system health');
   },
 
   async getDatabaseHealth(): Promise<ServiceHealth> {
-    const response = await fetch('/api/health/database');
-    if (!response.ok) {
-      throw new Error('Failed to fetch database health');
-    }
-    const json = await response.json();
-    return json.data;
+    return handleApiResponse<ServiceHealth>(await fetch('/api/health/database'), 'Failed to fetch database health');
   },
 
   async getElasticsearchHealth(): Promise<ServiceHealth> {
-    const response = await fetch('/api/health/elasticsearch');
-    if (!response.ok) {
-      throw new Error('Failed to fetch Elasticsearch health');
-    }
-    const json = await response.json();
-    return json.data;
+    return handleApiResponse<ServiceHealth>(await fetch('/api/health/elasticsearch'), 'Failed to fetch Elasticsearch health');
   },
 
   async getAIProvidersHealth(): Promise<ServiceHealth> {
-    const response = await fetch('/api/health/ai-providers');
-    if (!response.ok) {
-      throw new Error('Failed to fetch AI providers health');
-    }
-    const json = await response.json();
-    return json.data;
+    return handleApiResponse<ServiceHealth>(await fetch('/api/health/ai-providers'), 'Failed to fetch AI providers health');
   },
 };
