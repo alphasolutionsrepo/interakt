@@ -33,10 +33,12 @@ import {
 import { indexDocuments } from '@/features/document-indexing/document-indexer.service';
 import { uploadOutcome } from '@/features/document-indexing/upload-outcome';
 import { getSearchEngineProvider } from '@/features/search/providers';
+import { capabilitiesOf } from '@/features/search/providers/capabilities-by-provider';
 import {
   createSearchExperience,
   getSearchExperienceBySlug,
   deleteSearchExperience,
+  NotFoundError as SearchExperienceNotFound,
 } from '@/features/search-experience/search-experience.service';
 import {
   getFieldsBySearchIndexId,
@@ -47,7 +49,7 @@ import {
 } from '@/features/search-index/search-index-fields.service';
 import { createSearchIndex, getSearchIndexByName, deleteSearchIndex } from '@/features/search-index/search-index.service';
 import { createToolsForDataSource, getToolsByDataSourceId, splitReadyToAssign, updateTool, deleteTool } from '@/features/tools/tools.service';
-import { AppError } from '@/shared/errors/app-error';
+import { AppError, NotFoundError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
   calculateChecksum,
@@ -175,46 +177,67 @@ export async function seedDemo(loaded: LoadedDemoManifest, options: DemoSeedOpti
   });
   emit({ step: 'provider', status: 'done', detail: `${providerOption.label}: ${chatModel} · ${providerOption.defaults.embeddingModel}` });
 
-  // 2. Index + 3. fields + 4. documents
-  const index = await seedIndexWithDocs(loaded, { providerId, embeddingModelId, embeddingDimensions }, adminId, emit);
+  // A setup that fails from here on may leave an index and other pieces behind: the demo
+  // is registered as incomplete, so Reset can clear them and setting up again re-runs
+  try {
+    // 2. Index + 3. fields + 4. documents
+    const index = await seedIndexWithDocs(loaded, { providerId, embeddingModelId, embeddingDimensions }, adminId, emit);
 
-  // 5. Data source + tools
-  emit({ step: 'tools', status: 'start' });
-  const { dataSourceId, toolIds } = await seedDataSourceAndTools(manifest, index.id, adminId);
-  emit({ step: 'tools', status: 'done', detail: `${toolIds.length} tools` });
+    // 5. Data source + tools
+    emit({ step: 'tools', status: 'start' });
+    const { dataSourceId, toolIds } = await seedDataSourceAndTools(manifest, index.id, adminId);
+    emit({ step: 'tools', status: 'done', detail: `${toolIds.length} tools` });
 
-  // 6. Search experience
-  emit({ step: 'search', status: 'start' });
-  const searchExp = await seedSearchExperience(manifest, index.id, adminId);
-  emit({ step: 'search', status: 'done', detail: `/${searchExp.slug}` });
+    // 6. Search experience
+    emit({ step: 'search', status: 'start' });
+    const searchExp = await seedSearchExperience(manifest, index.id, adminId);
+    emit({ step: 'search', status: 'done', detail: `/${searchExp.slug}` });
 
-  // 7. Chat experience
-  emit({ step: 'chat', status: 'start' });
-  const chatExp = await seedChatExperience(manifest, dataSourceId, adminId);
-  emit({ step: 'chat', status: 'done', detail: `/${chatExp.slug}` });
+    // 7. Chat experience
+    emit({ step: 'chat', status: 'start' });
+    const chatExp = await seedChatExperience(manifest, dataSourceId, adminId);
+    emit({ step: 'chat', status: 'done', detail: `/${chatExp.slug}` });
 
-  await upsertRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key, checksum, {
-    provider: providerKey,
-    indexId: index.id,
-    dataSourceId,
-    searchExperienceSlug: searchExp.slug,
-    chatExperienceSlug: chatExp.slug,
-    seededAt: new Date().toISOString(),
-  });
+    await upsertRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key, checksum, {
+      provider: providerKey,
+      indexId: index.id,
+      dataSourceId,
+      searchExperienceSlug: searchExp.slug,
+      chatExperienceSlug: chatExp.slug,
+      seededAt: new Date().toISOString(),
+    });
 
-  logger.info('✅ Demo seed complete', { provider: providerKey, index: index.name, search: searchExp.slug, chat: chatExp.slug });
+    logger.info('✅ Demo seed complete', { provider: providerKey, index: index.name, search: searchExp.slug, chat: chatExp.slug });
 
-  return {
-    skipped: false,
-    adminEmail: admin?.email,
-    provider: providerKey,
-    index: { id: index.id, name: index.name, documents: index.documents, embeddings: index.embeddings },
-    dataSourceId,
-    toolIds,
-    searchExperience: searchExp,
-    chatExperience: chatExp,
-  };
+    return {
+      skipped: false,
+      adminEmail: admin?.email,
+      provider: providerKey,
+      index: { id: index.id, name: index.name, documents: index.documents, embeddings: index.embeddings },
+      dataSourceId,
+      toolIds,
+      searchExperience: searchExp,
+      chatExperience: chatExp,
+    };
+  } catch (e) {
+    try {
+      await upsertRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key, INCOMPLETE_SEED, {
+        provider: providerKey,
+        incomplete: true,
+        seededAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn('Could not register the incomplete demo', { err });
+    }
+    throw e;
+  }
 }
+
+/**
+ * The checksum a demo is registered with when its setup or reset didn't finish: it never
+ * matches a real one, so setting up again re-runs, and while it's registered Reset stays on.
+ */
+export const INCOMPLETE_SEED = 'incomplete';
 
 // ---------------------------------------------------------------------------
 // Step 1 — provider + defaults
@@ -677,16 +700,21 @@ export interface DemoResetSummary {
 /**
  * Delete everything the demo created, in reverse dependency order, then drop
  * the physical search-engine index and clear the seed-registry entry. Each step
- * is best-effort so a partial state still cleans up; what failed is listed in
- * the summary. When the index record can't be removed, the registry entry is
- * kept so the demo still shows as set up and can be reset again.
- * Provider/system-defaults are intentionally left intact.
+ * is best-effort so a partial state still cleans up; what failed (a delete, or
+ * a lookup of what to delete) is listed in the summary. While anything is left,
+ * the registry entry is kept so the demo still shows as set up and can be reset
+ * again. Provider/system-defaults are intentionally left intact.
  */
 export async function resetDemo(loaded: LoadedDemoManifest): Promise<DemoResetSummary> {
   const { manifest } = loaded;
   const adminId = await getAdminUserId().catch(() => 'system');
   const deleted: string[] = [];
   const failed: string[] = [];
+
+  const report = (message: string, e: unknown, level: 'warn' | 'error') => {
+    if (level === 'error') logger.error(message, e as Error);
+    else logger.warn(`${message} (non-fatal)`, { err: e });
+  };
 
   const tryStep = async (label: string, fn: () => Promise<unknown>, level: 'warn' | 'error' = 'warn') => {
     try {
@@ -696,43 +724,76 @@ export async function resetDemo(loaded: LoadedDemoManifest): Promise<DemoResetSu
       return true;
     } catch (e) {
       failed.push(label);
-      if (level === 'error') logger.error(`Could not delete ${label}`, e as Error);
-      else logger.warn(`Could not delete ${label} (non-fatal)`, { err: e });
+      report(`Could not delete ${label}`, e, level);
       return false;
     }
   };
 
-  // Chat experience (removes ai_experience_tools links first).
-  const chat = await getAIExperienceBySlug(manifest.chatExperience.slug).catch(() => null);
-  if (chat) await tryStep(`chat experience ${manifest.chatExperience.slug}`, () => deleteAIExperience(chat.id, adminId));
+  // A lookup that fails leaves what it looks for in place, so it is listed as failed
+  // (undefined), not taken as nothing to delete (null).
+  const find = async <T>(label: string, fn: () => Promise<T>, level: 'warn' | 'error' = 'warn'): Promise<T | undefined> => {
+    try {
+      return await fn();
+    } catch (e) {
+      failed.push(label);
+      report(`Could not look up ${label}`, e, level);
+      return undefined;
+    }
+  };
 
-  // Search experience (cascades search_experience_indexes).
-  const search = await getSearchExperienceBySlug(manifest.searchExperience.slug).catch(() => null);
-  if (search) await tryStep(`search experience ${manifest.searchExperience.slug}`, () => deleteSearchExperience(search.id, adminId));
+  // Chat experience (removes ai_experience_tools links first).
+  const chatLabel = `chat experience ${manifest.chatExperience.slug}`;
+  const chat = await find(chatLabel, () => getAIExperienceBySlug(manifest.chatExperience.slug));
+  if (chat) await tryStep(chatLabel, () => deleteAIExperience(chat.id, adminId));
+
+  // Search experience (cascades search_experience_indexes). Its getter throws its
+  // service's own NotFoundError when there is none.
+  const searchLabel = `search experience ${manifest.searchExperience.slug}`;
+  const search = await find(searchLabel, () =>
+    getSearchExperienceBySlug(manifest.searchExperience.slug).catch((e) => {
+      if (e instanceof SearchExperienceNotFound || e instanceof NotFoundError) return null;
+      throw e;
+    }),
+  );
+  if (search) await tryStep(searchLabel, () => deleteSearchExperience(search.id, adminId));
 
   // Data source + its scaffolded tools.
-  const ds = await getDataSourceBySlug(manifest.dataSource.slug).catch(() => null);
+  const dsLabel = `data source ${manifest.dataSource.slug}`;
+  const ds = await find(dsLabel, () => getDataSourceBySlug(manifest.dataSource.slug));
   if (ds) {
-    const tools = await getToolsByDataSourceId(ds.id).catch(() => []);
-    for (const t of tools) await tryStep(`tool ${t.slug}`, () => deleteTool(t.id, adminId));
-    await tryStep(`data source ${manifest.dataSource.slug}`, () => deleteDataSource(ds.id, adminId));
+    const tools = await find(`tools of ${dsLabel}`, () => getToolsByDataSourceId(ds.id));
+    for (const t of tools ?? []) await tryStep(`tool ${t.slug}`, () => deleteTool(t.id, adminId));
+    await tryStep(dsLabel, () => deleteDataSource(ds.id, adminId));
   }
 
   // Search index: deleteSearchIndex drops the engine's index, then the DB record
-  // (+ fields). When it fails the record is still there and still points at the
-  // engine's index, so that is left alone too, and so is the registry entry.
-  const index = await getSearchIndexByName(manifest.index.name).catch(() => null);
-  if (index) {
-    const removed = await tryStep(`search index ${manifest.index.name} (db)`, () => deleteSearchIndex(index.id, adminId), 'error');
-    if (!removed) return { deleted, failed };
-    await tryStep(`elasticsearch index ${manifest.index.name}`, async () => {
+  // (+ fields). While the record is there (or can't be looked up) it still points
+  // at the engine's index, so that is left alone too. Once there is no record the
+  // engine's index is deleted by name (a no-op when it's gone), so a reset that
+  // failed there can be run again.
+  const indexLabel = `search index ${manifest.index.name} (db)`;
+  const index = await find(indexLabel, () => getSearchIndexByName(manifest.index.name), 'error');
+  let recordGone = index === null;
+  if (index) recordGone = await tryStep(indexLabel, () => deleteSearchIndex(index.id, adminId), 'error');
+  if (recordGone) {
+    const engineName = capabilitiesOf(manifest.index.searchProvider)?.displayName ?? 'search engine';
+    await tryStep(`${engineName} index ${manifest.index.name}`, async () => {
       const provider = getSearchEngineProvider(manifest.index.searchProvider);
       const result = await provider.deleteIndex(manifest.index.name);
       if (!result.success) throw new Error(result.error, { cause: result.cause });
     });
   }
 
-  await tryStep('seed-registry entry', () => deleteRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key));
+  // Kept while anything is left, as incomplete: Reset stays on, and setting up again re-runs
+  if (failed.length === 0) await tryStep('seed-registry entry', () => deleteRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key));
+  else {
+    try {
+      await upsertRegistryEntry(SEED_TYPES.DEMO, manifest.demo.key, INCOMPLETE_SEED, { incomplete: true, failed });
+      logger.info('Kept the demo registered as incomplete so it can be reset again', { failed });
+    } catch (e) {
+      report('Could not mark the demo incomplete', e, 'warn');
+    }
+  }
 
   return { deleted, failed };
 }
