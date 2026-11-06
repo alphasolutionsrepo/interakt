@@ -97,6 +97,7 @@ async function callSitecore(
       SITECORE,
       `Sitecore Search returned HTTP ${response.status}${bodyExcerpt(answer.text)}`,
       response.status,
+      settings.fixedFilters,
     );
   }
 

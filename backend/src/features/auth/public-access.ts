@@ -17,7 +17,7 @@
 
 import 'server-only';
 
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest, NextResponse } from 'next/server';
 
 import { clientIp } from '@/shared/api/client-ip';
 import { rateLimiter } from '@/shared/api/rate-limit';
@@ -181,10 +181,7 @@ export function checkPublicAccess(
 
   if (retryAfter) {
     logger.warn(limit === 'daily' ? 'Daily total reached' : 'Rate limit exceeded', { scope, client, retryAfter });
-    return NextResponse.json(
-      { success: false, error: 'Rate limit exceeded', code: 'RATE_LIMIT_EXCEEDED', retryAfter },
-      { status: 429, headers: { 'Retry-After': String(retryAfter) } },
-    );
+    return apiResponse.tooManyRequests(retryAfter);
   }
   return null;
 }

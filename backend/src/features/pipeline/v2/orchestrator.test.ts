@@ -1,12 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 
+const log = vi.hoisted(() => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
 vi.mock('@/shared/logger/logger', () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
+  createLogger: () => log,
 }));
 
 // Every pipeline phase reaches resolveTemplate() (a DB query); unit tests are
@@ -258,17 +259,52 @@ describe('V2 Pipeline Orchestrator', () => {
   });
 
   describe('context assembly failure', () => {
-    it('emits error and returns early', async () => {
+    it('fails the turn with the error as its cause, marks the step failed, sends no error text of its own, and stops its timer', async () => {
       const deps = makeDeps();
-      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockRejectedValue(new Error('DB down'));
-      deps.contextAssembly.sessionLoader.createSession = vi.fn().mockRejectedValue(new Error('DB down'));
-
+      const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
+      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockRejectedValue(down);
+      deps.contextAssembly.sessionLoader.createSession = vi.fn().mockRejectedValue(down);
       const input = makeInput({ sessionId: '' });
-      const result = await runV2Pipeline(input, deps);
 
-      expect(result.responseText).toBe('');
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const thrown = await runV2Pipeline(input, deps).catch((e: unknown) => e);
+
+        // The answer to the caller (chatEventStream) explains and logs it
+        expect((thrown as Error).cause).toBe(down);
+        // The turn's wall-clock timer isn't left running
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
       const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
-      expect(events.some((e: PipelineStreamEvent) => e.type === 'error')).toBe(true);
+      expect(events.some((e: PipelineStreamEvent) => e.type === 'error')).toBe(false);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'step_complete', stepId: 'context-assembly', status: 'error' }));
+    });
+  });
+
+  describe('turn timeout', () => {
+    it('logs a turn that fails after it timed out, once, with its error', async () => {
+      const deps = makeDeps();
+      let fail!: (error: Error) => void;
+      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn(() => new Promise<never>((_, reject) => { fail = reject; }));
+      const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
+      log.error.mockClear();
+
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const turn = runV2Pipeline(makeInput(), deps, { maxTotalDurationMs: 1000 });
+        await vi.advanceTimersByTimeAsync(1000);
+        expect((await turn).responseText).toBe('');
+
+        // The abandoned work fails after the turn was answered
+        fail(down);
+        await new Promise((resolve) => setImmediate(resolve));
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(log.error).toHaveBeenCalledOnce();
+      expect(log.error).toHaveBeenCalledWith('V2 turn failed after it timed out', expect.objectContaining({ cause: down }), { experienceId: 'exp-1', sessionId: 'session-1' });
     });
   });
 });

@@ -245,12 +245,8 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
             return { hits };
         } catch (error) {
-            logger.error('Autocomplete query failed', {
-                indexName,
-                query,
-                error: error instanceof Error ? error.message : 'Unknown error',
-            });
-            return { hits: [] };
+            // Passed on: the caller decides (a visitor's type-ahead stays quiet) and logs it once
+            throw new SearchError(error instanceof Error ? error.message : 'Autocomplete failed', 'PROVIDER_ERROR', { provider: this.name, indexName }, { cause: error });
         }
     }
 

@@ -224,6 +224,20 @@ describe('classifyUpstream with a search Elasticsearch refused', () => {
     });
 });
 
+describe('classifyUpstream with a managed Azure AI Search index', () => {
+    it('does not give index-definition advice for a search Azure refused', () => {
+        // Azure's 400 doesn't say it was a search; the SearchError around it does
+        const refused = Object.assign(new Error("Invalid expression: 'x' is not a valid value for the search mode."), { name: 'RestError', statusCode: 400, code: 'InvalidRequestParameter' });
+        const err = classifyUpstream(new SearchError(refused.message, 'PROVIDER_ERROR', {}, { cause: refused }));
+        expect(err).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Azure AI Search returned an error.' });
+    });
+
+    it('still explains an index-definition problem on a write', () => {
+        const refused = Object.assign(new Error("The property 'colour' is not a valid field of the index."), { name: 'RestError', statusCode: 400, code: 'InvalidRequestParameter' });
+        expect(classifyUpstream(refused)).toMatchObject({ code: 'UPSTREAM_SCHEMA_MISMATCH' });
+    });
+});
+
 describe('classifyUpstream with an external search source', () => {
     // What the external connectors throw (ExternalSearchError), matched by name
     const external = (provider: string, message: string, status?: number) =>

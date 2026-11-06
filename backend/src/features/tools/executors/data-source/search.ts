@@ -13,7 +13,7 @@ import { trackSearch } from '@/features/analytics';
 import { failureLevel } from '@/shared/errors/to-app-error';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
-import { ExternalSearchError } from '@/features/data-source/external-search/external-search.types';
+import { refusedRequest } from '@/features/search-experience/external-refusal';
 import { executeFileStoreSearch } from './file-store';
 import type { UnappliedClause } from '@/features/data-source/external-search/external-query';
 import {
@@ -182,8 +182,11 @@ async function executeExternalSearch(
     }
   }
 
-  const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
+  const requested = buildFilterClauses(input.filters);
+  const merged = mergeDefaultFilters(config.defaultFilters, requested);
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
+  // The fields returned and highlighted are sent too, so a refusal can be about them
+  const sentFields = { selectFields: config.responseFields, highlightFields: highlightFields?.split(',') };
 
   const connector = getConnector(source.provider);
   if (!connector) {
@@ -205,8 +208,7 @@ async function executeExternalSearch(
         limit: maxResults,
         filters: merged.filters,
         sort: sorting.sort,
-        selectFields: config.responseFields,
-        highlightFields: highlightFields?.split(','),
+        ...sentFields,
       },
       schemaFields,
     );
@@ -232,9 +234,15 @@ async function executeExternalSearch(
     };
   } catch (error) {
     // Answered to the model as a failed call, so logged here: a warning when the source
-    // refused this request (400, say a filter value of the wrong type), an error when the
-    // source failed (it's down, it refused the credentials, it's rate limiting)
-    const refused = error instanceof ExternalSearchError && error.status === 400;
+    // refused this request's filter or sort (a value of the wrong type), by the same rule as
+    // experience search; an error when the source failed (it's down, it refused the
+    // credentials, it's rate limiting) or refused something the request didn't say. The
+    // tool's defaults are the admin's: a refused default is a misconfiguration, not the model's.
+    // So are the fields it returns and highlights: a name the model's filter shares with one
+    // could be about either, so it isn't blamed on the model.
+    const sort = sorting.fromDefault ? { fixed: sorting.sort } : { requested: sorting.sort };
+    const includeFields = [...(sentFields.selectFields ?? []), ...(sentFields.highlightFields ?? [])];
+    const refused = !!refusedRequest(error, { query, filters: requested, sort: sort.requested, includeFields }, schemaFields ?? [], { filters: merged.appliedDefaults, sort: sort.fixed });
     logger[refused ? 'warn' : failureLevel(error, 'warn')]('External source search failed', { dataSourceId: source.dataSourceId, provider: source.provider, err: error });
     result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }

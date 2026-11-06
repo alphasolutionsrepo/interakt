@@ -304,8 +304,8 @@ export class AzureSearchProvider implements SearchProvider {
                 return this.autocompleteViaSearch(indexName, query, fields, options);
             }
 
-            logger.error('Azure autocomplete failed', { service: 'azure-search-provider', indexName, query: query.substring(0, 20), error: message });
-            return { hits: [] };
+            // Passed on: the caller decides (a visitor's type-ahead stays quiet) and logs it once
+            throw new SearchError(message, 'PROVIDER_ERROR', { provider: this.name, indexName }, { cause: error });
         }
     }
 
@@ -375,8 +375,7 @@ export class AzureSearchProvider implements SearchProvider {
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Search-based autocomplete failed';
-            logger.error('Azure search-based autocomplete failed', { indexName, error: message });
-            return { hits: [] };
+            throw new SearchError(message, 'PROVIDER_ERROR', { provider: this.name, indexName }, { cause: error });
         }
     }
 

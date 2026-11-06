@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 import { errorText } from '@/shared/api/api-error';
 
-import { readSuggestions } from '../read-suggestions';
+import { askForSuggestions, readSuggestions } from '../read-suggestions';
 
 // ============================================================================
 // TYPES
@@ -146,25 +146,12 @@ export function useAutocomplete(options: UseAutocompleteOptions): UseAutocomplet
       setError(null);
 
       try {
-        // Attach .catch() immediately (before await) so the AbortError rejection
-        // is handled synchronously in the microtask queue, preventing Next.js
-        // Turbopack's global unhandled-rejection handler from intercepting it.
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Access-Token': accessToken,
-          },
-          body: JSON.stringify({
-            query: searchQuery,
-            indexId,
-            maxSuggestions,
-          }),
-          signal: abortControllerRef.current.signal,
-        }).catch((err: unknown) => {
-          if ((err as Error)?.name === 'AbortError') return null;
-          throw err;
-        });
+        const response = await askForSuggestions(
+          apiUrl,
+          accessToken,
+          { query: searchQuery, indexId, maxSuggestions },
+          abortControllerRef.current.signal,
+        );
 
         // null means the request was aborted — bail out silently
         if (!response) return;

@@ -13,7 +13,7 @@
  */
 
 import { leafFilters } from './filter-clauses';
-import type { FilterClause, SearchRequest } from './search.types';
+import type { FilterClause, SearchRequest, SortClause } from './search.types';
 import { SearchError } from './search.types';
 
 
@@ -38,13 +38,14 @@ interface Part { kind: 'filter' | 'sort' | 'other'; field: string; clues: Clue[]
 
 /**
  * Whether the reason marks the clue: a name or text value as [x], 'x' or "x"; a number
- * only as "Value [3000000000] is out of range" or "boolean value [1]", since Elasticsearch's
- * fixed wording has bracketed numbers of its own ("less than or equal to: [10000]")
+ * only as "Value [3000000000] is out of range", "boolean value [1]" or Sitecore's "filter
+ * value '80' not of the expected type", since Elasticsearch's fixed wording has bracketed
+ * numbers of its own ("less than or equal to: [10000]")
  */
 function isMarked(reason: string, clue: Clue): boolean {
     const t = escape(clue.text);
     return clue.numeric
-        ? new RegExp(`value \\[${t}\\]`, 'i').test(reason)
+        ? new RegExp(`value \\[${t}\\]|value '${t}'`, 'i').test(reason)
         : new RegExp(`\\[${t}\\]|'${t}'|"${t}"`).test(reason);
 }
 
@@ -60,13 +61,18 @@ function valueClues(clause: FilterClause): Clue[] {
 /**
  * The 400 to answer when the engine's reason blames the request's filter or sort, or
  * undefined when it can't be told. sentAs gives the names a field reached the engine as
- * (the field itself, a keyword sub-field); the engine names it by one of them.
+ * (the field itself, a keyword sub-field); the engine names it by one of them. fixedFilters
+ * and fixedSort were sent with the request but not written by the caller (the source's own
+ * filters, a tool's defaults): the caller can't be blamed for them, and a name or value they
+ * share with the caller's could be about either.
  */
 export function refusalFor(
     engineReason: string,
     request: SearchRequest,
     sentAs: (field: string) => Array<string | undefined>,
     cause: unknown,
+    fixedFilters: FilterClause[] = [],
+    fixedSort: SortClause[] = [],
 ): SearchError | undefined {
     const window = RESULT_WINDOW.exec(engineReason);
     if (window) return pagingRefusal(Number(window[1]), cause);
@@ -79,6 +85,8 @@ export function refusalFor(
         else parts.push({ kind, field, clues });
     };
     for (const f of leafFilters(request.filters)) add('filter', f.field, [...names(f.field), ...valueClues(f)]);
+    for (const f of leafFilters(fixedFilters)) add('other', f.field, [...names(f.field), ...valueClues(f)]);
+    for (const s of fixedSort) add('other', s.field, names(s.field));
     for (const s of request.sort ?? []) add('sort', s.field, names(s.field));
     // Facets and returned fields are sent under the same names, and can be what was refused;
     // so is the query text, searched in every searchable field

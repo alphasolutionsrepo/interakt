@@ -225,14 +225,13 @@ export async function runV2Pipeline(
     },
   );
 
-  onEvent({ type: 'step_complete', stepId: 'context-assembly', stepType: 'episodic_memory', durationMs: ctxResult.durationMs, status: 'ok' });
+  onEvent({ type: 'step_complete', stepId: 'context-assembly', stepType: 'episodic_memory', durationMs: ctxResult.durationMs, status: ctxResult.success ? 'ok' : 'error' });
 
   if (!ctxResult.success || !ctxResult.data) {
-    const errorMsg = ctxResult.summary;
     parentSpan.setAttribute('alpha.v2.outcome', 'context_assembly_failed');
-    onEvent({ type: 'error', message: errorMsg });
-    onEvent({ type: 'done', sessionId: input.sessionId, usage });
-    return { sessionId: input.sessionId, responseText: '', usage };
+    // Not sent from here: its text can be internal (a database address). The answer to
+    // the caller explains it (plainly to visitors) and logs it once, with the request id.
+    throw new Error(ctxResult.summary, { cause: ctxResult.cause });
   }
 
   const turnContext: TurnContext = ctxResult.data;
@@ -695,14 +694,20 @@ export async function runV2Pipeline(
     }, // end withSpan callback
   ), input.experience.slug); // end withSpan + withExperienceContext
 
-  const raced = await Promise.race([work, timeoutPromise]);
-  if (timeoutHandle) clearTimeout(timeoutHandle);
+  // Cleared however the turn ends, a failure included
+  const raced = await Promise.race([work, timeoutPromise]).finally(() => {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  });
 
   if (raced === PIPELINE_TIMEOUT) {
     logger.warn('V2 pipeline timed out — returning graceful response', {
       experienceId,
       sessionId: input.sessionId,
       maxTotalDurationMs: cfg.maxTotalDurationMs,
+    });
+    // No longer awaited, so a failure after this would otherwise go unreported
+    work.catch((err: Error) => {
+      logger.error('V2 turn failed after it timed out', err, { experienceId, sessionId: input.sessionId });
     });
     onEvent({ type: 'error', message: 'Pipeline execution timed out' });
     onEvent({ type: 'done', sessionId: input.sessionId, usage });

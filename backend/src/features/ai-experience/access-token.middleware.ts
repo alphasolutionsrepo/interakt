@@ -9,7 +9,7 @@
 
 import 'server-only';
 
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest, NextResponse } from 'next/server';
 
 import { getAIExperienceByAccessToken } from './ai-experience.service';
 import type { AIExperienceWithTools } from './ai-experience.types';
@@ -20,6 +20,7 @@ import {
   readAccessToken,
   type AccessCheckOptions,
 } from '@/features/auth/public-access';
+import { apiResponse } from '@/shared/api/response';
 
 export type AIAccessResult =
   | { experience: AIExperienceWithTools; response?: undefined }
@@ -32,15 +33,15 @@ export async function authenticateAIAccessToken(
 ): Promise<AIAccessResult> {
   const accessToken = readAccessToken(request);
   if (!accessToken) {
-    return { response: NextResponse.json({ error: 'Access token is required' }, { status: 401 }) };
+    return { response: apiResponse.unauthorized('Access token is required') };
   }
 
   const experience = await getAIExperienceByAccessToken(accessToken);
   if (!experience) {
-    return { response: NextResponse.json({ error: 'Invalid access token' }, { status: 401 }) };
+    return { response: apiResponse.unauthorized('Invalid access token') };
   }
   if (!experience.isActive) {
-    return { response: NextResponse.json({ error: 'AI Experience is not active' }, { status: 403 }) };
+    return { response: apiResponse.forbidden('AI Experience is not active') };
   }
 
   const refused = checkPublicAccess(request, aiExperienceAccess(experience), options);

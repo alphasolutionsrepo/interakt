@@ -58,6 +58,22 @@ describe('translateFilters — azure-ai-search', () => {
     expect(result.odata).toBe('price le 1100');
   });
 
+  it('turns a range into a pair of bounds, reading a number that arrives as a string', () => {
+    const fields = [field({ name: 'price', type: 'number', providerType: 'Edm.Double' })];
+    const result = translateFilters('azure-ai-search', [filter('price', 'range', { from: '10', to: 50 })], fields);
+
+    expect(result.odata).toBe('price ge 10 and price le 50');
+    expect(result.unapplied).toEqual([]);
+  });
+
+  it('leaves out a range whose bound is not a number, and says so', () => {
+    const fields = [field({ name: 'price', type: 'number', providerType: 'Edm.Double' })];
+    const result = translateFilters('azure-ai-search', [filter('price', 'range', { from: 'cheap' })], fields);
+
+    expect(result.odata ?? '').toBe('');
+    expect(result.unapplied).toEqual([expect.objectContaining({ field: 'price' })]);
+  });
+
   it('combines multiple clauses with and', () => {
     const fields = [
       field({ name: 'brand', providerType: 'Edm.String' }),

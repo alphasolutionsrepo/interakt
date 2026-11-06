@@ -129,8 +129,10 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     const serviceCode = aiServiceCode(err) ?? transportCode(err);
     const found = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
     // Advice about the index definition is for writes, never for a search: external sources
-    // are only searched, and Elasticsearch names a refused search search_phase_execution_exception
-    const searched = provider.kind === 'external' || /search_phase_execution_exception/.test(detail.message);
+    // are only searched, a search's failure comes wrapped in a SearchError (Azure's own text
+    // doesn't say it was a search), and Elasticsearch names a refused search
+    // search_phase_execution_exception
+    const searched = provider.kind === 'external' || cameFromSearch(err) || /search_phase_execution_exception/.test(detail.message);
     const code = searched && found === 'UPSTREAM_SCHEMA_MISMATCH' ? 'UPSTREAM_ERROR' : found;
     const copy = COPY[code];
     const fill = (text: string) => text.replaceAll('{provider}', provider.name).replaceAll('{settings}', SETTINGS[provider.kind]);
@@ -240,6 +242,16 @@ function findProvider(err: unknown): Provider | undefined {
         current = e.cause;
     }
     return undefined;
+}
+
+/** Whether err is, or wraps, the search service's SearchError: it failed during a search */
+function cameFromSearch(err: unknown): boolean {
+    let current: unknown = err;
+    for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
+        if (current.name === 'SearchError') return true;
+        current = (current as Error & { cause?: unknown }).cause;
+    }
+    return false;
 }
 
 function isElasticsearchError(e: Record<string, unknown>): boolean {
