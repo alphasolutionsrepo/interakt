@@ -12,6 +12,7 @@ import 'server-only';
 import { createLogger } from '@/shared/logger/logger';
 import { getHybridSearchDefaults } from '@/features/global-settings';
 import * as repository from './search-experience.repository';
+import { AppError } from '@/shared/errors/app-error';
 import * as cache from './search-experience.cache';
 import {
   createSearchExperienceSchema,
@@ -802,7 +803,7 @@ export async function generateCustomInstructions(
     .filter((ds) => ds?.type === 'search_index_external');
 
   if (validIndexes.length === 0 && externalInfos.length === 0) {
-    throw new Error('No valid indexes found for generating instructions');
+    throw new AppError('None of the selected indexes could be found', { code: 'NOT_FOUND', status: 404 });
   }
 
   let prompt = getGenerateCustomInstructionsPrompt()

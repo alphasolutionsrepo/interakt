@@ -127,7 +127,7 @@ export function classifyUpstream(err: unknown): AppError | undefined {
     // (an index name, PROVIDER_ERROR) would pick the wrong explanation
     const detail = toErrorDetail(provider.error);
     const serviceCode = aiServiceCode(err) ?? transportCode(err);
-    const found = serviceCode ?? codeFor(detail.statusCode, [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' '));
+    const found = serviceCode ?? codeFor(detail.statusCode, detailText(detail));
     // Advice about the index definition is for writes, never for a search: external sources
     // are only searched, a search's failure comes wrapped in a SearchError (Azure's own text
     // doesn't say it was a search), and Elasticsearch names a refused search
@@ -194,6 +194,24 @@ export function explainWriteFailure(writeError: unknown, reason: string | undefi
     return { ...(reason && { reason }) };
 }
 
+const SHARDS_UNAVAILABLE = /no_shard_available|all shards failed|missing shards/;
+
+/**
+ * Whether a search service refused for shards that aren't available (a 503). They come back
+ * after a restart or a failover, so another try can succeed. A query the shards refused
+ * (a 400, also "all shards failed") fails the same way again.
+ */
+export function shardsUnavailable(err: unknown): boolean {
+    const provider = findProvider(err);
+    if (!provider) return false;
+    const detail = toErrorDetail(provider.error);
+    return detail.statusCode === 503 && SHARDS_UNAVAILABLE.test(detailText(detail).toLowerCase());
+}
+
+function detailText(detail: ReturnType<typeof toErrorDetail>): string {
+    return [detail.message, detail.code, ...(detail.causes ?? []), stringify(detail.details)].join(' ');
+}
+
 function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     const text = rawText.toLowerCase();
     // Elasticsearch blocks writes with a 403 (read-only index) or a 429 (disk full):
@@ -215,7 +233,7 @@ function codeFor(status: number | undefined, rawText: string): UpstreamCode {
     // An index whose shards aren't available answers 503 from a service that is up: its own
     // reason ("all shards failed", "Search rejected due to missing shards") says more than
     // "couldn't be reached" and a credentials check
-    if (/no_shard_available|all shards failed|missing shards/.test(text)) return 'UPSTREAM_ERROR';
+    if (SHARDS_UNAVAILABLE.test(text)) return 'UPSTREAM_ERROR';
     if (status === 502 || status === 503 || /econnrefused|enotfound|econnreset|fetch failed|socket hang up|getaddrinfo|serviceunavailable|no living connections/.test(text)) {
         return 'UPSTREAM_UNAVAILABLE';
     }
@@ -267,14 +285,25 @@ export function isAIProviderFailure(err: unknown): boolean {
     return aiServiceCode(err) !== undefined;
 }
 
-function aiServiceCode(err: unknown): UpstreamCode | undefined {
+/** Whether err is, or wraps, a failure of an AI provider: the AI service has retried it already */
+export function failedAtAIProvider(err: unknown): boolean {
+    return isAIProviderFailure(err) || findProvider(err)?.kind === 'ai';
+}
+
+/** The AIServiceError, err or one of its causes, whose code matches */
+export function findAIServiceError(err: unknown, matches: (code: string) => boolean): (Error & { code: string }) | undefined {
     let current: unknown = err;
     for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
         const e = current as Error & Record<string, unknown>;
-        if (e.name === 'AIServiceError' && typeof e.code === 'string' && AI_SERVICE_CODES[e.code]) return AI_SERVICE_CODES[e.code];
+        if (e.name === 'AIServiceError' && typeof e.code === 'string' && matches(e.code)) return current as Error & { code: string };
         current = e.cause;
     }
     return undefined;
+}
+
+function aiServiceCode(err: unknown): UpstreamCode | undefined {
+    const found = findAIServiceError(err, (code) => !!AI_SERVICE_CODES[code]);
+    return found ? AI_SERVICE_CODES[found.code] : undefined;
 }
 
 /**

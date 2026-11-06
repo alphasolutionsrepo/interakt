@@ -1,12 +1,15 @@
 // src/features/ai-service/ai-service.api.handlers.errors.test.ts
 
 /**
- * A failed call from the AI Provider playground answers as before (a missing model is
- * 404, an open circuit breaker 400, anything else the shared error) and is logged once.
+ * A failed call from the AI Provider playground answers as other AI paths do (a missing
+ * model is 404, an open circuit breaker 503 as the provider being unavailable, anything
+ * else the shared error) and is logged once.
  */
 
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { AIServiceError } from './ai-service.types';
 
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
@@ -51,14 +54,15 @@ describe('a failed AI Provider playground call', () => {
     })]);
   });
 
-  it.each(calls)('%s: an open circuit breaker answers 400, logged once as an error (the provider is down) with the request id and the error', async (_, call) => {
-    failWith.error = new Error('Circuit breaker is open for provider ollama');
+  it.each(calls)('%s: an open circuit breaker answers 503 as the provider being unavailable, logged once as an error with the request id and the error', async (_, call) => {
+    // What the resilience layer throws while it has cut the provider off
+    failWith.error = new AIServiceError('Circuit breaker is open - provider temporarily unavailable', 'CIRCUIT_OPEN', 'p1', 'ollama');
     const res = await call();
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body).toMatchObject({ code: 'BAD_REQUEST', message: 'Circuit breaker is open for provider ollama' });
+    expect(body).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE' });
     expect(reported(logs)).toEqual([expect.objectContaining({
-      level: 'error', context: expect.objectContaining({ requestId: body.requestId, err: expect.objectContaining({ cause: failWith.error }) }),
+      level: 'error', context: expect.objectContaining({ requestId: body.requestId, err: failWith.error }),
     })]);
   });
 
