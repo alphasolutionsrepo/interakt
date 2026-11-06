@@ -356,6 +356,33 @@ describe('triggerReindex while another reindex is running', () => {
         expect(state.statuses).toEqual(['indexing', 'active']);
     });
 
+    it('refuses a second reindex sent while the first runs on this server, even after an upload recorded its own job', async () => {
+        state.bulk = { success: true, indexed: 2, failed: 0, errors: [], took: 1 };
+        let release!: () => void;
+        const reading = new Promise<void>((resolve) => { release = resolve; });
+        state.engine = { fetchAllDocuments: async () => { await reading; return { success: true, documents: state.documents }; } };
+
+        const first = triggerReindex('i1', 'u1');
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        // An upload during the reindex recorded its own job over the reindex's
+        state.lastJob = { kind: 'upload', status: 'succeeded', startedAt: new Date().toISOString() };
+        const second = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
+        expect(second).toMatchObject({ code: 'CONFLICT', status: 409 });
+
+        release();
+        expect((await first).outcome).toMatchObject({ status: 'succeeded' });
+    });
+
+    it('lets a reindex run again once the one before it ended, failed or not', async () => {
+        state.engine = { fetchAllDocuments: async () => ({ success: false, error: 'scroll context lost' }) };
+        await triggerReindex('i1', 'u1').catch(() => undefined);
+
+        state.engine = {};
+        state.bulk = { success: true, indexed: 2, failed: 0, errors: [], took: 1 };
+        const result = await triggerReindex('i1', 'u1');
+        expect(result.outcome).toMatchObject({ status: 'succeeded' });
+    });
+
     it('goes ahead when the index is indexing for something other than a running reindex', async () => {
         state.status = 'indexing';
         state.lastJob = { kind: 'reindex', status: 'failed', startedAt: new Date().toISOString() };

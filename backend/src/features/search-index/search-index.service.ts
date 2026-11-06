@@ -928,11 +928,28 @@ export async function triggerReindex(
     }
 
     // A second reindex would rebuild the index under the first, and one that failed early
-    // would set it back to 'active' while the first is still rebuilding it
-    if (reindexRunning(searchIndex)) {
+    // would set it back to 'active' while the first is still rebuilding it. Checked and
+    // taken with no await between, so two requests to this server can't both pass; the
+    // recorded job covers another server's reindex (until an upload records its own job)
+    if (reindexesHere.has(searchIndexId) || reindexRunning(searchIndex)) {
         throw new ConflictError('A reindex is already running for this index');
     }
+    reindexesHere.add(searchIndexId);
+    try {
+        return await reindex(searchIndex, userId);
+    } finally {
+        reindexesHere.delete(searchIndexId);
+    }
+}
 
+/** Indexes this server is reindexing now */
+const reindexesHere = new Set<string>();
+
+async function reindex(
+    searchIndex: NonNullable<Awaited<ReturnType<typeof repository.getSearchIndexById>>>,
+    userId: string
+): Promise<ReindexResult> {
+    const searchIndexId = searchIndex.id;
     const provider = getSearchEngineProvider(searchIndex.searchProvider as SearchProviderType);
 
     const indexName = searchIndex.name;
