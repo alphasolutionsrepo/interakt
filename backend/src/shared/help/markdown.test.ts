@@ -131,5 +131,6 @@ describe('heading ids match section anchors on every real doc', () => {
         if (section.anchor) expect(ids, `${path.basename(file)} #${section.anchor}`).toContain(section.anchor);
       }
     }
-  });
+    // Renders every doc in the repo: well past the default 5s when the suite runs under load
+  }, 30_000);
 });

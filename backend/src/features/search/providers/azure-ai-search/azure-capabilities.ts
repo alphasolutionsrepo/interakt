@@ -25,6 +25,9 @@ export const AZURE_AI_SEARCH_CAPABILITIES: ProviderCapabilities = {
     // Azure uses suggesters (configured at index creation time via buildIndexSettings)
     supportsAutocomplete: true,
 
+    // Azure has no JSON column: json fields are Edm.String, searched like text
+    storesJsonAsText: true,
+
     vectorConfig: {
         supportedSimilarities: ['cosine', 'dot_product', 'euclidean'],
         supportedAlgorithms: ['hnsw', 'exhaustiveKnn'],
