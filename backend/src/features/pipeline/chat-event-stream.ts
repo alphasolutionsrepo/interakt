@@ -17,28 +17,32 @@ export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent'>): Resp
   const encoder = new TextEncoder();
   const sseEvent = (event: PipelineStreamEvent) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
-  // The visitor closed the chat. The turn finishes unseen and is saved like any other:
-  // its events are dropped rather than failing to send, which the steps would log as errors.
-  let gone = false;
+  // Closed by the visitor, or by us once the turn answered (a timed-out turn runs on).
+  // The turn finishes unseen: its events are dropped rather than failing to send, which
+  // the steps would log as errors.
+  let open = true;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        await runChatPipeline({ ...input, onEvent: (event) => { if (!gone) controller.enqueue(sseEvent(event)); } });
+        await runChatPipeline({ ...input, onEvent: (event) => { if (open) controller.enqueue(sseEvent(event)); } });
       } catch (err) {
         // Logged even when the visitor has gone: it failed all the same
         const { body } = describeError(err, 500, { operation: 'chatTurn', experienceId: input.experience.id });
-        if (!gone) controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
+        if (open) controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
       } finally {
         // Flush telemetry spans before closing — in serverless environments (Vercel)
         // the runtime freezes after the response, so the BatchSpanProcessor's background
         // timer never fires and spans are lost without an explicit flush.
         await flushTelemetry();
-        if (!gone) controller.close();
+        if (open) {
+          open = false;
+          controller.close();
+        }
       }
     },
     cancel() {
-      gone = true;
+      open = false;
     },
   });
 
