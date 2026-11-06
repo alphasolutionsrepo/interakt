@@ -27,6 +27,8 @@ import { Loader2, Sparkles, ArrowRight, Check, RefreshCw, Info } from 'lucide-re
 import { useMutation } from '@tanstack/react-query';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { reportActionError } from '@/shared/activity/report';
+import { errorText } from '@/shared/api/api-error';
+import { searchExperiencesApi } from '../../../_lib/api-client';
 
 // ============================================================================
 // TYPES
@@ -51,13 +53,6 @@ export interface CustomInstructionsGeneratorProps {
   currentInstructions?: string;
   /** Callback when instructions are applied */
   onApply: (instructions: string) => void;
-}
-
-interface GenerateResponse {
-  success: boolean;
-  data: {
-    instructions: string;
-  };
 }
 
 // ============================================================================
@@ -90,32 +85,20 @@ export function CustomInstructionsGenerator({
 
   // Generate instructions mutation
   const generateMutation = useMutation({
-    mutationFn: async (): Promise<GenerateResponse> => {
-      const response = await fetch('/api/search-experiences/generate-instructions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          experienceName,
-          experienceDescription,
-          indexIds,
-          dataSourceIds,
-          additionalContext: additionalContext.trim() || undefined,
-          type,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate instructions');
-      }
-
-      return response.json();
-    },
+    mutationFn: () =>
+      searchExperiencesApi.generateInstructions({
+        experienceName,
+        experienceDescription,
+        indexIds,
+        dataSourceIds,
+        additionalContext: additionalContext.trim() || undefined,
+        type,
+      }),
     // Shown in the dialog below; recorded in the Activity panel here
     meta: { label: 'Generate instructions', inlineError: true },
     onError: (error) => reportActionError('Generate instructions', error, { inline: true }),
     onSuccess: (response) => {
-      setGeneratedInstructions(response.data.instructions);
+      setGeneratedInstructions(response.instructions);
       if (currentInstructions) {
         setShowComparison(true);
       }
@@ -203,7 +186,7 @@ export function CustomInstructionsGenerator({
           {generateMutation.isError && (
             <Alert variant="destructive">
               <AlertDescription>
-                {generateMutation.error?.message || 'Failed to generate instructions. Please try again.'}
+                {errorText(generateMutation.error, 'Failed to generate instructions. Please try again.')}
               </AlertDescription>
             </Alert>
           )}

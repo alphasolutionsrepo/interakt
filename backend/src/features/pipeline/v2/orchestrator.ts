@@ -705,6 +705,10 @@ export async function runV2Pipeline(
       sessionId: input.sessionId,
       maxTotalDurationMs: cfg.maxTotalDurationMs,
     });
+    // No longer awaited, so a failure after this would otherwise go unreported
+    work.catch((err: Error) => {
+      logger.error('V2 turn failed after it timed out', err, { experienceId, sessionId: input.sessionId });
+    });
     onEvent({ type: 'error', message: 'Pipeline execution timed out' });
     onEvent({ type: 'done', sessionId: input.sessionId, usage });
     return { sessionId: input.sessionId, responseText: '', usage };

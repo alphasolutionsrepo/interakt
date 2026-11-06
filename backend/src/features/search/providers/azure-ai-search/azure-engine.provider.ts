@@ -23,7 +23,7 @@ import { registerProviderClass } from '../search-engine-provider.factory';
 import { buildAzureFilter } from './query-builders/filter.builder';
 import type { ProviderCapabilities } from '../provider-capabilities';
 import { SearchError, type FilterClause, type SearchContext } from '../../search.types';
-import { lookupFailure } from '../search-engine-provider.interface';
+import { failureText } from '../search-engine-provider.interface';
 
 import type {
     SearchEngineProvider,
@@ -451,7 +451,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
                         // the batches already written still count, as on Elasticsearch
                         writeError ??= error;
                         totalFailed += batch.length;
-                        const message = error instanceof Error ? error.message : 'Batch failed';
+                        const message = failureText(error, 'Batch failed');
                         batch.forEach((_, batchIndex) => errors.push({ index: run.indices[i + batchIndex], error: message }));
                         continue;
                     }
@@ -498,7 +498,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 ...(writeError !== undefined && { writeError }),
             };
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Bulk write failed';
+            const message = failureText(error, 'Bulk write failed');
             // Passed on as writeError; the upload, reindex or write it belongs to logs it,
             // with its request id
             logger.debug('Azure bulk write failed', { indexName, error: message });
@@ -506,7 +506,8 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 success: false,
                 indexed: 0,
                 failed: operations.length,
-                errors: [{ index: 0, error: message }],
+                // Every operation failed with it, each with its reason, as when a batch fails
+                errors: operations.map((_, index) => ({ index, error: message })),
                 counts,
                 took: Date.now() - startTime,
                 writeError: error,
@@ -714,9 +715,9 @@ export class AzureEngineProvider implements SearchEngineProvider {
                 documents: allDocs,
             };
         } catch (error) {
+            // Passed on with its cause: the reindex it belongs to logs it, with its request id
             const message = error instanceof Error ? error.message : 'Failed to fetch documents';
-            logger.error('Azure fetchAllDocuments failed', { indexName, error: message });
-            return { success: false, error: message, documents: [] };
+            return { success: false, error: message, documents: [], cause: error };
         }
     }
 
@@ -738,7 +739,7 @@ export class AzureEngineProvider implements SearchEngineProvider {
             if (error?.statusCode === 404) {
                 return { found: false };
             }
-            return { found: false, error: lookupFailure(error, 'Failed to get document'), cause: error };
+            return { found: false, error: failureText(error, 'Failed to get document'), cause: error };
         }
     }
 

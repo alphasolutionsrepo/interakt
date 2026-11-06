@@ -55,6 +55,7 @@ export function LastJobBanner({ lastJob }: { lastJob?: IndexLastJob | null }) {
                 <span>
                     {name} finished with problems at {formatTime(lastJob.finishedAt ?? lastJob.startedAt)}
                     {lastJob.summary && `: ${lastJob.summary}`}
+                    {lastJob.hint && <span className="mt-1 block">{lastJob.hint}</span>}
                 </span>
             </div>
         );

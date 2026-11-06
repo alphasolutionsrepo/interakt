@@ -1,6 +1,5 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import {
   ChevronLeft,
   ChevronRight,
@@ -40,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { GOVERNED_POLICY } from '@/features/ai-experience/execution-policy';
+import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 
 
 
@@ -480,17 +480,6 @@ function Step2_Tools({ data, onChange, allTools }: {
 // STEP 3: AI CONFIG (moved from step 2, now with auto-generation)
 // ============================================================================
 
-interface AIProvider {
-  id: string;
-  key: string;
-  name: string;
-  models: Array<{ id: number; key: string; name: string; type: string }>;
-}
-
-interface ResolvedDefaults {
-  chat: { providerId: string | null; providerKey: string | null; modelId: number | null; modelKey: string | null };
-}
-
 function Step3_AIConfig({ data, onChange, selectedTools, onGeneratePrompt }: {
   data: WizardData;
   onChange: (d: Partial<WizardData>) => void;
@@ -502,43 +491,11 @@ function Step3_AIConfig({ data, onChange, selectedTools, onGeneratePrompt }: {
     onChange({ aiConfig: { ...ai, [key]: val } });
   }
 
-  const { data: providersData, isLoading: isLoadingProviders } = useQuery({
-    queryKey: ['ai-providers-for-experience'],
-    queryFn: async () => {
-      const res = await fetch('/api/ai-service/providers');
-      const json = await res.json() as { data?: { providers: AIProvider[] }; providers?: AIProvider[] };
-      return (json.data || json) as { providers: AIProvider[] };
-    },
-  });
-
-  const { data: resolvedData } = useQuery({
-    queryKey: ['system-defaults-ai-resolved'],
-    queryFn: async () => {
-      const res = await fetch('/api/system-defaults/ai/resolved');
-      const json = await res.json() as { data?: ResolvedDefaults } & ResolvedDefaults;
-      return (json.data || json) as ResolvedDefaults;
-    },
-  });
-
-  const providers = providersData?.providers ?? [];
   const selectedProviderId = (ai.providerId as string | null | undefined) ?? null;
   const selectedModelId = (ai.modelId as number | null | undefined) ?? null;
-  const selectedProvider = providers.find((p) => p.id === selectedProviderId);
-  const chatModels = selectedProvider?.models.filter((m) => m.type === 'chat') ?? [];
-  const defaultChat = resolvedData?.chat;
 
   const systemInstructions = (ai.systemInstructions as string) ?? '';
   const isGenerating = (ai._isGenerating as boolean) ?? false;
-
-  function handleProviderChange(value: string) {
-    if (value === '__default__') {
-      onChange({ aiConfig: { ...ai, providerId: null, modelId: null } });
-    } else {
-      const provider = providers.find((p) => p.id === value);
-      const firstChatModel = provider?.models.find((m) => m.type === 'chat');
-      onChange({ aiConfig: { ...ai, providerId: value, modelId: firstChatModel?.id ?? null } });
-    }
-  }
 
   // Build the full preview
   const fullPreview = buildPromptPreview(systemInstructions, data.tone, selectedTools);
@@ -553,48 +510,11 @@ function Step3_AIConfig({ data, onChange, selectedTools, onGeneratePrompt }: {
             Select a specific provider and model, or leave as system default.
           </p>
         </div>
-        {isLoadingProviders ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="h-10 bg-muted rounded-xl animate-pulse" />
-            <div className="h-10 bg-muted rounded-xl animate-pulse" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <Select value={selectedProviderId ?? '__default__'} onValueChange={handleProviderChange}>
-              <SelectTrigger className="rounded-xl">
-                <SelectValue placeholder="System Default" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__default__">System Default</SelectItem>
-                {providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedModelId != null ? String(selectedModelId) : '__default__'}
-              onValueChange={(v) => setAi('modelId', v === '__default__' ? null : Number(v))}
-              disabled={!selectedProvider}
-            >
-              <SelectTrigger className="rounded-xl">
-                <SelectValue placeholder={!selectedProvider ? 'System Default' : 'Select model'} />
-              </SelectTrigger>
-              <SelectContent>
-                {!selectedProvider && <SelectItem value="__default__">System Default</SelectItem>}
-                {chatModels.map((m) => (
-                  <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {!selectedProviderId && defaultChat?.providerKey && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <span className="inline-block size-1.5 rounded-full bg-emerald-500 shrink-0" />
-            System default: <span className="font-mono">{defaultChat.providerKey}</span>
-            {defaultChat.modelKey && <> / <span className="font-mono">{defaultChat.modelKey}</span></>}
-          </p>
-        )}
+        <ProviderModelSelect
+          providerId={selectedProviderId}
+          modelId={selectedModelId}
+          onChange={({ providerId, modelId }) => onChange({ aiConfig: { ...ai, providerId, modelId } })}
+        />
       </div>
 
       {/* Tone */}

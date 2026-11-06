@@ -256,6 +256,8 @@ export interface WriteDocumentsResponse {
     message: string;
     /** Why nothing was written: what happened, what to do, the request id */
     error?: { code: string; message: string; hint?: string; requestId: string };
+    /** For a write that partly failed: what to do about it, when we recognise why */
+    hint?: string;
     summary: {
         total: number;
         succeeded: number;

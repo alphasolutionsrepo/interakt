@@ -16,7 +16,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAnalyticsContext } from '../AnalyticsContext';
 import { resolvePeriod } from '../period';
-import { errorText, toApiError } from '@/shared/api/api-error';
+import { reportActionError } from '@/shared/activity/report';
+import { apiErrorFrom, errorText, handleApiResponse, toApiError } from '@/shared/api/api-error';
 import { streamEvents } from '@/shared/api/stream-events';
 
 // ============================================================================
@@ -103,15 +104,12 @@ export interface ChatSessionSummary {
 }
 
 interface SessionsResponse {
-  success: boolean;
-  data: {
-    sessions: ChatSessionSummary[];
-    pagination: {
-      limit: number;
-      offset: number;
-      total: number;
-      hasMore: boolean;
-    };
+  sessions: ChatSessionSummary[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasMore: boolean;
   };
 }
 
@@ -119,15 +117,24 @@ interface SessionsResponse {
 // SESSIONS
 // ============================================================================
 
+/** One conversation with its messages */
+export async function fetchChatSession(sessionId: string): Promise<ChatSession> {
+  return handleApiResponse<ChatSession>(await fetch(`/api/analytics/chat/sessions/${sessionId}`), 'Failed to fetch session');
+}
+
+/** The 50 most recent conversations, or those matching q */
+export async function fetchChatSessions(q: string): Promise<SessionsResponse> {
+  const params = new URLSearchParams({ limit: '50' });
+  if (q) params.set('q', q);
+  return handleApiResponse<SessionsResponse>(await fetch(`/api/analytics/chat/sessions?${params}`), 'Failed to fetch sessions');
+}
+
 export function useChatSession(sessionId: string | null) {
   return useQuery({
     queryKey: ['admin-chat-session', sessionId],
-    queryFn: async (): Promise<ChatSession> => {
+    queryFn: () => {
       if (!sessionId) throw new Error('No session ID');
-      const response = await fetch(`/api/analytics/chat/sessions/${sessionId}`);
-      if (!response.ok) throw new Error('Failed to fetch session');
-      const data = await response.json();
-      return data.data;
+      return fetchChatSession(sessionId);
     },
     enabled: !!sessionId,
     staleTime: 0,
@@ -140,13 +147,7 @@ export function useChatSessions({ enabled = true, search = '' }: { enabled?: boo
   return useQuery({
     queryKey: ['admin-chat-sessions', q],
     enabled,
-    queryFn: async (): Promise<SessionsResponse> => {
-      const params = new URLSearchParams({ limit: '50' });
-      if (q) params.set('q', q);
-      const response = await fetch(`/api/analytics/chat/sessions?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch sessions');
-      return response.json();
-    },
+    queryFn: () => fetchChatSessions(q),
     placeholderData: keepPreviousData,
     staleTime: 30000,
   });
@@ -197,7 +198,12 @@ export function useAnalyticsChat({ providerId, modelId }: UseAnalyticsChatOption
   // shown, with follow-ups and checks the stored copy doesn't keep.
   const streamedSessionIdRef = useRef<string | null>(null);
 
-  const { data: session } = useChatSession(sessionId);
+  const { data: session, error: sessionError } = useChatSession(sessionId);
+
+  // A conversation from History that couldn't be opened says why
+  useEffect(() => {
+    if (sessionError) reportActionError('Open conversation', sessionError);
+  }, [sessionError]);
 
   // Load session messages when session changes, and switch the page to the
   // experience the conversation is scoped to
@@ -429,6 +435,8 @@ export function useAnalyticsChat({ providerId, modelId }: UseAnalyticsChatOption
             break;
 
           case 'error':
+            // The Activity panel keeps its request id
+            reportActionError('Ask about analytics', apiErrorFrom(chunk, 500, 'An error occurred'), { inline: true });
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === streamingMessageId

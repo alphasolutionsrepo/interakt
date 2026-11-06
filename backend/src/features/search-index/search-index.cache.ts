@@ -37,11 +37,13 @@ export const cache: CacheManager = (globalThis as Record<string, unknown>)[globa
  *
  * Both keys must go: reads happen by id and by name, and leaving either behind
  * serves a stale index definition — including a field that was just deleted.
+ * The lists go too: they show the index's name and whether it is active.
  */
 export async function clearIndexCache(id: string, name: string): Promise<void> {
     await Promise.all([
         cache.delete(`index:${id}`),
         cache.delete(`index:name:${name}`),
+        cache.deleteByPrefix('list:'),
         invalidateQueryInterpreterCache(id),
     ]);
 }
@@ -55,5 +57,20 @@ export async function clearIndexCacheById(id: string): Promise<void> {
     await Promise.all([
         cache.delete(`index:${id}`),
         invalidateQueryInterpreterCache(id),
+    ]);
+}
+
+/**
+ * Clear the cached index record after a write to its status, document count or last job:
+ * by id, by name when it is known, and the cached lists, which show the status and count.
+ *
+ * Not clearIndexCache: an upload calls this for every batch, and the query interpreter's
+ * cache doesn't depend on any of these.
+ */
+export async function clearCachedIndexRecord(id: string, name?: string | null): Promise<void> {
+    await Promise.all([
+        cache.delete(`index:${id}`),
+        name ? cache.delete(`index:name:${name}`) : undefined,
+        cache.deleteByPrefix('list:'),
     ]);
 }

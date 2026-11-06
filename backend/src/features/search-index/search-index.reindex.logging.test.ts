@@ -18,6 +18,9 @@ const state = vi.hoisted(() => ({
     lastJobs: [] as Array<Record<string, unknown>>,
     updates: [] as Array<Record<string, unknown>>,
     createFails: false,
+    fetch: { success: true } as Record<string, unknown>,
+    deleted: 0,
+    statuses: [] as string[],
 }));
 
 vi.mock('server-only', () => ({}));
@@ -26,13 +29,13 @@ vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-r
 vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUserId: async () => 'admin' }));
 vi.mock('@/features/data-source/data-source.service', () => ({ refreshSchemaForSearchIndex: vi.fn() }));
 vi.mock('./search-index.repository', () => ({
-    getSearchIndexById: async () => ({ id: 'i1', name: 'shop', searchProvider: 'elasticsearch' }),
-    updateSearchIndexStatus: vi.fn(),
+    getSearchIndexById: async () => ({ id: 'i1', name: 'shop', searchProvider: 'elasticsearch', status: 'ready' }),
+    updateSearchIndexStatus: async (_id: string, status: string) => { state.statuses.push(status); },
     setLastJob: async (_id: string, job: Record<string, unknown>) => { state.lastJobs.push(job); },
     updateSearchIndex: async (_id: string, values: Record<string, unknown>) => { state.updates.push(values); },
     markMappingSynced: vi.fn(),
 }));
-vi.mock('./search-index.cache', () => ({ cache: { delete: vi.fn(), get: vi.fn(), set: vi.fn() }, clearIndexCache: vi.fn(), SEARCH_INDEX_CACHE_TTL: 1 }));
+vi.mock('./search-index.cache', () => ({ cache: { delete: vi.fn(), get: vi.fn(), set: vi.fn() }, clearIndexCache: vi.fn(), clearCachedIndexRecord: vi.fn(), SEARCH_INDEX_CACHE_TTL: 1 }));
 vi.mock('./search-index-fields.service', () => ({ getFieldsBySearchIndexId: async () => [{ fieldName: 'title' }] }));
 vi.mock('./provider-settings.utils', () => ({ buildIndexSettingsContext: () => ({}) }));
 vi.mock('@/features/search-experience', () => ({ invalidateSearchExperienceCacheBySearchIndex: vi.fn() }));
@@ -44,9 +47,11 @@ vi.mock('@/features/document-indexing/document-indexer.service', () => ({
 vi.mock('@/features/search/providers', () => ({
     getSearchEngineProvider: () => ({
         indexExists: async () => true,
-        fetchAllDocuments: async () => ({ success: true, documents: [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }] }),
+        fetchAllDocuments: async () => (state.fetch.success
+            ? { success: true, documents: [{ _id: 'a', _source: { title: 'A' } }, { _id: 'b', _source: { title: 'B' } }] }
+            : state.fetch),
         buildIndexSettings: () => ({}),
-        deleteIndex: async () => ({ success: true }),
+        deleteIndex: async () => { state.deleted++; return { success: true }; },
         createIndex: async () => (state.createFails ? { success: false, error: 'resource_already_exists_exception' } : { success: true }),
         bulkIndex: async () => state.bulk,
         refreshIndex: vi.fn(),
@@ -63,9 +68,35 @@ beforeEach(() => {
     logs.length = 0;
     state.lastJobs = [];
     state.createFails = false;
+    state.fetch = { success: true };
+    state.deleted = 0;
+    state.statuses = [];
 });
 
 describe('a reindex', () => {
+    it("that couldn't read the documents leaves the index as it was, and searchable, and says so once", async () => {
+        const down = new esErrors.TimeoutError('Request timed out', { meta: {} } as never);
+        state.fetch = { success: false, documents: [], error: 'Request timed out', cause: down };
+        const res = await reindex();
+        const body = await res.json();
+
+        expect(res.ok).toBe(false);
+        expect(state.deleted).toBe(0);
+        expect(state.statuses).toEqual(['indexing', 'ready']);
+        expect(state.lastJobs.at(-1)).toMatchObject({ status: 'failed', error: { message: "Couldn't read the index's documents, so it was left as it is: Elasticsearch didn't respond in time." } });
+        const [line, ...rest] = reported(logs);
+        expect(rest).toEqual([]);
+        expect(line).toMatchObject({ level: 'error', context: expect.objectContaining({ requestId: body.requestId }) });
+        expect((line.context.err as Error).cause).toBe(down);
+    });
+
+    it('that failed after deleting the index marks it as an error', async () => {
+        state.createFails = true;
+        await reindex();
+
+        expect(state.statuses).toEqual(['indexing', 'error']);
+    });
+
     it('that wrote nothing back is logged once, with the operation, the index and the id the index page shows', async () => {
         state.bulk = { success: false, indexed: 0, failed: 2, errors: [{ index: 0, error: 'mapper_parsing_exception' }], took: 1 };
         const res = await reindex();
@@ -86,6 +117,29 @@ describe('a reindex', () => {
         const [line] = reported(logs);
         expect(line).toMatchObject({ level: 'error' });
         expect((line.context.err as Error).cause).toBe(timedOut);
+    });
+
+    it('that a write block stopped is explained by the block, whichever document failed first', async () => {
+        state.bulk = {
+            success: false, indexed: 0, failed: 2, took: 1,
+            errors: [
+                { index: 0, error: 'mapper_parsing_exception: failed to parse field [price]' },
+                { index: 1, error: 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];' },
+            ],
+        };
+        const res = await reindex();
+        const body = await res.json();
+
+        expect(body.message).toContain('blocked by');
+        expect(body.hint).toContain('read-only');
+    });
+
+    it('that partly worked before the search service blocked writes is logged once, as an error', async () => {
+        state.bulk = { success: false, indexed: 1, failed: 1, took: 1, errors: [{ index: 1, error: 'index [shop] blocked by: [FORBIDDEN/8/index write (api)];' }] };
+        const res = await reindex();
+
+        expect(res.ok).toBe(true);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', message: 'Some documents failed to reindex' })]);
     });
 
     it('that partly worked answers success and is logged once, as a warning', async () => {

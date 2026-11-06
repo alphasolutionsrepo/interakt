@@ -61,6 +61,7 @@ export function useDataSources(params?: ListDataSourcesParams) {
     pagination: query.data?.pagination,
     isLoading: query.isLoading,
     isError: query.isError,
+    error: query.error,
     isRefetching: query.isRefetching,
     refetch: query.refetch,
     deleteDataSource: deleteMutation.mutateAsync,

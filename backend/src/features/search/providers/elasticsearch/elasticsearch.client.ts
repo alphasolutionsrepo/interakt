@@ -11,7 +11,7 @@ import { Client, type ClientOptions } from '@elastic/elasticsearch';
 import { elasticsearchConfig } from '@/config';
 import { createLogger } from '@/shared/logger/logger';
 import { EMBEDDING_FIELD_NAME } from './elasticsearch.constants';
-import { lookupFailure, type GetDocumentResult } from '../search-engine-provider.interface';
+import { failureText, type GetDocumentResult } from '../search-engine-provider.interface';
 
 const logger = createLogger('elasticsearch-client');
 
@@ -412,11 +412,9 @@ export async function bulkWrite(
 
             totalFailed += batch.length;
             writeError ??= error;
+            const message = failureText(error, 'Batch failed');
             batch.forEach((_, batchIndex) => {
-                allErrors.push({
-                    index: i + batchIndex,
-                    error: error instanceof Error ? error.message : 'Batch failed',
-                });
+                allErrors.push({ index: i + batchIndex, error: message });
             });
         }
     }
@@ -656,6 +654,21 @@ export async function deleteByQuery(
 // SCROLL / FETCH ALL DOCUMENTS
 // ============================================================================
 
+/**
+ * Throws when a page of a scroll misses documents: a shard that failed or a search that
+ * timed out still answers 200, with the hits it has
+ */
+async function refuseIncomplete(response: { timed_out?: boolean; _shards?: { failed?: number; total?: number }; _scroll_id?: string }): Promise<void> {
+    const failed = response._shards?.failed ?? 0;
+    if (!response.timed_out && failed === 0) return;
+    if (response._scroll_id) {
+        await getElasticsearchClient().clearScroll({ scroll_id: response._scroll_id }).catch(() => {});
+    }
+    throw new Error(response.timed_out
+        ? 'Elasticsearch timed out reading the documents and gave only some of them'
+        : `Elasticsearch couldn't read ${failed} of the index's ${response._shards?.total ?? failed} shards`);
+}
+
 export interface ScrollDocument {
     _id: string;
     _source: Record<string, unknown>;
@@ -671,7 +684,7 @@ export async function fetchAllDocuments(
         batchSize?: number;
         scrollTimeout?: string;
     }
-): Promise<{ success: boolean; documents: ScrollDocument[]; error?: string }> {
+): Promise<{ success: boolean; documents: ScrollDocument[]; error?: string; cause?: unknown }> {
     try {
         const es = getElasticsearchClient();
         const batchSize = options?.batchSize ?? 1000;
@@ -691,7 +704,10 @@ export async function fetchAllDocuments(
             size: batchSize,
             query: { match_all: {} },
             _source: true,
+            // A reindex writes back only what it read: a shard that failed fails the read
+            allow_partial_search_results: false,
         });
+        await refuseIncomplete(response);
 
         // Collect first batch
         for (const hit of response.hits.hits) {
@@ -710,6 +726,7 @@ export async function fetchAllDocuments(
                 scroll_id: scrollId,
                 scroll: scrollTimeout,
             });
+            await refuseIncomplete(response);
 
             for (const hit of response.hits.hits) {
                 allDocuments.push({
@@ -733,9 +750,9 @@ export async function fetchAllDocuments(
 
         return { success: true, documents: allDocuments };
     } catch (error) {
+        // Passed on with its cause: the reindex it belongs to logs it, with its request id
         const message = error instanceof Error ? error.message : 'Failed to fetch documents';
-        logger.error('Failed to fetch all documents', { indexName, error: message });
-        return { success: false, documents: [], error: message };
+        return { success: false, documents: [], error: message, cause: error };
     }
 }
 
@@ -781,7 +798,7 @@ export async function getDocumentById(
         }
 
         // Passed on with its cause: whoever answers the caller logs it
-        const message = lookupFailure(error, 'Failed to get document');
+        const message = failureText(error, 'Failed to get document');
         logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
         return { found: false, error: message, cause: error };
     }

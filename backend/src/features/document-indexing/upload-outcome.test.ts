@@ -68,6 +68,11 @@ describe('uploadOutcome', () => {
         expect(uploadOutcome(result(0, 1, ['']), startedAt).error?.message).toBe('None of the 1 documents were indexed');
     });
 
+    it('says what to do about a partial upload a write block stopped', () => {
+        const outcome = uploadOutcome(result(1, 1, ['index [products] blocked by: [FORBIDDEN/8/index write (api)];']), startedAt);
+        expect(outcome).toMatchObject({ status: 'partial', hint: expect.stringContaining('read-only') });
+    });
+
     it('is partial when some documents failed, with how many and why', () => {
         const outcome = uploadOutcome(result(1, 1, ['Required field has no value']), startedAt, 'upload.json');
         expect(outcome).toMatchObject({

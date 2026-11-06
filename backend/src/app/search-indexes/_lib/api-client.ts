@@ -343,6 +343,14 @@ export const searchIndexesApi = {
     },
 
     /**
+     * The search providers enabled on this deployment, and which is the default
+     */
+    getProviders: async (): Promise<{ providers?: Array<{ type: string; isDefault?: boolean }> }> => {
+        const response = await fetch('/api/search-indexes/providers');
+        return handleApiResponse(response, 'Failed to load search providers');
+    },
+
+    /**
      * Import search index from JSON
      */
     import: async (payload: SearchIndexImportPayload): Promise<SearchIndexImportResult> => {
