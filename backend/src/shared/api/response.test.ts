@@ -73,11 +73,15 @@ describe('apiResponse.error', () => {
     it('answers visitors a failure of our setup (a disabled AI provider) as the service being unavailable', async () => {
         const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
         const handler = publicRoute(async () => apiResponse.error(disabled));
+        logs.length = 0;
         const response = await handler();
         const body = await response.json();
         expect(response.status).toBe(503);
         expect(body.message).toBe(PUBLIC_FAILURE_MESSAGE);
         expect(JSON.stringify(body)).not.toContain('openai');
+        // Nor the code, which would say what's misconfigured; the log line keeps it
+        expect(body.code).toBe('INTERNAL_ERROR');
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ code: 'PROVIDER_DISABLED' }) })]);
     });
 
     it('answers visitors a search whose embedding provider is disabled as the service being unavailable, and tells admins', async () => {

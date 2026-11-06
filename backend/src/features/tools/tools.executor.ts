@@ -19,7 +19,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
-import { classifyUpstream, failedAtAIProvider } from '@/shared/errors/upstream';
+import { classifyUpstream, failedAtAIProvider, findAIServiceError } from '@/shared/errors/upstream';
 import { withSpan, ATTR } from '@/features/telemetry';
 import * as toolsService from './tools.service';
 import * as secretsService from '@/features/secrets/secrets.service';
@@ -325,10 +325,7 @@ const RETRYABLE_UPSTREAM = new Set(['UPSTREAM_UNAVAILABLE', 'UPSTREAM_TIMEOUT', 
 
 /** Whether error is, or wraps, the AI service refusing a call while its circuit breaker is open */
 function circuitOpen(error: unknown): boolean {
-  for (let e: unknown = error, i = 0; e instanceof Error && i < 5; e = (e as Error & { cause?: unknown }).cause, i++) {
-    if ((e as Error & { code?: unknown }).code === 'CIRCUIT_OPEN') return true;
-  }
-  return false;
+  return findAIServiceError(error, (code) => code === 'CIRCUIT_OPEN') !== undefined;
 }
 
 function isRetryable(error: unknown, config: ToolRetryConfig): boolean {

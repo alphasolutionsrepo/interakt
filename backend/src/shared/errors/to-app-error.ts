@@ -7,7 +7,7 @@
  */
 
 import { AppError, ConflictError, INTERNAL_MESSAGE, NotFoundError, ValidationError, codeForStatus } from './app-error';
-import { classifyUpstream, isAIProviderFailure } from './upstream';
+import { classifyUpstream, findAIServiceError, isAIProviderFailure } from './upstream';
 
 // AIServiceError codes that point at our own configuration
 const AI_CONFIG_CODES = new Set(['PROVIDER_NOT_FOUND', 'MODEL_NOT_FOUND', 'PROVIDER_DISABLED']);
@@ -72,15 +72,8 @@ export function toAppError(err: unknown): AppError {
 
 /** An AIServiceError, err or one of its causes, that points at our own AI configuration */
 function aiConfigError(err: Error): AppError | undefined {
-    let current: unknown = err;
-    for (let depth = 0; current instanceof Error && depth < 5; depth++) {
-        const e = current as Error & Record<string, unknown>;
-        if (e.name === 'AIServiceError' && typeof e.code === 'string' && AI_CONFIG_CODES.has(e.code)) {
-            return new AppError(e.message, { code: e.code, status: 400, ourSide: true, ...(current !== err && { cause: err }) });
-        }
-        current = e.cause;
-    }
-    return undefined;
+    const found = findAIServiceError(err, (code) => AI_CONFIG_CODES.has(code));
+    return found ? new AppError(found.message, { code: found.code, status: 400, ourSide: true, ...(found !== err && { cause: err }) }) : undefined;
 }
 
 /**

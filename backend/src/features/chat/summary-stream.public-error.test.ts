@@ -75,7 +75,8 @@ describe('a summary whose AI setup is broken (a disabled provider)', () => {
     const event = await errorEvent(false);
     model.failure = undefined;
 
-    expect(event).toMatchObject({ type: 'error', code: 'PROVIDER_DISABLED', message: PUBLIC_FAILURE_MESSAGE });
+    // Not PROVIDER_DISABLED either: the code would say what's misconfigured
+    expect(event).toMatchObject({ type: 'error', code: 'INTERNAL_ERROR', message: PUBLIC_FAILURE_MESSAGE });
     expect(JSON.stringify(event)).not.toContain('openai');
   });
 

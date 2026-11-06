@@ -70,7 +70,7 @@ async function thinkOf(config: AdapterConfig): Promise<{ think?: OllamaThink }> 
 const GPT_OSS = /gpt-?oss/i;
 
 /** Whether a model takes reasoning levels, by Ollama address and model key, and until when that holds */
-const takesLevels = new Map<string, { levels: boolean; until: number }>();
+const takesLevels = new Map<string, { levels: Promise<boolean>; until: number }>();
 /** How long Ollama's answer holds (a name can be copied over another model), and a guess when it couldn't answer */
 const FAMILY_TTL_MS = 10 * 60_000;
 const GUESS_TTL_MS = 60_000;
@@ -80,13 +80,17 @@ const GUESS_TTL_MS = 60_000;
  * Ollama reports, which a renamed copy keeps, asked again after a while. When Ollama can't
  * say, the model's key decides for a minute, so requests don't each wait on it.
  */
-async function takesThinkLevels(config: AdapterConfig): Promise<boolean> {
+function takesThinkLevels(config: AdapterConfig): Promise<boolean> {
     const key = `${config.baseUrl}|${config.modelKey}`;
     const known = takesLevels.get(key);
     if (known && known.until > Date.now()) return known.levels;
-    const family = await modelFamily(config);
-    const levels = GPT_OSS.test(family ?? config.modelKey);
-    takesLevels.set(key, { levels, until: Date.now() + (family === undefined ? GUESS_TTL_MS : FAMILY_TTL_MS) });
+    const levels: Promise<boolean> = modelFamily(config).then((family) => {
+        takesLevels.set(key, { levels, until: Date.now() + (family === undefined ? GUESS_TTL_MS : FAMILY_TTL_MS) });
+        return GPT_OSS.test(family ?? config.modelKey);
+    });
+    // Requests that come while Ollama is being asked wait on the same answer, rather than
+    // each asking a slow server again
+    takesLevels.set(key, { levels, until: Infinity });
     return levels;
 }
 
@@ -233,7 +237,7 @@ export class OllamaAdapter implements AIProviderAdapter {
             ...(await generationSettings(request, config)),
         };
 
-        const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeRequest<OllamaGenerateResponse>(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, ollamaRequest, 'think', (body) => this.makeRequest<OllamaGenerateResponse>(
             `${config.baseUrl}/api/generate`,
             body,
             config
@@ -270,7 +274,7 @@ export class OllamaAdapter implements AIProviderAdapter {
     ): Promise<AdapterChatResponse> {
         const ollamaRequest = await this.chatRequest(request, config, false);
 
-        const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeRequest<OllamaChatResponse>(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, ollamaRequest, 'think', (body) => this.makeRequest<OllamaChatResponse>(
             `${config.baseUrl}/api/chat`,
             body,
             config
@@ -297,7 +301,7 @@ export class OllamaAdapter implements AIProviderAdapter {
     ): AsyncGenerator<AdapterStreamChunk, void, unknown> {
         const ollamaRequest = await this.chatRequest(request, config, true);
 
-        const response = await withoutUnsupportedReasoning(ollamaRequest, 'think', (body) => this.makeStreamRequest(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, ollamaRequest, 'think', (body) => this.send(
             `${config.baseUrl}/api/chat`,
             body,
             config,
@@ -428,11 +432,6 @@ export class OllamaAdapter implements AIProviderAdapter {
         } catch (error) {
             throw this.requestFailure(error);
         }
-    }
-
-    /** Make a streaming request: the response, its body read by the caller */
-    private makeStreamRequest(url: string, body: unknown, config: AdapterConfig, signal?: AbortSignal): Promise<Response> {
-        return this.send(url, body, config, signal);
     }
 
     /** POST a request within the configured timeout; an error answer or no answer throws an AdapterError */

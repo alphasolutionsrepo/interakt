@@ -145,6 +145,25 @@ describe("chat search tool with a default filter Sitecore can't take", () => {
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', message: 'External source search failed' })]);
   });
 
+  it("still logs the model's own filter it dropped, beside the failure over the default", async () => {
+    logs.length = 0;
+    storedFields.value = inferSitecoreFields({ items: [{ id: 'a', open: true, archived: false }], total: 1, facets: new Map() });
+    stubSitecoreFilter();
+
+    const result = await executeDataSourceSearch('ds', config, { query: 'x', filters: [{ field: 'archived', operator: 'eq', value: 'Nope' }] });
+
+    expect(result.success).toBe(false);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', message: 'External source search failed' }),
+      expect.objectContaining({
+        level: 'warn',
+        message: 'External search could not apply part of the request',
+        // The default is in the failure's line already
+        context: expect.objectContaining({ unappliedFilters: [expect.stringMatching(/^archived: /)] }),
+      }),
+    ]);
+  });
+
   it('runs when the request replaces that default with a value that converts', async () => {
     storedFields.value = inferSitecoreFields({ items: [{ id: 'a', open: true }], total: 1, facets: new Map() });
     const sent = stubSitecoreFilter();

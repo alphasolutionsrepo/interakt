@@ -243,8 +243,10 @@ async function executeExternalSearch(
 
   // Report what configuration and translation did to the request. A filter that was
   // requested but not applied has to reach the caller, or a wrong answer looks correct.
-  // A search that failed over it (a default that can't apply) has said so in its one line.
-  if (result.success) logUnapplied(unappliedFilters, unappliedSort);
+  // A search that failed over a default that can't apply has said so in its one line; what
+  // else was dropped (the model's own filter or sort) is still logged here.
+  const saidInFailure = result.success ? [] : unappliedDefaults(merged.appliedDefaults, unappliedFilters);
+  logUnapplied(unappliedFilters.filter((u) => !saidInFailure.includes(u)), unappliedSort);
   result = annotateResult(result, merged.appliedDefaults, sorting, unappliedFilters, unappliedSort);
 
   // Fire-and-forget analytics tracking for external searches

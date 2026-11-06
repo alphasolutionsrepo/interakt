@@ -193,7 +193,8 @@ export function describeError(
         status: finalStatus,
         body: errorPayload(
             {
-                code: recognised ? appError.code : codeForStatus(finalStatus),
+                // The real code (PROVIDER_DISABLED) would say what's misconfigured; the log line keeps it
+                code: recognised && !ourSetup ? appError.code : codeForStatus(finalStatus),
                 message,
                 hint: appError.hint,
                 fields: appError.fields,

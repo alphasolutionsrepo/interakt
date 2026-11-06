@@ -374,7 +374,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
             ...reasoningEffortOf(config),
         };
 
-        const response = await withoutUnsupportedReasoning(openaiRequest, 'reasoning_effort', (body) => this.makeRequest<OpenAIChatResponse>(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, openaiRequest, 'reasoning_effort', (body) => this.makeRequest<OpenAIChatResponse>(
             `${config.baseUrl}/chat/completions`,
             body,
             config
@@ -456,7 +456,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
             toolChoice: request.toolChoice,
         });
 
-        const response = await withoutUnsupportedReasoning(openaiRequest, 'reasoning_effort', (body) => this.makeStreamRequest(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, openaiRequest, 'reasoning_effort', (body) => this.makeStreamRequest(
             `${config.baseUrl}/chat/completions`,
             body,
             config,

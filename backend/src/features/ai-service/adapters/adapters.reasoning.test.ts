@@ -108,6 +108,13 @@ describe("Ollama think for 'minimal'", () => {
       vi.useRealTimers();
     }
   });
+
+  it('asks Ollama once for a burst of requests that come before it answers', async () => {
+    const { chats, shows } = ollama('gptoss');
+    await Promise.all([1, 2, 3, 4].map(() => minimal('my-reasoner', 'http://burst')));
+    expect(shows).toEqual(['my-reasoner']);
+    expect(chats.map((c) => c.think)).toEqual(['low', 'low', 'low', 'low']);
+  });
 });
 
 describe('Ollama think', () => {

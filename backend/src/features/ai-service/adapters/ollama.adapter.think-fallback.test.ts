@@ -3,7 +3,7 @@
 /**
  * A model with a reasoning level that can't think (Ollama answers 400 "<model> does not
  * support thinking", seen with qwen2.5:14b on Ollama 0.40) is asked again once without
- * one, so the call works; a warning, once per model, says to clear the setting.
+ * one, so the call works; a warning, once per model on each server, says to clear the setting.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -43,6 +43,15 @@ describe('an Ollama model that does not support thinking', () => {
     expect(first.message.content).toBe('ok');
     expect(sent().map((body) => body.think)).toEqual(['low', undefined, 'low', undefined]);
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ model: 'qwen2.5:14b' }) })]);
+  });
+
+  it('warns again for the same model on another Ollama server', async () => {
+    ollamaWithoutThinking('gemma3:4b', () => new Response(JSON.stringify(reply)));
+
+    await new OllamaAdapter().chat(request, config('gemma3:4b'));
+    await new OllamaAdapter().chat(request, { ...config('gemma3:4b'), baseUrl: 'http://second-host' });
+
+    expect(reported(logs)).toHaveLength(2);
   });
 
   it('streams a chat once asked again without the reasoning level', async () => {

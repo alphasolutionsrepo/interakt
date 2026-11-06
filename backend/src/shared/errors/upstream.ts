@@ -253,14 +253,20 @@ export function failedAtAIProvider(err: unknown): boolean {
     return isAIProviderFailure(err) || findProvider(err)?.kind === 'ai';
 }
 
-function aiServiceCode(err: unknown): UpstreamCode | undefined {
+/** The AIServiceError, err or one of its causes, whose code matches */
+export function findAIServiceError(err: unknown, matches: (code: string) => boolean): (Error & { code: string }) | undefined {
     let current: unknown = err;
     for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
         const e = current as Error & Record<string, unknown>;
-        if (e.name === 'AIServiceError' && typeof e.code === 'string' && AI_SERVICE_CODES[e.code]) return AI_SERVICE_CODES[e.code];
+        if (e.name === 'AIServiceError' && typeof e.code === 'string' && matches(e.code)) return current as Error & { code: string };
         current = e.cause;
     }
     return undefined;
+}
+
+function aiServiceCode(err: unknown): UpstreamCode | undefined {
+    const found = findAIServiceError(err, (code) => !!AI_SERVICE_CODES[code]);
+    return found ? AI_SERVICE_CODES[found.code] : undefined;
 }
 
 /**
