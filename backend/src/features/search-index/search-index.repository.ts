@@ -179,6 +179,19 @@ export async function getSearchIndexById(id: string): Promise<SearchIndexComplet
 }
 
 /**
+ * The search engine an index is on, or null when there is no such index: one
+ * column, for callers that need nothing else.
+ */
+export async function getSearchProviderById(id: string): Promise<string | null> {
+    const [result] = await db
+        .select({ searchProvider: searchIndex.searchProvider })
+        .from(searchIndex)
+        .where(eq(searchIndex.id, id))
+        .limit(1);
+    return result?.searchProvider ?? null;
+}
+
+/**
  * Get search index by name
  */
 export async function getSearchIndexByName(name: string): Promise<SearchIndexComplete | null> {
