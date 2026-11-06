@@ -391,14 +391,13 @@ export async function handleGetProviders(request: NextRequest) {
 }
 
 /**
- * A failed AI call as the error to answer with: a missing provider or model is 404, an
- * open circuit breaker 400, anything else the error itself. Both refusals are our side
- * (setup, or a provider that is down), so logged as errors.
+ * A failed AI call as the error to answer with: a missing provider or model is 404 (our
+ * setup, so logged as an error), anything else the shared error (an open circuit breaker
+ * answers 503, the provider being unavailable).
  */
 function aiCallError(error: unknown): unknown {
   const err = error as Error;
   if (err.message.includes('not found')) return new AppError(err.message, { code: 'NOT_FOUND', status: 404, cause: err, ourSide: true });
-  if (err.message.includes('Circuit breaker')) return new AppError(err.message, { code: 'BAD_REQUEST', status: 400, cause: err, ourSide: true });
   return err;
 }
 

@@ -40,15 +40,91 @@ async function drain(stream: AsyncIterable<unknown>) {
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("Ollama think for 'minimal'", () => {
+  /** Ollama answering /api/show with the model's family (or failing to), and the chat */
+  function ollama(family: string | undefined, showStatus = 200) {
+    const chats: Array<Record<string, unknown>> = [];
+    const shows: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (url.endsWith('/api/show')) {
+        shows.push(body.model);
+        return new Response(JSON.stringify({ details: family ? { family, families: [family] } : {} }), { status: showStatus });
+      }
+      chats.push(body);
+      return new Response(JSON.stringify(ollamaReply));
+    }));
+    return { chats, shows };
+  }
+  const minimal = (modelKey: string, baseUrl: string) =>
+    new OllamaAdapter().chat(request, { ...config({ reasoningEffort: 'minimal' }), modelKey, baseUrl });
+
+  it.each([
+    ['gpt-oss:20b', 'gpt-oss'],
+    ['gpt-oss:latest', 'gptoss'],
+    ['my-reasoner', 'gptoss'],
+    ['hf.co/someone/gpt-oss-20b-GGUF:Q4_K_M', 'gpt-oss'],
+  ])("sends %s (family %s) think 'low': gpt-oss takes levels and ignores off", async (modelKey, family) => {
+    const { chats } = ollama(family);
+    await minimal(modelKey, `http://levels-${modelKey}`);
+    expect(chats[0].think).toBe('low');
+  });
+
+  it.each([
+    ['qwen3:8b', 'qwen3'],
+    ['deepseek-r1:14b', 'qwen2'],
+  ])('turns thinking off for %s (family %s), which only turns it on or off', async (modelKey, family) => {
+    const { chats } = ollama(family);
+    await minimal(modelKey, `http://onoff-${modelKey}`);
+    expect(chats[0].think).toBe(false);
+  });
+
+  it("goes by the model's key when Ollama can't say, and asks again after a minute, not on every request", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { chats, shows } = ollama(undefined, 404);
+      await minimal('gpt-oss:20b', 'http://cannot-say');
+      await minimal('qwen3:8b', 'http://cannot-say');
+      await minimal('qwen3:8b', 'http://cannot-say');
+      vi.advanceTimersByTime(61_000);
+      await minimal('qwen3:8b', 'http://cannot-say');
+      expect(chats.map((c) => c.think)).toEqual(['low', false, false, false]);
+      expect(shows).toEqual(['gpt-oss:20b', 'qwen3:8b', 'qwen3:8b']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks Ollama once per model, and again after ten minutes (a name can be copied over another model)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { shows } = ollama('gptoss');
+      await minimal('my-reasoner', 'http://once');
+      await minimal('my-reasoner', 'http://once');
+      vi.advanceTimersByTime(11 * 60_000);
+      await minimal('my-reasoner', 'http://once');
+      expect(shows).toEqual(['my-reasoner', 'my-reasoner']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks Ollama once for a burst of requests that come before it answers', async () => {
+    const { chats, shows } = ollama('gptoss');
+    await Promise.all([1, 2, 3, 4].map(() => minimal('my-reasoner', 'http://burst')));
+    expect(shows).toEqual(['my-reasoner']);
+    expect(chats.map((c) => c.think)).toEqual(['low', 'low', 'low', 'low']);
+  });
+});
+
 describe('Ollama think', () => {
-  it("turns thinking off for 'none'", async () => {
+  it.each(['none'])("turns thinking off for '%s'", async (effort) => {
     const sent = captureFetch(ollamaReply);
-    await new OllamaAdapter().chat(request, config({ reasoningEffort: 'none' }));
+    await new OllamaAdapter().chat(request, config({ reasoningEffort: effort }));
     expect(sent().think).toBe(false);
   });
 
   it.each([
-    ['minimal', 'low'],
     ['low', 'low'],
     ['medium', 'medium'],
     ['high', 'high'],
@@ -72,7 +148,7 @@ describe('Ollama think', () => {
 
   it('is sent on text generation', async () => {
     const sent = captureFetch({ model: 'm', response: 'ok', done: true, prompt_eval_count: 1, eval_count: 1 });
-    await new OllamaAdapter().generateText({ prompt: 'hi' }, config({ reasoningEffort: 'minimal' }));
+    await new OllamaAdapter().generateText({ prompt: 'hi' }, config({ reasoningEffort: 'low' }));
     expect(sent().think).toBe('low');
   });
 });

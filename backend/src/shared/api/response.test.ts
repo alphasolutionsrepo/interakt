@@ -70,6 +70,52 @@ describe('apiResponse.error', () => {
         expect(body.message).toBe('Azure AI Search rejected the credentials.');
     });
 
+    it('answers visitors a failure of our setup (a disabled AI provider) as the service being unavailable', async () => {
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
+        const handler = publicRoute(async () => apiResponse.error(disabled));
+        logs.length = 0;
+        const response = await handler();
+        const body = await response.json();
+        expect(response.status).toBe(503);
+        expect(body.message).toBe(PUBLIC_FAILURE_MESSAGE);
+        expect(JSON.stringify(body)).not.toContain('openai');
+        // Nor the code, which would say what's misconfigured; the log line keeps it
+        expect(body.code).toBe('INTERNAL_ERROR');
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ code: 'PROVIDER_DISABLED' }) })]);
+    });
+
+    it('answers visitors a search whose embedding provider is disabled as the service being unavailable, and tells admins', async () => {
+        const { SearchError } = await import('@/features/search/search.types');
+        // As getQueryEmbedding wraps it for a hybrid or semantic search
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED', providerKey: 'openai' });
+        const failed = () => new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', { indexName: 'shop' }, { cause: disabled });
+
+        const visitor = await publicRoute(async () => apiResponse.error(failed()))();
+        expect(visitor.status).toBe(503);
+        expect((await visitor.json()).message).toBe(PUBLIC_FAILURE_MESSAGE);
+
+        const admin = apiResponse.error(failed());
+        expect(admin.status).toBe(400);
+        expect(await admin.json()).toMatchObject({ code: 'PROVIDER_DISABLED', message: 'Provider is disabled: openai' });
+    });
+
+    it('tells admins a setup error a step wrapped (analytics synthesis), and visitors the service is unavailable', async () => {
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED', providerKey: 'openai' });
+        const wrapped = () => new Error('Synthesis failed: Provider is disabled: openai', { cause: disabled });
+
+        const admin = apiResponse.error(wrapped());
+        expect(admin.status).toBe(400);
+        expect(await admin.json()).toMatchObject({ code: 'PROVIDER_DISABLED', message: 'Provider is disabled: openai' });
+        expect((await publicRoute(async () => apiResponse.error(wrapped()))()).status).toBe(503);
+    });
+
+    it('still tells admins what is wrong with the setup', async () => {
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
+        const response = apiResponse.error(disabled);
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({ message: 'Provider is disabled: openai' });
+    });
+
     it('keeps the message of a public request the caller got wrong', async () => {
         const handler = publicRoute(async () => apiResponse.badRequest('query is required'));
         expect((await (await handler()).json()).message).toBe('query is required');

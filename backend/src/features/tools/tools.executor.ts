@@ -19,6 +19,7 @@
 
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
+import { classifyUpstream, failedAtAIProvider, findAIServiceError, shardsUnavailable } from '@/shared/errors/upstream';
 import { withSpan, ATTR } from '@/features/telemetry';
 import * as toolsService from './tools.service';
 import * as secretsService from '@/features/secrets/secrets.service';
@@ -320,8 +321,17 @@ function getBackoffMs(attempt: number, config: ToolRetryConfig): number {
   return baseMs * Math.pow(2, attempt - 1);
 }
 
+const RETRYABLE_UPSTREAM = new Set(['UPSTREAM_UNAVAILABLE', 'UPSTREAM_TIMEOUT', 'UPSTREAM_RATE_LIMITED']);
+
+/** Whether error is, or wraps, the AI service refusing a call while its circuit breaker is open */
+function circuitOpen(error: unknown): boolean {
+  return findAIServiceError(error, (code) => code === 'CIRCUIT_OPEN') !== undefined;
+}
+
 function isRetryable(error: unknown, config: ToolRetryConfig): boolean {
   if (error instanceof ToolTimeoutError) return true;
+  // The circuit breaker has cut the provider off: another try fails the same way at once
+  if (circuitOpen(error)) return false;
 
   const message = error instanceof Error ? error.message : String(error);
 
@@ -332,7 +342,12 @@ function isRetryable(error: unknown, config: ToolRetryConfig): boolean {
     );
   }
 
-  // Default: retry on network/timeout errors, not on validation errors
+  // The AI service retried its own call already (a search's query embedding): not again
+  if (failedAtAIProvider(error)) return false;
+  // Default: retry a service that was down, slow or rate limiting, read from the error
+  // itself (an Elasticsearch that's stopped gives no message), else from its text
+  if (RETRYABLE_UPSTREAM.has(classifyUpstream(error)?.code ?? '')) return true;
+  if (shardsUnavailable(error)) return true;
   const retryablePatterns = [
     'timeout', 'econnrefused', 'econnreset', 'enotfound',
     'socket hang up', 'network', 'fetch failed', '503', '502', '429',

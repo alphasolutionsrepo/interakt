@@ -696,6 +696,12 @@ export async function fetchAllDocuments(
         }
 
         const allDocuments: ScrollDocument[] = [];
+        const collect = async (page: typeof response) => {
+            await refuseIncomplete(page);
+            for (const hit of page.hits.hits) {
+                allDocuments.push({ _id: hit._id, _source: hit._source as Record<string, unknown> });
+            }
+        };
 
         // Initial search with scroll
         let response = await es.search({
@@ -707,15 +713,7 @@ export async function fetchAllDocuments(
             // A reindex writes back only what it read: a shard that failed fails the read
             allow_partial_search_results: false,
         });
-        await refuseIncomplete(response);
-
-        // Collect first batch
-        for (const hit of response.hits.hits) {
-            allDocuments.push({
-                _id: hit._id,
-                _source: hit._source as Record<string, unknown>,
-            });
-        }
+        await collect(response);
 
         // Continue scrolling until no more results
         while (response.hits.hits.length > 0) {
@@ -726,14 +724,7 @@ export async function fetchAllDocuments(
                 scroll_id: scrollId,
                 scroll: scrollTimeout,
             });
-            await refuseIncomplete(response);
-
-            for (const hit of response.hits.hits) {
-                allDocuments.push({
-                    _id: hit._id,
-                    _source: hit._source as Record<string, unknown>,
-                });
-            }
+            await collect(response);
         }
 
         // Clear scroll context

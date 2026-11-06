@@ -7,8 +7,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
-import { AppError } from '@/shared/errors/app-error';
-import { failureLevel } from '@/shared/errors/to-app-error';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import { generateCustomInstructions } from '@/features/search-experience/search-experience.service';
 import { createLogger } from '@/shared/logger/logger';
@@ -74,15 +72,8 @@ export async function POST(request: NextRequest) {
       instructions: generatedInstructions,
     });
   } catch (error) {
-    // apiResponse.error logs the failure, once
-    const err = error as Error;
-
-    if (err.message.includes('not found')) {
-      // A missing AI model says "not found" too, and is ours to fix
-      const notFound = new AppError('One or more indexes not found', { code: 'NOT_FOUND', status: 404, cause: err, ourSide: failureLevel(err, 'warn') === 'error' });
-      return apiResponse.error(notFound, undefined, { operation: 'generateInstructions' });
-    }
-
-    return apiResponse.error('Failed to generate instructions. Please try again.', 500, { operation: 'generateInstructions', err });
+    // Answered as what it is (indexes that are gone, an AI model that is missing or
+    // disabled), and logged once
+    return apiResponse.error(error, 500, { operation: 'generateInstructions' });
   }
 }

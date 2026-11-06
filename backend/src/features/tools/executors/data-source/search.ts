@@ -10,6 +10,7 @@
 import * as searchService from '@/features/search/search.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { trackSearch } from '@/features/analytics';
+import { AppError } from '@/shared/errors/app-error';
 import { failureLevel } from '@/shared/errors/to-app-error';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
@@ -217,7 +218,8 @@ async function executeExternalSearch(
     const brokenDefaults = unappliedDefaults(merged.appliedDefaults, unappliedFilters);
     if (brokenDefaults.length > 0) {
       const reasons = brokenDefaults.map((u) => `${u.field}: ${u.reason}`).join('; ');
-      throw new Error(`The tool's default filter can't be applied (${reasons}). Fix it in the tool's settings.`);
+      // The tool's own setup is at fault, so this is logged as an error
+      throw new AppError(`The tool's default filter can't be applied (${reasons}). Fix it in the tool's settings.`, { code: 'TOOL_MISCONFIGURED', status: 400, ourSide: true });
     }
     result = {
       success: true,
@@ -249,7 +251,10 @@ async function executeExternalSearch(
 
   // Report what configuration and translation did to the request. A filter that was
   // requested but not applied has to reach the caller, or a wrong answer looks correct.
-  logUnapplied(unappliedFilters, unappliedSort);
+  // A search that failed over a default that can't apply has said so in its one line; what
+  // else was dropped (the model's own filter or sort) is still logged here.
+  const saidInFailure = result.success ? [] : unappliedDefaults(merged.appliedDefaults, unappliedFilters);
+  logUnapplied(unappliedFilters.filter((u) => !saidInFailure.includes(u)), unappliedSort);
   result = annotateResult(result, merged.appliedDefaults, sorting, unappliedFilters, unappliedSort);
 
   // Fire-and-forget analytics tracking for external searches
