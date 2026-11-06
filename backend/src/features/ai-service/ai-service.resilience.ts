@@ -304,6 +304,8 @@ export async function withRetry<T>(
  */
 export interface ResilienceOptions {
     providerId: string;
+    /** Names the provider on an open circuit breaker's error, so it is explained as that provider being unavailable */
+    providerKey?: string;
     circuitBreaker?: CircuitBreakerConfig;
     retry?: Partial<RetryConfig>;
 }
@@ -325,7 +327,7 @@ export async function withResilience<T>(
     fn: () => Promise<T>,
     options: ResilienceOptions
 ): Promise<T> {
-    const { providerId, circuitBreaker, retry } = options;
+    const { providerId, providerKey, circuitBreaker, retry } = options;
     const cbConfig = circuitBreaker ?? CIRCUIT_BREAKER_DEFAULTS;
 
     // Check circuit breaker first
@@ -333,7 +335,8 @@ export async function withResilience<T>(
         throw new AIServiceError(
             'Circuit breaker is open - provider temporarily unavailable',
             'CIRCUIT_OPEN',
-            providerId
+            providerId,
+            providerKey
         );
     }
 

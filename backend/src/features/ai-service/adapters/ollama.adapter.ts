@@ -24,7 +24,9 @@ import type {
 } from '../ai-service.types';
 
 import { estimateChatUsage } from '../utils/token-counter';
+import { withoutUnsupportedReasoning } from './reasoning-fallback';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal } from './types';
+
 
 /**
  * Ollama's structured-output `format` field. Ollama 0.5+ accepts a full JSON
@@ -52,12 +54,79 @@ function toOllamaFormat(responseFormat?: ResponseFormat): OllamaFormat | undefin
 type OllamaThink = boolean | 'low' | 'medium' | 'high';
 
 /** The model's configured reasoning effort as Ollama's `think`, when one is set. */
-function thinkOf(config: AdapterConfig): { think?: OllamaThink } {
+async function thinkOf(config: AdapterConfig): Promise<{ think?: OllamaThink }> {
     const effort = config.capabilities?.reasoningEffort;
     if (effort === 'none') return { think: false };
-    if (effort === 'minimal' || effort === 'low') return { think: 'low' };
+    // Minimal is as little as possible: off on a model that only turns thinking on or off
+    // (deepseek-r1, qwen3), where any level turns it on; low on gpt-oss, which takes levels
+    // and ignores off (checked on Ollama 0.40: it reasons more with false than with low)
+    if (effort === 'minimal') return { think: (await takesThinkLevels(config)) ? 'low' : false };
+    if (effort === 'low') return { think: 'low' };
     if (effort === 'medium' || effort === 'high') return { think: effort };
     return {};
+}
+
+/** gpt-oss, as its key or its family ('gpt-oss' or 'gptoss', by Ollama version) names it */
+const GPT_OSS = /gpt-?oss/i;
+
+/** Whether a model takes reasoning levels, by Ollama address and model key, and until when that holds */
+const takesLevels = new Map<string, { levels: Promise<boolean>; until: number }>();
+/** How long Ollama's answer holds (a name can be copied over another model), and a guess when it couldn't answer */
+const FAMILY_TTL_MS = 10 * 60_000;
+const GUESS_TTL_MS = 60_000;
+
+/**
+ * Whether a model takes reasoning levels (gpt-oss) rather than on/off. Read from the family
+ * Ollama reports, which a renamed copy keeps, asked again after a while. When Ollama can't
+ * say, the model's key decides for a minute, so requests don't each wait on it.
+ */
+function takesThinkLevels(config: AdapterConfig): Promise<boolean> {
+    const key = `${config.baseUrl}|${config.modelKey}`;
+    const known = takesLevels.get(key);
+    if (known && known.until > Date.now()) return known.levels;
+    const levels: Promise<boolean> = modelFamily(config).then((family) => {
+        takesLevels.set(key, { levels, until: Date.now() + (family === undefined ? GUESS_TTL_MS : FAMILY_TTL_MS) });
+        return GPT_OSS.test(family ?? config.modelKey);
+    });
+    // Requests that come while Ollama is being asked wait on the same answer, rather than
+    // each asking a slow server again
+    takesLevels.set(key, { levels, until: Infinity });
+    return levels;
+}
+
+/** The model's family as Ollama's /api/show reports it, or undefined when it can't say */
+async function modelFamily(config: AdapterConfig): Promise<string | undefined> {
+    try {
+        const response = await fetch(`${config.baseUrl}/api/show`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: config.modelKey }),
+            signal: AbortSignal.timeout(Math.min(config.timeout, 5_000)),
+        });
+        if (!response.ok) return undefined;
+        const { details } = (await response.json()) as { details?: { family?: string; families?: string[] | null } };
+        const names = [details?.family, ...(details?.families ?? [])].filter((name): name is string => !!name);
+        return names.length > 0 ? names.join(' ') : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** What every generation request carries: sampling options, keep-alive and reasoning */
+async function generationSettings(
+    request: { maxTokens?: number; temperature?: number; topP?: number; stopSequences?: string[] },
+    config: AdapterConfig,
+) {
+    return {
+        options: {
+            ...(request.maxTokens && { num_predict: request.maxTokens }),
+            ...(request.temperature !== undefined && { temperature: request.temperature }),
+            ...(request.topP !== undefined && { top_p: request.topP }),
+            ...(request.stopSequences?.length && { stop: request.stopSequences }),
+        },
+        ...(config.settings?.keepAlive && { keep_alive: config.settings.keepAlive as string }),
+        ...(await thinkOf(config)),
+    };
 }
 
 interface OllamaGenerateRequest {
@@ -165,21 +234,14 @@ export class OllamaAdapter implements AIProviderAdapter {
             prompt: request.prompt,
             ...(request.systemPrompt && { system: request.systemPrompt }),
             stream: false,
-            options: {
-                ...(request.maxTokens && { num_predict: request.maxTokens }),
-                ...(request.temperature !== undefined && { temperature: request.temperature }),
-                ...(request.topP !== undefined && { top_p: request.topP }),
-                ...(request.stopSequences?.length && { stop: request.stopSequences }),
-            },
-            ...(config.settings?.keepAlive && { keep_alive: config.settings.keepAlive as string }),
-            ...thinkOf(config),
+            ...(await generationSettings(request, config)),
         };
 
-        const response = await this.makeRequest<OllamaGenerateResponse>(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, ollamaRequest, 'think', (body) => this.makeRequest<OllamaGenerateResponse>(
             `${config.baseUrl}/api/generate`,
-            ollamaRequest,
+            body,
             config
-        );
+        ));
 
         const usage = this.extractUsage(response);
 
@@ -210,28 +272,14 @@ export class OllamaAdapter implements AIProviderAdapter {
         request: ChatRequest,
         config: AdapterConfig
     ): Promise<AdapterChatResponse> {
-        const format = toOllamaFormat(request.responseFormat);
-        const ollamaRequest: OllamaChatRequest = {
-            model: config.modelKey,
-            messages: this.convertMessages(request.messages),
-            stream: false,
-            ...(format && { format }),
-            options: {
-                ...(request.maxTokens && { num_predict: request.maxTokens }),
-                ...(request.temperature !== undefined && { temperature: request.temperature }),
-                ...(request.topP !== undefined && { top_p: request.topP }),
-                ...(request.stopSequences?.length && { stop: request.stopSequences }),
-            },
-            ...(config.settings?.keepAlive && { keep_alive: config.settings.keepAlive as string }),
-            ...thinkOf(config),
-        };
+        const ollamaRequest = await this.chatRequest(request, config, false);
 
-        const response = await this.makeRequest<OllamaChatResponse>(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, ollamaRequest, 'think', (body) => this.makeRequest<OllamaChatResponse>(
             `${config.baseUrl}/api/chat`,
-            ollamaRequest,
+            body,
             config,
             request.signal
-        );
+        ));
 
         const usage = this.extractUsageFromChat(response);
 
@@ -252,28 +300,14 @@ export class OllamaAdapter implements AIProviderAdapter {
         request: ChatRequest,
         config: AdapterConfig
     ): AsyncGenerator<AdapterStreamChunk, void, unknown> {
-        const format = toOllamaFormat(request.responseFormat);
-        const ollamaRequest: OllamaChatRequest = {
-            model: config.modelKey,
-            messages: this.convertMessages(request.messages),
-            stream: true,
-            ...(format && { format }),
-            options: {
-                ...(request.maxTokens && { num_predict: request.maxTokens }),
-                ...(request.temperature !== undefined && { temperature: request.temperature }),
-                ...(request.topP !== undefined && { top_p: request.topP }),
-                ...(request.stopSequences?.length && { stop: request.stopSequences }),
-            },
-            ...(config.settings?.keepAlive && { keep_alive: config.settings.keepAlive as string }),
-            ...thinkOf(config),
-        };
+        const ollamaRequest = await this.chatRequest(request, config, true);
 
-        const response = await this.makeStreamRequest(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, ollamaRequest, 'think', (body) => this.send(
             `${config.baseUrl}/api/chat`,
-            ollamaRequest,
+            body,
             config,
             request.signal
-        );
+        ));
 
         let fullContent = '';
         let lastChunk: OllamaChatResponse | null = null;
@@ -379,41 +413,30 @@ export class OllamaAdapter implements AIProviderAdapter {
     // PRIVATE HELPERS
     // ============================================================================
 
-    /**
-     * Make a non-streaming request: the same request as a streaming one, its body read whole
-     */
-    private async makeRequest<T>(
-        url: string,
-        body: unknown,
-        config: AdapterConfig,
-        signal?: AbortSignal
-    ): Promise<T> {
-        const response = await this.makeStreamRequest(url, body, config, signal);
+    /** A chat request as Ollama's /api/chat takes it, streamed or not */
+    private async chatRequest(request: ChatRequest, config: AdapterConfig, stream: boolean): Promise<OllamaChatRequest> {
+        const format = toOllamaFormat(request.responseFormat);
+        return {
+            model: config.modelKey,
+            messages: this.convertMessages(request.messages),
+            stream,
+            ...(format && { format }),
+            ...(await generationSettings(request, config)),
+        };
+    }
+
+    /** Make a non-streaming request: its answer, read as JSON */
+    private async makeRequest<T>(url: string, body: unknown, config: AdapterConfig, signal?: AbortSignal): Promise<T> {
+        const response = await this.send(url, body, config, signal);
         try {
             return await response.json() as T;
         } catch (error) {
-            if (error instanceof Error && error.name === 'AbortError') {
-                throw abortedRequestError(this.providerKey, signal);
-            }
-            throw new AdapterError(
-                `Network error: ${(error as Error).message}`,
-                this.providerKey,
-                undefined,
-                true,
-                error as Error
-            );
+            throw this.requestFailure(error, signal);
         }
     }
 
-    /**
-     * Make a streaming request
-     */
-    private async makeStreamRequest(
-        url: string,
-        body: unknown,
-        config: AdapterConfig,
-        signal?: AbortSignal
-    ): Promise<Response> {
+    /** POST a request within the configured timeout; an error answer or no answer throws an AdapterError */
+    private async send(url: string, body: unknown, config: AdapterConfig, signal?: AbortSignal): Promise<Response> {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
@@ -427,41 +450,27 @@ export class OllamaAdapter implements AIProviderAdapter {
                 signal: requestSignal(controller.signal, signal),
             });
 
-            clearTimeout(timeoutId);
-
             if (!response.ok) {
                 await this.handleErrorResponse(response);
             }
 
             return response;
         } catch (error) {
+            throw this.requestFailure(error, signal);
+        } finally {
             clearTimeout(timeoutId);
-
-            if (error instanceof AdapterError) {
-                throw error;
-            }
-
-            if (error instanceof Error && error.name === 'AbortError') {
-                throw abortedRequestError(this.providerKey, signal);
-            }
-
-            if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
-                throw new AdapterError(
-                    'Ollama is not running. Please start Ollama and try again.',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
-            }
-
-            throw new AdapterError(
-                `Network error: ${(error as Error).message}`,
-                this.providerKey,
-                undefined,
-                true,
-                error as Error
-            );
         }
+    }
+
+    /** A request that failed, as an AdapterError: timed out, cancelled, Ollama not running, the network */
+    private requestFailure(error: unknown, signal?: AbortSignal): AdapterError {
+        if (error instanceof AdapterError) return error;
+        if (error instanceof Error && error.name === 'AbortError') return abortedRequestError(this.providerKey, signal);
+        // Check if Ollama is not running
+        if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+            return new AdapterError('Ollama is not running. Please start Ollama and try again.', this.providerKey, undefined, true);
+        }
+        return new AdapterError(`Network error: ${(error as Error).message}`, this.providerKey, undefined, true, error as Error);
     }
 
     /**

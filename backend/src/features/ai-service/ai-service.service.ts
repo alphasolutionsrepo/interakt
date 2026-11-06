@@ -246,6 +246,7 @@ export async function generateText(
                 ),
                 {
                     providerId: config!.providerId,
+                    providerKey: config!.providerKey,
                     retry: { maxRetries: config!.maxRetries },
                 }
             );
@@ -392,6 +393,7 @@ export async function chat(
                         ),
                         {
                             providerId: config!.providerId,
+                            providerKey: config!.providerKey,
                             retry: { maxRetries: config!.maxRetries },
                         }
                     );
@@ -779,6 +781,7 @@ export async function generateEmbeddings(
                     () => adapter.generateEmbeddings({ texts: batch }, adapterConfig),
                     {
                         providerId: config!.providerId,
+                        providerKey: config!.providerKey,
                         retry: { maxRetries: config!.maxRetries },
                     }
                 );
