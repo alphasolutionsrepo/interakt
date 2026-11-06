@@ -246,7 +246,7 @@ export default function SetupDemoPage() {
       }
     } catch (e) {
       setError(errorText(e, 'Setup failed'));
-      reportActionError('Set up the demo', e, { inline: true });
+      reportActionError(action === 'seed' ? 'Set up the demo' : 'Reset the demo', e, { inline: true });
     } finally {
       setBusy(null);
     }
