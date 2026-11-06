@@ -828,7 +828,7 @@ function processAIEffectiveness(spans: SpanData[]): Record<string, unknown> {
   // Turn planner spans have plan.reasoning and direct_response flag
   const plannerSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn_planner' && !abandoned.has(s.traceId));
 
-  const outcomes = { success: 0, plan_failed: 0, context_assembly_failed: 0, unknown: 0 };
+  const outcomes = { success: 0, plan_failed: 0, context_assembly_failed: 0, timed_out: 0, unknown: 0 };
   const decisions = { direct_response: 0, tool_call: 0, unknown: 0 };
   const presets = new Map<string, number>();
 
@@ -859,7 +859,8 @@ function processAIEffectiveness(spans: SpanData[]): Record<string, unknown> {
   }
 
   const total = turnSpans.length;
-  const successRate = total > 0 ? outcomes.success / total : 0;
+  // No turn finished (the visitor left each one): no rate or time, rather than 0%
+  const successRate = total > 0 ? outcomes.success / total : null;
   const retryRate = 0; // Retries are tracked in catalog health
 
   const presetDistribution = Array.from(presets.entries())
@@ -876,7 +877,7 @@ function processAIEffectiveness(spans: SpanData[]): Record<string, unknown> {
     totalRetries: 0,
     conversationsWithRetries: 0,
     avgDurationMs:
-      total > 0 ? Math.round(turnSpans.reduce((sum, s) => sum + s.durationMs, 0) / total) : 0,
+      total > 0 ? Math.round(turnSpans.reduce((sum, s) => sum + s.durationMs, 0) / total) : null,
   };
 }
 

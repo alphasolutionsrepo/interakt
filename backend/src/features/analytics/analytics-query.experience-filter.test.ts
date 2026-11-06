@@ -248,6 +248,8 @@ describe('experience comparison: chat turns the visitor left', () => {
 
     const row = (await getExperienceSummaries('24h')).find((s) => s.id === experience);
     expect(row).toMatchObject({ volume: 2, avgLatencyMs: 500 });
+    // The overview's AI time for the experience agrees
+    expect(await getOverviewMetrics('24h', experience)).toMatchObject({ totalAIRequests: 2, avgAIDurationMs: 500 });
   });
 
   it('has no success rate or time, rather than 0%, when the visitor left every turn', async () => {

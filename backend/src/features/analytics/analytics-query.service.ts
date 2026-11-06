@@ -327,7 +327,8 @@ export async function getOverviewMetrics(
       const aiSpanRows = await analyticsDB
         .select({
           total: count(),
-          avgDuration: sql<number>`COALESCE(AVG(${otelSpans.durationMs}), 0)`,
+          // Timed over the turns that finished, as the experience summary is
+          avgDuration: sql<number>`COALESCE(AVG(${otelSpans.durationMs}) FILTER (WHERE NOT ${abandonedTurn(otelSpans)}), 0)`,
         })
         .from(otelSpans)
         .where(and(

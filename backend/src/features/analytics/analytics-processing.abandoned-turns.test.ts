@@ -57,6 +57,8 @@ beforeAll(async () => {
     turn({ [ATTR.TURN_ABANDONED]: 'writing the answer' }, traces.abandoned),
     // Its plan had failed before the visitor left: that still counts
     turn({ 'alpha.v2.outcome': 'plan_failed', [ATTR.TURN_ABANDONED]: 'saving the turn' }, traces.planFailed),
+    // Ran out of time: stopped by us, so it failed, under its own outcome
+    turn({ 'alpha.v2.outcome': 'timed_out', [ATTR.TURN_ABANDONED]: 'the turn-planner call finished' }),
     ...Object.entries(traces).map(([name, traceId]) => turn({ 'alpha.v2.plan.reasoning': `find ${name}` }, traceId, 'pipeline.v2.turn_planner')),
   ]);
 });
@@ -65,15 +67,15 @@ afterAll(async () => {
 });
 
 describe('AI effectiveness', () => {
-  it("doesn't rate a turn the visitor left before it had an outcome", async () => {
+  it("doesn't rate a turn the visitor left before it had an outcome, and counts one that ran out of time as such", async () => {
     await runAnalyticsProcessing({ timeRanges: ['24h'] });
 
     const [row] = await testDb.db.select({ data: analyticsInsights.data }).from(analyticsInsights)
       .where(eq(analyticsInsights.insightType, 'ai_effectiveness'));
     expect(row.data).toMatchObject({
-      totalConversations: 2,
-      successRate: 0.5,
-      outcomes: { success: 1, plan_failed: 1, context_assembly_failed: 0, unknown: 0 },
+      totalConversations: 3,
+      successRate: 1 / 3,
+      outcomes: { success: 1, plan_failed: 1, context_assembly_failed: 0, timed_out: 1, unknown: 0 },
       // The same turns' plans: the one the visitor left isn't among the decisions either
       decisions: { direct_response: 0, tool_call: 2, unknown: 0 },
     });

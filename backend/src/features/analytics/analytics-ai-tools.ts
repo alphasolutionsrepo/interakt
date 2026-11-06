@@ -1479,14 +1479,18 @@ function formatInsightForAI(
     }
 
     case 'get_ai_effectiveness': {
-      const successRate = Number(data.successRate ?? 0);
       const outcomes = (data.outcomes || {}) as Record<string, number>;
       const decisions = (data.decisions || {}) as Record<string, number>;
       let result = `AI Effectiveness:\n`;
-      result += `- Success rate: ${(successRate * 100).toFixed(1)}%\n`;
+      // No rate or time when no turn finished (the visitor left each one)
+      if (data.successRate === null) {
+        result += `- No conversation turn finished in this period (turns the visitor left aren't rated)\n`;
+      } else {
+        result += `- Success rate: ${(Number(data.successRate ?? 0) * 100).toFixed(1)}% of finished turns\n`;
+        result += `- Avg duration: ${data.avgDurationMs}ms\n`;
+      }
       result += `- Total conversations: ${data.totalConversations}\n`;
       result += `- Retry rate: ${((Number(data.retryRate ?? 0)) * 100).toFixed(1)}%\n`;
-      result += `- Avg duration: ${data.avgDurationMs}ms\n`;
       result += `\nOutcomes: ${Object.entries(outcomes).map(([k, v]) => `${k}=${v}`).join(', ')}\n`;
       result += `Decisions: ${Object.entries(decisions).map(([k, v]) => `${k}=${v}`).join(', ')}\n`;
       return result;
