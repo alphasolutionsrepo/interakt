@@ -258,7 +258,8 @@ describe('V2 Pipeline Orchestrator', () => {
   });
 
   describe('context assembly failure', () => {
-    it('fails the turn with the error as its cause, sending no error text of its own', async () => {
+    it('fails the turn with the error as its cause, sending no error text of its own, and stops its timer', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const deps = makeDeps();
       const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
       deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockRejectedValue(down);
@@ -269,6 +270,9 @@ describe('V2 Pipeline Orchestrator', () => {
 
       // The answer to the caller (chatEventStream) explains and logs it
       expect((thrown as Error).cause).toBe(down);
+      // The turn's wall-clock timer isn't left running
+      expect(vi.getTimerCount()).toBe(0);
+      vi.useRealTimers();
       const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
       expect(events.some((e: PipelineStreamEvent) => e.type === 'error')).toBe(false);
     });

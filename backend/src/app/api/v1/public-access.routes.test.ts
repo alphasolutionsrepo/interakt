@@ -544,6 +544,20 @@ describe('a document lookup when the search service is down', () => {
   });
 });
 
+describe('the search playground on the token route (the test marker and the admin login)', () => {
+  it('gets a failed search explained, unlike a visitor sending the marker alone', async () => {
+    mocks.executeExperienceSearch.mockRejectedValue(await down());
+    const marked = { 'X-Access-Token': 'search-token', Origin: SHOP, 'x-interakt-test': '1' };
+
+    const visitor = await ROUTES.find((r) => r.name === 'search by token')!.call(marked);
+    expect(await visitor.json()).toMatchObject({ message: PUBLIC_FAILURE_MESSAGE });
+
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    const admin = await ROUTES.find((r) => r.name === 'search by token')!.call(marked);
+    expect(await admin.json()).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
+  });
+});
+
 describe("an admin testing in the playground (signed in, on the slug route)", () => {
   it('gets the failure explained in full, unlike a visitor', async () => {
     mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
@@ -880,6 +894,27 @@ describe('a chat turn that fails after the stream started', () => {
     const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
 
     expect(event).toMatchObject({ type: 'error', message: PUBLIC_FAILURE_MESSAGE });
+  });
+
+  it('logs a turn that fails after the visitor closed the chat, once, sending nothing', async () => {
+    logs.length = 0;
+    let failed!: () => void;
+    const done = new Promise<void>((resolve) => { failed = resolve; });
+    const down = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama' });
+    mocks.runChatPipeline.mockImplementationOnce(async ({ onEvent }: { onEvent: (e: unknown) => void }) => {
+      onEvent({ type: 'content', content: 'Hel' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      setTimeout(failed, 0);
+      throw down;
+    });
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP });
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    await done;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ operation: 'chatTurn', err: down }) })]);
   });
 
   it("isn't logged when the visitor closed the chat before it finished, even by a step that logs a failed send", async () => {

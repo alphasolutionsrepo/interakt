@@ -26,10 +26,9 @@ export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent'>): Resp
       try {
         await runChatPipeline({ ...input, onEvent: (event) => { if (!gone) controller.enqueue(sseEvent(event)); } });
       } catch (err) {
-        // Nobody is left to answer
-        if (gone) return;
+        // Logged even when the visitor has gone: it failed all the same
         const { body } = describeError(err, 500, { operation: 'chatTurn', experienceId: input.experience.id });
-        controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
+        if (!gone) controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
       } finally {
         // Flush telemetry spans before closing — in serverless environments (Vercel)
         // the runtime freezes after the response, so the BatchSpanProcessor's background

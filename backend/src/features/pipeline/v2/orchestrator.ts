@@ -694,8 +694,10 @@ export async function runV2Pipeline(
     }, // end withSpan callback
   ), input.experience.slug); // end withSpan + withExperienceContext
 
-  const raced = await Promise.race([work, timeoutPromise]);
-  if (timeoutHandle) clearTimeout(timeoutHandle);
+  // Cleared however the turn ends, a failure included
+  const raced = await Promise.race([work, timeoutPromise]).finally(() => {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  });
 
   if (raced === PIPELINE_TIMEOUT) {
     logger.warn('V2 pipeline timed out — returning graceful response', {

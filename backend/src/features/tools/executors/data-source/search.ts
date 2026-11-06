@@ -238,7 +238,8 @@ async function executeExternalSearch(
     // experience search; an error when the source failed (it's down, it refused the
     // credentials, it's rate limiting) or refused something the request didn't say. The
     // tool's defaults are the admin's: a refused default is a misconfiguration, not the model's.
-    const refused = !!refusedRequest(error, { query, filters: requested, sort: sorting.sort }, schemaFields ?? [], merged.appliedDefaults);
+    const sort = sorting.fromDefault ? { fixed: sorting.sort } : { requested: sorting.sort };
+    const refused = !!refusedRequest(error, { query, filters: requested, sort: sort.requested }, schemaFields ?? [], { filters: merged.appliedDefaults, sort: sort.fixed });
     logger[refused ? 'warn' : failureLevel(error, 'warn')]('External source search failed', { dataSourceId: source.dataSourceId, provider: source.provider, err: error });
     result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }

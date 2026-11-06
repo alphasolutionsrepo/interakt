@@ -68,4 +68,24 @@ describe('a chat tool search on an external source', () => {
 
     expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: refused }) })]);
   });
+
+  it("that refused the tool's own default sort is logged once, as an error, not blamed on the model", async () => {
+    logs.length = 0;
+    const refused = new ExternalSearchError('Elasticsearch', 'Elasticsearch returned HTTP 400: No mapping found for [rating] in order to sort on', 400);
+    connector.search.mockRejectedValueOnce(refused);
+
+    await executeDataSourceSearch('ds', { defaultSort: [{ field: 'rating', direction: 'desc' }] }, { query: 'linen shirts' });
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ err: refused }) })]);
+  });
+
+  it('that refused the sort the model asked for is logged once, as a warning', async () => {
+    logs.length = 0;
+    const refused = new ExternalSearchError('Elasticsearch', 'Elasticsearch returned HTTP 400: No mapping found for [rating] in order to sort on', 400);
+    connector.search.mockRejectedValueOnce(refused);
+
+    await executeDataSourceSearch('ds', { defaultSort: [{ field: 'price', direction: 'asc' }] }, { query: 'linen shirts', sort: [{ field: 'rating', direction: 'desc' }] });
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ err: refused }) })]);
+  });
 });
