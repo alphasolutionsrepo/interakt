@@ -1,6 +1,6 @@
 // app/tools/_lib/api-client.ts
 
-import { ApiError, apiData, handleApiPage, handleApiResponse, readApiBody } from '@/shared/api/api-error';
+import { ApiError, apiErrorFrom, handleApiPage, handleApiResponse, readApiBody, type ApiErrorBody } from '@/shared/api/api-error';
 import type { LookupFieldCandidate, LookupFieldRules } from '@/features/tools/executors/data-source/lookup-field-rules';
 
 export { ApiError };
@@ -235,14 +235,22 @@ export const toolsApi = {
     return handleApiResponse<{ available: boolean }>(response);
   },
 
-  /** Run a tool with test input. A run that failed answers 422 with its result, returned like any other */
+  /**
+   * Run a tool with test input. A run that failed answers 422 with its result, returned
+   * like any other; a 422 without a result (from a proxy, say) throws like any failure.
+   */
   test: async (id: string, input: Record<string, unknown>): Promise<ToolTestResult> => {
     const response = await fetch(`/api/tools/${id}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input }),
     });
-    if (response.status === 422) return apiData<ToolTestResult>(await readApiBody(response));
+    if (response.status === 422) {
+      const body = await readApiBody(response);
+      const json = body !== null && typeof body === 'object' ? (body as ApiErrorBody & { data?: Partial<ToolTestResult> }) : undefined;
+      if (typeof json?.data?.success === 'boolean') return json.data as ToolTestResult;
+      throw apiErrorFrom(json, 422, 'The test run failed');
+    }
     return handleApiResponse<ToolTestResult>(response, 'The test run failed');
   },
 

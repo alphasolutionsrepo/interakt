@@ -125,6 +125,13 @@ describe('a tool test run', () => {
     answerWith(gatewayErrorPage);
     await expectGatewayError(toolsApi.test('t1', {}));
   });
+
+  it('that answered 422 without a result says why, with its request id', async () => {
+    answerWith(() => apiErrorResponse(422));
+    await expectApiError(toolsApi.test('t1', {}), 422);
+    answerWith(() => new Response('<html><body>422 Unprocessable</body></html>', { status: 422, headers: { 'content-type': 'text/html' } }));
+    await expect(toolsApi.test('t1', {})).rejects.toMatchObject({ name: 'ApiError', status: 422, message: 'The test run failed (422)' });
+  });
 });
 
 describe('the analytics experience list', () => {
