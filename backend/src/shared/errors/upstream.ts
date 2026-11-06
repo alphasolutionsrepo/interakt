@@ -197,12 +197,15 @@ export function explainWriteFailure(writeError: unknown, reason: string | undefi
 const SHARDS_UNAVAILABLE = /no_shard_available|all shards failed|missing shards/;
 
 /**
- * Whether a search service refused for shards that aren't available. They come back after
- * a restart or a failover, so another try can succeed.
+ * Whether a search service refused for shards that aren't available (a 503). They come back
+ * after a restart or a failover, so another try can succeed. A query the shards refused
+ * (a 400, also "all shards failed") fails the same way again.
  */
 export function shardsUnavailable(err: unknown): boolean {
     const provider = findProvider(err);
-    return !!provider && SHARDS_UNAVAILABLE.test(detailText(toErrorDetail(provider.error)).toLowerCase());
+    if (!provider) return false;
+    const detail = toErrorDetail(provider.error);
+    return detail.statusCode === 503 && SHARDS_UNAVAILABLE.test(detailText(detail).toLowerCase());
 }
 
 function detailText(detail: ReturnType<typeof toErrorDetail>): string {

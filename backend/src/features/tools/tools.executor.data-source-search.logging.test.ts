@@ -99,7 +99,8 @@ describe('a chat tool search the search service failed', () => {
 describe('a chat tool search the circuit breaker refused (semantic search, its embedding provider cut off)', () => {
   it('is not retried: another try fails the same way at once', async () => {
     const circuit = Object.assign(new Error('Circuit breaker is open - provider temporarily unavailable'), { name: 'AIServiceError', code: 'CIRCUIT_OPEN', providerKey: 'ollama' });
-    search.searchById.mockRejectedValue(new SearchError('Embedding failed', 'PROVIDER_ERROR', {}, { cause: circuit }));
+    // Its text matches a retry pattern ('timeout'): only the circuit breaker stops the retry
+    search.searchById.mockRejectedValue(new SearchError('Embedding request timeout', 'PROVIDER_ERROR', {}, { cause: circuit }));
 
     await executeTool('tool-1', { query: 'linen shirts' });
 
@@ -119,7 +120,7 @@ describe('a chat tool search on a managed Azure AI Search index that could not b
 });
 
 describe('a chat tool search on an external source that is down', () => {
-  it('is answered to the model as a failed call at once, not retried: the data source search answers it itself', async () => {
+  it('is answered to the model as a failed call at once (a control: the data source search answers it itself, so nothing is thrown to retry)', async () => {
     const { ExternalSearchError } = await import('@/features/data-source/external-search/external-search.types');
     search.resolveDataSource.mockResolvedValue({ kind: 'external', provider: 'elasticsearch', dataSourceId: 'ds' });
     external.search.mockReset().mockRejectedValue(new ExternalSearchError('Elasticsearch', "Elasticsearch couldn't be reached"));

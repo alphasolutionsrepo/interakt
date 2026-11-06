@@ -156,6 +156,17 @@ describe('executeTool', () => {
       expect(mockHttp).toHaveBeenCalledTimes(2);
     });
 
+    it("doesn't retry a search Elasticsearch refused for its query, which fails the same way again", async () => {
+      mockGetToolById.mockResolvedValue(makeTool());
+      // A filter value that can't convert: also "all shards failed", but a 400
+      const body = { error: { root_cause: [{ type: 'query_shard_exception', reason: 'failed to create query: For input string: "red"' }], type: 'search_phase_execution_exception', reason: 'all shards failed' }, status: 400 };
+      mockHttp.mockRejectedValue(new esErrors.ResponseError({ body, statusCode: 400, headers: {}, meta: {} as never, warnings: null }));
+
+      const result = await executeTool('tool-1', {});
+      expect(result.success).toBe(false);
+      expect(mockHttp).toHaveBeenCalledTimes(1);
+    });
+
     it('exhausts retries and returns the error (no fallback configured)', async () => {
       mockGetToolById.mockResolvedValue(makeTool({
         retryConfig: { count: 1, backoff: 'exponential', initialDelayMs: 1 },
