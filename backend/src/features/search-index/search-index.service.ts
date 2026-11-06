@@ -1273,14 +1273,19 @@ export const DELETE_SETTLE = { checks: 5, intervalMs: 1000 };
  * One that broke off with no answer (a timeout, a dropped connection) can still go
  * through on the service after we gave up: it is watched for a few seconds, then, if the
  * index is still there, asked for again, since deleting it is what the reindex is doing.
- * Only an answer from the service says the index was left whole.
+ * Only the service refusing it says the index was left whole.
  */
 async function deleteOutcome(
     provider: { indexExists(name: string): Promise<boolean>; deleteIndex(name: string): Promise<{ success: boolean; cause?: unknown }> },
     indexName: string,
     cause: unknown
 ): Promise<'deleted' | 'whole' | 'unknown'> {
-    const answered = (error: unknown) => !!(toAppError(error).details as { status?: number } | undefined)?.status;
+    // A status the service gave itself; a gateway or proxy timing out (408, 502-504) says
+    // nothing about whether the delete went through
+    const answered = (error: unknown) => {
+        const status = (toAppError(error).details as { status?: number } | undefined)?.status;
+        return !!status && ![408, 502, 503, 504].includes(status);
+    };
     const exists = () => provider.indexExists(indexName).catch(() => undefined);
     const outcome = (found: boolean | undefined) => (found === undefined ? 'unknown' : found ? 'whole' : 'deleted');
 

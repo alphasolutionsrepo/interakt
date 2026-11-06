@@ -298,7 +298,11 @@ function upstreamMessage(err: unknown, body: unknown): string {
         }
         // A search refused for missing shards gives its reason one level down, and an empty one on top
         const causedBy = (inner.caused_by as Record<string, unknown> | undefined)?.reason;
-        if (typeof causedBy === 'string' && causedBy) return causedBy.replace(/\s*Consider using `allow_partial_search_results`[^.]*\./, '');
+        if (typeof causedBy === 'string' && causedBy) {
+            // Its advice to accept partial results is one a reindex must not take
+            const advice = causedBy.indexOf(' Consider using `allow_partial_search_results`');
+            return advice >= 0 ? causedBy.slice(0, advice) : causedBy;
+        }
     }
     if (typeof body === 'string' && body.trim()) return body;
 

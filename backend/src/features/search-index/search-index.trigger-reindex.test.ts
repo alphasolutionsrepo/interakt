@@ -228,6 +228,19 @@ describe('triggerReindex stopped before it changed the index', () => {
             expect(state.statuses).toEqual(['indexing', 'active']);
         });
 
+        it.each([[504, 'Gateway Timeout'], [503, 'Service Unavailable']])('watches a delete a gateway answered %s, which says nothing of the delete, and carries on when it went through', async (statusCode, text) => {
+            state.bulk = { success: true, indexed: 2, failed: 0, errors: [], took: 1 };
+            const gateway = new esErrors.ResponseError({ body: text, statusCode, headers: {}, meta: {}, warnings: null } as never);
+            let checksAfterDelete = 0;
+            let deleted = false;
+            state.engine = {
+                indexExists: async () => !deleted || checksAfterDelete++ < 1,
+                deleteIndex: async () => { deleted = true; return { success: false, error: text, cause: gateway }; },
+            };
+            const result = await triggerReindex('i1', 'u1');
+            expect(result).toMatchObject({ documentCount: 2, outcome: { status: 'succeeded' } });
+        });
+
         it("doesn't say 'left as it is' when the second delete breaks off too: the index is marked errored", async () => {
             state.engine = {
                 indexExists: async () => true,
