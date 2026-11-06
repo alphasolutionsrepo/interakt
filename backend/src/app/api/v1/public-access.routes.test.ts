@@ -4,6 +4,7 @@
 // experience's allowed origins and rate limits. The routes are called directly,
 // with storage and the AI work faked; each test checks what reaches that work.
 
+import { errors } from '@elastic/elasticsearch';
 import { NextRequest } from 'next/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -64,6 +65,7 @@ import { POST as searchByToken } from './search/route';
 import { POST as summaryByToken } from './summarize/route';
 
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
+import { SearchError } from '@/features/search/search.types';
 import * as searchService from '@/features/search-experience/search-experience.service';
 import { rateLimiter } from '@/shared/api/rate-limit';
 import { PUBLIC_FAILURE_MESSAGE } from '@/shared/api/response';
@@ -431,9 +433,7 @@ describe('chat daily total', () => {
 });
 
 // What the engine throws when Elasticsearch can't be reached (see search.service)
-const down = async () => {
-  const { errors } = await import('@elastic/elasticsearch');
-  const { SearchError } = await import('@/features/search/search.types');
+const down = () => {
   const cause = new errors.ConnectionError('connect ECONNREFUSED 10.0.0.7:9200', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
   return new SearchError(cause.message, 'PROVIDER_ERROR', {}, { cause });
 };
@@ -446,7 +446,7 @@ describe('when the search service is down', () => {
   ];
 
   it.each(failing)('$name tells the visitor plainly, with a request id, and names no service', async ({ route, work }) => {
-    work().mockRejectedValue(await down());
+    work().mockRejectedValue(down());
     const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
     const body = await res.json();
 
@@ -459,7 +459,7 @@ describe('when the search service is down', () => {
   });
 
   it('keeps the CORS headers on the error, so the widget can read it', async () => {
-    mocks.executeExperienceSearch.mockRejectedValue(await down());
+    mocks.executeExperienceSearch.mockRejectedValue(down());
     const res = await ROUTES.find((r) => r.name === 'search by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
   });
@@ -467,7 +467,6 @@ describe('when the search service is down', () => {
 
 describe('a failed search', () => {
   const refused = async () => {
-    const { SearchError } = await import('@/features/search/search.types');
     const engine = new Error('failed to create query: For input string: "abc"');
     return new SearchError('"abc" isn\'t a valid value for rating', 'INVALID_FILTER', { fields: ['rating'] }, { cause: engine });
   };
@@ -504,7 +503,7 @@ describe('a failed search', () => {
     { route: 'autocomplete', work: () => mocks.getAutocompleteSuggestions, experience: { experienceId: searchExperience.id } },
     { route: 'document by token', work: () => mocks.getDocumentByIdFromIndex, experience: { experienceId: searchExperience.id } },
   ])('$route logs an outage once, as an error with the request id and the experience', async ({ route, work, experience }) => {
-    work().mockRejectedValue(await down());
+    work().mockRejectedValue(down());
     const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
     const { requestId } = await res.json();
 
@@ -533,7 +532,6 @@ describe('a document lookup when the search service is down', () => {
   it('tells the visitor plainly instead of "not found"', async () => {
     // What getDocumentByIdFromIndex throws (search.service): a search error around the
     // provider's message, which the provider's lookup passes on without its own error
-    const { SearchError } = await import('@/features/search/search.types');
     const lookupFailed = new Error('connect ECONNREFUSED 10.0.0.7:9200');
     mocks.getDocumentByIdFromIndex.mockRejectedValue(new SearchError(lookupFailed.message, 'PROVIDER_ERROR', {}, { cause: lookupFailed }));
     const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
@@ -547,7 +545,7 @@ describe('a document lookup when the search service is down', () => {
 describe("an admin testing in the playground (signed in, on the slug route)", () => {
   it('gets the failure explained in full, unlike a visitor', async () => {
     mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
-    mocks.executeExperienceSearch.mockRejectedValue(await down());
+    mocks.executeExperienceSearch.mockRejectedValue(down());
     const res = await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'jeans' }), slugParams('catalog'));
     const body = await res.json();
     expect(res.status).toBe(503);
@@ -556,7 +554,6 @@ describe("an admin testing in the playground (signed in, on the slug route)", ()
   });
 
   it('is told an external source is unavailable; a visitor gets the plain message', async () => {
-    const { SearchError } = await import('@/features/search/search.types');
     // What searchExternalSourceForExperience throws when the engine call fails
     const unavailable = () => new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE');
 
@@ -574,7 +571,6 @@ describe("an admin testing in the playground (signed in, on the slug route)", ()
   });
 
   it("is told why an external source failed; a visitor isn't", async () => {
-    const { SearchError } = await import('@/features/search/search.types');
     const { ExternalSearchError } = await import('@/features/data-source/external-search/external-search.types');
     const rejected = () => new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE', {}, {
       cause: new ExternalSearchError('Sitecore Search', 'Sitecore Search rejected the request — check the API key', 401),
@@ -604,7 +600,7 @@ describe('a document lookup where one index failed and another lacked the docume
       ...searchExperience,
       indexes: [{ searchIndexId: 'i1', searchIndex: { isActive: true } }, { searchIndexId: 'i2', searchIndex: { isActive: true } }],
     });
-    mocks.getDocumentByIdFromIndex.mockResolvedValueOnce(null).mockRejectedValueOnce(await down());
+    mocks.getDocumentByIdFromIndex.mockResolvedValueOnce(null).mockRejectedValueOnce(down());
     const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
     expect(res.status).toBe(503);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
@@ -623,7 +619,7 @@ describe('a document lookup across indexes, for the log', () => {
 
   it('logs an index that failed (the search service is down) as an error when another one had the document', async () => {
     twoIndexes();
-    const failed = await down();
+    const failed = down();
     mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(failed).mockResolvedValueOnce({ id: 'd1', fields: {}, indexId: 'i2', indexName: 'two' });
     expect((await lookUp()).status).toBe(200);
     expect(reported(logs)).toEqual([
@@ -632,7 +628,7 @@ describe('a document lookup across indexes, for the log', () => {
   });
 
   it('names the index that failed on the line for the answer', async () => {
-    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(await down());
+    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(down());
     expect((await lookUp()).status).toBe(503);
     expect(reported(logs)).toEqual([
       expect.objectContaining({ level: 'error', context: expect.objectContaining({ experienceId: searchExperience.id, documentId: 'd1', indexId: 'i1' }) }),
@@ -649,8 +645,8 @@ describe('a document lookup across indexes, for the log', () => {
 
   it('answers with the first failure and logs the others, as errors when the search service is down', async () => {
     twoIndexes();
-    const second = await down();
-    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(await down()).mockRejectedValueOnce(second);
+    const second = down();
+    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(down()).mockRejectedValueOnce(second);
     expect((await lookUp()).status).toBe(503);
     expect(reported(logs)).toEqual([
       expect.objectContaining({ level: 'error', context: expect.objectContaining({ indexId: 'i2', err: second }) }),
