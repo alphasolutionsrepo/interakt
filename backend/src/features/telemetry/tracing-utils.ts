@@ -22,6 +22,7 @@ import {
   type Span,
 } from '@opentelemetry/api';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
+import { TurnAbandonedError } from '@/features/pipeline/turn-abandoned';
 
 import { ATTR } from './attribute-keys';
 import { isTelemetryEnabled } from './telemetry.config';
@@ -111,6 +112,12 @@ export async function withSpan<T>(
         span.setStatus({ code: SpanStatusCode.OK });
         return result;
       } catch (error) {
+        // The visitor left mid-turn: the turn stopped, it didn't fail, so traces and error
+        // counts don't show it as one. The status stays unset; the attribute says why.
+        if (error instanceof TurnAbandonedError) {
+          span.setAttribute(ATTR.TURN_ABANDONED, error.step);
+          throw error;
+        }
         span.setStatus({
           code: SpanStatusCode.ERROR,
           message: error instanceof Error ? error.message : 'Unknown error',

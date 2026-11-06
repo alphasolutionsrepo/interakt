@@ -79,6 +79,8 @@ export interface ChatPipelineInput {
   analyticsSource?: 'api' | 'playground' | 'admin_test';
   /** Callback for streaming events */
   onEvent: (event: PipelineStreamEvent) => void;
+  /** Aborted when the visitor closes the chat: the turn stops before its next step (TurnAbandonedError) */
+  signal?: AbortSignal;
 }
 
 export interface ChatPipelineResult {
@@ -442,6 +444,7 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
       message,
       sessionId: input.sessionId ?? '',
       onEvent,
+      signal: input.signal,
     },
     deps,
     {

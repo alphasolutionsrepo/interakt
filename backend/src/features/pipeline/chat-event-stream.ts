@@ -9,23 +9,38 @@
 
 import { runChatPipeline, type ChatPipelineInput } from './chat-pipeline';
 import type { PipelineStreamEvent } from './pipeline.types';
+import { TurnAbandonedError } from './turn-abandoned';
 
 import { flushTelemetry } from '@/features/telemetry';
+import { requestIdFor } from '@/shared/api/request-id';
 import { describeError } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
 
-export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent'>): Response {
+const logger = createLogger('chat-event-stream');
+
+export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent' | 'signal'>): Response {
   const encoder = new TextEncoder();
   const sseEvent = (event: PipelineStreamEvent) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
-  // The visitor closed the chat. The turn finishes unseen and is saved like any other:
-  // its events are dropped rather than failing to send, which the steps would log as errors.
+  // The visitor closed the chat. The turn stops before its next step and isn't saved
+  // (see TurnAbandonedError); until then its events are dropped rather than failing to
+  // send, which the steps would log as errors.
   let gone = false;
+  const visitor = new AbortController();
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        await runChatPipeline({ ...input, onEvent: (event) => { if (!gone) controller.enqueue(sseEvent(event)); } });
+        await runChatPipeline({
+          ...input,
+          onEvent: (event) => { if (!gone) controller.enqueue(sseEvent(event)); },
+          signal: visitor.signal,
+        });
       } catch (err) {
+        if (err instanceof TurnAbandonedError) {
+          logger.info('Visitor left; chat turn stopped', { experienceId: input.experience.id, requestId: requestIdFor(err), step: err.step });
+          return;
+        }
         // Logged even when the visitor has gone: it failed all the same
         const { body } = describeError(err, 500, { operation: 'chatTurn', experienceId: input.experience.id });
         if (!gone) controller.enqueue(sseEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId }));
@@ -39,6 +54,7 @@ export function chatEventStream(input: Omit<ChatPipelineInput, 'onEvent'>): Resp
     },
     cancel() {
       gone = true;
+      visitor.abort();
     },
   });
 

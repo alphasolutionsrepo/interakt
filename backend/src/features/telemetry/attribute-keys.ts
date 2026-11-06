@@ -89,6 +89,7 @@ export const ATTR = {
   CHAT_AI_DECISION: 'alpha.chat.ai_decision_type', // 'direct_response' | 'tool_call' | 'error'
   CHAT_RESPONSE_PRESET: 'alpha.chat.response_preset', // 'item_grid' | 'single_card' | 'markdown_rich'
   CHAT_CONTEXT_SOURCE: 'alpha.chat.context_source',
+  TURN_ABANDONED: 'alpha.chat.abandoned_before', // the visitor left: the step the turn stopped before (not an error)
 
   // === Error ===
   ERROR_CODE: 'alpha.error.code',

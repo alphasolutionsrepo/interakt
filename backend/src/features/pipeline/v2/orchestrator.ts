@@ -35,6 +35,7 @@ import type {
   PlanningRoundSummary,
 } from './v2.types';
 import type { PipelineStreamEvent, TokenUsage } from '../pipeline.types';
+import { stopIfAbandoned } from '../turn-abandoned';
 import type { ContextAssemblyDeps } from './context-assembly';
 import type { TurnPlannerDeps, ChatFn } from './turn-planner';
 import type { ExecutionLoopDeps } from './execution-loop';
@@ -57,6 +58,8 @@ export interface V2PipelineInput {
   sessionId: string;
   /** SSE event callback */
   onEvent: (event: PipelineStreamEvent) => void;
+  /** Aborted when the visitor leaves: checked before each step, which then throws TurnAbandonedError */
+  signal?: AbortSignal;
 }
 
 export interface V2PipelineResult {
@@ -149,7 +152,7 @@ export async function runV2Pipeline(
   config: Partial<V2PipelineConfig> = {},
 ): Promise<V2PipelineResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
-  const { onEvent } = input;
+  const { onEvent, signal } = input;
   const experienceId = input.experience.id;
   const usage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -254,6 +257,7 @@ export async function runV2Pipeline(
   while (round < policy.maxPlanningRounds) {
     round++;
     const isReplan = round > 1;
+    stopIfAbandoned(signal, `planning round ${round}`);
 
   // ── D1: Turn Planner ──────────────────────────────────────────────────
   onEvent({
@@ -345,7 +349,8 @@ export async function runV2Pipeline(
     onEvent({ type: 'content', text: errorText });
     onEvent({ type: 'done', sessionId: turnContext.sessionId, usage });
 
-    // Still persist the turn (with fallback response)
+    // Still persist the turn (with fallback response), unless the visitor has left
+    stopIfAbandoned(signal, 'saving the turn');
     await persistTurn(
       {
         sessionId: turnContext.sessionId,
@@ -421,6 +426,7 @@ export async function runV2Pipeline(
               turnRequestId,
             },
             emit: wrappedEmit,
+            signal,
           },
           trackedDeps.executionLoop,
         );
@@ -550,6 +556,7 @@ export async function runV2Pipeline(
   }
 
   // ── D3: Response Synthesis ────────────────────────────────────────────
+  stopIfAbandoned(signal, 'writing the answer');
   onEvent({ type: 'step_start', stepId: 'response-synthesis', stepType: 'response_synthesis', stepName: 'Generating response' });
 
   const synthResult = await withSpan(
@@ -645,6 +652,8 @@ export async function runV2Pipeline(
   const updatedTurnLog = [...turnContext.turnLog, thisTurnEntry];
 
   // ── D4: Persistence ───────────────────────────────────────────────────
+  // Checked once: a turn that is saved also gets its post-turn tasks
+  stopIfAbandoned(signal, 'saving the turn');
   await withSpan(
     {
       name: 'pipeline.v2.persistence',
