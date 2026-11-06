@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { errorText } from '@/shared/api/api-error';
+import { reportActionError } from '@/shared/activity/report';
+import { apiErrorFrom, errorText } from '@/shared/api/api-error';
 import { startExperienceChat } from '@/shared/ui/custom/start-experience-chat';
 
 // ============================================================================
@@ -560,6 +561,8 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
             scrollToBottom(true);
           } else if (event.type === 'error') {
             setErrorMsg(event.message ?? 'An error occurred');
+            // The Activity panel keeps its request id
+            reportActionError('Test chat', apiErrorFrom(event, 500, 'An error occurred'), { inline: true });
             scrollToBottom(true);
           }
         }

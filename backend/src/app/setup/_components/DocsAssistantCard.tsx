@@ -19,7 +19,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StepProgress } from '@/components/ui/steps-progress';
-import { errorText } from '@/shared/api/api-error';
+import { reportActionError } from '@/shared/activity/report';
+import { apiErrorFrom, errorText, type ApiErrorBody } from '@/shared/api/api-error';
 import { DOCS_SEED_STEPS, type DocsSeedProgressEvent } from '@/shared/seeders/docs/docs-steps';
 
 import { loadDocsStatus, startDocsBuild, type DocsStatus } from '../_lib/docs-assistant-api';
@@ -81,16 +82,18 @@ export function DocsAssistantCard() {
             const ev = JSON.parse(payload) as
               | ({ type: 'progress' } & DocsSeedProgressEvent)
               | { type: 'complete' }
-              | { type: 'error'; error: string };
+              | ({ type: 'error' } & ApiErrorBody);
             if (ev.type === 'progress' && ev.status === 'done') {
               setDoneSteps((prev) => new Set(prev).add(ev.step));
             } else if (ev.type === 'error') {
-              setError(ev.error);
+              // With its request id, which the Activity panel shows
+              throw apiErrorFrom(ev, 500, 'Build failed');
             }
           }
         }
       } catch (e) {
         setError(errorText(e, 'Build failed'));
+        reportActionError('Build the docs assistant', e, { inline: true });
       } finally {
         setBuilding(false);
         await refresh();

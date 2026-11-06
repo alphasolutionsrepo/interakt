@@ -221,6 +221,11 @@ describe('an insights refresh', () => {
     await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'Something went wrong', code: 'INTERNAL_ERROR', requestId: 'r1' });
   });
 
+  it("throws the error the stream sends in the route's own shape (error only)", async () => {
+    answerWith(() => events({ type: 'error', error: 'Analytics DB not configured' }));
+    await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'Analytics DB not configured' });
+  });
+
   it('throws when the run ended failed', async () => {
     answerWith(() => events({ type: 'complete', result: { status: 'failed', error: 'Analytics DB not configured' } }, '[DONE]'));
     await expect(refreshInsights(undefined)).rejects.toMatchObject({ message: 'Analytics DB not configured' });

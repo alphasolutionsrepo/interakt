@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnalyticsContext } from '../AnalyticsContext';
 import { resolvePeriod } from '../period';
 import { reportActionError } from '@/shared/activity/report';
-import { errorText, handleApiResponse, toApiError } from '@/shared/api/api-error';
+import { apiErrorFrom, errorText, handleApiResponse, toApiError } from '@/shared/api/api-error';
 import { streamEvents } from '@/shared/api/stream-events';
 
 // ============================================================================
@@ -435,6 +435,8 @@ export function useAnalyticsChat({ providerId, modelId }: UseAnalyticsChatOption
             break;
 
           case 'error':
+            // The Activity panel keeps its request id
+            reportActionError('Ask about analytics', apiErrorFrom(chunk, 500, 'An error occurred'), { inline: true });
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === streamingMessageId

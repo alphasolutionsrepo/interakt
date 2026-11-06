@@ -53,7 +53,7 @@ import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shar
 import { sameOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
 import { reportActionError } from '@/shared/activity/report';
-import { errorText } from '@/shared/api/api-error';
+import { apiErrorFrom, errorText } from '@/shared/api/api-error';
 import { loadDemoStatus, resetDemo, startDemoSeed, type DemoStatus, type ProviderView, type SeedResult } from './_lib/demo-setup-api';
 
 type StepState = 'pending' | 'active' | 'done';
@@ -224,7 +224,8 @@ export default function SetupDemoPage() {
           setApiKey(''); // don't keep the key in component state after use
           await loadStatus();
         } else if (msg.type === 'error') {
-          throw new Error(msg.error ?? 'Setup failed');
+          // With its request id, which the Activity panel shows
+          throw apiErrorFrom(msg, 500, 'Setup failed');
         }
       }
     }
@@ -245,6 +246,7 @@ export default function SetupDemoPage() {
       }
     } catch (e) {
       setError(errorText(e, 'Setup failed'));
+      reportActionError('Set up the demo', e, { inline: true });
     } finally {
       setBusy(null);
     }
