@@ -64,14 +64,10 @@ export function toAppError(err: unknown): AppError {
             // A provider failure we don't recognise may carry the provider's own text
             return new AppError(code === 'PROVIDER_ERROR' ? INTERNAL_MESSAGE : err.message, { code, status, cause: err });
         }
-        case 'AIServiceError': {
-            const setup = aiConfigError(err);
-            if (setup) return setup;
-            break;
-        }
     }
 
-    return classifyUpstream(err) ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
+    // A step that wraps an AI call (analytics synthesis) can fail on our AI setup too
+    return aiConfigError(err) ?? classifyUpstream(err) ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
 }
 
 /** An AIServiceError, err or one of its causes, that points at our own AI configuration */

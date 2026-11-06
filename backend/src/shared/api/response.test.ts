@@ -95,6 +95,16 @@ describe('apiResponse.error', () => {
         expect(await admin.json()).toMatchObject({ code: 'PROVIDER_DISABLED', message: 'Provider is disabled: openai' });
     });
 
+    it('tells admins a setup error a step wrapped (analytics synthesis), and visitors the service is unavailable', async () => {
+        const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED', providerKey: 'openai' });
+        const wrapped = () => new Error('Synthesis failed: Provider is disabled: openai', { cause: disabled });
+
+        const admin = apiResponse.error(wrapped());
+        expect(admin.status).toBe(400);
+        expect(await admin.json()).toMatchObject({ code: 'PROVIDER_DISABLED', message: 'Provider is disabled: openai' });
+        expect((await publicRoute(async () => apiResponse.error(wrapped()))()).status).toBe(503);
+    });
+
     it('still tells admins what is wrong with the setup', async () => {
         const disabled = Object.assign(new Error('Provider is disabled: openai'), { name: 'AIServiceError', code: 'PROVIDER_DISABLED' });
         const response = apiResponse.error(disabled);
