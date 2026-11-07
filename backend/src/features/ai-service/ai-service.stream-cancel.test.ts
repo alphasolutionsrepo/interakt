@@ -257,7 +257,7 @@ describe("a chat call still running when the caller's own time runs out (a chat 
   const ask = (signal: AbortSignal) => chat([{ role: 'user', content: prompt }], { providerId: 'prov-1', modelId: 7, signal });
   const outOfTime = () => new DOMException('The chat turn ran out of time', 'TimeoutError');
 
-  it.each(['ollama', 'openai'])('fails as a timeout: not retried, recorded as a failed call, counted by the circuit breaker (%s API style)', async (key) => {
+  it.each(['ollama', 'openai'])('fails, not retried and recorded as a failed call, but not counted against the provider\'s circuit (%s API style)', async (key) => {
     provider.key = key;
     resetCircuit('prov-1');
     vi.stubGlobal('fetch', silentModel);
@@ -268,11 +268,12 @@ describe("a chat call still running when the caller's own time runs out (a chat 
     await vi.waitFor(() => expect(silentModel).toHaveBeenCalled());
     caller.abort(outOfTime());
 
-    await expect(pending).rejects.toMatchObject({ message: 'Request timed out', retryable: true });
+    await expect(pending).rejects.toMatchObject({ message: "Request stopped: the caller's time ran out", retryable: false });
     await expect(pending).rejects.not.toBeInstanceOf(CancelledRequestError);
     expect(silentModel).toHaveBeenCalledOnce(); // its time is up: no other attempt
-    expect(recorded()).toMatchObject({ operation: 'chat', success: false, errorMessage: 'Request timed out' });
-    expect(getCircuitStatus('prov-1')).toMatchObject({ failures: 1 });
+    expect(recorded()).toMatchObject({ operation: 'chat', success: false, errorMessage: "Request stopped: the caller's time ran out" });
+    // The time may have gone on other steps: not the provider failing
+    expect(getCircuitStatus('prov-1')).toMatchObject({ failures: 0 });
     const [span] = exporter.getFinishedSpans().filter((s) => s.name === 'ai.chat');
     expect(span.status.code).toBe(SpanStatusCode.ERROR);
   });

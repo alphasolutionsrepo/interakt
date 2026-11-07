@@ -171,15 +171,26 @@ export function wasAborted(error: unknown, caller?: AbortSignal): boolean {
 }
 
 /**
+ * A provider request stopped because its caller's own time ran out (a chat turn's limit):
+ * a failed call, but not the provider's failure, since the time may have gone on other
+ * steps. It isn't retried and doesn't count toward opening the provider's circuit.
+ */
+export class CallerTimeoutError extends AdapterError {
+    constructor(providerKey: string) {
+        super("Request stopped: the caller's time ran out", providerKey, undefined, false);
+    }
+}
+
+/**
  * The error for a provider request that was aborted. A caller's cancel (a summary
- * the visitor left) is not a timeout: it is not retried and not a provider failure.
- * Our own timer firing is a timeout, and so is a caller whose own time ran out (a chat
- * turn's limit): the provider didn't answer in time, which counts against it.
+ * the visitor left) is not a failure; a caller whose own time ran out is a failed call
+ * that isn't the provider's fault. Only our own timer firing is the provider timing out.
  */
 export function abortedRequestError(providerKey: string, caller?: AbortSignal): AdapterError {
-    return caller?.aborted && !callerTimedOut(caller)
-        ? new CancelledRequestError(providerKey)
-        : new AdapterError('Request timed out', providerKey, undefined, true);
+    if (caller?.aborted) {
+        return callerTimedOut(caller) ? new CallerTimeoutError(providerKey) : new CancelledRequestError(providerKey);
+    }
+    return new AdapterError('Request timed out', providerKey, undefined, true);
 }
 
 /**

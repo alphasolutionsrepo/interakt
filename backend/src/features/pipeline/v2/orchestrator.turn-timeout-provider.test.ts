@@ -96,7 +96,7 @@ afterEach(() => {
 });
 
 describe('a turn that runs out of time while the model has not answered', () => {
-  it('records the call as a failed, timed-out call that the circuit breaker counts, and ends the turn as timed out', async () => {
+  it('records the call as failed, not counted against the provider\'s circuit, and ends the turn as timed out', async () => {
     const onEvent = vi.fn();
 
     const result = await runV2Pipeline({ experience, message: 'Search for red shoes', sessionId: 'session-1', onEvent }, makeDeps(), { maxTotalDurationMs: 50 });
@@ -109,8 +109,9 @@ describe('a turn that runs out of time while the model has not answered', () => 
 
     expect(hangingModel).toHaveBeenCalledOnce(); // not tried again after the turn's time ran out
     expect(usage.trackUsage).toHaveBeenCalledOnce();
-    expect(usage.trackUsage.mock.calls[0][0]).toMatchObject({ operation: 'chat', feature: 'turn-planner', success: false, errorMessage: 'Request timed out' });
-    expect(getCircuitStatus('p1')).toMatchObject({ failures: 1 });
+    expect(usage.trackUsage.mock.calls[0][0]).toMatchObject({ operation: 'chat', feature: 'turn-planner', success: false, errorMessage: "Request stopped: the caller's time ran out" });
+    // The turn's time may have gone on other steps: not the provider failing
+    expect(getCircuitStatus('p1')).toMatchObject({ failures: 0 });
     // Logged once, as the turn timing out: the stopped turn isn't a failure of its own
     expect(log.warn.mock.calls.map(([message]) => message)).toEqual(['V2 pipeline timed out — returning graceful response']);
     expect(log.error).not.toHaveBeenCalled();

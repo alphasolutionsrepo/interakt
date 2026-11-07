@@ -8,7 +8,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
-import { CancelledRequestError } from './adapters/types';
+import { CallerTimeoutError, CancelledRequestError } from './adapters/types';
 import type {
     CircuitBreakerConfig,
     CircuitBreakerState,
@@ -356,7 +356,8 @@ export async function withResilience<T>(
     } catch (error) {
         // A caller that went away (a chat the visitor left) isn't the provider failing. A
         // call still running when the caller's own time ran out (a chat turn's) is: a timeout
-        if (!(error instanceof CancelledRequestError)) recordFailure(providerId, cbConfig);
+        // Neither is the provider failing: the caller left, or its own time ran out
+        if (!(error instanceof CancelledRequestError || error instanceof CallerTimeoutError)) recordFailure(providerId, cbConfig);
 
         throw error;
     }
