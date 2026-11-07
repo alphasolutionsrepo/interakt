@@ -25,7 +25,7 @@ import type {
 
 import { estimateChatUsage } from '../utils/token-counter';
 import { withoutUnsupportedReasoning } from './reasoning-fallback';
-import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal } from './types';
+import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal, wasAborted } from './types';
 
 
 /**
@@ -465,7 +465,7 @@ export class OllamaAdapter implements AIProviderAdapter {
     /** A request that failed, as an AdapterError: timed out, cancelled, Ollama not running, the network */
     private requestFailure(error: unknown, signal?: AbortSignal): AdapterError {
         if (error instanceof AdapterError) return error;
-        if (error instanceof Error && error.name === 'AbortError') return abortedRequestError(this.providerKey, signal);
+        if (wasAborted(error, signal)) return abortedRequestError(this.providerKey, signal);
         // Check if Ollama is not running
         if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
             return new AdapterError('Ollama is not running. Please start Ollama and try again.', this.providerKey, undefined, true);

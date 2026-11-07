@@ -395,6 +395,7 @@ export async function chat(
                             providerId: config!.providerId,
                             providerKey: config!.providerKey,
                             retry: { maxRetries: config!.maxRetries },
+                            signal: options?.signal,
                         }
                     );
                 } catch (error) {
@@ -580,6 +581,7 @@ export async function* streamChat(
                         toAdapterConfig(config!)
                     ),
                     { maxRetries: config!.maxRetries },
+                    options?.signal,
                 );
                 try {
                     for await (const chunk of innerStream) {

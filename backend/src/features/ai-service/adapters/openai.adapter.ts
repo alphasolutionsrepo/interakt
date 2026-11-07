@@ -26,7 +26,7 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
-import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal } from './types';
+import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal, wasAborted } from './types';
 import { withoutUnsupportedReasoning } from './reasoning-fallback';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -664,7 +664,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
     /** A request that failed, as an AdapterError: timed out, cancelled, the network */
     private requestFailure(error: unknown, signal?: AbortSignal): AdapterError {
         if (error instanceof AdapterError) return error;
-        if (error instanceof Error && error.name === 'AbortError') return abortedRequestError(this.providerKey, signal);
+        if (wasAborted(error, signal)) return abortedRequestError(this.providerKey, signal);
         return new AdapterError(`Network error: ${(error as Error).message}`, this.providerKey, undefined, true, error as Error);
     }
 

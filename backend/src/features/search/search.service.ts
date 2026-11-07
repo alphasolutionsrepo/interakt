@@ -31,6 +31,7 @@ import type {
     SearchContext,
     SearchIndexIdentifier,
     ProviderSearchRequest,
+    FixedClauses,
 } from './search.types';
 import { SearchError } from './search.types';
 import { searchRequestSchema } from './search.validation';
@@ -123,6 +124,8 @@ export interface SearchOptions {
     hybridConfig?: HybridConfigOverride;
     /** Search timeout in milliseconds */
     timeoutMs?: number;
+    /** What the request carries that its caller didn't write (a chat tool's defaults) */
+    fixed?: FixedClauses;
 }
 
 // ============================================================================
@@ -226,6 +229,7 @@ export async function search(
                     queryEmbedding,
                     hybridConfigOverride: options?.hybridConfig,
                     timeoutMs: options?.timeoutMs,
+                    fixed: options?.fixed,
                 };
 
                 // 7. Execute search via provider

@@ -2,7 +2,7 @@
 
 import type { ChatFn } from './v2/turn-planner';
 
-import { CancelledRequestError } from '@/features/ai-service/adapters/types';
+import { CancelledRequestError, callerTimedOut } from '@/features/ai-service/adapters/types';
 
 /**
  * Nobody will read the answer: the visitor closed the chat mid-turn, or the turn ran out
@@ -43,7 +43,9 @@ export function stepFailure(error: unknown, startTime: number): { err: Error; du
 /**
  * The turn's model calls, stopped by the visitor leaving: each gets the signal, so leaving
  * aborts the provider request mid-call and no more tokens are spent on it, and a call
- * stopped that way ends the turn. A call that fails for another reason fails as before.
+ * stopped that way ends the turn. The turn running out of time aborts it too, as a timeout
+ * (TimeoutError): the AI service records the call as failed, and the turn stops the same
+ * way. A call that fails for another reason fails as before.
  */
 export function chatUntilAbandoned(chat: ChatFn, signal: AbortSignal | undefined): ChatFn {
   if (!signal) return chat;
@@ -53,7 +55,7 @@ export function chatUntilAbandoned(chat: ChatFn, signal: AbortSignal | undefined
     try {
       return await chat(messages, { ...options, signal });
     } catch (error) {
-      if (error instanceof CancelledRequestError) stopIfAbandoned(signal, step);
+      if (error instanceof CancelledRequestError || callerTimedOut(signal)) stopIfAbandoned(signal, step);
       throw error;
     }
   };

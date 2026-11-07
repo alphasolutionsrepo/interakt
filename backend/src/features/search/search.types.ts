@@ -446,6 +446,18 @@ export interface ProviderSearchRequest {
 
     /** Search timeout in milliseconds */
     timeoutMs?: number;
+
+    /** What the request carries that its caller didn't write (FixedClauses) */
+    fixed?: FixedClauses;
+}
+
+/**
+ * Filters and sort sent with a request that its caller didn't write: a chat tool's
+ * default filters and sort. An engine's refusal of one isn't blamed on the caller.
+ */
+export interface FixedClauses {
+    filters?: FilterClause[];
+    sort?: SortClause[];
 }
 
 /**

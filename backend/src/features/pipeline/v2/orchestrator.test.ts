@@ -22,7 +22,7 @@ vi.mock('@/features/prompt-templates', () => ({
 import { runV2Pipeline } from './orchestrator';
 import type { V2PipelineInput, V2PipelineDeps } from './orchestrator';
 import type { PipelineStreamEvent } from '../pipeline.types';
-import { CancelledRequestError } from '@/features/ai-service/adapters/types';
+import { abortedRequestError } from '@/features/ai-service/adapters/types';
 import type { ChatOptions, ChatResult } from '@/features/ai-service/ai-service.types';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 
@@ -308,7 +308,8 @@ describe('V2 Pipeline Orchestrator', () => {
           actions: [{ toolSlug: 'product-search', intent: 'Search for red shoes', hints: '{"query":"red shoes"}', dependsOnPrevious: false }],
           reasoning: 'User wants to search', directResponse: false, needsClarification: false, clarificationQuestion: null, confidence: 0.95,
         })));
-        options?.signal?.addEventListener('abort', () => reject(new CancelledRequestError('openai')));
+        // As the adapters answer an aborted request
+        options?.signal?.addEventListener('abort', () => reject(abortedRequestError('openai', options.signal)));
       }))
         .mockResolvedValueOnce(makeChatResult(JSON.stringify({ query: 'red shoes' })))
         .mockResolvedValueOnce(makeChatResult('I found some red shoes for you!'));

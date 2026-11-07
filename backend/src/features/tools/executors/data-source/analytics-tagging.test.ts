@@ -47,7 +47,7 @@ beforeEach(() => {
 describe('analytics tagging of tool searches', () => {
   it('records a tool search on a managed index as ai_tool', async () => {
     await executeDataSourceSearch('ds', {}, { query: 'linen shirts' });
-    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: 'linen shirts' }), { triggerType: 'ai_tool', triggerStep: 'search' });
+    expect(searchById).toHaveBeenCalledWith('idx', expect.objectContaining({ query: 'linen shirts' }), expect.objectContaining({ triggerType: 'ai_tool', triggerStep: 'search' }));
   });
 
   it('records a List Values lookup as the AI tool it is, with its step', async () => {

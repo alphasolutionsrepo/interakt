@@ -759,9 +759,10 @@ export async function runV2Pipeline(
       requestId: body.requestId,
     });
     // Its answer would never be seen: the turn stops (a model call in flight is aborted,
-    // nothing is saved) and is recorded as timed out, not as the visitor leaving
+    // nothing is saved) and is recorded as timed out, not as the visitor leaving. The call
+    // is aborted as timed out (TimeoutError), so it counts as its provider failing to answer
     turnSpan?.setAttribute('alpha.v2.outcome', 'timed_out');
-    outOfTime.abort();
+    outOfTime.abort(new DOMException('The chat turn ran out of time', 'TimeoutError'));
     // No longer awaited, so a failure after this would otherwise go unreported; the stop
     // above isn't one
     turn.catch((err: unknown) => {

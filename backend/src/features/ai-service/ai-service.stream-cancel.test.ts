@@ -38,7 +38,7 @@ vi.mock('@/features/ai-providers/ai-providers.service', () => ({
 }));
 
 import { CancelledRequestError, OllamaAdapter, OpenAIAdapter } from './adapters';
-import { getCircuitStatus } from './ai-service.resilience';
+import { getCircuitStatus, resetCircuit } from './ai-service.resilience';
 import { chat, streamChat } from './ai-service.service';
 
 import { ATTR } from '@/features/telemetry/attribute-keys';
@@ -54,10 +54,10 @@ const firstWord = {
   openai: 'data: {"choices":[{"delta":{"content":"Denim"},"finish_reason":null}]}\n\n',
 };
 
-/** A fetch that answers only when aborted, like a model still reading the prompt */
+/** A fetch that answers only when aborted, like a model still reading the prompt: with the abort's reason, as fetch does */
 const silentModel = vi.fn((_url: string, init?: RequestInit) =>
   new Promise<Response>((_resolve, reject) => {
-    init?.signal?.addEventListener('abort', () => reject(abortError()));
+    init?.signal?.addEventListener('abort', () => reject(init.signal?.reason ?? abortError()));
   }),
 );
 
@@ -250,6 +250,31 @@ describe('cancelling a chat call (not streamed)', () => {
     }
 
     expect(getCircuitStatus('prov-1')).toMatchObject({ state: 'closed', failures: 0 });
+  });
+});
+
+describe("a chat call still running when the caller's own time runs out (a chat turn's limit)", () => {
+  const ask = (signal: AbortSignal) => chat([{ role: 'user', content: prompt }], { providerId: 'prov-1', modelId: 7, signal });
+  const outOfTime = () => new DOMException('The chat turn ran out of time', 'TimeoutError');
+
+  it.each(['ollama', 'openai'])('fails as a timeout: not retried, recorded as a failed call, counted by the circuit breaker (%s API style)', async (key) => {
+    provider.key = key;
+    resetCircuit('prov-1');
+    vi.stubGlobal('fetch', silentModel);
+    exporter.reset();
+    const caller = new AbortController();
+
+    const pending = ask(caller.signal);
+    await vi.waitFor(() => expect(silentModel).toHaveBeenCalled());
+    caller.abort(outOfTime());
+
+    await expect(pending).rejects.toMatchObject({ message: 'Request timed out', retryable: true });
+    await expect(pending).rejects.not.toBeInstanceOf(CancelledRequestError);
+    expect(silentModel).toHaveBeenCalledOnce(); // its time is up: no other attempt
+    expect(recorded()).toMatchObject({ operation: 'chat', success: false, errorMessage: 'Request timed out' });
+    expect(getCircuitStatus('prov-1')).toMatchObject({ failures: 1 });
+    const [span] = exporter.getFinishedSpans().filter((s) => s.name === 'ai.chat');
+    expect(span.status.code).toBe(SpanStatusCode.ERROR);
   });
 });
 

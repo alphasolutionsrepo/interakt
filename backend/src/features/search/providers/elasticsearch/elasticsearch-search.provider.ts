@@ -158,7 +158,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                 // A refused search (400) answers as the filter or sort to fix, or as a failure.
                 // Text fields are filtered through .keyword, so either name may be the one given.
                 throw error.code === 'INVALID_QUERY'
-                    ? refusedOrFailed(error.message, searchRequest, (field) => [field, `${field}.keyword`], error, error.details)
+                    ? refusedOrFailed(error.message, searchRequest, (field) => [field, `${field}.keyword`], error, error.details, request.fixed)
                     : error;
             }
 

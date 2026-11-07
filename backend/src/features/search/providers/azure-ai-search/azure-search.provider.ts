@@ -230,7 +230,7 @@ export class AzureSearchProvider implements SearchProvider {
             const details = { provider: 'azure-ai-search', indexName: context.indexName };
             // A refused search (400) answers as the filter or sort to fix, or as a failure
             if ((error as { statusCode?: number } | undefined)?.statusCode === 400) {
-                throw refusedOrFailed(errorMessage, searchRequest, (field) => [field], error, details);
+                throw refusedOrFailed(errorMessage, searchRequest, (field) => [field], error, details, request.fixed);
             }
 
             throw new SearchError(errorMessage, 'PROVIDER_ERROR', details, { cause: error });

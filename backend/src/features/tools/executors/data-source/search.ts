@@ -111,6 +111,7 @@ async function executeManagedSearch(
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
   // The AI's Search tool, not a visitor's search: reports list it under Assistant Searches.
+  // The tool's defaults are the admin's, as on an external source: a refused one isn't the model's.
   const response = await searchService.searchById(
     source.searchIndexId,
     {
@@ -119,7 +120,11 @@ async function executeManagedSearch(
       filters: merged.filters.length > 0 ? merged.filters : undefined,
       sort: sorting.sort.length > 0 ? sorting.sort : undefined,
     },
-    { triggerType: 'ai_tool', triggerStep: 'search' },
+    {
+      triggerType: 'ai_tool',
+      triggerStep: 'search',
+      fixed: { filters: merged.appliedDefaults, sort: sorting.fromDefault ? sorting.sort : [] },
+    },
   );
 
   return {

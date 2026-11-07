@@ -13,7 +13,7 @@
  */
 
 import { leafFilters } from './filter-clauses';
-import type { FilterClause, SearchRequest, SortClause } from './search.types';
+import type { FilterClause, FixedClauses, SearchRequest, SortClause } from './search.types';
 import { SearchError } from './search.types';
 
 
@@ -149,7 +149,9 @@ function refusalMessage(filters: Blamed[], sorts: string[]): string {
  * How an engine's refusal (400) answers: as the caller's filter or sort to fix when its
  * reason blames one, else as a failure of the engine. That keeps the engine error as the
  * cause, so admins are told what it said (a vector size mismatch, a shard error) and
- * visitors get the plain message, as for any other engine failure.
+ * visitors get the plain message, as for any other engine failure. fixed is what the
+ * request carries that the caller didn't write (a chat tool's defaults): carried twice, by
+ * the request and by fixed, it is never blamed on the caller.
  */
 export function refusedOrFailed(
     engineReason: string,
@@ -157,7 +159,8 @@ export function refusedOrFailed(
     sentAs: (field: string) => Array<string | undefined>,
     cause: unknown,
     details?: Record<string, unknown>,
+    fixed: FixedClauses = {},
 ): SearchError {
-    return refusalFor(engineReason, request, sentAs, cause)
+    return refusalFor(engineReason, request, sentAs, cause, fixed.filters, fixed.sort)
         ?? new SearchError(engineReason, 'PROVIDER_ERROR', details, { cause });
 }

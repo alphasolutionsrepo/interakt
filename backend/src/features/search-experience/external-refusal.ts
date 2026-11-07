@@ -9,7 +9,7 @@
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { ExternalSearchError } from '@/features/data-source/external-search/external-search.types';
 import { refusalFor } from '@/features/search/request-refusal';
-import type { FilterClause, SearchError, SearchRequest, SortClause } from '@/features/search/search.types';
+import type { FixedClauses, SearchError, SearchRequest } from '@/features/search/search.types';
 
 /** The engines whose 400 wording request-refusal.ts was checked against */
 const KNOWN_WORDING = new Set(['Elasticsearch', 'Azure AI Search', 'Sitecore Search']);
@@ -23,7 +23,7 @@ export function refusedRequest(
   error: unknown,
   request: SearchRequest,
   fields: DataSourceField[],
-  fixed: { filters?: FilterClause[]; sort?: SortClause[] } = {},
+  fixed: FixedClauses = {},
 ): SearchError | undefined {
   if (!(error instanceof ExternalSearchError) || error.status !== 400 || !KNOWN_WORDING.has(error.provider)) return undefined;
   // The engine names a field as it was sent: the schema's filterField when there is one

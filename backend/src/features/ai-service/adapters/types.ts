@@ -155,12 +155,29 @@ export class CancelledRequestError extends AdapterError {
 }
 
 /**
+ * Whether the caller stopped the request because its own time ran out (a chat turn's
+ * limit), not because it went away: it aborted with a TimeoutError, as AbortSignal.timeout does
+ */
+export function callerTimedOut(caller?: AbortSignal): boolean {
+    return caller?.aborted === true && (caller.reason as { name?: unknown } | undefined)?.name === 'TimeoutError';
+}
+
+/**
+ * Whether a provider request failed because it was aborted: by our own timer or the caller
+ * (an AbortError), or by a caller that gave a reason, which fetch rejects with instead
+ */
+export function wasAborted(error: unknown, caller?: AbortSignal): boolean {
+    return (error instanceof Error && error.name === 'AbortError') || caller?.aborted === true;
+}
+
+/**
  * The error for a provider request that was aborted. A caller's cancel (a summary
  * the visitor left) is not a timeout: it is not retried and not a provider failure.
- * Only our own timer firing is a timeout.
+ * Our own timer firing is a timeout, and so is a caller whose own time ran out (a chat
+ * turn's limit): the provider didn't answer in time, which counts against it.
  */
 export function abortedRequestError(providerKey: string, caller?: AbortSignal): AdapterError {
-    return caller?.aborted
+    return caller?.aborted && !callerTimedOut(caller)
         ? new CancelledRequestError(providerKey)
         : new AdapterError('Request timed out', providerKey, undefined, true);
 }

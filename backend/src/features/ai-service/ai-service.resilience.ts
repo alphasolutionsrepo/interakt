@@ -241,6 +241,7 @@ function isRetryableError(error: unknown): boolean {
  * 
  * @param fn - The async function to execute
  * @param config - Retry configuration
+ * @param signal - The caller's signal: once it is aborted, no other attempt starts
  * @returns The result of the function
  * @throws The last error if all retries fail
  * 
@@ -252,7 +253,8 @@ function isRetryableError(error: unknown): boolean {
  */
 export async function withRetry<T>(
     fn: () => Promise<T>,
-    config: Partial<RetryConfig> = {}
+    config: Partial<RetryConfig> = {},
+    signal?: AbortSignal
 ): Promise<T> {
     const fullConfig: RetryConfig = {
         ...RETRY_DEFAULTS,
@@ -267,8 +269,9 @@ export async function withRetry<T>(
         } catch (error) {
             lastError = error;
 
-            // Don't retry if not retryable
-            if (!isRetryableError(error)) {
+            // Don't retry if not retryable, or if the caller stopped waiting (its own time
+            // ran out): another attempt would be aborted at once
+            if (!isRetryableError(error) || signal?.aborted) {
                 throw error;
             }
 
@@ -308,6 +311,8 @@ export interface ResilienceOptions {
     providerKey?: string;
     circuitBreaker?: CircuitBreakerConfig;
     retry?: Partial<RetryConfig>;
+    /** The caller's signal: once it is aborted, a failed attempt isn't retried */
+    signal?: AbortSignal;
 }
 
 /**
@@ -327,7 +332,7 @@ export async function withResilience<T>(
     fn: () => Promise<T>,
     options: ResilienceOptions
 ): Promise<T> {
-    const { providerId, providerKey, circuitBreaker, retry } = options;
+    const { providerId, providerKey, circuitBreaker, retry, signal } = options;
     const cbConfig = circuitBreaker ?? CIRCUIT_BREAKER_DEFAULTS;
 
     // Check circuit breaker first
@@ -342,14 +347,15 @@ export async function withResilience<T>(
 
     try {
         // Execute with retry
-        const result = await withRetry(fn, retry);
+        const result = await withRetry(fn, retry, signal);
 
         // Record success
         recordSuccess(providerId, cbConfig);
 
         return result;
     } catch (error) {
-        // A caller that went away (a chat the visitor left) isn't the provider failing
+        // A caller that went away (a chat the visitor left) isn't the provider failing. A
+        // call still running when the caller's own time ran out (a chat turn's) is: a timeout
         if (!(error instanceof CancelledRequestError)) recordFailure(providerId, cbConfig);
 
         throw error;
