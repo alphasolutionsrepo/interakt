@@ -354,9 +354,8 @@ export async function withResilience<T>(
 
         return result;
     } catch (error) {
-        // A caller that went away (a chat the visitor left) isn't the provider failing. A
-        // call still running when the caller's own time ran out (a chat turn's) is: a timeout
-        // Neither is the provider failing: the caller left, or its own time ran out
+        // Neither is the provider failing: the caller went away (a chat the visitor left), or
+        // its own time ran out (a chat turn's limit, which other steps may have used up)
         if (!(error instanceof CancelledRequestError || error instanceof CallerTimeoutError)) recordFailure(providerId, cbConfig);
 
         throw error;
