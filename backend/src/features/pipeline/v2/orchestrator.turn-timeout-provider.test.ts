@@ -2,10 +2,10 @@
 
 /**
  * A turn that runs out of time while its model call is still waiting on the provider stops
- * that call as timed out: the provider didn't answer in time, so the AI service records a
- * failed call and the circuit breaker counts it, as when the call's own timeout fires. The
- * turn still ends as timed out, not as failing, with no further attempt of the call. A
- * visitor leaving stops the call as cancelled, which is not the provider failing.
+ * that call: the AI service records a failed call, with the prompt it read, but the circuit
+ * breaker doesn't count it, since the turn's time may have gone on other steps. The turn
+ * still ends as timed out, not as failing, with no further attempt of the call. A visitor
+ * leaving stops the call as cancelled.
  *
  * Runs the real orchestrator, AI service and Ollama adapter; only the network, the
  * provider lookup and the usage store are faked.
@@ -109,7 +109,8 @@ describe('a turn that runs out of time while the model has not answered', () => 
 
     expect(hangingModel).toHaveBeenCalledOnce(); // not tried again after the turn's time ran out
     expect(usage.trackUsage).toHaveBeenCalledOnce();
-    expect(usage.trackUsage.mock.calls[0][0]).toMatchObject({ operation: 'chat', feature: 'turn-planner', success: false, errorMessage: "Request stopped: the caller's time ran out" });
+    expect(usage.trackUsage.mock.calls[0][0]).toMatchObject({ operation: 'chat', feature: 'turn-planner', success: false, errorMessage: "Request stopped: the caller's time ran out", inputTokens: expect.any(Number), metadata: { usageEstimated: true } });
+    expect(usage.trackUsage.mock.calls[0][0].inputTokens).toBeGreaterThan(0);
     // The turn's time may have gone on other steps: not the provider failing
     expect(getCircuitStatus('p1')).toMatchObject({ failures: 0 });
     // Logged once, as the turn timing out: the stopped turn isn't a failure of its own

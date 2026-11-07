@@ -20,7 +20,7 @@ import {
     getModelById,
     getResolvedDefaults,
 } from '@/features/ai-providers/ai-providers.service';
-import { CancelledRequestError, getAdapter } from './adapters';
+import { CallerTimeoutError, CancelledRequestError, getAdapter } from './adapters';
 import { withResilience, withRetry } from './ai-service.resilience';
 import { trackUsage, updateRealtimeMetrics } from './ai-service.analytics';
 import { processEmbeddingBatches } from './utils/batch-processor';
@@ -481,6 +481,9 @@ export async function chat(
             updateRealtimeMetrics(metrics);
         } else if (config) {
             const err = error as AIServiceError;
+            // Stopped by the caller's own time limit: the model read the prompt, as on a cancel
+            const stopped = error instanceof CallerTimeoutError;
+            const inputTokens = stopped ? estimateChatUsage(messages, '', config.modelKey).inputTokens : 0;
             const metrics: AIUsageMetrics = {
                 requestId,
                 operation: 'chat',
@@ -488,9 +491,9 @@ export async function chat(
                 providerKey: config.providerKey,
                 modelId: config.modelId,
                 modelKey: config.modelKey,
-                inputTokens: 0,
+                inputTokens,
                 outputTokens: 0,
-                totalTokens: 0,
+                totalTokens: inputTokens,
                 durationMs,
                 success: false,
                 errorCode: err.code,
@@ -498,6 +501,7 @@ export async function chat(
                 userId: options?.userId,
                 sessionId: options?.sessionId,
                 feature: options?.feature,
+                ...(stopped && { metadata: { messageCount: messages.length, usageEstimated: true } }),
             };
             void trackUsage(metrics);
             updateRealtimeMetrics(metrics);
