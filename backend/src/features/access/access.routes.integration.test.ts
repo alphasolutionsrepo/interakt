@@ -549,3 +549,26 @@ describe('which configs count as using a secret', () => {
     expect(refs.map((r) => r.id)).toContain((created.body?.data as { id: string }).id);
   });
 });
+
+describe('adding a secret to a config that had none', () => {
+  it('refuses an Editor adding a vault secret to their own tool, MCP connection or data source', async () => {
+    as(editor);
+    const tool = await call(toolsRoute.POST, 'POST', '/api/tools', {
+      name: 'Plain', slug: `plain-up-${n}`, aiDescription: 'Looks things up over HTTP', executorType: 'http',
+      executorConfig: { baseUrl: 'https://api.example.test/x', method: 'GET', responseMapping: { resultsPath: '$.r' } },
+    });
+    const toolId = (tool.body?.data as { id: string }).id;
+    const withSecret = { executorConfig: { baseUrl: 'https://api.example.test/x', method: 'GET', authentication: { type: 'header', key: 'X', valueRef: 'prod_es_key' } } };
+    expect((await call(toolRoute.PUT, 'PUT', `/api/tools/${toolId}`, withSecret, { id: toolId })).status).toBe(403);
+
+    const [conn] = await testDb.db.insert(mcpConnections).values({ name: 'Open', slug: `open-${n}`, serverUrl: 'https://mcp.example.test', authConfig: { type: 'none' } } as never).returning();
+    expect((await call(mcpOneRoute.PATCH, 'PATCH', `/api/mcp-connections/${conn.id}`, { authConfig: { type: 'bearer', secretRef: 'prod_es_key' } }, { id: conn.id })).status).toBe(403);
+
+    const [source] = await testDb.db.insert(dataSources).values({
+      name: 'Open', slug: `open-src-${n}`, type: 'search_index_external',
+      config: { provider: 'elasticsearch', connection: { url: 'https://es.example.test', authType: 'none', indexName: 'p', credentials: { secretRef: '' } } } as never,
+    }).returning();
+    const sourceUpdate = { config: { provider: 'elasticsearch', connection: { url: 'https://es.example.test', authType: 'api_key', indexName: 'p', credentials: { secretRef: 'prod_es_key' } }, searchDefaults: { searchType: 'lexical' }, healthCheck: { enabled: false } } };
+    expect((await call(dataSourceRoute.PUT, 'PUT', `/api/data-sources/${source.id}`, sourceUpdate, { id: source.id })).status).toBe(403);
+  });
+});

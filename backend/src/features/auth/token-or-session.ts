@@ -38,7 +38,8 @@ export type TokenOrSessionResult =
 export async function authenticateTokenOrSession(
   request: NextRequest,
   experience: ExperienceAccess,
-  options: { slug?: string } = {},
+  /** The experience's slug and creation time, to recognise the built-in help experiences */
+  options: { slug?: string; createdAt?: Date | string | null } = {},
 ): Promise<TokenOrSessionResult> {
   const token = readAccessToken(request);
   if (token && experience.accessToken && token === experience.accessToken) {
@@ -51,7 +52,7 @@ export async function authenticateTokenOrSession(
   if (!session?.user) return { caller: null };
   // A dashboard session is the playground, which spends tokens: the role must allow it. The
   // built-in help (seeded by the docs setup) is for everyone signed in.
-  const isHelp = await isBuiltInHelpExperience(options.slug);
+  const isHelp = await isBuiltInHelpExperience(options);
   const { response } = await checkAccess(isHelp ? SIGNED_IN : 'playground:use');
   if (response) return { caller: null, refused: response };
   // The playground: an admin testing the experience gets errors explained in full

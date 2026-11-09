@@ -2,9 +2,10 @@
 
 /**
  * Whether an experience is one of the built-in help experiences (the help assistant and the
- * docs search) that every signed-in user may use from the admin. Decided by the slug AND the
- * seed registry: the docs setup created it. An experience someone made under the same slug
- * without the setup isn't built in.
+ * docs search) that every signed-in user may use from the admin. Decided by the slug and the
+ * seed registry: the docs setup recorded it, and the experience existed when it did (the setup
+ * creates the experience, then writes the entry). An experience someone made under the same
+ * slug later, or without the setup, isn't built in.
  */
 
 import 'server-only';
@@ -23,8 +24,9 @@ const SEED_KEY_BY_SLUG: Record<string, string> = {
   [HELP_EXPERIENCE_SLUG]: DOCS_SEED_KEY,
 };
 
-export async function isBuiltInHelpExperience(slug: string | undefined): Promise<boolean> {
-  const key = slug !== undefined ? SEED_KEY_BY_SLUG[slug] : undefined;
-  if (!key) return false;
-  return (await getRegistryEntry(SEED_TYPES.DOCS, key)) !== null;
+export async function isBuiltInHelpExperience(experience: { slug?: string; createdAt?: Date | string | null }): Promise<boolean> {
+  const key = experience.slug !== undefined ? SEED_KEY_BY_SLUG[experience.slug] : undefined;
+  if (!key || !experience.createdAt) return false;
+  const entry = await getRegistryEntry(SEED_TYPES.DOCS, key);
+  return !!entry && new Date(experience.createdAt).getTime() <= new Date(entry.updatedAt).getTime();
 }

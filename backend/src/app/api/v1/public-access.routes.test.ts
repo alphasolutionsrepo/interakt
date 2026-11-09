@@ -30,7 +30,7 @@ vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-r
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: mocks.auth }));
 // Which help experiences the docs setup created (none unless a test says so)
 const seeded = vi.hoisted(() => new Set<string>());
-vi.mock('@/shared/seeders/seed-registry.service', () => ({ getRegistryEntry: async (_t: string, key: string) => (seeded.has(key) ? { seedKey: key } : null) }));
+vi.mock('@/shared/seeders/seed-registry.service', () => ({ getRegistryEntry: async (_t: string, key: string) => (seeded.has(key) ? { seedKey: key, updatedAt: new Date('2026-06-01') } : null) }));
 vi.mock('@/features/telemetry', () => ({
   flushTelemetry: vi.fn().mockResolvedValue(undefined),
   runWithTelemetryLevel: (_level: string, fn: () => unknown) => fn(),
@@ -979,7 +979,7 @@ describe('a dashboard session on the slug routes (the playgrounds)', () => {
     seeded.add('interakt-docs-search');
     mocks.auth.mockResolvedValue({ user: { id: 'v' } });
     accessStub.access = { ...viewerAccess, permissions: new Set() } as never;
-    const docs = { ...searchExperience, slug: 'interakt-docs' };
+    const docs = { ...searchExperience, slug: 'interakt-docs', createdAt: new Date('2026-05-01') };
     mocks.getSearchExperienceBySlug.mockResolvedValue(docs);
     mocks.getSearchExperienceWithIndexes.mockResolvedValue(docs);
     const res = await searchBySlug(req('/api/v1/search/interakt-docs/search', 'POST', {}, { query: 'roles' }), slugParams('interakt-docs'));
@@ -990,20 +990,27 @@ describe('a dashboard session on the slug routes (the playgrounds)', () => {
     expect(await settle(await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'roles' }), slugParams('catalog')))).toBe(403);
   });
 
-  it("doesn't exempt an experience that only borrows a help slug (the docs setup didn't create it)", async () => {
+  it("doesn't exempt an experience that only borrows a help slug: no docs setup, or made after it", async () => {
     mocks.auth.mockResolvedValue({ user: { id: 'v' } });
     accessStub.access = { ...viewerAccess, permissions: new Set() } as never;
-    const docs = { ...searchExperience, slug: 'interakt-docs' };
-    mocks.getSearchExperienceBySlug.mockResolvedValue(docs);
-    mocks.getSearchExperienceWithIndexes.mockResolvedValue(docs);
-    expect(await settle(await searchBySlug(req('/api/v1/search/interakt-docs/search', 'POST', {}, { query: 'x' }), slugParams('interakt-docs')))).toBe(403);
+    const search = async (createdAt: string) => {
+      const docs = { ...searchExperience, slug: 'interakt-docs', createdAt: new Date(createdAt) };
+      mocks.getSearchExperienceBySlug.mockResolvedValue(docs);
+      mocks.getSearchExperienceWithIndexes.mockResolvedValue(docs);
+      rateLimiter.clear();
+      return settle(await searchBySlug(req('/api/v1/search/interakt-docs/search', 'POST', {}, { query: 'x' }), slugParams('interakt-docs')));
+    };
+    expect(await search('2026-05-01')).toBe(403); // no docs setup recorded
+    seeded.add('interakt-docs-search');
+    expect(await search('2026-07-01')).toBe(403); // created after the setup's entry: a lookalike
+    expect(await search('2026-05-01')).toBe(200); // the one the setup created
   });
 
   it('serves the built-in help assistant chat to any signed-in role, without playground:use', async () => {
     seeded.add('interakt-docs');
     mocks.auth.mockResolvedValue({ user: { id: 'v' } });
     accessStub.access = { ...viewerAccess, permissions: new Set() } as never;
-    mocks.getAIExperienceBySlug.mockResolvedValue({ ...aiExperience, slug: 'help-assistant' });
+    mocks.getAIExperienceBySlug.mockResolvedValue({ ...aiExperience, slug: 'help-assistant', createdAt: new Date('2026-05-01') });
     const res = await chatBySlug(req('/api/v1/ai-experiences/help-assistant/chat', 'POST', {}, { message: 'hi' }), slugParams('help-assistant'));
     expect(await settle(res)).toBe(200);
     mocks.getAIExperienceBySlug.mockResolvedValue(aiExperience);
