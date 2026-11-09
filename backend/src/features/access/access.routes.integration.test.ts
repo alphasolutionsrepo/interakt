@@ -17,6 +17,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, type Permission } from './permissions';
 import { updateUserAccess } from './roles.repository';
 
+import { findSecretReferences } from '@/features/secrets/secrets.repository';
+
 import * as providersRoute from '@/app/api/ai-providers/route';
 import * as aiTextRoute from '@/app/api/ai-service/text/route';
 import * as meRoute from '@/app/api/me/access/route';
@@ -534,5 +536,16 @@ describe('review round 4', () => {
     const req = new NextRequest('http://localhost/api/roles', { method: 'POST', body: '{not json' });
     const res = await (rolesRoute.POST as unknown as (r: NextRequest) => Promise<Response>)(req);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('which configs count as using a secret', () => {
+  it('the delete check finds every form the access check guards, the web search key included', async () => {
+    as(admin);
+    const web = { name: 'Web', slug: `web-${n}`, aiDescription: 'Searches the web for answers', executorType: 'web_search', executorConfig: { apiKeySecret: 'web_key' } };
+    const created = await call(toolsRoute.POST, 'POST', '/api/tools', web);
+    expect(created.status).toBe(201);
+    const refs = await findSecretReferences('web_key');
+    expect(refs.map((r) => r.id)).toContain((created.body?.data as { id: string }).id);
   });
 });

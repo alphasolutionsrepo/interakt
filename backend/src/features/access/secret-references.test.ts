@@ -12,6 +12,7 @@ describe('which configs use a vault secret', () => {
     expect(usesSecrets({ executorConfig: { apiKeySecret: 'tavily_key' } })).toBe(true); // web search tool
     expect(usesSecrets({ headers: { Authorization: 'Bearer {{secret:prod_key}}' } })).toBe(true); // template
     expect(usesSecrets({ steps: [{ body: { token: 'x {{secret:a_b}} y' } }] })).toBe(true); // nested in arrays
+    expect(usesSecrets({ auth: { secretName: 'k' } })).toBe(true); // the delete check's form
   });
 
   it('treats a config nested deeper than any real one as using a secret (the executors resolve any depth)', () => {

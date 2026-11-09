@@ -7,18 +7,18 @@
  * (or change the host of a config that already uses one) and receive the secret's value.
  *
  * A config uses secrets when it holds a {{secret:name}} template anywhere, or a non-empty
- * valueRef / secretRef / apiKeySecret field (the forms the executors resolve).
+ * field named in SECRET_REFERENCE_FIELDS (the same list the secret delete check uses).
  */
 
 import 'server-only';
 
 import { AccessDeniedError } from './access-policy';
-import { SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
+import { SECRET_REFERENCE_FIELDS, SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
 import { checkAccess } from './route-guard';
 
 // The executor's own pattern, without the global flag (test() on a /g regex keeps state)
 const SECRET_TEMPLATE = new RegExp(SECRET_TEMPLATE_PATTERN.source);
-const SECRET_FIELDS = new Set(['valueRef', 'secretRef', 'apiKeySecret']);
+const SECRET_FIELDS: ReadonlySet<string> = new Set(SECRET_REFERENCE_FIELDS);
 
 /** Deeper than any real config; a deeper one is treated as using a secret (fail closed). */
 const MAX_DEPTH = 64;

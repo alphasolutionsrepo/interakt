@@ -20,6 +20,7 @@
  * search alone.
  */
 
+import { DOCS_SEED_KEY } from '@/shared/help/help-content';
 import 'server-only';
 
 import { getDocsSearchStatus, seedDocsSearch, type DocsSearchStatus } from './docs-search.seeder';
@@ -64,7 +65,7 @@ const logger = createLogger('docs-seeder');
 // Constants — fixed identities for the docs resources
 // ---------------------------------------------------------------------------
 
-const DOCS_KEY = 'interakt-docs';
+const DOCS_KEY = DOCS_SEED_KEY;
 const DATA_SOURCE_NAME = 'Interakt Docs';
 const DATA_SOURCE_SLUG = 'interakt-docs';
 const EXPERIENCE_NAME = 'Help Assistant';

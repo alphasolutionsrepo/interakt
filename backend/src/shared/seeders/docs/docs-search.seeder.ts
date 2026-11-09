@@ -52,7 +52,7 @@ import {
   getSearchIndexByName,
   recreateEmptyIndex,
 } from '@/features/search-index/search-index.service';
-import { DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
+import { DOCS_SEARCH_SEED_KEY, DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
 import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { calculateChecksum, getRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-registry.service';
@@ -63,7 +63,7 @@ const logger = createLogger('docs-search-seeder');
 // Constants
 // ---------------------------------------------------------------------------
 
-const SEARCH_KEY = 'interakt-docs-search';
+const SEARCH_KEY = DOCS_SEARCH_SEED_KEY;
 /** The index shares the experience's slug; valid for both Elasticsearch and Azure AI Search. */
 const INDEX_NAME = DOCS_SEARCH_SLUG;
 /** Bump when the fields or experience config below change — forces a full recreate. */
