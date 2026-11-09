@@ -18,6 +18,7 @@ import {
     generateDocumentEmbeddings,
     getEmbeddingConfig,
 } from '@/features/document-indexing/document-indexer.service';
+import { embeddingFailureReason } from '@/features/document-indexing/embedding-warnings';
 import type {
     // DTOs
     CreateSearchIndexDTO,
@@ -896,10 +897,14 @@ async function prepareReindexDocuments(input: {
     );
 
     if (embeddingResult.stats.failed > 0) {
-        throw new Error(
-            `Embedding generation failed for ${embeddingResult.stats.failed} of `
-            + `${bulkDocs.length} documents: `
-            + `${embeddingResult.errors[0]?.error ?? 'unknown error'}`
+        // Explained from the AI provider's own error, as an upload explains it
+        const cause = embeddingResult.embeddingError;
+        const upstream = cause !== undefined ? classifyUpstream(cause) : undefined;
+        const reason = embeddingFailureReason(embeddingResult.errors[0]?.error) || 'unknown error';
+        throw reindexError(
+            `The embedding model failed for ${embeddingResult.stats.failed} of ${bulkDocs.length} documents, `
+            + `so the index was left as it is: ${explained(upstream, reason)}`,
+            upstream, cause, upstream?.hint
         );
     }
 

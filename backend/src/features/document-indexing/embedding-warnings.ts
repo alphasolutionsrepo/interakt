@@ -13,11 +13,16 @@ export function embeddingWarnings(
 ): string[] {
     const warnings: string[] = [];
     if (stats.failed > 0) {
-        const reason = firstError ? scrub(firstError.replace(/^Embedding failed:\s*/, '')) : '';
+        const reason = embeddingFailureReason(firstError);
         warnings.push(`${stats.failed} documents indexed without embeddings: the embedding model failed${reason ? ` (${reason})` : ''}`);
     }
     if (stats.skipped > 0) {
         warnings.push(`${stats.skipped} documents indexed without embeddings (no vector source content)`);
     }
     return warnings;
+}
+
+/** The embedding model's reason, from a document's embedding error, without our prefix */
+export function embeddingFailureReason(error?: string): string {
+    return error ? scrub(error.replace(/^Embedding failed:\s*/, '')) : '';
 }

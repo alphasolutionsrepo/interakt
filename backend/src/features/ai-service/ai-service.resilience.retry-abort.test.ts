@@ -24,6 +24,19 @@ describe('withRetry when the caller has stopped waiting', () => {
     expect(fn).toHaveBeenCalledOnce();
   });
 
+  it('makes no further attempt when the caller stops waiting during the backoff, and throws the failure', async () => {
+    const caller = new AbortController();
+    const failure = new AdapterError('Network error: socket hang up', 'ollama', undefined, true);
+    const fn = vi.fn(async () => {
+      // The caller leaves while withRetry waits to try again
+      setTimeout(() => caller.abort(new DOMException('The chat turn ran out of time', 'TimeoutError')), 5);
+      throw failure;
+    });
+
+    await expect(withRetry(fn, { maxRetries: 2, baseDelay: 50, maxDelay: 50, jitter: false }, caller.signal)).rejects.toBe(failure);
+    expect(fn).toHaveBeenCalledOnce();
+  });
+
   it('still retries while the caller waits', async () => {
     const fn = vi.fn()
       .mockRejectedValueOnce(new AdapterError('Network error: socket hang up', 'ollama', undefined, true))

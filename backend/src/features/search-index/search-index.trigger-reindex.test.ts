@@ -304,7 +304,7 @@ describe('triggerReindex stopped before it changed the index', () => {
         state.embeddings = { enabled: true };
         state.embedded.mockResolvedValue({ stats: { failed: 2, generated: 0, skipped: 0 }, errors: [{ error: 'model not found' }], embeddings: [] });
         const thrown = await triggerReindex('i1', 'u1').catch((e: unknown) => e);
-        expect((thrown as Error).message).toMatch(/Embedding generation failed for 2 of 2 documents/);
+        expect(thrown).toMatchObject({ code: 'REINDEX_FAILED', message: 'The embedding model failed for 2 of 2 documents, so the index was left as it is: model not found' });
         expect(state.statuses).toEqual(['indexing', 'active']);
         expect(state.deletes).toBe(0);
     });

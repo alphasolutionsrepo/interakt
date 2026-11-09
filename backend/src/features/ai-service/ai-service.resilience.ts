@@ -292,6 +292,10 @@ export async function withRetry<T>(
             });
 
             await sleep(delay);
+            // The caller may have stopped waiting during the wait: the provider's failure stands
+            if (signal?.aborted) {
+                throw error;
+            }
         }
     }
 

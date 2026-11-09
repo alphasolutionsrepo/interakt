@@ -77,6 +77,38 @@ describe('activityStore', () => {
         activityStore.clear();
         expect(activityStore.get()).toEqual([]);
     });
+
+    it("clears the last user's list when another user signs in without them logging out", async () => {
+        const data = stubWindow();
+        let { activityStore } = await loadModules();
+        activityStore.setOwner('admin-a');
+        activityStore.add({ action: 'Reindex products', kind: 'error', message: 'Failed' });
+
+        // The same user back on a new page keeps the list
+        ({ activityStore } = await loadModules());
+        activityStore.setOwner('admin-a');
+        expect(activityStore.get()).toHaveLength(1);
+
+        // Their session ran out; another admin signs in on this browser
+        ({ activityStore } = await loadModules());
+        activityStore.setOwner('admin-b');
+        expect(activityStore.get()).toEqual([]);
+        expect(JSON.parse(data.get('interakt.activity')!)).toEqual([]);
+    });
+
+    it('clears a list kept before its user was recorded, and keeps working when storage is blocked', async () => {
+        stubWindow();
+        let { activityStore } = await loadModules();
+        activityStore.add({ action: 'Save', kind: 'error', message: 'Failed' });
+        activityStore.setOwner('admin-b');
+        expect(activityStore.get()).toEqual([]);
+
+        stubWindow('broken');
+        ({ activityStore } = await loadModules());
+        activityStore.add({ action: 'Save', kind: 'error', message: 'Failed' });
+        activityStore.setOwner('admin-b');
+        expect(activityStore.get()).toHaveLength(1);
+    });
 });
 
 describe('errorEntry', () => {
