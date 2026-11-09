@@ -12,7 +12,7 @@ import { RoleFormDialog } from './RoleFormDialog';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { PERMISSION_GROUPS } from '@/features/access/permissions';
+import { effectivePermissions, PERMISSION_GROUPS, type Permission } from '@/features/access/permissions';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
@@ -67,7 +67,7 @@ export function RolesPanel({ canHold }: { canHold: (role: Pick<RoleResponse, 'is
                 {role.description && <p className="text-sm text-muted-foreground">{role.description}</p>}
               </div>
               <span className="text-sm text-muted-foreground whitespace-nowrap">
-                {role.isBuiltIn ? PERMISSION_COUNT : role.permissions.length} of {PERMISSION_COUNT} permissions
+                {role.isBuiltIn ? PERMISSION_COUNT : effectivePermissions(role.permissions as Permission[]).length} of {PERMISSION_COUNT} permissions
               </span>
               <span className="text-sm text-muted-foreground whitespace-nowrap">
                 {role.userCount} {role.userCount === 1 ? 'user' : 'users'}

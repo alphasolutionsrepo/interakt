@@ -9,7 +9,7 @@
  * permission, so only an Admin can assign it or manage a user who has it.
  */
 
-import type { UserAccess } from './access.service';
+import type { UserAccess } from './user-access';
 import { holdsAllOf } from './permissions';
 
 import { AppError } from '@/shared/errors/app-error';

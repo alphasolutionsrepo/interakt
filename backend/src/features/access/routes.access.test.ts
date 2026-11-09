@@ -141,7 +141,10 @@ describe('every admin API route is gated', () => {
       const options = (typeof r.rule === 'string' ? [r.rule] : [...r.rule!]) as Permission[];
       for (const permission of options) {
         accessStub.access = { userId: 'u', roleId: 'r', roleName: 'One', isAdmin: false, permissions: new Set<Permission>([permission]) };
-        const res = await Promise.race([call(r), new Promise<null>((done) => setTimeout(() => done(null), 3000))]);
+        const pending = call(r);
+        // A handler still working at the cutoff may fail later; that is not this test's concern
+        pending.catch(() => {});
+        const res = await Promise.race([pending, new Promise<null>((done) => setTimeout(() => done(null), 3000))]);
         if (!res) continue; // still working after the gate: it let the request through
         const body = (await res.clone().json().catch(() => ({}))) as { message?: string };
         if (res.status === 401 || (res.status === 403 && GATE_REFUSAL.test(body.message ?? ''))) {

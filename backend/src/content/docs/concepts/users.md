@@ -49,6 +49,8 @@ Permissions come in groups, each with a view permission and one to change things
 
 Tools, MCP connections and data sources that use a secret from the vault can be set up or changed only by a role that can manage secrets.
 
+A permission to change something includes the one to see it, and asking the analytics assistant includes viewing analytics; the Roles dialog shows these as included. Running the demo and docs setup takes effect only together with the permissions for what it sets up: AI providers, settings, indexes and documents, data sources, experiences, tools and prompts.
+
 The sidebar shows each user the pages their role can open, and the server checks the role on every request.
 
 ## Who can give which role

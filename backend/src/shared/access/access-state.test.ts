@@ -2,7 +2,9 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { accessState } from './access-state';
+import { accessState, lookupErrorStatus } from './access-state';
+
+import { ApiError } from '@/shared/api/api-error';
 
 describe('what the page gate and the sidebar show', () => {
   it('waits while access loads', () => {
@@ -21,5 +23,18 @@ describe('what the page gate and the sidebar show', () => {
   it('follows the role once access is known', () => {
     expect(accessState({ isLoading: false, errorStatus: null, canOpen: true })).toBe('allowed');
     expect(accessState({ isLoading: false, errorStatus: null, canOpen: false })).toBe('denied');
+  });
+});
+
+describe('which lookup failures the gate acts on', () => {
+  it('keeps the open page when a background refresh fails, but not when the session is gone', () => {
+    expect(lookupErrorStatus(new ApiError('down', 503), true)).toBeNull();
+    expect(lookupErrorStatus(new ApiError('gone', 401), true)).toBe(401);
+  });
+
+  it('acts on any failure when no access is known yet; a network error is 0', () => {
+    expect(lookupErrorStatus(new ApiError('down', 503), false)).toBe(503);
+    expect(lookupErrorStatus(new TypeError('fetch failed'), false)).toBe(0);
+    expect(lookupErrorStatus(null, false)).toBeNull();
   });
 });

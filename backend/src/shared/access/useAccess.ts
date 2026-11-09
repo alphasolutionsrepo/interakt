@@ -13,6 +13,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { Permission } from '@/features/access/permissions';
 import { ApiError, handleApiResponse } from '@/shared/api/api-error';
 
+import { lookupErrorStatus } from './access-state';
+
 export interface MyAccess {
   userId: string;
   role: { id: string; name: string; isAdmin: boolean };
@@ -33,8 +35,10 @@ export function useAccess() {
   return {
     access: query.data,
     isLoading: query.isLoading,
-    /** The lookup's HTTP status when it failed (0 for a network error), null otherwise */
-    errorStatus: query.error ? (query.error instanceof ApiError ? query.error.status : 0) : null,
+    /** The lookup's HTTP status when it failed with no access known yet (0 for a network error), null otherwise */
+    // A failed background refresh keeps the access already known, unless the server no longer
+    // accepts the session (401: deactivated), which signs the user out
+    errorStatus: lookupErrorStatus(query.error, !!query.data),
     retry: () => void query.refetch(),
     /** False while loading, so nothing flashes in and then disappears. */
     can: (permission: Permission) => permissions.has(permission),

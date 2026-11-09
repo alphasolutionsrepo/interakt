@@ -124,6 +124,8 @@ export interface HomeChange {
 
 export interface HomeData {
   generatedAt: string;
+  /** False for a role without analytics:view: the traffic figures are left out, not zero */
+  analytics: boolean;
   period: { from: string; to: string; label: string; previousLabel: string; days: string[] };
   live: { requestsLast5Min: number };
   /** null when no health check has run yet (or the jobs engine is off) */
@@ -522,6 +524,7 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
 
   return {
     generatedAt: now.toISOString(),
+    analytics: true,
     period: {
       from: current.from.toISOString(),
       to: current.to.toISOString(),
@@ -924,17 +927,24 @@ export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
 // ============================================================================
 
 /**
- * The home page as a role sees it. Without analytics:view, the traffic figures, insight cards
- * and tips (all from analytics) go, as on the analytics pages themselves. Tasks whose page the
- * role can't open go too (their counts come from those pages). The cached data is shared by
+ * The home page as a role sees it. Tasks, recent changes and getting-started steps that link to
+ * a page the role can't open go (the checklist's Ask step, an in-page link, stays: the page
+ * hides the Ask box itself). Without analytics:view, the traffic figures, insight cards and tips
+ * (all from analytics) go too, as on the analytics pages themselves, and `analytics` says so. The cached data is shared by
  * everyone, so this runs per request.
  */
 export function homeDataForRole(data: HomeData, can: (permission: Permission) => boolean): HomeData {
-  const tasks = data.tasks.filter((t) => canOpenPage(t.href.split('?')[0], can));
-  if (can('analytics:view')) return tasks.length === data.tasks.length ? data : { ...data, tasks };
-  return {
+  const opens = (href: string) => href.startsWith('#') || canOpenPage(href.split(/[?#]/)[0], can);
+  const linked = {
     ...data,
-    tasks,
+    tasks: data.tasks.filter((t) => opens(t.href)),
+    recent: data.recent.filter((r) => opens(r.href)),
+    checklist: data.checklist?.filter((step) => opens(step.href)) ?? null,
+  };
+  if (can('analytics:view')) return linked;
+  return {
+    ...linked,
+    analytics: false,
     live: { requestsLast5Min: 0 },
     metrics: [],
     cards: [],

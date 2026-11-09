@@ -65,7 +65,7 @@ async function post(
     // 2. Authenticate: the experience's access token (real traffic) or an admin
     //    session (playground). Admin searches are recorded as 'admin_test', which
     //    analytics leaves out by default, and are not traced unless asked for.
-    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
+    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience), { slug: experience.slug });
     if (!caller) {
       return refused ?? apiResponse.unauthorized('Unauthorized');
     }

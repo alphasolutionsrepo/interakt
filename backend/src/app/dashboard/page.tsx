@@ -86,7 +86,7 @@ function Home() {
       <HomeCards cards={home.data?.cards} tips={home.data?.tips} loading={loading} />
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <ExperiencesList experiences={home.data?.experiences} loading={loading} />
+        <ExperiencesList experiences={home.data?.experiences} loading={loading} showActivity={home.data?.analytics !== false} />
         <RecentChanges changes={home.data?.recent} loading={loading} />
       </div>
     </div>

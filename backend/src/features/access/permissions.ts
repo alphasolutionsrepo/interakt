@@ -137,10 +137,28 @@ export const IMPLIED_PERMISSIONS: Partial<Record<Permission, readonly Permission
   'jobs:run': ['settings:view'],
 };
 
-/** The permissions plus everything they imply. */
-export function withImplied(permissions: readonly Permission[]): Permission[] {
+/**
+ * Permissions that only take effect alongside others, because what they run does all of those
+ * things: the demo and docs setup replaces AI provider keys and system defaults and creates
+ * indexes, experiences and tools. A role holding one without the rest doesn't get it.
+ */
+export const REQUIRED_WITH: Partial<Record<Permission, readonly Permission[]>> = {
+  'setup:run': [
+    'ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit',
+    'search-experiences:edit', 'ai-experiences:edit', 'tools:edit', 'data-sources:edit', 'prompts:edit',
+  ],
+};
+
+/**
+ * What a role's stored permissions grant: plus everything they imply, minus any whose required
+ * companions are missing (see REQUIRED_WITH).
+ */
+export function effectivePermissions(permissions: readonly Permission[]): Permission[] {
   const all = new Set<Permission>(permissions);
   for (const p of permissions) for (const implied of IMPLIED_PERMISSIONS[p] ?? []) all.add(implied);
+  for (const [p, needs] of Object.entries(REQUIRED_WITH) as Array<[Permission, readonly Permission[]]>) {
+    if (all.has(p) && !needs.every((n) => all.has(n))) all.delete(p);
+  }
   return [...all];
 }
 

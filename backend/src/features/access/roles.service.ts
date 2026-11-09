@@ -9,7 +9,7 @@ import 'server-only';
 
 
 import { AccessDeniedError, assertHoldsPermissions, assertHoldsRole } from './access-policy';
-import type { UserAccess } from './access.service';
+import type { UserAccess } from './user-access';
 import { conflictOnConstraint } from './constraint-errors';
 import * as repository from './roles.repository';
 import type { CreateRoleInput, UpdateRoleInput } from './roles.validations';
@@ -41,7 +41,10 @@ export async function updateRole(caller: UserAccess, id: string, input: UpdateRo
   if (input.name && (await repository.roleNameTaken(input.name, id))) {
     throw new ConflictError(`A role named "${input.name}" already exists`);
   }
-  return conflictOnConstraint(() => repository.updateRole(id, input), { unique: `A role named "${input.name}" already exists` });
+  const updated = await conflictOnConstraint(() => repository.updateRole(id, input), { unique: `A role named "${input.name}" already exists` });
+  // Deleted by someone else since it was read
+  if (!updated) throw new NotFoundError('Role not found');
+  return updated;
 }
 
 export async function deleteRole(caller: UserAccess, id: string) {

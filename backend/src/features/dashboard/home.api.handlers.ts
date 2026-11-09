@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { getHomeData, homeDataForRole, invalidateHomeCache, TIP_ID } from './home.service';
 
-import { can } from '@/features/access/access.service';
+import { can } from '@/features/access/user-access';
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
 import { dismissTip } from '@/features/analytics/analytics-insights.service';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';

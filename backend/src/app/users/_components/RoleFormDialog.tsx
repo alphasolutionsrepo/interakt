@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { PERMISSION_GROUPS, type Permission } from '@/features/access/permissions';
+import { effectivePermissions, PERMISSION_GROUPS, REQUIRED_WITH, type Permission } from '@/features/access/permissions';
 import type { CreateRoleInput } from '@/features/access/roles.validations';
 import { useInlineError } from '@/shared/activity/useInlineError';
 import { DialogFormFooter } from '@/shared/ui/custom/DialogFormFooter';
@@ -48,6 +48,9 @@ export function RoleFormDialog({ open, onOpenChange, role, canHoldPermission, on
     setDescription(role?.description ?? '');
     setPermissions(new Set(role?.permissions ?? []));
   }, [open, role, clearInlineError]);
+
+  // What the ticked permissions actually grant: implied ones added, unmet ones left out
+  const effective = new Set<string>(effectivePermissions([...permissions] as Permission[]));
 
   const toggle = (p: string, on: boolean) =>
     setPermissions((prev) => {
@@ -89,14 +92,25 @@ export function RoleFormDialog({ open, onOpenChange, role, canHoldPermission, on
                 <legend className="text-sm font-semibold">{group.label}</legend>
                 {group.permissions.map((p) => {
                   const holdable = canHoldPermission(p.id);
+                  const ticked = permissions.has(p.id);
+                  const included = !ticked && effective.has(p.id);
+                  const unmet = ticked && !effective.has(p.id);
                   return (
                     <label key={p.id} className={`flex items-center gap-2 text-sm ${holdable ? '' : 'opacity-50'}`}>
                       <Checkbox
-                        checked={permissions.has(p.id)}
-                        disabled={!holdable}
+                        checked={ticked || included}
+                        disabled={!holdable || included}
                         onCheckedChange={(v) => toggle(p.id, v === true)}
                       />
-                      {p.label}
+                      <span>
+                        {p.label}
+                        {included && <span className="text-muted-foreground"> (included by another permission)</span>}
+                        {unmet && (
+                          <span className="text-destructive">
+                            {' '}(needs {(REQUIRED_WITH[p.id] ?? []).filter((n) => !effective.has(n)).length} more permissions to take effect)
+                          </span>
+                        )}
+                      </span>
                     </label>
                   );
                 })}

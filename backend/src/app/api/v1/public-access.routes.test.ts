@@ -970,6 +970,31 @@ describe('a dashboard session on the slug routes (the playgrounds)', () => {
     expect(work).not.toHaveBeenCalled();
   });
 
+  it('serves the built-in docs search to any signed-in role, without playground:use', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'v' } });
+    accessStub.access = { ...viewerAccess, permissions: new Set() } as never;
+    const docs = { ...searchExperience, slug: 'interakt-docs' };
+    mocks.getSearchExperienceBySlug.mockResolvedValue(docs);
+    mocks.getSearchExperienceWithIndexes.mockResolvedValue(docs);
+    const res = await searchBySlug(req('/api/v1/search/interakt-docs/search', 'POST', {}, { query: 'roles' }), slugParams('interakt-docs'));
+    expect(await settle(res)).toBe(200);
+    // Any other experience still needs playground:use
+    mocks.getSearchExperienceBySlug.mockResolvedValue(searchExperience);
+    mocks.getSearchExperienceWithIndexes.mockResolvedValue(searchExperience);
+    expect(await settle(await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'roles' }), slugParams('catalog')))).toBe(403);
+  });
+
+  it.each(slugRoutes)('$name: a deactivated session gets 401, a failed role lookup an explained error, before any work', async (route) => {
+    mocks.auth.mockResolvedValue({ user: { id: 'gone' } });
+    const work = route.work();
+    work.mockClear();
+    accessStub.access = null;
+    expect(await settle(await route.call({}))).toBe(401);
+    accessStub.error = new Error('database down');
+    expect(await settle(await route.call({}))).toBe(500);
+    expect(work).not.toHaveBeenCalled();
+  });
+
   it.each(slugRoutes)('$name: serves a role with playground:use', async (route) => {
     mocks.auth.mockResolvedValue({ user: { id: 'a' } });
     expect(await settle(await route.call({}))).toBe(200);

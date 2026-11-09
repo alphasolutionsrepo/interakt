@@ -17,6 +17,7 @@
  * 7. Full OTel tracing across entire lifecycle
  */
 
+import { SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
 import { classifyUpstream, failedAtAIProvider, findAIServiceError, shardsUnavailable } from '@/shared/errors/upstream';
@@ -193,11 +194,11 @@ export interface ToolExecutionResult {
 // Recursively walks the config object and replaces all {{secret:name}} refs.
 // ============================================================================
 
-const SECRET_PATTERN = /\{\{secret:([a-z][a-z0-9_]*)\}\}/g;
+
 
 async function resolveValue(val: unknown): Promise<unknown> {
   if (typeof val === 'string') {
-    const matches = [...val.matchAll(SECRET_PATTERN)];
+    const matches = [...val.matchAll(SECRET_TEMPLATE_PATTERN)];
     if (matches.length === 0) return val;
 
     // Fetch all referenced secrets in parallel

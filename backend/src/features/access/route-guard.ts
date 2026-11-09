@@ -22,7 +22,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 import type { NextRequest, NextResponse } from 'next/server';
 
-import { can, resolveAccess, type UserAccess } from './access.service';
+import { resolveAccess } from './access.service';
+import { can, type UserAccess } from './user-access';
 import type { Permission } from './permissions';
 
 import { auth } from '@/features/auth/auth.api.handlers';

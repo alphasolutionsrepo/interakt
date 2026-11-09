@@ -14,12 +14,18 @@ import { eq } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ADMIN_ROLE_ID } from './permissions';
+import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, type Permission } from './permissions';
 import { updateUserAccess } from './roles.repository';
 
 import * as providersRoute from '@/app/api/ai-providers/route';
 import * as aiTextRoute from '@/app/api/ai-service/text/route';
 import * as meRoute from '@/app/api/me/access/route';
+import * as docRoute from '@/app/api/search-indexes/[id]/documents/[documentId]/route';
+import * as batchesRoute from '@/app/api/search-indexes/[id]/documents/batches/route';
+import * as batchRoute from '@/app/api/search-indexes/[id]/documents/batches/[batchId]/route';
+import * as bulkRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
+import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/delete-by-filter/route';
+import * as setupDemoRoute from '@/app/api/admin/setup-demo/route';
 import * as roleRoute from '@/app/api/roles/[id]/route';
 import * as rolesRoute from '@/app/api/roles/route';
 import { aiProviders } from '@/db/schema/ai-providers.schema';
@@ -436,5 +442,79 @@ describe('review round 2', () => {
     as(await makeUser(await makeRole(`Askers ${n}`, ['analytics:ask', 'tools:edit'])));
     const me = await call(meRoute.GET, 'GET', '/api/me/access');
     expect((me.body?.data as { permissions: string[] }).permissions.sort()).toEqual(['analytics:ask', 'analytics:view', 'tools:edit', 'tools:view']);
+  });
+});
+
+describe('review round 3', () => {
+  it('lets any user change their own password with their current one', async () => {
+    as(admin);
+    const created = await call(usersRoute.POST, 'POST', '/api/users', { email: `self${n}@x.test`, password: 'Passw0rd-old1', roleId: VIEWER });
+    const me = (created.body?.data as { id: string }).id;
+    as(me);
+    const change = (current: string) => call(passwordRoute.POST, 'POST', `/api/users/${me}/change-password`, { currentPassword: current, newPassword: 'Passw0rd-new1', confirmPassword: 'Passw0rd-new1' }, { id: me });
+    expect((await change('wrong-one1A')).status).toBe(400);
+    expect((await change('Passw0rd-old1')).status).toBe(200);
+  });
+
+  it('saves neither the profile nor the role when the role change is refused', async () => {
+    await testDb.db.update(user).set({ isActive: false }).where(eq(user.roleId, ADMIN_ROLE_ID));
+    const last = await makeUser(ADMIN_ROLE_ID);
+    await expect(updateUserAccess(last, { roleId: EDITOR }, { firstName: 'Changed' })).rejects.toMatchObject({ status: 409 });
+    expect(await getUser(last)).toMatchObject({ roleId: ADMIN_ROLE_ID, firstName: 'First' });
+  });
+
+  it('saves the profile and the role together when allowed', async () => {
+    as(admin);
+    const res = await call(userRoute.PUT, 'PUT', `/api/users/${viewer}`, { firstName: 'Both', roleId: EDITOR }, { id: viewer });
+    expect(res.status).toBe(200);
+    expect(await getUser(viewer)).toMatchObject({ roleId: EDITOR, firstName: 'Both' });
+  });
+
+  it('lets a role that manages secrets set up an MCP connection and a data source that use one', async () => {
+    const keeper = await makeRole(`Keepers ${n}`, ['secrets:manage', 'tools:edit', 'data-sources:edit']);
+    as(await makeUser(keeper));
+    const mcp = { name: 'Remote', slug: `remote-ok-${n}`, serverUrl: 'http://127.0.0.1:9/mcp', authConfig: { type: 'bearer', secretRef: 'prod_es_key' } };
+    expect((await call(mcpRoute.POST, 'POST', '/api/mcp-connections', mcp)).status).toBe(201);
+    const source = {
+      name: 'Shop', slug: `shop-ok-${n}`, type: 'search_index_external',
+      config: { provider: 'elasticsearch', connection: { url: 'https://es.example.test', authType: 'api_key', indexName: 'p', credentials: { secretRef: 'prod_es_key' } }, searchDefaults: { searchType: 'lexical' }, healthCheck: { enabled: false } },
+    };
+    expect((await call(dataSourcesRoute.POST, 'POST', '/api/data-sources', source)).status).toBe(201);
+  });
+
+  it('gives setup:run only to a role that also holds what the setup changes', async () => {
+    as(await makeUser(await makeRole(`Setup only ${n}`, ['setup:run'])));
+    expect((await call(setupDemoRoute.GET, 'GET', '/api/admin/setup-demo')).status).toBe(403);
+    const full = [...(REQUIRED_WITH['setup:run'] ?? []), 'setup:run'] as Permission[];
+    as(await makeUser(await makeRole(`Setup full ${n}`, full)));
+    expect((await call(setupDemoRoute.GET, 'GET', '/api/admin/setup-demo')).status).not.toBe(403);
+    expect(ALL_PERMISSIONS).toEqual(expect.arrayContaining(full));
+  });
+
+  it('checks a bad ingestion key on every document route method, without a session', async () => {
+    as(null);
+    const index = '00000000-0000-4000-8000-0000000000aa';
+    const doc = '00000000-0000-4000-8000-0000000000bb';
+    const key = { Authorization: 'Bearer not-a-key' };
+    const methods: Array<[unknown, string, string, Record<string, string>, unknown?]> = [
+      [documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, { id: index }],
+      [documentsRoute.POST, 'POST', `/api/search-indexes/${index}/documents`, { id: index }, { documents: [{ id: 'a' }] }],
+      [docRoute.GET, 'GET', `/api/search-indexes/${index}/documents/${doc}`, { id: index, documentId: doc }],
+      [docRoute.PUT, 'PUT', `/api/search-indexes/${index}/documents/${doc}`, { id: index, documentId: doc }, { title: 'x' }],
+      [docRoute.PATCH, 'PATCH', `/api/search-indexes/${index}/documents/${doc}`, { id: index, documentId: doc }, { title: 'x' }],
+      [docRoute.DELETE, 'DELETE', `/api/search-indexes/${index}/documents/${doc}`, { id: index, documentId: doc }],
+      [batchesRoute.GET, 'GET', `/api/search-indexes/${index}/documents/batches`, { id: index }],
+      [batchRoute.GET, 'GET', `/api/search-indexes/${index}/documents/batches/${doc}`, { id: index, batchId: doc }],
+      [batchRoute.DELETE, 'DELETE', `/api/search-indexes/${index}/documents/batches/${doc}`, { id: index, batchId: doc }],
+      [bulkRoute.POST, 'POST', `/api/search-indexes/${index}/documents/bulk`, { id: index }, { operations: [] }],
+      [deleteByFilterRoute.POST, 'POST', `/api/search-indexes/${index}/documents/delete-by-filter`, { id: index }, { filter: { field: 'a', value: 'b' } }],
+    ];
+    const wrong: string[] = [];
+    for (const [fn, method, url, params, body] of methods) {
+      const res = await call(fn, method, url, body, params, key);
+      const message = String(res.body?.message ?? '');
+      if (res.status !== 401 || message !== 'Invalid ingestion key') wrong.push(`${method} ${url} -> ${res.status} ${message}`);
+    }
+    expect(wrong).toEqual([]);
   });
 });

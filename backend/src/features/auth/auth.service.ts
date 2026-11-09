@@ -125,23 +125,25 @@ export async function listUsers(): Promise<Omit<repository.UserWithRole, 'passwo
 /**
  * Update user
  */
+export type ProfileUpdate = Pick<UpdateUserDTO, 'email' | 'firstName' | 'lastName'>;
+
+/** The profile change as it will be stored, after checking the email is free (throws "already in use"). */
+export async function prepareProfileUpdate(id: string, input: ProfileUpdate): Promise<ProfileUpdate> {
+  if (input.email) {
+    const existingUser = await repository.getUserByEmail(input.email);
+    if (existingUser && existingUser.id !== id) {
+      throw new Error(`Email ${input.email} is already in use`);
+    }
+  }
+  return { ...input, email: input.email?.toLowerCase() };
+}
+
 export async function updateUser(
   id: string,
-  input: Pick<UpdateUserDTO, 'email' | 'firstName' | 'lastName'>
+  input: ProfileUpdate
 ): Promise<Omit<User, 'password'>> {
   try {
-    // If email is being updated, check uniqueness
-    if (input.email) {
-      const existingUser = await repository.getUserByEmail(input.email);
-      if (existingUser && existingUser.id !== id) {
-        throw new Error(`Email ${input.email} is already in use`);
-      }
-    }
-
-    const updatedUser = await repository.updateUser(id, {
-      ...input,
-      email: input.email?.toLowerCase(),
-    });
+    const updatedUser = await repository.updateUser(id, await prepareProfileUpdate(id, input));
 
     logger.info('Updated user via service', { userId: id });
 

@@ -12,6 +12,7 @@ import 'server-only';
 
 import { and, count, eq, ne } from 'drizzle-orm';
 
+import { conflictOnConstraint } from './constraint-errors';
 import { ADMIN_ROLE_ID } from './permissions';
 
 import { db } from '@/db/index';
@@ -58,7 +59,7 @@ export async function createRole(values: Pick<NewRole, 'name' | 'description' | 
 export async function updateRole(
   id: string,
   values: Partial<Pick<NewRole, 'name' | 'description' | 'permissions'>>,
-): Promise<Role> {
+): Promise<Role | undefined> {
   const [row] = await db
     .update(roles)
     .set({ ...values, updatedAt: new Date() })
@@ -69,7 +70,8 @@ export async function updateRole(
 
 /** Deletes a role nobody holds. A role in use is refused (the foreign key restricts it too). */
 export async function deleteRole(id: string): Promise<void> {
-  await db.transaction(async (tx) => {
+  // A user given this role while it is being deleted trips the foreign key: answer 409
+  await conflictOnConstraint(() => db.transaction(async (tx) => {
     const [{ n }] = await tx.select({ n: count() }).from(user).where(eq(user.roleId, id));
     if (Number(n) > 0) {
       throw new ConflictError(`This role is assigned to ${n} user(s). Give them another role first.`, {
@@ -77,16 +79,19 @@ export async function deleteRole(id: string): Promise<void> {
       });
     }
     await tx.delete(roles).where(and(eq(roles.id, id), eq(roles.isBuiltIn, false)));
-  });
+  }), { foreignKey: 'Someone was just given this role. Give them another role first.' });
 }
 
 /**
- * Change a user's role and/or active flag, refusing a change that would leave no active Admin.
+ * Change a user's role and/or active flag (and any profile fields with it, in the same write),
+ * refusing a change that would leave no active Admin.
  * Returns false when the user doesn't exist.
  */
 export async function updateUserAccess(
   userId: string,
   changes: { roleId?: string; isActive?: boolean },
+  /** Profile fields to save in the same write, so a refused change saves neither */
+  profile: Partial<Pick<typeof user.$inferInsert, 'email' | 'firstName' | 'lastName'>> = {},
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     // Lock every active admin row so concurrent demotions are serialised.
@@ -108,7 +113,7 @@ export async function updateUserAccess(
 
     await tx
       .update(user)
-      .set({ ...changes, updatedAt: new Date() })
+      .set({ ...profile, ...changes, updatedAt: new Date() })
       .where(eq(user.id, userId));
     return true;
   });

@@ -14,7 +14,8 @@ import 'server-only';
 
 import type { NextRequest, NextResponse } from 'next/server';
 
-import { checkAccess } from '@/features/access/route-guard';
+import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
+import { DOCS_SEARCH_SLUG, HELP_EXPERIENCE_SLUG } from '@/shared/help/help-content';
 
 import { auth } from './auth.api.handlers';
 import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
@@ -34,9 +35,16 @@ export type TokenOrSessionResult =
   | { caller: ExperienceCaller; analyticsSource: 'api' | 'admin_test'; refused?: undefined }
   | { caller: null; analyticsSource?: undefined; refused?: NextResponse };
 
+/**
+ * The built-in help experiences the admin's own help drawer and docs search call with the
+ * user's session: every signed-in user may use them, not only roles that may use the playgrounds.
+ */
+export const HELP_EXPERIENCE_SLUGS: readonly string[] = [DOCS_SEARCH_SLUG, HELP_EXPERIENCE_SLUG];
+
 export async function authenticateTokenOrSession(
   request: NextRequest,
   experience: ExperienceAccess,
+  options: { slug?: string } = {},
 ): Promise<TokenOrSessionResult> {
   const token = readAccessToken(request);
   if (token && experience.accessToken && token === experience.accessToken) {
@@ -47,8 +55,10 @@ export async function authenticateTokenOrSession(
 
   const session = await auth();
   if (!session?.user) return { caller: null };
-  // A dashboard session is the playground, which spends tokens: the role must allow it
-  const { response } = await checkAccess('playground:use');
+  // A dashboard session is the playground, which spends tokens: the role must allow it. The
+  // built-in help is for everyone signed in.
+  const isHelp = options.slug !== undefined && HELP_EXPERIENCE_SLUGS.includes(options.slug);
+  const { response } = await checkAccess(isHelp ? SIGNED_IN : 'playground:use');
   if (response) return { caller: null, refused: response };
   // The playground: an admin testing the experience gets errors explained in full
   markAdminCaller();

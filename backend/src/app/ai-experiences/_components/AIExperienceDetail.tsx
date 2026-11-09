@@ -1,5 +1,6 @@
 'use client';
 
+import { useAccess } from '@/shared/access/useAccess';
 import { format } from 'date-fns';
 import {
   ChevronRight, Edit2, Power, PowerOff, Trash2,
@@ -35,6 +36,8 @@ import { PageHeader } from '@/shared/ui/custom/PageHeader';
 export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath }: { id: string; basePath?: string; listPath?: string }) {
   const listHref = listPath ?? basePath;
   const router = useRouter();
+  // Test runs spend AI tokens or call the tool: playground:use
+  const canTest = useAccess().can('playground:use');
   const {
     experience, isLoading, isError, refetch,
     updateExperience, deleteExperience, regenerateToken,
@@ -184,7 +187,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
       </Card>
 
       {/* Chat Test Panel */}
-      <ChatTestPanel experienceSlug={experience.slug} experienceName={experience.name} />
+      {canTest && <ChatTestPanel experienceSlug={experience.slug} experienceName={experience.name} />}
 
       {/* Pipeline Configuration */}
       <PipelineStepsCard

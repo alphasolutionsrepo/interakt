@@ -22,7 +22,6 @@ import { conflictOnConstraint } from '@/features/access/constraint-errors';
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
 import {
   assertCanAssignRole,
-  assertCanChangeUserAccess,
   assertCanManageUser,
   changeUserAccess,
 } from '@/features/access/user-access.service';
@@ -155,12 +154,12 @@ export async function handleUpdateUser(
     }
 
     const { roleId, isActive, ...profile } = validation.data;
-    // Check permissions before writing, so a refused role change leaves the profile as it was.
-    // The last-Admin rule is checked inside the role write (a transaction), after the profile write.
+    // Profile and role are saved in one write, after every check (the email is free, the
+    // caller may make the change, one active Admin remains), so a refusal saves neither.
     await assertCanManageUser(access, userId);
-    await assertCanChangeUserAccess(access, userId, { roleId, isActive });
-    await service.updateUser(userId, profile);
-    await changeUserAccess(access, userId, { roleId, isActive });
+    const checkedProfile = await service.prepareProfileUpdate(userId, profile);
+    const wrote = await changeUserAccess(access, userId, { roleId, isActive }, checkedProfile);
+    if (!wrote) await service.updateUser(userId, profile);
     const updatedUser = await service.getUserById(userId);
     if (!updatedUser) return apiResponse.notFound('User not found');
 

@@ -13,9 +13,11 @@
 import 'server-only';
 
 import { AccessDeniedError } from './access-policy';
+import { SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
 import { checkAccess } from './route-guard';
 
-const SECRET_TEMPLATE = /\{\{secret:[a-z][a-z0-9_]*\}\}/;
+// The executor's own pattern, without the global flag (test() on a /g regex keeps state)
+const SECRET_TEMPLATE = new RegExp(SECRET_TEMPLATE_PATTERN.source);
 const SECRET_FIELDS = new Set(['valueRef', 'secretRef', 'apiKeySecret']);
 
 /** Deeper than any real config; a deeper one is treated as using a secret (fail closed). */

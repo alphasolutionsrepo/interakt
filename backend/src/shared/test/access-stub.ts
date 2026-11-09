@@ -12,8 +12,8 @@
  * tested against a real database in features/access/*.test.ts.
  */
 
-import { ADMIN_ROLE_ID, ALL_PERMISSIONS, type Permission } from '@/features/access/permissions';
-import type { UserAccess } from '@/features/access/access.service';
+import { ADMIN_ROLE_ID, ALL_PERMISSIONS } from '@/features/access/permissions';
+import type { UserAccess } from '@/features/access/user-access';
 
 export const ADMIN_ACCESS: UserAccess = {
   userId: 'admin',
@@ -47,5 +47,4 @@ export const accessService = {
     if (accessStub.error) throw accessStub.error;
     return accessStub.access;
   },
-  can: (access: UserAccess, permission: Permission) => access.permissions.has(permission),
 };
