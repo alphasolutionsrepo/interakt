@@ -8,6 +8,7 @@
  * this install could do better, dismissible for good.
  */
 
+import { useAccess } from '@/shared/access/useAccess';
 import { AlertTriangle, CheckCircle2, CircleAlert, Info, Lightbulb, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 
@@ -62,8 +63,11 @@ function InsightCard({ card }: { card: HomeCard }) {
 
 function TipCard({ tip }: { tip: HomeTip }) {
   const dismiss = useDismissTip();
+  // Dismissing hides the tip for everyone: analytics:manage
+  const canDismiss = useAccess().can('analytics:manage');
   return (
     <article className={cn(CARD, 'relative bg-muted/30')}>
+      {canDismiss && (
       <Button
         variant="ghost"
         size="icon"
@@ -74,6 +78,7 @@ function TipCard({ tip }: { tip: HomeTip }) {
       >
         <X className="size-4" />
       </Button>
+      )}
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Lightbulb className="size-3.5 text-viz-warning" aria-hidden /> Tip
       </p>

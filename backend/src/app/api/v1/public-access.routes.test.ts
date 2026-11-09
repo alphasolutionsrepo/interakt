@@ -987,8 +987,15 @@ describe('a dashboard session on the slug routes (the playgrounds)', () => {
     });
     expect(await settle(await searchByToken(req('/api/v1/search', 'POST', marked, { query: 'jeans' })))).toBe(200);
     expect(source).toBe('api');
+    // If the role can't be checked (database down), the call is still served, as live traffic
+    accessStub.access = null;
+    accessStub.error = new Error('database down');
+    rateLimiter.clear();
+    expect(await settle(await searchByToken(req('/api/v1/search', 'POST', marked, { query: 'jeans' })))).toBe(200);
+    expect(source).toBe('api');
     // Control: the same call from a role that may use the playgrounds is a test
     accessStub.reset();
+    rateLimiter.clear();
     expect(await settle(await searchByToken(req('/api/v1/search', 'POST', marked, { query: 'jeans' })))).toBe(200);
     expect(source).toBe('admin_test');
   });

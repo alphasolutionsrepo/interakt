@@ -217,7 +217,7 @@ export function UserFormDialog({
                     <Select onValueChange={field.onChange} value={(field.value as string | undefined) ?? ''}>
                       <FormControl>
                         <SelectTrigger className="h-11 rounded-lg">
-                          <SelectValue placeholder="Select a role" />
+                          <SelectValue placeholder={roles.length ? "Select a role" : "No roles to choose from (see the Roles tab)"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>

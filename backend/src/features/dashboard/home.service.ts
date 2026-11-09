@@ -9,6 +9,8 @@
  * calls a model, so the page stays fast. The result is cached for a minute.
  */
 
+import { canOpenPage } from '@/features/access/page-permissions';
+import type { Permission } from '@/features/access/permissions';
 import 'server-only';
 
 import { eq, sql } from 'drizzle-orm';
@@ -922,14 +924,17 @@ export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
 // ============================================================================
 
 /**
- * The home page for a role without analytics:view: setup, health, tasks and the experience
- * list stay; the traffic figures, insight cards and tips (all from analytics) go, as on the
- * analytics pages themselves. The cached data is shared, so this runs per request.
+ * The home page as a role sees it. Without analytics:view, the traffic figures, insight cards
+ * and tips (all from analytics) go, as on the analytics pages themselves. Tasks whose page the
+ * role can't open go too (their counts come from those pages). The cached data is shared by
+ * everyone, so this runs per request.
  */
-export function homeDataForRole(data: HomeData, canViewAnalytics: boolean): HomeData {
-  if (canViewAnalytics) return data;
+export function homeDataForRole(data: HomeData, can: (permission: Permission) => boolean): HomeData {
+  const tasks = data.tasks.filter((t) => canOpenPage(t.href.split('?')[0], can));
+  if (can('analytics:view')) return tasks.length === data.tasks.length ? data : { ...data, tasks };
   return {
     ...data,
+    tasks,
     live: { requestsLast5Min: 0 },
     metrics: [],
     cards: [],

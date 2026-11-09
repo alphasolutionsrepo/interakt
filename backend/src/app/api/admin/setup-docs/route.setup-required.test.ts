@@ -20,7 +20,6 @@ vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('server-only', () => ({}));
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
-vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUser: async () => ({ id: 'admin', role: 'admin' }) }));
 const defaults = vi.hoisted(() => ({ embedding: {} as Record<string, unknown> }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({ getResolvedDefaults: async () => defaults }));
 vi.mock('@/shared/seeders/docs/docs-source', () => ({ DOCS_ROOT: '/docs', getAdminUserId: async () => 'admin', readDocs: vi.fn() }));

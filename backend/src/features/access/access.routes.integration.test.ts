@@ -380,3 +380,61 @@ describe('configs that send a vault secret need secrets:manage', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('review round 2', () => {
+  it('deactivates a user through the route, and they are locked out', async () => {
+    as(admin);
+    expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${viewer}/deactivate`, undefined, { id: viewer })).status).toBe(200);
+    expect((await getUser(viewer)).isActive).toBe(false);
+    as(viewer);
+    expect((await call(meRoute.GET, 'GET', '/api/me/access')).status).toBe(401);
+  });
+
+  it("refuses a manager activating someone they can't manage, even when nothing would change", async () => {
+    const managerRole = await makeRole(`Mgr ${n}`, ['users:manage']);
+    as(await makeUser(managerRole));
+    expect((await call(activateRoute.PATCH, 'PATCH', `/api/users/${admin}/activate`, undefined, { id: admin })).status).toBe(403);
+  });
+
+  it("doesn't tell a caller without users:manage whether a user id exists", async () => {
+    as(viewer);
+    const missing = '00000000-0000-4000-8000-0000000000ee';
+    expect((await call(userRoute.GET, 'GET', `/api/users/${missing}`, undefined, { id: missing })).status).toBe(403);
+    expect((await call(userRoute.GET, 'GET', `/api/users/${editor}`, undefined, { id: editor })).status).toBe(403);
+  });
+
+  it('refuses a manager deleting a role with permissions they lack', async () => {
+    const managerRole = await makeRole(`Mgr2 ${n}`, ['users:manage']);
+    const above = await makeRole(`Above ${n}`, ['secrets:manage']);
+    as(await makeUser(managerRole));
+    expect((await call(roleRoute.DELETE, 'DELETE', `/api/roles/${above}`, undefined, { id: above })).status).toBe(403);
+    as(admin);
+    expect((await call(roleRoute.DELETE, 'DELETE', `/api/roles/${above}`, undefined, { id: above })).status).toBe(200);
+  });
+
+  it("lets a manager change the password of a user they manage (with that user's current password)", async () => {
+    const managerRole = await makeRole(`Mgr3 ${n}`, ['users:manage', 'search-experiences:view']);
+    const lowRole = await makeRole(`Low ${n}`, ['search-experiences:view']);
+    as(admin);
+    const created = await call(usersRoute.POST, 'POST', '/api/users', { email: `low${n}@x.test`, password: 'Passw0rd-old1', roleId: lowRole });
+    const target = (created.body?.data as { id: string }).id;
+    as(await makeUser(managerRole));
+    const res = await call(passwordRoute.POST, 'POST', `/api/users/${target}/change-password`, { currentPassword: 'Passw0rd-old1', newPassword: 'Passw0rd-new1', confirmPassword: 'Passw0rd-new1' }, { id: target });
+    expect(res.status).toBe(200);
+  });
+
+  it('lists users with their role and never their password', async () => {
+    as(admin);
+    const res = await call(usersRoute.GET, 'GET', '/api/users');
+    expect(res.status).toBe(200);
+    const rows = res.body?.data as Array<Record<string, unknown>>;
+    expect(rows.find((u) => u.id === viewer)).toMatchObject({ roleId: VIEWER, role: { id: VIEWER, name: 'Viewer', isBuiltIn: false } });
+    expect(rows.every((u) => !('password' in u))).toBe(true);
+  });
+
+  it('gives a role the permissions its permissions imply (asking analytics reads analytics)', async () => {
+    as(await makeUser(await makeRole(`Askers ${n}`, ['analytics:ask', 'tools:edit'])));
+    const me = await call(meRoute.GET, 'GET', '/api/me/access');
+    expect((me.body?.data as { permissions: string[] }).permissions.sort()).toEqual(['analytics:ask', 'analytics:view', 'tools:edit', 'tools:view']);
+  });
+});

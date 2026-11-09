@@ -29,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { CreateUserDTO, UpdateUserDTO } from '@/features/auth/auth.validations';
 import { useAccess } from '@/shared/access/useAccess';
+import { holdsAllOf } from '@/features/access/permissions';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
@@ -99,13 +100,8 @@ export default function UsersPage() {
   const { access } = useAccess();
 
   // A role the signed-in user may hand out: they hold everything it grants (the server checks too)
-  const canHold = (role: Pick<RoleResponse, 'isBuiltIn' | 'permissions'>) => {
-    if (!access) return false;
-    if (access.role.isAdmin) return true;
-    if (role.isBuiltIn) return false;
-    const mine = new Set<string>(access.permissions);
-    return role.permissions.every((p) => mine.has(p));
-  };
+  const canHold = (role: Pick<RoleResponse, 'isBuiltIn' | 'permissions'>) =>
+    !!access && holdsAllOf({ isAdmin: access.role.isAdmin, permissions: access.permissions }, role);
   const assignableRoles = roles.filter(canHold);
   const rolesFor = (current?: string) =>
     roles.filter((r) => canHold(r) || r.id === current);

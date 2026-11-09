@@ -14,6 +14,15 @@ describe('which configs use a vault secret', () => {
     expect(usesSecrets({ steps: [{ body: { token: 'x {{secret:a_b}} y' } }] })).toBe(true); // nested in arrays
   });
 
+  it('treats a config nested deeper than any real one as using a secret (the executors resolve any depth)', () => {
+    let deep: unknown = { headers: { X: '{{secret:prod_key}}' } };
+    for (let i = 0; i < 100; i++) deep = { a: deep };
+    expect(usesSecrets(deep)).toBe(true);
+    let deepPlain: unknown = 'plain';
+    for (let i = 0; i < 100; i++) deepPlain = { a: deepPlain };
+    expect(usesSecrets(deepPlain)).toBe(true); // fail closed
+  });
+
   it('ignores configs without one, and empty references', () => {
     expect(usesSecrets({ baseUrl: 'https://x.test', authentication: { type: 'none' } })).toBe(false);
     expect(usesSecrets({ authConfig: { type: 'bearer', secretRef: '  ' } })).toBe(false);

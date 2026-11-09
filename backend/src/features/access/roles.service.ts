@@ -10,6 +10,7 @@ import 'server-only';
 
 import { AccessDeniedError, assertHoldsPermissions, assertHoldsRole } from './access-policy';
 import type { UserAccess } from './access.service';
+import { conflictOnConstraint } from './constraint-errors';
 import * as repository from './roles.repository';
 import type { CreateRoleInput, UpdateRoleInput } from './roles.validations';
 
@@ -27,7 +28,10 @@ async function editableRole(id: string) {
 export async function createRole(caller: UserAccess, input: CreateRoleInput) {
   assertHoldsPermissions(caller, input.permissions, 'create');
   if (await repository.roleNameTaken(input.name)) throw new ConflictError(`A role named "${input.name}" already exists`);
-  return repository.createRole({ name: input.name, description: input.description ?? null, permissions: input.permissions });
+  return conflictOnConstraint(
+    () => repository.createRole({ name: input.name, description: input.description ?? null, permissions: input.permissions }),
+    { unique: `A role named "${input.name}" already exists` },
+  );
 }
 
 export async function updateRole(caller: UserAccess, id: string, input: UpdateRoleInput) {
@@ -37,7 +41,7 @@ export async function updateRole(caller: UserAccess, id: string, input: UpdateRo
   if (input.name && (await repository.roleNameTaken(input.name, id))) {
     throw new ConflictError(`A role named "${input.name}" already exists`);
   }
-  return repository.updateRole(id, input);
+  return conflictOnConstraint(() => repository.updateRole(id, input), { unique: `A role named "${input.name}" already exists` });
 }
 
 export async function deleteRole(caller: UserAccess, id: string) {

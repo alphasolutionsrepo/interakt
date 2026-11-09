@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PERMISSION_GROUPS } from '@/features/access/permissions';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 
 
@@ -21,12 +22,20 @@ const PERMISSION_COUNT = PERMISSION_GROUPS.reduce((n, g) => n + g.permissions.le
 
 /** The Roles tab: every role, how many users hold it, and create / edit / delete. */
 export function RolesPanel({ canHold }: { canHold: (role: Pick<RoleResponse, 'isBuiltIn' | 'permissions'>) => boolean }) {
-  const { roles, isLoading, createRoleAsync, updateRoleAsync, deleteRole, isSaving, isDeleting } = useRoles();
+  const { roles, isLoading, error, retry, createRoleAsync, updateRoleAsync, deleteRole, isSaving, isDeleting } = useRoles();
   const [editing, setEditing] = useState<RoleResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<RoleResponse | null>(null);
 
   if (isLoading) return null;
+  if (error) {
+    return (
+      <div className="flex flex-col items-start gap-3 rounded-2xl border border-border/60 p-6">
+        <ProblemAlert error={error} title="Couldn't load the roles" />
+        <Button variant="outline" onClick={retry} className="rounded-xl">Try again</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

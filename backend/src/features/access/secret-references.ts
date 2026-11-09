@@ -18,8 +18,12 @@ import { checkAccess } from './route-guard';
 const SECRET_TEMPLATE = /\{\{secret:[a-z][a-z0-9_]*\}\}/;
 const SECRET_FIELDS = new Set(['valueRef', 'secretRef', 'apiKeySecret']);
 
+/** Deeper than any real config; a deeper one is treated as using a secret (fail closed). */
+const MAX_DEPTH = 64;
+
 export function usesSecrets(value: unknown, depth = 0): boolean {
-  if (depth > 20 || value === null || value === undefined) return false;
+  if (depth > MAX_DEPTH) return true;
+  if (value === null || value === undefined) return false;
   if (typeof value === 'string') return SECRET_TEMPLATE.test(value);
   if (Array.isArray(value)) return value.some((v) => usesSecrets(v, depth + 1));
   if (typeof value === 'object') {

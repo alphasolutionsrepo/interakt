@@ -8,6 +8,7 @@
  * away once all are done, or when someone hides it.
  */
 
+import { useAccess } from '@/shared/access/useAccess';
 import { CheckCircle2, Circle, X } from 'lucide-react';
 import Link from 'next/link';
 
@@ -21,34 +22,39 @@ export const CHECKLIST_ID = 'tip:checklist';
 
 export function SetupChecklist({ steps }: { steps: HomeChecklistStep[] }) {
   const dismiss = useDismissTip();
-  const done = steps.filter((s) => s.done).length;
-  const next = steps.find((s) => !s.done);
+  const { can } = useAccess();
+  // Hiding the list hides it for everyone (analytics:manage); the Ask step needs analytics:ask
+  const shown = steps.filter((s) => s.href !== '#home-ask' || can('analytics:ask'));
+  const done = shown.filter((s) => s.done).length;
+  const next = shown.find((s) => !s.done);
 
   return (
     <section aria-labelledby="setup-checklist" className="relative rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute right-2 top-2 size-8 text-muted-foreground"
-        onClick={() => dismiss.mutate(CHECKLIST_ID)}
-        aria-label="Hide the getting started list"
-        title="Hide this list"
-      >
-        <X className="size-4" />
-      </Button>
+      {can('analytics:manage') && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-2 size-8 text-muted-foreground"
+          onClick={() => dismiss.mutate(CHECKLIST_ID)}
+          aria-label="Hide the getting started list"
+          title="Hide this list"
+        >
+          <X className="size-4" />
+        </Button>
+      )}
       <div className="mb-4 space-y-1 pr-8">
         <h2 id="setup-checklist" className="font-semibold">
           Get started
         </h2>
         <p className="text-sm text-muted-foreground">
-          {done} of {steps.length} done
+          {done} of {shown.length} done
         </p>
         <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-muted" aria-hidden>
-          <div className="h-full rounded-full bg-viz-good transition-all" style={{ width: `${(done / steps.length) * 100}%` }} />
+          <div className="h-full rounded-full bg-viz-good transition-all" style={{ width: `${(done / shown.length) * 100}%` }} />
         </div>
       </div>
       <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        {steps.map((s) => (
+        {shown.map((s) => (
           <li key={s.id}>
             <Link
               href={s.href}

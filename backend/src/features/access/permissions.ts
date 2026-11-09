@@ -113,4 +113,48 @@ export const AI_MODEL_READERS: readonly Permission[] = [
   'search-experiences:edit',
   'ai-experiences:edit',
   'settings:view',
+  'playground:use',
+  'analytics:ask',
 ];
+
+/**
+ * Permissions that only make sense with another: changing something implies seeing it, and
+ * asking the analytics assistant reads analytics. Applied when a role's permissions are read,
+ * so no role can hold the first without the second.
+ */
+export const IMPLIED_PERMISSIONS: Partial<Record<Permission, readonly Permission[]>> = {
+  'search-experiences:edit': ['search-experiences:view'],
+  'ai-experiences:edit': ['ai-experiences:view'],
+  'search-indexes:edit': ['search-indexes:view'],
+  'documents:edit': ['search-indexes:view'],
+  'data-sources:edit': ['data-sources:view'],
+  'tools:edit': ['tools:view'],
+  'prompts:edit': ['prompts:view'],
+  'ai-providers:manage': ['ai-providers:view'],
+  'analytics:ask': ['analytics:view'],
+  'analytics:manage': ['analytics:view'],
+  'settings:manage': ['settings:view'],
+  'jobs:run': ['settings:view'],
+};
+
+/** The permissions plus everything they imply. */
+export function withImplied(permissions: readonly Permission[]): Permission[] {
+  const all = new Set<Permission>(permissions);
+  for (const p of permissions) for (const implied of IMPLIED_PERMISSIONS[p] ?? []) all.add(implied);
+  return [...all];
+}
+
+/**
+ * Whether a caller holds everything a role grants, so may assign, edit or delete it. Admin
+ * holds everything; only Admin holds the built-in Admin role. The one copy of this rule: the
+ * server's access-policy.ts and the Users page both use it.
+ */
+export function holdsAllOf(
+  caller: { isAdmin: boolean; permissions: Iterable<string> },
+  role: { isBuiltIn: boolean; permissions: readonly string[] },
+): boolean {
+  if (caller.isAdmin) return true;
+  if (role.isBuiltIn) return false;
+  const mine = new Set(caller.permissions);
+  return role.permissions.every((p) => mine.has(p));
+}

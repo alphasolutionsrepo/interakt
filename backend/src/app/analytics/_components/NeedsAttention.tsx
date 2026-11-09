@@ -2,6 +2,7 @@
 
 'use client';
 
+import { useAccess } from '@/shared/access/useAccess';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -127,6 +128,8 @@ export function NeedsAttention() {
     queryClient.invalidateQueries({ queryKey: ['analytics', 'insights'] });
   }, [status, queryClient]);
   const { refresh, isProcessing } = useRefreshInsights(experienceId, onDone);
+  // Refreshing, hiding and showing findings change them for everyone: analytics:manage
+  const canManage = useAccess().can('analytics:manage');
 
   const isRunning = isProcessing || status.data?.currentRun?.status === 'running';
   const result = insights.data;
@@ -153,6 +156,7 @@ export function NeedsAttention() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {canManage && (
           <Button variant="outline" size="sm" onClick={refresh} disabled={isRunning} className="rounded-xl">
             {isRunning ? (
               <><Loader2 className="mr-2 size-3.5 animate-spin" /> Refreshing…</>
@@ -160,6 +164,7 @@ export function NeedsAttention() {
               <><RefreshCw className="mr-2 size-3.5" /> Refresh now</>
             )}
           </Button>
+          )}
         </div>
       </CardHeader>
 
@@ -196,7 +201,7 @@ export function NeedsAttention() {
                 <Finding
                   key={finding.id}
                   finding={finding}
-                  onHide={() => visibility.hide.mutate({ findingId: finding.id })}
+                  onHide={canManage ? () => visibility.hide.mutate({ findingId: finding.id }) : undefined}
                   hiding={visibility.hide.isPending && visibility.hide.variables?.findingId === finding.id}
                 />
               ))}
@@ -229,15 +234,17 @@ export function NeedsAttention() {
                       {finding.title}
                       <span className="text-muted-foreground"> · back {formatComeBack(finding.hiddenUntil)}</span>
                     </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 rounded-lg text-xs"
-                      disabled={visibility.show.isPending}
-                      onClick={() => visibility.show.mutate(finding.id)}
-                    >
-                      Show again
-                    </Button>
+                    {canManage && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 rounded-lg text-xs"
+                        disabled={visibility.show.isPending}
+                        onClick={() => visibility.show.mutate(finding.id)}
+                      >
+                        Show again
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -254,7 +261,7 @@ function formatComeBack(iso: string): string {
   return `on ${new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
 }
 
-function Finding({ finding, onHide, hiding }: { finding: ProactiveInsight; onHide: () => void; hiding: boolean }) {
+function Finding({ finding, onHide, hiding }: { finding: ProactiveInsight; onHide?: () => void; hiding: boolean }) {
   const severity = SEVERITY[finding.severity] ?? SEVERITY.info;
   const Icon = severity.icon;
   const askPanel = useAskPanel();
@@ -298,17 +305,19 @@ function Finding({ finding, onHide, hiding }: { finding: ProactiveInsight; onHid
               <Link href="/analytics/traces?status=ERROR">See failed turns</Link>
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="rounded-xl text-muted-foreground"
-            onClick={onHide}
-            disabled={hiding}
-            title="Hide this finding for 7 days, for every admin"
-          >
-            {hiding ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <EyeOff className="mr-1.5 size-3.5" />}
-            Hide for 7 days
-          </Button>
+          {onHide && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-xl text-muted-foreground"
+              onClick={onHide}
+              disabled={hiding}
+              title="Hide this finding for 7 days, for every admin"
+            >
+              {hiding ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <EyeOff className="mr-1.5 size-3.5" />}
+              Hide for 7 days
+            </Button>
+          )}
         </div>
       </div>
     </li>

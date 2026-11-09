@@ -10,6 +10,7 @@
  */
 
 import type { UserAccess } from './access.service';
+import { holdsAllOf } from './permissions';
 
 import { AppError } from '@/shared/errors/app-error';
 
@@ -28,9 +29,7 @@ export class AccessDeniedError extends AppError {
 
 /** Whether the caller holds everything the role grants. */
 export function holdsRole(caller: UserAccess, role: RoleShape): boolean {
-  if (caller.isAdmin) return true;
-  if (role.isBuiltIn) return false;
-  return role.permissions.every((p) => (caller.permissions as ReadonlySet<string>).has(p));
+  return holdsAllOf(caller, role);
 }
 
 export function assertHoldsRole(caller: UserAccess, role: RoleShape, action: string): void {

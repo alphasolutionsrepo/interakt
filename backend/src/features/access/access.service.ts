@@ -12,7 +12,7 @@ import 'server-only';
 
 import { eq } from 'drizzle-orm';
 
-import { ALL_PERMISSIONS, isPermission, type Permission } from './permissions';
+import { ALL_PERMISSIONS, isPermission, withImplied, type Permission } from './permissions';
 
 import { db } from '@/db/index';
 import { roles } from '@/db/schema/roles.schema';
@@ -30,7 +30,8 @@ export interface UserAccess {
 
 /**
  * The access of an active user, or null when the user doesn't exist or is deactivated.
- * Unknown permission strings stored on a role are ignored, never granted.
+ * Unknown permission strings stored on a role are ignored, never granted; implied ones
+ * (permissions.ts IMPLIED_PERMISSIONS) are added.
  */
 export async function resolveAccess(userId: string): Promise<UserAccess | null> {
   const [row] = await db
@@ -49,7 +50,7 @@ export async function resolveAccess(userId: string): Promise<UserAccess | null> 
 
   if (!row || row.isActive !== true) return null;
 
-  const permissions = row.isBuiltIn ? ALL_PERMISSIONS : row.permissions.filter(isPermission);
+  const permissions = row.isBuiltIn ? ALL_PERMISSIONS : withImplied(row.permissions.filter(isPermission));
   return {
     userId: row.userId,
     roleId: row.roleId,

@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger([]));
-vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUser: async () => ({ id: 'admin', role: 'admin' }) }));
 vi.mock('@/shared/seeders/seed-registry.service', () => ({ getRegistryEntry: async () => null }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({ getProviderByKey: async () => ({ baseUrl: 'http://gpu-box.lan:11434' }) }));
 vi.mock('@/shared/seeders/demo', () => ({

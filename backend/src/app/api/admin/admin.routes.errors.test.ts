@@ -14,7 +14,7 @@ const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
-const auth = vi.hoisted(() => ({ getCurrentUserId: vi.fn(), getCurrentUser: vi.fn() }));
+const auth = vi.hoisted(() => ({ getCurrentUserId: vi.fn() }));
 vi.mock('@/shared/utils/auth-utils', () => auth);
 const seeders = vi.hoisted(() => ({
   runAllSeeding: vi.fn(),
@@ -52,7 +52,6 @@ beforeEach(() => {
   logs.length = 0;
   vi.clearAllMocks();
   auth.getCurrentUserId.mockResolvedValue('admin');
-  auth.getCurrentUser.mockResolvedValue({ id: 'admin', role: 'admin' });
 });
 
 describe('an admin request that fails on our side', () => {

@@ -44,6 +44,9 @@ export function useRoles() {
   return {
     roles: query.data ?? [],
     isLoading: query.isLoading,
+    /** Why the roles list didn't load, if it didn't */
+    error: query.error,
+    retry: () => void query.refetch(),
     createRoleAsync: create.mutateAsync,
     updateRoleAsync: update.mutateAsync,
     deleteRole: remove.mutate,

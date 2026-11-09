@@ -17,6 +17,7 @@ import 'server-only';
 
 import { AccessDeniedError, assertHoldsRole } from './access-policy';
 import { can, type UserAccess } from './access.service';
+import { conflictOnConstraint } from './constraint-errors';
 import * as roles from './roles.repository';
 
 import { getUserById } from '@/features/auth/auth.repository';
@@ -30,10 +31,13 @@ async function roleOrFail(roleId: string) {
 
 /** Throws unless the caller may manage this other user's account. Returns the target user. */
 export async function assertCanManageUser(caller: UserAccess, targetUserId: string) {
+  // Refused before the lookup, so a caller without users:manage can't learn which ids exist
+  if (targetUserId !== caller.userId && !can(caller, 'users:manage')) {
+    throw new AccessDeniedError('You can only manage your own account.');
+  }
   const target = await getUserById(targetUserId);
   if (!target) throw new NotFoundError('User not found');
   if (target.id === caller.userId) return target;
-  if (!can(caller, 'users:manage')) throw new AccessDeniedError('You can only manage your own account.');
   assertHoldsRole(caller, await roleOrFail(target.roleId), 'manage a user with');
   return target;
 }
@@ -64,15 +68,13 @@ export async function assertCanChangeUserAccess(
   targetUserId: string,
   changes: AccessChanges,
 ): Promise<AccessChanges> {
-  const target = await getUserById(targetUserId);
-  if (!target) throw new NotFoundError('User not found');
+  // Someone else's account needs the right to manage it, even when nothing would change
+  const target = await assertCanManageUser(caller, targetUserId);
   const real = realChanges(target, changes);
   if (real.roleId === undefined && real.isActive === undefined) return real;
   if (targetUserId === caller.userId) {
     throw new AccessDeniedError('You can\'t change your own role or deactivate yourself. Ask another user manager.');
   }
-  if (!can(caller, 'users:manage')) throw new AccessDeniedError('Your role doesn\'t allow managing users.');
-  await assertCanManageUser(caller, targetUserId);
   if (real.roleId !== undefined) await assertCanAssignRole(caller, real.roleId);
   return real;
 }
@@ -84,6 +86,8 @@ export async function changeUserAccess(
 ): Promise<void> {
   const real = await assertCanChangeUserAccess(caller, targetUserId, changes);
   if (real.roleId === undefined && real.isActive === undefined) return;
-  const found = await roles.updateUserAccess(targetUserId, real);
+  const found = await conflictOnConstraint(() => roles.updateUserAccess(targetUserId, real), {
+    foreignKey: 'That role was just deleted. Choose another role.',
+  });
   if (!found) throw new NotFoundError('User not found');
 }

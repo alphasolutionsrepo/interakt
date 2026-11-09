@@ -24,6 +24,12 @@ describe('which permission opens which page', () => {
     expect(permissionsForPage('/experiences')).toEqual(['search-experiences:view', 'ai-experiences:view']);
   });
 
+  it('opens the full analytics chat only to roles that may ask, not to every analytics viewer', () => {
+    expect(permissionsForPage('/analytics/chat')).toEqual(['analytics:ask']);
+    expect(canOpenPage('/analytics/chat', holding(VIEWER_DEFAULT_PERMISSIONS))).toBe(false);
+    expect(canOpenPage('/analytics/overview', holding(VIEWER_DEFAULT_PERMISSIONS))).toBe(true);
+  });
+
   it('needs only a session for the dashboard, docs and health', () => {
     for (const page of ['/dashboard', '/docs', '/docs/concepts/users', '/health']) expect(permissionsForPage(page)).toEqual([]);
   });

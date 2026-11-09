@@ -33,6 +33,7 @@ const PAGE_RULES: ReadonlyArray<readonly [RegExp, readonly Permission[]]> = [
   [new RegExp(`^/(tools|mcp-connections)(/|$)`), ['tools:view']],
   [new RegExp(`^/prompt-templates(/|$)`), ['prompts:view']],
   [new RegExp(`^/playground(/|$)`), ['playground:use']],
+  [new RegExp(`^/analytics/chat(/|$)`), ['analytics:ask']],
   [new RegExp(`^/analytics(/|$)`), ['analytics:view']],
   [new RegExp(`^/jobs(/|$)`), ['settings:view']],
   [new RegExp(`^/ai-providers(/|$)`), ['ai-providers:view']],

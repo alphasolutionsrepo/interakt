@@ -21,7 +21,7 @@ export async function handleGetHome(request: NextRequest) {
   try {
     const { access, response } = await checkAccess(SIGNED_IN);
     if (response) return response;
-    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz), can(access, 'analytics:view')) });
+    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz), (p) => can(access, p)) });
   } catch (error) {
     return apiResponse.error('Failed to load the home page', 500, { operation: 'getHome', err: error });
   }

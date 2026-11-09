@@ -18,6 +18,8 @@
 
 import 'server-only';
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import type { NextRequest, NextResponse } from 'next/server';
 
 import { can, resolveAccess, type UserAccess } from './access.service';
@@ -47,13 +49,23 @@ type Handler<A extends unknown[]> = (...args: A) => Response | Promise<Response>
 
 export type CheckResult = { access: UserAccess; response?: undefined } | { access?: undefined; response: NextResponse };
 
-/** Check the current session against a rule. Use withPermission for routes. */
-export async function checkAccess(rule: AccessRule): Promise<CheckResult> {
+/** The access the route's gate read, for the rest of that request (one lookup per request). */
+const requestAccess = new AsyncLocalStorage<UserAccess>();
+
+async function currentAccess(): Promise<UserAccess | null> {
+  const known = requestAccess.getStore();
+  if (known) return known;
   const session = await auth();
   const userId = session?.user?.id;
-  if (!userId) return { response: apiResponse.unauthorized() };
+  return userId ? resolveAccess(userId) : null;
+}
 
-  const access = await resolveAccess(userId);
+/**
+ * Check the current session against a rule. Use withPermission for routes; handlers call this
+ * for the caller's access (it reuses the gate's lookup within the same request).
+ */
+export async function checkAccess(rule: AccessRule): Promise<CheckResult> {
+  const access = await currentAccess();
   if (!access) return { response: apiResponse.unauthorized() };
 
   if (rule !== SIGNED_IN && !allows(access, rule)) {
@@ -73,7 +85,7 @@ export function withPermission<A extends unknown[]>(rule: AccessRule, handler: H
       return apiResponse.error(error, 500, { operation: 'checkAccess' });
     }
     if (checked.response) return checked.response;
-    return handler(...args);
+    return requestAccess.run(checked.access, () => handler(...args));
   };
   Object.defineProperty(guarded, ACCESS_RULE, { value: rule });
   return guarded;

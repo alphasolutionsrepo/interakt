@@ -68,9 +68,10 @@ export async function markIfAdminTest(request: NextRequest): Promise<boolean> {
   if (request.headers.get(TEST_MARKER_HEADER) !== '1') return false;
   const session = await auth();
   if (!session?.user) return false;
-  // Only a user who may use the playgrounds now (active, role with playground:use) is testing
-  const { response } = await checkAccess('playground:use');
-  if (response) return false;
+  // Only a user who may use the playgrounds now (active, role with playground:use) is testing.
+  // If that can't be checked, the request is live traffic (plain errors, counted as 'api').
+  const allowed = await checkAccess('playground:use').then((r) => !r.response, () => false);
+  if (!allowed) return false;
   markAdminCaller();
   return true;
 }

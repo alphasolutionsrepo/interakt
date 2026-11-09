@@ -17,7 +17,6 @@ vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('server-only', () => ({}));
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
-vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUser: async () => ({ id: 'admin', role: 'admin' }) }));
 vi.mock('@/db/index', () => ({ db: {} }));
 
 import { POST as setupDemo } from './route';

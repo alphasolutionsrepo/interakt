@@ -18,6 +18,7 @@ import {
   changePasswordSchema,
 } from './auth.validations';
 
+import { conflictOnConstraint } from '@/features/access/constraint-errors';
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
 import {
   assertCanAssignRole,
@@ -52,7 +53,9 @@ export async function handleCreateUser(request: NextRequest) {
     }
 
     await assertCanAssignRole(access, validation.data.roleId);
-    const user = await service.createUser(validation.data);
+    const user = await conflictOnConstraint(() => service.createUser(validation.data), {
+      foreignKey: 'That role was just deleted. Choose another role.',
+    });
 
     logger.info('Created user via API', {
       newUserId: user.id,
