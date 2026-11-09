@@ -1,9 +1,7 @@
 // src/features/mcp-connection/mcp-connection.api.handlers.ts
 
 import { NextRequest } from 'next/server';
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
-import { getCurrentUserId } from '@/shared/utils/auth-utils';
+
 import * as service from './mcp-connection.service';
 import {
   createMcpConnectionSchema,
@@ -12,6 +10,12 @@ import {
   attachConnectionSchema,
   updateAttachmentSchema,
 } from './mcp-connection.validation';
+
+import { assertMayWriteSecretConfig } from '@/features/access/secret-references';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
+
 
 const logger = createLogger('mcp-connection-handlers');
 
@@ -53,6 +57,7 @@ export async function handleCreate(request: NextRequest) {
     const validation = createMcpConnectionSchema.safeParse(body);
     if (!validation.success) return apiResponse.validationError(validation.error);
 
+    await assertMayWriteSecretConfig(validation.data);
     const created = await service.create(validation.data, userId);
 
     // Best-effort initial discovery — failure does not block creation
@@ -99,6 +104,8 @@ export async function handleUpdate(request: NextRequest, context: { params: Prom
     const validation = updateMcpConnectionSchema.safeParse(body);
     if (!validation.success) return apiResponse.validationError(validation.error);
 
+    // The stored config too: changing only the URL of a connection that sends a secret redirects it
+    await assertMayWriteSecretConfig(await service.getById(id), validation.data);
     const updated = await service.update(id, validation.data, userId);
     return apiResponse.success(updated);
   } catch (error) {

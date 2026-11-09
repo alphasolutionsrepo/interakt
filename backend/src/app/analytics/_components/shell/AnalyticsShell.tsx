@@ -8,22 +8,23 @@
  * render only their content. The full chat page keeps its own layout.
  */
 
-import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { BarChart3, RefreshCw, Sparkles } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import { useAnalyticsContext } from '../../_lib/AnalyticsContext';
 import { useAskPanel } from '../../_lib/AskPanelContext';
 import { sectionForPath } from '../../_lib/sections';
 import { ExperienceSelector } from '../ExperienceSelector';
 import { PeriodPicker } from '../PeriodPicker';
-import { AskPanel } from './AskPanel';
-import { SectionNav } from './SectionNav';
 import { formatTimeAgo } from '../viz';
 
-import { Button } from '@/shared/ui/components/button';
+import { AskPanel } from './AskPanel';
+import { SectionNav } from './SectionNav';
+
 import { cn } from '@/lib/utils';
+import { Button } from '@/shared/ui/components/button';
 
 /**
  * When the section's data last arrived. Live sections refetch every minute on
@@ -110,7 +111,7 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
               >
                 <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} />
               </Button>
-              {showAskDrawer && (
+              {showAskDrawer && askPanel.canAsk && (
                 <Button
                   variant={askPanel.isOpen ? 'secondary' : 'default'}
                   className="h-9 gap-2 rounded-xl"
@@ -134,7 +135,7 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
 
-      {showAskDrawer && <AskPanel section={section} />}
+      {showAskDrawer && askPanel.canAsk && <AskPanel section={section} />}
     </div>
   );
 }

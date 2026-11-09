@@ -59,7 +59,8 @@ export async function authenticateTokenOrSession(
  * Whether a request with a valid access token is the admin testing, and if so marks it as
  * the admin's, so a failure is explained rather than given the visitors' plain message.
  * The admin's playgrounds send a test marker and, being on the admin's origin, the admin's
- * login: only both together make it a test. A visitor can send the marker but not the
+ * login: only both together make it a test, and only for a user whose role may use the
+ * playgrounds. A visitor can send the marker but not the
  * login, and a signed-in admin using a live widget sends the login but not the marker;
  * both are live traffic.
  */
@@ -67,6 +68,9 @@ export async function markIfAdminTest(request: NextRequest): Promise<boolean> {
   if (request.headers.get(TEST_MARKER_HEADER) !== '1') return false;
   const session = await auth();
   if (!session?.user) return false;
+  // Only a user who may use the playgrounds now (active, role with playground:use) is testing
+  const { response } = await checkAccess('playground:use');
+  if (response) return false;
   markAdminCaller();
   return true;
 }

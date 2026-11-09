@@ -7,9 +7,10 @@
 
 import { NextRequest } from 'next/server';
 
+import { AI_MODEL_READERS } from '@/features/access/permissions';
 import { withPermission } from '@/features/access/route-guard';
 import { handleGetProviders } from '@/features/ai-service/ai-service.api.handlers';
 
-export const GET = withPermission('ai-providers:view', async function GET(request: NextRequest) {
+export const GET = withPermission(AI_MODEL_READERS, async function GET(request: NextRequest) {
   return handleGetProviders(request);
 });

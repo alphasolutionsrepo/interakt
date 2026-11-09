@@ -7,14 +7,12 @@ import { toast } from 'sonner';
 
 import { rolesApi } from '../roles-api';
 
-import { userKeys } from './useUsers';
+import { roleKeys, userKeys } from './useUsers';
 
 import type { CreateRoleInput, UpdateRoleInput } from '@/features/access/roles.validations';
 import { accessKeys } from '@/shared/access/useAccess';
 
 
-
-export const roleKeys = { all: ['roles'] as const };
 
 export function useRoles() {
   const queryClient = useQueryClient();

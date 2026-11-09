@@ -21,8 +21,13 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
+// A handler that gets past the gate finds no database, so it can't change anything
+vi.mock('@/db/index', () => ({ get db() { throw new Error('no database in this test'); } }));
 
+import type { Permission } from './permissions';
 import { acceptsIngestionKey, accessRuleOf, SIGNED_IN, type AccessRule } from './route-guard';
+
+import { AppError } from '@/shared/errors/app-error';
 
 import { accessStub } from '@/shared/test/access-stub';
 
@@ -82,7 +87,8 @@ describe('every admin API route is gated', () => {
   });
 
   it('matches the reviewed route -> permission table', async () => {
-    const table = gated.map((r) => `${r.method.padEnd(6)} /api/${r.route}  ${r.rule}`).join('\n');
+    const ruleText = (rule: AccessRule) => (typeof rule === 'string' ? rule : `any of ${rule.join(' | ')}`);
+    const table = gated.map((r) => `${r.method.padEnd(6)} /api/${r.route}  ${ruleText(r.rule!)}`).join('\n');
     await expect(table + '\n').toMatchFileSnapshot('./__snapshots__/route-permissions.txt');
   });
 
@@ -116,6 +122,35 @@ describe('every admin API route is gated', () => {
     }
     expect(wrong).toEqual([]);
   });
+
+  it('answers a failed permission check as an error, without running the handler', async () => {
+    accessStub.error = new AppError('The database couldn\'t be reached.', { code: 'DATABASE_UNAVAILABLE', status: 503 });
+    const wrong: string[] = [];
+    for (const r of gated) {
+      const res = await call(r);
+      const body = (await res.json().catch(() => ({}))) as { code?: string; requestId?: string };
+      if (res.status !== 503 || body.code !== 'DATABASE_UNAVAILABLE' || !body.requestId) wrong.push(`${r.method} /api/${r.route} -> ${res.status}`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('lets a role holding exactly the permission past the gate, for every option of an any-of rule', async () => {
+    const GATE_REFUSAL = /^Your role doesn't allow this/;
+    const wrong: string[] = [];
+    for (const r of gated.filter((g) => g.rule !== SIGNED_IN)) {
+      const options = (typeof r.rule === 'string' ? [r.rule] : [...r.rule!]) as Permission[];
+      for (const permission of options) {
+        accessStub.access = { userId: 'u', roleId: 'r', roleName: 'One', isAdmin: false, permissions: new Set<Permission>([permission]) };
+        const res = await Promise.race([call(r), new Promise<null>((done) => setTimeout(() => done(null), 3000))]);
+        if (!res) continue; // still working after the gate: it let the request through
+        const body = (await res.clone().json().catch(() => ({}))) as { message?: string };
+        if (res.status === 401 || (res.status === 403 && GATE_REFUSAL.test(body.message ?? ''))) {
+          wrong.push(`${r.method} /api/${r.route} with ${permission} -> ${res.status}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+  }, 300_000);
 
   it('lets only the search index document routes accept an ingestion key instead of a session', () => {
     const keyRoutes = gated.filter((r) => acceptsIngestionKey(r.fn)).map((r) => r.route);

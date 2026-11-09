@@ -11,7 +11,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import type { Permission } from '@/features/access/permissions';
-import { handleApiResponse } from '@/shared/api/api-error';
+import { ApiError, handleApiResponse } from '@/shared/api/api-error';
 
 export interface MyAccess {
   userId: string;
@@ -26,11 +26,16 @@ export function useAccess() {
     queryKey: accessKeys.mine,
     queryFn: async () => handleApiResponse<MyAccess>(await fetch('/api/me/access')),
     staleTime: 60_000,
+    // A 401 means the session is no longer accepted; retrying won't change that
+    retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2,
   });
   const permissions = new Set<string>(query.data?.permissions ?? []);
   return {
     access: query.data,
     isLoading: query.isLoading,
+    /** The lookup's HTTP status when it failed (0 for a network error), null otherwise */
+    errorStatus: query.error ? (query.error instanceof ApiError ? query.error.status : 0) : null,
+    retry: () => void query.refetch(),
     /** False while loading, so nothing flashes in and then disappears. */
     can: (permission: Permission) => permissions.has(permission),
   };

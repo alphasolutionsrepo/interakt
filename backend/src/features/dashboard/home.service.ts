@@ -916,3 +916,24 @@ async function offTopicTip(setup: Setup, summaries: ExperienceSummary[], dismiss
 
 /** The shape of a dismissible tip id, for validating dismiss requests */
 export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
+
+// ============================================================================
+// WHAT EACH ROLE SEES
+// ============================================================================
+
+/**
+ * The home page for a role without analytics:view: setup, health, tasks and the experience
+ * list stay; the traffic figures, insight cards and tips (all from analytics) go, as on the
+ * analytics pages themselves. The cached data is shared, so this runs per request.
+ */
+export function homeDataForRole(data: HomeData, canViewAnalytics: boolean): HomeData {
+  if (canViewAnalytics) return data;
+  return {
+    ...data,
+    live: { requestsLast5Min: 0 },
+    metrics: [],
+    cards: [],
+    tips: [],
+    experiences: data.experiences.map((e) => ({ ...e, volume: 0, issue: null, trend: [] })),
+  };
+}

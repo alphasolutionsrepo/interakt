@@ -30,6 +30,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { canOpenPage } from "@/features/access/page-permissions"
+import { accessState } from "@/shared/access/access-state"
 import { useAccess } from "@/shared/access/useAccess"
 import { sidebarFooterItems, sidebarGroups, visibleSidebarGroups } from "@/shared/data/SideBar-Items"
 
@@ -113,9 +114,14 @@ function computeOpenStates(currentPath: string) {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
-  const { can, isLoading: accessLoading } = useAccess()
-  // Nothing until access is known, so no item flashes in and then disappears
-  const visibleGroups = accessLoading ? [] : visibleSidebarGroups(sidebarGroups, (url) => canOpenPage(url, can))
+  const { can, isLoading: accessLoading, errorStatus } = useAccess()
+  // Nothing until access is known, so no item flashes in and then disappears. If the lookup
+  // failed, the full sidebar: the server still checks every request, and the page says why.
+  const accessView = accessState({ isLoading: accessLoading, errorStatus, canOpen: true })
+  const visibleGroups =
+    accessView === 'loading' || accessView === 'signed-out' ? []
+      : accessView === 'unavailable' ? sidebarGroups
+        : visibleSidebarGroups(sidebarGroups, (url) => canOpenPage(url, can))
   const { t } = useTranslation()
   const { state } = useSidebar()
   const isCollapsed = state === "collapsed"

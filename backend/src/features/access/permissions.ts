@@ -52,9 +52,9 @@ export const PERMISSION_GROUPS = [
     label: 'Testing and analytics',
     permissions: [
       { id: 'playground:use', label: 'Use the playgrounds and test buttons (spends AI tokens)' },
-      { id: 'analytics:view', label: 'View analytics, conversations and traces' },
+      { id: 'analytics:view', label: 'View analytics, conversations, traces and what the assistant remembers about visitors' },
       { id: 'analytics:ask', label: 'Ask the analytics assistant (spends AI tokens)' },
-      { id: 'analytics:manage', label: 'Change analytics and tracing settings, clear data' },
+      { id: 'analytics:manage', label: 'Change analytics and tracing settings, clear data and dismiss tips' },
     ],
   },
   {
@@ -100,4 +100,17 @@ export const VIEWER_DEFAULT_PERMISSIONS: readonly Permission[] = [
   'tools:view',
   'prompts:view',
   'analytics:view',
+];
+
+/**
+ * Who may read the AI provider and model lists (never the keys) and the system default models:
+ * besides viewing providers, everyone who picks a model while editing an index or an
+ * experience, and those who view settings.
+ */
+export const AI_MODEL_READERS: readonly Permission[] = [
+  'ai-providers:view',
+  'search-indexes:edit',
+  'search-experiences:edit',
+  'ai-experiences:edit',
+  'settings:view',
 ];

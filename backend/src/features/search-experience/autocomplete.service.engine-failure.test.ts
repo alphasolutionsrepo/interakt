@@ -33,6 +33,7 @@ vi.mock('@/features/search/providers/azure-ai-search/azure-client', () => ({
 }));
 vi.mock('@/features/search-index/provider-settings.utils', () => ({ getProviderFieldSettings: () => ({ isAutocomplete: true }) }));
 const session = vi.hoisted(() => ({ user: null as { id: string } | null, lookupFails: null as Error | null }));
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/features/auth/auth.api.handlers', () => ({
   auth: async () => {
     if (session.lookupFails) throw session.lookupFails;

@@ -8,7 +8,7 @@
  * Before the handler runs, the wrapper reads the session, then the user's current role and
  * active flag from the database (resolveAccess). No session, a deactivated or deleted user ->
  * 401. A role without the permission -> 403. If the check itself fails (database down), the
- * error propagates and the handler never runs.
+ * request is answered as an error (logged, with the request id) and the handler never runs.
  *
  * SIGNED_IN gates routes any active user may call (the dashboard, help, their own profile);
  * the handler still checks ownership where it acts on a user's own data.
@@ -29,7 +29,16 @@ import { apiResponse } from '@/shared/api/response';
 
 
 export const SIGNED_IN = 'signed-in' as const;
-export type AccessRule = Permission | typeof SIGNED_IN;
+/** One permission, any one of several (data that more than one area's pages read), or just a session. */
+export type AccessRule = Permission | readonly Permission[] | typeof SIGNED_IN;
+
+function allows(access: UserAccess, rule: AccessRule): boolean {
+  if (rule === SIGNED_IN) return true;
+  return typeof rule === 'string' ? can(access, rule) : rule.some((p) => can(access, p));
+}
+
+const describeRule = (rule: Exclude<AccessRule, typeof SIGNED_IN>) =>
+  typeof rule === 'string' ? rule : `one of ${rule.join(', ')}`;
 
 /** Where withPermission stores a route's rule on the function it returns. */
 export const ACCESS_RULE = Symbol.for('interakt.accessRule');
@@ -47,16 +56,23 @@ export async function checkAccess(rule: AccessRule): Promise<CheckResult> {
   const access = await resolveAccess(userId);
   if (!access) return { response: apiResponse.unauthorized() };
 
-  if (rule !== SIGNED_IN && !can(access, rule)) {
-    return { response: apiResponse.forbidden(`Your role doesn't allow this (needs ${rule})`) };
+  if (rule !== SIGNED_IN && !allows(access, rule)) {
+    return { response: apiResponse.forbidden(`Your role doesn't allow this (needs ${describeRule(rule)})`) };
   }
   return { access };
 }
 
 export function withPermission<A extends unknown[]>(rule: AccessRule, handler: Handler<A>): Handler<A> {
   const guarded = async (...args: A): Promise<Response> => {
-    const { response } = await checkAccess(rule);
-    if (response) return response;
+    let checked: CheckResult;
+    try {
+      checked = await checkAccess(rule);
+    } catch (error) {
+      // The check itself failed (database down): answer and log it like any API error.
+      // The handler never runs.
+      return apiResponse.error(error, 500, { operation: 'checkAccess' });
+    }
+    if (checked.response) return checked.response;
     return handler(...args);
   };
   Object.defineProperty(guarded, ACCESS_RULE, { value: rule });

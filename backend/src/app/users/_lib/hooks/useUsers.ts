@@ -25,6 +25,9 @@ import type {
 // Query Keys
 // ============================================================================
 
+/** Roles list (user counts per role): changes when a user's role changes */
+export const roleKeys = { all: ['roles'] as const };
+
 export const userKeys = {
   all: ['users'] as const,
   lists: () => [...userKeys.all, 'list'] as const,
@@ -55,6 +58,7 @@ export function useUsers(options?: { enabled?: boolean }) {
     mutationFn: (data: CreateUserDTO) => usersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
+      queryClient.invalidateQueries({ queryKey: roleKeys.all });
       toast.success('User created successfully');
     },
     meta: { label: 'Create user', inlineError: true },
@@ -66,6 +70,7 @@ export function useUsers(options?: { enabled?: boolean }) {
       usersApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
+      queryClient.invalidateQueries({ queryKey: roleKeys.all });
       toast.success('User updated successfully');
     },
     meta: { label: 'Update user', inlineError: true },
@@ -76,6 +81,7 @@ export function useUsers(options?: { enabled?: boolean }) {
     mutationFn: (id: string) => usersApi.activate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
+      queryClient.invalidateQueries({ queryKey: roleKeys.all });
       toast.success('User activated successfully');
     },
     meta: { label: 'Activate user' },
@@ -86,6 +92,7 @@ export function useUsers(options?: { enabled?: boolean }) {
     mutationFn: (id: string) => usersApi.deactivate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
+      queryClient.invalidateQueries({ queryKey: roleKeys.all });
       toast.success('User deactivated successfully');
     },
     meta: { label: 'Deactivate user' },

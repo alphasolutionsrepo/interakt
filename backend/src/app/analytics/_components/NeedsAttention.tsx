@@ -18,7 +18,6 @@ import { useCallback, useState } from 'react';
 
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { useAskPanel } from '../_lib/AskPanelContext';
-import { refreshInsights } from '../_lib/insights-api';
 import {
   fetchAnalytics,
   insightsRangeFor,
@@ -28,6 +27,7 @@ import {
   type InsightsRange,
   type ProactiveInsight,
 } from '../_lib/hooks/useAnalytics';
+import { refreshInsights } from '../_lib/insights-api';
 
 import { formatTimeAgo } from './viz';
 
@@ -281,16 +281,18 @@ function Finding({ finding, onHide, hiding }: { finding: ProactiveInsight; onHid
           </p>
         )}
         <div className="flex flex-wrap gap-2 pt-1">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-xl"
-            onClick={() =>
-              askPanel.open(`Explain this finding and what's behind it: "${finding.title}". ${finding.description}`)
-            }
-          >
-            <Sparkles className="mr-1.5 size-3.5" /> Explain this
-          </Button>
+          {askPanel.canAsk && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={() =>
+                askPanel.open(`Explain this finding and what's behind it: "${finding.title}". ${finding.description}`)
+              }
+            >
+              <Sparkles className="mr-1.5 size-3.5" /> Explain this
+            </Button>
+          )}
           {finding.category === 'ai_behavior' && (
             <Button variant="ghost" size="sm" className="rounded-xl" asChild>
               <Link href="/analytics/traces?status=ERROR">See failed turns</Link>

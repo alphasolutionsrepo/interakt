@@ -26,19 +26,26 @@ export const ADMIN_ACCESS: UserAccess = {
 export const accessStub: {
   session: { user: { id: string } } | null;
   access: UserAccess | null;
+  /** When set, the role lookup throws it (the database is down) */
+  error: Error | null;
   reset(): void;
 } = {
   session: { user: { id: 'admin' } },
   access: ADMIN_ACCESS,
+  error: null,
   reset() {
     this.session = { user: { id: 'admin' } };
     this.access = ADMIN_ACCESS;
+    this.error = null;
   },
 };
 
 export const signedInAuth = { auth: async () => accessStub.session };
 
 export const accessService = {
-  resolveAccess: async () => accessStub.access,
+  resolveAccess: async () => {
+    if (accessStub.error) throw accessStub.error;
+    return accessStub.access;
+  },
   can: (access: UserAccess, permission: Permission) => access.permissions.has(permission),
 };

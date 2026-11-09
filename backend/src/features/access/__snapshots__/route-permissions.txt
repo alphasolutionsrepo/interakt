@@ -22,13 +22,13 @@ POST   /api/ai-experiences/[id]/tools  ai-experiences:edit
 PUT    /api/ai-experiences/[id]/tools/[toolId]  ai-experiences:edit
 DELETE /api/ai-experiences/[id]/tools/[toolId]  ai-experiences:edit
 GET    /api/ai-experiences/check-slug  ai-experiences:view
-GET    /api/ai-provider-models  ai-providers:view
+GET    /api/ai-provider-models  any of ai-providers:view | search-indexes:edit | search-experiences:edit | ai-experiences:edit | settings:view
 POST   /api/ai-provider-models  ai-providers:manage
 GET    /api/ai-provider-models/[id]  ai-providers:view
 PUT    /api/ai-provider-models/[id]  ai-providers:manage
 DELETE /api/ai-provider-models/[id]  ai-providers:manage
-GET    /api/ai-provider-models/for-purpose  ai-providers:view
-GET    /api/ai-providers  ai-providers:view
+GET    /api/ai-provider-models/for-purpose  any of ai-providers:view | search-indexes:edit | search-experiences:edit | ai-experiences:edit | settings:view
+GET    /api/ai-providers  any of ai-providers:view | search-indexes:edit | search-experiences:edit | ai-experiences:edit | settings:view
 POST   /api/ai-providers  ai-providers:manage
 GET    /api/ai-providers/[id]  ai-providers:view
 PUT    /api/ai-providers/[id]  ai-providers:manage
@@ -39,12 +39,12 @@ PATCH  /api/ai-providers/[id]/enable  ai-providers:manage
 POST   /api/ai-providers/[id]/test-connection  ai-providers:manage
 GET    /api/ai-providers/cache  settings:view
 POST   /api/ai-providers/cache  settings:manage
-GET    /api/ai-providers/enabled  ai-providers:view
+GET    /api/ai-providers/enabled  any of ai-providers:view | search-indexes:edit | search-experiences:edit | ai-experiences:edit | settings:view
 GET    /api/ai-providers/key/[providerKey]  ai-providers:view
 POST   /api/ai-service/chat  playground:use
 POST   /api/ai-service/chat/stream  playground:use
 POST   /api/ai-service/embeddings  playground:use
-GET    /api/ai-service/providers  ai-providers:view
+GET    /api/ai-service/providers  any of ai-providers:view | search-indexes:edit | search-experiences:edit | ai-experiences:edit | settings:view
 POST   /api/ai-service/text  playground:use
 GET    /api/analytics/ai/tools  analytics:view
 GET    /api/analytics/ai/usage  analytics:view
@@ -82,7 +82,7 @@ POST   /api/analytics/session  analytics:manage
 DELETE /api/analytics/session  analytics:manage
 GET    /api/analytics/status  analytics:view
 GET    /api/dashboard/home  signed-in
-POST   /api/dashboard/home/tips  signed-in
+POST   /api/dashboard/home/tips  analytics:manage
 GET    /api/data-sources  data-sources:view
 POST   /api/data-sources  data-sources:edit
 GET    /api/data-sources/[id]  data-sources:view
@@ -211,10 +211,10 @@ PUT    /api/secrets/[id]  secrets:manage
 DELETE /api/secrets/[id]  secrets:manage
 GET    /api/settings/search  settings:view
 PUT    /api/settings/search  settings:manage
-GET    /api/system-defaults/ai  settings:view
+GET    /api/system-defaults/ai  any of ai-providers:view | search-indexes:edit | search-experiences:edit | ai-experiences:edit | settings:view
 PUT    /api/system-defaults/ai  settings:manage
 PUT    /api/system-defaults/ai/[purpose]  settings:manage
-GET    /api/system-defaults/ai/resolved  settings:view
+GET    /api/system-defaults/ai/resolved  any of ai-providers:view | search-indexes:edit | search-experiences:edit | ai-experiences:edit | settings:view
 GET    /api/telemetry/config  analytics:view
 POST   /api/telemetry/config/clear-all  analytics:manage
 PUT    /api/telemetry/config/experience  analytics:manage
@@ -239,9 +239,9 @@ GET    /api/tools/capabilities  tools:view
 GET    /api/tools/check-slug  tools:view
 POST   /api/tools/generate-description  playground:use
 POST   /api/tools/scaffold  tools:edit
-GET    /api/user-memories  prompts:view
-DELETE /api/user-memories  prompts:edit
-DELETE /api/user-memories/[id]  prompts:edit
+GET    /api/user-memories  analytics:view
+DELETE /api/user-memories  analytics:manage
+DELETE /api/user-memories/[id]  analytics:manage
 GET    /api/users  users:manage
 POST   /api/users  users:manage
 GET    /api/users/[id]  signed-in

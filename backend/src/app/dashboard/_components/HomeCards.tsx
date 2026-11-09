@@ -50,7 +50,7 @@ function InsightCard({ card }: { card: HomeCard }) {
         <Button variant="outline" size="sm" className="rounded-xl" asChild>
           <Link href={card.href}>{card.linkLabel}</Link>
         </Button>
-        {card.ask && (
+        {card.ask && askPanel.canAsk && (
           <Button variant="ghost" size="sm" className="rounded-xl" onClick={() => askPanel.open(card.ask)}>
             <Sparkles className="mr-1.5 size-3.5" /> Ask
           </Button>

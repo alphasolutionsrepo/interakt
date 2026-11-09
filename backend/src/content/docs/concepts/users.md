@@ -23,7 +23,7 @@ Sidebar → **Administration → User Management**. It has two tabs: **Users** a
 Opens the create dialog: first and last name, email (used to log in), initial password, and **Role**. The role list shows the roles you can hand out (see [Who can give which role](#who-can-give-which-role)).
 
 ### Edit and deactivate
-From the user's row. Changes to someone's role or status apply on their **next request**: Interakt reads each user's role and status on every request, so a deactivated user is signed out of everything at once, and a new role applies straight away.
+From the user's row. Changes to someone's role or status apply on their **next request**: Interakt reads each user's role and status on every request, so a deactivated user loses access on their next request, and a new role applies straight away.
 
 ## Roles
 
@@ -44,8 +44,10 @@ Permissions come in groups, each with a view permission and one to change things
 - **Experiences**: search experiences; chat experiences.
 - **Data**: search indexes; documents (upload, edit, delete, reindex); data sources.
 - **AI configuration**: tools and MCP connections; prompt templates, knowledge base and domain knowledge; AI providers and models. Viewing providers never shows their keys.
-- **Testing and analytics**: the playgrounds and test buttons (these spend AI tokens); viewing analytics, conversations and traces; asking the analytics assistant; changing analytics and tracing settings.
+- **Testing and analytics**: the playgrounds and test buttons (these spend AI tokens); viewing analytics, conversations, traces and what the assistant remembers about visitors; asking the analytics assistant; changing analytics and tracing settings and dismissing tips.
 - **System**: settings and background jobs; running jobs; secrets and ingestion keys; users and roles; the demo and docs setup.
+
+Tools, MCP connections and data sources that use a secret from the vault can be set up or changed only by a role that can manage secrets.
 
 The sidebar shows each user the pages their role can open, and the server checks the role on every request.
 

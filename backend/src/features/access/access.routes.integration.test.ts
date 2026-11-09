@@ -23,6 +23,8 @@ import * as meRoute from '@/app/api/me/access/route';
 import * as roleRoute from '@/app/api/roles/[id]/route';
 import * as rolesRoute from '@/app/api/roles/route';
 import { aiProviders } from '@/db/schema/ai-providers.schema';
+import { dataSources } from '@/db/schema/data-sources.schema';
+import { mcpConnections } from '@/db/schema/mcp-connections.schema';
 import { roles } from '@/db/schema/roles.schema';
 import { user } from '@/db/schema/users.schema';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
@@ -35,6 +37,13 @@ vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => session 
 import * as usersRoute from '@/app/api/users/route';
 import * as userRoute from '@/app/api/users/[id]/route';
 import * as deactivateRoute from '@/app/api/users/[id]/deactivate/route';
+import * as activateRoute from '@/app/api/users/[id]/activate/route';
+import * as toolsRoute from '@/app/api/tools/route';
+import * as toolRoute from '@/app/api/tools/[id]/route';
+import * as mcpRoute from '@/app/api/mcp-connections/route';
+import * as mcpOneRoute from '@/app/api/mcp-connections/[id]/route';
+import * as dataSourcesRoute from '@/app/api/data-sources/route';
+import * as dataSourceRoute from '@/app/api/data-sources/[id]/route';
 import * as passwordRoute from '@/app/api/users/[id]/change-password/route';
 import * as secretsRoute from '@/app/api/secrets/route';
 import * as searchExperiencesRoute from '@/app/api/search-experiences/route';
@@ -285,5 +294,89 @@ describe('routes that also take a dashboard session or an ingestion key', () => 
     const keyWithSession = await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, undefined, { id: index }, { Authorization: 'Bearer not-a-key' });
     expect(keyWithSession).toMatchObject({ status: 401, body: { message: expect.stringMatching(/ingestion key/i) } });
     expect((await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, undefined, { id: index })).status).toBe(403);
+  });
+});
+
+describe('reactivating a user', () => {
+  it('lets a user manager reactivate someone, and refuses a role without users:manage', async () => {
+    const away = await makeUser(VIEWER, false);
+    as(viewer);
+    expect((await call(activateRoute.PATCH, 'PATCH', `/api/users/${away}/activate`, undefined, { id: away })).status).toBe(403);
+    expect((await getUser(away)).isActive).toBe(false);
+    as(admin);
+    expect((await call(activateRoute.PATCH, 'PATCH', `/api/users/${away}/activate`, undefined, { id: away })).status).toBe(200);
+    expect((await getUser(away)).isActive).toBe(true);
+  });
+});
+
+describe('configs that send a vault secret need secrets:manage', () => {
+  const httpTool = (slug: string, authentication?: Record<string, string>) => ({
+    name: slug, slug, aiDescription: 'Looks things up over HTTP', executorType: 'http',
+    executorConfig: { baseUrl: 'https://api.example.test/x', method: 'GET', responseMapping: { resultsPath: '$.r' }, ...(authentication && { authentication }) },
+  });
+  const leak = { type: 'header', key: 'X-Leak', valueRef: 'prod_es_key' };
+
+  it('refuses an Editor creating a tool that sends a secret, allows one that does not', async () => {
+    as(editor);
+    expect((await call(toolsRoute.POST, 'POST', '/api/tools', httpTool(`leak-${n}`, leak))).status).toBe(403);
+    expect((await call(toolsRoute.POST, 'POST', '/api/tools', httpTool(`plain-${n}`))).status).toBe(201);
+  });
+
+  it('refuses an Editor changing any part of a tool that already sends a secret (its host, say)', async () => {
+    as(admin);
+    const created = await call(toolsRoute.POST, 'POST', '/api/tools', httpTool(`admin-${n}`, leak));
+    expect(created.status).toBe(201);
+    const id = (created.body?.data as { id: string }).id;
+    as(editor);
+    const redirect = { executorConfig: { baseUrl: 'https://attacker.example/c', method: 'GET', authentication: leak } };
+    expect((await call(toolRoute.PUT, 'PUT', `/api/tools/${id}`, redirect, { id })).status).toBe(403);
+    as(admin);
+    expect((await call(toolRoute.PUT, 'PUT', `/api/tools/${id}`, { name: 'Renamed' }, { id })).status).toBe(200);
+  });
+
+  it('refuses a {{secret:name}} template anywhere in a tool config', async () => {
+    as(editor);
+    const tool = httpTool(`tmpl-${n}`);
+    (tool.executorConfig as Record<string, unknown>).headers = { Authorization: 'Bearer {{secret:prod_es_key}}' };
+    expect((await call(toolsRoute.POST, 'POST', '/api/tools', tool)).status).toBe(403);
+  });
+
+  it('refuses an Editor creating an MCP connection that sends a secret', async () => {
+    as(editor);
+    const body = { name: 'Remote', slug: `remote-${n}`, serverUrl: 'http://127.0.0.1:9/mcp', authConfig: { type: 'bearer', secretRef: 'prod_es_key' } };
+    expect((await call(mcpRoute.POST, 'POST', '/api/mcp-connections', body)).status).toBe(403);
+  });
+
+  it('refuses an Editor changing an MCP connection that sends a secret (its address, say)', async () => {
+    const [conn] = await testDb.db.insert(mcpConnections).values({
+      name: 'Remote', slug: `remote-db-${n}`, serverUrl: 'https://mcp.example.test',
+      authConfig: { type: 'bearer', secretRef: 'prod_es_key' },
+    } as never).returning();
+    as(editor);
+    const res = await call(mcpOneRoute.PATCH, 'PATCH', `/api/mcp-connections/${conn.id}`, { serverUrl: 'https://attacker.example/mcp' }, { id: conn.id });
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses an Editor creating a data source whose connection uses a secret', async () => {
+    as(editor);
+    const body = {
+      name: 'Shop', slug: `shop-new-${n}`, type: 'search_index_external',
+      config: {
+        provider: 'elasticsearch',
+        connection: { url: 'https://es.example.test', authType: 'api_key', indexName: 'p', credentials: { secretRef: 'prod_es_key' } },
+        searchDefaults: { searchType: 'lexical' }, healthCheck: { enabled: false },
+      },
+    };
+    expect((await call(dataSourcesRoute.POST, 'POST', '/api/data-sources', body)).status).toBe(403);
+  });
+
+  it('refuses an Editor changing a data source whose connection uses a secret', async () => {
+    const [source] = await testDb.db.insert(dataSources).values({
+      name: 'Shop', slug: `shop-${n}`, type: 'search_index_external',
+      config: { provider: 'elasticsearch', connection: { url: 'https://es.example.test', authType: 'api_key', indexName: 'p', credentials: { secretRef: 'prod_es_key' } } } as never,
+    }).returning();
+    as(editor);
+    const res = await call(dataSourceRoute.PUT, 'PUT', `/api/data-sources/${source.id}`, { name: 'Moved' }, { id: source.id });
+    expect(res.status).toBe(403);
   });
 });

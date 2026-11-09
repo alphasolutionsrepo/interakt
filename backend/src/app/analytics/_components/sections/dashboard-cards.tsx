@@ -256,15 +256,17 @@ function SelectionBar({
             Show {label}
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 text-xs"
-          onClick={() => askPanel.open(`Tell me about ${topic} ${describeBucketRange(selection, granularity)}.`)}
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          Ask about {label}
-        </Button>
+        {askPanel.canAsk && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => askPanel.open(`Tell me about ${topic} ${describeBucketRange(selection, granularity)}.`)}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Ask about {label}
+          </Button>
+        )}
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClear} aria-label="Clear selection">
           <X className="h-3.5 w-3.5" />
         </Button>

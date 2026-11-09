@@ -152,7 +152,8 @@ export async function handleUpdateUser(
     }
 
     const { roleId, isActive, ...profile } = validation.data;
-    // Check everything before writing anything, so a refused role change leaves the profile as it was
+    // Check permissions before writing, so a refused role change leaves the profile as it was.
+    // The last-Admin rule is checked inside the role write (a transaction), after the profile write.
     await assertCanManageUser(access, userId);
     await assertCanChangeUserAccess(access, userId, { roleId, isActive });
     await service.updateUser(userId, profile);

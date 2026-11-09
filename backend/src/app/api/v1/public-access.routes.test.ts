@@ -6,7 +6,7 @@
 
 import { errors } from '@elastic/elasticsearch';
 import { NextRequest } from 'next/server';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
@@ -69,6 +69,7 @@ import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source
 import { SearchError } from '@/features/search/search.types';
 import * as searchService from '@/features/search-experience/search-experience.service';
 import { rateLimiter } from '@/shared/api/rate-limit';
+import { accessStub } from '@/shared/test/access-stub';
 import { PUBLIC_FAILURE_MESSAGE } from '@/shared/api/response';
 
 const SHOP = 'https://shop.example';
@@ -951,5 +952,44 @@ describe('a chat request refused before it starts', () => {
 
     expect(res.status).toBe(401);
     expect(body).toMatchObject({ success: false, code: 'UNAUTHORIZED', error: 'Access token is required', requestId: expect.any(String) });
+  });
+});
+
+describe('a dashboard session on the slug routes (the playgrounds)', () => {
+  const slugRoutes = ROUTES.filter((r) => r.slugRoute);
+  const viewerAccess = { userId: 'v', roleId: 'r', roleName: 'Viewer', isAdmin: false, permissions: new Set(['search-experiences:view']) };
+  afterEach(() => accessStub.reset());
+
+  it.each(slugRoutes)('$name: refuses a role without playground:use, before doing any work', async (route) => {
+    mocks.auth.mockResolvedValue({ user: { id: 'v' } });
+    accessStub.access = viewerAccess as never;
+    const work = route.work();
+    work.mockClear();
+    const res = await route.call({});
+    expect(await settle(res)).toBe(403);
+    expect(work).not.toHaveBeenCalled();
+  });
+
+  it.each(slugRoutes)('$name: serves a role with playground:use', async (route) => {
+    mocks.auth.mockResolvedValue({ user: { id: 'a' } });
+    expect(await settle(await route.call({}))).toBe(200);
+    expect(route.work()).toHaveBeenCalled();
+  });
+
+  it("records a token call with the test marker as live traffic when the session's role can't use the playgrounds", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'v' } });
+    accessStub.access = viewerAccess as never;
+    const marked = { 'X-Access-Token': 'search-token', 'X-Interakt-Test': '1', Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin' };
+    let source: unknown;
+    mocks.executeExperienceSearch.mockImplementation(async (_e: unknown, _r: unknown, options: { source?: string }) => {
+      source = options.source;
+      return { results: { hits: [], total: { value: 0 }, pagination: {}, facets: [] }, sourcesSearched: [], failedSources: [] };
+    });
+    expect(await settle(await searchByToken(req('/api/v1/search', 'POST', marked, { query: 'jeans' })))).toBe(200);
+    expect(source).toBe('api');
+    // Control: the same call from a role that may use the playgrounds is a test
+    accessStub.reset();
+    expect(await settle(await searchByToken(req('/api/v1/search', 'POST', marked, { query: 'jeans' })))).toBe(200);
+    expect(source).toBe('admin_test');
   });
 });
