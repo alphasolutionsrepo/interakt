@@ -309,6 +309,8 @@ export async function generateDocumentEmbeddings(
     embeddings: Array<number[] | null>;
     errors: Array<{ documentIndex: number; error: string }>;
     stats: { generated: number; failed: number; skipped: number };
+    /** What the AI service threw, so a caller can explain it from the provider's error */
+    embeddingError?: unknown;
 }> {
     const errors: Array<{ documentIndex: number; error: string }> = [];
 
@@ -389,6 +391,7 @@ export async function generateDocumentEmbeddings(
             embeddings: documents.map(() => null),
             errors,
             stats: { generated: 0, failed: nonEmptyTexts.length, skipped },
+            embeddingError: error,
         };
     }
 }

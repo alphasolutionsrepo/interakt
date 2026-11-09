@@ -304,6 +304,55 @@ describe('cancelling during the retry of a failed first request', () => {
   });
 });
 
+describe('a chat call whose caller stops waiting while it waits to retry a failed first request', () => {
+  const ask = (signal: AbortSignal) => chat([{ role: 'user', content: prompt }], { providerId: 'prov-1', modelId: 7, signal });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The first request fails with a 503; the caller stops waiting during the wait before the retry */
+  const stopDuringBackoff = async (reason?: unknown) => {
+    vi.useFakeTimers();
+    resetCircuit('prov-1');
+    vi.stubGlobal('fetch', blipThenSilentModel);
+    exporter.reset();
+    const caller = new AbortController();
+
+    const settled = ask(caller.signal).catch((error: unknown) => error);
+    await vi.waitFor(() => expect(log.debug).toHaveBeenCalledWith('Retrying after error', expect.anything()));
+    caller.abort(reason);
+    await vi.advanceTimersByTimeAsync(30_000);
+    return settled;
+  };
+
+  it.each(['ollama', 'openai'])('ends as cancelled when the caller left: no retry, recorded as cancelled usage, not the provider failing (%s API style)', async (key) => {
+    provider.key = key;
+
+    const error = await stopDuringBackoff();
+
+    expect(error).toBeInstanceOf(CancelledRequestError);
+    expect(blipThenSilentModel).toHaveBeenCalledOnce(); // not retried
+    expect(log.error).not.toHaveBeenCalled();
+    expect(recorded()).toMatchObject({ operation: 'chat', success: true, inputTokens: PROMPT_ESTIMATE, metadata: { cancelled: true, usageEstimated: true } });
+    expect(getCircuitStatus('prov-1')).toMatchObject({ state: 'closed', failures: 0 });
+    const [span] = exporter.getFinishedSpans().filter((s) => s.name === 'ai.chat');
+    expect(span.status.code).not.toBe(SpanStatusCode.ERROR);
+    expect(span.attributes[ATTR.AI_CANCELLED]).toBe(true);
+  });
+
+  it.each(['ollama', 'openai'])("ends as stopped when the caller's own time ran out: no retry, a failed call with the prompt read, not counted against the provider (%s API style)", async (key) => {
+    provider.key = key;
+
+    const error = await stopDuringBackoff(new DOMException('The chat turn ran out of time', 'TimeoutError'));
+
+    expect(error).toMatchObject({ message: "Request stopped: the caller's time ran out", retryable: false });
+    expect(blipThenSilentModel).toHaveBeenCalledOnce();
+    expect(recorded()).toMatchObject({ operation: 'chat', success: false, inputTokens: PROMPT_ESTIMATE, errorMessage: "Request stopped: the caller's time ran out" });
+    expect(getCircuitStatus('prov-1')).toMatchObject({ failures: 0 });
+  });
+});
+
 describe('an aborted provider request', () => {
   const request = { messages: [{ role: 'user' as const, content: prompt }], stream: true };
   const config = (timeout: number) => ({ baseUrl: 'http://model.test', modelKey: 'qwen2.5:14b', timeout, settings: {} });

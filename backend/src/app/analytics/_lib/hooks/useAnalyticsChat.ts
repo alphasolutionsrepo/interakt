@@ -16,6 +16,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAnalyticsContext } from '../AnalyticsContext';
 import { resolvePeriod } from '../period';
+
+import { finishedAnswer } from './finished-answer';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText, handleApiResponse, toApiError } from '@/shared/api/api-error';
 import { streamEvents } from '@/shared/api/stream-events';
@@ -412,15 +414,13 @@ export function useAnalyticsChat({ providerId, modelId }: UseAnalyticsChatOption
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === streamingMessageId
-                  ? {
-                      ...m,
-                      content: withoutFollowUps(streamedContent, collectedSuggestedFollowUps),
-                      isStreaming: false,
+                  ? finishedAnswer(m, {
+                      content: streamedContent,
                       toolsUsed: chunk.toolsUsed || finalToolsUsed,
-                      analyticsData: collectedAnalyticsData.length > 0 ? collectedAnalyticsData : undefined,
-                      suggestedFollowUps: collectedSuggestedFollowUps.length > 0 ? collectedSuggestedFollowUps : undefined,
+                      analyticsData: collectedAnalyticsData,
+                      suggestedFollowUps: collectedSuggestedFollowUps,
                       dataStatus: collectedDataStatus,
-                    }
+                    })
                   : m
               )
             );
@@ -516,16 +516,4 @@ export function useAnalyticsChat({ providerId, modelId }: UseAnalyticsChatOption
     startNew,
     openSession,
   };
-}
-
-/** The answer text without its trailing follow-up lines, which show as chips instead */
-function withoutFollowUps(content: string, followUps: string[]): string {
-  if (followUps.length === 0) return content;
-  const lines = content.split('\n');
-  while (lines.length > 0) {
-    const last = lines[lines.length - 1].trim();
-    if (last === '' || (last.startsWith('- ') && followUps.includes(last.slice(2).trim()))) lines.pop();
-    else break;
-  }
-  return lines.join('\n');
 }

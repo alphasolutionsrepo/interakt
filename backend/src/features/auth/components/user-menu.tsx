@@ -2,6 +2,7 @@
 
 import { signOut, useSession } from 'next-auth/react'
 import { usePathname } from 'next/navigation'
+import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
     DropdownMenu,
@@ -18,6 +19,12 @@ import { activityStore } from '@/shared/activity/activity-store'
 export function UserMenu() {
     const { data: session, status } = useSession()
     const pathname = usePathname()
+    const userId = session?.user?.id
+
+    useEffect(() => {
+        // Not only Log out clears the list: a session that ran out never signed out
+        if (userId) activityStore.setOwner(userId)
+    }, [userId])
 
     if (status === 'loading') {
         return <div className="h-8 w-8 rounded-full bg-gray-200 dark:bg-muted animate-pulse" />

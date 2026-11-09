@@ -8,7 +8,8 @@
  *
  * localStorage only: nothing is sent anywhere. The server redacts error details
  * before they reach the browser, and the list is cleared on sign-out because
- * machines are shared. Every storage access is guarded: in a private window or
+ * machines are shared, and when a different user signs in (a session that ran out
+ * was never signed out). Every storage access is guarded: in a private window or
  * with storage blocked the list simply lives in memory for the page.
  */
 
@@ -37,6 +38,8 @@ export interface ActivityEntry {
 export type NewActivityEntry = Omit<ActivityEntry, 'id' | 'at' | 'read'>;
 
 const STORAGE_KEY = 'interakt.activity';
+/** The user the list belongs to */
+const OWNER_KEY = 'interakt.activity.owner';
 const MAX_ENTRIES = 100;
 
 type Listener = () => void;
@@ -97,6 +100,19 @@ export const activityStore = {
 
     clear() {
         if (typeof window === 'undefined') return;
+        save([]);
+    },
+
+    /** The signed-in user: a list kept for anyone else (or no one recorded) is cleared */
+    setOwner(userId: string) {
+        if (typeof window === 'undefined') return;
+        try {
+            if (window.localStorage.getItem(OWNER_KEY) === userId) return;
+            window.localStorage.setItem(OWNER_KEY, userId);
+        } catch {
+            // Blocked storage: the list was never kept for anyone else
+            return;
+        }
         save([]);
     },
 

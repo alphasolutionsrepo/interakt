@@ -8,7 +8,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
-import { CallerTimeoutError, CancelledRequestError } from './adapters/types';
+import { CallerTimeoutError, CancelledRequestError, abortedRequestError } from './adapters/types';
 import type {
     CircuitBreakerConfig,
     CircuitBreakerState,
@@ -236,6 +236,12 @@ function isRetryableError(error: unknown): boolean {
     return false;
 }
 
+/** The provider an attempt's error names (AdapterError, AIServiceError), for the error that ends the retries */
+function providerKeyOf(error: unknown): string {
+    const key = (error as { providerKey?: unknown } | null)?.providerKey;
+    return typeof key === 'string' ? key : 'unknown';
+}
+
 /**
  * Execute a function with retry and exponential backoff
  * 
@@ -243,7 +249,8 @@ function isRetryableError(error: unknown): boolean {
  * @param config - Retry configuration
  * @param signal - The caller's signal: once it is aborted, no other attempt starts
  * @returns The result of the function
- * @throws The last error if all retries fail
+ * @throws The last error if all retries fail; CancelledRequestError or CallerTimeoutError
+ *   when the caller stopped waiting during a backoff
  * 
  * @example
  * const result = await withRetry(
@@ -292,6 +299,11 @@ export async function withRetry<T>(
             });
 
             await sleep(delay);
+            // The caller stopped waiting during the wait (it left, or its own time ran out): no
+            // other attempt, and it ends as an aborted request does, not as the provider failing
+            if (signal?.aborted) {
+                throw abortedRequestError(providerKeyOf(error), signal);
+            }
         }
     }
 

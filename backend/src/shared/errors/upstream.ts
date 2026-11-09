@@ -56,7 +56,7 @@ const AI_PROVIDER_NAMES: Record<string, string> = {
 
 const SETTINGS: Record<ProviderKind, string> = {
     search: "the search service's endpoint and admin key in the deployment settings",
-    ai: 'the provider under AI Providers',
+    ai: "the provider's settings under AI Providers",
     external: "the data source's connection settings",
 };
 
