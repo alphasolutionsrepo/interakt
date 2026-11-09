@@ -12,7 +12,8 @@ vi.mock('./home.service', async (importOriginal) => ({
   // The aggregate the page shows (it reads both databases); the role filter is the real one
   getHomeData: async () => ({
     generatedAt: 'now', period: {}, live: { requestsLast5Min: 7 }, health: null, checklist: null,
-    metrics: [{ id: 'searches' }], tasks: [], cards: [{ id: 'c' }], tips: [{ id: 'tip:x' }], experiences: [], recent: [],
+    metrics: [{ id: 'searches' }], tasks: [], cards: [{ id: 'c', href: '/analytics' }],
+    tips: [{ id: 'tip:x', action: { label: 'Look', href: '/analytics' } }], experiences: [], recent: [],
   }),
 }));
 
@@ -29,7 +30,7 @@ afterEach(() => accessStub.reset());
 describe('the home page by role', () => {
   it('shows the analytics figures to a role with analytics:view', async () => {
     accessStub.access = { ...accessStub.access!, isAdmin: false, permissions: new Set(['analytics:view']) };
-    expect((await get()).data).toMatchObject({ metrics: [{ id: 'searches' }], cards: [{ id: 'c' }] });
+    expect((await get()).data).toMatchObject({ metrics: [{ id: 'searches' }], cards: [{ id: 'c' }], tips: [{ id: 'tip:x' }] });
   });
 
   it('leaves them out for a role without it', async () => {

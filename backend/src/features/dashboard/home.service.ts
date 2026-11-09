@@ -927,7 +927,8 @@ export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
 // ============================================================================
 
 /**
- * The home page as a role sees it. Tasks, recent changes and getting-started steps that link to
+ * The home page as a role sees it. Tasks, recent changes, getting-started steps, cards, tips and
+ * experiences that link to
  * a page the role can't open go (the checklist's Ask step, an in-page link, stays: the page
  * hides the Ask box itself). Without analytics:view, the traffic figures, insight cards and tips
  * (all from analytics) go too, as on the analytics pages themselves, and `analytics` says so. The cached data is shared by
@@ -940,6 +941,9 @@ export function homeDataForRole(data: HomeData, can: (permission: Permission) =>
     tasks: data.tasks.filter((t) => opens(t.href)),
     recent: data.recent.filter((r) => opens(r.href)),
     checklist: data.checklist?.filter((step) => opens(step.href)) ?? null,
+    cards: data.cards.filter((c) => opens(c.href)),
+    tips: data.tips.filter((t) => opens(t.action.href)),
+    experiences: data.experiences.filter((e) => opens(e.href)),
   };
   if (can('analytics:view')) return linked;
   return {
@@ -949,6 +953,6 @@ export function homeDataForRole(data: HomeData, can: (permission: Permission) =>
     metrics: [],
     cards: [],
     tips: [],
-    experiences: data.experiences.map((e) => ({ ...e, volume: 0, issue: null, trend: [] })),
+    experiences: linked.experiences.map((e) => ({ ...e, volume: 0, issue: null, trend: [] })),
   };
 }

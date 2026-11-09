@@ -509,3 +509,24 @@ export async function checkSystemHealth(): Promise<SystemHealth> {
     };
   }
 }
+
+// ============================================================================
+// What each role sees
+// ============================================================================
+
+/**
+ * Health as a role without ai-providers:view sees it: the status of every service, without the
+ * AI providers' addresses (baseUrl) found anywhere in the details.
+ */
+export function withoutProviderAddresses<T>(health: T): T {
+  const strip = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(strip);
+    if (value && typeof value === 'object' && !(value instanceof Date)) {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).filter(([k]) => k !== 'baseUrl').map(([k, v]) => [k, strip(v)]),
+      );
+    }
+    return value;
+  };
+  return strip(health) as T;
+}

@@ -10,7 +10,16 @@ import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import * as service from './health.service';
 
+import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
+import { can } from '@/features/access/user-access';
+
 const logger = createLogger('health-handlers');
+
+/** Health is for every signed-in user; AI provider addresses only for roles that view providers */
+async function forRole<T>(health: T): Promise<T> {
+  const { access } = await checkAccess(SIGNED_IN);
+  return access && can(access, 'ai-providers:view') ? health : service.withoutProviderAddresses(health);
+}
 
 /**
  * GET /api/health
@@ -23,7 +32,7 @@ export async function handleGetSystemHealth(request: NextRequest) {
       return apiResponse.unauthorized('You must be logged in to view system health');
     }
 
-    const health = await service.checkSystemHealth();
+    const health = await forRole(await service.checkSystemHealth());
 
     logger.info('System health check requested', {
       userId,
@@ -86,7 +95,7 @@ export async function handleGetAIProvidersHealth(request: NextRequest) {
       return apiResponse.unauthorized('You must be logged in');
     }
 
-    const health = await service.checkAIProvidersHealth();
+    const health = await forRole(await service.checkAIProvidersHealth());
     return apiResponse.success(health);
   } catch (error) {
     const err = error as Error;

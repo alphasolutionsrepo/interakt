@@ -15,6 +15,7 @@ import { listRoles, createRole, updateRole, deleteRole } from './roles.service';
 import { createRoleSchema, updateRoleSchema } from './roles.validations';
 import { checkAccess, SIGNED_IN } from './route-guard';
 
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 
 type IdContext = { params: Promise<{ id: string }> };
@@ -42,7 +43,7 @@ export async function handleCreateRole(request: NextRequest) {
   try {
     const { access, response } = await checkAccess('users:manage');
     if (response) return response;
-    const parsed = createRoleSchema.safeParse(await request.json());
+    const parsed = createRoleSchema.safeParse(await readJsonBody(request));
     if (!parsed.success) return apiResponse.validationError(parsed.error);
     return apiResponse.success(await createRole(access, parsed.data), 201);
   } catch (error) {
@@ -55,7 +56,7 @@ export async function handleUpdateRole(request: NextRequest, context: IdContext)
     const { access, response } = await checkAccess('users:manage');
     if (response) return response;
     const { id } = await context.params;
-    const parsed = updateRoleSchema.safeParse(await request.json());
+    const parsed = updateRoleSchema.safeParse(await readJsonBody(request));
     if (!parsed.success) return apiResponse.validationError(parsed.error);
     return apiResponse.success(await updateRole(access, id, parsed.data));
   } catch (error) {

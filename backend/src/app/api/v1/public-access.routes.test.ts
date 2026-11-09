@@ -984,6 +984,16 @@ describe('a dashboard session on the slug routes (the playgrounds)', () => {
     expect(await settle(await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'roles' }), slugParams('catalog')))).toBe(403);
   });
 
+  it('serves the built-in help assistant chat to any signed-in role, without playground:use', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'v' } });
+    accessStub.access = { ...viewerAccess, permissions: new Set() } as never;
+    mocks.getAIExperienceBySlug.mockResolvedValue({ ...aiExperience, slug: 'help-assistant' });
+    const res = await chatBySlug(req('/api/v1/ai-experiences/help-assistant/chat', 'POST', {}, { message: 'hi' }), slugParams('help-assistant'));
+    expect(await settle(res)).toBe(200);
+    mocks.getAIExperienceBySlug.mockResolvedValue(aiExperience);
+    expect(await settle(await chatBySlug(req('/api/v1/ai-experiences/assistant/chat', 'POST', {}, { message: 'hi' }), slugParams('assistant')))).toBe(403);
+  });
+
   it.each(slugRoutes)('$name: a deactivated session gets 401, a failed role lookup an explained error, before any work', async (route) => {
     mocks.auth.mockResolvedValue({ user: { id: 'gone' } });
     const work = route.work();

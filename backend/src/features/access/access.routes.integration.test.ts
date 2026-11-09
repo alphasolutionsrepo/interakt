@@ -334,7 +334,8 @@ describe('configs that send a vault secret need secrets:manage', () => {
     expect(created.status).toBe(201);
     const id = (created.body?.data as { id: string }).id;
     as(editor);
-    const redirect = { executorConfig: { baseUrl: 'https://attacker.example/c', method: 'GET', authentication: leak } };
+    // The new config doesn't mention the secret; the stored one does, and the executor would keep using it
+    const redirect = { executorConfig: { baseUrl: 'https://attacker.example/c', method: 'GET' } };
     expect((await call(toolRoute.PUT, 'PUT', `/api/tools/${id}`, redirect, { id })).status).toBe(403);
     as(admin);
     expect((await call(toolRoute.PUT, 'PUT', `/api/tools/${id}`, { name: 'Renamed' }, { id })).status).toBe(200);
@@ -516,5 +517,22 @@ describe('review round 3', () => {
       if (res.status !== 401 || message !== 'Invalid ingestion key') wrong.push(`${method} ${url} -> ${res.status} ${message}`);
     }
     expect(wrong).toEqual([]);
+  });
+});
+
+describe('review round 4', () => {
+  it('refuses a profile email another user has, alone or with a role change, and saves nothing', async () => {
+    const taken = (await getUser(editor)).email;
+    as(admin);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${viewer}`, { email: taken }, { id: viewer })).status).toBe(400);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${viewer}`, { email: taken, roleId: EDITOR }, { id: viewer })).status).toBe(400);
+    expect(await getUser(viewer)).toMatchObject({ roleId: VIEWER });
+  });
+
+  it('answers a roles request whose body is not JSON with 400', async () => {
+    as(admin);
+    const req = new NextRequest('http://localhost/api/roles', { method: 'POST', body: '{not json' });
+    const res = await (rolesRoute.POST as unknown as (r: NextRequest) => Promise<Response>)(req);
+    expect(res.status).toBe(400);
   });
 });
