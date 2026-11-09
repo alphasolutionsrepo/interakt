@@ -1,10 +1,14 @@
 // src/features/auth/auth.repository.ts
 
-import { db } from '@/db/index';
-import { user } from '@/db/schema/users.schema';
 import { eq, and } from 'drizzle-orm';
-import { createLogger } from '@/shared/logger/logger';
+
+import { db } from '@/db/index';
+import { roles } from '@/db/schema/roles.schema';
+import { user } from '@/db/schema/users.schema';
 import type { User, NewUser } from '@/db/schema/users.schema';
+import { createLogger } from '@/shared/logger/logger';
+
+export type UserWithRole = User & { role: { id: string; name: string; isBuiltIn: boolean } };
 
 const logger = createLogger('auth-repository');
 
@@ -25,7 +29,7 @@ export async function createUser(userData: NewUser): Promise<User> {
     logger.info('Created user', {
       userId: newUser.id,
       email: newUser.email,
-      role: newUser.role
+      roleId: newUser.roleId
     });
 
     return newUser;
@@ -101,12 +105,14 @@ export async function getActiveUserByEmail(email: string): Promise<User | null> 
 /**
  * List all users (admin only)
  */
-export async function listUsers(): Promise<User[]> {
+export async function listUsers(): Promise<UserWithRole[]> {
   try {
-    const users = await db
-      .select()
+    const rows = await db
+      .select({ user, role: { id: roles.id, name: roles.name, isBuiltIn: roles.isBuiltIn } })
       .from(user)
+      .innerJoin(roles, eq(user.roleId, roles.id))
       .orderBy(user.createdAt);
+    const users = rows.map((r) => ({ ...r.user, role: r.role }));
 
     logger.debug('Listed all users', { count: users.length });
 
@@ -188,46 +194,6 @@ export async function updateUserPassword(
     logger.info('Updated user password', { userId: id });
   } catch (error) {
     logger.error('Failed to update user password', error as Error, { userId: id });
-    throw error;
-  }
-}
-
-/**
- * Deactivate user (soft delete)
- */
-export async function deactivateUser(id: string): Promise<void> {
-  try {
-    await db
-      .update(user)
-      .set({
-        isActive: false,
-        updatedAt: new Date(),
-      })
-      .where(eq(user.id, id));
-
-    logger.info('Deactivated user', { userId: id });
-  } catch (error) {
-    logger.error('Failed to deactivate user', error as Error, { userId: id });
-    throw error;
-  }
-}
-
-/**
- * Activate user
- */
-export async function activateUser(id: string): Promise<void> {
-  try {
-    await db
-      .update(user)
-      .set({
-        isActive: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(user.id, id));
-
-    logger.info('Activated user', { userId: id });
-  } catch (error) {
-    logger.error('Failed to activate user', error as Error, { userId: id });
     throw error;
   }
 }

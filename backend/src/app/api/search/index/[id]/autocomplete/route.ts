@@ -6,12 +6,14 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleAutocompleteById } from '@/features/search/search.api.handlers';
 
-export async function POST(
+export const POST = withPermission('playground:use', async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     const resolvedParams = await params;
     return handleAutocompleteById(request, resolvedParams);
-}
+});

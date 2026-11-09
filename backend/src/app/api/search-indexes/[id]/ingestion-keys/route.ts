@@ -9,21 +9,23 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
     handleListIngestionKeys,
     handleCreateIngestionKey,
 } from '@/features/ingestion-keys/ingestion-key.api.handlers';
 
-export async function GET(
+export const GET = withPermission('secrets:manage', async function GET(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleListIngestionKeys(request, context);
-}
+});
 
-export async function POST(
+export const POST = withPermission('secrets:manage', async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleCreateIngestionKey(request, context);
-}
+});

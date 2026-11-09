@@ -5,8 +5,9 @@
  * GET /api/search/health - Check search service health
  */
 
+import { withPermission } from '@/features/access/route-guard';
 import { handleHealthCheck } from '@/features/search/search.api.handlers';
 
-export async function GET() {
+export const GET = withPermission('signed-in', async function GET() {
     return handleHealthCheck();
-}
+});

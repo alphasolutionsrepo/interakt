@@ -13,20 +13,21 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodError, z } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
-import { searchExperienceAccess } from '@/features/auth/public-access';
+
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import { searchExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
-import { flushTelemetry, runWithTelemetryLevel } from '@/features/telemetry';
 import type { FacetResult } from '@/features/search/search.types';
+import { executeExperienceSearch, NoSourcesError } from '@/features/search-experience/experience-search';
 import * as repository from '@/features/search-experience/search-experience.repository';
 import { publicSearchRequestSchema } from '@/features/search-experience/search-experience.schemas';
-import { executeExperienceSearch, NoSourcesError } from '@/features/search-experience/experience-search';
 import type { PublicSearchRequest } from '@/features/search-experience/search-experience.types';
+import { flushTelemetry, runWithTelemetryLevel } from '@/features/telemetry';
 import { publicRoute } from '@/shared/api/public-route';
-import { apiResponse } from '@/shared/api/response';
 import { readJsonBody } from '@/shared/api/read-json-body';
+import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
+import { createLogger } from '@/shared/logger/logger';
 
 // Extended schema: playground-only switches
 const searchRequestSchema = publicSearchRequestSchema.extend({

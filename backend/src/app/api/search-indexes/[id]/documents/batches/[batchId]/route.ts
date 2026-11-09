@@ -7,21 +7,23 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
 import {
     handleGetBatchStatus,
     handleCancelBatch,
 } from '@/features/document-indexing';
 
-export async function GET(
+export const GET = withPermissionOrIngestionKey('search-indexes:view', async function GET(
     request: NextRequest,
     context: { params: Promise<{ id: string; batchId: string }> }
 ) {
     return handleGetBatchStatus(request, context);
-}
+});
 
-export async function DELETE(
+export const DELETE = withPermissionOrIngestionKey('documents:edit', async function DELETE(
     request: NextRequest,
     context: { params: Promise<{ id: string; batchId: string }> }
 ) {
     return handleCancelBatch(request, context);
-}
+});

@@ -9,10 +9,10 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { errorEvent, expectInternalFailure, failedQuery } from '@/shared/test/error-answers';
-import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 const auth = vi.hoisted(() => ({ getCurrentUserId: vi.fn(), getCurrentUser: vi.fn() }));
 vi.mock('@/shared/utils/auth-utils', () => auth);
@@ -41,6 +41,9 @@ vi.mock('@/features/ai-providers/ai-providers.service', () => ({ getProviderByKe
 import { DELETE as clearRegistry, GET as seedingStatus, POST as runSeeding } from './route';
 import { POST as setupDemo } from './setup-demo/route';
 import { POST as setupDocs } from './setup-docs/route';
+
+import { errorEvent, expectInternalFailure, failedQuery } from '@/shared/test/error-answers';
+import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const request = (path: string, method = 'GET', body?: unknown) =>
   new NextRequest(`http://localhost/api/admin${path}`, { method, ...(body !== undefined && { body: JSON.stringify(body) }) });

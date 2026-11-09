@@ -6,15 +6,19 @@
  * Routes that serve both real clients and the admin playgrounds use this: a
  * matching access token (`Authorization: Bearer …` or `X-Access-Token`) is real
  * traffic and gets the experience's access settings (allowed origins, rate limits);
- * otherwise a signed-in admin is testing. Callers record admin requests as test
+ * otherwise a signed-in user whose role allows the playground (playground:use) is testing. Callers record admin requests as test
  * traffic (analytics source 'admin_test') and don't trace them by default.
  */
 
 import 'server-only';
 
 import type { NextRequest, NextResponse } from 'next/server';
+
+import { checkAccess } from '@/features/access/route-guard';
+
 import { auth } from './auth.api.handlers';
 import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
+
 import { markAdminCaller } from '@/shared/api/public-route';
 import { TEST_MARKER_HEADER } from '@/shared/constants/test-marker.constants';
 
@@ -43,6 +47,9 @@ export async function authenticateTokenOrSession(
 
   const session = await auth();
   if (!session?.user) return { caller: null };
+  // A dashboard session is the playground, which spends tokens: the role must allow it
+  const { response } = await checkAccess('playground:use');
+  if (response) return { caller: null, refused: response };
   // The playground: an admin testing the experience gets errors explained in full
   markAdminCaller();
   return { caller: 'admin', analyticsSource: 'admin_test' };

@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 
 import { db } from '@/db/index';
 import { user } from '@/db/schema/users.schema';
+import { ADMIN_ROLE_ID } from '@/features/access/permissions';
 import { SetupRequiredError } from '@/shared/errors/app-error';
 import { deriveTitle, stripFrontmatter } from '@/shared/help/markdown';
 
@@ -56,7 +57,7 @@ export async function readDocs(): Promise<DocFile[]> {
 
 /** The docs resources are created as the first admin. */
 export async function getAdminUserId(): Promise<string> {
-  const admin = await db.query.user.findFirst({ where: eq(user.role, 'admin') });
+  const admin = await db.query.user.findFirst({ where: eq(user.roleId, ADMIN_ROLE_ID) });
   if (!admin) {
     throw new SetupRequiredError('No admin user found. An admin user is required to seed the docs.');
   }

@@ -2,19 +2,32 @@
 
 /**
  * User Management Feature - API Handlers
- * HTTP request/response handling, validation, and error handling for user CRUD operations
+ * HTTP request/response handling, validation, and error handling for user CRUD operations.
+ *
+ * Routes gate these with withPermission (users:manage, or signed-in for a user's own
+ * profile and password). The rules for acting on another user, assigning roles and keeping
+ * one active Admin live in features/access/user-access.service.ts.
  */
 
 import { NextRequest } from 'next/server';
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
-import { getCurrentUser } from '@/shared/utils/auth-utils';
+
 import * as service from './auth.service';
 import {
   createUserSchema,
   updateUserSchema,
   changePasswordSchema,
 } from './auth.validations';
+
+import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
+import {
+  assertCanAssignRole,
+  assertCanChangeUserAccess,
+  assertCanManageUser,
+  changeUserAccess,
+} from '@/features/access/user-access.service';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+
 
 const logger = createLogger('users-handlers');
 
@@ -24,19 +37,12 @@ const logger = createLogger('users-handlers');
 
 /**
  * POST /api/users
- * Create a new user (admin only)
+ * Create a new user with a role the caller holds
  */
 export async function handleCreateUser(request: NextRequest) {
   try {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return apiResponse.unauthorized('You must be logged in to create users');
-    }
-
-    // Only admins can create users
-    if (currentUser.role !== 'admin') {
-      return apiResponse.forbidden('Only administrators can create users');
-    }
+    const { access, response } = await checkAccess('users:manage');
+    if (response) return response;
 
     const body = await request.json();
     const validation = createUserSchema.safeParse(body);
@@ -45,12 +51,13 @@ export async function handleCreateUser(request: NextRequest) {
       return apiResponse.validationError(validation.error);
     }
 
+    await assertCanAssignRole(access, validation.data.roleId);
     const user = await service.createUser(validation.data);
 
     logger.info('Created user via API', {
       newUserId: user.id,
       email: user.email,
-      createdBy: currentUser.id,
+      createdBy: access.userId,
     });
 
     return apiResponse.success(user, 201);
@@ -71,25 +78,18 @@ export async function handleCreateUser(request: NextRequest) {
 
 /**
  * GET /api/users
- * List all users (admin only)
+ * List all users with their role (route requires users:manage)
  */
-export async function handleListUsers(request: NextRequest) {
+export async function handleListUsers(_request: NextRequest) {
   try {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return apiResponse.unauthorized('You must be logged in to view users');
-    }
-
-    // Only admins can list users
-    if (currentUser.role !== 'admin') {
-      return apiResponse.forbidden('Only administrators can view users');
-    }
+    const { access, response } = await checkAccess('users:manage');
+    if (response) return response;
 
     const users = await service.listUsers();
 
     logger.info('Listed users via API', {
       count: users.length,
-      requestedBy: currentUser.id,
+      requestedBy: access.userId,
     });
 
     return apiResponse.success(users);
@@ -101,20 +101,14 @@ export async function handleListUsers(request: NextRequest) {
 
 /**
  * GET /api/users/[id]
- * Get a specific user by ID (admin only)
+ * A user's own profile, or another user's for a user manager who holds their role
  */
-export async function handleGetUser(request: NextRequest, userId: string) {
+export async function handleGetUser(_request: NextRequest, userId: string) {
   try {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return apiResponse.unauthorized('You must be logged in to view user details');
-    }
+    const { access, response } = await checkAccess(SIGNED_IN);
+    if (response) return response;
 
-    // Only admins can view user details (or users can view their own profile)
-    if (currentUser.id !== userId && currentUser.role !== 'admin') {
-      return apiResponse.forbidden('You can only view your own profile');
-    }
-
+    await assertCanManageUser(access, userId);
     const user = await service.getUserById(userId);
 
     if (!user) {
@@ -123,7 +117,7 @@ export async function handleGetUser(request: NextRequest, userId: string) {
 
     logger.info('Retrieved user via API', {
       userId: user.id,
-      requestedBy: currentUser.id,
+      requestedBy: access.userId,
     });
 
     return apiResponse.success(user);
@@ -139,22 +133,16 @@ export async function handleGetUser(request: NextRequest, userId: string) {
 
 /**
  * PUT /api/users/[id]
- * Update a user (admin only, or users can update their own profile)
+ * Update a profile (yours, or another user's as a user manager). Changing the role or the
+ * active flag needs users:manage and is refused on your own account.
  */
 export async function handleUpdateUser(
   request: NextRequest,
   userId: string
 ) {
   try {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return apiResponse.unauthorized('You must be logged in to update users');
-    }
-
-    // Users can update their own profile, or admins can update any user
-    if (currentUser.id !== userId && currentUser.role !== 'admin') {
-      return apiResponse.forbidden('You can only update your own profile');
-    }
+    const { access, response } = await checkAccess(SIGNED_IN);
+    if (response) return response;
 
     const body = await request.json();
     const validation = updateUserSchema.safeParse(body);
@@ -163,16 +151,18 @@ export async function handleUpdateUser(
       return apiResponse.validationError(validation.error);
     }
 
-    // Non-admin users cannot change their own role
-    if (currentUser.id === userId && validation.data.role && currentUser.role !== 'admin') {
-      return apiResponse.forbidden('You cannot change your own role');
-    }
-
-    const updatedUser = await service.updateUser(userId, validation.data);
+    const { roleId, isActive, ...profile } = validation.data;
+    // Check everything before writing anything, so a refused role change leaves the profile as it was
+    await assertCanManageUser(access, userId);
+    await assertCanChangeUserAccess(access, userId, { roleId, isActive });
+    await service.updateUser(userId, profile);
+    await changeUserAccess(access, userId, { roleId, isActive });
+    const updatedUser = await service.getUserById(userId);
+    if (!updatedUser) return apiResponse.notFound('User not found');
 
     logger.info('Updated user via API', {
       userId: updatedUser.id,
-      updatedBy: currentUser.id,
+      updatedBy: access.userId,
     });
 
     return apiResponse.success(updatedUser);
@@ -189,28 +179,20 @@ export async function handleUpdateUser(
 
 /**
  * PATCH /api/users/[id]/activate
- * Activate a user (admin only)
  */
 export async function handleActivateUser(
-  request: NextRequest,
+  _request: NextRequest,
   userId: string
 ) {
   try {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return apiResponse.unauthorized('You must be logged in to activate users');
-    }
+    const { access, response } = await checkAccess('users:manage');
+    if (response) return response;
 
-    // Only admins can activate users
-    if (currentUser.role !== 'admin') {
-      return apiResponse.forbidden('Only administrators can activate users');
-    }
-
-    await service.activateUser(userId);
+    await changeUserAccess(access, userId, { isActive: true });
 
     logger.info('Activated user via API', {
       userId,
-      activatedBy: currentUser.id,
+      activatedBy: access.userId,
     });
 
     return apiResponse.success({ message: 'User activated successfully' });
@@ -222,33 +204,21 @@ export async function handleActivateUser(
 
 /**
  * PATCH /api/users/[id]/deactivate
- * Deactivate a user (admin only)
+ * Takes effect on the user's next request: access is read from the database each time.
  */
 export async function handleDeactivateUser(
-  request: NextRequest,
+  _request: NextRequest,
   userId: string
 ) {
   try {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return apiResponse.unauthorized('You must be logged in to deactivate users');
-    }
+    const { access, response } = await checkAccess('users:manage');
+    if (response) return response;
 
-    // Only admins can deactivate users
-    if (currentUser.role !== 'admin') {
-      return apiResponse.forbidden('Only administrators can deactivate users');
-    }
-
-    // Prevent deactivating yourself
-    if (currentUser.id === userId) {
-      return apiResponse.badRequest('You cannot deactivate your own account');
-    }
-
-    await service.deactivateUser(userId);
+    await changeUserAccess(access, userId, { isActive: false });
 
     logger.info('Deactivated user via API', {
       userId,
-      deactivatedBy: currentUser.id,
+      deactivatedBy: access.userId,
     });
 
     return apiResponse.success({ message: 'User deactivated successfully' });
@@ -260,22 +230,17 @@ export async function handleDeactivateUser(
 
 /**
  * POST /api/users/[id]/change-password
- * Change user password
+ * Your own password, or another user's as a user manager who holds their role
  */
 export async function handleChangePassword(
   request: NextRequest,
   userId: string
 ) {
   try {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return apiResponse.unauthorized('You must be logged in to change passwords');
-    }
+    const { access, response } = await checkAccess(SIGNED_IN);
+    if (response) return response;
 
-    // Users can only change their own password, admins can reset any password
-    if (currentUser.id !== userId && currentUser.role !== 'admin') {
-      return apiResponse.forbidden('You can only change your own password');
-    }
+    await assertCanManageUser(access, userId);
 
     const body = await request.json();
     const validation = changePasswordSchema.safeParse(body);
@@ -292,7 +257,7 @@ export async function handleChangePassword(
 
     logger.info('Changed user password via API', {
       userId,
-      changedBy: currentUser.id,
+      changedBy: access.userId,
     });
 
     return apiResponse.success({ message: 'Password changed successfully' });

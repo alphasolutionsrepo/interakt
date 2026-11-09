@@ -5,8 +5,9 @@
  * POST /api/search-indexes/cache/clear - Clear all caches
  */
 
+import { withPermission } from '@/features/access/route-guard';
 import { handleClearCache } from '@/features/search-index/search-index.api.handlers';
 
-export async function POST() {
+export const POST = withPermission('settings:manage', async function POST() {
     return handleClearCache();
-}
+});

@@ -7,21 +7,23 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   handleListKnowledgeEntries,
   handleCreateKnowledgeEntry,
 } from '@/features/domain-knowledge';
 
-export async function GET(
+export const GET = withPermission('prompts:view', async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleListKnowledgeEntries(request, context);
-}
+});
 
-export async function POST(
+export const POST = withPermission('prompts:edit', async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleCreateKnowledgeEntry(request, context);
-}
+});

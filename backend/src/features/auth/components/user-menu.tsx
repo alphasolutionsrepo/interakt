@@ -1,8 +1,16 @@
 'use client'
 
-import { signOut, useSession } from 'next-auth/react'
+import { KeyRound, LogIn, LogOut } from 'lucide-react'
 import { usePathname } from 'next/navigation'
-import { useEffect } from 'react'
+import { signOut, useSession } from 'next-auth/react'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+
+import type { ChangePasswordDTO } from '../auth.validations'
+
+import { ChangePasswordDialog } from './ChangePasswordDialog'
+
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
     DropdownMenu,
@@ -12,14 +20,33 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { LogIn, LogOut } from 'lucide-react'
 import { activityStore } from '@/shared/activity/activity-store'
+import { handleApiResponse } from '@/shared/api/api-error'
+
+
 
 export function UserMenu() {
     const { data: session, status } = useSession()
     const pathname = usePathname()
     const userId = session?.user?.id
+    const [passwordOpen, setPasswordOpen] = useState(false)
+    const [changingPassword, setChangingPassword] = useState(false)
+
+    // Rejects on failure so the dialog shows why
+    const changeOwnPassword = async (data: ChangePasswordDTO) => {
+        setChangingPassword(true)
+        try {
+            await handleApiResponse(await fetch(`/api/users/${userId}/change-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            }))
+            toast.success('Password changed')
+            setPasswordOpen(false)
+        } finally {
+            setChangingPassword(false)
+        }
+    }
 
     useEffect(() => {
         // Not only Log out clears the list: a session that ran out never signed out
@@ -50,6 +77,7 @@ export function UserMenu() {
     const initials = `${user.firstName?.charAt(0) || ''}${user.lastName?.charAt(0) || ''}`.toUpperCase()
 
     return (
+        <>
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -70,6 +98,10 @@ export function UserMenu() {
                     </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setPasswordOpen(true)}>
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    <span>Change password</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                     onClick={() => {
                         // The activity list stays in this browser; don't leave it for the next user
@@ -83,5 +115,13 @@ export function UserMenu() {
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
+        <ChangePasswordDialog
+            open={passwordOpen}
+            onOpenChange={setPasswordOpen}
+            email={user.email}
+            onSubmit={changeOwnPassword}
+            isSubmitting={changingPassword}
+        />
+        </>
     )
 }

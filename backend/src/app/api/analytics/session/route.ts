@@ -2,6 +2,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   getOrCreateSession,
   endSession,
@@ -10,8 +12,8 @@ import {
 } from '@/features/analytics';
 import type { SessionType } from '@/features/analytics';
 import { clientIp } from '@/shared/api/client-ip';
-import { apiResponse } from '@/shared/api/response';
 import { readJsonBody } from '@/shared/api/read-json-body';
+import { apiResponse } from '@/shared/api/response';
 
 // ============================================================================
 // SCHEMAS
@@ -37,7 +39,7 @@ const endSessionSchema = z.object({
  * Create or get an analytics session
  * Returns the session ID for the client to use in subsequent requests
  */
-export async function POST(request: NextRequest) {
+export const POST = withPermission('analytics:manage', async function POST(request: NextRequest) {
   try {
     const body = await readJsonBody(request);
     const data = createSessionSchema.parse(body);
@@ -74,13 +76,13 @@ export async function POST(request: NextRequest) {
     if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return apiResponse.error(error, 500, { operation: 'startAnalyticsSession' });
   }
-}
+});
 
 /**
  * DELETE /api/analytics/session
  * End an analytics session (called when user leaves)
  */
-export async function DELETE(request: NextRequest) {
+export const DELETE = withPermission('analytics:manage', async function DELETE(request: NextRequest) {
   try {
     const body = await readJsonBody(request);
     const data = endSessionSchema.parse(body);
@@ -95,17 +97,17 @@ export async function DELETE(request: NextRequest) {
     if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return apiResponse.error(error, 500, { operation: 'endAnalyticsSession' });
   }
-}
+});
 
 /**
  * GET /api/analytics/session
  * Generate a new session ID (for clients that don't have one)
  */
-export async function GET() {
+export const GET = withPermission('analytics:view', async function GET() {
   return NextResponse.json({
     success: true,
     data: {
       sessionId: generateSessionId(),
     },
   });
-}
+});

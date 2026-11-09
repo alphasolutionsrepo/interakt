@@ -6,11 +6,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleActivateSearchIndex } from '@/features/search-index/search-index.api.handlers';
 
-export async function PATCH(
+export const PATCH = withPermission('search-indexes:edit', async function PATCH(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleActivateSearchIndex(request, context);
-}
+});

@@ -12,13 +12,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
 import {
   runAllSeeding,
   verifyAllSeeding,
   getOverallSeedingStatus,
 } from '@/shared/seeders';
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
 const logger = createLogger('admin-seed-api');
@@ -41,7 +43,7 @@ export const dynamic = 'force-dynamic';
  * - dryRun: boolean (default: false) - Preview what would happen
  * - keys: string[] (optional) - Specific template slugs to seed
  */
-export async function POST(request: NextRequest) {
+export const POST = withPermission('setup:run', async function POST(request: NextRequest) {
   try {
     // Check authentication (optional - you may want admin-only)
     const userId = await getCurrentUserId();
@@ -99,7 +101,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'runSeeding' });
   }
-}
+});
 
 // ============================================================================
 // GET: Status & Verification
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
  * Query params:
  * - operation: 'status' | 'verify' | 'list' (default: 'status')
  */
-export async function GET(request: NextRequest) {
+export const GET = withPermission('setup:run', async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const operation = searchParams.get('operation') || 'status';
@@ -159,7 +161,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'getSeedingStatus' });
   }
-}
+});
 
 // ============================================================================
 // DELETE: Clear Registry
@@ -174,7 +176,7 @@ export async function GET(request: NextRequest) {
  * - type: 'all' (required)
  * - confirm: boolean (required, must be true)
  */
-export async function DELETE(request: NextRequest) {
+export const DELETE = withPermission('setup:run', async function DELETE(request: NextRequest) {
   try {
     // Check authentication
     const userId = await getCurrentUserId();
@@ -244,4 +246,4 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'clearSeedRegistry' });
   }
-}
+});

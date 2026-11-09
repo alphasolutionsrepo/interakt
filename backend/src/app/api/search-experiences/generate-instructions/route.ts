@@ -6,10 +6,12 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { apiResponse } from '@/shared/api/response';
-import { getCurrentUserId } from '@/shared/utils/auth-utils';
+
+import { withPermission } from '@/features/access/route-guard';
 import { generateCustomInstructions } from '@/features/search-experience/search-experience.service';
+import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
 const logger = createLogger('api-generate-instructions');
 
@@ -33,7 +35,7 @@ const generateInstructionsSchema = z.object({
 // POST - Generate custom instructions
 // ============================================================================
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('playground:use', async function POST(request: NextRequest) {
   try {
     // Check authentication
     const userId = await getCurrentUserId();
@@ -76,4 +78,4 @@ export async function POST(request: NextRequest) {
     // disabled), and logged once
     return apiResponse.error(error, 500, { operation: 'generateInstructions' });
   }
-}
+});

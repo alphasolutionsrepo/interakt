@@ -1,9 +1,11 @@
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleAssignTool } from '@/features/ai-experience/ai-experience.api.handlers';
 
-export async function POST(
+export const POST = withPermission('ai-experiences:edit', async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleAssignTool(request, context);
-}
+});

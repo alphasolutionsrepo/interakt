@@ -33,10 +33,7 @@ export { auth, signIn, signOut, handlers } from './auth.api.handlers';
 // UTILITY EXPORTS
 // ============================================================================
 export {
-  getCurrentUser,
   getCurrentSessionAndUser,
-  requireAuth,
-  requireRole,
   hashPassword,
   verifyPassword,
   validatePassword,

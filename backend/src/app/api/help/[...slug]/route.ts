@@ -7,11 +7,12 @@
 
 import { NextResponse } from 'next/server';
 
+import { withPermission } from '@/features/access/route-guard';
 import { readHelpDoc } from '@/shared/help/help.server';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withPermission('signed-in', async function GET(
   _req: Request,
   { params }: { params: Promise<{ slug: string[] }> },
 ) {
@@ -24,4 +25,4 @@ export async function GET(
   }
 
   return NextResponse.json(doc);
-}
+});

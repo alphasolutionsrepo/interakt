@@ -2,22 +2,22 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Plus,
   RefreshCw,
   Shield,
   Search,
 } from 'lucide-react';
-import { useUsers } from './_lib/hooks/useUsers';
-import { UserTable, UserFormDialog, ChangePasswordDialog, UserStatsBar } from './_components';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { useState, useMemo } from 'react';
+
+import { UserTable, UserFormDialog, ChangePasswordDialog, UserStatsBar, RolesPanel } from './_components';
 import type { UserResponse } from './_lib/api-client';
-import type { CreateUserDTO, UpdateUserDTO } from '@/features/auth/auth.validations';
+import { useRoles } from './_lib/hooks/useRoles';
+import { useUsers } from './_lib/hooks/useUsers';
+import type { RoleResponse } from './_lib/roles-api';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -25,6 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import type { CreateUserDTO, UpdateUserDTO } from '@/features/auth/auth.validations';
+import { useAccess } from '@/shared/access/useAccess';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 // ============================================================================
 // Page Skeleton
@@ -89,6 +95,20 @@ export default function UsersPage() {
     changePasswordAsync,
     isChangingPassword,
   } = useUsers();
+  const { roles } = useRoles();
+  const { access } = useAccess();
+
+  // A role the signed-in user may hand out: they hold everything it grants (the server checks too)
+  const canHold = (role: Pick<RoleResponse, 'isBuiltIn' | 'permissions'>) => {
+    if (!access) return false;
+    if (access.role.isAdmin) return true;
+    if (role.isBuiltIn) return false;
+    const mine = new Set<string>(access.permissions);
+    return role.permissions.every((p) => mine.has(p));
+  };
+  const assignableRoles = roles.filter(canHold);
+  const rolesFor = (current?: string) =>
+    roles.filter((r) => canHold(r) || r.id === current);
 
   // State
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,7 +131,7 @@ export default function UsersPage() {
         user.lastName?.toLowerCase().includes(searchQuery.toLowerCase());
 
       // Role filter
-      const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+      const matchesRole = roleFilter === 'all' || user.roleId === roleFilter;
 
       // Status filter
       const matchesStatus = statusFilter === 'all' ||
@@ -178,7 +198,7 @@ export default function UsersPage() {
       <PageHeader
         variant="settings"
         title="User Management"
-        description="Manage users, roles, and permissions for your platform"
+        description="Manage users and the roles that decide what each one can do"
         icon={Shield}
         iconBg="bg-primary/10"
         iconColor="text-primary"
@@ -209,6 +229,15 @@ export default function UsersPage() {
         }
       />
 
+      <Tabs defaultValue="users" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="roles">Roles</TabsTrigger>
+        </TabsList>
+        <TabsContent value="roles">
+          <RolesPanel canHold={canHold} />
+        </TabsContent>
+        <TabsContent value="users" className="space-y-8">
       {/* Stats */}
       <UserStatsBar users={users || []} />
 
@@ -229,9 +258,9 @@ export default function UsersPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="moderator">Moderator</SelectItem>
-            <SelectItem value="user">User</SelectItem>
+            {roles.map((r) => (
+              <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -256,12 +285,15 @@ export default function UsersPage() {
         isActivating={isActivating}
         isDeactivating={isDeactivating}
       />
+        </TabsContent>
+      </Tabs>
 
       {/* Create User Dialog */}
       <UserFormDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
         onSubmit={handleCreateUser}
+        roles={assignableRoles}
         isSubmitting={isCreating}
       />
 
@@ -271,6 +303,7 @@ export default function UsersPage() {
         onOpenChange={(open) => !open && setEditingUser(null)}
         onSubmit={handleUpdateUser}
         user={editingUser || undefined}
+        roles={rolesFor(editingUser?.roleId)}
         isSubmitting={isUpdating}
       />
 
@@ -278,7 +311,7 @@ export default function UsersPage() {
       <ChangePasswordDialog
         open={!!passwordUser}
         onOpenChange={(open) => !open && setPasswordUser(null)}
-        user={passwordUser || undefined}
+        email={passwordUser?.email}
         onSubmit={async (data) => {
           if (!passwordUser) return;
           await changePasswordAsync({ id: passwordUser.id, data });

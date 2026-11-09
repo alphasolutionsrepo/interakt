@@ -3,8 +3,19 @@
 'use client';
 
 import { formatDistanceToNow } from 'date-fns';
+import { MoreVertical, Edit, Key, UserCheck, UserX, Mail, Calendar } from 'lucide-react';
+
+import type { UserResponse } from '../_lib/api-client';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Table,
   TableBody,
@@ -13,15 +24,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { MoreVertical, Edit, Key, UserCheck, UserX, Mail, Calendar } from 'lucide-react';
-import type { UserResponse } from '../_lib/api-client';
 
 interface UserTableProps {
   users: UserResponse[];
@@ -169,18 +171,13 @@ export function UserTable({
 }
 
 // Role Badge Component
-function RoleBadge({ role }: { role: string }) {
-  const variants = {
-    admin: { label: 'Admin', className: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400' },
-    moderator: { label: 'Moderator', className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400' },
-    user: { label: 'User', className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400' },
-  };
-
-  const variant = variants[role as keyof typeof variants] || variants.user;
-
+function RoleBadge({ role }: { role?: { name: string; isBuiltIn: boolean } }) {
+  const className = role?.isBuiltIn
+    ? 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400'
+    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400';
   return (
-    <Badge variant="secondary" className={`font-semibold ${variant.className}`}>
-      {variant.label}
+    <Badge variant="secondary" className={`font-semibold ${className}`}>
+      {role?.name ?? 'Unknown'}
     </Badge>
   );
 }

@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: mocks.auth }));
 vi.mock('@/features/telemetry', () => ({

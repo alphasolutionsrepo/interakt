@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ getOrCreateSession: vi.fn() }));
 
+vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/features/analytics', () => ({
   getOrCreateSession: mocks.getOrCreateSession,
   endSession: vi.fn(),

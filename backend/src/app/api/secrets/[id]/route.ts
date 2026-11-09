@@ -1,27 +1,29 @@
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   handleGetSecret,
   handleUpdateSecret,
   handleDeleteSecret,
 } from '@/features/secrets/secrets.api.handlers';
 
-export async function GET(
+export const GET = withPermission('secrets:manage', async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleGetSecret(request, context);
-}
+});
 
-export async function PUT(
+export const PUT = withPermission('secrets:manage', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleUpdateSecret(request, context);
-}
+});
 
-export async function DELETE(
+export const DELETE = withPermission('secrets:manage', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleDeleteSecret(request, context);
-}
+});

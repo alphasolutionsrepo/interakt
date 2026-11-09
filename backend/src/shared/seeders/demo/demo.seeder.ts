@@ -21,6 +21,7 @@ import type { SeedProgressEvent } from './demo-steps';
 import { db } from '@/db/index';
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import { user } from '@/db/schema/users.schema';
+import { ADMIN_ROLE_ID } from '@/features/access/permissions';
 import { createAIExperience, getAIExperienceBySlug, deleteAIExperience } from '@/features/ai-experience/ai-experience.service';
 import { getModelByProviderAndKey } from '@/features/ai-providers/ai-providers.repository';
 import { createModel, formatModelDisplayName, getProviderByKey, updateModel, updateProvider, updateSystemDefaults } from '@/features/ai-providers/ai-providers.service';
@@ -163,7 +164,7 @@ export async function seedDemo(loaded: LoadedDemoManifest, options: DemoSeedOpti
   }
 
   const adminId = await getAdminUserId();
-  const admin = await db.query.user.findFirst({ where: eq(user.role, 'admin') });
+  const admin = await db.query.user.findFirst({ where: eq(user.roleId, ADMIN_ROLE_ID) });
 
   logger.info('🌱 Seeding demo', { name: manifest.demo.name, provider: providerKey, admin: admin?.email });
 
@@ -677,7 +678,7 @@ async function seedChatExperience(manifest: LoadedDemoManifest['manifest'], data
 // ---------------------------------------------------------------------------
 
 async function getAdminUserId(): Promise<string> {
-  const admin = await db.query.user.findFirst({ where: eq(user.role, 'admin') });
+  const admin = await db.query.user.findFirst({ where: eq(user.roleId, ADMIN_ROLE_ID) });
   if (!admin) {
     throw new SetupRequiredError(
       'No admin user found. setup:demo seeds the admin from setup/setup.config.yaml — ' +

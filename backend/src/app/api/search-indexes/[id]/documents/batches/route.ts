@@ -6,11 +6,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
 import { handleListBatches } from '@/features/document-indexing';
 
-export async function GET(
+export const GET = withPermissionOrIngestionKey('search-indexes:view', async function GET(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleListBatches(request, context);
-}
+});

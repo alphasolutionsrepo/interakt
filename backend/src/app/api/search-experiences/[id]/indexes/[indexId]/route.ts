@@ -8,21 +8,23 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   handleUpdateIndex,
   handleRemoveIndex,
 } from '@/features/search-experience/search-experience.admin.handlers';
 
-export async function PUT(
+export const PUT = withPermission('search-experiences:edit', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string; indexId: string }> }
 ) {
   return handleUpdateIndex(request, context);
-}
+});
 
-export async function DELETE(
+export const DELETE = withPermission('search-experiences:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string; indexId: string }> }
 ) {
   return handleRemoveIndex(request, context);
-}
+});

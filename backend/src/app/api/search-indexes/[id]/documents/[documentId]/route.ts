@@ -12,14 +12,16 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
 import {
     handleGetDocument,
     handleReplaceDocument,
     handleMergeDocument,
     handleDeleteDocument,
 } from '@/features/document-indexing';
-import { withRateLimit } from '@/shared/api/rate-limit';
 import { ingestionRateLimitKey } from '@/features/ingestion-keys';
+import { withRateLimit } from '@/shared/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,24 +37,24 @@ const singleDocumentRateLimit = {
     keyFn: ingestionRateLimitKey,
 };
 
-export async function GET(request: NextRequest, context: DocumentContext) {
+export const GET = withPermissionOrIngestionKey('search-indexes:view', async function GET(request: NextRequest, context: DocumentContext) {
     return handleGetDocument(request, context);
-}
+});
 
-export const PUT = withRateLimit(
+export const PUT = withPermissionOrIngestionKey('documents:edit', withRateLimit(
     async (request: NextRequest, context: DocumentContext) =>
         handleReplaceDocument(request, context),
     singleDocumentRateLimit
-);
+));
 
-export const PATCH = withRateLimit(
+export const PATCH = withPermissionOrIngestionKey('documents:edit', withRateLimit(
     async (request: NextRequest, context: DocumentContext) =>
         handleMergeDocument(request, context),
     singleDocumentRateLimit
-);
+));
 
-export const DELETE = withRateLimit(
+export const DELETE = withPermissionOrIngestionKey('documents:edit', withRateLimit(
     async (request: NextRequest, context: DocumentContext) =>
         handleDeleteDocument(request, context),
     singleDocumentRateLimit
-);
+));

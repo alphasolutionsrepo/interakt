@@ -12,8 +12,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
-vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUser: async () => ({ id: 'admin', role: 'admin' }) }));
+vi.mock('@/features/access/roles.repository', () => ({
+  getRole: async (id: string) => ({ id, name: 'Editor', isBuiltIn: false, permissions: [] }),
+}));
 const service = vi.hoisted(() => ({ createUser: vi.fn() }));
 vi.mock('./auth.service', () => service);
 
@@ -21,7 +25,7 @@ import { handleCreateUser } from './users.api.handlers';
 
 const create = () => handleCreateUser(new NextRequest('http://localhost/api/users', {
   method: 'POST',
-  body: JSON.stringify({ email: 'editor@example.com', password: 'Passw0rd-long' }),
+  body: JSON.stringify({ email: 'editor@example.com', password: 'Passw0rd-long', roleId: '00000000-0000-4000-8000-000000000002' }),
 }));
 
 beforeEach(() => { logs.length = 0; });

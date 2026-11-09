@@ -2,121 +2,79 @@
 sidebar_position: 21
 ---
 
-# User management
+# Users and roles
 
-Interakt's admin dashboard is multi-user. The **User Management** screen is where admins create accounts for the rest of the team, assign roles, and disable accounts when people leave.
+Interakt's admin dashboard is multi-user. Every user has one **role**, and the role decides what they can see and do. The **User Management** screen is where you add accounts, give each one a role, edit roles, and deactivate accounts when people leave.
 
 ## Where to find it
-Sidebar → **Administration → User Management**.
+Sidebar → **Administration → User Management**. It has two tabs: **Users** and **Roles**.
 
-## The screen
+## Users
 
 ### Stats cards
-- **Total Users** count.
-- **Active Users** count and percentage.
-- **Inactive Users** count.
-- **Admins** count.
+- **Total Users**, **Active**, **Inactive**, and **Admins**.
 
 ### Filters
 - **Search** by name or email.
-- **Role** dropdown — All / Admin / Moderator / User.
-- **Status** dropdown — All / Active / Inactive.
+- **Role**: every role on the Roles tab.
+- **Status**: Active or Inactive.
 
-### User table
+### Add User
+Opens the create dialog: first and last name, email (used to log in), initial password, and **Role**. The role list shows the roles you can hand out (see [Who can give which role](#who-can-give-which-role)).
 
-| Column | What |
-|---|---|
-| **Name** | First and last. |
-| **Email** | Login email. |
-| **Role** | Admin / Moderator / User. |
-| **Status** | Active or Inactive. |
-| **Created** | When the account was added. |
-| **Actions** | Edit / Change Password / Activate-Deactivate / Delete. |
-
-### Add User button
-
-Opens the create dialog. Fields:
-- **First name**, **last name**.
-- **Email** — used to log in.
-- **Role** — see below.
-- **Initial password** — set or auto-generate.
-
-Click **Save**. The user can log in with the email and password you set.
+### Edit and deactivate
+From the user's row. Changes to someone's role or status apply on their **next request**: Interakt reads each user's role and status on every request, so a deactivated user is signed out of everything at once, and a new role applies straight away.
 
 ## Roles
 
-Three roles, each with a set of permissions.
+A role is a name and a set of permissions. Interakt ships with three:
 
-### Admin
-Full access to everything. Can:
-- Manage users (add, edit, delete, change roles).
-- Manage AI providers, secrets, settings.
-- Create, edit, delete experiences, indexes, data sources, tools, prompt templates.
-- View all analytics.
-- Trigger and reset the demo / setup.
+| Role | What it can do |
+|---|---|
+| **Admin** | Everything, including users and roles, secrets, AI provider keys, and the demo and docs setup. Built in: it always holds every permission, including ones added in later versions, and can't be edited or deleted. |
+| **Editor** | Builds and runs the search: experiences, indexes and documents, data sources, tools and MCP connections, prompts and knowledge, analytics and tracing settings, system settings, and the playgrounds. Views AI providers and background jobs. |
+| **Viewer** | Read-only: experiences, indexes, data sources, tools, prompts and analytics. |
 
-Most installations have 1–3 admins.
+Editor and Viewer are ordinary roles: rename them, change their permissions, or delete them. Add your own roles on the **Roles** tab with **Add Role**, for example an *Analyst* role with only the analytics permissions.
 
-### Moderator
-Can do most day-to-day work but can't change global settings or other users. Can:
-- Create, edit, delete experiences and the resources behind them (indexes, tools, prompts).
-- View analytics.
-- Use the playground.
+### Permissions
 
-Can **not**:
-- Manage users.
-- Change AI provider configuration.
-- Reset / re-seed.
+Permissions come in groups, each with a view permission and one to change things:
 
-This is the right role for content / catalog / data team members.
+- **Experiences**: search experiences; chat experiences.
+- **Data**: search indexes; documents (upload, edit, delete, reindex); data sources.
+- **AI configuration**: tools and MCP connections; prompt templates, knowledge base and domain knowledge; AI providers and models. Viewing providers never shows their keys.
+- **Testing and analytics**: the playgrounds and test buttons (these spend AI tokens); viewing analytics, conversations and traces; asking the analytics assistant; changing analytics and tracing settings.
+- **System**: settings and background jobs; running jobs; secrets and ingestion keys; users and roles; the demo and docs setup.
 
-### User
-Read-only-ish access. Can:
-- View experiences, indexes, tools, dashboards.
-- Use the playground.
+The sidebar shows each user the pages their role can open, and the server checks the role on every request.
 
-Can **not**:
-- Edit or create anything.
-- Manage other users.
-- Change settings.
+## Who can give which role
 
-This is the right role for stakeholders who need to see what's there but shouldn't be able to change it. Engineers, analysts, the curious.
+Anyone with the *Manage users and roles* permission can add users, edit roles and assign them, within one rule: **you can only give out what you have yourself**.
 
-## Changing a user's role
+- You can assign a role, create one, or change one only when every permission in it is one of yours.
+- Only an Admin can make someone an Admin, or manage a user who is an Admin.
+- You can't change your own role or deactivate yourself. Another user manager does that.
+- Interakt always keeps at least one active Admin.
 
-In the user's row, open the dropdown → **Edit** → change the role → save. Takes effect on their next page load.
+A role can be deleted once no user holds it.
 
-If you're demoting yourself, be careful — you can lock yourself out of admin capabilities if you're the only admin.
+## Changing your password
 
-## Changing a password
+Account menu (top right) → **Change password**. Enter your current password and the new one.
 
-Two paths:
-1. **An admin changes someone else's password.** User row → dropdown → **Change Password**. Set a new one and hand it to them.
-2. **A user changes their own password.** Account menu (top-right) → "Change Password". May require entering the current password.
+## Deactivating a user
 
-There's no self-service "forgot password" flow in the admin UI — an admin has to reset.
+Deactivate from the user's row. An inactive user can't sign in, loses access on their next request, and keeps their history (analytics and traces stay attributed). Activate them again from the same row.
 
-## Activating / deactivating a user
+## Good practice
 
-Toggle the **Status**. An inactive user:
-- Cannot log in.
-- Still exists in the database.
-- Their actions in the audit log are preserved.
-
-This is the right way to handle someone leaving the company. Don't delete unless you really need to — you lose attribution on their past actions.
-
-## Deleting a user
-
-Permanent. Confirms before doing it. Use only if you really mean it.
-
-## Common gotchas
-
-- **Locking out the only admin.** If you demote yourself or deactivate the only admin account, no one can manage users. Recovery requires database access. Always have at least two admins.
-- **Forgetting that Moderator can't manage AI providers.** A Moderator who tries to add a provider gets a permission error. Promote them temporarily or have an admin do it.
-- **Sharing accounts.** Don't. Create one per person — the audit log and analytics are per-user. Shared accounts make traces useless.
-- **No SSO yet.** Authentication is local — there's no SAML / OIDC / Google integration in the admin UI today.
+- **Two Admins.** Keep a second Admin account so someone can always manage users.
+- **One account per person.** Analytics and traces are per user.
+- **Least access.** Start people as Viewers and give more when they need it.
 
 ## Where to go next
 
-- [Navigating the admin](../admin-tour/navigation) — the layout of the dashboard your users will see.
-- [Access tokens](access-tokens) — separate from user logins, this is how *applications* authenticate.
+- [Navigating the admin](../admin-tour/navigation): the layout of the dashboard your users will see.
+- [Access tokens](access-tokens): separate from user logins, this is how *applications* authenticate.

@@ -10,10 +10,14 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { POST as setupDocs } from './route';
+
 import { errorEvent } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('server-only', () => ({}));
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUser: async () => ({ id: 'admin', role: 'admin' }) }));
@@ -22,7 +26,6 @@ vi.mock('@/features/ai-providers/ai-providers.service', () => ({ getResolvedDefa
 vi.mock('@/shared/seeders/docs/docs-source', () => ({ DOCS_ROOT: '/docs', getAdminUserId: async () => 'admin', readDocs: vi.fn() }));
 vi.mock('@/db/index', () => ({ db: {} }));
 
-import { POST as setupDocs } from './route';
 
 const build = () => setupDocs(new NextRequest('http://localhost/api/admin/setup-docs', {
   method: 'POST',

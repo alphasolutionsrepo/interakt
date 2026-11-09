@@ -7,11 +7,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleAddExternalSource } from '@/features/search-experience/search-experience.admin.handlers';
 
-export async function POST(
+export const POST = withPermission('search-experiences:edit', async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleAddExternalSource(request, context);
-}
+});

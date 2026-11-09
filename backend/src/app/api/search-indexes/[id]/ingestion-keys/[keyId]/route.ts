@@ -8,11 +8,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleRevokeIngestionKey } from '@/features/ingestion-keys/ingestion-key.api.handlers';
 
-export async function DELETE(
+export const DELETE = withPermission('secrets:manage', async function DELETE(
     request: NextRequest,
     context: { params: Promise<{ id: string; keyId: string }> }
 ) {
     return handleRevokeIngestionKey(request, context);
-}
+});

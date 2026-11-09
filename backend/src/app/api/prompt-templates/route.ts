@@ -1,13 +1,15 @@
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   handleListTemplates,
   handleCreateVersion,
 } from '@/features/prompt-templates/prompt-template.api.handlers';
 
-export async function GET(request: NextRequest) {
+export const GET = withPermission('prompts:view', async function GET(request: NextRequest) {
   return handleListTemplates(request);
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('prompts:edit', async function POST(request: NextRequest) {
   return handleCreateVersion(request);
-}
+});

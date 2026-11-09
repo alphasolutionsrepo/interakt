@@ -6,8 +6,10 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleChat } from '@/features/ai-service/ai-service.api.handlers';
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('playground:use', async function POST(request: NextRequest) {
   return handleChat(request);
-}
+});

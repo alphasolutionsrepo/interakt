@@ -8,15 +8,17 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   handleListSearchExperiences,
   handleCreateSearchExperience,
 } from '@/features/search-experience/search-experience.admin.handlers';
 
-export async function GET(request: NextRequest) {
+export const GET = withPermission('search-experiences:view', async function GET(request: NextRequest) {
   return handleListSearchExperiences(request);
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('search-experiences:edit', async function POST(request: NextRequest) {
   return handleCreateSearchExperience(request);
-}
+});

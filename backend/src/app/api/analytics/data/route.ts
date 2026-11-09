@@ -7,6 +7,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   clearAnalyticsData,
   type CleanupScope,
@@ -16,7 +18,7 @@ import { apiResponse } from '@/shared/api/response';
 
 const VALID_SCOPES: CleanupScope[] = ['all', 'insights', 'spans', 'events', 'sessions'];
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withPermission('analytics:manage', async function DELETE(request: NextRequest) {
   try {
     // A body that can't be read is refused: read as {}, its scope would be all
     const body = await readJsonBody(request);
@@ -41,4 +43,4 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'clearAnalyticsData' });
   }
-}
+});

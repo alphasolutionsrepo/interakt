@@ -7,11 +7,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleRemoveExternalSource } from '@/features/search-experience/search-experience.admin.handlers';
 
-export async function DELETE(
+export const DELETE = withPermission('search-experiences:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string; dataSourceId: string }> }
 ) {
   return handleRemoveExternalSource(request, context);
-}
+});

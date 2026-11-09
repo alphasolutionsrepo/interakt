@@ -1,0 +1,289 @@
+// src/features/access/access.routes.integration.test.ts
+
+/**
+ * Roles and permissions end to end: the real route handlers, the real permission gate and
+ * the real role rules on a real Postgres (PGlite, all migrations). Only the session (who
+ * signed in) is stubbed, as Auth.js would hand it over.
+ *
+ * Plays each kind of caller: each default role, a custom user manager trying to rise above
+ * their own role, a user changed or deactivated after signing in, a user editing their own
+ * account, and the public routes that also accept a dashboard session or an ingestion key.
+ */
+
+import { eq } from 'drizzle-orm';
+import { NextRequest } from 'next/server';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { ADMIN_ROLE_ID } from './permissions';
+import { updateUserAccess } from './roles.repository';
+
+import * as providersRoute from '@/app/api/ai-providers/route';
+import * as aiTextRoute from '@/app/api/ai-service/text/route';
+import * as meRoute from '@/app/api/me/access/route';
+import * as roleRoute from '@/app/api/roles/[id]/route';
+import * as rolesRoute from '@/app/api/roles/route';
+import { aiProviders } from '@/db/schema/ai-providers.schema';
+import { roles } from '@/db/schema/roles.schema';
+import { user } from '@/db/schema/users.schema';
+import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
+
+let testDb: AppTestDb;
+let session: { user: { id: string } } | null = null;
+vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
+vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => session }));
+
+import * as usersRoute from '@/app/api/users/route';
+import * as userRoute from '@/app/api/users/[id]/route';
+import * as deactivateRoute from '@/app/api/users/[id]/deactivate/route';
+import * as passwordRoute from '@/app/api/users/[id]/change-password/route';
+import * as secretsRoute from '@/app/api/secrets/route';
+import * as searchExperiencesRoute from '@/app/api/search-experiences/route';
+import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
+import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
+
+
+const EDITOR = '00000000-0000-4000-8000-000000000002';
+const VIEWER = '00000000-0000-4000-8000-000000000003';
+
+beforeAll(async () => { testDb = await createAppTestDb(); }, 60_000);
+afterAll(() => testDb.close());
+
+let n = 0;
+async function makeUser(roleId: string, isActive = true): Promise<string> {
+  const [row] = await testDb.db.insert(user).values({ email: `u${++n}@x.test`, roleId, isActive, firstName: 'First' }).returning();
+  return row.id;
+}
+async function makeRole(name: string, permissions: string[]): Promise<string> {
+  const [row] = await testDb.db.insert(roles).values({ name, permissions }).returning();
+  return row.id;
+}
+const as = (userId: string | null) => { session = userId ? { user: { id: userId } } : null; };
+
+type Route = (req: NextRequest, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
+async function call(fn: unknown, method: string, url: string, body?: unknown, params: Record<string, string> = {}, headers: Record<string, string> = {}) {
+  const req = new NextRequest(`http://localhost${url}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+  const res = await (fn as Route)(req, { params: Promise.resolve(params) });
+  return { status: res.status, body: (await res.json().catch(() => null)) as Record<string, unknown> | null };
+}
+const getUser = async (id: string) => (await testDb.db.select().from(user).where(eq(user.id, id)))[0];
+
+let admin: string, editor: string, viewer: string;
+beforeEach(async () => {
+  admin = await makeUser(ADMIN_ROLE_ID);
+  editor = await makeUser(EDITOR);
+  viewer = await makeUser(VIEWER);
+});
+
+describe('the session reflects the database on every request', () => {
+  it('locks out a user deactivated after signing in, on their next request', async () => {
+    as(editor);
+    expect((await call(meRoute.GET, 'GET', '/api/me/access')).status).toBe(200);
+    await testDb.db.update(user).set({ isActive: false }).where(eq(user.id, editor));
+    expect((await call(meRoute.GET, 'GET', '/api/me/access')).status).toBe(401);
+    expect((await call(searchExperiencesRoute.GET, 'GET', '/api/search-experiences')).status).toBe(401);
+  });
+
+  it('applies a demotion on the next request', async () => {
+    as(editor);
+    // An Editor passes the gate (an empty body is then refused by validation, not by access)
+    expect((await call(searchExperiencesRoute.POST, 'POST', '/api/search-experiences', {})).status).toBe(400);
+    await testDb.db.update(user).set({ roleId: VIEWER }).where(eq(user.id, editor));
+    expect((await call(searchExperiencesRoute.POST, 'POST', '/api/search-experiences', {})).status).toBe(403);
+  });
+
+  it('applies a role edit to everyone holding it, on their next request', async () => {
+    const role = await makeRole('Indexers', ['search-experiences:view']);
+    const u = await makeUser(role);
+    as(u);
+    expect((await call(searchExperiencesRoute.GET, 'GET', '/api/search-experiences')).status).toBe(200);
+    as(admin);
+    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${role}`, { permissions: [] }, { id: role })).status).toBe(200);
+    as(u);
+    expect((await call(searchExperiencesRoute.GET, 'GET', '/api/search-experiences')).status).toBe(403);
+  });
+
+  it('answers 401 to a session whose user no longer exists', async () => {
+    as('00000000-0000-4000-8000-0000000000ff');
+    expect((await call(meRoute.GET, 'GET', '/api/me/access')).status).toBe(401);
+  });
+
+  it('ignores a permission name stored on a role that the code does not know', async () => {
+    const role = await makeRole('Odd', ['secrets:manage-all', 'search-experiences:view']);
+    as(await makeUser(role));
+    const me = await call(meRoute.GET, 'GET', '/api/me/access');
+    expect((me.body?.data as { permissions: string[] }).permissions).toEqual(['search-experiences:view']);
+  });
+});
+
+describe('the default roles', () => {
+  it('lets a Viewer read but not change, spend tokens, or reach secrets and users', async () => {
+    as(viewer);
+    expect((await call(searchExperiencesRoute.GET, 'GET', '/api/search-experiences')).status).toBe(200);
+    expect((await call(searchExperiencesRoute.POST, 'POST', '/api/search-experiences', {})).status).toBe(403);
+    expect((await call(aiTextRoute.POST, 'POST', '/api/ai-service/text', { prompt: 'hi' })).status).toBe(403);
+    expect((await call(secretsRoute.GET, 'GET', '/api/secrets')).status).toBe(403);
+    expect((await call(usersRoute.GET, 'GET', '/api/users')).status).toBe(403);
+    expect((await call(providersRoute.GET, 'GET', '/api/ai-providers')).status).toBe(403);
+  });
+
+  it('keeps an Editor away from secrets, users and changing AI providers', async () => {
+    as(editor);
+    expect((await call(secretsRoute.GET, 'GET', '/api/secrets')).status).toBe(403);
+    expect((await call(usersRoute.GET, 'GET', '/api/users')).status).toBe(403);
+    expect((await call(rolesRoute.GET, 'GET', '/api/roles')).status).toBe(403);
+    expect((await call(providersRoute.POST, 'POST', '/api/ai-providers', {})).status).toBe(403);
+  });
+
+  it('never sends an AI provider key to a role that may view providers', async () => {
+    await testDb.db.insert(aiProviders).values({
+      providerKey: `p${n}`, displayName: 'P', providerType: 'cloud', authType: 'api_key',
+      baseUrl: 'https://example.test', apiKey: 'sk-very-secret-key',
+    });
+    as(editor);
+    const res = await call(providersRoute.GET, 'GET', '/api/ai-providers');
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain('sk-very-secret-key');
+  });
+});
+
+describe('nobody gives more than they hold', () => {
+  let manager: string, managerRole: string;
+  beforeEach(async () => {
+    managerRole = await makeRole(`Managers ${n}`, ['users:manage', 'search-experiences:view']);
+    manager = await makeUser(managerRole);
+    as(manager);
+  });
+
+  const newUser = (roleId: string) => ({ email: `new${++n}@x.test`, password: 'Passw0rd-long', roleId });
+
+  it('refuses a user manager creating an Admin or a role-holder above themselves', async () => {
+    expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(ADMIN_ROLE_ID))).status).toBe(403);
+    expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(EDITOR))).status).toBe(403);
+    expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(managerRole))).status).toBe(201);
+  });
+
+  it('refuses promoting someone to a role above the manager, or to Admin', async () => {
+    const target = await makeUser(managerRole);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${target}`, { roleId: EDITOR }, { id: target })).status).toBe(403);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${target}`, { roleId: ADMIN_ROLE_ID }, { id: target })).status).toBe(403);
+    expect((await getUser(target)).roleId).toBe(managerRole);
+  });
+
+  it('refuses creating or editing a role with permissions the manager lacks', async () => {
+    expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: 'Sneaky', permissions: ['secrets:manage'] })).status).toBe(403);
+    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${managerRole}`, { permissions: ['users:manage', 'secrets:manage'] }, { id: managerRole })).status).toBe(403);
+    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${VIEWER}`, { permissions: [] }, { id: VIEWER })).status).toBe(403);
+    expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: `Lesser ${n}`, permissions: ['search-experiences:view'] })).status).toBe(201);
+  });
+
+  it('refuses managing an Admin: profile, password, deactivation', async () => {
+    expect((await call(userRoute.GET, 'GET', `/api/users/${admin}`, undefined, { id: admin })).status).toBe(403);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${admin}`, { firstName: 'Owned' }, { id: admin })).status).toBe(403);
+    expect((await call(passwordRoute.POST, 'POST', `/api/users/${admin}/change-password`, { currentPassword: 'x', newPassword: 'Passw0rd-long', confirmPassword: 'Passw0rd-long' }, { id: admin })).status).toBe(403);
+    expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${admin}/deactivate`, undefined, { id: admin })).status).toBe(403);
+    expect((await getUser(admin))).toMatchObject({ firstName: 'First', isActive: true });
+  });
+});
+
+describe('a user on their own account', () => {
+  it('can change their own name, and sending their current role back is not a role change', async () => {
+    as(viewer);
+    const res = await call(userRoute.PUT, 'PUT', `/api/users/${viewer}`, { firstName: 'Renamed', roleId: VIEWER, isActive: true }, { id: viewer });
+    expect(res.status).toBe(200);
+    expect((await getUser(viewer)).firstName).toBe('Renamed');
+  });
+
+  it('cannot raise their own role or reactivate, and a refused change writes nothing', async () => {
+    as(viewer);
+    const res = await call(userRoute.PUT, 'PUT', `/api/users/${viewer}`, { firstName: 'Sneaky', roleId: ADMIN_ROLE_ID }, { id: viewer });
+    expect(res.status).toBe(403);
+    expect(await getUser(viewer)).toMatchObject({ roleId: VIEWER, firstName: 'First' });
+  });
+
+  it('cannot read or change another user without users:manage, even one with the same role', async () => {
+    const otherViewer = await makeUser(VIEWER);
+    as(viewer);
+    expect((await call(userRoute.GET, 'GET', `/api/users/${otherViewer}`, undefined, { id: otherViewer })).status).toBe(403);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${otherViewer}`, { firstName: 'X' }, { id: otherViewer })).status).toBe(403);
+    expect((await call(passwordRoute.POST, 'POST', `/api/users/${otherViewer}/change-password`, { currentPassword: 'x', newPassword: 'Passw0rd-long', confirmPassword: 'Passw0rd-long' }, { id: otherViewer })).status).toBe(403);
+    expect((await getUser(otherViewer)).firstName).toBe('First');
+    expect((await call(userRoute.GET, 'GET', `/api/users/${editor}`, undefined, { id: editor })).status).toBe(403);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${editor}`, { firstName: 'X' }, { id: editor })).status).toBe(403);
+  });
+
+  it('keeps even an Admin from demoting or deactivating themselves', async () => {
+    as(admin);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${admin}`, { roleId: VIEWER }, { id: admin })).status).toBe(403);
+    expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${admin}/deactivate`, undefined, { id: admin })).status).toBe(403);
+  });
+});
+
+describe('the Admin role and the last Admin', () => {
+  it('lets an Admin manage other Admins and assign any role', async () => {
+    const other = await makeUser(ADMIN_ROLE_ID);
+    as(admin);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${other}`, { roleId: EDITOR }, { id: other })).status).toBe(200);
+    expect((await getUser(other)).roleId).toBe(EDITOR);
+  });
+
+  it('refuses a change that would leave no active Admin', async () => {
+    await testDb.db.update(user).set({ isActive: false }).where(eq(user.roleId, ADMIN_ROLE_ID));
+    const last = await makeUser(ADMIN_ROLE_ID);
+    await expect(updateUserAccess(last, { roleId: EDITOR })).rejects.toMatchObject({ status: 409 });
+    await expect(updateUserAccess(last, { isActive: false })).rejects.toMatchObject({ status: 409 });
+    expect((await getUser(last))).toMatchObject({ roleId: ADMIN_ROLE_ID, isActive: true });
+    const second = await makeUser(ADMIN_ROLE_ID);
+    await expect(updateUserAccess(last, { roleId: EDITOR })).resolves.toBe(true);
+    expect((await getUser(second)).roleId).toBe(ADMIN_ROLE_ID);
+  });
+
+  it('refuses editing or deleting the built-in Admin role', async () => {
+    as(admin);
+    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${ADMIN_ROLE_ID}`, { name: 'Mine' }, { id: ADMIN_ROLE_ID })).status).toBe(403);
+    expect((await call(roleRoute.DELETE, 'DELETE', `/api/roles/${ADMIN_ROLE_ID}`, undefined, { id: ADMIN_ROLE_ID })).status).toBe(403);
+  });
+
+  it('refuses deleting a role in use, deletes one that is not', async () => {
+    as(admin);
+    expect((await call(roleRoute.DELETE, 'DELETE', `/api/roles/${VIEWER}`, undefined, { id: VIEWER })).status).toBe(409);
+    const unused = await makeRole(`Unused ${n}`, []);
+    expect((await call(roleRoute.DELETE, 'DELETE', `/api/roles/${unused}`, undefined, { id: unused })).status).toBe(200);
+  });
+
+  it('rejects unknown permissions and duplicate names', async () => {
+    as(admin);
+    expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: `Bad ${n}`, permissions: ['everything'] })).status).toBe(400);
+    expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: 'Viewer', permissions: [] })).status).toBe(409);
+  });
+});
+
+describe('routes that also take a dashboard session or an ingestion key', () => {
+  const experience = { scope: 'search:e1', accessToken: 'the-token', policy: { allowedOrigins: [], rateLimit: null } } as never;
+  const req = () => new NextRequest('http://localhost/api/v1/search/e1/search', { method: 'POST' });
+
+  it('lets a dashboard session use a public experience route only with playground:use', async () => {
+    as(viewer);
+    const refused = await authenticateTokenOrSession(req(), experience);
+    expect(refused.caller).toBeNull();
+    expect(refused.refused?.status).toBe(403);
+    as(editor);
+    expect((await authenticateTokenOrSession(req(), experience)).caller).toBe('admin');
+  });
+
+  it('checks an ingestion key on the document routes itself, and a session without one by role', async () => {
+    as(null);
+    const index = '00000000-0000-4000-8000-0000000000aa';
+    const withBadKey = await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, undefined, { id: index }, { Authorization: 'Bearer not-a-key' });
+    expect(withBadKey.status).toBe(401);
+    expect(withBadKey.body).toMatchObject({ message: expect.stringMatching(/ingestion key/i) });
+    as(await makeUser(await makeRole(`NoIndexes ${n}`, [])));
+    // With a key, the key decides, not the role of a session that happens to be there
+    const keyWithSession = await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, undefined, { id: index }, { Authorization: 'Bearer not-a-key' });
+    expect(keyWithSession).toMatchObject({ status: 401, body: { message: expect.stringMatching(/ingestion key/i) } });
+    expect((await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, undefined, { id: index })).status).toBe(403);
+  });
+});

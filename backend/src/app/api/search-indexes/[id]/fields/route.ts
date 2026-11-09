@@ -7,21 +7,23 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
     handleGetFields,
     handleCreateField,
 } from '@/features/search-index/search-index.api.handlers';
 
-export async function GET(
+export const GET = withPermission('search-indexes:view', async function GET(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleGetFields(request, context);
-}
+});
 
-export async function POST(
+export const POST = withPermission('search-indexes:edit', async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleCreateField(request, context);
-}
+});

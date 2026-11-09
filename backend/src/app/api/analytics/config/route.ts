@@ -1,12 +1,14 @@
 // app/api/analytics/config/route.ts
 
-import { handleGetConfig, handleUpdateConfig } from '@/features/analytics/analytics.api.handlers';
 import type { NextRequest } from 'next/server';
 
-export async function GET() {
-  return handleGetConfig();
-}
+import { withPermission } from '@/features/access/route-guard';
+import { handleGetConfig, handleUpdateConfig } from '@/features/analytics/analytics.api.handlers';
 
-export async function PUT(request: NextRequest) {
+export const GET = withPermission('analytics:view', async function GET() {
+  return handleGetConfig();
+});
+
+export const PUT = withPermission('analytics:manage', async function PUT(request: NextRequest) {
   return handleUpdateConfig(request);
-}
+});

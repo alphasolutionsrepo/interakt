@@ -14,6 +14,7 @@
  */
 
 import { NextRequest } from 'next/server';
+
 import { handlePublicSearch } from '@/features/search-experience/search-experience.api.handlers';
 import { publicRoute } from '@/shared/api/public-route';
 

@@ -1,5 +1,10 @@
 // app/users/_lib/api-client.ts
 
+import type {
+  CreateUserDTO,
+  UpdateUserDTO,
+  ChangePasswordDTO,
+} from '@/features/auth/auth.validations';
 import { ApiError, handleApiResponse } from '@/shared/api/api-error';
 
 /**
@@ -11,11 +16,6 @@ import { ApiError, handleApiResponse } from '@/shared/api/api-error';
  * - No business logic (just HTTP calls)
  */
 
-import type {
-  CreateUserDTO,
-  UpdateUserDTO,
-  ChangePasswordDTO,
-} from '@/features/auth/auth.validations';
 
 // User response type (client-safe, no password field)
 export type UserResponse = {
@@ -23,7 +23,9 @@ export type UserResponse = {
   email: string;
   firstName: string | null;
   lastName: string | null;
-  role: 'user' | 'admin' | 'moderator';
+  roleId: string;
+  /** Present in the list; a single user carries only roleId */
+  role?: { id: string; name: string; isBuiltIn: boolean };
   isActive: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;

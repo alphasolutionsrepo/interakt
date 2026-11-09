@@ -9,12 +9,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { apiResponse } from '@/shared/api/response';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   listAdminChatSessions,
   createAdminChatSession,
   getAdminChatSessionCount,
 } from '@/features/analytics';
+import { apiResponse } from '@/shared/api/response';
 
 // ============================================================================
 // SCHEMAS
@@ -36,7 +38,7 @@ const createBodySchema = z.object({
 // GET - List Sessions
 // ============================================================================
 
-export async function GET(request: NextRequest) {
+export const GET = withPermission('analytics:ask', async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const query = listQuerySchema.parse({
@@ -66,13 +68,13 @@ export async function GET(request: NextRequest) {
     if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return apiResponse.error(error, 500, { operation: 'listAnalyticsChatSessions' });
   }
-}
+});
 
 // ============================================================================
 // POST - Create Session
 // ============================================================================
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('analytics:ask', async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const data = createBodySchema.parse(body);
@@ -87,4 +89,4 @@ export async function POST(request: NextRequest) {
     if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return apiResponse.error(error, 500, { operation: 'createAnalyticsChatSession' });
   }
-}
+});

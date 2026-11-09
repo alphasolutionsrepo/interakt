@@ -253,6 +253,13 @@
       "when": 1793286481199,
       "tag": "0035_search_index_last_job",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794251757184,
+      "tag": "0036_roles",
+      "breakpoints": true
     }
   ]
 }
