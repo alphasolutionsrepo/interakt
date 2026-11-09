@@ -12,7 +12,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
     ingestionKeysApi,
-    ApiError,
     type CreateIngestionKeyInput,
 } from '../api-client';
 import { searchIndexKeys } from './useSearchIndexes';
@@ -58,9 +57,7 @@ export function useCreateIngestionKey(searchIndexId: string) {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ingestionKeyKeys.list(searchIndexId) });
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to create ingestion key');
-        },
+        meta: { label: 'Create ingestion key' },
     });
 }
 
@@ -73,8 +70,6 @@ export function useRevokeIngestionKey(searchIndexId: string) {
             queryClient.invalidateQueries({ queryKey: ingestionKeyKeys.list(searchIndexId) });
             toast.success('Ingestion key revoked');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to revoke ingestion key');
-        },
+        meta: { label: 'Revoke ingestion key' },
     });
 }

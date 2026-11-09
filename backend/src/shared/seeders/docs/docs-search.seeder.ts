@@ -53,6 +53,7 @@ import {
   recreateEmptyIndex,
 } from '@/features/search-index/search-index.service';
 import { DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
+import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { calculateChecksum, getRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-registry.service';
 
@@ -144,7 +145,7 @@ interface DocsSearchMeta {
 }
 
 /** An index or experience named like ours exists that the seeder didn't create. Not retried. */
-export class DocsSearchConflictError extends Error {}
+export class DocsSearchConflictError extends ConflictError {}
 
 // ---------------------------------------------------------------------------
 // Orchestrator
@@ -166,7 +167,7 @@ export async function seedDocsSearch(options: { force?: boolean } = {}): Promise
 async function build(force: boolean): Promise<DocsSearchSeedSummary> {
   const adminId = await getAdminUserId();
   const records = buildDocsSearchRecords(await readDocs());
-  if (records.length === 0) throw new Error('No documentation found to index.');
+  if (records.length === 0) throw new SetupRequiredError('No documentation found to index.');
 
   const mode = await resolveSearchMode();
   const previous = await readMeta();
@@ -266,7 +267,7 @@ async function buildWithMode(
     throw new Error(`Docs search indexed no sections: ${result.errors.slice(0, 3).map((e) => JSON.stringify(e)).join('; ')}`);
   }
   if (result.failedDocuments > 0) {
-    logger.warn('Some docs sections failed to index', { failed: result.failedDocuments });
+    logger.warn('Some docs sections failed to index', { failed: result.failedDocuments, ...(result.writeError !== undefined && { err: result.writeError }) });
   }
   const embedded = result.embeddingStats?.generated ?? 0;
   if (mode.searchType === 'hybrid' && embedded < result.indexedDocuments / 2) return 'embeddings-failed';

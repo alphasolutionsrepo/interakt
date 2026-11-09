@@ -258,7 +258,7 @@ export function FieldConfigSheet({
     // searchable must remain switchable OFF, since that is the repair for an index
     // that is currently failing every search.
     const isSearchableCompatible =
-        isFullTextSearchableFieldType(field.fieldType)
+        isFullTextSearchableFieldType(field.fieldType, searchProvider || 'elasticsearch')
         && (providerUI?.supportsSearchableFieldType?.(field.fieldType) ?? true);
     const searchableNeedsRepair = !isSearchableCompatible && localSearchable;
     const filterValueMappings = field.filterValueMappings ?? {};

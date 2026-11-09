@@ -11,6 +11,9 @@
 import { useState, useCallback } from 'react';
 import useSWR from 'swr';
 
+import { reportActionError } from '@/shared/activity/report';
+import { handleApiResponse } from '@/shared/api/api-error';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -161,14 +164,15 @@ export interface SearchResponse {
 // FETCHERS
 // ============================================================================
 
-const fetcher = async (url: string) => {
-    const res = await fetch(url);
-    if (!res.ok) {
-        const error = await res.json().catch(() => ({ message: 'Request failed' }));
-        throw new Error(error.message || 'Request failed');
-    }
-    return res.json();
-};
+/** The active search indexes the playground can search */
+export async function fetchActiveIndexes(): Promise<SearchIndex[]> {
+    return handleApiResponse<SearchIndex[]>(await fetch('/api/search-indexes/all'), 'Failed to load search indexes');
+}
+
+/** What the playground offers for one index: its fields, facets and filters */
+export async function fetchSearchContext(indexId: string): Promise<SearchContext> {
+    return handleApiResponse<SearchContext>(await fetch(`/api/search/index/${indexId}/context`), 'Failed to load the index');
+}
 
 // ============================================================================
 // HOOKS
@@ -178,13 +182,13 @@ const fetcher = async (url: string) => {
  * Hook to fetch all active search indexes
  */
 export function useSearchIndexes() {
-    const { data, error, isLoading, mutate } = useSWR<{ data: SearchIndex[] }>(
+    const { data, error, isLoading, mutate } = useSWR<SearchIndex[]>(
         '/api/search-indexes/all',
-        fetcher
+        fetchActiveIndexes
     );
 
     return {
-        indexes: data?.data || [],
+        indexes: data || [],
         isLoading,
         error,
         refetch: mutate,
@@ -195,17 +199,52 @@ export function useSearchIndexes() {
  * Hook to fetch search context for an index
  */
 export function useSearchContext(indexId: string | null) {
-    const { data, error, isLoading, mutate } = useSWR<{ data: SearchContext }>(
+    const { data, error, isLoading, mutate } = useSWR<SearchContext>(
         indexId ? `/api/search/index/${indexId}/context` : null,
-        fetcher
+        () => fetchSearchContext(indexId as string)
     );
 
     return {
-        context: data?.data || null,
+        context: data || null,
         isLoading,
         error,
         refetch: mutate,
     };
+}
+
+/**
+ * Search an index from the playground. A failed search throws an ApiError, which
+ * carries what went wrong and what to try.
+ */
+export async function searchIndex(
+    indexId: string,
+    request: SearchRequest,
+    options?: { trace?: boolean }
+): Promise<SearchResponse> {
+    const response = await fetch(`/api/search/index/${indexId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        // Playground searches are untraced unless `trace` asks for a full trace
+        body: JSON.stringify({ ...request, ...(options?.trace ? { trace: true } : {}) }),
+    });
+    return handleApiResponse<SearchResponse>(response, 'Search failed');
+}
+
+/**
+ * Search a search experience from the playground, as its visitors would (the server
+ * treats the admin session as a test). A failed search throws an ApiError.
+ */
+export async function searchExperience<T>(slug: string, body: Record<string, unknown>): Promise<T> {
+    // Sent with the admin session, not the experience's access token, so the server
+    // treats it as a test: not counted as real traffic, not traced unless asked.
+    const response = await fetch(`/api/v1/search/${slug}/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    return handleApiResponse<T>(response, 'Search failed');
 }
 
 /**
@@ -214,7 +253,8 @@ export function useSearchContext(indexId: string | null) {
 export function useSearch() {
     const [isSearching, setIsSearching] = useState(false);
     const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
-    const [searchError, setSearchError] = useState<string | null>(null);
+    /** What the failed search threw: an ApiError carries the hint and details */
+    const [searchError, setSearchError] = useState<unknown>(null);
 
     const executeSearch = useCallback(async (
         indexId: string,
@@ -225,26 +265,13 @@ export function useSearch() {
         setSearchError(null);
 
         try {
-            const response = await fetch(`/api/search/index/${indexId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                // Playground searches are untraced unless `trace` asks for a full trace
-                body: JSON.stringify({ ...request, ...(options?.trace ? { trace: true } : {}) }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || 'Search failed');
-            }
-
-            setSearchResult(data.data);
-            return data.data;
+            const data = await searchIndex(indexId, request, options);
+            setSearchResult(data);
+            return data;
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Search failed';
-            setSearchError(message);
+            // Shown in the results panel, so recorded without a notice
+            reportActionError('Search', err, { inline: true });
+            setSearchError(err);
             return null;
         } finally {
             setIsSearching(false);

@@ -40,6 +40,7 @@ import {
   Layout,
   Link2,
 } from 'lucide-react';
+import { errorText } from '@/shared/api/api-error';
 import { useAvailableDisplayFields, type DisplayFieldOption } from '../../_lib/hooks/useAvailableDisplayFields';
 import {
   DISPLAY_FIELD_ROLE_INFO,
@@ -86,7 +87,7 @@ export function StepDisplayConfig({
   const { displayConfig, indexes, externalSources } = formData;
 
   // Fields from all selected indexes and external indexes
-  const { availableFields, isLoading } = useAvailableDisplayFields(
+  const { availableFields, isLoading, error: fieldsError } = useAvailableDisplayFields(
     indexes.map((idx) => idx.searchIndexId),
     externalSources.map((src) => src.dataSourceId)
   );
@@ -331,6 +332,7 @@ export function StepDisplayConfig({
                   </p>
                 </div>
               )}
+              {fieldsError && <p className="text-sm text-destructive">{errorText(fieldsError, 'Failed to fetch fields')}</p>}
             </>
           )}
         </CardContent>

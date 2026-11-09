@@ -927,3 +927,5 @@ export function fieldRequiresReindex(field: string): boolean {
 export function updatesRequireReindex(updatedFields: string[]): boolean {
     return updatedFields.some(field => fieldRequiresReindex(field));
 }
+
+export { EMBEDDING_FIELD_NAME } from './embedding.constants';

@@ -36,6 +36,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
+import { useInlineError } from '@/shared/activity/useInlineError';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 // ============================================================================
 // Form Schema
@@ -88,6 +90,7 @@ export function ProviderFormDialog({
     mode,
 }: ProviderFormDialogProps) {
     const [showApiKey, setShowApiKey] = useState(false);
+    const inline = useInlineError();
 
     const form = useForm<ProviderFormData>({
         resolver: zodResolver(providerFormSchema),
@@ -130,9 +133,20 @@ export function ProviderFormDialog({
         }
     }, [provider, mode, form]);
 
+    // A failed save from last time is not shown again
+    const clearInlineError = inline.clear;
+    useEffect(() => {
+        if (open) clearInlineError();
+    }, [open, clearInlineError]);
+
     const handleSubmit = async (data: ProviderFormData) => {
-        await onSubmit(data);
-        onOpenChange(false);
+        inline.clear();
+        try {
+            await onSubmit(data);
+            onOpenChange(false);
+        } catch (err) {
+            inline.capture(mode === 'create' ? 'Create provider' : 'Update provider', err, form);
+        }
     };
 
     const providerType = form.watch('providerType');
@@ -350,6 +364,8 @@ export function ProviderFormDialog({
                                 </FormItem>
                             )}
                         />
+
+                        <ProblemAlert error={inline.error} hideFields={inline.hideFields} onDismiss={inline.clear} />
 
                         <DialogFooter>
                             <Button

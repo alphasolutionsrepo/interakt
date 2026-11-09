@@ -6,6 +6,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { browserTimeZone } from '@/app/analytics/_lib/period';
 import type { HomeData } from '@/features/dashboard/home.service';
+import { handleApiResponse, toApiError } from '@/shared/api/api-error';
 
 export type {
   HomeCard,
@@ -21,15 +22,17 @@ export type {
 
 const homeKey = ['home'] as const;
 
+/** Everything the home page shows, for the browser's time zone */
+export async function fetchHome(): Promise<HomeData> {
+  const res = await fetch(`/api/dashboard/home?tz=${encodeURIComponent(browserTimeZone())}`);
+  return handleApiResponse<HomeData>(res, 'Failed to load the home page');
+}
+
 /** Everything the home page shows, refreshed every minute in the background */
 export function useHome() {
   return useQuery({
     queryKey: homeKey,
-    queryFn: async (): Promise<HomeData> => {
-      const res = await fetch(`/api/dashboard/home?tz=${encodeURIComponent(browserTimeZone())}`);
-      if (!res.ok) throw new Error('Failed to load the home page');
-      return (await res.json()).data;
-    },
+    queryFn: fetchHome,
     staleTime: 60_000,
     refetchInterval: 60_000,
     placeholderData: keepPreviousData,
@@ -46,8 +49,9 @@ export function useDismissTip() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tipId }),
       });
-      if (!res.ok) throw new Error('Failed to dismiss the tip');
+      if (!res.ok) throw await toApiError(res, 'Failed to dismiss the tip');
     },
+    meta: { label: 'Dismiss tip' },
     onMutate: (tipId) => {
       queryClient.setQueryData<HomeData>(homeKey, (data) =>
         data

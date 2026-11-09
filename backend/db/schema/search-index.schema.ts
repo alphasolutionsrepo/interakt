@@ -18,12 +18,30 @@ import {
   boolean,
   integer,
   json,
+  jsonb,
   index,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { aiProviders, aiProviderModels } from './ai-providers.schema';
 import { AnalyzerConfig } from '@/shared/constants/search-index.constants';
 
+/**
+ * The last long-running job on an index (reindex, recreate, upload) and how it
+ * ended. One value, overwritten each time, so the index page can say what happened
+ * after the user has left and come back. error has the API error shape.
+ */
+export interface IndexLastJob {
+  kind: 'reindex' | 'recreate' | 'upload';
+  /** partial: it finished, but some of the work failed (an upload with some documents rejected) */
+  status: 'running' | 'succeeded' | 'partial' | 'failed';
+  startedAt: string;
+  finishedAt?: string;
+  /** What it did, e.g. "1,204 documents reindexed", and for partial what went wrong */
+  summary?: string;
+  /** For partial: what to do about what went wrong, when we recognise it (a read-only index) */
+  hint?: string;
+  error?: { code: string; message: string; hint?: string; details?: unknown; requestId?: string };
+}
 
 // ============================================================================
 // SEARCH INDEX TABLE
@@ -117,6 +135,7 @@ export const searchIndex = pgTable('search_index', {
   documentCount: integer('document_count').notNull().default(0),
   indexSizeBytes: bigint('index_size_bytes', { mode: 'number' }).default(0),
   lastIndexedAt: timestamp('last_indexed_at'),
+  lastJob: jsonb('last_job').$type<IndexLastJob>(),
 
   // ============================================================================
   // MAPPING VERSION TRACKING

@@ -33,8 +33,7 @@ export async function handleGetSystemHealth(request: NextRequest) {
     return apiResponse.success(health);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get system health', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getSystemHealth' });
   }
 }
 
@@ -53,8 +52,7 @@ export async function handleGetDatabaseHealth(request: NextRequest) {
     return apiResponse.success(health);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to check database health', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getDatabaseHealth' });
   }
 }
 
@@ -73,8 +71,7 @@ export async function handleGetElasticsearchHealth(request: NextRequest) {
     return apiResponse.success(health);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to check Elasticsearch health', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getElasticsearchHealth' });
   }
 }
 
@@ -93,7 +90,6 @@ export async function handleGetAIProvidersHealth(request: NextRequest) {
     return apiResponse.success(health);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to check AI providers health', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getAIProvidersHealth' });
   }
 }

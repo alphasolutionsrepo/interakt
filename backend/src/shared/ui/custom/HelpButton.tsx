@@ -28,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { DocBody } from '@/shared/help/DocBody';
 import type { DocsSearchHit } from '@/shared/help/docs-search';
+import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
 import { resolveHelpForPath } from '@/shared/help/help-content';
 import { OPEN_HELP_EVENT, type HelpMode, type OpenHelpDetail } from '@/shared/help/help-events';
 import { useDocsSearch } from '@/shared/help/useDocsSearch';
@@ -81,15 +82,13 @@ export function HelpButton() {
     }
     setDocs((d) => ({ ...d, [slug]: { title: slug, content: null, loading: true, error: null } }));
     try {
-      const res = await fetch(`/api/help/${slug}`);
-      if (!res.ok) throw new Error('not found');
-      const data = (await res.json()) as { title: string; content: string };
+      const data = await loadHelpDoc(slug);
       cache.current[slug] = { title: data.title, content: data.content };
       setDocs((d) => ({ ...d, [slug]: { title: data.title, content: data.content, loading: false, error: null } }));
-    } catch {
+    } catch (e) {
       setDocs((d) => ({
         ...d,
-        [slug]: { title: 'Not available', content: null, loading: false, error: "This article isn't available yet." },
+        [slug]: { title: 'Not available', content: null, loading: false, error: helpDocError(e) },
       }));
     }
   }, []);

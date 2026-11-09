@@ -26,7 +26,8 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
-import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal } from './types';
+import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal, wasAborted } from './types';
+import { withoutUnsupportedReasoning } from './reasoning-fallback';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -373,11 +374,12 @@ export class OpenAIAdapter implements AIProviderAdapter {
             ...reasoningEffortOf(config),
         };
 
-        const response = await this.makeRequest<OpenAIChatResponse>(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, openaiRequest, 'reasoning_effort', (body) => this.makeRequest<OpenAIChatResponse>(
             `${config.baseUrl}/chat/completions`,
-            openaiRequest,
-            config
-        );
+            body,
+            config,
+            request.signal
+        ));
 
         const choice = response.choices[0];
 
@@ -455,12 +457,12 @@ export class OpenAIAdapter implements AIProviderAdapter {
             toolChoice: request.toolChoice,
         });
 
-        const response = await this.makeStreamRequest(
+        const response = await withoutUnsupportedReasoning(config.baseUrl, openaiRequest, 'reasoning_effort', (body) => this.makeStreamRequest(
             `${config.baseUrl}/chat/completions`,
-            openaiRequest,
+            body,
             config,
             request.signal
-        );
+        ));
 
         let fullContent = '';
         let finishReason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error' = 'stop';
@@ -610,54 +612,19 @@ export class OpenAIAdapter implements AIProviderAdapter {
     // ============================================================================
 
     /**
-     * Make a non-streaming request
+     * Make a non-streaming request: the same request as a streaming one, its body read whole
      */
     private async makeRequest<T>(
         url: string,
         body: unknown,
-        config: AdapterConfig
+        config: AdapterConfig,
+        signal?: AbortSignal
     ): Promise<T> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), config.timeout);
-
+        const response = await this.makeStreamRequest(url, body, config, signal);
         try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: this.getHeaders(config),
-                body: JSON.stringify(body),
-                signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                await this.handleErrorResponse(response);
-            }
-
             return await response.json() as T;
         } catch (error) {
-            clearTimeout(timeoutId);
-
-            if (error instanceof AdapterError) {
-                throw error;
-            }
-
-            if (error instanceof Error && error.name === 'AbortError') {
-                throw new AdapterError(
-                    'Request timed out',
-                    this.providerKey,
-                    undefined,
-                    true
-                );
-            }
-
-            throw new AdapterError(
-                `Network error: ${(error as Error).message}`,
-                this.providerKey,
-                undefined,
-                true,
-                error as Error
-            );
+            throw this.requestFailure(error, signal);
         }
     }
 
@@ -690,23 +657,15 @@ export class OpenAIAdapter implements AIProviderAdapter {
             return response;
         } catch (error) {
             clearTimeout(timeoutId);
-
-            if (error instanceof AdapterError) {
-                throw error;
-            }
-
-            if (error instanceof Error && error.name === 'AbortError') {
-                throw abortedRequestError(this.providerKey, signal);
-            }
-
-            throw new AdapterError(
-                `Network error: ${(error as Error).message}`,
-                this.providerKey,
-                undefined,
-                true,
-                error as Error
-            );
+            throw this.requestFailure(error, signal);
         }
+    }
+
+    /** A request that failed, as an AdapterError: timed out, cancelled, the network */
+    private requestFailure(error: unknown, signal?: AbortSignal): AdapterError {
+        if (error instanceof AdapterError) return error;
+        if (wasAborted(error, signal)) return abortedRequestError(this.providerKey, signal);
+        return new AdapterError(`Network error: ${(error as Error).message}`, this.providerKey, undefined, true, error as Error);
     }
 
     /**

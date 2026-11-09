@@ -10,6 +10,8 @@ import {
 } from '@/features/analytics';
 import type { SessionType } from '@/features/analytics';
 import { clientIp } from '@/shared/api/client-ip';
+import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 
 // ============================================================================
 // SCHEMAS
@@ -37,7 +39,7 @@ const endSessionSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const data = createSessionSchema.parse(body);
 
     // Generate session ID if not provided
@@ -69,16 +71,8 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: `Invalid request: ${error.message}` },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { success: false, error: 'Failed to create session' },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
+    return apiResponse.error(error, 500, { operation: 'startAnalyticsSession' });
   }
 }
 
@@ -88,7 +82,7 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const data = endSessionSchema.parse(body);
 
     await endSession(data.sessionId);
@@ -98,16 +92,8 @@ export async function DELETE(request: NextRequest) {
       message: 'Session ended',
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: `Invalid request: ${error.message}` },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { success: false, error: 'Failed to end session' },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
+    return apiResponse.error(error, 500, { operation: 'endAnalyticsSession' });
   }
 }
 

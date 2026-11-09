@@ -12,7 +12,10 @@
  * See: docs/platform-evolution/DETERMINISTIC-PIPELINE-V2.md § Pipeline Flow
  */
 
+import { describeUnloggedError } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
+import type { Span } from '@opentelemetry/api';
 import { withSpan , ATTR } from '@/features/telemetry';
 import type { AIFeature } from '@/features/analytics/analytics.types';
 import { withExperienceContext } from '@/features/search/search.service';
@@ -35,6 +38,7 @@ import type {
   PlanningRoundSummary,
 } from './v2.types';
 import type { PipelineStreamEvent, TokenUsage } from '../pipeline.types';
+import { chatUntilAbandoned, stopIfAbandoned, TurnAbandonedError } from '../turn-abandoned';
 import type { ContextAssemblyDeps } from './context-assembly';
 import type { TurnPlannerDeps, ChatFn } from './turn-planner';
 import type { ExecutionLoopDeps } from './execution-loop';
@@ -57,6 +61,8 @@ export interface V2PipelineInput {
   sessionId: string;
   /** SSE event callback */
   onEvent: (event: PipelineStreamEvent) => void;
+  /** Aborted when the visitor leaves: the turn stops at once (TurnAbandonedError); its time running out stops it too */
+  signal?: AbortSignal;
 }
 
 export interface V2PipelineResult {
@@ -105,6 +111,15 @@ const DEFAULT_CONFIG: V2PipelineConfig = {
 
 const PIPELINE_TIMEOUT = Symbol('v2-pipeline-timeout');
 
+/** A turn that ran past its wall-clock ceiling */
+function turnTimedOut(maxTotalDurationMs: number): AppError {
+  return new AppError('The answer took too long, so the turn was stopped.', {
+    code: 'TURN_TIMEOUT',
+    status: 504,
+    hint: `A turn may take ${Math.round(maxTotalDurationMs / 1000)} seconds. Try again; if it keeps happening, find the slow step (a model or a search) under Traces.`,
+  });
+}
+
 // ============================================================================
 // TOKEN USAGE TRACKING
 // ============================================================================
@@ -150,6 +165,10 @@ export async function runV2Pipeline(
 ): Promise<V2PipelineResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const { onEvent } = input;
+  // Stops the turn when the visitor leaves or its time runs out: nobody is waiting for the
+  // answer either way (TurnAbandonedError)
+  const outOfTime = new AbortController();
+  const signal = input.signal ? AbortSignal.any([input.signal, outOfTime.signal]) : outOfTime.signal;
   const experienceId = input.experience.id;
   const usage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -158,10 +177,13 @@ export async function runV2Pipeline(
   // the extra executions a re-plan or a filter relaxation produces.
   const turnRequestId = crypto.randomUUID();
 
-  // Wall-clock ceiling. If we cross it, abandon waiting on whatever's in flight
-  // and return a graceful timeout response. Losing work continues in the
-  // background but is no longer awaited — matches V1 semantics (orchestrator.ts).
+  // Wall-clock ceiling. If we cross it, stop waiting on whatever's in flight and return a
+  // graceful timeout response; the turn itself is stopped too (outOfTime).
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  // A session this turn created: empty until the turn is saved to it
+  let createdSession: string | undefined;
+  // Labelled when the turn times out, while its work is still stopping
+  let turnSpan: Span | undefined;
   const timeoutPromise = new Promise<typeof PIPELINE_TIMEOUT>((resolve) => {
     timeoutHandle = setTimeout(() => resolve(PIPELINE_TIMEOUT), cfg.maxTotalDurationMs);
   });
@@ -177,16 +199,21 @@ export async function runV2Pipeline(
       },
     },
     async (parentSpan) => {
+  turnSpan = parentSpan;
 
-  // Wrap all chat functions to accumulate token usage + inject experienceId/feature
+  // Wrap all chat functions to accumulate token usage + inject experienceId/feature, and so
+  // the visitor leaving aborts a call in flight
+  const tracked = (chat: ChatFn, feature: AIFeature) => trackUsage(chatUntilAbandoned(chat, signal), usage, experienceId, feature);
   const trackedDeps: V2PipelineDeps = {
     ...deps,
-    turnPlanner: { chat: trackUsage(deps.turnPlanner.chat, usage, experienceId, 'turn-planner') },
-    executionLoop: { ...deps.executionLoop, chat: trackUsage(deps.executionLoop.chat, usage, experienceId, 'param-extraction') },
-    synthesis: { chat: trackUsage(deps.synthesis.chat, usage, experienceId, 'response-synthesis') },
+    turnPlanner: { chat: tracked(deps.turnPlanner.chat, 'turn-planner') },
+    executionLoop: { ...deps.executionLoop, chat: tracked(deps.executionLoop.chat, 'param-extraction') },
+    synthesis: { chat: tracked(deps.synthesis.chat, 'response-synthesis') },
   };
 
   // ── S2: Context Assembly ───────────────────────────────────────────────
+  // It can create the session and embed the message for the memory search
+  stopIfAbandoned(signal, 'loading the conversation');
   onEvent({ type: 'step_start', stepId: 'context-assembly', stepType: 'episodic_memory', stepName: 'Loading context' });
 
   // Bound before context assembly, which reads the planner prompt budget from it. The
@@ -225,17 +252,18 @@ export async function runV2Pipeline(
     },
   );
 
-  onEvent({ type: 'step_complete', stepId: 'context-assembly', stepType: 'episodic_memory', durationMs: ctxResult.durationMs, status: 'ok' });
+  onEvent({ type: 'step_complete', stepId: 'context-assembly', stepType: 'episodic_memory', durationMs: ctxResult.durationMs, status: ctxResult.success ? 'ok' : 'error' });
 
   if (!ctxResult.success || !ctxResult.data) {
-    const errorMsg = ctxResult.summary;
     parentSpan.setAttribute('alpha.v2.outcome', 'context_assembly_failed');
-    onEvent({ type: 'error', message: errorMsg });
-    onEvent({ type: 'done', sessionId: input.sessionId, usage });
-    return { sessionId: input.sessionId, responseText: '', usage };
+    // Not sent from here: its text can be internal (a database address). The answer to
+    // the caller explains what it recognises (the database being down) to an admin, plainly
+    // to visitors, and logs it once, with the request id.
+    throw new Error(ctxResult.summary, { cause: ctxResult.cause });
   }
 
   const turnContext: TurnContext = ctxResult.data;
+  if (turnContext.sessionId !== input.sessionId) createdSession = turnContext.sessionId;
 
   // ── D1/D2: bounded plan → execute → assess rounds ─────────────────────
   //
@@ -255,6 +283,7 @@ export async function runV2Pipeline(
   while (round < policy.maxPlanningRounds) {
     round++;
     const isReplan = round > 1;
+    stopIfAbandoned(signal, `planning round ${round}`);
 
   // ── D1: Turn Planner ──────────────────────────────────────────────────
   onEvent({
@@ -346,7 +375,8 @@ export async function runV2Pipeline(
     onEvent({ type: 'content', text: errorText });
     onEvent({ type: 'done', sessionId: turnContext.sessionId, usage });
 
-    // Still persist the turn (with fallback response)
+    // Still persist the turn (with fallback response), unless the visitor has left
+    stopIfAbandoned(signal, 'saving the turn');
     await persistTurn(
       {
         sessionId: turnContext.sessionId,
@@ -422,6 +452,7 @@ export async function runV2Pipeline(
               turnRequestId,
             },
             emit: wrappedEmit,
+            signal,
           },
           trackedDeps.executionLoop,
         );
@@ -551,6 +582,7 @@ export async function runV2Pipeline(
   }
 
   // ── D3: Response Synthesis ────────────────────────────────────────────
+  stopIfAbandoned(signal, 'writing the answer');
   onEvent({ type: 'step_start', stepId: 'response-synthesis', stepType: 'response_synthesis', stepName: 'Generating response' });
 
   const synthResult = await withSpan(
@@ -646,6 +678,8 @@ export async function runV2Pipeline(
   const updatedTurnLog = [...turnContext.turnLog, thisTurnEntry];
 
   // ── D4: Persistence ───────────────────────────────────────────────────
+  // Checked once: a turn that is saved also gets its post-turn tasks
+  stopIfAbandoned(signal, 'saving the turn');
   await withSpan(
     {
       name: 'pipeline.v2.persistence',
@@ -678,7 +712,8 @@ export async function runV2Pipeline(
   triggerPostTurnTasks(turnContext, input.experience, onEvent);
 
   // ── Done ──────────────────────────────────────────────────────────────
-  parentSpan.setAttribute('alpha.v2.outcome', 'success');
+  // Unless it timed out while being saved: the visitor was told it failed
+  if (!outOfTime.signal.aborted) parentSpan.setAttribute('alpha.v2.outcome', 'success');
   parentSpan.setAttribute(ATTR.AI_TOTAL_TOKENS, usage.totalTokens);
   parentSpan.setAttribute(ATTR.AI_INPUT_TOKENS, usage.promptTokens);
   parentSpan.setAttribute(ATTR.AI_OUTPUT_TOKENS, usage.completionTokens);
@@ -695,16 +730,46 @@ export async function runV2Pipeline(
     }, // end withSpan callback
   ), input.experience.slug); // end withSpan + withExperienceContext
 
-  const raced = await Promise.race([work, timeoutPromise]);
-  if (timeoutHandle) clearTimeout(timeoutHandle);
+  // The turn stopped before anything was saved: the session it created isn't kept, empty.
+  // A failed delete is logged here and doesn't change how the turn ends.
+  const turn = work.catch(async (error: unknown) => {
+    if (error instanceof TurnAbandonedError && createdSession) {
+      const sessionId = createdSession;
+      await deps.persistence.discardEmptySession(sessionId).catch((err: unknown) => {
+        logger.error('Could not discard the empty session of a stopped turn', err as Error, { experienceId, sessionId });
+      });
+    }
+    throw error;
+  });
+
+  // Cleared however the turn ends, a failure included
+  const raced = await Promise.race([turn, timeoutPromise]).finally(() => {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  });
 
   if (raced === PIPELINE_TIMEOUT) {
+    // Answered as other failed turns are (a plain message to visitors, the explanation to an
+    // admin testing, the request id), but logged here, once, as a warning: a slow turn isn't
+    // a fault on our side
+    const { body } = describeUnloggedError(turnTimedOut(cfg.maxTotalDurationMs));
     logger.warn('V2 pipeline timed out — returning graceful response', {
       experienceId,
       sessionId: input.sessionId,
       maxTotalDurationMs: cfg.maxTotalDurationMs,
+      requestId: body.requestId,
     });
-    onEvent({ type: 'error', message: 'Pipeline execution timed out' });
+    // Its answer would never be seen: the turn stops (a model call in flight is aborted,
+    // nothing is saved) and is recorded as timed out, not as the visitor leaving. The call
+    // is aborted as timed out (TimeoutError): a failed call, not counted against its provider
+    turnSpan?.setAttribute('alpha.v2.outcome', 'timed_out');
+    outOfTime.abort(new DOMException('The chat turn ran out of time', 'TimeoutError'));
+    // No longer awaited, so a failure after this would otherwise go unreported; the stop
+    // above isn't one
+    turn.catch((err: unknown) => {
+      if (err instanceof TurnAbandonedError) return;
+      logger.error('V2 turn failed after it timed out', err as Error, { experienceId, sessionId: input.sessionId });
+    });
+    onEvent({ type: 'error', message: body.message, code: body.code, ...(body.hint && { hint: body.hint }), requestId: body.requestId });
     onEvent({ type: 'done', sessionId: input.sessionId, usage });
     return { sessionId: input.sessionId, responseText: '', usage };
   }
@@ -926,6 +991,10 @@ export function createProductionV2Deps(): V2PipelineDeps {
       async updateSession(sessionId, updates) {
         const sessionsService = await import('@/features/sessions/sessions.service');
         await sessionsService.updateSession(sessionId, updates as any);
+      },
+      async discardEmptySession(sessionId) {
+        const sessionsService = await import('@/features/sessions/sessions.service');
+        await sessionsService.discardEmptySession(sessionId);
       },
     },
   };

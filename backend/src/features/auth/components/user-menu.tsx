@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LogIn, LogOut } from 'lucide-react'
+import { activityStore } from '@/shared/activity/activity-store'
 
 export function UserMenu() {
     const { data: session, status } = useSession()
@@ -63,7 +64,11 @@ export function UserMenu() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                    onClick={() => signOut({ callbackUrl: '/' })}
+                    onClick={() => {
+                        // The activity list stays in this browser; don't leave it for the next user
+                        activityStore.clear()
+                        signOut({ callbackUrl: '/' })
+                    }}
                     className="text-red-600 focus:text-red-600"
                 >
                     <LogOut className="mr-2 h-4 w-4" />

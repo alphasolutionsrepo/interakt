@@ -36,6 +36,9 @@ import {
 } from '@/components/ui/select';
 import { Plus, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+
+import { reportActionError } from '@/shared/activity/report';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 import type { SearchIndexField } from '@/features/search-index';
 import { searchIndexFieldsApi } from '../_lib/api-client';
 import { getProviderUI } from './providers';
@@ -117,11 +120,12 @@ export function AddFieldDialog({
     // The type select can change after the box is ticked, so gate the effective
     // value on compatibility rather than trying to reset state on every change.
     const isSearchableCompatible =
-        isFullTextSearchableFieldType(fieldType)
+        isFullTextSearchableFieldType(fieldType, searchProvider || 'elasticsearch')
         && (getProviderUI(searchProvider || 'elasticsearch')?.supportsSearchableFieldType?.(fieldType) ?? true);
     const effectiveIsSearchable = isSearchable && isSearchableCompatible;
 
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<unknown>(null);
 
     const existingNames = useMemo(
         () => new Set(existingFields.map((f) => f.fieldName)),
@@ -129,6 +133,7 @@ export function AddFieldDialog({
     );
 
     const reset = useCallback(() => {
+        setSubmitError(null);
         setFieldName('');
         setFieldType('keyword');
         setDisplayName('');
@@ -206,6 +211,7 @@ export function AddFieldDialog({
         if (!canSubmit) return;
 
         setIsSubmitting(true);
+        setSubmitError(null);
         try {
             const mappingConfig: Parameters<typeof searchIndexFieldsApi.createField>[1]['mappingConfig'] = {
                 mode,
@@ -257,8 +263,8 @@ export function AddFieldDialog({
             reset();
             onOpenChange(false);
         } catch (e) {
-            const msg = (e as Error).message;
-            toast.error('Failed to create field', { description: msg });
+            reportActionError('Create field', e, { inline: true });
+            setSubmitError(e);
             setIsSubmitting(false);
         }
     }, [
@@ -522,6 +528,10 @@ export function AddFieldDialog({
                             </div>
                         </div>
                     </div>
+
+                    {submitError != null && (
+                        <ProblemAlert title="Couldn't create the field" error={submitError} onDismiss={() => setSubmitError(null)} />
+                    )}
 
                     {/* Errors */}
                     {validation.length > 0 && fieldName !== '' && (

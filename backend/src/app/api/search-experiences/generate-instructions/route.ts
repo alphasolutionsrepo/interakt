@@ -72,13 +72,8 @@ export async function POST(request: NextRequest) {
       instructions: generatedInstructions,
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Failed to generate custom instructions', err);
-
-    if (err.message.includes('not found')) {
-      return apiResponse.notFound('One or more indexes not found');
-    }
-
-    return apiResponse.error('Failed to generate instructions. Please try again.', 500);
+    // Answered as what it is (indexes that are gone, an AI model that is missing or
+    // disabled), and logged once
+    return apiResponse.error(error, 500, { operation: 'generateInstructions' });
   }
 }

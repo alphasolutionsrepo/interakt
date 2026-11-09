@@ -23,6 +23,7 @@ import type {
   ModuleResult,
 } from './v2.types';
 import type { ChatMessage, ChatResult, ChatOptions, ResponseFormat } from '@/features/ai-service/ai-service.types';
+import { stepFailure } from '../turn-abandoned';
 
 const logger = createLogger('v2:turn-planner');
 
@@ -200,8 +201,8 @@ export async function planTurn(
       durationMs,
     };
   } catch (error) {
-    const durationMs = Date.now() - startTime;
-    const err = error instanceof Error ? error : new Error(String(error));
+    // A turn nobody waits for any more stops here instead (TurnAbandonedError)
+    const { err, durationMs } = stepFailure(error, startTime);
     logger.error('Turn planning failed', err);
 
     return {

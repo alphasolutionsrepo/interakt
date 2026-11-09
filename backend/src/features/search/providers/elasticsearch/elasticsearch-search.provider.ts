@@ -20,6 +20,7 @@ import type {
     ProviderHit,
     TotalHits,
 } from '../../search.types';
+import { refusedOrFailed } from '../../request-refusal';
 import { SearchError } from '../../search.types';
 import type {
     SearchProvider,
@@ -29,6 +30,7 @@ import type {
     AutocompleteResult,
 } from '../search-provider.interface';
 import type { GetDocumentResult } from '../search-engine-provider.interface';
+import { failureText } from '../search-engine-provider.interface';
 import {
     buildSearchBody,
     buildLexicalSearchBody,
@@ -145,20 +147,26 @@ export class ElasticsearchSearchProvider implements SearchProvider {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-            logger.error('Search execution failed', {
+            // Passed on: whoever answers the caller logs it
+            logger.debug('Search execution failed', {
                 indexName: context.indexName,
                 searchType,
                 error: errorMessage,
             });
 
             if (error instanceof SearchError) {
-                throw error;
+                // A refused search (400) answers as the filter or sort to fix, or as a failure.
+                // Text fields are filtered through .keyword, so either name may be the one given.
+                throw error.code === 'INVALID_QUERY'
+                    ? refusedOrFailed(error.message, searchRequest, (field) => [field, `${field}.keyword`], error, error.details, request.fixed)
+                    : error;
             }
 
             throw new SearchError(
                 errorMessage,
                 'PROVIDER_ERROR',
-                { provider: this.name, indexName: context.indexName }
+                { provider: this.name, indexName: context.indexName },
+                { cause: error }
             );
         }
     }
@@ -237,12 +245,8 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
             return { hits };
         } catch (error) {
-            logger.error('Autocomplete query failed', {
-                indexName,
-                query,
-                error: error instanceof Error ? error.message : 'Unknown error',
-            });
-            return { hits: [] };
+            // Passed on: the caller decides (a visitor's type-ahead stays quiet) and logs it once
+            throw new SearchError(error instanceof Error ? error.message : 'Autocomplete failed', 'PROVIDER_ERROR', { provider: this.name, indexName }, { cause: error });
         }
     }
 
@@ -281,9 +285,10 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                 return { found: false };
             }
 
-            const message = error instanceof Error ? error.message : 'Failed to get document';
-            logger.error('Failed to get document by ID', { indexName, documentId, error: message });
-            return { found: false, error: message };
+            const message = failureText(error, 'Failed to get document');
+            // The search service turns it into a failure, and whoever answers logs it
+            logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
+            return { found: false, error: message, cause: error };
         }
     }
 
@@ -373,7 +378,8 @@ export class ElasticsearchSearchProvider implements SearchProvider {
             throw new SearchError(
                 `Failed to fetch distinct values for field "${fieldName}": ${errorMessage}`,
                 'PROVIDER_ERROR',
-                { provider: this.name, indexName, fieldName }
+                { provider: this.name, indexName, fieldName },
+                { cause: error }
             );
         }
     }
@@ -602,7 +608,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                 });
             }
 
-            logger.error('ES query failed', {
+            logger.debug('ES query failed', {
                 index: indexName,
                 took,
                 error: error instanceof Error ? error.message : 'Unknown error',
@@ -610,19 +616,17 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                            this.isSearchPhaseExecutionError(error) ? 'SEARCH_PHASE_ERROR' : 'UNKNOWN',
             });
 
-            if (this.isIndexNotFoundError(error)) {
-                throw new SearchError(
-                    `Index "${indexName}" not found`,
-                    'INDEX_NOT_FOUND',
-                    { indexName }
-                );
-            }
+            // An index that is gone is not the caller's doing: it stays a failure (the
+            // engine's error goes along as the cause), and its name stays out of the API response
 
-            if (this.isSearchPhaseExecutionError(error)) {
+            // Only a 400 is the request's doing: shards that failed or timed out (503) are
+            // the cluster's, and stay a failure
+            if (this.isSearchPhaseExecutionError(error) && statusCodeOf(error) === 400) {
                 throw new SearchError(
                     this.extractSearchError(error),
                     'INVALID_QUERY',
-                    { indexName }
+                    { indexName },
+                    { cause: error }
                 );
             }
 
@@ -676,9 +680,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
      * Check if error is index not found
      */
     private isIndexNotFoundError(error: unknown): boolean {
-        if (!error || typeof error !== 'object') return false;
-        const meta = (error as { meta?: { statusCode?: number } }).meta;
-        return meta?.statusCode === 404;
+        return statusCodeOf(error) === 404;
     }
 
     /**
@@ -705,6 +707,11 @@ export class ElasticsearchSearchProvider implements SearchProvider {
         const message = (error as { message?: string }).message;
         return message || 'Search failed';
     }
+}
+
+/** The HTTP status Elasticsearch answered with, from the client's error */
+function statusCodeOf(error: unknown): number | undefined {
+    return (error as { meta?: { statusCode?: number } } | undefined)?.meta?.statusCode;
 }
 
 // ============================================================================

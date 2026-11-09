@@ -14,14 +14,12 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { createLogger } from '@/shared/logger/logger';
+import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
+import { AppError } from '@/shared/errors/app-error';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
-import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
-import { SearchError } from '@/features/search/search.types';
-import {
-  authenticateAccessToken,
-  createCorsHeaders,
-  handleCorsPreflight,
-} from './access-token.middleware';
+import { analyticsSourceOfTokenCaller, markIfAdminTest } from '@/features/auth/token-or-session';
+import { createCorsHeaders, openPublicRequest, withCors } from './access-token.middleware';
 import { publicSearchRequestSchema, autocompleteRequestSchema } from './search-experience.schemas';
 import type {
   SearchExperienceWithIndexes,
@@ -42,25 +40,16 @@ const logger = createLogger('search-experience-api');
  * POST /api/v1/search
  */
 export async function handlePublicSearch(request: NextRequest): Promise<NextResponse> {
-  // Handle CORS preflight
-  if (request.method === 'OPTIONS') {
-    return handleCorsPreflight();
-  }
-
   const startTime = Date.now();
 
-  // 1. Authenticate using access token
-  const authResult = await authenticateAccessToken(request);
-  if (!authResult.success) {
-    return (authResult as { success: false; response: NextResponse }).response;
-  }
-
-  const { experience } = authResult as { success: true; experience: SearchExperienceWithIndexes };
-  const origin = request.headers.get('origin');
+  // 1. CORS preflight, or the access token's experience
+  const opened = await openPublicRequest(request);
+  if ('response' in opened) return opened.response;
+  const { experience, origin } = opened;
 
   try {
     // 2. Parse request body
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validated = publicSearchRequestSchema.parse(body) as PublicSearchRequest;
 
     // 3–6. Search every source the experience uses and merge the results
@@ -116,88 +105,13 @@ function handleSearchError(
   origin: string | null
 ): NextResponse {
   if (error instanceof NoSourcesError) {
-    return createErrorResponse(error.message, 'NO_INDEXES', 400, experience, origin);
+    return withCors(apiResponse.error(new AppError(error.message, { code: 'NO_INDEXES', status: 400 }), undefined, { operation: 'publicSearch', experienceId: experience.id }), experience, origin);
   }
 
-  logger.error('Search error', {
-    experienceId: experience.id,
-    error: error instanceof Error ? error.message : 'Unknown error',
-  });
-
-  // Zod validation error
-  if (error instanceof ZodError) {
-    return createErrorResponse(
-      'Invalid request',
-      'VALIDATION_ERROR',
-      400,
-      experience,
-      origin,
-      error.errors.map((e) => ({
-        field: e.path.join('.'),
-        message: e.message,
-      }))
-    );
-  }
-
-  // Search service error
-  if (error instanceof SearchError) {
-    const statusMap: Record<string, number> = {
-      INDEX_NOT_FOUND: 404,
-      INDEX_NOT_READY: 503,
-      INVALID_QUERY: 400,
-      INVALID_FILTER: 400,
-      INVALID_FACET: 400,
-      INVALID_SORT: 400,
-      FIELD_NOT_FOUND: 400,
-      EMBEDDING_FAILED: 503,
-      PROVIDER_ERROR: 503,
-      TIMEOUT: 504,
-    };
-
-    return createErrorResponse(
-      error.message,
-      error.code,
-      statusMap[error.code] ?? 500,
-      experience,
-      origin
-    );
-  }
-
-  // Unknown error
-  return createErrorResponse(
-    'An unexpected error occurred',
-    'INTERNAL_ERROR',
-    500,
-    experience,
-    origin
-  );
-}
-
-/**
- * Create error response with CORS headers
- */
-function createErrorResponse(
-  message: string,
-  code: string,
-  status: number,
-  experience: SearchExperienceWithIndexes,
-  origin: string | null,
-  details?: unknown
-): NextResponse {
-  const corsHeaders = createCorsHeaders(experience, origin);
-
-  return NextResponse.json(
-    {
-      success: false,
-      error: message,
-      code,
-      details,
-    },
-    {
-      status,
-      headers: corsHeaders,
-    }
-  );
+  if (error instanceof ZodError) return withCors(apiResponse.validationError(error), experience, origin);
+  // A search error answers with its own status (SEARCH_ERROR_STATUS); a server failure
+  // gets the plain public message and a request id (apiResponse), which logs it once
+  return withCors(apiResponse.error(error, undefined, { operation: 'publicSearch', experienceId: experience.id }), experience, origin);
 }
 
 // ============================================================================
@@ -209,34 +123,26 @@ function createErrorResponse(
  * POST /api/v1/autocomplete
  */
 export async function handleAutocomplete(request: NextRequest): Promise<NextResponse> {
-  // Handle CORS preflight
-  if (request.method === 'OPTIONS') {
-    return handleCorsPreflight();
-  }
-
   const startTime = Date.now();
 
-  // 1. Authenticate using access token
-  const authResult = await authenticateAccessToken(request);
-  if (!authResult.success) {
-    return (authResult as { success: false; response: NextResponse }).response;
-  }
-
-  const { experience } = authResult as { success: true; experience: SearchExperienceWithIndexes };
-  const origin = request.headers.get('origin');
+  // 1. CORS preflight, or the access token's experience
+  const opened = await openPublicRequest(request);
+  if ('response' in opened) return opened.response;
+  const { experience, origin } = opened;
 
   try {
+    // The search playground: an admin testing gets a failure explained, not empty suggestions
+    await markIfAdminTest(request);
+
     // 2. Parse request body
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validated = autocompleteRequestSchema.parse(body);
 
     // 3. Check if autocomplete is enabled
     const autocompleteConfig = experience.searchConfig?.autocomplete;
     if (!autocompleteConfig?.enabled) {
-      return createErrorResponse(
-        'Autocomplete is not enabled for this search experience',
-        'AUTOCOMPLETE_DISABLED',
-        400,
+      return withCors(
+        apiResponse.error(new AppError('Autocomplete is not enabled for this search experience', { code: 'AUTOCOMPLETE_DISABLED', status: 400 }), undefined, { operation: 'autocomplete', experienceId: experience.id }),
         experience,
         origin
       );
@@ -280,33 +186,12 @@ export async function handleAutocomplete(request: NextRequest): Promise<NextResp
       { headers: corsHeaders }
     );
   } catch (error) {
-    logger.error('Autocomplete error', {
-      experienceId: experience.id,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-
     // Zod validation error
     if (error instanceof ZodError) {
-      return createErrorResponse(
-        'Invalid request',
-        'VALIDATION_ERROR',
-        400,
-        experience,
-        origin,
-        error.errors.map((e) => ({
-          field: e.path.join('.'),
-          message: e.message,
-        }))
-      );
+      return withCors(apiResponse.validationError(error), experience, origin);
     }
 
-    // Unknown error
-    return createErrorResponse(
-      'An unexpected error occurred',
-      'INTERNAL_ERROR',
-      500,
-      experience,
-      origin
-    );
+    // Logged once by apiResponse
+    return withCors(apiResponse.error(error, undefined, { operation: 'autocomplete', experienceId: experience.id }), experience, origin);
   }
 }

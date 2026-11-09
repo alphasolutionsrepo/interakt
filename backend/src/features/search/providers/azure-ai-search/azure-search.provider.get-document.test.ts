@@ -9,10 +9,11 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
 vi.mock('server-only', () => ({}));
-vi.mock('@/shared/logger/logger', () => ({
-  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 const { getDocument } = vi.hoisted(() => ({ getDocument: vi.fn() }));
 vi.mock('./azure-client', () => ({ getSearchClient: () => ({ getDocument }), checkAzureHealth: vi.fn() }));
 
@@ -36,9 +37,13 @@ describe('AzureSearchProvider.getDocument', () => {
   });
 
   it('returns other failures as errors', async () => {
-    getDocument.mockRejectedValueOnce(Object.assign(new Error('Service Unavailable'), { statusCode: 503 }));
+    const unavailable = Object.assign(new Error('Service Unavailable'), { statusCode: 503 });
+    getDocument.mockRejectedValueOnce(unavailable);
 
-    expect(await provider.getDocument('products', 'PROD-1')).toEqual({ found: false, error: 'Service Unavailable' });
+    // With Azure's own error, so the API can explain it
+    expect(await provider.getDocument('products', 'PROD-1')).toEqual({ found: false, error: 'Service Unavailable', cause: unavailable });
+    // The search service turns it into a failure, and whoever answers logs it
+    expect(reported(logs)).toEqual([]);
   });
 
   it('returns the document when the key exists', async () => {

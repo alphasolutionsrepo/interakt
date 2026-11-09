@@ -1,5 +1,6 @@
 // app/analytics/traces/_lib/api-client.ts
 
+import { handleApiPage, handleApiResponse } from '@/shared/api/api-error';
 import type { TraceListFacts } from '@/features/telemetry/telemetry.types';
 import { approximateTimeRange, periodParams, type Period } from '../../_lib/period';
 
@@ -74,30 +75,6 @@ export interface SpanListResponse {
   };
 }
 
-async function fetchApi<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
-  const json = await response.json();
-  if (!json.success) {
-    throw new Error(json.error || 'Unknown error');
-  }
-  return json as T;
-}
-
-async function deleteApi<T>(url: string): Promise<T> {
-  const response = await fetch(url, { method: 'DELETE' });
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
-  const json = await response.json();
-  if (!json.success) {
-    throw new Error(json.error || 'Failed to delete');
-  }
-  return json.data;
-}
-
 /**
  * The period as traces expects it: the nearest fixed range (its required
  * parameter) plus the exact instants, which take priority on the server.
@@ -123,30 +100,29 @@ export const tracesApi = {
     if (filters?.rootOnly) p.set('rootOnly', 'true');
     if (filters?.experienceId) p.set('experienceId', filters.experienceId);
 
-    const json = await fetchApi<{ data: SpanListItem[]; pagination: SpanListResponse['pagination'] }>(
-      `/api/telemetry/traces?${p.toString()}`
+    const { data, pagination } = await handleApiPage<SpanListItem, SpanListResponse['pagination']>(
+      await fetch(`/api/telemetry/traces?${p.toString()}`)
     );
-    return { spans: json.data, pagination: json.pagination };
+    return { spans: data, pagination };
   },
 
   getById: async (spanId: string): Promise<SpanDetail> => {
-    const json = await fetchApi<{ data: SpanDetail }>(`/api/telemetry/traces/${spanId}`);
-    return json.data;
+    return handleApiResponse<SpanDetail>(await fetch(`/api/telemetry/traces/${spanId}`));
   },
 
   getTraceSpans: async (traceId: string): Promise<SpanDetail[]> => {
-    const json = await fetchApi<{ data: SpanDetail[] }>(`/api/telemetry/traces/trace/${traceId}`);
-    return json.data;
+    return handleApiResponse<SpanDetail[]>(await fetch(`/api/telemetry/traces/trace/${traceId}`));
   },
 
   getMetrics: async (period: Period, experienceId?: string): Promise<SpanMetrics> => {
     const params = periodSearchParams(period);
     if (experienceId) params.set('experienceId', experienceId);
-    const json = await fetchApi<{ data: SpanMetrics }>(`/api/telemetry/traces/metrics?${params}`);
-    return json.data;
+    return handleApiResponse<SpanMetrics>(await fetch(`/api/telemetry/traces/metrics?${params}`));
   },
 
-  deleteSpan: async (spanId: string) => deleteApi(`/api/telemetry/traces/${spanId}`),
+  deleteSpan: async (spanId: string) =>
+    handleApiResponse<{ deleted: boolean; spanId: string }>(await fetch(`/api/telemetry/traces/${spanId}`, { method: 'DELETE' })),
 
-  deleteAll: async () => deleteApi<{ deleted: boolean; count: number }>('/api/telemetry/traces'),
+  deleteAll: async () =>
+    handleApiResponse<{ deleted: boolean; count: number }>(await fetch('/api/telemetry/traces', { method: 'DELETE' })),
 };

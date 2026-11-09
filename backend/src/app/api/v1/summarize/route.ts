@@ -12,11 +12,14 @@
 
 import { NextRequest } from 'next/server';
 import { handleSummarize } from '@/features/chat';
+import { publicRoute } from '@/shared/api/public-route';
 
-export async function POST(request: NextRequest) {
+async function post(request: NextRequest) {
   return handleSummarize(request);
 }
 
 export async function OPTIONS(request: NextRequest) {
   return handleSummarize(request);
 }
+
+export const POST = publicRoute(post);

@@ -137,6 +137,15 @@ export async function authenticateAccessToken(
 // ============================================================================
 
 /**
+ * A response with the experience's CORS headers, so the widget on the allowed site can
+ * read it (errors included)
+ */
+export function withCors(response: NextResponse, experience: SearchExperienceWithIndexes, origin: string | null): NextResponse {
+  createCorsHeaders(experience, origin).forEach((value, key) => response.headers.set(key, value));
+  return response;
+}
+
+/**
  * Create CORS headers for response
  */
 export function createCorsHeaders(
@@ -168,6 +177,19 @@ export function handleCorsPreflightWithExperience(
 ): NextResponse {
   const headers = createCorsHeaders(experience, origin);
   return new NextResponse(null, { status: 204, headers });
+}
+
+/**
+ * Opens a public request: the experience its access token is for, with the request's
+ * origin, or the answer to send instead (a CORS preflight, or the token refused)
+ */
+export async function openPublicRequest(
+  request: NextRequest,
+): Promise<{ response: NextResponse } | { experience: SearchExperienceWithIndexes; origin: string | null }> {
+  if (request.method === 'OPTIONS') return { response: handleCorsPreflight() };
+  const authResult = await authenticateAccessToken(request);
+  if (!authResult.success) return { response: (authResult as MiddlewareError).response };
+  return { experience: (authResult as MiddlewareResult).experience, origin: request.headers.get('origin') };
 }
 
 /**

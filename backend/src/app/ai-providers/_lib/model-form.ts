@@ -3,50 +3,17 @@
 import { z } from 'zod';
 
 import type { AIProviderModelResponse, UpdateAIModelInput } from '@/features/ai-providers';
+import { modelFieldRules, modelTypeSchema } from '@/features/ai-providers/ai-providers.validation';
 
 import { capabilitiesFromForm, REASONING_CHOICES, reasoningChoiceOf, type ReasoningChoice } from './model-capabilities';
 
-/**
- * Model form schema. The model key follows the server's rule (any non-empty key):
- * provider keys carry `:` (Ollama tags) and `/` (gateway routes).
- */
+/** Model form schema: the server's rules for the model's fields, plus the form's own */
 export const modelFormSchema = z.object({
-    modelKey: z.string()
-        .min(1, 'Model key is required')
-        .max(100, 'Model key too long'),
+    ...modelFieldRules,
 
-    displayName: z.string()
-        .min(1, 'Display name is required')
-        .max(150, 'Display name too long'),
-
-    description: z.string()
-        .max(500, 'Description too long')
-        .optional()
-        .nullable(),
-
-    modelType: z.enum(['text', 'chat', 'embedding', 'vision']),
-
-    dimensions: z.number()
-        .int()
-        .positive()
-        .max(10000, 'Dimensions value too large')
-        .optional()
-        .nullable(),
+    modelType: modelTypeSchema,
 
     isAvailable: z.boolean().default(true),
-
-    // Pricing fields for cost estimation
-    inputCostPerMillionTokens: z.number()
-        .min(0, 'Cost cannot be negative')
-        .max(1000, 'Cost seems too high')
-        .optional()
-        .nullable(),
-
-    outputCostPerMillionTokens: z.number()
-        .min(0, 'Cost cannot be negative')
-        .max(1000, 'Cost seems too high')
-        .optional()
-        .nullable(),
 
     // Capabilities (flattened for form, will be restructured on submit)
     usesCompletionTokens: z.boolean().default(false),

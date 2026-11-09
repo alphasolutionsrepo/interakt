@@ -10,16 +10,12 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
 import { getGlobalSearchConfig } from '@/features/global-settings';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { runWithTelemetryLevel } from '@/features/telemetry';
 import * as searchService from './search.service';
 import { searchRequestSchema } from './search.validation';
-import { SearchError } from './search.types';
 import type { SearchRequest } from './search.types';
-
-const logger = createLogger('search-handlers');
 
 // ============================================================================
 // VALIDATION SCHEMAS
@@ -179,7 +175,7 @@ export async function handleGetSearchContextById(
 
         return apiResponse.success(serializedContext);
     } catch (error) {
-        return handleSearchError(error, 'getSearchContext');
+        return handleSearchError(error, 'getSearchContextById');
     }
 }
 
@@ -210,7 +206,7 @@ export async function handleGetSearchContextByName(
 
         return apiResponse.success(serializedContext);
     } catch (error) {
-        return handleSearchError(error, 'getSearchContext');
+        return handleSearchError(error, 'getSearchContextByName');
     }
 }
 
@@ -229,13 +225,10 @@ export async function handleHealthCheck() {
         if (isHealthy) {
             return apiResponse.success({ status: 'healthy' });
         } else {
-            return apiResponse.error('Search service is unhealthy', 503);
+            return apiResponse.error('Search service is unhealthy', 503, { operation: 'healthCheck' });
         }
     } catch (error) {
-        logger.error('Health check failed', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-        });
-        return apiResponse.error('Search service health check failed', 503);
+        return apiResponse.error('Search service health check failed', 503, { operation: 'healthCheck', err: error });
     }
 }
 
@@ -336,54 +329,8 @@ export async function handleAutocompleteByName(
  * Handle search errors and return appropriate HTTP responses
  */
 function handleSearchError(error: unknown, operation: string) {
-    if (error instanceof SearchError) {
-        logger.warn(`Search error in ${operation}`, {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-        });
-
-        switch (error.code) {
-            case 'INDEX_NOT_FOUND':
-                return apiResponse.notFound(error.message);
-
-            case 'INDEX_NOT_READY':
-                return apiResponse.error(error.message, 503);
-
-            case 'INVALID_QUERY':
-            case 'INVALID_FILTER':
-            case 'INVALID_FACET':
-            case 'INVALID_SORT':
-                return apiResponse.badRequest(error.message);
-
-            case 'FIELD_NOT_FOUND':
-            case 'FIELD_NOT_SEARCHABLE':
-            case 'FIELD_NOT_FACETABLE':
-                return apiResponse.badRequest(error.message);
-
-            case 'EMBEDDING_FAILED':
-                return apiResponse.error(
-                    'Failed to generate query embedding for semantic search',
-                    500
-                );
-
-            case 'PROVIDER_ERROR':
-            case 'TIMEOUT':
-                return apiResponse.error(error.message, 500);
-
-            default:
-                return apiResponse.error(error.message, 500);
-        }
-    }
-
-    // Log unexpected errors
-    logger.error(`Unexpected error in ${operation}`, {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    return apiResponse.error(
-        error instanceof Error ? error.message : 'An unexpected error occurred',
-        500
-    );
+    // The error itself: a search error answers with its own status (SEARCH_ERROR_STATUS),
+    // and a provider failure is explained from its cause or hidden. apiResponse logs it
+    // once, with the request id and the operation.
+    return apiResponse.error(error, undefined, { operation });
 }

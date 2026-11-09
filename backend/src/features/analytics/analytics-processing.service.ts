@@ -21,7 +21,8 @@ import 'server-only';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { ATTR } from '@/features/telemetry/attribute-keys';
 import { createLogger } from '@/shared/logger/logger';
-import { getDateRange, inExperienceTrace, notTestTraffic, type TimeRange } from './analytics-query.service';
+import { SetupRequiredError } from '@/shared/errors/app-error';
+import { getDateRange, inExperienceTrace, isAbandonedTurn, notTestTraffic, type TimeRange } from './analytics-query.service';
 import { textAvailability } from './insight-text';
 import { clusterIntents, type IntentClusteringResult } from './intent-clustering';
 import { detectProactiveInsights } from './proactive-insights.service';
@@ -45,6 +46,8 @@ export interface ProcessingResult {
   steps: ProcessingStep[];
   durationMs: number;
   error?: string;
+  /** Why a failed run failed, for the caller to log (the run is stored with its message only) */
+  cause?: unknown;
 }
 
 interface SpanData {
@@ -80,6 +83,8 @@ export async function runAnalyticsProcessing(
       steps: [],
       durationMs: Date.now() - startTime,
       error: 'Analytics DB not configured',
+      // A setting to fix, explained to admins as such
+      cause: new SetupRequiredError('Analytics isn\'t set up: set ANALYTICS_POSTGRES_URL to the analytics database'),
     };
   }
 
@@ -392,9 +397,9 @@ export async function runAnalyticsProcessing(
 
     return { runId, status: 'completed', steps, durationMs };
   } catch (error) {
+    // Not logged here: the caller logs the failure once, with the cause returned below
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Analytics processing failed', { runId, error: errorMessage });
 
     // Mark failed steps
     for (const step of steps) {
@@ -420,6 +425,7 @@ export async function runAnalyticsProcessing(
       steps,
       durationMs: Date.now() - startTime,
       error: errorMessage,
+      cause: error,
     };
   }
 }
@@ -626,6 +632,11 @@ function getAttrNum(span: SpanData, key: string): number {
   return typeof val === 'number' ? val : 0;
 }
 
+/** Traces of chat turns the visitor left before an outcome: they neither succeeded nor failed */
+function abandonedTraces(turnSpans: SpanData[]): Set<string> {
+  return new Set(turnSpans.filter((s) => isAbandonedTurn(s.attributes)).map((s) => s.traceId));
+}
+
 // --- Intent Clustering ---
 
 async function processIntentClusters(
@@ -638,8 +649,10 @@ async function processIntentClusters(
   const plannerSpans = pipelineSpans.filter(s => s.operationName === 'pipeline.v2.turn_planner');
   const turnSpans = pipelineSpans.filter(s => s.operationName === 'pipeline.v2.turn');
 
-  // Build traceId → outcome map from turn spans
+  // Build traceId → outcome map from turn spans. A turn the visitor left didn't succeed
+  // or fail, so its intent isn't counted either way
   const outcomeByTrace = new Map<string, string>();
+  const abandoned = abandonedTraces(turnSpans);
   for (const s of turnSpans) {
     const outcome = getAttrStr(s, 'alpha.v2.outcome');
     if (outcome) outcomeByTrace.set(s.traceId, outcome);
@@ -653,7 +666,7 @@ async function processIntentClusters(
   }
 
   const entries = plannerSpans
-    .filter((s) => getAttrStr(s, 'alpha.v2.plan.reasoning'))
+    .filter((s) => getAttrStr(s, 'alpha.v2.plan.reasoning') && !abandoned.has(s.traceId))
     .map((s) => ({
       reasoning: getAttrStr(s, 'alpha.v2.plan.reasoning')!,
       outcome: outcomeByTrace.get(s.traceId) || 'unknown',
@@ -812,12 +825,16 @@ function processCatalogHealthFromSpans(
 // --- AI Effectiveness ---
 
 function processAIEffectiveness(spans: SpanData[]): Record<string, unknown> {
-  // Filter to pipeline.v2.turn spans — these have v2.outcome, v2.preset, token usage
-  const turnSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn');
+  // Filter to pipeline.v2.turn spans — these have v2.outcome, v2.preset, token usage. A turn the
+  // visitor left before an outcome neither succeeded nor failed, so it isn't rated, and its
+  // plan isn't counted among the decisions either.
+  const allTurnSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn');
+  const abandoned = abandonedTraces(allTurnSpans);
+  const turnSpans = allTurnSpans.filter(s => !abandoned.has(s.traceId));
   // Turn planner spans have plan.reasoning and direct_response flag
-  const plannerSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn_planner');
+  const plannerSpans = spans.filter(s => s.operationName === 'pipeline.v2.turn_planner' && !abandoned.has(s.traceId));
 
-  const outcomes = { success: 0, plan_failed: 0, context_assembly_failed: 0, unknown: 0 };
+  const outcomes = { success: 0, plan_failed: 0, context_assembly_failed: 0, timed_out: 0, unknown: 0 };
   const decisions = { direct_response: 0, tool_call: 0, unknown: 0 };
   const presets = new Map<string, number>();
 
@@ -848,7 +865,8 @@ function processAIEffectiveness(spans: SpanData[]): Record<string, unknown> {
   }
 
   const total = turnSpans.length;
-  const successRate = total > 0 ? outcomes.success / total : 0;
+  // No turn finished (the visitor left each one): no rate or time, rather than 0%
+  const successRate = total > 0 ? outcomes.success / total : null;
   const retryRate = 0; // Retries are tracked in catalog health
 
   const presetDistribution = Array.from(presets.entries())
@@ -865,7 +883,7 @@ function processAIEffectiveness(spans: SpanData[]): Record<string, unknown> {
     totalRetries: 0,
     conversationsWithRetries: 0,
     avgDurationMs:
-      total > 0 ? Math.round(turnSpans.reduce((sum, s) => sum + s.durationMs, 0) / total) : 0,
+      total > 0 ? Math.round(turnSpans.reduce((sum, s) => sum + s.durationMs, 0) / total) : null,
   };
 }
 

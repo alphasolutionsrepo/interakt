@@ -51,6 +51,9 @@ import {
 import { cn } from '@/lib/utils';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+
+import { reportActionError } from '@/shared/activity/report';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 import { AutocompleteInput } from '../../search/_components/AutocompleteInput';
 import { FilterBuilder } from '../../search/_components/FilterBuilder';
 import { FacetBuilder } from '../../search/_components/FacetBuilder';
@@ -60,6 +63,7 @@ import type {
   FacetRequest,
   SortClause,
 } from '../../search/_lib/hooks/useSearchPlayground';
+import { searchExperience } from '../../search/_lib/hooks/useSearchPlayground';
 
 // ============================================================================
 // TYPES
@@ -180,20 +184,14 @@ export function SearchPanel({ experienceId, slug, accessToken, trace = false }: 
   );
 
   const searchMutation = useMutation({
-    mutationFn: async (body: Record<string, unknown>) => {
-      // Sent with the admin session, not the experience's access token, so the server
-      // treats it as a test: not counted as real traffic, not traced unless asked.
-      const response = await fetch(`/api/v1/search/${slug}/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || json.message || 'Search failed');
-      return json.data as SearchResponse;
-    },
+    mutationFn: (body: Record<string, unknown>) => searchExperience<SearchResponse>(slug, body),
     onSuccess: (data) => setResults(data),
-    onError: (error: Error) => toast.error(error.message),
+    // Shown in the results area, so recorded without a notice
+    onError: (error) => {
+      setResults(null);
+      reportActionError('Search', error, { inline: true });
+    },
+    meta: { label: 'Search', inlineError: true },
   });
 
   const handleSearch = useCallback(
@@ -492,8 +490,15 @@ export function SearchPanel({ experienceId, slug, accessToken, trace = false }: 
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-4 space-y-2">
 
+              {/* Failed */}
+              {searchMutation.isError && !searchMutation.isPending && (
+                <div className="flex justify-center py-12">
+                  <ProblemAlert error={searchMutation.error} title="Search failed" className="max-w-md" />
+                </div>
+              )}
+
               {/* Empty state */}
-              {!results && !searchMutation.isPending && (
+              {!results && !searchMutation.isPending && !searchMutation.isError && (
                 <div className="flex flex-col items-center justify-center py-24 text-center">
                   <div className="p-5 rounded-2xl bg-linear-to-br from-blue-500/10 to-cyan-500/10 mb-5">
                     <Search className="h-9 w-9 text-blue-500" />

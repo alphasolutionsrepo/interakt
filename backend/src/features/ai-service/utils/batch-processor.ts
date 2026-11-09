@@ -136,12 +136,13 @@ export async function processBatches<T, R>(
             });
         } catch (error) {
             const err = error as Error;
-            logger.error('Batch processing error', err, {
-                batchIndex,
-                itemsInBatch: batch.length,
-            });
 
             if (continueOnError) {
+                // Carried on past: this is the only record of it
+                logger.error('Batch processing error', err, {
+                    batchIndex,
+                    itemsInBatch: batch.length,
+                });
                 errors.push({ batchIndex, error: err });
                 // Add placeholder results for failed batch
                 results.push(...new Array(batch.length).fill(null as unknown as R));

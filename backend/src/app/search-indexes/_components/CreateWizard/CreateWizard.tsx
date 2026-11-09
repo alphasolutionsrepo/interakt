@@ -22,13 +22,11 @@ import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
     ChevronLeft,
     ChevronRight,
     Check,
     Loader2,
-    AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StepProgress } from '@/components/ui/steps-progress';
@@ -46,6 +44,8 @@ import {
     type WizardFormData,
 } from '@/features/search-index/search-index.wizard-schemas';
 import type { CreateSearchIndexDTO } from '@/features/search-index';
+import { useInlineError } from '@/shared/activity/useInlineError';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 // ============================================================================
 // TYPES
@@ -84,7 +84,8 @@ export function CreateWizard() {
 
     // Separate loading states for better control
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [submitError, setSubmitError] = useState<string | null>(null);
+    const submitError = useInlineError();
+    const { clear: clearSubmitError, capture: captureSubmitError } = submitError;
 
     // Track if we're redirecting to keep loading state
     const isRedirecting = useRef(false);
@@ -127,8 +128,8 @@ export function CreateWizard() {
             stepErrors: { ...prev.stepErrors, [field]: undefined },
         }));
         // Clear submit error when user makes changes
-        setSubmitError(null);
-    }, []);
+        clearSubmitError();
+    }, [clearSubmitError]);
 
     /**
      * Bulk update form data (for setting multiple fields at once)
@@ -146,8 +147,8 @@ export function CreateWizard() {
                 stepErrors: newErrors,
             };
         });
-        setSubmitError(null);
-    }, []);
+        clearSubmitError();
+    }, [clearSubmitError]);
 
     // ========================================================================
     // VALIDATION
@@ -309,7 +310,7 @@ export function CreateWizard() {
         };
 
         setIsSubmitting(true);
-        setSubmitError(null);
+        clearSubmitError();
 
         try {
             // Call API directly (not through mutation hook to avoid duplicate toasts)
@@ -331,12 +332,10 @@ export function CreateWizard() {
             // Note: We don't setIsSubmitting(false) here because we want to keep
             // the loading state until the page transitions
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to create search index';
-            setSubmitError(message);
-            toast.error(message);
+            captureSubmitError('Create search index', error);
             setIsSubmitting(false);
         }
-    }, [currentStep, formData, needsAI, validateStep, queryClient, router]);
+    }, [currentStep, formData, needsAI, validateStep, queryClient, router, clearSubmitError, captureSubmitError]);
 
     // ========================================================================
     // RENDER
@@ -377,12 +376,7 @@ export function CreateWizard() {
 
             <CardContent className="pt-6 pb-6">
                 {/* Submission Error Alert */}
-                {submitError && (
-                    <Alert variant="destructive" className="mb-6 rounded-xl">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>{submitError}</AlertDescription>
-                    </Alert>
-                )}
+                <ProblemAlert error={submitError.error} onDismiss={submitError.clear} className="mb-6 rounded-xl" />
 
                 {/* Step Content */}
                 {currentStep === 1 && (

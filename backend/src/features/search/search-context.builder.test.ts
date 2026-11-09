@@ -32,11 +32,11 @@ function field(overrides: Record<string, unknown>) {
     };
 }
 
-function index(fields: Record<string, unknown>[]): SearchIndexComplete {
+function index(fields: Record<string, unknown>[], searchProvider = 'elasticsearch'): SearchIndexComplete {
     return {
         id: 'idx-1',
         name: 'pets',
-        searchProvider: 'elasticsearch',
+        searchProvider,
         searchType: 'keyword',
         language: 'en',
         fields,
@@ -64,5 +64,12 @@ describe('buildSearchContext — searchable fields', () => {
         ]));
 
         expect(context.searchableFields.map(f => f.fieldName)).toEqual(['name']);
+    });
+
+    it('searches a json field on Azure AI Search, where it is a string, and not on Elasticsearch', () => {
+        const fields = [field({ fieldName: 'name', fieldType: 'text' }), field({ fieldName: 'variants', fieldType: 'json' })];
+
+        expect(buildSearchContext(index(fields, 'azure-ai-search')).searchableFields.map(f => f.fieldName)).toEqual(['name', 'variants']);
+        expect(buildSearchContext(index(fields)).searchableFields.map(f => f.fieldName)).toEqual(['name']);
     });
 });

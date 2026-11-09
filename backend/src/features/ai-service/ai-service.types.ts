@@ -244,7 +244,10 @@ export interface ChatOptions extends AIServiceOptions {
     toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
     /** Response format for structured outputs (OpenAI json_schema) */
     responseFormat?: ResponseFormat;
-    /** Aborting it stops the model request at once (the caller went away); the stream then ends without an error */
+    /**
+     * Aborting it stops the model request at once (the caller went away): a stream then ends
+     * without an error, a chat call rejects with CancelledRequestError. Neither is a failure.
+     */
     signal?: AbortSignal;
 }
 

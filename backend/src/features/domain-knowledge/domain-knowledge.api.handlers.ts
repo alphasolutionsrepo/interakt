@@ -17,9 +17,8 @@ import {
   countKnowledgeEntries,
   bulkCreateKnowledgeEntries,
 } from './domain-knowledge.service';
-import { createLogger } from '@/shared/logger/logger';
-
-const logger = createLogger('domain-knowledge-api');
+import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 
 // ============================================================================
 // TYPES
@@ -31,6 +30,15 @@ interface RouteContext {
 
 interface EntryRouteContext {
   params: Promise<{ id: string; entryId: string }>;
+}
+
+/** A knowledge entry as the request sends it: not validated beyond a create's question and answer */
+interface EntryBody {
+  question?: string;
+  answer?: string;
+  tags?: string[];
+  priority?: number;
+  isActive?: boolean;
 }
 
 // ============================================================================
@@ -67,14 +75,7 @@ export async function handleListKnowledgeEntries(
       },
     });
   } catch (error) {
-    logger.error('Failed to list knowledge entries', error as Error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to list knowledge entries',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'listKnowledgeEntries' });
   }
 }
 
@@ -88,7 +89,7 @@ export async function handleCreateKnowledgeEntry(
 ): Promise<NextResponse> {
   try {
     const { id: searchIndexId } = await context.params;
-    const body = await request.json();
+    const body = (await readJsonBody(request)) as EntryBody & { entries?: Array<{ question: string; answer: string; tags?: string[]; priority?: number }> };
 
     // Check if bulk create
     if (Array.isArray(body.entries)) {
@@ -137,14 +138,7 @@ export async function handleCreateKnowledgeEntry(
       data: entry,
     });
   } catch (error) {
-    logger.error('Failed to create knowledge entry', error as Error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create knowledge entry',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'createKnowledgeEntry' });
   }
 }
 
@@ -180,14 +174,7 @@ export async function handleGetKnowledgeEntry(
       data: entry,
     });
   } catch (error) {
-    logger.error('Failed to get knowledge entry', error as Error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get knowledge entry',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'getKnowledgeEntry' });
   }
 }
 
@@ -201,7 +188,7 @@ export async function handleUpdateKnowledgeEntry(
 ): Promise<NextResponse> {
   try {
     const { entryId } = await context.params;
-    const body = await request.json();
+    const body = (await readJsonBody(request)) as EntryBody;
 
     const { question, answer, tags, priority, isActive } = body;
 
@@ -218,25 +205,8 @@ export async function handleUpdateKnowledgeEntry(
       data: entry,
     });
   } catch (error) {
-    logger.error('Failed to update knowledge entry', error as Error);
-
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Knowledge entry not found',
-        },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update knowledge entry',
-      },
-      { status: 500 }
-    );
+    // An entry that is gone is a NotFoundError: 404, logged as a warning
+    return apiResponse.error(error, 500, { operation: 'updateKnowledgeEntry' });
   }
 }
 
@@ -258,13 +228,6 @@ export async function handleDeleteKnowledgeEntry(
       data: { deleted: true },
     });
   } catch (error) {
-    logger.error('Failed to delete knowledge entry', error as Error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete knowledge entry',
-      },
-      { status: 500 }
-    );
+    return apiResponse.error(error, 500, { operation: 'deleteKnowledgeEntry' });
   }
 }

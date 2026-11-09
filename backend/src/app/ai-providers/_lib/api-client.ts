@@ -1,5 +1,7 @@
 // app/ai-providers/_lib/api-client.ts
 
+import { ApiError, handleApiResponse } from '@/shared/api/api-error';
+
 /**
  * AI Providers API Client
  * 
@@ -29,52 +31,8 @@ import type {
 // Error Handling
 // ============================================================================
 
-export class ApiError extends Error {
-    constructor(
-        public status: number,
-        message: string,
-        public code?: string
-    ) {
-        super(message);
-        this.name = 'ApiError';
-    }
-}
+export { ApiError };
 
-/**
- * Handle API response and extract data
- */
-async function handleResponse<T>(response: Response): Promise<T> {
-    const contentType = response.headers.get('content-type');
-
-    if (!contentType?.includes('application/json')) {
-        if (!response.ok) {
-            throw new ApiError(response.status, `HTTP ${response.status}: ${response.statusText}`);
-        }
-        return response.text() as unknown as T;
-    }
-
-    const json = await response.json();
-
-    if (!response.ok) {
-        throw new ApiError(
-            response.status,
-            json.error || json.message || `HTTP ${response.status}`,
-            json.code
-        );
-    }
-
-    // Handle { success: true, data: {...} } format
-    if (json.success !== undefined && json.data !== undefined) {
-        return json.data;
-    }
-
-    // Handle { data: {...} } format
-    if (json.data !== undefined) {
-        return json.data;
-    }
-
-    return json;
-}
 
 // ============================================================================
 // AI Providers API
@@ -95,7 +53,7 @@ export const aiProvidersApi = {
         if (params?.includeModels) searchParams.set('includeModels', 'true');
 
         const response = await fetch(`/api/ai-providers?${searchParams}`);
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -103,7 +61,7 @@ export const aiProvidersApi = {
      */
     getEnabled: async (): Promise<AIProviderWithModelsResponse[]> => {
         const response = await fetch('/api/ai-providers/enabled');
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -112,7 +70,7 @@ export const aiProvidersApi = {
     getById: async (id: string, includeModels = false): Promise<AIProviderResponse | AIProviderWithModelsResponse> => {
         const params = includeModels ? '?includeModels=true' : '';
         const response = await fetch(`/api/ai-providers/${id}${params}`);
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -121,7 +79,7 @@ export const aiProvidersApi = {
     getByKey: async (key: string, includeModels = false): Promise<AIProviderResponse | AIProviderWithModelsResponse> => {
         const params = includeModels ? '?includeModels=true' : '';
         const response = await fetch(`/api/ai-providers/key/${key}${params}`);
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -133,7 +91,7 @@ export const aiProvidersApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -145,7 +103,7 @@ export const aiProvidersApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -155,7 +113,7 @@ export const aiProvidersApi = {
         const response = await fetch(`/api/ai-providers/${id}/enable`, {
             method: 'PATCH',
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -165,7 +123,7 @@ export const aiProvidersApi = {
         const response = await fetch(`/api/ai-providers/${id}/disable`, {
             method: 'PATCH',
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -175,7 +133,7 @@ export const aiProvidersApi = {
         const response = await fetch(`/api/ai-providers/${id}`, {
             method: 'DELETE',
         });
-        await handleResponse(response);
+        await handleApiResponse(response);
     },
 
     /**
@@ -185,7 +143,7 @@ export const aiProvidersApi = {
         const response = await fetch(`/api/ai-providers/${id}/test-connection`, {
             method: 'POST',
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -195,7 +153,7 @@ export const aiProvidersApi = {
         const response = await fetch(`/api/ai-providers/${id}/discover-models`, {
             method: 'POST',
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -205,7 +163,7 @@ export const aiProvidersApi = {
         const response = await fetch('/api/ai-providers/cache', {
             method: 'POST',
         });
-        await handleResponse(response);
+        await handleApiResponse(response);
     },
 
     /**
@@ -213,7 +171,7 @@ export const aiProvidersApi = {
      */
     getCacheStats: async (): Promise<{ hits: number; misses: number; size: number }> => {
         const response = await fetch('/api/ai-providers/cache');
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 };
 
@@ -240,7 +198,7 @@ export const aiModelsApi = {
         if (params?.includeProvider) searchParams.set('includeProvider', 'true');
 
         const response = await fetch(`/api/ai-provider-models?${searchParams}`);
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -248,7 +206,7 @@ export const aiModelsApi = {
      */
     getForPurpose: async (purpose: 'text_generation' | 'embedding' | 'chat'): Promise<AIModelWithProviderResponse[]> => {
         const response = await fetch(`/api/ai-provider-models/for-purpose?purpose=${purpose}`);
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -257,7 +215,7 @@ export const aiModelsApi = {
     getById: async (id: number, includeProvider = false): Promise<AIProviderModelResponse | AIModelWithProviderResponse> => {
         const params = includeProvider ? '?includeProvider=true' : '';
         const response = await fetch(`/api/ai-provider-models/${id}${params}`);
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -269,7 +227,7 @@ export const aiModelsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -281,7 +239,7 @@ export const aiModelsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -291,7 +249,7 @@ export const aiModelsApi = {
         const response = await fetch(`/api/ai-provider-models/${id}`, {
             method: 'DELETE',
         });
-        await handleResponse(response);
+        await handleApiResponse(response);
     },
 };
 
@@ -305,7 +263,7 @@ export const systemDefaultsApi = {
      */
     get: async (): Promise<SystemDefaultsResponse> => {
         const response = await fetch('/api/system-defaults/ai');
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -313,7 +271,7 @@ export const systemDefaultsApi = {
      */
     getResolved: async (): Promise<ResolvedSystemDefaults> => {
         const response = await fetch('/api/system-defaults/ai/resolved');
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -325,7 +283,7 @@ export const systemDefaultsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     /**
@@ -341,6 +299,6 @@ export const systemDefaultsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ providerId, modelId }),
         });
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 };

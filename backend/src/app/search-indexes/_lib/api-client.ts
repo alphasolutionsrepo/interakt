@@ -1,5 +1,8 @@
 // app/search-indexes/_lib/api-client.ts
 
+import type { IndexLastJob } from '@/db/schema/search-index.schema';
+import { ApiError, apiErrorFrom, toApiError, handleApiResponse } from '@/shared/api/api-error';
+
 /**
  * Search Index API Client
  * 
@@ -72,31 +75,8 @@ export interface SearchIndexImportResult {
 // ERROR HANDLING
 // ============================================================================
 
-export class ApiError extends Error {
-    status: number;
-    details?: unknown;
+export { ApiError };
 
-    constructor(message: string, status: number, details?: unknown) {
-        super(message);
-        this.name = 'ApiError';
-        this.status = status;
-        this.details = details;
-    }
-}
-
-async function handleResponse<T>(response: Response): Promise<T> {
-    const data = await response.json();
-    
-    if (!response.ok) {
-        throw new ApiError(
-            data.error || data.message || 'An error occurred',
-            response.status,
-            data.details
-        );
-    }
-    
-    return data.data ?? data;
-}
 
 // ============================================================================
 // Search Indexes API
@@ -116,7 +96,7 @@ export const searchIndexesApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse<SearchIndex>(response);
+        return handleApiResponse<SearchIndex>(response);
     },
 
     /**
@@ -124,7 +104,7 @@ export const searchIndexesApi = {
      */
     getById: async (id: string): Promise<SearchIndexComplete> => {
         const response = await fetch(`/api/search-indexes/${id}`);
-        return handleResponse<SearchIndexComplete>(response);
+        return handleApiResponse<SearchIndexComplete>(response);
     },
 
     /**
@@ -132,7 +112,7 @@ export const searchIndexesApi = {
      */
     getByName: async (name: string): Promise<SearchIndexComplete> => {
         const response = await fetch(`/api/search-indexes/name/${encodeURIComponent(name)}`);
-        return handleResponse<SearchIndexComplete>(response);
+        return handleApiResponse<SearchIndexComplete>(response);
     },
 
     /**
@@ -149,7 +129,7 @@ export const searchIndexesApi = {
         }
         const url = `/api/search-indexes${params.toString() ? `?${params}` : ''}`;
         const response = await fetch(url);
-        return handleResponse<SearchIndexListResponse>(response);
+        return handleApiResponse<SearchIndexListResponse>(response);
     },
 
     /**
@@ -157,7 +137,7 @@ export const searchIndexesApi = {
      */
     getAllActive: async (): Promise<SearchIndexSummary[]> => {
         const response = await fetch('/api/search-indexes?isActive=true&pageSize=100');
-        const result = await handleResponse<SearchIndexListResponse>(response);
+        const result = await handleApiResponse<SearchIndexListResponse>(response);
         return result.items;
     },
 
@@ -170,7 +150,7 @@ export const searchIndexesApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse<SearchIndex>(response);
+        return handleApiResponse<SearchIndex>(response);
     },
 
     /**
@@ -180,7 +160,7 @@ export const searchIndexesApi = {
         const response = await fetch(`/api/search-indexes/${id}`, {
             method: 'DELETE',
         });
-        return handleResponse<{ message: string }>(response);
+        return handleApiResponse<{ message: string }>(response);
     },
 
     // ========================================================================
@@ -194,7 +174,7 @@ export const searchIndexesApi = {
         const response = await fetch(`/api/search-indexes/${id}/activate`, {
             method: 'PATCH',
         });
-        return handleResponse<SearchIndex>(response);
+        return handleApiResponse<SearchIndex>(response);
     },
 
     /**
@@ -204,7 +184,7 @@ export const searchIndexesApi = {
         const response = await fetch(`/api/search-indexes/${id}/deactivate`, {
             method: 'PATCH',
         });
-        return handleResponse<SearchIndex>(response);
+        return handleApiResponse<SearchIndex>(response);
     },
 
     /**
@@ -212,7 +192,7 @@ export const searchIndexesApi = {
      */
     getStats: async (id: string): Promise<IndexStats> => {
         const response = await fetch(`/api/search-indexes/${id}/stats`);
-        return handleResponse<IndexStats>(response);
+        return handleApiResponse<IndexStats>(response);
     },
 
     /**
@@ -220,7 +200,7 @@ export const searchIndexesApi = {
      */
     getSyncStatus: async (id: string): Promise<MappingSyncStatus> => {
         const response = await fetch(`/api/search-indexes/${id}/sync-status`);
-        return handleResponse<MappingSyncStatus>(response);
+        return handleApiResponse<MappingSyncStatus>(response);
     },
 
     // ========================================================================
@@ -239,7 +219,7 @@ export const searchIndexesApi = {
             params.set('excludeId', excludeId);
         }
         const response = await fetch(`/api/search-indexes/check-name?${params}`);
-        return handleResponse<{ available: boolean; message?: string }>(response);
+        return handleApiResponse<{ available: boolean; message?: string }>(response);
     },
 
     // ========================================================================
@@ -250,11 +230,11 @@ export const searchIndexesApi = {
      * Trigger reindex - performs full reindex of all documents
      * Returns the result with document count and duration
      */
-    triggerReindex: async (id: string): Promise<{ message: string; documentCount: number; durationMs: number }> => {
+    triggerReindex: async (id: string): Promise<ReindexResponse> => {
         const response = await fetch(`/api/search-indexes/${id}/reindex`, {
             method: 'POST',
         });
-        return handleResponse<{ message: string; documentCount: number; durationMs: number }>(response);
+        return handleApiResponse<ReindexResponse>(response);
     },
 
     /**
@@ -265,7 +245,7 @@ export const searchIndexesApi = {
         const response = await fetch(`/api/search-indexes/${id}/recreate-index`, {
             method: 'POST',
         });
-        return handleResponse<{ message: string }>(response);
+        return handleApiResponse<{ message: string }>(response);
     },
 
     // ========================================================================
@@ -303,7 +283,7 @@ export const searchIndexesApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config),
         });
-        return handleResponse<{
+        return handleApiResponse<{
             message: string;
             searchIndex: SearchIndexComplete;
             documentsDeleted: number;
@@ -321,7 +301,7 @@ export const searchIndexesApi = {
         const response = await fetch('/api/search-indexes/cache/clear', {
             method: 'POST',
         });
-        return handleResponse<{ message: string }>(response);
+        return handleApiResponse<{ message: string }>(response);
     },
 
     /**
@@ -334,7 +314,7 @@ export const searchIndexesApi = {
         hitRate: string;
     }> => {
         const response = await fetch('/api/search-indexes/cache/stats');
-        return handleResponse(response);
+        return handleApiResponse(response);
     },
 
     // ========================================================================
@@ -346,14 +326,7 @@ export const searchIndexesApi = {
      */
     export: async (id: string): Promise<Blob> => {
         const response = await fetch(`/api/search-indexes/${id}/export`);
-        if (!response.ok) {
-            const data = await response.json();
-            throw new ApiError(
-                data.error || data.message || 'Export failed',
-                response.status,
-                data.details
-            );
-        }
+        if (!response.ok) throw await toApiError(response);
         return response.blob();
     },
 
@@ -366,7 +339,15 @@ export const searchIndexesApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(importData),
         });
-        return handleResponse<SearchIndexImportPreview>(response);
+        return handleApiResponse<SearchIndexImportPreview>(response);
+    },
+
+    /**
+     * The search providers enabled on this deployment, and which is the default
+     */
+    getProviders: async (): Promise<{ providers?: Array<{ type: string; isDefault?: boolean }> }> => {
+        const response = await fetch('/api/search-indexes/providers');
+        return handleApiResponse(response, 'Failed to load search providers');
     },
 
     /**
@@ -378,7 +359,7 @@ export const searchIndexesApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-        return handleResponse<SearchIndexImportResult>(response);
+        return handleApiResponse<SearchIndexImportResult>(response);
     },
 };
 
@@ -421,7 +402,7 @@ export const ingestionKeysApi = {
      */
     list: async (searchIndexId: string): Promise<{ keys: IngestionKeySummary[] }> => {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/ingestion-keys`);
-        return handleResponse<{ keys: IngestionKeySummary[] }>(response);
+        return handleApiResponse<{ keys: IngestionKeySummary[] }>(response);
     },
 
     /**
@@ -436,7 +417,7 @@ export const ingestionKeysApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse<CreatedIngestionKey>(response);
+        return handleApiResponse<CreatedIngestionKey>(response);
     },
 
     /**
@@ -450,7 +431,7 @@ export const ingestionKeysApi = {
             `/api/search-indexes/${searchIndexId}/ingestion-keys/${keyId}`,
             { method: 'DELETE' }
         );
-        return handleResponse<{ key: IngestionKeySummary }>(response);
+        return handleApiResponse<{ key: IngestionKeySummary }>(response);
     },
 };
 
@@ -529,7 +510,7 @@ export const searchIndexFieldsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse<SearchIndexField>(response);
+        return handleApiResponse<SearchIndexField>(response);
     },
 
     /**
@@ -551,7 +532,7 @@ export const searchIndexFieldsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sampleJson, maxDepth }),
         });
-        return handleResponse<{
+        return handleApiResponse<{
             created: SearchIndexField[];
             skipped: string[];
             createdCount: number;
@@ -601,7 +582,7 @@ export const searchIndexFieldsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entries }),
         });
-        return handleResponse<{
+        return handleApiResponse<{
             created: SearchIndexField[];
             errors: Array<{ fieldName: string; error: string }>;
             createdCount: number;
@@ -622,7 +603,7 @@ export const searchIndexFieldsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ fields }),
         });
-        return handleResponse<{ created: SearchIndexField[]; createdCount: number }>(response);
+        return handleApiResponse<{ created: SearchIndexField[]; createdCount: number }>(response);
     },
 
     /**
@@ -639,7 +620,7 @@ export const searchIndexFieldsApi = {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/fields/${fieldId}`, {
             method: 'DELETE',
         });
-        return handleResponse<{ message: string }>(response);
+        return handleApiResponse<{ message: string }>(response);
     },
 
     /**
@@ -652,7 +633,7 @@ export const searchIndexFieldsApi = {
         const response = await fetch(
             `/api/search-indexes/${searchIndexId}/fields/${fieldId}/dependents`
         );
-        return handleResponse<FieldDependentsResponse>(response);
+        return handleApiResponse<FieldDependentsResponse>(response);
     },
 
     /**
@@ -660,7 +641,7 @@ export const searchIndexFieldsApi = {
      */
     list: async (searchIndexId: string): Promise<SearchIndexField[]> => {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/fields`);
-        return handleResponse<SearchIndexField[]>(response);
+        return handleApiResponse<SearchIndexField[]>(response);
     },
 
     /**
@@ -668,7 +649,7 @@ export const searchIndexFieldsApi = {
      */
     getSummary: async (searchIndexId: string): Promise<FieldMappingSummary> => {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/fields/summary`);
-        return handleResponse<FieldMappingSummary>(response);
+        return handleApiResponse<FieldMappingSummary>(response);
     },
 
     /**
@@ -676,7 +657,7 @@ export const searchIndexFieldsApi = {
      */
     validate: async (searchIndexId: string): Promise<MappingValidationResult> => {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/fields/validate`);
-        return handleResponse<MappingValidationResult>(response);
+        return handleApiResponse<MappingValidationResult>(response);
     },
 
     /**
@@ -692,7 +673,7 @@ export const searchIndexFieldsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse<SearchIndexField>(response);
+        return handleApiResponse<SearchIndexField>(response);
     },
 
     /**
@@ -711,7 +692,7 @@ export const searchIndexFieldsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config),
         });
-        return handleResponse<SearchIndexField>(response);
+        return handleApiResponse<SearchIndexField>(response);
     },
 
     /**
@@ -723,7 +704,7 @@ export const searchIndexFieldsApi = {
         fieldId: number
     ): Promise<{ fieldName: string; values: Array<{ value: string; count: number }>; totalDistinct: number }> => {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/fields/${fieldId}/distinct-values`);
-        return handleResponse<{ fieldName: string; values: Array<{ value: string; count: number }>; totalDistinct: number }>(response);
+        return handleApiResponse<{ fieldName: string; values: Array<{ value: string; count: number }>; totalDistinct: number }>(response);
     },
 
     /**
@@ -738,7 +719,7 @@ export const searchIndexFieldsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        return handleResponse<SearchIndexField[]>(response);
+        return handleApiResponse<SearchIndexField[]>(response);
     },
 
     /**
@@ -748,7 +729,7 @@ export const searchIndexFieldsApi = {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/fields/mappings`, {
             method: 'DELETE',
         });
-        return handleResponse<{ message: string; clearedCount: number }>(response);
+        return handleApiResponse<{ message: string; clearedCount: number }>(response);
     },
 
     /**
@@ -766,7 +747,7 @@ export const searchIndexFieldsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ collectFields }),
         });
-        return handleResponse<SearchIndexField>(response);
+        return handleApiResponse<SearchIndexField>(response);
     },
 };
 
@@ -778,8 +759,18 @@ export const searchIndexFieldsApi = {
 // Document Indexing API
 // ============================================================================
 
+/** A reindex that finished; outcome says how (partial when some documents failed) */
+export interface ReindexResponse {
+    message: string;
+    documentCount: number;
+    durationMs: number;
+    outcome?: IndexLastJob;
+}
+
 export interface IndexDocumentsResponse {
     success: boolean;
+    /** How the upload ended, as recorded on the index */
+    outcome?: IndexLastJob;
     batchId: string;
     message: string;
     summary: {
@@ -826,6 +817,8 @@ export interface IndexingStatusResponse {
         error: string;
         field?: string;
     }>;
+    /** Why the whole batch failed (index setup, mappings), when it did */
+    errorMessage?: string | null;
 }
 
 export interface BatchListItem {
@@ -838,6 +831,8 @@ export interface BatchListItem {
     createdAt: string;
     completedAt: string | null;
     durationMs: number | null;
+    /** Why the whole batch failed, when it did */
+    errorMessage?: string | null;
 }
 
 // ============================================================================
@@ -878,6 +873,8 @@ export type DocumentWriteOperation =
 export interface WriteDocumentsResponse {
     success: boolean;
     message: string;
+    /** Why nothing was written: what happened, what to do, the request id */
+    error?: { code: string; message: string; hint?: string; requestId: string };
     summary: {
         total: number;
         succeeded: number;
@@ -953,6 +950,17 @@ export interface DeleteByFilterResponse {
     durationMs: number;
 }
 
+/**
+ * The answer to a write of one document. A 207 means it wasn't written (the search
+ * service couldn't be reached): thrown as a failed request is, with the explanation,
+ * hint and request id the server sent.
+ */
+async function oneDocumentWritten(response: Response): Promise<WriteDocumentsResponse> {
+    const result = await handleApiResponse<WriteDocumentsResponse>(response);
+    if (!result.success) throw apiErrorFrom(result.error ?? { message: result.message }, response.status);
+    return result;
+}
+
 export const documentIndexingApi = {
     /**
      * Upload and index documents
@@ -967,7 +975,7 @@ export const documentIndexingApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ documents, sourceFileName }),
         });
-        return handleResponse<IndexDocumentsResponse>(response);
+        return handleApiResponse<IndexDocumentsResponse>(response);
     },
 
     /**
@@ -979,7 +987,7 @@ export const documentIndexingApi = {
     ): Promise<{ batches: BatchListItem[] }> => {
         const params = limit ? `?limit=${limit}` : '';
         const response = await fetch(`/api/search-indexes/${searchIndexId}/documents/batches${params}`);
-        return handleResponse<{ batches: BatchListItem[] }>(response);
+        return handleApiResponse<{ batches: BatchListItem[] }>(response);
     },
 
     /**
@@ -990,7 +998,7 @@ export const documentIndexingApi = {
         batchId: string
     ): Promise<IndexingStatusResponse> => {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/documents/batches/${batchId}`);
-        return handleResponse<IndexingStatusResponse>(response);
+        return handleApiResponse<IndexingStatusResponse>(response);
     },
 
     /**
@@ -1003,7 +1011,7 @@ export const documentIndexingApi = {
         const response = await fetch(`/api/search-indexes/${searchIndexId}/documents/batches/${batchId}`, {
             method: 'DELETE',
         });
-        return handleResponse<{ cancelled: boolean; batchId: string }>(response);
+        return handleApiResponse<{ cancelled: boolean; batchId: string }>(response);
     },
 
     // ========================================================================
@@ -1024,7 +1032,7 @@ export const documentIndexingApi = {
         const response = await fetch(
             `/api/search-indexes/${searchIndexId}/documents${query.toString() ? `?${query}` : ''}`
         );
-        return handleResponse<ListDocumentsResponse>(response);
+        return handleApiResponse<ListDocumentsResponse>(response);
     },
 
     /**
@@ -1037,7 +1045,7 @@ export const documentIndexingApi = {
         const response = await fetch(
             `/api/search-indexes/${searchIndexId}/documents/${encodeURIComponent(documentId)}`
         );
-        return handleResponse<GetDocumentResponse>(response);
+        return handleApiResponse<GetDocumentResponse>(response);
     },
 
     /**
@@ -1056,7 +1064,7 @@ export const documentIndexingApi = {
                 body: JSON.stringify({ document }),
             }
         );
-        return handleResponse<WriteDocumentsResponse>(response);
+        return oneDocumentWritten(response);
     },
 
     /**
@@ -1076,7 +1084,7 @@ export const documentIndexingApi = {
                 body: JSON.stringify({ document }),
             }
         );
-        return handleResponse<WriteDocumentsResponse>(response);
+        return oneDocumentWritten(response);
     },
 
     /**
@@ -1090,7 +1098,7 @@ export const documentIndexingApi = {
             `/api/search-indexes/${searchIndexId}/documents/${encodeURIComponent(documentId)}`,
             { method: 'DELETE' }
         );
-        return handleResponse<WriteDocumentsResponse>(response);
+        return oneDocumentWritten(response);
     },
 
     /**
@@ -1105,7 +1113,7 @@ export const documentIndexingApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ operations }),
         });
-        return handleResponse<WriteDocumentsResponse>(response);
+        return handleApiResponse<WriteDocumentsResponse>(response);
     },
 
     /**
@@ -1132,7 +1140,7 @@ export const documentIndexingApi = {
                 }),
             }
         );
-        return handleResponse<DeleteByFilterResponse>(response);
+        return handleApiResponse<DeleteByFilterResponse>(response);
     },
 };
 

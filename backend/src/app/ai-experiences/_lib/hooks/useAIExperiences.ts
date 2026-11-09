@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
-import { aiExperiencesApi, ApiError } from '../api-client';
+import { aiExperiencesApi } from '../api-client';
 import type {
   CreateAIExperiencePayload,
   UpdateAIExperiencePayload,
@@ -52,9 +52,7 @@ export function useAIExperiences(params?: ListAIExperiencesParams) {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.lists() });
       toast.success('AI Experience deleted');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete experience');
-    },
+    meta: { label: 'Delete experience' },
   });
 
   return {
@@ -89,9 +87,7 @@ export function useAIExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.lists() });
       toast.success('Experience updated');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update experience');
-    },
+    meta: { label: 'Update experience' },
   });
 
   const deleteMutation = useMutation({
@@ -100,9 +96,7 @@ export function useAIExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.lists() });
       toast.success('Experience deleted');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to delete experience');
-    },
+    meta: { label: 'Delete experience' },
   });
 
   const regenerateTokenMutation = useMutation({
@@ -111,9 +105,7 @@ export function useAIExperience(id: string | undefined) {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.detail(id!) });
       toast.success('Access token regenerated');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to regenerate token');
-    },
+    meta: { label: 'Regenerate token' },
   });
 
   const assignToolMutation = useMutation({
@@ -122,9 +114,7 @@ export function useAIExperience(id: string | undefined) {
       await queryClient.refetchQueries({ queryKey: aiExperienceKeys.detail(id!), exact: true });
       toast.success('Tool assigned');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to assign tool');
-    },
+    meta: { label: 'Assign tool' },
   });
 
   const updateToolAssignmentMutation = useMutation({
@@ -133,9 +123,7 @@ export function useAIExperience(id: string | undefined) {
     onSuccess: async () => {
       await queryClient.refetchQueries({ queryKey: aiExperienceKeys.detail(id!), exact: true });
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to update tool assignment');
-    },
+    meta: { label: 'Update tool assignment' },
   });
 
   const removeToolMutation = useMutation({
@@ -144,9 +132,7 @@ export function useAIExperience(id: string | undefined) {
       await queryClient.refetchQueries({ queryKey: aiExperienceKeys.detail(id!), exact: true });
       toast.success('Tool removed');
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to remove tool');
-    },
+    meta: { label: 'Remove tool' },
   });
 
   return {
@@ -183,9 +169,7 @@ export function useCreateAIExperience() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.lists() });
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Failed to create experience');
-    },
+    meta: { label: 'Create experience' },
   });
 
   return {

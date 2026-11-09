@@ -327,7 +327,8 @@ export async function getOverviewMetrics(
       const aiSpanRows = await analyticsDB
         .select({
           total: count(),
-          avgDuration: sql<number>`COALESCE(AVG(${otelSpans.durationMs}), 0)`,
+          // Timed over the turns that finished, as the experience summary is
+          avgDuration: sql<number>`COALESCE(AVG(${otelSpans.durationMs}) FILTER (WHERE NOT ${abandonedTurn(otelSpans)}), 0)`,
         })
         .from(otelSpans)
         .where(and(
@@ -430,6 +431,20 @@ const TEST_TRAFFIC_SPAN = sql.raw(`source_span.attributes->>'${ATTR.ANALYTICS_SO
  */
 export function notTestTraffic(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
   return sql`NOT EXISTS (SELECT 1 FROM otel_spans AS source_span WHERE source_span.trace_id = ${otelSpans.traceId} AND ${TEST_TRAFFIC_SPAN})`;
+}
+
+/**
+ * A chat turn (pipeline.v2.turn span) the visitor left before it had an outcome: it stopped
+ * (TurnAbandonedError), it neither succeeded nor failed. It counts as traffic; success and
+ * failure rates leave it out. A turn that recorded an outcome first, such as a failed plan,
+ * keeps it. isAbandonedTurn is the same check on a fetched span's attributes.
+ */
+export function abandonedTurn(otelSpans: typeof import('@/db/analytics-schema').otelSpans): SQL {
+  return sql`(${otelSpans.attributes}->>${ATTR.TURN_ABANDONED} IS NOT NULL AND ${otelSpans.attributes}->>'alpha.v2.outcome' IS NULL)`;
+}
+
+export function isAbandonedTurn(attributes: Record<string, unknown> | null | undefined): boolean {
+  return attributes?.[ATTR.TURN_ABANDONED] != null && attributes['alpha.v2.outcome'] == null;
 }
 
 /**

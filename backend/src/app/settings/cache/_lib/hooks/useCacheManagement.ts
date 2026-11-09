@@ -57,10 +57,7 @@ export function useClearCache() {
       // Invalidate cache stats to trigger refetch
       queryClient.invalidateQueries({ queryKey: cacheKeys.stats() });
     },
-    onError: (error: Error, featureId) => {
-      const feature = cacheApi.CACHE_FEATURES.find(f => f.id === featureId);
-      toast.error(`Failed to clear ${feature?.name || 'cache'}: ${error.message}`);
-    },
+    meta: { label: 'Clear cache' },
   });
 }
 
@@ -76,9 +73,7 @@ export function useClearAllCaches() {
       toast.success('All caches cleared successfully');
       queryClient.invalidateQueries({ queryKey: cacheKeys.stats() });
     },
-    onError: (error: Error) => {
-      toast.error(`Failed to clear caches: ${error.message}`);
-    },
+    meta: { label: 'Clear all caches' },
   });
 }
 

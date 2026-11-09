@@ -10,6 +10,7 @@
 import 'server-only';
 
 import { v4 as uuidv4 } from 'uuid';
+import { describeError } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import * as aiService from '@/features/ai-service/ai-service.service';
 import type { ChatMessage } from '@/features/ai-service/ai-service.types';
@@ -181,16 +182,9 @@ export function createSummaryStream(
       // The model call ended because the client went away
       if (cancelled) return await endCancelled();
 
-      logger.error('Summary generation failed', {
-        experienceId: experience.id,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-
-      send({
-        type: 'error',
-        error: error instanceof Error ? error.message : 'Failed to generate summary',
-        code: 'AI_ERROR',
-      });
+      // The same body an error response has: a plain message for visitors on a server
+      // failure, the explanation for admins, and a request id. describeError logs it.
+      send({ type: 'error', ...describeError(error, 500, { operation: 'summaryStream', experienceId: experience.id }).body });
       await finish();
     }
   }

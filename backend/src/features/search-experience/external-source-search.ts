@@ -14,21 +14,14 @@ import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { trackSearch } from '@/features/analytics';
 import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
 import { searchExternalSource } from '@/features/data-source/external-search/external-search.service';
-import type { FilterClause, SearchRequest, SearchResponse } from '@/features/search/search.types';
+import { filterFields, leafFilters } from '@/features/search/filter-clauses';
+import type { SearchRequest, SearchResponse } from '@/features/search/search.types';
 import { SearchError } from '@/features/search/search.types';
 import { createLogger } from '@/shared/logger/logger';
+import { refusedRequest } from './external-refusal';
 import type { SearchExperienceExternalSourceWithDetails, SearchExperienceWithIndexes } from './search-experience.types';
 
 const logger = createLogger('external-source-search');
-
-function filterFields(filters: FilterClause[] | undefined): string[] {
-  const out: string[] = [];
-  for (const f of filters ?? []) {
-    if (f.filters?.length) out.push(...filterFields(f.filters));
-    else if (f.field) out.push(f.field);
-  }
-  return out;
-}
 
 /**
  * Facetable fields of an external index, from its data source schema.
@@ -43,7 +36,8 @@ export function externalFacetableFields(fields: DataSourceField[]): DataSourceFi
  * Facets are requested only for fields the source marks facetable, so a facet that
  * belongs to another source in the same experience never reaches this engine.
  *
- * @throws SearchError('PROVIDER_ERROR') when the engine call fails
+ * @throws SearchError('SOURCE_UNAVAILABLE') when the engine call fails, with the engine's
+ *   error as the cause; INVALID_FILTER, INVALID_SORT or INVALID_QUERY when it refused the ones it names
  */
 export async function searchExternalSourceForExperience(
   source: SearchExperienceExternalSourceWithDetails,
@@ -73,7 +67,7 @@ export async function searchExternalSourceForExperience(
       queryText: request.query,
       hasFilters: !!request.filters?.length,
       filterFields: filterFields(request.filters),
-      filterCount: filterFields(request.filters).length,
+      filterCount: leafFilters(request.filters).length,
       facetsRequested: facets?.map((f) => f.field),
       totalResults: outcome.total,
       resultsReturned: outcome.returned,
@@ -130,7 +124,8 @@ export async function searchExternalSourceForExperience(
           const fields = [...new Set(unapplied.map((u) => u.field))];
           // The reason says what's wrong: the field, the operator or the value
           const reasons = unapplied.map((u) => `${u.field}: ${u.reason}`);
-          logger.warn('External index cannot apply a filter; refusing the search', {
+          // The refusal is answered (400) and logged once there
+          logger.debug('External index cannot apply a filter; refusing the search', {
             dataSourceId: source.dataSourceId,
             unappliedFilters: reasons,
           });
@@ -148,14 +143,20 @@ export async function searchExternalSourceForExperience(
     if (error instanceof SearchError && error.code === 'INVALID_FILTER') throw error; // the refusal above
     const message = error instanceof Error ? error.message : String(error);
     track({ total: 0, returned: 0, error: message });
-    // The engine's message (status, response body) is for admins: logs, analytics and
-    // the trace have it. Public callers get a generic error.
-    logger.error('External index search failed', {
+    const refused = refusedRequest(error, request, fields);
+    if (refused) {
+      logger.debug('External index refused the request', { dataSourceId: source.dataSourceId, error: message });
+      throw refused;
+    }
+    // The engine's message (status, response body) is for admins: analytics and the trace
+    // have it, and the cause explains it to them and goes in the log line of whoever answers
+    // the caller. Public callers get a generic error.
+    logger.debug('External index search failed', {
       experienceId: experience.id,
       dataSourceId: source.dataSourceId,
       error: message,
     });
-    throw new SearchError('An external search source is unavailable', 'PROVIDER_ERROR');
+    throw new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE', { dataSourceId: source.dataSourceId }, { cause: error });
   }
 
   if (result.unappliedSort.length > 0) {

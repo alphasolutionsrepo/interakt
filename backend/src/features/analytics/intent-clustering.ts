@@ -11,6 +11,7 @@ import 'server-only';
 
 import { generateEmbeddings , chat } from '@/features/ai-service/ai-service.service';
 import { cosineSimilarity } from '@/features/embedding/vector-math';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('intent-clustering');
@@ -379,9 +380,7 @@ Respond with a JSON array of labels, one per cluster, in order. Example: ["Hocke
       throw new Error('No JSON array in response');
     }
   } catch (error) {
-    logger.warn('Failed to generate cluster labels via LLM, using fallback', {
-      error,
-    });
+    logger[failureLevel(error, 'warn')]('Failed to generate cluster labels via LLM, using fallback', { err: error });
     // Fallback: use first reasoning text truncated
     labels = clusters.map(
       (c) => c.entries[0]?.reasoning.slice(0, 40) || 'Unknown Intent'

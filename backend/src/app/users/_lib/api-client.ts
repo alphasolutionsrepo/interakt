@@ -1,5 +1,7 @@
 // app/users/_lib/api-client.ts
 
+import { ApiError, handleApiResponse } from '@/shared/api/api-error';
+
 /**
  * Users API Client
  *
@@ -31,52 +33,8 @@ export type UserResponse = {
 // Error Handling
 // ============================================================================
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public code?: string
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
+export { ApiError };
 
-/**
- * Handle API response and extract data
- */
-async function handleResponse<T>(response: Response): Promise<T> {
-  const contentType = response.headers.get('content-type');
-
-  if (!contentType?.includes('application/json')) {
-    if (!response.ok) {
-      throw new ApiError(response.status, `HTTP ${response.status}: ${response.statusText}`);
-    }
-    return response.text() as unknown as T;
-  }
-
-  const json = await response.json();
-
-  if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      json.error || json.message || `HTTP ${response.status}`,
-      json.code
-    );
-  }
-
-  // Handle { success: true, data: {...} } format
-  if (json.success !== undefined && json.data !== undefined) {
-    return json.data;
-  }
-
-  // Handle { data: {...} } format
-  if (json.data !== undefined) {
-    return json.data;
-  }
-
-  return json;
-}
 
 // ============================================================================
 // Users API
@@ -88,7 +46,7 @@ export const usersApi = {
    */
   list: async (): Promise<UserResponse[]> => {
     const response = await fetch('/api/users');
-    return handleResponse(response);
+    return handleApiResponse(response);
   },
 
   /**
@@ -96,7 +54,7 @@ export const usersApi = {
    */
   getById: async (id: string): Promise<UserResponse> => {
     const response = await fetch(`/api/users/${id}`);
-    return handleResponse(response);
+    return handleApiResponse(response);
   },
 
   /**
@@ -108,7 +66,7 @@ export const usersApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse(response);
+    return handleApiResponse(response);
   },
 
   /**
@@ -120,7 +78,7 @@ export const usersApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse(response);
+    return handleApiResponse(response);
   },
 
   /**
@@ -130,7 +88,7 @@ export const usersApi = {
     const response = await fetch(`/api/users/${id}/activate`, {
       method: 'PATCH',
     });
-    return handleResponse(response);
+    return handleApiResponse(response);
   },
 
   /**
@@ -140,7 +98,7 @@ export const usersApi = {
     const response = await fetch(`/api/users/${id}/deactivate`, {
       method: 'PATCH',
     });
-    return handleResponse(response);
+    return handleApiResponse(response);
   },
 
   /**
@@ -152,6 +110,6 @@ export const usersApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse(response);
+    return handleApiResponse(response);
   },
 };

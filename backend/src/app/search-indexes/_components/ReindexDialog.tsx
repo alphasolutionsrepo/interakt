@@ -31,6 +31,8 @@ import {
     Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { reportActionError } from '@/shared/activity/report';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 // ============================================================================
 // TYPES
@@ -41,6 +43,8 @@ type ReindexState = 'idle' | 'confirming' | 'reindexing' | 'success' | 'error';
 interface ReindexResult {
     documentCount: number;
     durationMs: number;
+    /** How it ended: partial when some documents failed to write back */
+    outcome?: { status: string; summary?: string; hint?: string };
 }
 
 interface ReindexDialogProps {
@@ -72,7 +76,9 @@ export function ReindexDialog({
 }: ReindexDialogProps) {
     const [state, setState] = useState<ReindexState>('confirming');
     const [result, setResult] = useState<ReindexResult | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    // Finished, but some documents failed: orange, as in the Activity panel
+    const partial = state === 'success' && result?.outcome?.status === 'partial';
+    const [error, setError] = useState<unknown>(null);
     const [startTime, setStartTime] = useState<number | null>(null);
 
     // Reset state when dialog opens
@@ -98,11 +104,11 @@ export function ReindexDialog({
             setState('success');
             onSuccess?.(reindexResult);
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Reindex failed';
-            setError(errorMessage);
+            reportActionError(`Reindex ${indexName}`, err, { inline: true });
+            setError(err);
             setState('error');
         }
-    }, [onReindex, onSuccess]);
+    }, [onReindex, onSuccess, indexName]);
 
     // Format duration
     const formatDuration = (ms: number) => {
@@ -119,12 +125,13 @@ export function ReindexDialog({
                         <RotateCcw className={cn(
                             "h-5 w-5",
                             state === 'reindexing' && "animate-spin text-blue-500",
-                            state === 'success' && "text-emerald-500",
+                            state === 'success' && !partial && "text-emerald-500",
+                            partial && "text-amber-500",
                             state === 'error' && "text-red-500"
                         )} />
                         {state === 'confirming' && 'Reindex Search Index'}
                         {state === 'reindexing' && 'Reindexing...'}
-                        {state === 'success' && 'Reindex Complete'}
+                        {state === 'success' && (partial ? 'Reindex Finished with Problems' : 'Reindex Complete')}
                         {state === 'error' && 'Reindex Failed'}
                     </DialogTitle>
                     <DialogDescription>
@@ -134,9 +141,12 @@ export function ReindexDialog({
                         {state === 'reindexing' && (
                             <>Please wait while documents are being reindexed.</>
                         )}
-                        {state === 'success' && (
-                            <>The index has been successfully rebuilt.</>
-                        )}
+                        {state === 'success' && (partial ? (
+                            <>
+                                {result?.outcome?.summary}
+                                {result?.outcome?.hint && <span className="mt-1 block">{result.outcome.hint}</span>}
+                            </>
+                        ) : <>The index has been successfully rebuilt.</>)}
                         {state === 'error' && (
                             <>An error occurred during reindexing.</>
                         )}
@@ -208,9 +218,15 @@ export function ReindexDialog({
                     {state === 'success' && result && (
                         <div className="space-y-4">
                             <div className="flex flex-col items-center justify-center py-4">
-                                <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mb-4">
-                                    <CheckCircle2 className="h-8 w-8 text-emerald-600" />
-                                </div>
+                                {partial ? (
+                                    <div className="h-16 w-16 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mb-4">
+                                        <AlertTriangle className="h-8 w-8 text-amber-600" />
+                                    </div>
+                                ) : (
+                                    <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mb-4">
+                                        <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="bg-slate-50 dark:bg-muted/40 rounded-lg p-4 space-y-3">
@@ -261,18 +277,7 @@ export function ReindexDialog({
                                 </div>
                             </div>
 
-                            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                                <p className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
-                                    Error Details
-                                </p>
-                                <pre className="text-sm text-red-600 whitespace-pre-wrap break-words max-h-48 overflow-y-auto font-sans">
-                                    {error || 'An unknown error occurred'}
-                                </pre>
-                            </div>
-
-                            <p className="text-sm text-slate-500 text-center">
-                                You can try again or check the server logs for more details.
-                            </p>
+                            <ProblemAlert error={error ?? new Error('Reindex failed')} />
                         </div>
                     )}
                 </div>

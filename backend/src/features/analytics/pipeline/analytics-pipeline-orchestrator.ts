@@ -9,6 +9,8 @@
 
 import 'server-only';
 
+import { describeError } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import * as aiService from '@/features/ai-service/ai-service.service';
 import { assembleAnalyticsContext } from './analytics-context-assembly';
@@ -99,8 +101,9 @@ export async function runAnalyticsPipeline(
     });
 
     if (!contextResult.success || !contextResult.data) {
-      // summary is user-facing: either a scope mismatch or "Context assembly failed: ..."
-      throw new Error(contextResult.summary);
+      // A refusal (a conversation about another experience) is answered with its own message
+      if (contextResult.error instanceof AppError) throw contextResult.error;
+      throw new Error(contextResult.summary, { cause: contextResult.error });
     }
 
     const context = contextResult.data;
@@ -158,7 +161,7 @@ export async function runAnalyticsPipeline(
     );
 
     if (!synthesisResult.success || !synthesisResult.data) {
-      throw new Error(`Synthesis failed: ${synthesisResult.summary}`);
+      throw new Error(`Synthesis failed: ${synthesisResult.summary}`, { cause: synthesisResult.error });
     }
 
     // A stopped answer ends early without an error; it is not checked or saved
@@ -239,10 +242,8 @@ export async function runAnalyticsPipeline(
       logger.info('Pipeline stopped by the asker', { durationMs: Date.now() - startTime });
       return { sessionId: input.sessionId || '', responseText: '', toolsUsed: [], analyticsData: [], usage };
     }
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Pipeline failed', { error: errorMessage });
-
-    emit({ type: 'error', error: errorMessage });
+    // The same body an error response has, with the request id; describeError logs it
+    emit({ type: 'error', ...describeError(error, 500, { operation: 'analyticsChatTurn' }).body });
     emit({ type: 'done', sessionId: input.sessionId || '', usage, toolsUsed: [] });
 
     return {

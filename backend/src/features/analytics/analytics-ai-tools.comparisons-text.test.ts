@@ -72,8 +72,18 @@ describe('formatExperienceComparisonForAI', () => {
     ]);
 
     const lines = text.split('\n');
-    expect(lines[1]).toBe('- Store assistant [chat]: 120 conversations, 95.0% of turns succeeded, 10.0% of searches found nothing, 2100ms average');
+    expect(lines[1]).toBe('- Store assistant [chat]: 120 conversations, 95.0% of finished turns succeeded, 10.0% of searches found nothing, 2100ms average');
     expect(lines[2]).toBe('- Docs search [search]: 80 searches, 2.0% of searches found nothing, 300ms average');
+  });
+
+  it("says no turn finished, rather than none succeeding, when the visitor left every one", () => {
+    const text = formatExperienceComparisonForAI([
+      { id: 'b', name: 'Store assistant', type: 'ai', volume: 3, deleted: false, successRate: null, zeroResultRate: 0, avgLatencyMs: null },
+    ]);
+
+    expect(text.split('\n')[1]).toBe(
+      '- Store assistant [chat]: 3 conversations, no turn finished (the visitor left each one before the answer), 0.0% of searches found nothing',
+    );
   });
 });
 

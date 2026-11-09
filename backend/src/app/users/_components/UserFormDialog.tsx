@@ -35,11 +35,14 @@ import { Loader2 } from 'lucide-react';
 import { createUserSchema, updateUserSchema } from '@/features/auth/auth.validations';
 import type { CreateUserDTO, UpdateUserDTO } from '@/features/auth/auth.validations';
 import type { UserResponse } from '../_lib/api-client';
+import { useInlineError } from '@/shared/activity/useInlineError';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 interface UserFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: CreateUserDTO | UpdateUserDTO) => void;
+  /** Rejects when the save fails; the dialog then shows why */
+  onSubmit: (data: CreateUserDTO | UpdateUserDTO) => void | Promise<void>;
   user?: UserResponse;
   isSubmitting?: boolean;
 }
@@ -54,6 +57,8 @@ export function UserFormDialog({
   const isEditing = !!user;
   const schema = isEditing ? updateUserSchema : createUserSchema;
 
+  const inline = useInlineError();
+  const clearInlineError = inline.clear;
   const form = useForm<CreateUserDTO | UpdateUserDTO>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -69,6 +74,7 @@ export function UserFormDialog({
   // Reset form when user changes or dialog opens/closes
   useEffect(() => {
     if (open) {
+      clearInlineError();
       if (isEditing && user) {
         form.reset({
           email: user.email,
@@ -88,10 +94,15 @@ export function UserFormDialog({
         });
       }
     }
-  }, [open, user, isEditing, form]);
+  }, [open, user, isEditing, form, clearInlineError]);
 
-  const handleSubmit = form.handleSubmit((data) => {
-    onSubmit(data);
+  const handleSubmit = form.handleSubmit(async (data) => {
+    inline.clear();
+    try {
+      await onSubmit(data);
+    } catch (err) {
+      inline.capture(isEditing ? 'Update user' : 'Create user', err, form);
+    }
   });
 
   return (
@@ -221,6 +232,8 @@ export function UserFormDialog({
                 )}
               />
             </div>
+
+            <ProblemAlert error={inline.error} hideFields={inline.hideFields} onDismiss={inline.clear} />
 
             <DialogFooter>
               <Button

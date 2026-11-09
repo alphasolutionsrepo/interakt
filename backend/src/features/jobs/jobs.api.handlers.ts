@@ -15,10 +15,7 @@ import * as service from './jobs.service';
 import type { JobAction, JobState } from './jobs.types';
 
 import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId, hasRole } from '@/shared/utils/auth-utils';
-
-const logger = createLogger('jobs-handlers');
 
 const JOB_ACTIONS: readonly JobAction[] = ['cancel', 'resume', 'retry', 'delete'];
 
@@ -43,7 +40,7 @@ async function requireReady() {
   const boss = await ensureJobsStarted();
   if (!boss) {
     return {
-      error: apiResponse.error('Background jobs engine is not running', 503),
+      error: apiResponse.error('Background jobs engine is not running', 503, { operation: 'startJobsEngine' }),
     };
   }
   return { userId };
@@ -68,8 +65,7 @@ export async function handleListJobs(request: NextRequest) {
     return apiResponse.success(jobs);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list jobs', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listJobs' });
   }
 }
 
@@ -102,8 +98,7 @@ export async function handleEnqueueJob(request: NextRequest) {
     return apiResponse.success({ id }, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to enqueue job', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'enqueueJob' });
   }
 }
 
@@ -118,8 +113,7 @@ export async function handleGetJobTypes() {
     return apiResponse.success(service.getJobTypes());
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get job types', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getJobTypes' });
   }
 }
 
@@ -134,8 +128,7 @@ export async function handleGetQueues() {
     return apiResponse.success(await service.getQueueSummaries());
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get queues', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getQueues' });
   }
 }
 
@@ -150,8 +143,7 @@ export async function handleGetSchedules() {
     return apiResponse.success(await service.getSchedules());
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get schedules', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getSchedules' });
   }
 }
 
@@ -183,8 +175,7 @@ export async function handleSetSchedule(request: NextRequest) {
     return apiResponse.success({ ok: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to set schedule', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'setSchedule' });
   }
 }
 
@@ -203,8 +194,7 @@ export async function handleDeleteSchedule(queue: string) {
     return apiResponse.success({ ok: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete schedule', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteSchedule' });
   }
 }
 
@@ -221,8 +211,7 @@ export async function handleGetJob(queue: string, id: string) {
     return apiResponse.success(job);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get job', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getJob' });
   }
 }
 
@@ -245,7 +234,6 @@ export async function handleJobAction(queue: string, id: string, request: NextRe
     return apiResponse.success({ ok: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to apply job action', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'jobAction' });
   }
 }

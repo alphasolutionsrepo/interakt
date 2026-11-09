@@ -1,28 +1,9 @@
 // app/secrets/_lib/api-client.ts
 
-export class ApiError extends Error {
-  status: number;
-  details?: unknown;
+import { ApiError, handleApiResponse } from '@/shared/api/api-error';
 
-  constructor(message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.details = details;
-  }
-}
+export { ApiError };
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw new ApiError(
-      data.error || data.message || 'An error occurred',
-      response.status,
-      data.details
-    );
-  }
-  return data.data ?? data;
-}
 
 export interface SecretMetadata {
   id: string;
@@ -49,11 +30,7 @@ export const secretsApi = {
     if (search) params.set('search', search);
     const url = `/api/secrets${params.toString() ? `?${params.toString()}` : ''}`;
     const response = await fetch(url);
-    const json = await response.json();
-    if (!response.ok) {
-      throw new ApiError(json.error || json.message || 'An error occurred', response.status);
-    }
-    return json.data ?? json;
+    return handleApiResponse<SecretMetadata[]>(response);
   },
 
   create: async (data: CreateSecretPayload): Promise<SecretMetadata> => {
@@ -62,7 +39,7 @@ export const secretsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<SecretMetadata>(response);
+    return handleApiResponse<SecretMetadata>(response);
   },
 
   update: async (id: string, data: UpdateSecretPayload): Promise<SecretMetadata> => {
@@ -71,11 +48,11 @@ export const secretsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<SecretMetadata>(response);
+    return handleApiResponse<SecretMetadata>(response);
   },
 
   delete: async (id: string): Promise<void> => {
     const response = await fetch(`/api/secrets/${id}`, { method: 'DELETE' });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 };

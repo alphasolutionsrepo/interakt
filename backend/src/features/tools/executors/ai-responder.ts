@@ -10,7 +10,11 @@
 // a powerful model for analysis).
 
 import { chat } from '@/features/ai-service/ai-service.service';
+import { failureLevel } from '@/shared/errors/to-app-error';
+import { createLogger } from '@/shared/logger/logger';
 import type { ToolExecutionResult } from '../tools.executor';
+
+const logger = createLogger('ai-responder');
 
 // ============================================================================
 // CONFIG TYPE
@@ -77,6 +81,8 @@ export async function executeAiResponder(
       data: { response: responseText },
     };
   } catch (err) {
+    // Answered as a failed tool, which the chat step records without the reason
+    logger[failureLevel(err, 'warn')]('AI responder model call failed', { err });
     return {
       success: false,
       error: (err instanceof Error ? err.message : String(err)),

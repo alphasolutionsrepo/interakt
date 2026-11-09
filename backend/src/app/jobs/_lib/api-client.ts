@@ -1,5 +1,7 @@
 // app/jobs/_lib/api-client.ts
 
+import { handleApiResponse } from '@/shared/api/api-error';
+
 export type JobState =
   | 'created'
   | 'retry'
@@ -51,14 +53,6 @@ export interface ListJobsParams {
   limit?: number;
 }
 
-async function unwrap<T>(response: Response): Promise<T> {
-  const json = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(json.error || json.message || 'Request failed');
-  }
-  return json.data ?? json;
-}
-
 export const jobsApi = {
   async listJobs(params: ListJobsParams = {}): Promise<JobRecord[]> {
     const qs = new URLSearchParams();
@@ -66,23 +60,23 @@ export const jobsApi = {
     if (params.state) qs.set('state', params.state);
     if (params.limit) qs.set('limit', String(params.limit));
     const suffix = qs.toString() ? `?${qs}` : '';
-    return unwrap<JobRecord[]>(await fetch(`/api/jobs${suffix}`));
+    return handleApiResponse<JobRecord[]>(await fetch(`/api/jobs${suffix}`));
   },
 
   async getQueues(): Promise<QueueSummary[]> {
-    return unwrap<QueueSummary[]>(await fetch('/api/jobs/queues'));
+    return handleApiResponse<QueueSummary[]>(await fetch('/api/jobs/queues'));
   },
 
   async getSchedules(): Promise<ScheduleRecord[]> {
-    return unwrap<ScheduleRecord[]>(await fetch('/api/jobs/schedules'));
+    return handleApiResponse<ScheduleRecord[]>(await fetch('/api/jobs/schedules'));
   },
 
   async getJobTypes(): Promise<JobTypeInfo[]> {
-    return unwrap<JobTypeInfo[]>(await fetch('/api/jobs/types'));
+    return handleApiResponse<JobTypeInfo[]>(await fetch('/api/jobs/types'));
   },
 
   async setSchedule(queue: string, cron: string, timezone?: string): Promise<void> {
-    await unwrap(
+    await handleApiResponse(
       await fetch('/api/jobs/schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,7 +86,7 @@ export const jobsApi = {
   },
 
   async removeSchedule(queue: string): Promise<void> {
-    await unwrap(
+    await handleApiResponse(
       await fetch(`/api/jobs/schedules/${encodeURIComponent(queue)}`, {
         method: 'DELETE',
       })
@@ -100,7 +94,7 @@ export const jobsApi = {
   },
 
   async enqueue(queue: string, data: Record<string, unknown> = {}): Promise<{ id: string | null }> {
-    return unwrap<{ id: string | null }>(
+    return handleApiResponse<{ id: string | null }>(
       await fetch('/api/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,7 +104,7 @@ export const jobsApi = {
   },
 
   async applyAction(queue: string, id: string, action: JobAction): Promise<void> {
-    await unwrap(
+    await handleApiResponse(
       await fetch(`/api/jobs/${encodeURIComponent(queue)}/${encodeURIComponent(id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

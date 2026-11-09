@@ -26,6 +26,7 @@ vi.mock('./search-index-fields.repository', () => ({
 
 vi.mock('./search-index.repository', () => ({
     getSearchIndexById: vi.fn(),
+    getSearchProviderById: vi.fn(),
     incrementMappingVersion: vi.fn(),
 }));
 
@@ -200,6 +201,73 @@ describe('importFields — isSearchable', () => {
             ['variants', false],
             ['title', true],
         ]);
+    });
+});
+
+describe('a json field on Azure AI Search, where it is a searchable string', () => {
+    const azure = () => {
+        vi.mocked(searchIndexRepository.getSearchIndexById).mockResolvedValue(
+            { id: INDEX_ID, searchProvider: 'azure-ai-search' } as Awaited<ReturnType<typeof searchIndexRepository.getSearchIndexById>>,
+        );
+        vi.mocked(searchIndexRepository.getSearchProviderById).mockResolvedValue('azure-ai-search');
+    };
+
+    it('keeps the searchable flag on import', async () => {
+        azure();
+        vi.mocked(repository.createFields).mockImplementation(
+            async (rows) => rows as unknown as Awaited<ReturnType<typeof repository.createFields>>,
+        );
+        await importFields(INDEX_ID, [{
+            fieldName: 'variants', fieldType: 'json', isSearchable: true, displayName: null, isSystemField: false, isRequired: false,
+            isFacetable: false, includeInResponse: true, boostValue: 3, isMapped: true, isIndexed: true, isVectorSource: false, isAutocomplete: false,
+        }]);
+        const rows = vi.mocked(repository.createFields).mock.calls.at(-1)?.[0] ?? [];
+        expect(rows.map(r => [r.fieldName, r.isSearchable])).toEqual([['variants', true]]);
+    });
+
+    it('keeps the searchable flag on update', async () => {
+        azure();
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 3, searchIndexId: INDEX_ID, fieldName: 'variants', fieldType: 'json' } as Awaited<ReturnType<typeof repository.getFieldById>>,
+        );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 3, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
+        await updateField(3, { isSearchable: true }, 'user-1');
+        expect(vi.mocked(repository.updateField).mock.calls.at(-1)?.[1]?.isSearchable).toBe(true);
+    });
+});
+
+describe('updateField — reading the index', () => {
+    const stored = (fieldType: string) => {
+        vi.mocked(repository.getFieldById).mockResolvedValue(
+            { id: 4, searchIndexId: INDEX_ID, fieldName: 'f', fieldType } as Awaited<ReturnType<typeof repository.getFieldById>>,
+        );
+        vi.mocked(repository.updateField).mockResolvedValue(
+            { id: 4, searchIndexId: INDEX_ID } as Awaited<ReturnType<typeof repository.updateField>>,
+        );
+    };
+
+    // Only turning a json field searchable depends on the engine
+    it.each([
+        ['a json field, not changing searchable', 'json', { isFacetable: true }],
+        ['a json field, turning searchable off', 'json', { isSearchable: false }],
+        ['a text field, turning searchable on', 'text', { isSearchable: true }],
+    ])('reads nothing about the index for %s', async (_case, fieldType, input) => {
+        stored(fieldType);
+        await updateField(4, input, 'user-1');
+        expect(searchIndexRepository.getSearchIndexById).not.toHaveBeenCalled();
+        expect(searchIndexRepository.getSearchProviderById).not.toHaveBeenCalled();
+        expect(repository.updateField).toHaveBeenCalled();
+    });
+
+    it("reads only the engine to turn a json field searchable, and keeps it off on Elasticsearch", async () => {
+        stored('json');
+        vi.mocked(searchIndexRepository.getSearchProviderById).mockResolvedValue('elasticsearch');
+        await updateField(4, { isSearchable: true }, 'user-1');
+        expect(searchIndexRepository.getSearchProviderById).toHaveBeenCalledTimes(1);
+        expect(searchIndexRepository.getSearchIndexById).not.toHaveBeenCalled();
+        expect(vi.mocked(repository.updateField).mock.calls.at(-1)?.[1]?.isSearchable).toBe(false);
     });
 });
 

@@ -41,6 +41,7 @@ export function useIndexDocuments(searchIndexId: string) {
     const queryClient = useQueryClient();
 
     return useMutation({
+        meta: { label: 'Index documents', job: true },
         mutationFn: async ({
             documents,
             sourceFileName,
@@ -79,6 +80,7 @@ export function useCancelBatch(searchIndexId: string) {
     const queryClient = useQueryClient();
 
     return useMutation({
+        meta: { label: 'Cancel indexing' },
         mutationFn: async (batchId: string) => {
             return documentIndexingApi.cancelBatch(searchIndexId, batchId);
         },
@@ -127,6 +129,7 @@ export function useDeleteDocument(searchIndexId: string) {
     const invalidateContents = useInvalidateIndexContents(searchIndexId);
 
     return useMutation({
+        meta: { label: 'Delete document' },
         mutationFn: async (documentId: string) => {
             return documentIndexingApi.deleteDocument(searchIndexId, documentId);
         },
@@ -147,6 +150,7 @@ export function useBulkWriteDocuments(searchIndexId: string) {
     const invalidateContents = useInvalidateIndexContents(searchIndexId);
 
     return useMutation({
+        meta: { label: 'Write documents' },
         mutationFn: async (operations: DocumentWriteOperation[]) => {
             return documentIndexingApi.bulkWriteDocuments(searchIndexId, operations);
         },
@@ -164,6 +168,7 @@ export function useDeleteDocumentsByFilter(searchIndexId: string) {
     const invalidateContents = useInvalidateIndexContents(searchIndexId);
 
     return useMutation({
+        meta: { label: 'Delete documents by filter' },
         mutationFn: async ({
             filters,
             dryRun,

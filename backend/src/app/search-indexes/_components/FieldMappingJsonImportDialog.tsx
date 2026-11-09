@@ -31,6 +31,7 @@ import {
     Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportActionError } from '@/shared/activity/report';
 import type { SearchIndexField } from '@/features/search-index';
 import type { FieldAttributeChange } from './FieldMappingTable';
 import {
@@ -172,9 +173,9 @@ export function FieldMappingJsonImportDialog({
                     initial.fieldsToCreate,
                 );
                 if (result.errors.length > 0) {
-                    toast.error(
-                        `Created ${result.createdCount} field(s), ${result.errorCount} failed`,
-                        { description: result.errors.map((e) => `${e.fieldName}: ${e.error}`).join('\n') },
+                    reportActionError(
+                        'Create fields',
+                        `Created ${result.createdCount} field(s); ${result.errorCount} failed: ${result.errors.map((e) => `${e.fieldName}: ${e.error}`).join('; ')}`,
                     );
                 } else {
                     toast.success(`Created ${result.createdCount} new field(s)`);
@@ -182,7 +183,7 @@ export function FieldMappingJsonImportDialog({
                 // Pull the fresh field list so the new fields are mapped too
                 workingFields = await refetchFields();
             } catch (e) {
-                toast.error('Failed to create fields', { description: (e as Error).message });
+                reportActionError('Create fields', e);
                 setIsApplying(false);
                 return;
             }

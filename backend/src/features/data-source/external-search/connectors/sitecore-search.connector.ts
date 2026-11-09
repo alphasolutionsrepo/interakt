@@ -21,7 +21,7 @@ import type {
   ExternalSearchRequest,
   ExternalSearchResult,
 } from '../external-search.types';
-import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
+import { EXTERNAL_REQUEST_TIMEOUT_MS, ExternalSearchError } from '../external-search.types';
 import {
   buildSitecoreRequest,
   mapSitecoreResponse,
@@ -29,18 +29,13 @@ import {
   type SitecoreFieldTypes,
   type SitecoreRequestInput,
 } from './sitecore-search.request';
+import { bodyExcerpt, readResponseBody } from '../engines/response-body';
 
 // ============================================================================
 // HTTP
 // ============================================================================
 
-/** Sitecore answered with an HTTP error: 400 means it refused the request itself. */
-export class SitecoreHttpError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-    this.name = 'SitecoreHttpError';
-  }
-}
+const SITECORE = 'Sitecore Search';
 
 interface SitecoreCall {
   json: unknown;
@@ -52,7 +47,7 @@ interface SitecoreCall {
  * Build and send one discover request.
  *
  * @param facetAll - ask Sitecore for every facet configured on the widget
- * @throws Error with a readable message on network, HTTP or parse failure
+ * @throws ExternalSearchError with a readable message on network, HTTP or parse failure
  */
 async function callSitecore(
   connection: ExternalConnection,
@@ -76,7 +71,7 @@ async function callSitecore(
 
   // One timeout for the whole exchange, reading the body included
   let response: Response;
-  let text: string;
+  let answer: Awaited<ReturnType<typeof readResponseBody>>;
   try {
     response = await fetch(settings.endpoint, {
       method: 'POST',
@@ -84,9 +79,10 @@ async function callSitecore(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(EXTERNAL_REQUEST_TIMEOUT_MS),
     });
-    text = await response.text();
+    answer = await readResponseBody(response);
   } catch (error) {
-    throw new Error(
+    throw new ExternalSearchError(
+      SITECORE,
       (error as Error).name === 'TimeoutError'
         ? 'Sitecore Search request timed out'
         : `Network error connecting to Sitecore Search: ${(error as Error).message}`,
@@ -95,19 +91,20 @@ async function callSitecore(
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new SitecoreHttpError('Sitecore Search rejected the request — check the API key', response.status);
+      throw new ExternalSearchError(SITECORE, 'Sitecore Search rejected the request — check the API key', response.status);
     }
-    throw new SitecoreHttpError(
-      `Sitecore Search returned HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`,
+    throw new ExternalSearchError(
+      SITECORE,
+      `Sitecore Search returned HTTP ${response.status}${bodyExcerpt(answer.text)}`,
       response.status,
+      settings.fixedFilters,
     );
   }
 
-  try {
-    return { json: JSON.parse(text), took: Date.now() - start, unapplied };
-  } catch {
-    throw new Error('Sitecore Search returned a non-JSON response');
+  if (answer.json === undefined) {
+    throw new ExternalSearchError(SITECORE, `Sitecore Search returned a non-JSON response (HTTP ${response.status})${bodyExcerpt(answer.text)}`);
   }
+  return { json: answer.json, took: Date.now() - start, unapplied };
 }
 
 // ============================================================================
@@ -116,7 +113,7 @@ async function callSitecore(
 
 export const sitecoreSearchConnector: ExternalSearchConnector = {
   provider: 'sitecore-search',
-  displayName: 'Sitecore Search',
+  displayName: SITECORE,
   capabilities: { facets: true, paging: true, sort: true, highlights: false },
 
   async search(
@@ -211,7 +208,7 @@ export async function discoverSitecoreFields(
   } catch (scopedError) {
     // Only a refusal (HTTP 400) can be a fixed filter value's type; anything else
     // (timeout, 5xx, auth) fails discovery as before
-    const refused = scopedError instanceof SitecoreHttpError && scopedError.status === 400;
+    const refused = scopedError instanceof ExternalSearchError && scopedError.status === 400;
     if (!refused || sitecoreSettings(connection).fixedFilters.length === 0) throw scopedError;
   }
   const learned = inferSitecoreFields(

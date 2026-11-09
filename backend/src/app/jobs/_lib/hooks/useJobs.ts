@@ -75,7 +75,7 @@ export function useEnqueueJob() {
       toast.success('Job enqueued');
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message || 'Failed to enqueue job'),
+    meta: { label: 'Enqueue job' },
   });
 }
 
@@ -88,7 +88,7 @@ export function useSetSchedule() {
       toast.success('Schedule saved');
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message || 'Failed to save schedule'),
+    meta: { label: 'Save schedule' },
   });
 }
 
@@ -100,7 +100,7 @@ export function useRemoveSchedule() {
       toast.success('Schedule removed');
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message || 'Failed to remove schedule'),
+    meta: { label: 'Remove schedule' },
   });
 }
 
@@ -120,6 +120,6 @@ export function useJobAction() {
       toast.success(`Job ${ACTION_VERB[action]}`);
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message || 'Action failed'),
+    meta: { label: 'Action' },
   });
 }

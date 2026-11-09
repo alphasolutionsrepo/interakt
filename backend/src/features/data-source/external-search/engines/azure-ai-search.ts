@@ -1,9 +1,11 @@
 // src/features/data-source/external-search/engines/azure-ai-search.ts
 
 import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
+import { bodyExcerpt, readResponseBody } from './response-body';
 
 /** Outcome of one engine call: data on success, a readable error otherwise. */
-type OperationResult = { success: boolean; data?: unknown; error?: string };
+/** status: the HTTP status of a failed call, when the engine answered */
+type OperationResult = { success: boolean; data?: unknown; error?: string; status?: number };
 
 // Azure AI Search REST API version
 const AZURE_API_VERSION = '2024-07-01';
@@ -126,20 +128,26 @@ export async function callAzureAISearch(
   }
 
   if (!response.ok) {
-    let detail = '';
-    try {
-      const errorBody = await response.json() as { error?: { message?: string } };
-      detail = errorBody?.error?.message ?? '';
-    } catch {
-      detail = await response.text().catch(() => '');
-    }
+    const { text, json } = await readResponseBody(response).catch(() => ({ text: '', json: undefined }));
+    const reason = (json as { error?: { message?: string } } | undefined)?.error?.message;
     return {
       success: false,
-      error: `Azure AI Search returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
+      error: `Azure AI Search returned HTTP ${response.status}${reason ? `: ${reason}` : bodyExcerpt(text)}`,
+      status: response.status,
     };
   }
 
-  const json = await response.json() as {
+  let answer: Awaited<ReturnType<typeof readResponseBody>>;
+  try {
+    answer = await readResponseBody(response);
+  } catch (err) {
+    // The timeout covers the body too: one that stalls is explained like one that never came
+    return { success: false, error: `Network error reading the Azure AI Search answer: ${(err as Error).message}` };
+  }
+  if (answer.json === undefined) {
+    return { success: false, error: `Azure AI Search returned a non-JSON response (HTTP ${response.status})${bodyExcerpt(answer.text)}` };
+  }
+  const json = answer.json as {
     '@odata.count'?: number;
     '@search.facets'?: Record<string, Array<{ value: unknown; count?: number }>>;
     value: AzureSearchDocument[];

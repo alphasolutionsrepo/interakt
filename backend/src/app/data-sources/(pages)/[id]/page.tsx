@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { toast } from 'sonner';
+import { reportActionError } from '@/shared/activity/report';
 import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../_components/DataSourceTypeChip';
 import { HealthStatusChip } from '../../_components/HealthStatusChip';
 import { SchemaFieldsEditor } from '../../_components/SchemaFieldsEditor';
@@ -415,7 +416,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
                       toast.info('All tools already exist for this data source.');
                     }
                   } catch (err) {
-                    toast.error(err instanceof Error ? err.message : 'Failed to create tools');
+                    reportActionError('Create tools', err);
                   } finally {
                     setIsScaffolding(false);
                   }

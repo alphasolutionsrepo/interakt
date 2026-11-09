@@ -8,6 +8,7 @@
 
 import 'server-only';
 
+import { failureLevel } from '@/shared/errors/to-app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { getAnalyticsConfig } from '../analytics-config';
 import type { AdminChatMessage, AdminChatAnalyticsData } from '@/db/analytics-schema/admin-chat-sessions.schema';
@@ -201,6 +202,6 @@ async function triggerSummarizationIfNeeded(
       remainingMessages: trimmedMessages.length,
     });
   } catch (error) {
-    logger.warn('Summarization failed (non-fatal)', { error });
+    logger[failureLevel(error, 'warn')]('Summarization failed (non-fatal)', { err: error });
   }
 }

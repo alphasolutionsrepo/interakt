@@ -58,13 +58,12 @@ export async function handleCreateProvider(request: NextRequest) {
     return apiResponse.success(provider, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create AI provider', err);
 
     if (err.message.includes('already exists')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createProvider' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createProvider' });
   }
 }
 
@@ -95,8 +94,7 @@ export async function handleListProviders(request: NextRequest) {
 
     return apiResponse.success(providers);
   } catch (error) {
-    logger.error('Failed to list AI providers', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'listProviders' });
   }
 }
 
@@ -128,8 +126,7 @@ export async function handleGetProvider(
 
     return apiResponse.success(provider);
   } catch (error) {
-    logger.error('Failed to get AI provider', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getProvider' });
   }
 }
 
@@ -161,8 +158,7 @@ export async function handleGetProviderByKey(
 
     return apiResponse.success(provider);
   } catch (error) {
-    logger.error('Failed to get AI provider by key', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getProviderByKey' });
   }
 }
 
@@ -175,8 +171,7 @@ export async function handleGetEnabledProviders() {
     const providers = await service.getEnabledProviders();
     return apiResponse.success(providers);
   } catch (error) {
-    logger.error('Failed to get enabled providers', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getEnabledProviders' });
   }
 }
 
@@ -222,13 +217,12 @@ export async function handleUpdateProvider(
     return apiResponse.success(provider);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update AI provider', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateProvider' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateProvider' });
   }
 }
 
@@ -263,13 +257,12 @@ export async function handleEnableProvider(
     return apiResponse.success(provider);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to enable AI provider', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'enableProvider' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'enableProvider' });
   }
 }
 
@@ -304,13 +297,12 @@ export async function handleDisableProvider(
     return apiResponse.success(provider);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to disable AI provider', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'disableProvider' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'disableProvider' });
   }
 }
 
@@ -349,13 +341,12 @@ export async function handleDeleteProvider(
     return apiResponse.success({ message: 'Provider deleted successfully' });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete AI provider', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'deleteProvider' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteProvider' });
   }
 }
 
@@ -384,13 +375,12 @@ export async function handleTestConnection(
     return apiResponse.success(result);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to test connection', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'testConnection' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'testConnection' });
   }
 }
 
@@ -430,17 +420,16 @@ export async function handleDiscoverModels(
     return apiResponse.success(result);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to discover models', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'discoverModels' });
     }
 
     if (err.message.includes('only supported for Ollama')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'discoverModels' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'discoverModels' });
   }
 }
 
@@ -476,17 +465,16 @@ export async function handleCreateModel(request: NextRequest) {
     return apiResponse.success(model, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create AI model', err);
 
     if (err.message.includes('already exists')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createModel' });
     }
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createModel' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createModel' });
   }
 }
 
@@ -521,8 +509,7 @@ export async function handleListModels(request: NextRequest) {
 
     return apiResponse.success(models);
   } catch (error) {
-    logger.error('Failed to list AI models', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'listModels' });
   }
 }
 
@@ -554,8 +541,7 @@ export async function handleGetModel(
 
     return apiResponse.success(model);
   } catch (error) {
-    logger.error('Failed to get AI model', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getModel' });
   }
 }
 
@@ -581,8 +567,7 @@ export async function handleGetModelsForPurpose(request: NextRequest) {
 
     return apiResponse.success(models);
   } catch (error) {
-    logger.error('Failed to get models for purpose', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getModelsForPurpose' });
   }
 }
 
@@ -628,13 +613,12 @@ export async function handleUpdateModel(
     return apiResponse.success(model);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update AI model', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateModel' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateModel' });
   }
 }
 
@@ -673,13 +657,12 @@ export async function handleDeleteModel(
     return apiResponse.success({ message: 'Model deleted successfully' });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete AI model', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'deleteModel' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteModel' });
   }
 }
 
@@ -696,8 +679,7 @@ export async function handleGetSystemDefaults() {
     const defaults = await service.getSystemDefaults();
     return apiResponse.success(defaults);
   } catch (error) {
-    logger.error('Failed to get system defaults', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getSystemDefaults' });
   }
 }
 
@@ -710,8 +692,7 @@ export async function handleGetResolvedDefaults() {
     const defaults = await service.getResolvedDefaults();
     return apiResponse.success(defaults);
   } catch (error) {
-    logger.error('Failed to get resolved defaults', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getResolvedDefaults' });
   }
 }
 
@@ -740,13 +721,12 @@ export async function handleUpdateSystemDefaults(request: NextRequest) {
     return apiResponse.success(defaults);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update system defaults', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateSystemDefaults' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateSystemDefaults' });
   }
 }
 
@@ -794,13 +774,12 @@ export async function handleSetDefaultForPurpose(
     return apiResponse.success(defaults);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to set default for purpose', err);
 
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'setDefaultForPurpose' });
     }
 
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'setDefaultForPurpose' });
   }
 }
 
@@ -825,8 +804,7 @@ export async function handleClearCache() {
 
     return apiResponse.success({ message: 'Cache cleared successfully' });
   } catch (error) {
-    logger.error('Failed to clear cache', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'clearAIProviderCache' });
   }
 }
 
@@ -839,7 +817,6 @@ export async function handleGetCacheStats() {
     const stats = service.getCacheStats();
     return apiResponse.success(stats);
   } catch (error) {
-    logger.error('Failed to get cache stats', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error as Error, undefined, { operation: 'getAIProviderCacheStats' });
   }
 }

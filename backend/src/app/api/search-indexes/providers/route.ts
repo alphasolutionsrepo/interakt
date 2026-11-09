@@ -6,6 +6,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { apiResponse } from '@/shared/api/response';
 import { getEnabledProviderTypes, getSearchEngineProvider } from '@/features/search/providers';
 import { searchProvidersConfig } from '@/config/search-provider.config';
 
@@ -55,7 +56,6 @@ export async function GET() {
 
         return NextResponse.json({ providers });
     } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to get providers';
-        return NextResponse.json({ error: message }, { status: 500 });
+        return apiResponse.error(error, 500, { operation: 'listSearchProviders' });
     }
 }

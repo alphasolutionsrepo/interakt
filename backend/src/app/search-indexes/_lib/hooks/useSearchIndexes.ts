@@ -16,9 +16,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { searchIndexesApi, ApiError } from '../api-client';
+import { searchIndexesApi } from '../api-client';
 import type {
     CreateSearchIndexDTO,
     UpdateSearchIndexDTO,
@@ -44,6 +44,15 @@ export const searchIndexKeys = {
     cache: () => [...searchIndexKeys.all, 'cache'] as const,
     cacheStats: () => [...searchIndexKeys.cache(), 'stats'] as const,
 };
+
+/**
+ * Refresh the index lists after an index changes, the active indexes the experience
+ * screens pick from included (kept for five minutes otherwise)
+ */
+function refreshIndexLists(queryClient: QueryClient) {
+    queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+    queryClient.invalidateQueries({ queryKey: searchIndexKeys.allActive() });
+}
 
 // ============================================================================
 // Debounce Hook (internal utility)
@@ -92,38 +101,30 @@ export function useSearchIndexes(params?: UseSearchIndexesParams) {
     const createMutation = useMutation({
         mutationFn: (data: CreateSearchIndexDTO) => searchIndexesApi.create(data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.allActive() });
+            refreshIndexLists(queryClient);
             toast.success('Search index created successfully');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to create search index');
-        },
+        meta: { label: 'Create search index' },
     });
 
     const updateMutation = useMutation({
         mutationFn: ({ id, data }: { id: string; data: UpdateSearchIndexDTO }) =>
             searchIndexesApi.update(id, data),
         onSuccess: (updated) => {
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            refreshIndexLists(queryClient);
             queryClient.invalidateQueries({ queryKey: searchIndexKeys.detail(updated.id) });
             toast.success('Search index updated successfully');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to update search index');
-        },
+        meta: { label: 'Update search index' },
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id: string) => searchIndexesApi.delete(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.allActive() });
+            refreshIndexLists(queryClient);
             toast.success('Search index deleted successfully');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to delete search index');
-        },
+        meta: { label: 'Delete search index' },
     });
 
     return {
@@ -179,54 +180,47 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
         queryFn: () => searchIndexesApi.getById(id),
         enabled: options?.enabled !== false && !!id,
         staleTime: 0, // Always fetch fresh data for detail views
+        // Follow a reindex or upload while it runs, even one started elsewhere
+        refetchInterval: (q) => (q.state.data?.lastJob?.status === 'running' ? 3000 : false),
     });
 
     const updateMutation = useMutation({
         mutationFn: (data: UpdateSearchIndexDTO) => searchIndexesApi.update(id, data),
         onSuccess: (updated) => {
             queryClient.setQueryData(searchIndexKeys.detail(id), updated);
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            refreshIndexLists(queryClient);
             toast.success('Search index updated successfully');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to update search index');
-        },
+        meta: { label: 'Update search index' },
     });
 
     const deleteMutation = useMutation({
         mutationFn: () => searchIndexesApi.delete(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.allActive() });
+            refreshIndexLists(queryClient);
             toast.success('Search index deleted successfully');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to delete search index');
-        },
+        meta: { label: 'Delete search index' },
     });
 
     const activateMutation = useMutation({
         mutationFn: () => searchIndexesApi.activate(id),
         onSuccess: (updated) => {
             queryClient.setQueryData(searchIndexKeys.detail(id), updated);
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            refreshIndexLists(queryClient);
             toast.success('Search index activated');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to activate search index');
-        },
+        meta: { label: 'Activate search index' },
     });
 
     const deactivateMutation = useMutation({
         mutationFn: () => searchIndexesApi.deactivate(id),
         onSuccess: (updated) => {
             queryClient.setQueryData(searchIndexKeys.detail(id), updated);
-            queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            refreshIndexLists(queryClient);
             toast.success('Search index deactivated');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to deactivate search index');
-        },
+        meta: { label: 'Deactivate search index' },
     });
 
     const reindexMutation = useMutation({
@@ -234,14 +228,14 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: searchIndexKeys.detail(id) });
             queryClient.invalidateQueries({ queryKey: searchIndexKeys.lists() });
+            // A partial reindex gets its warning from the Activity panel (job outcome)
+            if (result.outcome?.status === 'partial') return;
             const duration = result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s` : '';
             toast.success('Reindex completed successfully', {
                 description: `${result.documentCount} documents reindexed${duration ? ` in ${duration}` : ''}`,
             });
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to reindex');
-        },
+        meta: { label: 'Reindex', inlineError: true, job: true },
     });
 
     const recreateIndexMutation = useMutation({
@@ -253,9 +247,7 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
                 description: 'The empty index structure has been created. You can now upload documents.',
             });
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to recreate index');
-        },
+        meta: { label: 'Recreate index', job: true },
     });
 
     return {
@@ -384,9 +376,7 @@ export function useClearCache() {
             queryClient.invalidateQueries({ queryKey: searchIndexKeys.all });
             toast.success('Cache cleared successfully');
         },
-        onError: (error: ApiError) => {
-            toast.error(error.message || 'Failed to clear cache');
-        },
+        meta: { label: 'Clear cache' },
     });
 }
 

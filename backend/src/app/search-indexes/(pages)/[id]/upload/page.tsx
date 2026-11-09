@@ -245,6 +245,9 @@ function BatchHistory({ searchIndexId }: { searchIndexId: string }) {
                     {format(new Date(batch.createdAt), 'MMM d, h:mm a')}
                   </span>
                 </div>
+                {batch.status === 'failed' && batch.errorMessage && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400 break-words">{batch.errorMessage}</p>
+                )}
                 {batch.status === 'processing' && (
                   <div className="mt-2 h-1 bg-muted rounded-full overflow-hidden">
                     <div

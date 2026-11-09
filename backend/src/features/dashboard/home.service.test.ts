@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/db/index', () => ({ db: null, analyticsDB: null }));
 
-import { buildChecklist, buildRecent, buildTips, type Setup } from './home.service';
+import { buildChecklist, buildRecent, buildTips, experienceIssue, type Setup } from './home.service';
 
 const now = new Date('2026-10-26T12:00:00Z');
 const daysAgo = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
@@ -112,6 +112,18 @@ describe('buildTips', () => {
     });
     expect(ids(tips)).toEqual(['tip:stale:00000000-0000-0000-0000-000000000001', 'tip:single_provider']);
     expect(tips[0].title).toBe('Catalog was last updated 45 days ago');
+  });
+});
+
+describe('experienceIssue', () => {
+  const summary = { id: 'a', name: 'A', type: 'ai' as const, volume: 12, deleted: false, successRate: 0.5, zeroResultRate: 0, avgLatencyMs: 900 };
+
+  it('flags a busy chat experience whose turns failed', () => {
+    expect(experienceIssue('ai', summary)).toBe('50% of turns failed');
+  });
+
+  it("doesn't flag failures when the visitor left every turn before an answer", () => {
+    expect(experienceIssue('ai', { ...summary, successRate: null, avgLatencyMs: null })).toBeNull();
   });
 });
 

@@ -1,0 +1,1 @@
+ALTER TABLE "search_index" ADD COLUMN "last_job" jsonb;

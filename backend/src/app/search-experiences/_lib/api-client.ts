@@ -1,5 +1,7 @@
 // app/search-experiences/_lib/api-client.ts
 
+import { ApiError, handleApiPage, handleApiResponse } from '@/shared/api/api-error';
+
 /**
  * Search Experience API Client
  *
@@ -21,35 +23,22 @@ import type {
 // ERROR HANDLING
 // ============================================================================
 
-export class ApiError extends Error {
-  status: number;
-  details?: unknown;
+export { ApiError };
 
-  constructor(message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.details = details;
-  }
-}
-
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new ApiError(
-      data.error || data.message || 'An error occurred',
-      response.status,
-      data.details
-    );
-  }
-
-  return data.data ?? data;
-}
 
 // ============================================================================
 // Search Experiences API
 // ============================================================================
+
+/** What custom instructions are written from */
+export interface GenerateInstructionsRequest {
+  experienceName: string;
+  experienceDescription?: string;
+  indexIds: string[];
+  dataSourceIds?: string[];
+  additionalContext?: string;
+  type: 'chat' | 'summary';
+}
 
 export const searchExperiencesApi = {
   // ==========================================================================
@@ -65,7 +54,7 @@ export const searchExperiencesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<SearchExperience>(response);
+    return handleApiResponse<SearchExperience>(response);
   },
 
   /**
@@ -73,7 +62,7 @@ export const searchExperiencesApi = {
    */
   getById: async (id: string): Promise<SearchExperienceWithIndexes> => {
     const response = await fetch(`/api/search-experiences/${id}`);
-    return handleResponse<SearchExperienceWithIndexes>(response);
+    return handleApiResponse<SearchExperienceWithIndexes>(response);
   },
 
   /**
@@ -89,23 +78,9 @@ export const searchExperiencesApi = {
     if (query?.sortOrder) params.set('sortOrder', query.sortOrder);
 
     const url = `/api/search-experiences${params.toString() ? `?${params.toString()}` : ''}`;
-    const response = await fetch(url);
-    const json = await response.json();
-
-    if (!response.ok) {
-      throw new ApiError(
-        json.error || json.message || 'An error occurred',
-        response.status,
-        json.details
-      );
-    }
-
-    // Transform API response format: { data: [...], pagination: {...} }
-    // to client format: { items: [...], pagination: {...} }
-    return {
-      items: json.data || [],
-      pagination: json.pagination,
-    };
+    const { data, pagination } = await handleApiPage<SearchExperienceListResponse['items'][number], SearchExperienceListResponse['pagination']>(await fetch(url));
+    // The API's { data, pagination } as the client's { items, pagination }
+    return { items: data, pagination };
   },
 
   /**
@@ -117,7 +92,7 @@ export const searchExperiencesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<SearchExperience>(response);
+    return handleApiResponse<SearchExperience>(response);
   },
 
   /**
@@ -127,7 +102,7 @@ export const searchExperiencesApi = {
     const response = await fetch(`/api/search-experiences/${id}`, {
       method: 'DELETE',
     });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   /**
@@ -137,7 +112,7 @@ export const searchExperiencesApi = {
     const response = await fetch(`/api/search-experiences/${id}/token`, {
       method: 'POST',
     });
-    return handleResponse<{ accessToken: string }>(response);
+    return handleApiResponse<{ accessToken: string }>(response);
   },
 
   /**
@@ -147,7 +122,19 @@ export const searchExperiencesApi = {
     const params = new URLSearchParams({ slug });
     if (excludeId) params.set('excludeId', excludeId);
     const response = await fetch(`/api/search-experiences/check-slug?${params.toString()}`);
-    return handleResponse<{ available: boolean }>(response);
+    return handleApiResponse<{ available: boolean }>(response);
+  },
+
+  /**
+   * Write custom instructions with AI, for a search experience's chat or summary
+   */
+  generateInstructions: async (request: GenerateInstructionsRequest): Promise<{ instructions: string }> => {
+    const response = await fetch('/api/search-experiences/generate-instructions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    return handleApiResponse<{ instructions: string }>(response, 'Failed to generate instructions');
   },
 };
 
@@ -165,7 +152,7 @@ export const searchExperienceIndexesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   /**
@@ -177,7 +164,7 @@ export const searchExperienceIndexesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   /**
@@ -187,7 +174,7 @@ export const searchExperienceIndexesApi = {
     const response = await fetch(`/api/search-experiences/${experienceId}/indexes/${indexId}`, {
       method: 'DELETE',
     });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 };
 
@@ -205,7 +192,7 @@ export const searchExperienceExternalSourcesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dataSourceId }),
     });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   /**
@@ -215,6 +202,6 @@ export const searchExperienceExternalSourcesApi = {
     const response = await fetch(`/api/search-experiences/${experienceId}/external-sources/${dataSourceId}`, {
       method: 'DELETE',
     });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 };

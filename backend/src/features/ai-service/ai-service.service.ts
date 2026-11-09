@@ -20,7 +20,7 @@ import {
     getModelById,
     getResolvedDefaults,
 } from '@/features/ai-providers/ai-providers.service';
-import { getAdapter } from './adapters';
+import { CallerTimeoutError, CancelledRequestError, getAdapter } from './adapters';
 import { withResilience, withRetry } from './ai-service.resilience';
 import { trackUsage, updateRealtimeMetrics } from './ai-service.analytics';
 import { processEmbeddingBatches } from './utils/batch-processor';
@@ -246,6 +246,7 @@ export async function generateText(
                 ),
                 {
                     providerId: config!.providerId,
+                    providerKey: config!.providerKey,
                     retry: { maxRetries: config!.maxRetries },
                 }
             );
@@ -324,7 +325,8 @@ export async function generateText(
             updateRealtimeMetrics(metrics);
         }
 
-        logger.error('Text generation failed', error as Error, { requestId });
+        // Passed on: whoever handles it logs it (the API answer, the chat step, the summary stream)
+        logger.debug('Text generation failed', { requestId, err: error });
         throw error;
     }
 }
@@ -371,32 +373,45 @@ export async function chat(
             config,
             { messageCount: messages.length, hasTools: !!options?.tools?.length, experienceId: options?.experienceId, feature: options?.feature, messages },
             async (span) => {
-                const result = await withResilience(
-                    () => adapter.chat(
+                let result;
+                try {
+                    result = await withResilience(
+                        () => adapter.chat(
+                            {
+                                messages,
+                                maxTokens: options?.maxTokens,
+                                temperature: options?.temperature,
+                                topP: options?.topP,
+                                stopSequences: options?.stopSequences,
+                                stream: false,
+                                tools: options?.tools,
+                                toolChoice: options?.toolChoice,
+                                responseFormat: options?.responseFormat,
+                                signal: options?.signal,
+                            },
+                            toAdapterConfig(config!)
+                        ),
                         {
-                            messages,
-                            maxTokens: options?.maxTokens,
-                            temperature: options?.temperature,
-                            topP: options?.topP,
-                            stopSequences: options?.stopSequences,
-                            stream: false,
-                            tools: options?.tools,
-                            toolChoice: options?.toolChoice,
-                            responseFormat: options?.responseFormat,
-                        },
-                        toAdapterConfig(config!)
-                    ),
-                    {
-                        providerId: config!.providerId,
-                        retry: { maxRetries: config!.maxRetries },
-                    }
-                );
+                            providerId: config!.providerId,
+                            providerKey: config!.providerKey,
+                            retry: { maxRetries: config!.maxRetries },
+                            signal: options?.signal,
+                        }
+                    );
+                } catch (error) {
+                    // The caller went away: the call stopped, it didn't fail, so the span isn't
+                    // an error. Thrown again below, once the span has ended.
+                    if (!(error instanceof CancelledRequestError)) throw error;
+                    span.setAttribute(ATTR.AI_CANCELLED, true);
+                    return { cancelled: error };
+                }
                 span.setAttribute(ATTR.AI_INPUT_TOKENS, result.usage.inputTokens);
                 span.setAttribute(ATTR.AI_OUTPUT_TOKENS, result.usage.outputTokens);
                 span.setAttribute(ATTR.AI_TOTAL_TOKENS, result.usage.totalTokens);
                 return result;
             }
         );
+        if ('cancelled' in response) throw response.cancelled;
 
         const durationMs = Date.now() - startTime;
 
@@ -441,8 +456,10 @@ export async function chat(
     } catch (error) {
         const durationMs = Date.now() - startTime;
 
-        if (config) {
-            const err = error as AIServiceError;
+        if (config && error instanceof CancelledRequestError) {
+            // Not a failure: recorded as a cancelled call, like a stream the caller left. The
+            // model read the prompt before the cancel; what it wrote is unknown.
+            const usage = estimateChatUsage(messages, '', config.modelKey);
             const metrics: AIUsageMetrics = {
                 requestId,
                 operation: 'chat',
@@ -450,9 +467,33 @@ export async function chat(
                 providerKey: config.providerKey,
                 modelId: config.modelId,
                 modelKey: config.modelKey,
-                inputTokens: 0,
+                inputTokens: usage.inputTokens,
                 outputTokens: 0,
-                totalTokens: 0,
+                totalTokens: usage.inputTokens,
+                durationMs,
+                success: true,
+                userId: options?.userId,
+                sessionId: options?.sessionId,
+                feature: options?.feature,
+                metadata: { messageCount: messages.length, cancelled: true, usageEstimated: true },
+            };
+            void trackUsage(metrics);
+            updateRealtimeMetrics(metrics);
+        } else if (config) {
+            const err = error as AIServiceError;
+            // Stopped by the caller's own time limit: the model read the prompt, as on a cancel
+            const stopped = error instanceof CallerTimeoutError;
+            const inputTokens = stopped ? estimateChatUsage(messages, '', config.modelKey).inputTokens : 0;
+            const metrics: AIUsageMetrics = {
+                requestId,
+                operation: 'chat',
+                providerId: config.providerId,
+                providerKey: config.providerKey,
+                modelId: config.modelId,
+                modelKey: config.modelKey,
+                inputTokens,
+                outputTokens: 0,
+                totalTokens: inputTokens,
                 durationMs,
                 success: false,
                 errorCode: err.code,
@@ -460,12 +501,14 @@ export async function chat(
                 userId: options?.userId,
                 sessionId: options?.sessionId,
                 feature: options?.feature,
+                ...(stopped && { metadata: { messageCount: messages.length, usageEstimated: true } }),
             };
             void trackUsage(metrics);
             updateRealtimeMetrics(metrics);
         }
 
-        logger.error('Chat completion failed', error as Error, { requestId });
+        // Passed on: whoever handles it logs it (the API answer, the chat step, the summary stream)
+        logger.debug('Chat completion failed', { requestId, err: error });
         throw error;
     }
 }
@@ -542,6 +585,7 @@ export async function* streamChat(
                         toAdapterConfig(config!)
                     ),
                     { maxRetries: config!.maxRetries },
+                    options?.signal,
                 );
                 try {
                     for await (const chunk of innerStream) {
@@ -557,9 +601,10 @@ export async function* streamChat(
                     // because adapter.streamChat returns the iterator lazily.
                     // Fall through to a single retry of the whole iteration.
                     if (yielded) throw err;
-                    logger.warn('Stream errored before first chunk — retrying once', {
+                    // A retry, not a failure: if the retry fails too, whoever handles it logs it
+                    logger.info('Stream errored before first chunk — retrying once', {
                         provider: config!.providerKey,
-                        error: (err as Error).message,
+                        err,
                     });
                     try {
                         yield* adapter.streamChat(request, toAdapterConfig(config!));
@@ -630,7 +675,8 @@ export async function* streamChat(
             updateRealtimeMetrics(metrics);
         }
 
-        logger.error('Streaming chat failed', error as Error, { requestId });
+        // Passed on: whoever handles it logs it (the API answer, the chat step, the summary stream)
+        logger.debug('Streaming chat failed', { requestId, err: error });
         throw error;
     } finally {
         // Usage is recorded however the stream ends. The caller may stop reading
@@ -741,6 +787,7 @@ export async function generateEmbeddings(
                     () => adapter.generateEmbeddings({ texts: batch }, adapterConfig),
                     {
                         providerId: config!.providerId,
+                        providerKey: config!.providerKey,
                         retry: { maxRetries: config!.maxRetries },
                     }
                 );
@@ -848,7 +895,8 @@ export async function generateEmbeddings(
             updateRealtimeMetrics(metrics);
         }
 
-        logger.error('Embedding generation failed', error as Error, { requestId });
+        // Passed on: whoever handles it logs it (the API answer, the chat step, the summary stream)
+        logger.debug('Embedding generation failed', { requestId, err: error });
         throw error;
     }
 }

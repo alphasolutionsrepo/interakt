@@ -34,6 +34,17 @@ import type {
   QueueStats,
   AnalyticsCollectorConfig,
 } from './analytics.types';
+import { inBackground } from '@/shared/telemetry/background';
+import { scrubCredentials } from '@/shared/errors/error-detail';
+
+/**
+ * An event's error as stored: without credentials. The text comes from errors that can
+ * carry a connection URL with its password or a key in a query string, which the logs
+ * leave out and the analytics database mustn't keep either.
+ */
+function storedError(message: string | undefined): string | undefined {
+  return message === undefined ? undefined : scrubCredentials(message);
+}
 
 const logger = createLogger('analytics-collector');
 
@@ -262,9 +273,14 @@ export function trackClick(event: ClickEventData, experienceId?: string): void {
 // ============================================================================
 
 /**
- * Schedule a flush on next tick (non-blocking)
+ * Schedule a flush on next tick (non-blocking), outside the trace of the request that
+ * filled the queue: the batch holds other requests' events too
  */
 function scheduleFlush(): void {
+  inBackground(flushSoon);
+}
+
+function flushSoon(): void {
   if (typeof setImmediate !== 'undefined') {
     setImmediate(() => {
       flushAll().catch(() => {
@@ -371,7 +387,7 @@ async function flushSearchEvents(): Promise<void> {
         embeddingDurationMs: e.embeddingDurationMs,
         success: e.success,
         errorCode: e.errorCode,
-        errorMessage: e.errorMessage,
+        errorMessage: storedError(e.errorMessage),
         metadata: e.metadata,
       }))
     );
@@ -431,7 +447,7 @@ async function flushAIEvents(): Promise<void> {
           timeToFirstToken: e.timeToFirstToken,
           success: e.success,
           errorCode: e.errorCode,
-          errorMessage: e.errorMessage,
+          errorMessage: storedError(e.errorMessage),
           userId: undefined, // TODO: Add user tracking if needed
           sessionId: e.sessionId,
           feature: e.feature,
@@ -490,7 +506,7 @@ async function flushToolEvents(): Promise<void> {
         durationMs: e.durationMs,
         success: e.success,
         errorCode: e.errorCode,
-        errorMessage: e.errorMessage,
+        errorMessage: storedError(e.errorMessage),
         searchEventId: e.searchEventId,
         actionEventId: e.actionEventId,
         metadata: e.metadata,
@@ -585,7 +601,7 @@ export function startAnalyticsCollector(customConfig?: Partial<AnalyticsCollecto
 
   isShuttingDown = false;
 
-  flushTimer = setInterval(() => {
+  flushTimer = inBackground(() => setInterval(() => {
     logger.debug('Flush timer triggered', {
       searchQueueSize: searchEventQueue.length,
       aiQueueSize: aiEventQueue.length,
@@ -593,7 +609,7 @@ export function startAnalyticsCollector(customConfig?: Partial<AnalyticsCollecto
     flushAll().catch((err) => {
       logger.error('flushAll failed in interval', err as Error);
     });
-  }, config.flushIntervalMs);
+  }, config.flushIntervalMs));
 
   // NOTE: Removed .unref() - in Next.js dev mode it can cause the timer to not fire
   // if (flushTimer.unref) {

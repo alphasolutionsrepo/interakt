@@ -10,6 +10,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { trackSearch } from '@/features/analytics';
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 
 const { storedFields, providerSettings } = vi.hoisted(() => ({
   storedFields: { value: [] as DataSourceField[] },
@@ -122,6 +126,7 @@ describe("chat search tool with a default filter Sitecore can't take", () => {
   const config = { defaultFilters: [{ field: 'open', operator: 'eq', value: 'Yes' }] };
 
   it('fails, rather than searching wider than the tool was set up for', async () => {
+    logs.length = 0;
     storedFields.value = inferSitecoreFields({ items: [{ id: 'a', open: true }], total: 1, facets: new Map() });
     stubSitecoreFilter();
 
@@ -136,6 +141,27 @@ describe("chat search tool with a default filter Sitecore can't take", () => {
     expect(vi.mocked(trackSearch).mock.calls[0][0]).toMatchObject({
       success: false, totalResults: 0, resultsReturned: 0, errorMessage: result.error,
     });
+    // The tool's own setup is at fault, so it's logged as an error
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', message: 'External source search failed' })]);
+  });
+
+  it("still logs the model's own filter it dropped, beside the failure over the default", async () => {
+    logs.length = 0;
+    storedFields.value = inferSitecoreFields({ items: [{ id: 'a', open: true, archived: false }], total: 1, facets: new Map() });
+    stubSitecoreFilter();
+
+    const result = await executeDataSourceSearch('ds', config, { query: 'x', filters: [{ field: 'archived', operator: 'eq', value: 'Nope' }] });
+
+    expect(result.success).toBe(false);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', message: 'External source search failed' }),
+      expect.objectContaining({
+        level: 'warn',
+        message: 'External search could not apply part of the request',
+        // The default is in the failure's line already
+        context: expect.objectContaining({ unappliedFilters: [expect.stringMatching(/^archived: /)] }),
+      }),
+    ]);
   });
 
   it('runs when the request replaces that default with a value that converts', async () => {

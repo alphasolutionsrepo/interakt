@@ -20,6 +20,7 @@ import { resolve, dirname, isAbsolute } from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
 import { selectedSearchProvider } from '@/config/search-provider.config';
+import { SetupRequiredError } from '@/shared/errors/app-error';
 
 // A loose object that we forward to a service DTO verbatim.
 const looseObject = z.record(z.unknown());
@@ -203,7 +204,7 @@ export function defaultManifestPath(): string {
 /** Load + validate the manifest and its referenced JSON files. */
 export async function loadDemoManifest(manifestPath = defaultManifestPath()): Promise<LoadedDemoManifest> {
   if (!existsSync(manifestPath)) {
-    throw new Error(
+    throw new SetupRequiredError(
       `Demo manifest not found at ${manifestPath}. Expected setup/data/demo.manifest.yaml — ` +
         `run setup:demo from the backend/ directory, or set DEMO_MANIFEST.`,
     );
@@ -214,12 +215,12 @@ export async function loadDemoManifest(manifestPath = defaultManifestPath()): Pr
   try {
     parsed = YAML.parse(raw);
   } catch (e) {
-    throw new Error(`Failed to parse ${manifestPath}: ${(e as Error).message}`);
+    throw new SetupRequiredError(`Failed to parse ${manifestPath}: ${(e as Error).message}`);
   }
 
   const result = demoManifestSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`demo.manifest.yaml is invalid:\n${JSON.stringify(result.error.issues, null, 2)}`);
+    throw new SetupRequiredError(`demo.manifest.yaml is invalid:\n${JSON.stringify(result.error.issues, null, 2)}`);
   }
   const manifest = result.data;
 
@@ -229,7 +230,7 @@ export async function loadDemoManifest(manifestPath = defaultManifestPath()): Pr
     resolve(baseDir, manifest.index.mappingFile),
   );
   if (!Array.isArray(mapping.fields)) {
-    throw new Error(`${manifest.index.mappingFile} has no "fields" array — expected a field-mapping export.`);
+    throw new SetupRequiredError(`${manifest.index.mappingFile} has no "fields" array — expected a field-mapping export.`);
   }
 
   const documentsRaw = await readJson<unknown>(resolve(baseDir, manifest.index.documentsFile));
@@ -239,17 +240,17 @@ export async function loadDemoManifest(manifestPath = defaultManifestPath()): Pr
         (documentsRaw as { products?: unknown[] }).products ??
         []) as Record<string, unknown>[];
   if (documents.length === 0) {
-    throw new Error(`${manifest.index.documentsFile} contained no documents.`);
+    throw new SetupRequiredError(`${manifest.index.documentsFile} contained no documents.`);
   }
 
   return { manifest, mapping, documents, manifestPath };
 }
 
 async function readJson<T>(path: string): Promise<T> {
-  if (!existsSync(path)) throw new Error(`Referenced file not found: ${path}`);
+  if (!existsSync(path)) throw new SetupRequiredError(`Referenced file not found: ${path}`);
   try {
     return JSON.parse(await readFile(path, 'utf8')) as T;
   } catch (e) {
-    throw new Error(`Failed to parse JSON ${path}: ${(e as Error).message}`);
+    throw new SetupRequiredError(`Failed to parse JSON ${path}: ${(e as Error).message}`);
   }
 }

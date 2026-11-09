@@ -16,8 +16,10 @@ import * as toolsService from '@/features/tools/tools.service';
 import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } from '@/features/search-experience/search-experience.cache';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 import { resolveExternalConnection } from './external-search/external-connection';
-import { discoverSitecoreFields, sampleSitecore, SitecoreHttpError } from './external-search/connectors/sitecore-search.connector';
+import { discoverSitecoreFields, sampleSitecore } from './external-search/connectors/sitecore-search.connector';
 import { FixedFilterError, sitecoreFixedFilters } from './external-search/connectors/sitecore-search.request';
+import { ExternalSearchError } from './external-search/external-search.types';
+import { bodyExcerpt, readResponseBody } from './external-search/engines/response-body';
 
 const logger = createLogger('data-source-service');
 
@@ -434,7 +436,7 @@ async function checkExternalIndexHealth(
       statsNote = ` — ${sample.total.toLocaleString()} docs`;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
-      const refused = (err instanceof SitecoreHttpError && err.status === 400) || err instanceof FixedFilterError;
+      const refused = (err instanceof ExternalSearchError && err.status === 400) || err instanceof FixedFilterError;
       if (refused && sitecoreFixedFilters(config.providerSettings).length > 0) {
         return { status: 'error', message: `Searches with this source's fixed filters fail: ${errMsg}`, checkedAt: now, schema };
       }
@@ -606,9 +608,9 @@ async function fetchElasticsearchStats(config: ExternalSearchIndexConfig): Promi
 
     if (!response.ok) return null;
 
-    const data = await response.json() as {
+    const data = await readJsonAnswer<{
       _all?: { primaries?: { docs?: { count?: number }; store?: { size_in_bytes?: number } } };
-    };
+    }>(response, 'Elasticsearch');
     const primaries = data._all?.primaries;
 
     return {
@@ -641,7 +643,7 @@ async function fetchAzureAISearchStats(config: ExternalSearchIndexConfig): Promi
 
     if (!response.ok) return null;
 
-    const data = await response.json() as { documentCount?: number; storageSize?: number };
+    const data = await readJsonAnswer<{ documentCount?: number; storageSize?: number }>(response, 'Azure AI Search');
 
     return {
       documentCount: data.documentCount ?? 0,
@@ -779,9 +781,9 @@ async function sampleElasticsearchDocuments(
 
     if (!response.ok) return [];
 
-    const data = await response.json() as {
+    const data = await readJsonAnswer<{
       hits?: { hits?: Array<{ _source?: Record<string, unknown> }> };
-    };
+    }>(response, 'Elasticsearch');
     return (data.hits?.hits ?? [])
       .map((hit) => hit._source)
       .filter((source): source is Record<string, unknown> => !!source);
@@ -816,7 +818,7 @@ async function sampleAzureAISearchDocuments(
 
     if (!response.ok) return [];
 
-    const data = await response.json() as { value?: Record<string, unknown>[] };
+    const data = await readJsonAnswer<{ value?: Record<string, unknown>[] }>(response, 'Azure AI Search');
     // Strip Azure's response annotations so the profiler sees document fields only.
     return (data.value ?? []).map((doc) => {
       const clean: Record<string, unknown> = {};
@@ -859,7 +861,7 @@ async function discoverElasticsearchSchema(
       return [];
     }
 
-    const data = await response.json() as Record<string, { mappings?: { properties?: Record<string, ESFieldMapping> } }>;
+    const data = await readJsonAnswer<Record<string, { mappings?: { properties?: Record<string, ESFieldMapping> } }>>(response, 'Elasticsearch');
     const indexData = data[indexName] || Object.values(data)[0];
     const properties = indexData?.mappings?.properties;
 
@@ -987,7 +989,7 @@ async function discoverAzureAISearchSchema(
       return { fields: [] };
     }
 
-    const data = await response.json() as AzureIndexDefinition;
+    const data = await readJsonAnswer<AzureIndexDefinition>(response, 'Azure AI Search');
     if (!data.fields) {
       logger.warn('Azure AI Search response has no fields property');
       return { fields: [] };
@@ -1105,4 +1107,14 @@ function mapAzureType(azureType: string): string {
 
 export async function isSlugAvailable(slug: string, excludeId?: string) {
   return repository.isSlugAvailable(slug, excludeId);
+}
+
+/**
+ * A 2xx answer from an external engine, read as JSON. Something other than JSON (a
+ * proxy's error page) throws, explained with what it sent, not "Unexpected token <".
+ */
+async function readJsonAnswer<T>(response: Response, engine: string): Promise<T> {
+  const { text, json } = await readResponseBody(response);
+  if (json === undefined) throw new Error(`${engine} returned a non-JSON response (HTTP ${response.status})${bodyExcerpt(text)}`);
+  return json as T;
 }

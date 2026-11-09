@@ -20,6 +20,25 @@ import type { UnappliedClause } from './external-query';
  */
 export const EXTERNAL_REQUEST_TIMEOUT_MS = 10_000;
 
+/**
+ * An external engine call that failed. Keeps which engine it was and, when the engine
+ * answered, its HTTP status: the error explanation reads both (shared/errors/upstream).
+ */
+export class ExternalSearchError extends Error {
+  constructor(
+    /** The engine's display name, e.g. 'Elasticsearch' */
+    public provider: string,
+    message: string,
+    /** The HTTP status the engine answered with; none when it couldn't be reached */
+    public status?: number,
+    /** Filters the source adds to every request, which the engine got besides the caller's */
+    public fixedFilters: FilterClause[] = [],
+  ) {
+    super(message);
+    this.name = 'ExternalSearchError';
+  }
+}
+
 /** Connection details resolved from a data source (credentials already decrypted). */
 export interface ExternalConnection {
   /** Connector key, e.g. 'elasticsearch', 'azure-ai-search', 'sitecore-search' */

@@ -1,6 +1,16 @@
 // src/shared/logger/pino-logger.ts
 import pino, { Logger as PinoLogger, LoggerOptions } from 'pino';
 
+import { isSpanContextValid, trace } from '@opentelemetry/api';
+import {
+  ATTR_ERROR_TYPE,
+  ATTR_EXCEPTION_MESSAGE,
+  ATTR_EXCEPTION_STACKTRACE,
+  ATTR_EXCEPTION_TYPE,
+} from '@opentelemetry/semantic-conventions';
+
+import { redactLogFields, scrubCredentials, serializeError } from '@/shared/errors/error-detail';
+
 /**
  * Production-Grade Logger using Pino
  *
@@ -58,7 +68,12 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 // PINO CONFIGURATION
 // ============================================================================
 
-function createPinoOptions(): LoggerOptions {
+/**
+ * json is what log tools read (production); pretty is for people (development). Every
+ * line has credentials left out of its message and fields, and an error is expanded
+ * with its causes and the provider's response.
+ */
+export function createPinoOptions(format: 'json' | 'pretty' = IS_PRODUCTION ? 'json' : 'pretty'): LoggerOptions {
   return {
     level: LOG_LEVEL,
     base: {
@@ -88,6 +103,16 @@ function createPinoOptions(): LoggerOptions {
       ],
       censor: '[Redacted]',
     },
+    // The trace a JSON line was written in, so a log tool links the line to the trace
+    ...(format === 'json' && { mixin: traceFields }),
+    // The log formatter below has expanded errors already; pino's own err serializer
+    // would rewrite them (message and stack joined with the cause's)
+    serializers: { err: expanded, error: expanded },
+    hooks: {
+      logMethod(args, method) {
+        method.apply(this, args.map((arg) => (typeof arg === 'string' ? scrubCredentials(arg) : arg)) as Parameters<typeof method>);
+      },
+    },
     timestamp: pino.stdTimeFunctions.isoTime,
     formatters: {
       level: (label) => ({ level: label }),
@@ -96,7 +121,58 @@ function createPinoOptions(): LoggerOptions {
         pid: undefined,
         hostname: undefined,
       }),
+      // Many call sites log the error as error rather than err: both are expanded, and a
+      // message string or plain object there is left as it is (credentials aside)
+      log: (fields) => {
+        // Logging never throws. A value that can't be read is marked by redactLogFields;
+        // this is for anything else, so the line is still written
+        try {
+          return format === 'json' ? withExceptionFields(fields, redactLogFields(fields)) : redactLogFields(fields);
+        } catch {
+          return { logFields: '[Unreadable]' };
+        }
+      },
     },
+  };
+}
+
+/**
+ * The active span's ids under the names OpenTelemetry's pino instrumentation uses
+ * (trace_id, span_id, trace_flags); nothing outside a trace.
+ */
+function traceFields(): Record<string, string> {
+  const spanContext = trace.getActiveSpan()?.spanContext();
+  if (!spanContext || !isSpanContextValid(spanContext)) return {};
+  return {
+    trace_id: spanContext.traceId,
+    span_id: spanContext.spanId,
+    trace_flags: spanContext.traceFlags.toString(16).padStart(2, '0'),
+  };
+}
+
+function expanded(value: unknown): unknown {
+  return value instanceof Error ? serializeError(value) : value;
+}
+
+/**
+ * The error of a log line under OpenTelemetry's names (exception.type, exception.message,
+ * exception.stacktrace, error.type), so a log tool reads it without knowing our format.
+ * err keeps what those names have no place for: the causes and the provider's response.
+ * https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-logs/
+ */
+function withExceptionFields(fields: Record<string, unknown>, redacted: Record<string, unknown>): Record<string, unknown> {
+  const key = ['err', 'error'].find((k) => fields[k] instanceof Error);
+  if (!key) return redacted;
+  const written = redacted[key];
+  if (written === null || typeof written !== 'object') return redacted;
+  const { stack, ...expanded } = written as Record<string, unknown>;
+  return {
+    [ATTR_EXCEPTION_TYPE]: expanded.name,
+    [ATTR_EXCEPTION_MESSAGE]: expanded.message,
+    [ATTR_EXCEPTION_STACKTRACE]: stack,
+    [ATTR_ERROR_TYPE]: typeof expanded.code === 'string' ? expanded.code : expanded.name,
+    ...redacted,
+    [key]: expanded,
   };
 }
 
@@ -145,106 +221,41 @@ function createPinoLogger(options: LoggerOptions): PinoLogger {
 // ============================================================================
 
 /**
- * Logger class using Pino
+ * A service's logger over pino. An error passed to error() is logged as err, which
+ * the log formatter above expands.
  */
-class Logger implements LoggerInstance {
-  private pino: PinoLogger;
-
-  constructor(serviceName: string, parentLogger?: PinoLogger) {
-    if (parentLogger) {
-      this.pino = parentLogger.child({ service: serviceName });
-    } else {
-      const options = createPinoOptions();
-      this.pino = createPinoLogger(options).child({ service: serviceName });
-    }
-  }
+export class ServiceLogger implements LoggerInstance {
+  constructor(private readonly pino: PinoLogger) {}
 
   debug(message: string, context?: LogContext): void {
-    if (context) {
-      this.pino.debug(context, message);
-    } else {
-      this.pino.debug(message);
-    }
+    this.write('debug', message, context);
   }
 
   info(message: string, context?: LogContext): void {
-    if (context) {
-      this.pino.info(context, message);
-    } else {
-      this.pino.info(message);
-    }
+    this.write('info', message, context);
   }
 
   warn(message: string, context?: LogContext): void {
-    if (context) {
-      this.pino.warn(context, message);
-    } else {
-      this.pino.warn(message);
-    }
+    this.write('warn', message, context);
   }
 
   error(message: string, error?: Error | LogContext, context?: LogContext): void {
-    let logContext: LogContext = {};
+    // An error, or text passed in its place, goes in err; an object is the line's context
+    const fields = error === undefined || (typeof error === 'object' && error !== null && !(error instanceof Error)) ? error : { err: error };
+    this.write('error', message, fields || context ? { ...fields, ...context } : undefined);
+  }
 
-    if (error instanceof Error) {
-      logContext = {
-        err: {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-        },
-        ...context,
-      };
-    } else if (error) {
-      logContext = { ...error, ...context };
-    } else if (context) {
-      logContext = context;
-    }
+  // Here: pino doesn't run its bindings formatter on a child's fields
+  child(bindings: LogContext): LoggerInstance {
+    return new ServiceLogger(this.pino.child(redactLogFields(bindings)));
+  }
 
-    if (Object.keys(logContext).length > 0) {
-      this.pino.error(logContext, message);
+  private write(level: LogLevel, message: string, context?: LogContext): void {
+    if (context && Object.keys(context).length > 0) {
+      this.pino[level](context, message);
     } else {
-      this.pino.error(message);
+      this.pino[level](message);
     }
-  }
-
-  child(bindings: LogContext): LoggerInstance {
-    return new ChildLogger(this.pino.child(bindings));
-  }
-}
-
-/**
- * Child logger for request-scoped logging
- */
-class ChildLogger implements LoggerInstance {
-  constructor(private pino: PinoLogger) {}
-
-  debug(message: string, context?: LogContext): void {
-    context ? this.pino.debug(context, message) : this.pino.debug(message);
-  }
-
-  info(message: string, context?: LogContext): void {
-    context ? this.pino.info(context, message) : this.pino.info(message);
-  }
-
-  warn(message: string, context?: LogContext): void {
-    context ? this.pino.warn(context, message) : this.pino.warn(message);
-  }
-
-  error(message: string, error?: Error | LogContext, context?: LogContext): void {
-    let logContext: LogContext = {};
-    if (error instanceof Error) {
-      logContext = { err: { message: error.message, stack: error.stack, name: error.name }, ...context };
-    } else if (error) {
-      logContext = { ...error, ...context };
-    } else if (context) {
-      logContext = context;
-    }
-    Object.keys(logContext).length > 0 ? this.pino.error(logContext, message) : this.pino.error(message);
-  }
-
-  child(bindings: LogContext): LoggerInstance {
-    return new ChildLogger(this.pino.child(bindings));
   }
 }
 
@@ -253,7 +264,7 @@ class ChildLogger implements LoggerInstance {
 // ============================================================================
 
 // Cache for logger instances
-const loggerCache = new Map<string, Logger>();
+const loggerCache = new Map<string, ServiceLogger>();
 
 /**
  * Create a logger for a specific service/module
@@ -262,7 +273,7 @@ const loggerCache = new Map<string, Logger>();
 export function createLogger(serviceName: string): LoggerInstance {
   let logger = loggerCache.get(serviceName);
   if (!logger) {
-    logger = new Logger(serviceName);
+    logger = new ServiceLogger(createPinoLogger(createPinoOptions()).child({ service: serviceName }));
     loggerCache.set(serviceName, logger);
   }
   return logger;
@@ -285,7 +296,7 @@ export const searchLogger = createLogger('search');
 // EXPORTS
 // ============================================================================
 
-export type { LoggerInstance as Logger, LogLevel, LogContext };
+export type { LogLevel, LogContext };
 
 /**
  * Flush logs (for graceful shutdown)

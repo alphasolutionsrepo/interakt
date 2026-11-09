@@ -28,6 +28,8 @@ import {
 import { Loader2, Sparkles, MessageSquare, FileText, Database, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AIProviderModelResponse } from '@/features/ai-providers';
+import { useInlineError } from '@/shared/activity/useInlineError';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 import { REASONING_CHOICES, REASONING_LABELS } from '../_lib/model-capabilities';
 import { formValuesOf, modelFormSchema, optionalNumber, type ModelFormData } from '../_lib/model-form';
 
@@ -70,6 +72,7 @@ export function ModelFormDialog({
     isSubmitting = false,
 }: ModelFormDialogProps) {
     const isEdit = !!model;
+    const inline = useInlineError();
 
     const {
         register,
@@ -77,6 +80,8 @@ export function ModelFormDialog({
         watch,
         setValue,
         reset,
+        setError,
+        getValues,
         formState: { errors },
     } = useForm<ModelFormData>({
         resolver: zodResolver(modelFormSchema),
@@ -136,8 +141,19 @@ export function ModelFormDialog({
     };
 
     const onFormSubmit = async (data: ModelFormData) => {
-        await onSubmit(data);
+        inline.clear();
+        try {
+            await onSubmit(data);
+        } catch (err) {
+            inline.capture(model ? 'Update model' : 'Add model', err, { setError, getValues });
+        }
     };
+
+    // A failed save from last time is not shown again
+    const clearInlineError = inline.clear;
+    useEffect(() => {
+        if (open) clearInlineError();
+    }, [open, clearInlineError]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -388,7 +404,7 @@ export function ModelFormDialog({
                                         Reasoning
                                     </Label>
                                     <p className="text-xs text-slate-500">
-                                        For thinking models. If replies come back empty, try a lower level; not every model accepts every level. Ollama has no Minimal level and uses Low
+                                        For thinking models. If replies come back empty, try a lower level; not every model accepts every level. With the Ollama provider, Minimal turns thinking off (Low on gpt-oss)
                                     </p>
                                 </div>
                                 <Select
@@ -422,6 +438,8 @@ export function ModelFormDialog({
                             onCheckedChange={(checked) => setValue('isAvailable', checked)}
                         />
                     </div>
+
+                    <ProblemAlert error={inline.error} hideFields={inline.hideFields} onDismiss={inline.clear} />
 
                     <DialogFooter>
                         <Button

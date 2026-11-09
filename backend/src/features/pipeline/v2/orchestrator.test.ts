@@ -1,12 +1,14 @@
+import { trace } from '@opentelemetry/api';
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('@/shared/logger/logger', () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
+const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+vi.mock('@/shared/logger/logger', () => ({ createLogger: () => log }));
+// Traced only where a test switches it on
+const telemetry = vi.hoisted(() => ({ on: false }));
+vi.mock('@/features/telemetry/telemetry.config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/telemetry/telemetry.config')>()),
+  isTelemetryEnabled: () => telemetry.on,
 }));
 
 // Every pipeline phase reaches resolveTemplate() (a DB query); unit tests are
@@ -20,7 +22,12 @@ vi.mock('@/features/prompt-templates', () => ({
 import { runV2Pipeline } from './orchestrator';
 import type { V2PipelineInput, V2PipelineDeps } from './orchestrator';
 import type { PipelineStreamEvent } from '../pipeline.types';
-import type { ChatResult } from '@/features/ai-service/ai-service.types';
+import { abortedRequestError } from '@/features/ai-service/adapters/types';
+import type { ChatOptions, ChatResult } from '@/features/ai-service/ai-service.types';
+import { ATTR } from '@/features/telemetry/attribute-keys';
+
+const exporter = new InMemorySpanExporter();
+trace.setGlobalTracerProvider(new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }));
 
 // ============================================================================
 // FIXTURES
@@ -121,6 +128,7 @@ function makeDeps(): V2PipelineDeps {
     persistence: {
       addMessages: vi.fn().mockResolvedValue(undefined),
       updateSession: vi.fn().mockResolvedValue(undefined),
+      discardEmptySession: vi.fn().mockResolvedValue(undefined),
     },
   };
 }
@@ -258,17 +266,106 @@ describe('V2 Pipeline Orchestrator', () => {
   });
 
   describe('context assembly failure', () => {
-    it('emits error and returns early', async () => {
+    it('fails the turn with the error as its cause, marks the step failed, sends no error text of its own, and stops its timer', async () => {
       const deps = makeDeps();
-      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockRejectedValue(new Error('DB down'));
-      deps.contextAssembly.sessionLoader.createSession = vi.fn().mockRejectedValue(new Error('DB down'));
-
+      const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
+      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockRejectedValue(down);
+      deps.contextAssembly.sessionLoader.createSession = vi.fn().mockRejectedValue(down);
       const input = makeInput({ sessionId: '' });
-      const result = await runV2Pipeline(input, deps);
 
-      expect(result.responseText).toBe('');
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const thrown = await runV2Pipeline(input, deps).catch((e: unknown) => e);
+
+        // The answer to the caller (chatEventStream) explains and logs it
+        expect((thrown as Error).cause).toBe(down);
+        // The turn's wall-clock timer isn't left running
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
       const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
-      expect(events.some((e: PipelineStreamEvent) => e.type === 'error')).toBe(true);
+      expect(events.some((e: PipelineStreamEvent) => e.type === 'error')).toBe(false);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'step_complete', stepId: 'context-assembly', status: 'error' }));
+    });
+  });
+
+  describe('a turn that runs out of time', () => {
+    it("stops: no model call, search or save after the timeout, recorded as timed out and not logged as failing", async () => {
+      const deps = makeDeps();
+      // A new conversation: the session is created by this turn
+      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockResolvedValue(null);
+      deps.contextAssembly.sessionLoader.createSession = vi.fn().mockResolvedValue({
+        session: { id: 'session-new', summary: null, facts: null, pipelineState: null, userContext: null, messageCount: 0, status: 'active' },
+        messages: [],
+      });
+      // The planner answers late, unless its request is aborted first
+      const chat = deps.turnPlanner.chat as ReturnType<typeof vi.fn>;
+      let answerLate = () => {};
+      chat.mockReset();
+      chat.mockImplementationOnce((_messages: unknown, options?: ChatOptions) => new Promise((resolve, reject) => {
+        answerLate = () => resolve(makeChatResult(JSON.stringify({
+          actions: [{ toolSlug: 'product-search', intent: 'Search for red shoes', hints: '{"query":"red shoes"}', dependsOnPrevious: false }],
+          reasoning: 'User wants to search', directResponse: false, needsClarification: false, clarificationQuestion: null, confidence: 0.95,
+        })));
+        // As the adapters answer an aborted request
+        options?.signal?.addEventListener('abort', () => reject(abortedRequestError('openai', options.signal)));
+      }))
+        .mockResolvedValueOnce(makeChatResult(JSON.stringify({ query: 'red shoes' })))
+        .mockResolvedValueOnce(makeChatResult('I found some red shoes for you!'));
+      const input = makeInput({ sessionId: '' });
+
+      vi.clearAllMocks();
+      telemetry.on = true;
+      exporter.reset();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const result = runV2Pipeline(input, deps, { maxTotalDurationMs: 1000 });
+        await vi.waitFor(() => expect(chat).toHaveBeenCalledOnce());
+        await vi.advanceTimersByTimeAsync(1000);
+        await expect(result).resolves.toMatchObject({ responseText: '' });
+        answerLate();
+        await vi.waitFor(() => expect(exporter.getFinishedSpans().map((s) => s.name)).toContain('pipeline.v2.turn'));
+      } finally {
+        vi.useRealTimers();
+        telemetry.on = false;
+      }
+
+      expect(chat).toHaveBeenCalledOnce();
+      expect(deps.executionLoop.executeTool).not.toHaveBeenCalled();
+      expect(deps.persistence.addMessages).not.toHaveBeenCalled();
+      expect(deps.persistence.discardEmptySession).toHaveBeenCalledWith('session-new');
+      const turn = exporter.getFinishedSpans().find((s) => s.name === 'pipeline.v2.turn')!;
+      // A failed turn in the analytics, not one the visitor left (abandonedTurn needs no outcome)
+      expect(turn.attributes['alpha.v2.outcome']).toBe('timed_out');
+      expect(turn.attributes[ATTR.TURN_ABANDONED]).toBe('the turn-planner call finished');
+      expect(log.warn).toHaveBeenCalledWith('V2 pipeline timed out — returning graceful response', expect.anything());
+      expect(log.error).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('turn timeout', () => {
+    it('logs a turn that fails after it timed out, once, with its error', async () => {
+      const deps = makeDeps();
+      let fail!: (error: Error) => void;
+      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn(() => new Promise<never>((_, reject) => { fail = reject; }));
+      const down = new Error('connect ECONNREFUSED 10.0.0.5:5432');
+      log.error.mockClear();
+
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const turn = runV2Pipeline(makeInput(), deps, { maxTotalDurationMs: 1000 });
+        await vi.advanceTimersByTimeAsync(1000);
+        expect((await turn).responseText).toBe('');
+
+        // The abandoned work fails after the turn was answered
+        fail(down);
+        await new Promise((resolve) => setImmediate(resolve));
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(log.error).toHaveBeenCalledOnce();
+      expect(log.error).toHaveBeenCalledWith('V2 turn failed after it timed out', expect.objectContaining({ cause: down }), { experienceId: 'exp-1', sessionId: 'session-1' });
     });
   });
 });

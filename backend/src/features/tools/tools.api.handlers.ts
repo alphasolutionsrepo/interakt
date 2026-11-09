@@ -2,6 +2,7 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
@@ -45,8 +46,7 @@ export async function handleListTools(request: NextRequest) {
     return apiResponse.successWithPagination(result.tools, result.pagination);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list tools', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listTools' });
   }
 }
 
@@ -63,8 +63,7 @@ export async function handleGetAllActiveTools() {
     return apiResponse.success(tools);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get all active tools', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getAllActiveTools' });
   }
 }
 
@@ -94,16 +93,15 @@ export async function handleCreateTool(request: NextRequest) {
     return apiResponse.success(tool, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create tool', err);
     // Slug uniqueness constraint
     if (err.message.includes('already exists') || err.message.includes('duplicate key') || err.message.includes('unique')) {
-      return apiResponse.conflict('A tool with this slug already exists. Please choose a different name.');
+      return apiResponse.refused(error, { code: 'CONFLICT', message: 'A tool with this slug already exists. Please choose a different name.' }, { operation: 'createTool' });
     }
     // Known application-level validation failures
     if (err.message.includes('Invalid config') || err.message.includes('not found')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createTool' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createTool' });
   }
 }
 
@@ -128,8 +126,7 @@ export async function handleGetTool(
     return apiResponse.success(tool);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get tool', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getTool' });
   }
 }
 
@@ -160,11 +157,10 @@ export async function handleUpdateTool(
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update tool', err);
     if (err.message.includes('Invalid config')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'updateTool' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateTool' });
   }
 }
 
@@ -189,11 +185,10 @@ export async function handleDeleteTool(
     return apiResponse.success({ deleted: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete tool', err);
     if (err.message.includes('Cannot delete')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'deleteTool' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteTool' });
   }
 }
 
@@ -217,8 +212,7 @@ export async function handleCheckSlug(request: NextRequest) {
     return apiResponse.success({ slug, available });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to check slug', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'checkToolSlug' });
   }
 }
 
@@ -244,8 +238,7 @@ export async function handleGetToolExperiences(
     return apiResponse.success({ toolId: id, experienceCount: count });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get tool experiences', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getToolExperiences' });
   }
 }
 
@@ -272,8 +265,7 @@ export async function handleGetLookupFields(
     return apiResponse.success(await lookupFieldsStatus(tool.dataSourceId, tool.executorConfig as LookupFieldsConfig | null ?? undefined));
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get lookup fields', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getLookupFields' });
   }
 }
 
@@ -291,24 +283,19 @@ export async function handleTestTool(
 
     const { id } = await context.params;
 
-    let body: { input?: Record<string, unknown> };
-    try {
-      body = await request.json();
-    } catch {
-      return apiResponse.validationError({ message: 'Request body must be valid JSON' } as never);
-    }
-
-    if (!body.input || typeof body.input !== 'object' || Array.isArray(body.input)) {
-      return apiResponse.validationError({ message: 'Request body must contain an "input" object' } as never);
+    // A body that isn't JSON is refused as 400 by apiResponse.error below
+    const body = (await readJsonBody(request)) as { input?: unknown } | null;
+    const input = body?.input;
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return apiResponse.badRequest('Request body must contain an "input" object');
     }
 
     // A test run isn't live traffic
-    const result = await withAnalyticsSource('admin_test', () => executeTool(id, body.input!));
+    const result = await withAnalyticsSource('admin_test', () => executeTool(id, input as Record<string, unknown>));
     return apiResponse.success(result, result.success ? 200 : 422);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to test tool', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'testTool' });
   }
 }
 
@@ -358,8 +345,7 @@ export async function handleGenerateDescription(request: NextRequest) {
     return apiResponse.success(result);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to generate description', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'generateDescription' });
   }
 }
 
@@ -424,11 +410,10 @@ export async function handleScaffoldTools(request: NextRequest) {
     return apiResponse.success({ created, skipped }, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to scaffold tools', err);
     if (err.message.includes('already exists')) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'scaffoldTools' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'scaffoldTools' });
   }
 }
 
@@ -455,8 +440,7 @@ export async function handleGetCapabilities(request: NextRequest) {
     });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get capabilities', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getCapabilities' });
   }
 }
 
@@ -478,7 +462,6 @@ export async function handleGetToolsByDataSource(
     return apiResponse.success(tools);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get tools by data source', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getToolsByDataSource' });
   }
 }

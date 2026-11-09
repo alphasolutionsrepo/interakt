@@ -16,6 +16,7 @@
 
 import { sql } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
+import { inBackground } from '@/shared/telemetry/background';
 
 const logger = createLogger('analytics-retention');
 
@@ -237,19 +238,21 @@ export function startRetentionCleanup(): void {
     intervalHours: CLEANUP_INTERVAL_MS / (60 * 60 * 1000),
   });
 
-  // Run first cleanup after a short delay (let the app fully start)
-  setTimeout(() => {
-    runRetentionCleanup().catch(err => {
-      logger.error('Initial retention cleanup failed', err as Error);
-    });
-  }, 30_000); // 30 seconds after start
+  inBackground(() => {
+    // Run first cleanup after a short delay (let the app fully start)
+    setTimeout(() => {
+      runRetentionCleanup().catch(err => {
+        logger.error('Initial retention cleanup failed', err as Error);
+      });
+    }, 30_000); // 30 seconds after start
 
-  // Then run on interval
-  cleanupTimer = setInterval(() => {
-    runRetentionCleanup().catch(err => {
-      logger.error('Periodic retention cleanup failed', err as Error);
-    });
-  }, CLEANUP_INTERVAL_MS);
+    // Then run on interval
+    cleanupTimer = setInterval(() => {
+      runRetentionCleanup().catch(err => {
+        logger.error('Periodic retention cleanup failed', err as Error);
+      });
+    }, CLEANUP_INTERVAL_MS);
+  });
 
   // Allow process to exit even if timer is running
   if (cleanupTimer.unref) {

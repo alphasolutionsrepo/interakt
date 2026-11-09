@@ -4,8 +4,11 @@
 // experience's allowed origins and rate limits. The routes are called directly,
 // with storage and the AI work faked; each test checks what reaches that work.
 
+import { errors } from '@elastic/elasticsearch';
 import { NextRequest } from 'next/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
@@ -21,9 +24,8 @@ const mocks = vi.hoisted(() => ({
   getDocumentByIdFromIndex: vi.fn(),
 }));
 
-vi.mock('@/shared/logger/logger', () => ({
-  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: mocks.auth }));
 vi.mock('@/features/telemetry', () => ({
   flushTelemetry: vi.fn().mockResolvedValue(undefined),
@@ -63,8 +65,10 @@ import { POST as searchByToken } from './search/route';
 import { POST as summaryByToken } from './summarize/route';
 
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
+import { SearchError } from '@/features/search/search.types';
 import * as searchService from '@/features/search-experience/search-experience.service';
 import { rateLimiter } from '@/shared/api/rate-limit';
+import { PUBLIC_FAILURE_MESSAGE } from '@/shared/api/response';
 
 const SHOP = 'https://shop.example';
 const OTHER = 'https://other.example';
@@ -425,5 +429,526 @@ describe('chat daily total', () => {
     expect(await settle(await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', from('1.1.1.1'), { message: 'hi' })))).toBe(200);
     expect(await settle(await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', from('2.2.2.2'), { message: 'hi' })))).toBe(200);
     expect(await settle(await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', from('3.3.3.3'), { message: 'hi' })))).toBe(429);
+  });
+});
+
+// What the engine throws when Elasticsearch can't be reached (see search.service)
+const down = () => {
+  const cause = new errors.ConnectionError('connect ECONNREFUSED 10.0.0.7:9200', { body: null, statusCode: 0, headers: {}, meta: {}, warnings: null } as never);
+  return new SearchError(cause.message, 'PROVIDER_ERROR', {}, { cause });
+};
+
+describe('when the search service is down', () => {
+  const failing: Array<{ name: string; route: string; work: () => ReturnType<typeof vi.fn> }> = [
+    { name: 'search by token', route: 'search by token', work: () => mocks.executeExperienceSearch },
+    { name: 'search by slug', route: 'search by slug', work: () => mocks.executeExperienceSearch },
+    { name: 'autocomplete', route: 'autocomplete', work: () => mocks.getAutocompleteSuggestions },
+  ];
+
+  it.each(failing)('$name tells the visitor plainly, with a request id, and names no service', async ({ route, work }) => {
+    work().mockRejectedValue(down());
+    const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const body = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(body).toMatchObject({ success: false, code: 'UPSTREAM_UNAVAILABLE', message: PUBLIC_FAILURE_MESSAGE, error: PUBLIC_FAILURE_MESSAGE });
+    expect(body.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(body.hint).toBeUndefined();
+    expect(body.details).toBeUndefined();
+    expect(JSON.stringify(body)).not.toMatch(/elasticsearch|ECONNREFUSED|10\.0\.0\.7/i);
+  });
+
+  it('keeps the CORS headers on the error, so the widget can read it', async () => {
+    mocks.executeExperienceSearch.mockRejectedValue(down());
+    const res = await ROUTES.find((r) => r.name === 'search by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+  });
+});
+
+describe('a failed search', () => {
+  const refused = async () => {
+    const engine = new Error('failed to create query: For input string: "abc"');
+    return new SearchError('"abc" isn\'t a valid value for rating', 'INVALID_FILTER', { fields: ['rating'] }, { cause: engine });
+  };
+  const searches = ['search by token', 'search by slug'];
+
+  beforeEach(() => { logs.length = 0; });
+
+  it.each([
+    { route: 'search by token', experience: { experienceId: searchExperience.id } },
+    { route: 'search by slug', experience: { slug: searchExperience.slug } },
+  ])('$route logs an experience with no source once, naming it', async ({ route, experience }) => {
+    const { NoSourcesError } = await import('@/features/search-experience/experience-search');
+    mocks.executeExperienceSearch.mockRejectedValue(new NoSourcesError());
+    const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(res.status).toBe(400);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ code: 'NO_INDEXES', ...experience }) }),
+    ]);
+  });
+
+  it.each(searches)('%s logs a refused filter once, as a warning with the request id and the engine words', async (route) => {
+    mocks.executeExperienceSearch.mockRejectedValue(await refused());
+    const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const { requestId } = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', context: expect.objectContaining({ requestId, code: 'INVALID_FILTER' }) })]);
+    expect((reported(logs)[0].context.err as Error).cause).toMatchObject({ message: expect.stringContaining('For input string') });
+  });
+
+  it.each([
+    { route: 'search by token', work: () => mocks.executeExperienceSearch, experience: { experienceId: searchExperience.id } },
+    { route: 'search by slug', work: () => mocks.executeExperienceSearch, experience: { slug: searchExperience.slug } },
+    { route: 'autocomplete', work: () => mocks.getAutocompleteSuggestions, experience: { experienceId: searchExperience.id } },
+    { route: 'document by token', work: () => mocks.getDocumentByIdFromIndex, experience: { experienceId: searchExperience.id } },
+  ])('$route logs an outage once, as an error with the request id and the experience', async ({ route, work, experience }) => {
+    work().mockRejectedValue(down());
+    const res = await ROUTES.find((r) => r.name === route)!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const { requestId } = await res.json();
+
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, ...experience }) }),
+    ]);
+  });
+});
+
+describe('a request with a value of the wrong type', () => {
+  it('lists the field in details, as the public API documents, and in fields', async () => {
+    const res = await searchBySlug(
+      req('/api/v1/search/catalog/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', page: 'x' }),
+      slugParams('catalog')
+    );
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('VALIDATION_ERROR');
+    expect(body.details).toEqual([expect.objectContaining({ field: 'page' })]);
+    expect(body.fields).toEqual(body.details);
+    expect(body.requestId).toEqual(expect.any(String));
+  });
+});
+
+describe('a document lookup when the search service is down', () => {
+  it('tells the visitor plainly instead of "not found"', async () => {
+    // What getDocumentByIdFromIndex throws (search.service): a search error around the
+    // provider's message, which the provider's lookup passes on without its own error
+    const lookupFailed = new Error('connect ECONNREFUSED 10.0.0.7:9200');
+    mocks.getDocumentByIdFromIndex.mockRejectedValue(new SearchError(lookupFailed.message, 'PROVIDER_ERROR', {}, { cause: lookupFailed }));
+    const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body).toMatchObject({ code: 'PROVIDER_ERROR', message: PUBLIC_FAILURE_MESSAGE });
+    expect(JSON.stringify(body)).not.toContain('10.0.0.7');
+  });
+});
+
+describe('the search playground on the token route (the test marker and the admin login)', () => {
+  it('gets a failed search explained, unlike a visitor sending the marker alone', async () => {
+    mocks.executeExperienceSearch.mockRejectedValue(await down());
+    const marked = { 'X-Access-Token': 'search-token', Origin: SHOP, 'x-interakt-test': '1' };
+
+    const visitor = await ROUTES.find((r) => r.name === 'search by token')!.call(marked);
+    expect(await visitor.json()).toMatchObject({ message: PUBLIC_FAILURE_MESSAGE });
+
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    const admin = await ROUTES.find((r) => r.name === 'search by token')!.call(marked);
+    expect(await admin.json()).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
+  });
+});
+
+describe("an admin testing in the playground (signed in, on the slug route)", () => {
+  it('gets the failure explained in full, unlike a visitor', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.executeExperienceSearch.mockRejectedValue(down());
+    const res = await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'jeans' }), slugParams('catalog'));
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', message: "Elasticsearch couldn't be reached." });
+    expect(body.hint).toMatch(/running/);
+  });
+
+  it('is told an external source is unavailable; a visitor gets the plain message', async () => {
+    // What searchExternalSourceForExperience throws when the engine call fails
+    const unavailable = () => new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE');
+
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.executeExperienceSearch.mockRejectedValue(unavailable());
+    const admin = await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'jeans' }), slugParams('catalog'));
+    expect(admin.status).toBe(503);
+    expect(await admin.json()).toMatchObject({ code: 'SOURCE_UNAVAILABLE', message: 'An external search source is unavailable' });
+
+    mocks.auth.mockResolvedValue(null);
+    mocks.executeExperienceSearch.mockRejectedValue(unavailable());
+    const visitor = await ROUTES.find((r) => r.name === 'search by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(visitor.status).toBe(503);
+    expect(await visitor.json()).toMatchObject({ code: 'SOURCE_UNAVAILABLE', message: PUBLIC_FAILURE_MESSAGE });
+  });
+
+  it("is told why an external source failed; a visitor isn't", async () => {
+    const { ExternalSearchError } = await import('@/features/data-source/external-search/external-search.types');
+    const rejected = () => new SearchError('An external search source is unavailable', 'SOURCE_UNAVAILABLE', {}, {
+      cause: new ExternalSearchError('Sitecore Search', 'Sitecore Search rejected the request — check the API key', 401),
+    });
+
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.executeExperienceSearch.mockRejectedValue(rejected());
+    const admin = await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'jeans' }), slugParams('catalog'));
+    const adminBody = await admin.json();
+    expect(adminBody).toMatchObject({ code: 'UPSTREAM_AUTH', message: 'Sitecore Search rejected the credentials.' });
+    expect(adminBody.hint).toMatch(/data source's connection settings/);
+
+    mocks.auth.mockResolvedValue(null);
+    mocks.executeExperienceSearch.mockRejectedValue(rejected());
+    const visitor = await ROUTES.find((r) => r.name === 'search by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const visitorBody = await visitor.json();
+    expect(visitorBody.message).toBe(PUBLIC_FAILURE_MESSAGE);
+    expect(visitorBody.hint).toBeUndefined();
+    expect(visitorBody.details).toBeUndefined();
+    expect(JSON.stringify(visitorBody)).not.toMatch(/sitecore/i);
+  });
+});
+
+describe('a document lookup where one index failed and another lacked the document', () => {
+  it('answers with the failure, since the document may be in the index that failed, with CORS', async () => {
+    mocks.getSearchExperienceByAccessToken.mockResolvedValue({
+      ...searchExperience,
+      indexes: [{ searchIndexId: 'i1', searchIndex: { isActive: true } }, { searchIndexId: 'i2', searchIndex: { isActive: true } }],
+    });
+    mocks.getDocumentByIdFromIndex.mockResolvedValueOnce(null).mockRejectedValueOnce(down());
+    const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+    expect((await res.json()).requestId).toEqual(expect.any(String));
+  });
+});
+
+describe('a document lookup across indexes, for the log', () => {
+  const twoIndexes = () => mocks.getSearchExperienceByAccessToken.mockResolvedValue({
+    ...searchExperience,
+    indexes: [{ searchIndexId: 'i1', searchIndex: { isActive: true } }, { searchIndexId: 'i2', searchIndex: { isActive: true } }],
+  });
+  const lookUp = () => ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+
+  beforeEach(() => { logs.length = 0; });
+
+  it('logs an index that failed (the search service is down) as an error when another one had the document', async () => {
+    twoIndexes();
+    const failed = down();
+    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(failed).mockResolvedValueOnce({ id: 'd1', fields: {}, indexId: 'i2', indexName: 'two' });
+    expect((await lookUp()).status).toBe(200);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ indexId: 'i1', experienceId: searchExperience.id, documentId: 'd1', err: failed }) }),
+    ]);
+  });
+
+  it('names the index that failed on the line for the answer', async () => {
+    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(down());
+    expect((await lookUp()).status).toBe(503);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ experienceId: searchExperience.id, documentId: 'd1', indexId: 'i1' }) }),
+    ]);
+  });
+
+  it('names the experience and document when it has no active index', async () => {
+    mocks.getSearchExperienceByAccessToken.mockResolvedValue({ ...searchExperience, indexes: [{ searchIndexId: 'i1', searchIndex: { isActive: false } }] });
+    expect((await lookUp()).status).toBe(400);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ code: 'NO_INDEXES', experienceId: searchExperience.id, documentId: 'd1' }) }),
+    ]);
+  });
+
+  it('answers with the first failure and logs the others, as errors when the search service is down', async () => {
+    twoIndexes();
+    const second = down();
+    mocks.getDocumentByIdFromIndex.mockRejectedValueOnce(down()).mockRejectedValueOnce(second);
+    expect((await lookUp()).status).toBe(503);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ indexId: 'i2', err: second }) }),
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ experienceId: searchExperience.id }) }),
+    ]);
+  });
+});
+
+describe('the AI summary for visitors (by token)', () => {
+  it('tells the visitor plainly when the AI provider fails, with a request id and CORS', async () => {
+    const providerError = Object.assign(new Error('401 Incorrect API key provided: sk-proj-abcdefghijklmnopqrstuvwxyz123456'), { name: 'AdapterError', providerKey: 'openai', statusCode: 401 });
+    mocks.createSummaryStream.mockImplementation(() => { throw providerError; });
+    const res = await ROUTES.find((r) => r.name === 'AI summary by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    const body = await res.json();
+    expect(res.status).toBe(502);
+    expect(body).toMatchObject({ code: 'UPSTREAM_AUTH', message: PUBLIC_FAILURE_MESSAGE });
+    expect(body.requestId).toEqual(expect.any(String));
+    expect(JSON.stringify(body)).not.toMatch(/sk-proj|OpenAI/);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+  });
+});
+
+describe('the AI summary routes with a value of the wrong type', () => {
+  it.each([
+    ['by token', () => summaryByToken(req('/api/v1/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', results: 'x' }))],
+    ['by slug', () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', results: 'x' }), slugParams('catalog'))],
+  ])('%s list the field in details', async (_name, call) => {
+    const res = await call();
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ code: 'VALIDATION_ERROR', requestId: expect.any(String) });
+    expect(body.details).toEqual([expect.objectContaining({ field: 'results' })]);
+  });
+});
+
+describe('the AI summary by slug when the AI provider fails', () => {
+  const providerError = () => Object.assign(new Error('401 Incorrect API key provided'), { name: 'AdapterError', providerKey: 'openai', statusCode: 401 });
+
+  it('tells the visitor plainly', async () => {
+    mocks.createSummaryStream.mockImplementation(() => { throw providerError(); });
+    const res = await summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY), slugParams('catalog'));
+    expect(await res.json()).toMatchObject({ code: 'UPSTREAM_AUTH', message: PUBLIC_FAILURE_MESSAGE });
+  });
+
+  it('explains it in full to an admin in the playground', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.createSummaryStream.mockImplementation(() => { throw providerError(); });
+    const res = await summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', {}, SUMMARY), slugParams('catalog'));
+    expect(await res.json()).toMatchObject({ code: 'UPSTREAM_AUTH', message: 'OpenAI rejected the credentials.' });
+  });
+});
+
+describe('a summary that fails before it streams, for the log', () => {
+  const summaries = [
+    { route: 'by token', call: () => summaryByToken(req('/api/v1/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY)), experience: { experienceId: searchExperience.id, operation: 'summarize' } },
+    { route: 'by slug', call: () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, SUMMARY), slugParams('catalog')), experience: { slug: searchExperience.slug, operation: 'summarizeBySlug' } },
+  ];
+
+  beforeEach(() => { logs.length = 0; });
+
+  it.each(summaries)('$route logs a model that fails once, as an error with the request id, the experience and the error', async ({ call, experience }) => {
+    const modelDown = Object.assign(new Error('model "qwen2.5:14b" not found'), { name: 'AdapterError', providerKey: 'ollama', statusCode: 404 });
+    mocks.createSummaryStream.mockImplementation(() => { throw modelDown; });
+    const { requestId } = await (await call()).json();
+
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, ...experience, err: modelDown }) }),
+    ]);
+  });
+
+  it('by slug logs an experience it could not load once, as an error with the slug', async () => {
+    mocks.getSearchExperienceBySlug.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+    const res = await summaries[1].call();
+    const { requestId } = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, slug: searchExperience.slug, operation: 'summarizeBySlug' }) }),
+    ]);
+  });
+
+  it.each(summaries)('$route logs a value of the wrong type no more than the other routes do', async ({ route }) => {
+    const res = route === 'by token'
+      ? await summaryByToken(req('/api/v1/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', results: 'x' }))
+      : await summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', results: 'x' }), slugParams('catalog'));
+    expect(res.status).toBe(400);
+    expect(reported(logs)).toEqual([]);
+  });
+});
+
+describe('input errors on the token search and autocomplete', () => {
+  it.each([
+    ['search by token', () => searchByToken(req('/api/v1/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', page: 'x' }))],
+    ['autocomplete', () => autocomplete(req('/api/v1/autocomplete', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 42 }))],
+  ])('%s list the field in details, with CORS', async (_name, call) => {
+    const res = await call();
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('VALIDATION_ERROR');
+    expect(body.details).toEqual(body.fields);
+    expect(body.details.length).toBeGreaterThan(0);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+  });
+});
+
+describe('a search experience that does not exist', () => {
+  it('answers in the shared shape, with a request id', async () => {
+    mocks.getSearchExperienceBySlug.mockResolvedValue(null);
+    const res = await searchBySlug(req('/api/v1/search/nope/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans' }), slugParams('nope'));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: 'NOT_FOUND', message: 'Search experience not found', requestId: expect.any(String) });
+  });
+});
+
+describe('a document that is not in any index', () => {
+  it('is still not found when the lookups worked', async () => {
+    mocks.getDocumentByIdFromIndex.mockResolvedValue(null);
+    const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('a feature the experience has turned off, for the log', () => {
+  const headers = { 'X-Access-Token': 'search-token', Origin: SHOP };
+  const inactive = { ...searchExperience, isActive: false };
+  const aiOff = { ...searchExperience, aiConfig: { enabled: true, summary: { enabled: false } } };
+  const autocompleteOff = { ...searchExperience, searchConfig: { autocomplete: { enabled: false } } };
+
+  beforeEach(() => { logs.length = 0; });
+
+  it.each([
+    { name: 'search by slug, experience inactive', experience: inactive, code: 'INACTIVE', operation: 'searchBySlug', call: () => searchBySlug(req('/api/v1/search/catalog/search', 'POST', headers, { query: 'jeans' }), slugParams('catalog')) },
+    { name: 'AI summary by slug, experience inactive', experience: inactive, code: 'INACTIVE', operation: 'summarizeBySlug', call: () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', headers, SUMMARY), slugParams('catalog')) },
+    { name: 'AI summary by slug, summary off', experience: aiOff, code: 'AI_UNAVAILABLE', operation: 'summarizeBySlug', call: () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', headers, SUMMARY), slugParams('catalog')) },
+    { name: 'AI summary by token, summary off', experience: aiOff, code: 'AI_UNAVAILABLE', operation: 'summarize', call: () => summaryByToken(req('/api/v1/summarize', 'POST', headers, SUMMARY)) },
+    { name: 'autocomplete, turned off', experience: autocompleteOff, code: 'AUTOCOMPLETE_DISABLED', operation: 'autocomplete', call: () => autocomplete(req('/api/v1/autocomplete', 'POST', headers, { query: 'je' })) },
+  ])('$name is a warning that names the operation', async ({ experience, code, operation, call }) => {
+    mocks.getSearchExperienceBySlug.mockResolvedValue(experience);
+    mocks.getSearchExperienceWithIndexes.mockResolvedValue(experience);
+    mocks.getSearchExperienceByAccessToken.mockResolvedValue(experience);
+    const res = await call();
+    const body = await res.json();
+
+    expect(body).toMatchObject({ code, requestId: expect.any(String) });
+    expect(reported(logs)).toEqual([
+      expect.objectContaining({ level: 'warn', context: expect.objectContaining({ operation, code, requestId: body.requestId }) }),
+    ]);
+  });
+});
+
+describe('a document lookup that fails after the token is checked', () => {
+  it('is answered with CORS headers, so the visitor sees the request id and not a CORS error', async () => {
+    // An experience without its index list: the route fails reading it
+    mocks.getSearchExperienceByAccessToken.mockResolvedValueOnce({ ...searchExperience, indexes: undefined });
+    const res = await ROUTES.find((r) => r.name === 'document by token')!.call({ 'X-Access-Token': 'search-token', Origin: SHOP });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ requestId: expect.any(String) });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(SHOP);
+  });
+});
+
+describe('a request whose body is not JSON', () => {
+  const broken = (path: string) => new NextRequest(`http://interakt.test${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'X-Access-Token': 'search-token', Origin: SHOP },
+    body: '{"query": "jea',
+  });
+
+  it.each([
+    ['search by token', () => searchByToken(broken('/api/v1/search'))],
+    ['autocomplete', () => autocomplete(broken('/api/v1/autocomplete'))],
+    ['AI summary by token', () => summaryByToken(broken('/api/v1/summarize'))],
+    ['search by slug', () => searchBySlug(broken('/api/v1/search/catalog/search'), slugParams('catalog'))],
+    ['AI summary by slug', () => summaryBySlug(broken('/api/v1/search/catalog/summarize'), slugParams('catalog'))],
+    ['chat by token', () => chatByToken(broken('/api/v1/ai-experiences/chat'))],
+    ['chat by slug', () => chatBySlug(broken('/api/v1/ai-experiences/assistant/chat'), slugParams('assistant'))],
+  ])('%s answers 400 "Invalid JSON body", logged once as a warning', async (_name, call) => {
+    logs.length = 0;
+    const res = await call();
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ code: 'INVALID_JSON', message: 'Invalid JSON body', error: 'Invalid JSON body' });
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn' })]);
+  });
+});
+
+describe('a chat turn that fails after the stream started', () => {
+  it("sends the visitor the plain message with a request id, logged once, not the AI provider's error", async () => {
+    logs.length = 0;
+    mocks.runChatPipeline.mockRejectedValueOnce(Object.assign(new Error('connect ECONNREFUSED 10.0.0.7:11434'), { name: 'AdapterError', providerKey: 'ollama' }));
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP });
+    const text = await res.text();
+    const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
+
+    expect(event).toMatchObject({ type: 'error', message: PUBLIC_FAILURE_MESSAGE, requestId: expect.any(String) });
+    expect(text).not.toContain('10.0.0.7');
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: event.requestId, operation: 'chatTurn' }) })]);
+  });
+
+  it('sends an admin testing on the slug route the explanation', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.runChatPipeline.mockRejectedValueOnce(Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama' }));
+    const res = await chatBySlug(req('/api/v1/ai-experiences/assistant/chat', 'POST', {}, { message: 'hi' }), slugParams('assistant'));
+    const text = await res.text();
+    const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
+
+    expect(event).toMatchObject({ type: 'error', code: 'UPSTREAM_UNAVAILABLE', hint: expect.any(String), requestId: expect.any(String) });
+    expect(event.message).not.toBe(PUBLIC_FAILURE_MESSAGE);
+  });
+
+  it('sends the Widget playground (the token, the test marker and the admin login) the explanation', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    mocks.runChatPipeline.mockRejectedValueOnce(Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama' }));
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP, 'x-interakt-test': '1' });
+    const text = await res.text();
+    const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
+
+    expect(event).toMatchObject({ type: 'error', code: 'UPSTREAM_UNAVAILABLE', hint: expect.any(String) });
+  });
+
+  it("sends a visitor who sends the test marker without the login the plain message", async () => {
+    mocks.runChatPipeline.mockRejectedValueOnce(Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama' }));
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP, 'x-interakt-test': '1' });
+    const text = await res.text();
+    const event = JSON.parse(text.split('\n').find((l) => l.startsWith('data: {') && l.includes('"error"'))!.slice(6));
+
+    expect(event).toMatchObject({ type: 'error', message: PUBLIC_FAILURE_MESSAGE });
+  });
+
+  it('logs a turn that fails after the visitor closed the chat, once, sending nothing', async () => {
+    logs.length = 0;
+    let failed!: () => void;
+    const done = new Promise<void>((resolve) => { failed = resolve; });
+    const down = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { name: 'AdapterError', providerKey: 'ollama' });
+    mocks.runChatPipeline.mockImplementationOnce(async ({ onEvent }: { onEvent: (e: unknown) => void }) => {
+      onEvent({ type: 'content', content: 'Hel' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      setTimeout(failed, 0);
+      throw down;
+    });
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP });
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    await done;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ operation: 'chatTurn', err: down }) })]);
+  });
+
+  it("isn't logged when the visitor closed the chat before it finished, even by a step that logs a failed send", async () => {
+    logs.length = 0;
+    let finished!: () => void;
+    const done = new Promise<void>((resolve) => { finished = resolve; });
+    const { createLogger } = await import('@/shared/logger/logger');
+    mocks.runChatPipeline.mockImplementationOnce(async ({ onEvent }: { onEvent: (e: unknown) => void }) => {
+      try {
+        onEvent({ type: 'content', content: 'Hel' });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        // As response synthesis does: a send that throws is logged as a failed step
+        try {
+          onEvent({ type: 'content', content: 'lo' });
+        } catch (error) {
+          createLogger('response-synthesis').error('Synthesis failed', error as Error);
+        }
+      } finally {
+        finished();
+      }
+    });
+    const res = await ROUTES.find((r) => r.name === 'chat by token')!.call({ 'X-Access-Token': 'chat-token', Origin: SHOP });
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    await done;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(reported(logs)).toEqual([]);
+  });
+});
+
+describe('a chat request refused before it starts', () => {
+  it('answers in the shared shape, keeping error for the widget', async () => {
+    const res = await chatByToken(req('/api/v1/ai-experiences/chat', 'POST', { Origin: SHOP }, { message: 'hi' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body).toMatchObject({ success: false, code: 'UNAUTHORIZED', error: 'Access token is required', requestId: expect.any(String) });
   });
 });

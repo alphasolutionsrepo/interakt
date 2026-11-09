@@ -52,9 +52,7 @@ export function useDeleteSpan() {
       queryClient.invalidateQueries({ queryKey: ['telemetry'] });
       toast.success('Span deleted');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to delete span');
-    },
+    meta: { label: 'Delete span' },
   });
 }
 
@@ -67,8 +65,6 @@ export function useDeleteAllSpans() {
       queryClient.invalidateQueries({ queryKey: ['telemetry'] });
       toast.success(`Deleted ${data.count} span${data.count !== 1 ? 's' : ''}`);
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to delete spans');
-    },
+    meta: { label: 'Delete spans' },
   });
 }

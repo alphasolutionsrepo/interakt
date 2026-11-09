@@ -18,7 +18,7 @@ import {
     searchExperienceIndexes,
     dataSources,
 } from '@/db/schema';
-import type { SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
+import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
 import type {
     SearchIndexComplete,
     SearchIndexSummary,
@@ -97,6 +97,7 @@ export async function getSearchIndexById(id: string): Promise<SearchIndexComplet
                 documentCount: searchIndex.documentCount,
                 indexSizeBytes: searchIndex.indexSizeBytes,
                 lastIndexedAt: searchIndex.lastIndexedAt,
+                lastJob: searchIndex.lastJob,
                 mappingVersion: searchIndex.mappingVersion,
                 lastMappingSyncedAt: searchIndex.lastMappingSyncedAt,
                 requiresReindex: searchIndex.requiresReindex,
@@ -175,6 +176,19 @@ export async function getSearchIndexById(id: string): Promise<SearchIndexComplet
         logger.error('Failed to get search index by ID', error as Error, { id });
         throw error;
     }
+}
+
+/**
+ * The search engine an index is on, or null when there is no such index: one
+ * column, for callers that need nothing else.
+ */
+export async function getSearchProviderById(id: string): Promise<string | null> {
+    const [result] = await db
+        .select({ searchProvider: searchIndex.searchProvider })
+        .from(searchIndex)
+        .where(eq(searchIndex.id, id))
+        .limit(1);
+    return result?.searchProvider ?? null;
 }
 
 /**
@@ -474,6 +488,15 @@ export async function incrementMappingVersion(
 /**
  * Mark mapping as synced (after ES update)
  */
+/**
+ * Record the last long-running job and how it ended. Not an edit of the index, so
+ * updatedAt stays as it is. Gives the index's name, undefined when there is no such index.
+ */
+export async function setLastJob(id: string, lastJob: IndexLastJob): Promise<string | undefined> {
+    const [updated] = await db.update(searchIndex).set({ lastJob }).where(eq(searchIndex.id, id)).returning({ name: searchIndex.name });
+    return updated?.name;
+}
+
 export async function markMappingSynced(id: string): Promise<SearchIndex> {
     try {
         const [updated] = await db

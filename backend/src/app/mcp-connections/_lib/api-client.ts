@@ -1,28 +1,9 @@
 // app/mcp-connections/_lib/api-client.ts
 
-export class ApiError extends Error {
-  status: number;
-  details?: unknown;
+import { ApiError, handleApiPage, handleApiResponse } from '@/shared/api/api-error';
 
-  constructor(message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.details = details;
-  }
-}
+export { ApiError };
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw new ApiError(
-      data.error || data.message || 'An error occurred',
-      response.status,
-      data.details,
-    );
-  }
-  return data.data ?? data;
-}
 
 // ============================================================================
 // TYPES
@@ -152,20 +133,13 @@ export const mcpConnectionsApi = {
     if (params?.sortOrder) p.set('sortOrder', params.sortOrder);
 
     const url = `/api/mcp-connections${p.toString() ? `?${p.toString()}` : ''}`;
-    const response = await fetch(url);
-    const json = await response.json();
-    if (!response.ok) {
-      throw new ApiError(json.error || 'Failed to list connections', response.status);
-    }
-    return {
-      connections: json.data ?? [],
-      pagination: json.pagination,
-    };
+    const { data, pagination } = await handleApiPage<McpConnection, McpConnectionListResponse['pagination']>(await fetch(url));
+    return { connections: data, pagination };
   },
 
   getById: async (id: string): Promise<McpConnection> => {
     const response = await fetch(`/api/mcp-connections/${id}`);
-    return handleResponse<McpConnection>(response);
+    return handleApiResponse<McpConnection>(response);
   },
 
   create: async (data: CreateMcpConnectionPayload): Promise<McpConnection> => {
@@ -174,7 +148,7 @@ export const mcpConnectionsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<McpConnection>(response);
+    return handleApiResponse<McpConnection>(response);
   },
 
   update: async (id: string, data: UpdateMcpConnectionPayload): Promise<McpConnection> => {
@@ -183,28 +157,28 @@ export const mcpConnectionsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse<McpConnection>(response);
+    return handleApiResponse<McpConnection>(response);
   },
 
   delete: async (id: string): Promise<void> => {
     const response = await fetch(`/api/mcp-connections/${id}`, { method: 'DELETE' });
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 
   sync: async (id: string): Promise<SyncResult> => {
     const response = await fetch(`/api/mcp-connections/${id}/sync`, { method: 'POST' });
-    return handleResponse<SyncResult>(response);
+    return handleApiResponse<SyncResult>(response);
   },
 
   test: async (id: string): Promise<SyncResult> => {
     const response = await fetch(`/api/mcp-connections/${id}/test`, { method: 'POST' });
-    return handleResponse<SyncResult>(response);
+    return handleApiResponse<SyncResult>(response);
   },
 
   // Experience attachment endpoints
   listAttachments: async (experienceId: string): Promise<AttachmentDTO[]> => {
     const response = await fetch(`/api/ai-experiences/${experienceId}/mcp-connections`);
-    return handleResponse<AttachmentDTO[]>(response);
+    return handleApiResponse<AttachmentDTO[]>(response);
   },
 
   attach: async (experienceId: string, payload: AttachPayload): Promise<AttachmentDTO> => {
@@ -213,7 +187,7 @@ export const mcpConnectionsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    return handleResponse<AttachmentDTO>(response);
+    return handleApiResponse<AttachmentDTO>(response);
   },
 
   updateAttachment: async (
@@ -229,7 +203,7 @@ export const mcpConnectionsApi = {
         body: JSON.stringify(payload),
       },
     );
-    return handleResponse<AttachmentDTO>(response);
+    return handleApiResponse<AttachmentDTO>(response);
   },
 
   detach: async (experienceId: string, connectionId: string): Promise<void> => {
@@ -237,6 +211,6 @@ export const mcpConnectionsApi = {
       `/api/ai-experiences/${experienceId}/mcp-connections/${connectionId}`,
       { method: 'DELETE' },
     );
-    await handleResponse<void>(response);
+    await handleApiResponse<void>(response);
   },
 };

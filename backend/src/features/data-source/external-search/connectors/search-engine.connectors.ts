@@ -11,6 +11,7 @@ import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import { callAzureAISearch } from '../engines/azure-ai-search';
 import { callElasticsearchSearch } from '../engines/elasticsearch';
 import { ELASTICSEARCH_DOCUMENT_ID, translateFilters, translateSort } from '../external-query';
+import { ExternalSearchError } from '../external-search.types';
 import type {
   ExternalConnection,
   ExternalFacet,
@@ -27,10 +28,11 @@ interface CallerData {
 }
 
 function toResult(
-  outcome: { success: boolean; data?: unknown; error?: string },
+  provider: string,
+  outcome: { success: boolean; data?: unknown; error?: string; status?: number },
   unapplied: Pick<ExternalSearchResult, 'unappliedFilters' | 'unappliedSort'>,
 ): ExternalSearchResult {
-  if (!outcome.success) throw new Error(outcome.error ?? 'External search failed');
+  if (!outcome.success) throw new ExternalSearchError(provider, outcome.error ?? 'External search failed', outcome.status);
   const data = (outcome.data ?? {}) as CallerData;
   return {
     hits: (data.results ?? []).map((r) => ({
@@ -90,7 +92,7 @@ export const elasticsearchConnector: ExternalSearchConnector = {
       },
     );
 
-    return toResult(outcome, { unappliedFilters: filters.unapplied, unappliedSort: sort.unapplied });
+    return toResult('Elasticsearch', outcome, { unappliedFilters: filters.unapplied, unappliedSort: sort.unapplied });
   },
 };
 
@@ -119,6 +121,6 @@ export const azureAISearchConnector: ExternalSearchConnector = {
       },
     );
 
-    return toResult(outcome, { unappliedFilters: filters.unapplied, unappliedSort: sort.unapplied });
+    return toResult('Azure AI Search', outcome, { unappliedFilters: filters.unapplied, unappliedSort: sort.unapplied });
   },
 };

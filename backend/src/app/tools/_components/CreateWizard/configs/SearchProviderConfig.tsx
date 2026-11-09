@@ -16,6 +16,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { parseAzureIndexSchema } from '../../../_lib/azure-schema-parser';
 import type { DataSourceMeta } from '../Step2_Config';
+import { dataSourcesApi } from '@/app/data-sources/_lib/api-client';
+import { errorText } from '@/shared/api/api-error';
 
 // ============================================================================
 // TYPES
@@ -232,13 +234,14 @@ function AzureSchemaImportPanel({ onImport }: { onImport: (schema: object) => vo
 export function SearchProviderConfig({ value, onChange, errors, onSchemaImport, onDataSourceSelected }: SearchProviderConfigProps) {
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Fetch active data sources (search_index and search_index_external types)
   useEffect(() => {
-    fetch('/api/data-sources?isActive=true&pageSize=100')
-      .then((r) => r.json())
-      .then((json) => setDataSources((json.data ?? []) as DataSource[]))
-      .catch(() => setDataSources([]))
+    dataSourcesApi
+      .list({ isActive: true, pageSize: 100 })
+      .then(({ dataSources }) => setDataSources(dataSources))
+      .catch((error: unknown) => setLoadError(errorText(error, 'Failed to load data sources')))
       .finally(() => setLoading(false));
   }, []);
 
@@ -285,7 +288,7 @@ export function SearchProviderConfig({ value, onChange, errors, onSchemaImport, 
             <SelectValue placeholder={loading ? 'Loading data sources…' : 'Select a data source'} />
           </SelectTrigger>
           <SelectContent>
-            {dataSources.length === 0 && !loading && (
+            {dataSources.length === 0 && !loading && !loadError && (
               <div className="px-3 py-4 text-center text-sm text-muted-foreground">
                 No active data sources found.{' '}
                 <a href="/data-sources/new" className="underline hover:text-foreground" target="_blank">
@@ -310,6 +313,7 @@ export function SearchProviderConfig({ value, onChange, errors, onSchemaImport, 
         {errors?.dataSourceId && (
           <p className="text-xs text-destructive">{errors.dataSourceId}</p>
         )}
+        {loadError && <p className="text-xs text-destructive">{loadError}</p>}
         <p className="text-xs text-muted-foreground">
           Choose the data source this tool will search. Data sources are created in the{' '}
           <a href="/data-sources" className="underline hover:text-foreground" target="_blank">Data Sources</a> section.

@@ -10,8 +10,11 @@
 import * as searchService from '@/features/search/search.service';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { trackSearch } from '@/features/analytics';
+import { AppError } from '@/shared/errors/app-error';
+import { failureLevel } from '@/shared/errors/to-app-error';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { getConnector } from '@/features/data-source/external-search/external-search.service';
+import { refusedRequest } from '@/features/search-experience/external-refusal';
 import { executeFileStoreSearch } from './file-store';
 import type { UnappliedClause } from '@/features/data-source/external-search/external-query';
 import {
@@ -77,13 +80,17 @@ export async function executeDataSourceSearch(
 
     const source = await resolveDataSource(dataSourceId);
 
+    // Not awaited, so not caught here: a search that throws goes to the tool executor,
+    // which retries it and logs it once. An external source answers its own failures
     if (source.kind === 'file_store') return executeFileStoreSearch(dataSourceId, config, input);
     return source.kind === 'external'
       ? executeExternalSearch(source, searchConfig, searchInput)
       : executeManagedSearch(source, searchConfig, searchInput);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error('Data source search failed', error as Error, { dataSourceId });
+    // The data source couldn't be looked up: an error when our side failed (the
+    // database), a warning when it was refused (not found, not active)
+    logger[failureLevel(error, 'warn')]('Data source search failed', { dataSourceId, err: error });
     return { success: false, error: message };
   }
 }
@@ -104,6 +111,7 @@ async function executeManagedSearch(
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
 
   // The AI's Search tool, not a visitor's search: reports list it under Assistant Searches.
+  // The tool's defaults are the admin's, as on an external source: a refused one isn't the model's.
   const response = await searchService.searchById(
     source.searchIndexId,
     {
@@ -112,7 +120,11 @@ async function executeManagedSearch(
       filters: merged.filters.length > 0 ? merged.filters : undefined,
       sort: sorting.sort.length > 0 ? sorting.sort : undefined,
     },
-    { triggerType: 'ai_tool', triggerStep: 'search' },
+    {
+      triggerType: 'ai_tool',
+      triggerStep: 'search',
+      fixed: { filters: merged.appliedDefaults, sort: sorting.fromDefault ? sorting.sort : [] },
+    },
   );
 
   return {
@@ -176,8 +188,11 @@ async function executeExternalSearch(
     }
   }
 
-  const merged = mergeDefaultFilters(config.defaultFilters, buildFilterClauses(input.filters));
+  const requested = buildFilterClauses(input.filters);
+  const merged = mergeDefaultFilters(config.defaultFilters, requested);
   const sorting = mergeDefaultSort(config.defaultSort, buildSortClauses(input.sort));
+  // The fields returned and highlighted are sent too, so a refusal can be about them
+  const sentFields = { selectFields: config.responseFields, highlightFields: highlightFields?.split(',') };
 
   const connector = getConnector(source.provider);
   if (!connector) {
@@ -199,8 +214,7 @@ async function executeExternalSearch(
         limit: maxResults,
         filters: merged.filters,
         sort: sorting.sort,
-        selectFields: config.responseFields,
-        highlightFields: highlightFields?.split(','),
+        ...sentFields,
       },
       schemaFields,
     );
@@ -209,7 +223,8 @@ async function executeExternalSearch(
     const brokenDefaults = unappliedDefaults(merged.appliedDefaults, unappliedFilters);
     if (brokenDefaults.length > 0) {
       const reasons = brokenDefaults.map((u) => `${u.field}: ${u.reason}`).join('; ');
-      throw new Error(`The tool's default filter can't be applied (${reasons}). Fix it in the tool's settings.`);
+      // The tool's own setup is at fault, so this is logged as an error
+      throw new AppError(`The tool's default filter can't be applied (${reasons}). Fix it in the tool's settings.`, { code: 'TOOL_MISCONFIGURED', status: 400, ourSide: true });
     }
     result = {
       success: true,
@@ -225,12 +240,26 @@ async function executeExternalSearch(
       },
     };
   } catch (error) {
+    // Answered to the model as a failed call, so logged here: a warning when the source
+    // refused this request's filter or sort (a value of the wrong type), by the same rule as
+    // experience search; an error when the source failed (it's down, it refused the
+    // credentials, it's rate limiting) or refused something the request didn't say. The
+    // tool's defaults are the admin's: a refused default is a misconfiguration, not the model's.
+    // So are the fields it returns and highlights: a name the model's filter shares with one
+    // could be about either, so it isn't blamed on the model.
+    const sort = sorting.fromDefault ? { fixed: sorting.sort } : { requested: sorting.sort };
+    const includeFields = [...(sentFields.selectFields ?? []), ...(sentFields.highlightFields ?? [])];
+    const refused = !!refusedRequest(error, { query, filters: requested, sort: sort.requested, includeFields }, schemaFields ?? [], { filters: merged.appliedDefaults, sort: sort.fixed });
+    logger[refused ? 'warn' : failureLevel(error, 'warn')]('External source search failed', { dataSourceId: source.dataSourceId, provider: source.provider, err: error });
     result = { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 
   // Report what configuration and translation did to the request. A filter that was
   // requested but not applied has to reach the caller, or a wrong answer looks correct.
-  logUnapplied(unappliedFilters, unappliedSort);
+  // A search that failed over a default that can't apply has said so in its one line; what
+  // else was dropped (the model's own filter or sort) is still logged here.
+  const saidInFailure = result.success ? [] : unappliedDefaults(merged.appliedDefaults, unappliedFilters);
+  logUnapplied(unappliedFilters.filter((u) => !saidInFailure.includes(u)), unappliedSort);
   result = annotateResult(result, merged.appliedDefaults, sorting, unappliedFilters, unappliedSort);
 
   // Fire-and-forget analytics tracking for external searches

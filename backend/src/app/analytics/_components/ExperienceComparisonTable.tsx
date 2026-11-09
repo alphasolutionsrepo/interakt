@@ -7,11 +7,13 @@ import { AlertTriangle, ArrowRight, Bot, CircleAlert, Search } from 'lucide-reac
 import { useState } from 'react';
 
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
+import { fetchAnalytics } from '../_lib/hooks/useAnalytics';
 import { periodKey, periodParams, type Period } from '../_lib/period';
 
 import { formatCompact, formatMs, pluralize } from './viz';
 
 import { cn } from '@/lib/utils';
+import { errorText } from '@/shared/api/api-error';
 import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
@@ -27,9 +29,10 @@ interface ExperienceSummary {
   /** Conversations for AI experiences, searches for search experiences */
   volume: number;
   deleted: boolean;
-  successRate: number;
+  /** AI: null when no turn finished (the visitor left every one) */
+  successRate: number | null;
   zeroResultRate: number;
-  avgLatencyMs: number;
+  avgLatencyMs: number | null;
 }
 
 /** Rows shown before "Show all" */
@@ -42,13 +45,12 @@ const SHOWN = 8;
 function useExperienceSummaries(period: Period) {
   return useQuery({
     queryKey: ['analytics', 'experience-summary', periodKey(period)],
-    queryFn: async (): Promise<ExperienceSummary[]> => {
+    queryFn: async (): Promise<ExperienceSummary[]> =>
       // Resolved at fetch time, so each refresh covers up to now
-      const res = await fetch(`/api/analytics/experience-summary?${new URLSearchParams(periodParams(period))}`);
-      if (!res.ok) throw new Error('Failed to fetch');
-      const json = await res.json();
-      return json.data || [];
-    },
+      (await fetchAnalytics<ExperienceSummary[] | null>(
+        `/api/analytics/experience-summary?${new URLSearchParams(periodParams(period))}`,
+        'Failed to load experiences',
+      )) ?? [],
     staleTime: 30000,
     refetchInterval: 60000,
   });
@@ -67,7 +69,8 @@ function healthOf(rate: number, goodWhenHigh: boolean): Health {
   return 'critical';
 }
 
-function Rate({ rate, goodWhenHigh, label }: { rate: number; goodWhenHigh: boolean; label: string }) {
+function Rate({ rate, goodWhenHigh, label }: { rate: number | null; goodWhenHigh: boolean; label: string }) {
+  if (rate === null) return <span className="tabular-nums text-muted-foreground" title="No turn finished in this period">—</span>;
   const health = healthOf(rate, goodWhenHigh);
   const Icon = health === 'critical' ? CircleAlert : AlertTriangle;
   return (
@@ -89,7 +92,7 @@ function Rate({ rate, goodWhenHigh, label }: { rate: number; goodWhenHigh: boole
 
 export function ExperienceComparisonTable() {
   const { setExperience, period } = useAnalyticsContext();
-  const { data: experiences = [], isLoading } = useExperienceSummaries(period);
+  const { data: experiences = [], isLoading, error } = useExperienceSummaries(period);
   const [showAll, setShowAll] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
 
@@ -103,6 +106,20 @@ export function ExperienceComparisonTable() {
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-14 w-full rounded-xl" />
           ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // A failed refresh keeps the rows already shown
+  if (error && experiences.length === 0) {
+    return (
+      <Card className="rounded-2xl">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Experiences</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">{errorText(error, 'Failed to load experiences')}</p>
         </CardContent>
       </Card>
     );

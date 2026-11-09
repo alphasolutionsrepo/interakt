@@ -8,7 +8,8 @@
  */
 
 import { NextRequest } from 'next/server';
-import { apiResponse } from '@/shared/api/response';
+import { apiResponse, describeError } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
@@ -117,17 +118,7 @@ export async function handleTextGeneration(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Text generation failed', err);
-
-    if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
-    }
-    if (err.message.includes('Circuit breaker')) {
-      return apiResponse.badRequest(err.message);
-    }
-
-    return apiResponse.error(err);
+    return aiCallFailure(error, 'text');
   }
 }
 
@@ -189,17 +180,7 @@ export async function handleChat(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Chat completion failed', err);
-
-    if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
-    }
-    if (err.message.includes('Circuit breaker')) {
-      return apiResponse.badRequest(err.message);
-    }
-
-    return apiResponse.error(err);
+    return aiCallFailure(error, 'chat');
   }
 }
 
@@ -260,9 +241,10 @@ export async function handleChatStream(request: NextRequest) {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {
-          const err = error as Error;
-          logger.error('Chat stream error', err);
-          const errorData = JSON.stringify({ error: err.message });
+          // The same body an error response has (message, also as error, code, hint and
+          // request id); describeError logs it
+          const { body } = describeError(aiCallError(error), 500, { operation: 'chatStream' });
+          const errorData = JSON.stringify(body);
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
           controller.close();
         }
@@ -277,12 +259,7 @@ export async function handleChatStream(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Chat stream setup failed', err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return aiCallFailure(error, 'chatStream');
   }
 }
 
@@ -345,17 +322,7 @@ export async function handleEmbeddings(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as Error;
-    logger.error('Embeddings generation failed', err);
-
-    if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
-    }
-    if (err.message.includes('Circuit breaker')) {
-      return apiResponse.badRequest(err.message);
-    }
-
-    return apiResponse.error(err);
+    return aiCallFailure(error, 'embeddings');
   }
 }
 
@@ -419,7 +386,22 @@ export async function handleGetProviders(request: NextRequest) {
 
     return apiResponse.success(result);
   } catch (error) {
-    logger.error('Failed to get providers', error as Error);
-    return apiResponse.error(error as Error);
+    return apiResponse.error(error, undefined, { operation: 'getProviders' });
   }
+}
+
+/**
+ * A failed AI call as the error to answer with: a missing provider or model is 404 (our
+ * setup, so logged as an error), anything else the shared error (an open circuit breaker
+ * answers 503, the provider being unavailable).
+ */
+function aiCallError(error: unknown): unknown {
+  const err = error as Error;
+  if (err.message.includes('not found')) return new AppError(err.message, { code: 'NOT_FOUND', status: 404, cause: err, ourSide: true });
+  return err;
+}
+
+/** The answer for a failed AI call, logged once (by apiResponse) with the operation */
+function aiCallFailure(error: unknown, operation: string) {
+  return apiResponse.error(aiCallError(error), undefined, { operation });
 }

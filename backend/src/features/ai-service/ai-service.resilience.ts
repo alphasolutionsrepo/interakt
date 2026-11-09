@@ -8,6 +8,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
+import { CallerTimeoutError, CancelledRequestError } from './adapters/types';
 import type {
     CircuitBreakerConfig,
     CircuitBreakerState,
@@ -240,6 +241,7 @@ function isRetryableError(error: unknown): boolean {
  * 
  * @param fn - The async function to execute
  * @param config - Retry configuration
+ * @param signal - The caller's signal: once it is aborted, no other attempt starts
  * @returns The result of the function
  * @throws The last error if all retries fail
  * 
@@ -251,7 +253,8 @@ function isRetryableError(error: unknown): boolean {
  */
 export async function withRetry<T>(
     fn: () => Promise<T>,
-    config: Partial<RetryConfig> = {}
+    config: Partial<RetryConfig> = {},
+    signal?: AbortSignal
 ): Promise<T> {
     const fullConfig: RetryConfig = {
         ...RETRY_DEFAULTS,
@@ -266,17 +269,16 @@ export async function withRetry<T>(
         } catch (error) {
             lastError = error;
 
-            // Don't retry if not retryable
-            if (!isRetryableError(error)) {
+            // Don't retry if not retryable, or if the caller stopped waiting (its own time
+            // ran out): another attempt would be aborted at once
+            if (!isRetryableError(error) || signal?.aborted) {
                 throw error;
             }
 
             // Don't retry if we've exhausted all attempts
             if (attempt >= fullConfig.maxRetries) {
-                logger.warn('All retry attempts exhausted', {
-                    attempts: attempt + 1,
-                    error: (error as Error).message,
-                });
+                // Passed on: whoever handles it logs it
+                logger.debug('All retry attempts exhausted', { attempts: attempt + 1, err: error });
                 throw error;
             }
 
@@ -305,8 +307,12 @@ export async function withRetry<T>(
  */
 export interface ResilienceOptions {
     providerId: string;
+    /** Names the provider on an open circuit breaker's error, so it is explained as that provider being unavailable */
+    providerKey?: string;
     circuitBreaker?: CircuitBreakerConfig;
     retry?: Partial<RetryConfig>;
+    /** The caller's signal: once it is aborted, a failed attempt isn't retried */
+    signal?: AbortSignal;
 }
 
 /**
@@ -326,7 +332,7 @@ export async function withResilience<T>(
     fn: () => Promise<T>,
     options: ResilienceOptions
 ): Promise<T> {
-    const { providerId, circuitBreaker, retry } = options;
+    const { providerId, providerKey, circuitBreaker, retry, signal } = options;
     const cbConfig = circuitBreaker ?? CIRCUIT_BREAKER_DEFAULTS;
 
     // Check circuit breaker first
@@ -334,21 +340,23 @@ export async function withResilience<T>(
         throw new AIServiceError(
             'Circuit breaker is open - provider temporarily unavailable',
             'CIRCUIT_OPEN',
-            providerId
+            providerId,
+            providerKey
         );
     }
 
     try {
         // Execute with retry
-        const result = await withRetry(fn, retry);
+        const result = await withRetry(fn, retry, signal);
 
         // Record success
         recordSuccess(providerId, cbConfig);
 
         return result;
     } catch (error) {
-        // Record failure
-        recordFailure(providerId, cbConfig);
+        // Neither is the provider failing: the caller went away (a chat the visitor left), or
+        // its own time ran out (a chat turn's limit, which other steps may have used up)
+        if (!(error instanceof CancelledRequestError || error instanceof CallerTimeoutError)) recordFailure(providerId, cbConfig);
 
         throw error;
     }

@@ -23,6 +23,7 @@ import { trackSearch, type TriggerStep, type TriggerType } from '@/features/anal
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import type { AnalyticsSource } from '@/features/analytics/analytics.types';
 import { ATTR } from '@/features/telemetry';
+import { filterFields, leafFilters } from './filter-clauses';
 import { traceSearch } from './search.tracing';
 import type {
     SearchRequest,
@@ -30,6 +31,7 @@ import type {
     SearchContext,
     SearchIndexIdentifier,
     ProviderSearchRequest,
+    FixedClauses,
 } from './search.types';
 import { SearchError } from './search.types';
 import { searchRequestSchema } from './search.validation';
@@ -122,6 +124,8 @@ export interface SearchOptions {
     hybridConfig?: HybridConfigOverride;
     /** Search timeout in milliseconds */
     timeoutMs?: number;
+    /** What the request carries that its caller didn't write (a chat tool's defaults) */
+    fixed?: FixedClauses;
 }
 
 // ============================================================================
@@ -225,6 +229,7 @@ export async function search(
                     queryEmbedding,
                     hybridConfigOverride: options?.hybridConfig,
                     timeoutMs: options?.timeoutMs,
+                    fixed: options?.fixed,
                 };
 
                 // 7. Execute search via provider
@@ -278,8 +283,8 @@ export async function search(
             experienceSlug,
             queryText: validatedRequest.query,
             hasFilters: validatedRequest.filters && validatedRequest.filters.length > 0,
-            filterFields: extractFilterFields(validatedRequest.filters),
-            filterCount: countFilters(validatedRequest.filters),
+            filterFields: validatedRequest.filters?.length ? filterFields(validatedRequest.filters) : undefined,
+            filterCount: leafFilters(validatedRequest.filters).length,
             facetsRequested: validatedRequest.facets?.map(f => f.field),
             totalResults: response.total.value,
             resultsReturned: response.hits.length,
@@ -295,7 +300,8 @@ export async function search(
     } catch (error) {
         const durationMs = Date.now() - startTime;
 
-        logger.error('Search failed', {
+        // Passed on: whoever answers the caller logs it (the API, a chat tool)
+        logger.debug('Search failed', {
             identifier,
             query: request.query?.substring(0, 50),
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -316,7 +322,7 @@ export async function search(
             experienceSlug,
             queryText: request.query ?? '',
             hasFilters: request.filters && request.filters.length > 0,
-            filterCount: countFilters(request.filters),
+            filterCount: leafFilters(request.filters).length,
             totalResults: 0,
             resultsReturned: 0,
             pageNumber: request.page ?? 1,
@@ -324,7 +330,7 @@ export async function search(
             embeddingDurationMs,
             success: false,
             errorCode: error instanceof SearchError ? error.code : 'UNKNOWN_ERROR',
-            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            errorMessage: failureMessage(error),
         }, experienceId);
 
         if (error instanceof SearchError) {
@@ -334,69 +340,10 @@ export async function search(
         throw new SearchError(
             error instanceof Error ? error.message : 'Search failed',
             'PROVIDER_ERROR',
-            { identifier }
+            { identifier },
+            { cause: error }
         );
     }
-}
-
-/**
- * Extract filter field names from filters array
- */
-function extractFilterFields(filters?: unknown[]): string[] | undefined {
-    if (!filters || filters.length === 0) return undefined;
-
-    const fields: string[] = [];
-
-    function extractFromClause(clause: unknown) {
-        if (!clause || typeof clause !== 'object') return;
-        const c = clause as Record<string, unknown>;
-
-        if (c.field && typeof c.field === 'string' && !['and', 'or', 'not'].includes(c.field)) {
-            fields.push(c.field);
-        }
-
-        if (Array.isArray(c.filters)) {
-            for (const nested of c.filters) {
-                extractFromClause(nested);
-            }
-        }
-    }
-
-    for (const filter of filters) {
-        extractFromClause(filter);
-    }
-
-    return fields.length > 0 ? [...new Set(fields)] : undefined;
-}
-
-/**
- * Count total filter conditions
- */
-function countFilters(filters?: unknown[]): number {
-    if (!filters || filters.length === 0) return 0;
-
-    let count = 0;
-
-    function countFromClause(clause: unknown) {
-        if (!clause || typeof clause !== 'object') return;
-        const c = clause as Record<string, unknown>;
-
-        if (c.field && typeof c.field === 'string' && !['and', 'or', 'not'].includes(c.field)) {
-            count++;
-        }
-
-        if (Array.isArray(c.filters)) {
-            for (const nested of c.filters) {
-                countFromClause(nested);
-            }
-        }
-    }
-
-    for (const filter of filters) {
-        countFromClause(filter);
-    }
-
-    return count;
 }
 
 /**
@@ -531,7 +478,8 @@ async function getQueryEmbedding(
 
         return embedding;
     } catch (error) {
-        logger.error('Failed to generate query embedding', {
+        // Passed on: whoever answers the caller logs it
+        logger.debug('Failed to generate query embedding', {
             indexName: context.indexName,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
@@ -539,9 +487,20 @@ async function getQueryEmbedding(
         throw new SearchError(
             'Failed to generate query embedding',
             'EMBEDDING_FAILED',
-            { indexName: context.indexName }
+            { indexName: context.indexName },
+            { cause: error }
         );
     }
+}
+
+/**
+ * For the failure record: what the caller was told, and what the engine said when that
+ * was put in the caller's terms ("abc" isn't a valid value for rating)
+ */
+function failureMessage(error: unknown): string {
+    if (!(error instanceof Error)) return 'Unknown error';
+    const said = error.cause instanceof Error ? error.cause.message : undefined;
+    return said && said !== error.message ? `${error.message} (${said})` : error.message;
 }
 
 // ============================================================================
@@ -775,16 +734,23 @@ export async function autocomplete(
             took: Date.now() - startTime,
         };
     } catch (error) {
-        logger.error('Autocomplete failed', {
+        // Passed on: whoever answers the caller logs it
+        logger.debug('Autocomplete failed', {
             identifier,
             query: query.substring(0, 20),
             error: error instanceof Error ? error.message : 'Unknown error',
         });
 
+        // Already says what's wrong (the index isn't there or isn't ready), as for a search
+        if (error instanceof SearchError) {
+            throw error;
+        }
+
         throw new SearchError(
             error instanceof Error ? error.message : 'Autocomplete failed',
             'PROVIDER_ERROR',
-            { identifier }
+            { identifier },
+            { cause: error }
         );
     }
 }
@@ -846,7 +812,7 @@ export async function getDocumentById(
 
         if (!result.found) {
             if (result.error) {
-                throw new Error(result.error);
+                throw new Error(result.error, { cause: result.cause });
             }
             return null;
         }
@@ -858,7 +824,8 @@ export async function getDocumentById(
             indexName: searchIndex.name,
         };
     } catch (error) {
-        logger.error('Failed to get document by ID', {
+        // Passed on: whoever answers the caller logs it (the documents API, Find Record)
+        logger.debug('Failed to get document by ID', {
             identifier,
             documentId,
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -871,7 +838,8 @@ export async function getDocumentById(
         throw new SearchError(
             error instanceof Error ? error.message : 'Failed to get document',
             'PROVIDER_ERROR',
-            { identifier, documentId }
+            { identifier, documentId },
+            { cause: error }
         );
     }
 }

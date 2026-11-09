@@ -15,6 +15,7 @@
  */
 
 import { createLogger } from '@/shared/logger/logger';
+import { inBackground } from '@/shared/telemetry/background';
 
 const logger = createLogger('v2:facet-cache');
 
@@ -171,7 +172,7 @@ export class FacetCache {
    */
   startSweepTimer(): void {
     if (this.sweepTimer) return;
-    this.sweepTimer = setInterval(() => this.sweep(), this.config.sweepIntervalMs);
+    this.sweepTimer = inBackground(() => setInterval(() => this.sweep(), this.config.sweepIntervalMs));
     // Unref so the timer doesn't prevent Node.js from exiting
     if (typeof this.sweepTimer === 'object' && 'unref' in this.sweepTimer) {
       this.sweepTimer.unref();

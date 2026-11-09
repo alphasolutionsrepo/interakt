@@ -28,10 +28,12 @@ import { Button } from '@/shared/ui/components/button';
 
 interface Effectiveness {
   totalConversations: number;
-  successRate: number;
-  outcomes: { success: number; plan_failed: number; context_assembly_failed: number; unknown: number };
+  // Null when no turn finished
+  successRate: number | null;
+  // timed_out: insights stored before it was counted lack it
+  outcomes: { success: number; plan_failed: number; context_assembly_failed: number; timed_out?: number; unknown: number };
   decisions: { direct_response: number; tool_call: number; unknown: number };
-  avgDurationMs: number;
+  avgDurationMs: number | null;
 }
 
 interface Guardrails {
@@ -81,7 +83,8 @@ export default function AnalyticsConversationsPage() {
             <StatTile label="Conversation turns" value={formatCompact(eff.totalConversations)} hint="Questions the assistant answered" />
             <StatTile
               label="Completed"
-              value={formatPercent(eff.successRate)}
+              // No rate when no turn finished (the visitor left each one)
+              value={eff.successRate === null ? '—' : formatPercent(eff.successRate)}
               hint={`${formatCompact(eff.totalConversations - eff.outcomes.success)} turns didn't complete`}
             />
             <StatTile
@@ -115,6 +118,7 @@ export default function AnalyticsConversationsPage() {
                     value: eff.outcomes.context_assembly_failed,
                     color: 'var(--viz-serious)',
                   },
+                  { key: 'timed_out', label: 'Ran out of time', value: eff.outcomes.timed_out ?? 0, color: 'var(--viz-serious)' },
                   // A turn records its outcome when it finishes; one without stopped with an error first
                   { key: 'unknown', label: 'Stopped with an error', value: eff.outcomes.unknown, color: 'var(--viz-critical)' },
                 ]}

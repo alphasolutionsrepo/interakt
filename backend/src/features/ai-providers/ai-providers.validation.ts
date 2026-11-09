@@ -176,12 +176,18 @@ export type UpdateAIProviderInput = z.infer<typeof updateAIProviderSchema>;
 // MODEL SCHEMAS
 // ============================================================================
 
-/**
- * Schema for creating a new AI model
- */
-export const createAIModelSchema = z.object({
-  providerId: z.string().uuid('Invalid provider ID'),
+const costPerMillionTokens = z.number()
+  .min(0, 'Cost cannot be negative')
+  .max(1000, 'Cost seems too high')
+  .optional()
+  .nullable();
 
+/**
+ * The rules for a model's own fields, one set for creating and updating a model on the
+ * server and for the admin's model form. Keys carry `:` (Ollama tags) and `/` (gateway
+ * routes), so any non-empty key is allowed.
+ */
+export const modelFieldRules = {
   modelKey: z.string()
     .min(1, 'Model key is required')
     .max(100, 'Model key too long'),
@@ -195,8 +201,6 @@ export const createAIModelSchema = z.object({
     .optional()
     .nullable(),
 
-  modelType: modelTypeSchema,
-
   dimensions: z.number()
     .int()
     .positive()
@@ -204,26 +208,22 @@ export const createAIModelSchema = z.object({
     .optional()
     .nullable(),
 
-  capabilities: modelCapabilitiesSchema.optional().default({}),
-
-  isAvailable: z.boolean().default(true),
-
-  isDiscovered: z.boolean().default(false),
-
-  sortOrder: z.number().int().min(0).default(0),
-
   // Pricing fields for cost estimation
-  inputCostPerMillionTokens: z.number()
-    .min(0, 'Cost cannot be negative')
-    .max(1000, 'Cost seems too high')
-    .optional()
-    .nullable(),
+  inputCostPerMillionTokens: costPerMillionTokens,
+  outputCostPerMillionTokens: costPerMillionTokens,
+};
 
-  outputCostPerMillionTokens: z.number()
-    .min(0, 'Cost cannot be negative')
-    .max(1000, 'Cost seems too high')
-    .optional()
-    .nullable(),
+/**
+ * Schema for creating a new AI model
+ */
+export const createAIModelSchema = z.object({
+  providerId: z.string().uuid('Invalid provider ID'),
+  ...modelFieldRules,
+  modelType: modelTypeSchema,
+  capabilities: modelCapabilitiesSchema.optional().default({}),
+  isAvailable: z.boolean().default(true),
+  isDiscovered: z.boolean().default(false),
+  sortOrder: z.number().int().min(0).default(0),
 });
 
 export type CreateAIModelInput = z.infer<typeof createAIModelSchema>;
@@ -232,41 +232,14 @@ export type CreateAIModelInput = z.infer<typeof createAIModelSchema>;
  * Schema for updating an AI model
  */
 export const updateAIModelSchema = z.object({
-  displayName: z.string()
-    .min(1, 'Display name is required')
-    .max(150, 'Display name too long')
-    .optional(),
-
-  description: z.string()
-    .max(500, 'Description too long')
-    .optional()
-    .nullable(),
-
-  dimensions: z.number()
-    .int()
-    .positive()
-    .max(10000, 'Dimensions value too large')
-    .optional()
-    .nullable(),
-
+  displayName: modelFieldRules.displayName.optional(),
+  description: modelFieldRules.description,
+  dimensions: modelFieldRules.dimensions,
   capabilities: modelCapabilitiesSchema.optional(),
-
   isAvailable: z.boolean().optional(),
-
   sortOrder: z.number().int().min(0).optional(),
-
-  // Pricing fields for cost estimation
-  inputCostPerMillionTokens: z.number()
-    .min(0, 'Cost cannot be negative')
-    .max(1000, 'Cost seems too high')
-    .optional()
-    .nullable(),
-
-  outputCostPerMillionTokens: z.number()
-    .min(0, 'Cost cannot be negative')
-    .max(1000, 'Cost seems too high')
-    .optional()
-    .nullable(),
+  inputCostPerMillionTokens: modelFieldRules.inputCostPerMillionTokens,
+  outputCostPerMillionTokens: modelFieldRules.outputCostPerMillionTokens,
 });
 
 export type UpdateAIModelInput = z.infer<typeof updateAIModelSchema>;

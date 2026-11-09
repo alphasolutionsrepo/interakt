@@ -152,6 +152,7 @@ function makeDeps(scenario: Scenario) {
     persistence: {
       addMessages: vi.fn().mockResolvedValue(undefined),
       updateSession: vi.fn().mockResolvedValue(undefined),
+      discardEmptySession: vi.fn().mockResolvedValue(undefined),
     },
   };
 

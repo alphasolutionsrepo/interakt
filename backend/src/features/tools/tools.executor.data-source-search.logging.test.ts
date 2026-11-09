@@ -1,0 +1,159 @@
+// src/features/tools/tools.executor.data-source-search.logging.test.ts
+
+/**
+ * A chat tool's search on a managed index that fails is passed on by the data source
+ * search, so the executor retries it and logs it once after its last attempt, with the
+ * error. The data source search logs only a data source it couldn't look up, which it
+ * answers itself. Through the real executor and data source search: the search service
+ * and the data source lookup are stubbed.
+ */
+
+import { errors as esErrors } from '@elastic/elasticsearch';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { AdapterError } from '@/features/ai-service/adapters/types';
+import { AIServiceError } from '@/features/ai-service/ai-service.types';
+import { SearchError } from '@/features/search/search.types';
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+vi.mock('@/features/telemetry', () => ({
+  withSpan: (_opts: unknown, fn: (span: unknown) => unknown) => fn({ setAttribute: vi.fn(), addEvent: vi.fn(), setStatus: vi.fn(), recordException: vi.fn(), end: vi.fn() }),
+  ATTR: new Proxy({}, { get: (_t, k) => String(k) }),
+}));
+const tool = vi.hoisted(() => ({
+  id: 'tool-1', name: 'Search', slug: 'search', executorType: 'data_source', operation: 'search', dataSourceId: 'ds', isActive: true,
+  executorConfig: {}, inputSchema: { type: 'object', properties: {} }, outputSchema: null, timeout: 30_000,
+  retryConfig: { count: 1, backoff: 'fixed', initialDelayMs: 1 } as { count: number; backoff: 'fixed'; initialDelayMs: number; retryableErrors?: string[] }, fallbackConfig: null,
+}));
+vi.mock('./tools.service', () => ({ getToolById: async () => tool }));
+vi.mock('@/features/secrets/secrets.service', () => ({ resolveSecret: vi.fn() }));
+vi.mock('@/features/mcp-connection/mcp-tool-resolver', () => ({ isMcpToolId: () => false, parseMcpToolId: () => null }));
+vi.mock('@/features/mcp-connection/mcp-executor', () => ({ executeMcpTool: vi.fn() }));
+const search = vi.hoisted(() => ({ searchById: vi.fn(), resolveDataSource: vi.fn() }));
+vi.mock('@/features/search/search.service', () => ({ searchById: search.searchById, getExperienceContext: () => undefined }));
+vi.mock('@/features/analytics', () => ({ trackSearch: vi.fn() }));
+const external = vi.hoisted(() => ({ search: vi.fn() }));
+vi.mock('@/features/data-source/external-search/external-search.service', () => ({ getConnector: () => external }));
+vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
+vi.mock('./executors/data-source/shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./executors/data-source/shared')>()),
+  resolveDataSource: search.resolveDataSource,
+}));
+
+import { executeTool } from './tools.executor';
+
+beforeEach(() => {
+  logs.length = 0;
+  tool.retryConfig = { count: 1, backoff: 'fixed', initialDelayMs: 1 };
+  search.searchById.mockReset();
+  search.resolveDataSource.mockReset().mockResolvedValue({ kind: 'managed', searchIndexId: 'i1', dataSourceId: 'ds' });
+});
+
+describe('a chat tool search on a managed index', () => {
+  it("that the search engine couldn't take is retried and logged once, by the executor, as an error, with the error", async () => {
+    const refused = new esErrors.ConnectionError('connect ECONNREFUSED 127.0.0.1:9200', { meta: {} } as never);
+    const down = new SearchError(refused.message, 'PROVIDER_ERROR', {}, { cause: refused });
+    search.searchById.mockRejectedValue(down);
+
+    const result = await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(result.success).toBe(false);
+    expect(search.searchById).toHaveBeenCalledTimes(2);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', message: 'Tool execution failed', context: expect.objectContaining({ err: down }) })]);
+  });
+
+  it('whose data source is gone is answered as a failed call and logged once, by the data source search, as a warning', async () => {
+    const missing = new Error('Data source not found: ds');
+    search.resolveDataSource.mockRejectedValue(missing);
+
+    const result = await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(result.success).toBe(false);
+    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', message: 'Data source search failed', context: expect.objectContaining({ err: missing }) })]);
+  });
+});
+
+describe('a chat tool search the search service failed', () => {
+  it.each([
+    ['stopped (an error with no message)', () => new esErrors.ConnectionError('', { meta: {} } as never)],
+    ['timed out', () => new esErrors.TimeoutError('Request timed out', { meta: {} } as never)],
+  ])('is retried when Elasticsearch was %s', async (_case, cause) => {
+    search.searchById.mockRejectedValue(new SearchError(cause().message, 'PROVIDER_ERROR', {}, { cause: cause() }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(2);
+  });
+
+  it('is not retried when it refused the request (a filter the model wrote)', async () => {
+    search.searchById.mockRejectedValue(new SearchError('"abc" isn\'t a valid value for rating', 'INVALID_FILTER'));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a chat tool search the circuit breaker refused (semantic search, its embedding provider cut off)', () => {
+  it('is not retried: another try fails the same way at once', async () => {
+    const circuit = Object.assign(new Error('Circuit breaker is open - provider temporarily unavailable'), { name: 'AIServiceError', code: 'CIRCUIT_OPEN', providerKey: 'ollama' });
+    // Its text matches a retry pattern ('timeout'): only the circuit breaker stops the retry
+    search.searchById.mockRejectedValue(new SearchError('Embedding request timeout', 'PROVIDER_ERROR', {}, { cause: circuit }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a chat tool search on a managed Azure AI Search index that could not be reached', () => {
+  it('is retried', async () => {
+    const unreachable = Object.assign(new Error('getaddrinfo ENOTFOUND shop.search.windows.net'), { name: 'RestError', code: 'ENOTFOUND' });
+    search.searchById.mockRejectedValue(new SearchError('', 'PROVIDER_ERROR', {}, { cause: unreachable }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('a chat tool search on an external source that is down', () => {
+  it('is answered to the model as a failed call at once (a control: the data source search answers it itself, so nothing is thrown to retry)', async () => {
+    const { ExternalSearchError } = await import('@/features/data-source/external-search/external-search.types');
+    search.resolveDataSource.mockResolvedValue({ kind: 'external', provider: 'elasticsearch', dataSourceId: 'ds' });
+    external.search.mockReset().mockRejectedValue(new ExternalSearchError('Elasticsearch', "Elasticsearch couldn't be reached"));
+
+    const result = await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(result.success).toBe(false);
+    expect(external.search).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a chat tool search whose query embedding failed', () => {
+  it.each([
+    ['timed out', () => new AdapterError('Request timed out', 'openai', undefined, true)],
+    ['was rate limited', () => new AdapterError('Rate limit exceeded', 'openai', 429, true)],
+    ['was unavailable', () => new AdapterError('Service unavailable', 'ollama', 503, true)],
+  ])('%s: is not retried, the AI service retried its own call already', async (_case, failure) => {
+    search.searchById.mockRejectedValue(new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', {}, { cause: failure() }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a chat tool search the circuit breaker refused, on a tool whose own retry patterns match it', () => {
+  it('is not retried: the provider is cut off', async () => {
+    tool.retryConfig = { ...tool.retryConfig, retryableErrors: ['embedding'] };
+    const circuit = new AIServiceError('Circuit breaker is open - provider temporarily unavailable', 'CIRCUIT_OPEN', 'p1', 'ollama');
+    search.searchById.mockRejectedValue(new SearchError('Failed to generate query embedding', 'EMBEDDING_FAILED', {}, { cause: circuit }));
+
+    await executeTool('tool-1', { query: 'linen shirts' });
+
+    expect(search.searchById).toHaveBeenCalledTimes(1);
+  });
+});

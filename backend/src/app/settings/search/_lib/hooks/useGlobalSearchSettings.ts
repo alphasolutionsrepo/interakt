@@ -43,8 +43,6 @@ export function useUpdateGlobalSearchSettings() {
             queryClient.invalidateQueries({ queryKey: QUERY_KEY });
             toast.success('Search settings updated successfully');
         },
-        onError: (error: Error) => {
-            toast.error(error.message || 'Failed to update settings');
-        },
+        meta: { label: 'Update settings' },
     });
 }

@@ -32,7 +32,9 @@ import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { ToolTypeChip, resolveToolChipConfig } from '../../_components/ToolTypeChip';
 import { LookupFieldsWarnings } from '../../_components/LookupFieldsSection';
+import { toolsApi, type ToolTestResult } from '../../_lib/api-client';
 import { useLookupFields, useTool } from '../../_lib/hooks/useTools';
+import { errorText } from '@/shared/api/api-error';
 
 // ============================================================================
 // CONFIG DISPLAY
@@ -107,13 +109,6 @@ function ConfigDisplay({ tool }: { tool: { executorType: string; operation: stri
 // TEST PANEL
 // ============================================================================
 
-interface TestResult {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  durationMs: number;
-}
-
 function ToolTestPanel({ toolId, isActive, executorType, operation }: {
   toolId: string;
   isActive: boolean;
@@ -124,7 +119,7 @@ function ToolTestPanel({ toolId, isActive, executorType, operation }: {
   const [fieldName, setFieldName] = useState('');
   const [lookupId, setLookupId] = useState('');
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<TestResult | null>(null);
+  const [result, setResult] = useState<ToolTestResult | null>(null);
 
   // Build the correct input object based on operation type
   function buildInput(): Record<string, unknown> | null {
@@ -164,15 +159,9 @@ function ToolTestPanel({ toolId, isActive, executorType, operation }: {
     setRunning(true);
     setResult(null);
     try {
-      const res = await fetch(`/api/tools/${toolId}/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input }),
-      });
-      const json = await res.json() as { data: TestResult };
-      setResult(json.data);
+      setResult(await toolsApi.test(toolId, input));
     } catch (err) {
-      setResult({ success: false, error: (err as Error).message, durationMs: 0 });
+      setResult({ success: false, error: errorText(err, 'The test run failed'), durationMs: 0 });
     } finally {
       setRunning(false);
     }

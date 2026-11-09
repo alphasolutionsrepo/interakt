@@ -48,6 +48,7 @@ import { FieldMappingsCard } from '../../_components/FieldMappingsCard';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ReindexDialog } from '../../_components/ReindexDialog';
+import { LastJobBanner } from '../../_components/LastJobBanner';
 import { ExportImportButtons } from '../../_components/ExportImportButtons';
 import {
   SEARCH_TYPE_INFO,
@@ -283,13 +284,8 @@ export default function SearchIndexDetailPage() {
     }
   };
 
-  const handleReindex = async () => {
-    const result = await triggerReindex();
-    return {
-      documentCount: result.documentCount,
-      durationMs: result.durationMs,
-    };
-  };
+  // The whole result: the dialog shows a partial reindex from its outcome
+  const handleReindex = () => triggerReindex();
 
   if (isLoading) {
     return <DetailPageSkeleton />;
@@ -435,6 +431,9 @@ export default function SearchIndexDetailPage() {
           </>
         }
       />
+
+      {/* How the last reindex, recreate or upload ended */}
+      <LastJobBanner lastJob={searchIndex.lastJob} />
 
       {/* Error Recovery Banner */}
       {searchIndex.status === 'error' && (

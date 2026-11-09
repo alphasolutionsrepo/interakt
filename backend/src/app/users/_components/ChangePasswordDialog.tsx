@@ -28,11 +28,14 @@ import { Loader2, Key } from 'lucide-react';
 import { changePasswordSchema } from '@/features/auth/auth.validations';
 import type { ChangePasswordDTO } from '@/features/auth/auth.validations';
 import type { UserResponse } from '../_lib/api-client';
+import { useInlineError } from '@/shared/activity/useInlineError';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 interface ChangePasswordDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: ChangePasswordDTO) => void;
+  /** Rejects when the save fails; the dialog then shows why */
+  onSubmit: (data: ChangePasswordDTO) => void | Promise<void>;
   user?: UserResponse;
   isSubmitting?: boolean;
 }
@@ -44,6 +47,8 @@ export function ChangePasswordDialog({
   user,
   isSubmitting,
 }: ChangePasswordDialogProps) {
+  const inline = useInlineError();
+  const clearInlineError = inline.clear;
   const form = useForm<ChangePasswordDTO>({
     resolver: zodResolver(changePasswordSchema),
     defaultValues: {
@@ -55,15 +60,21 @@ export function ChangePasswordDialog({
   // Reset form when dialog opens/closes
   useEffect(() => {
     if (open) {
+      clearInlineError();
       form.reset({
         currentPassword: '',
         newPassword: '',
       });
     }
-  }, [open, form]);
+  }, [open, form, clearInlineError]);
 
-  const handleSubmit = form.handleSubmit((data) => {
-    onSubmit(data);
+  const handleSubmit = form.handleSubmit(async (data) => {
+    inline.clear();
+    try {
+      await onSubmit(data);
+    } catch (err) {
+      inline.capture('Change password', err, form);
+    }
   });
 
   return (
@@ -131,6 +142,8 @@ export function ChangePasswordDialog({
                 )}
               />
             </div>
+
+            <ProblemAlert error={inline.error} hideFields={inline.hideFields} onDismiss={inline.clear} />
 
             <DialogFooter>
               <Button

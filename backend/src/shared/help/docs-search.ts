@@ -7,6 +7,8 @@
 
 import { DOCS_SEARCH_SLUG } from './help-content';
 
+import { handleApiResponse } from '@/shared/api/api-error';
+
 export interface DocsSearchHit {
   id: string;
   /** Doc slug ("concepts/tools") and heading anchor, for opening in the help drawer. */
@@ -38,13 +40,11 @@ interface RawHit {
   highlights?: Record<string, string[]>;
 }
 
-interface RawResponse {
-  success: boolean;
-  data?: {
-    results: RawHit[];
-    facets?: Record<string, { buckets: Array<{ key: string; doc_count: number }> }>;
-    timing: { totalMs: number };
-  };
+/** The search API's data for one search */
+interface RawResults {
+  results: RawHit[];
+  facets?: Record<string, { buckets: Array<{ key: string; doc_count: number }> }>;
+  timing: { totalMs: number };
 }
 
 const PAGE_SIZE = 8;
@@ -124,10 +124,9 @@ export async function searchDocs(
 
   // 404: not built yet. 5xx: engine down or index not ready.
   if (res.status === 404 || res.status >= 500) throw new DocsSearchUnavailableError(`HTTP ${res.status}`);
-  const json = (await res.json().catch(() => null)) as RawResponse | null;
-  if (!res.ok || !json?.success || !json.data) throw new Error(`Search failed (HTTP ${res.status})`);
+  const data = await handleApiResponse<RawResults | undefined>(res, 'Search failed');
+  if (!data) throw new Error(`Search failed (HTTP ${res.status})`);
 
-  const { data } = json;
   return {
     hits: data.results.map(toHit),
     groups: (data.facets?.group?.buckets ?? []).map((b) => b.key),
@@ -155,7 +154,7 @@ let docListPromise: Promise<DocListEntry[]> | null = null;
 /** Every doc's title and group, from GET /api/help (fetched once per page load). */
 export function loadDocList(): Promise<DocListEntry[]> {
   docListPromise ??= fetch('/api/help')
-    .then((r) => (r.ok ? (r.json() as Promise<DocsTreeResponse>) : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .then((r) => handleApiResponse<DocsTreeResponse>(r, 'Failed to load the docs list'))
     .then((tree) => [
       ...tree.root.map((d) => ({ slug: d.slug, title: d.title, group: 'Overview' })),
       ...tree.groups.flatMap((g) => g.docs.map((d) => ({ slug: d.slug, title: d.title, group: g.title }))),

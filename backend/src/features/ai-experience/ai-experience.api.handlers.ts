@@ -2,7 +2,6 @@
 
 import { NextRequest } from 'next/server';
 import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import * as service from './ai-experience.service';
 import {
@@ -12,8 +11,6 @@ import {
   assignToolSchema,
   updateToolAssignmentSchema,
 } from './ai-experience.validation';
-
-const logger = createLogger('ai-experience-handlers');
 
 // ============================================================================
 // LIST
@@ -34,8 +31,7 @@ export async function handleListAIExperiences(request: NextRequest) {
     return apiResponse.successWithPagination(result.experiences, result.pagination);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to list AI experiences', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'listAIExperiences' });
   }
 }
 
@@ -58,11 +54,10 @@ export async function handleCreateAIExperience(request: NextRequest) {
     return apiResponse.success(experience, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to create AI experience', err);
     if (err.message.includes('already exists') || err.message.includes('not found') || err.message.includes('not active') || err.message.includes("isn't set up")) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createAIExperience' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'createAIExperience' });
   }
 }
 
@@ -87,8 +82,7 @@ export async function handleGetAIExperience(
     return apiResponse.success(experience);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to get AI experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'getAIExperience' });
   }
 }
 
@@ -119,8 +113,7 @@ export async function handleUpdateAIExperience(
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update AI experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateAIExperience' });
   }
 }
 
@@ -145,8 +138,7 @@ export async function handleDeleteAIExperience(
     return apiResponse.success({ deleted: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to delete AI experience', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'deleteAIExperience' });
   }
 }
 
@@ -171,8 +163,7 @@ export async function handleRegenerateAccessToken(
     return apiResponse.success({ accessToken: updated.accessToken });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to regenerate access token', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'regenerateAIExperienceAccessToken' });
   }
 }
 
@@ -196,8 +187,7 @@ export async function handleCheckSlug(request: NextRequest) {
     return apiResponse.success({ slug, available });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to check slug', err);
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'checkAIExperienceSlug' });
   }
 }
 
@@ -224,11 +214,10 @@ export async function handleAssignTool(
     return apiResponse.success(assignment, 201);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to assign tool', err);
     if (err.message.includes('not found') || err.message.includes('already assigned') || err.message.includes("isn't set up")) {
-      return apiResponse.badRequest(err.message);
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'assignTool' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'assignTool' });
   }
 }
 
@@ -251,11 +240,10 @@ export async function handleUpdateToolAssignment(
     return apiResponse.success(updated);
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to update tool assignment', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateToolAssignment' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'updateToolAssignment' });
   }
 }
 
@@ -272,10 +260,9 @@ export async function handleRemoveToolAssignment(
     return apiResponse.success({ removed: true });
   } catch (error) {
     const err = error as Error;
-    logger.error('Failed to remove tool assignment', err);
     if (err.message.includes('not found')) {
-      return apiResponse.notFound(err.message);
+      return apiResponse.refused(error, 'NOT_FOUND', { operation: 'removeToolAssignment' });
     }
-    return apiResponse.error(err);
+    return apiResponse.error(err, undefined, { operation: 'removeToolAssignment' });
   }
 }

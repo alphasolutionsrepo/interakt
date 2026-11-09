@@ -5,6 +5,7 @@
  * Types for the document indexing feature
  */
 
+import type { IndexLastJob } from '@/db/schema/search-index.schema';
 import { z } from 'zod';
 import { filterClauseSchema } from '@/features/search/search.validation';
 import type { FieldType } from '@/shared/constants/field-types';
@@ -195,6 +196,8 @@ export interface IndexingStatusResponse {
         error: string;
         field?: string;
     }>;
+    /** Why the whole batch failed (index setup, mappings), when it did */
+    errorMessage?: string | null;
 }
 
 /**
@@ -202,6 +205,8 @@ export interface IndexingStatusResponse {
  */
 export interface IndexDocumentsResponse {
     success: boolean;
+    /** How the upload ended, as recorded on the index (its lastJob) */
+    outcome: IndexLastJob;
     batchId: string;
     message: string;
     summary: {
@@ -249,6 +254,10 @@ export interface GetDocumentResponse {
 export interface WriteDocumentsResponse {
     success: boolean;
     message: string;
+    /** Why nothing was written: what happened, what to do, the request id */
+    error?: { code: string; message: string; hint?: string; requestId: string };
+    /** For a write that partly failed: what to do about it, when we recognise why */
+    hint?: string;
     summary: {
         total: number;
         succeeded: number;
@@ -352,5 +361,7 @@ export interface BatchListResponse {
         createdAt: string;
         completedAt: string | null;
         durationMs: number | null;
+        /** Why the whole batch failed, when it did */
+        errorMessage: string | null;
     }>;
 }

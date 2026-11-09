@@ -11,6 +11,7 @@ import { Client, type ClientOptions } from '@elastic/elasticsearch';
 import { elasticsearchConfig } from '@/config';
 import { createLogger } from '@/shared/logger/logger';
 import { EMBEDDING_FIELD_NAME } from './elasticsearch.constants';
+import { failureText, type GetDocumentResult } from '../search-engine-provider.interface';
 
 const logger = createLogger('elasticsearch-client');
 
@@ -137,7 +138,7 @@ export async function indexExists(indexName: string): Promise<boolean> {
 export async function createIndex(
     indexName: string,
     options: CreateIndexOptions = {}
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; cause?: unknown }> {
     try {
         const es = getElasticsearchClient();
 
@@ -165,16 +166,16 @@ export async function createIndex(
         logger.info('Index created', { indexName });
         return { success: true };
     } catch (error) {
+        // Passed on with its cause: whoever answers the caller logs it
         const message = error instanceof Error ? error.message : 'Failed to create index';
-        logger.error('Failed to create index', { indexName, error: message });
-        return { success: false, error: message };
+        return { success: false, error: message, cause: error };
     }
 }
 
 /**
  * Delete an index
  */
-export async function deleteIndex(indexName: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteIndex(indexName: string): Promise<{ success: boolean; error?: string; cause?: unknown }> {
     try {
         const es = getElasticsearchClient();
 
@@ -187,9 +188,9 @@ export async function deleteIndex(indexName: string): Promise<{ success: boolean
         logger.info('Index deleted', { indexName });
         return { success: true };
     } catch (error) {
+        // Passed on with its cause: whoever answers the caller logs it
         const message = error instanceof Error ? error.message : 'Failed to delete index';
-        logger.error('Failed to delete index', { indexName, error: message });
-        return { success: false, error: message };
+        return { success: false, error: message, cause: error };
     }
 }
 
@@ -294,6 +295,11 @@ export interface BulkIndexResult {
         error: string;
     }>;
     took: number;
+    /**
+     * The error that failed a whole batch (the service couldn't be reached, timed out),
+     * so the caller can explain it. Its documents are in errors too, with its message.
+     */
+    writeError?: unknown;
 }
 
 export type BulkWriteAction = 'upload' | 'merge' | 'delete';
@@ -355,6 +361,7 @@ export async function bulkWrite(
     const allErrors: BulkIndexResult['errors'] = [];
     const counts: Record<BulkWriteAction, number> = { upload: 0, merge: 0, delete: 0 };
     const startTime = Date.now();
+    let writeError: unknown;
 
     // Process in batches
     for (let i = 0; i < operations.length; i += batchSize) {
@@ -394,8 +401,9 @@ export async function bulkWrite(
                 });
             }
         } catch (error) {
-            // Entire batch failed
-            logger.error('Bulk write batch failed', {
+            // Entire batch failed. Passed on as writeError; the upload, reindex or write it
+            // belongs to logs it, with its request id
+            logger.debug('Bulk write batch failed', {
                 indexName,
                 batchStart: i,
                 batchSize: batch.length,
@@ -403,11 +411,10 @@ export async function bulkWrite(
             });
 
             totalFailed += batch.length;
+            writeError ??= error;
+            const message = failureText(error, 'Batch failed');
             batch.forEach((_, batchIndex) => {
-                allErrors.push({
-                    index: i + batchIndex,
-                    error: error instanceof Error ? error.message : 'Batch failed',
-                });
+                allErrors.push({ index: i + batchIndex, error: message });
             });
         }
     }
@@ -430,6 +437,7 @@ export async function bulkWrite(
         errors: allErrors,
         counts,
         took,
+        ...(writeError !== undefined && { writeError }),
     };
 }
 
@@ -646,6 +654,21 @@ export async function deleteByQuery(
 // SCROLL / FETCH ALL DOCUMENTS
 // ============================================================================
 
+/**
+ * Throws when a page of a scroll misses documents: a shard that failed or a search that
+ * timed out still answers 200, with the hits it has
+ */
+async function refuseIncomplete(response: { timed_out?: boolean; _shards?: { failed?: number; total?: number }; _scroll_id?: string }): Promise<void> {
+    const failed = response._shards?.failed ?? 0;
+    if (!response.timed_out && failed === 0) return;
+    if (response._scroll_id) {
+        await getElasticsearchClient().clearScroll({ scroll_id: response._scroll_id }).catch(() => {});
+    }
+    throw new Error(response.timed_out
+        ? 'Elasticsearch timed out reading the documents and gave only some of them'
+        : `Elasticsearch couldn't read ${failed} of the index's ${response._shards?.total ?? failed} shards`);
+}
+
 export interface ScrollDocument {
     _id: string;
     _source: Record<string, unknown>;
@@ -661,7 +684,7 @@ export async function fetchAllDocuments(
         batchSize?: number;
         scrollTimeout?: string;
     }
-): Promise<{ success: boolean; documents: ScrollDocument[]; error?: string }> {
+): Promise<{ success: boolean; documents: ScrollDocument[]; error?: string; cause?: unknown }> {
     try {
         const es = getElasticsearchClient();
         const batchSize = options?.batchSize ?? 1000;
@@ -673,6 +696,12 @@ export async function fetchAllDocuments(
         }
 
         const allDocuments: ScrollDocument[] = [];
+        const collect = async (page: typeof response) => {
+            await refuseIncomplete(page);
+            for (const hit of page.hits.hits) {
+                allDocuments.push({ _id: hit._id, _source: hit._source as Record<string, unknown> });
+            }
+        };
 
         // Initial search with scroll
         let response = await es.search({
@@ -681,15 +710,10 @@ export async function fetchAllDocuments(
             size: batchSize,
             query: { match_all: {} },
             _source: true,
+            // A reindex writes back only what it read: a shard that failed fails the read
+            allow_partial_search_results: false,
         });
-
-        // Collect first batch
-        for (const hit of response.hits.hits) {
-            allDocuments.push({
-                _id: hit._id,
-                _source: hit._source as Record<string, unknown>,
-            });
-        }
+        await collect(response);
 
         // Continue scrolling until no more results
         while (response.hits.hits.length > 0) {
@@ -700,13 +724,7 @@ export async function fetchAllDocuments(
                 scroll_id: scrollId,
                 scroll: scrollTimeout,
             });
-
-            for (const hit of response.hits.hits) {
-                allDocuments.push({
-                    _id: hit._id,
-                    _source: hit._source as Record<string, unknown>,
-                });
-            }
+            await collect(response);
         }
 
         // Clear scroll context
@@ -723,9 +741,9 @@ export async function fetchAllDocuments(
 
         return { success: true, documents: allDocuments };
     } catch (error) {
+        // Passed on with its cause: the reindex it belongs to logs it, with its request id
         const message = error instanceof Error ? error.message : 'Failed to fetch documents';
-        logger.error('Failed to fetch all documents', { indexName, error: message });
-        return { success: false, documents: [], error: message };
+        return { success: false, documents: [], error: message, cause: error };
     }
 }
 
@@ -733,12 +751,7 @@ export async function fetchAllDocuments(
 // GET DOCUMENT BY ID
 // ============================================================================
 
-export interface GetDocumentResult {
-    found: boolean;
-    id?: string;
-    source?: Record<string, unknown>;
-    error?: string;
-}
+export type { GetDocumentResult };
 
 /**
  * Get a single document by ID
@@ -775,9 +788,10 @@ export async function getDocumentById(
             return { found: false };
         }
 
-        const message = error instanceof Error ? error.message : 'Failed to get document';
-        logger.error('Failed to get document by ID', { indexName, documentId, error: message });
-        return { found: false, error: message };
+        // Passed on with its cause: whoever answers the caller logs it
+        const message = failureText(error, 'Failed to get document');
+        logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
+        return { found: false, error: message, cause: error };
     }
 }
 

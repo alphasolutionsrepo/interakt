@@ -14,6 +14,7 @@
 
 import 'server-only';
 
+import { NotFoundError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import * as repository from './domain-knowledge.repository';
 import {
@@ -258,7 +259,7 @@ export async function updateKnowledgeEntry(
   // Get existing entry to get searchIndexId
   const existing = await repository.getEntryById(id);
   if (!existing) {
-    throw new Error(`Knowledge entry not found: ${id}`);
+    throw new NotFoundError('Knowledge entry not found');
   }
 
   // Build update data

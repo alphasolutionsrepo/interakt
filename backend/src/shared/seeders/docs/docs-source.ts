@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 
 import { db } from '@/db/index';
 import { user } from '@/db/schema/users.schema';
+import { SetupRequiredError } from '@/shared/errors/app-error';
 import { deriveTitle, stripFrontmatter } from '@/shared/help/markdown';
 
 /** Where the end-user docs live (read at runtime from the Node cwd). */
@@ -27,7 +28,11 @@ export interface DocFile {
 
 /** Recursively read every .md under DOCS_ROOT, frontmatter-stripped. */
 export async function readDocs(): Promise<DocFile[]> {
-  const entries = await fs.readdir(DOCS_ROOT, { recursive: true, withFileTypes: true });
+  const entries = await fs.readdir(DOCS_ROOT, { recursive: true, withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    // A deployment built without the docs folder: a setup step, not a server failure
+    if (error.code === 'ENOENT') throw new SetupRequiredError(`No documentation found at ${DOCS_ROOT}.`);
+    throw error;
+  });
   const docs: DocFile[] = [];
 
   for (const entry of entries) {
@@ -53,7 +58,7 @@ export async function readDocs(): Promise<DocFile[]> {
 export async function getAdminUserId(): Promise<string> {
   const admin = await db.query.user.findFirst({ where: eq(user.role, 'admin') });
   if (!admin) {
-    throw new Error('No admin user found. An admin user is required to seed the docs.');
+    throw new SetupRequiredError('No admin user found. An admin user is required to seed the docs.');
   }
   return admin.id;
 }

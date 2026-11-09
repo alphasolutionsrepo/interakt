@@ -259,6 +259,8 @@ export interface SearchIndexComplete extends SearchIndexWithTemplate {
     // State
     indexSizeBytes: number;
     lastIndexedAt: Date | null;
+    /** The last reindex, recreate or upload and how it ended */
+    lastJob?: import('@/db/schema/search-index.schema').IndexLastJob | null;
     mappingVersion: number;
     lastMappingSyncedAt: Date | null;
     requiresReindex: boolean;

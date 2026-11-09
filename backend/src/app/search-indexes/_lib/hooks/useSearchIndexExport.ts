@@ -47,9 +47,7 @@ export function useExportSearchIndex() {
             toast.success(`Search index "${name}" exported successfully`);
         },
 
-        onError: (error: Error) => {
-            toast.error(error.message || 'Failed to export search index');
-        },
+        meta: { label: 'Export search index' },
     });
 }
 
@@ -65,9 +63,7 @@ export function usePreviewImport() {
         mutationFn: (importData: unknown) =>
             searchIndexesApi.previewImport(importData),
 
-        onError: (error: Error) => {
-            toast.error(error.message || 'Failed to preview import');
-        },
+        meta: { label: 'Preview import' },
     });
 }
 
@@ -97,8 +93,6 @@ export function useImportSearchIndex() {
             }
         },
 
-        onError: (error: Error) => {
-            toast.error(error.message || 'Failed to import search index');
-        },
+        meta: { label: 'Import search index' },
     });
 }

@@ -9,6 +9,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiResponse } from '@/shared/api/response';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { createLogger } from '@/shared/logger/logger';
 import {
     getGlobalSettingsForApi,
@@ -60,13 +61,7 @@ export async function handleGetGlobalSettings() {
         const settings = await getGlobalSettingsForApi();
         return apiResponse.success(settings);
     } catch (error) {
-        logger.error('Failed to get global settings', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-        });
-        return apiResponse.error(
-            error instanceof Error ? error.message : 'Failed to get global settings',
-            500
-        );
+        return apiResponse.error(error, 500, { operation: 'getGlobalSettings' });
     }
 }
 
@@ -80,7 +75,7 @@ export async function handleGetGlobalSettings() {
  */
 export async function handleUpdateGlobalSettings(request: NextRequest) {
     try {
-        const body = await request.json();
+        const body = await readJsonBody(request);
 
         // Validate input
         const validation = updateSettingsSchema.safeParse(body);
@@ -106,18 +101,11 @@ export async function handleUpdateGlobalSettings(request: NextRequest) {
 
         return apiResponse.success(updated);
     } catch (error) {
-        logger.error('Failed to update global settings', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-        });
-
         // Handle validation errors from service
         if (error instanceof Error && error.message.startsWith('Invalid settings:')) {
-            return apiResponse.badRequest(error.message);
+            return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'updateGlobalSettings' });
         }
 
-        return apiResponse.error(
-            error instanceof Error ? error.message : 'Failed to update global settings',
-            500
-        );
+        return apiResponse.error(error, 500, { operation: 'updateGlobalSettings' });
     }
 }

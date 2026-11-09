@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { apiResponse } from '@/shared/api/response';
+import { apiResponse, describeError } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { seedDocs, resetDocs, getDocsSeedStatus } from '@/shared/seeders/docs';
 import type { DocsSeedProgressEvent } from '@/shared/seeders/docs/docs-steps';
@@ -38,8 +38,7 @@ export async function GET() {
     const status = await getDocsSeedStatus();
     return apiResponse.success(status);
   } catch (e) {
-    logger.error('setup-docs status failed', e as Error);
-    return apiResponse.error(e as Error);
+    return apiResponse.error(e as Error, undefined, { operation: 'setupDocsStatus' });
   }
 }
 
@@ -73,8 +72,7 @@ export async function POST(request: NextRequest) {
 
     return apiResponse.badRequest(`Unknown action "${action}". Use "seed" or "reset".`);
   } catch (e) {
-    logger.error('setup-docs failed', e as Error);
-    return apiResponse.error(e as Error);
+    return apiResponse.error(e as Error, undefined, { operation: 'setupDocs' });
   }
 }
 
@@ -91,8 +89,8 @@ function streamSeed(force: boolean): Response {
         const summary = await seedDocs({ force, onProgress });
         emit({ type: 'complete', data: { action: 'seed', ...summary } });
       } catch (e) {
-        logger.error('setup-docs stream failed', e as Error);
-        emit({ type: 'error', error: (e as Error).message });
+        // The same body an error response has, with the request id; describeError logs it
+        emit({ type: 'error', ...describeError(e, 500, { operation: 'setupDocsStream' }).body });
       } finally {
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();

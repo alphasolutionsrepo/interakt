@@ -70,9 +70,10 @@ export function defaultIsSearchableForType(fieldType: string): boolean {
 function normalizeIsSearchable(
     fieldName: string,
     fieldType: string,
-    isSearchable: boolean | undefined
+    isSearchable: boolean | undefined,
+    searchProvider: string | undefined
 ): boolean | undefined {
-    if (isSearchable === true && !isFullTextSearchableFieldType(fieldType)) {
+    if (isSearchable === true && !isFullTextSearchableFieldType(fieldType, searchProvider)) {
         logger.warn('Ignoring searchable flag on a field type that cannot be full-text searched', {
             fieldName,
             fieldType,
@@ -201,7 +202,7 @@ export async function importFields(
                 originalTemplateFieldId: null, // Not linked to template field
                 isSystemField: field.isSystemField,
                 isRequired: field.isRequired,
-                isSearchable: normalizeIsSearchable(field.fieldName, field.fieldType, field.isSearchable) ?? false,
+                isSearchable: normalizeIsSearchable(field.fieldName, field.fieldType, field.isSearchable, searchIndex.searchProvider) ?? false,
                 isFacetable: field.isFacetable,
                 includeInResponse: field.includeInResponse,
                 boostValue: field.boostValue,
@@ -291,7 +292,7 @@ export async function createField(
             throw new Error(`Field "${input.fieldName}" already exists in this index`);
         }
 
-        const isSearchable = normalizeIsSearchable(input.fieldName, input.fieldType, input.isSearchable);
+        const isSearchable = normalizeIsSearchable(input.fieldName, input.fieldType, input.isSearchable, searchIndex.searchProvider);
 
         const mappingConfig = input.mappingConfig ?? DEFAULT_MAPPING_CONFIG;
         const sourcePath = input.sourceFieldPath ?? null;
@@ -905,7 +906,12 @@ export async function updateField(
             throw new Error(`Field with ID ${fieldId} not found`);
         }
 
-        const isSearchable = normalizeIsSearchable(existing.fieldName, existing.fieldType, input.isSearchable);
+        // Only a json field's searchable flag depends on the index's engine
+        // (storesJsonAsText), so the engine is read only to turn that flag on
+        const searchProvider = input.isSearchable === true && existing.fieldType === 'json'
+            ? (await searchIndexRepository.getSearchProviderById(existing.searchIndexId)) ?? 'elasticsearch'
+            : undefined;
+        const isSearchable = normalizeIsSearchable(existing.fieldName, existing.fieldType, input.isSearchable, searchProvider);
 
         // Check for duplicate source field if changing mapping
         if (input.sourceFieldName !== undefined &&

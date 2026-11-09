@@ -10,10 +10,9 @@
 
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useCallback, useRef } from 'react';
-import { toast } from 'sonner';
+import { reportActionError } from '@/shared/activity/report';
 import {
   aiServiceApi,
-  ApiError,
   type TextGenerationRequest,
   type TextGenerationResponse,
   type ChatRequest,
@@ -64,9 +63,7 @@ export function useTextGeneration() {
     onSuccess: (data) => {
       setResult(data);
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Text generation failed');
-    },
+    meta: { label: 'Text generation' },
   });
 
   const generate = useCallback(
@@ -108,9 +105,7 @@ export function useChat() {
       setLastResponse(data);
       setMessages((prev) => [...prev, data.message]);
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Chat failed');
-    },
+    meta: { label: 'Chat' },
   });
 
   const sendMessage = useCallback(
@@ -209,8 +204,7 @@ export function useStreamingChat() {
         setMessages((prev) => [...prev, assistantMessage]);
         setCurrentResponse('');
       } catch (error) {
-        const err = error as ApiError;
-        toast.error(err.message || 'Chat failed');
+        reportActionError('Chat', error);
       } finally {
         setIsStreaming(false);
       }
@@ -267,9 +261,7 @@ export function useEmbeddings() {
     onSuccess: (data) => {
       setResult(data);
     },
-    onError: (error: ApiError) => {
-      toast.error(error.message || 'Embedding generation failed');
-    },
+    meta: { label: 'Embedding generation' },
   });
 
   const generate = useCallback(
