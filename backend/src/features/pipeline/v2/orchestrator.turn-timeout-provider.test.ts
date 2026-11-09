@@ -5,7 +5,7 @@
  * that call: the AI service records a failed call, with the prompt it read, but the circuit
  * breaker doesn't count it, since the turn's time may have gone on other steps. The turn
  * still ends as timed out, not as failing, with no further attempt of the call. A visitor
- * leaving stops the call as cancelled.
+ * leaving stops the call as cancelled, also while the AI service waits to retry it.
  *
  * Runs the real orchestrator, AI service and Ollama adapter; only the network, the
  * provider lookup and the usage store are faked.
@@ -51,6 +51,13 @@ const hangingModel = vi.fn((_url: string, init?: RequestInit) =>
   new Promise<Response>((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
   }),
+);
+
+/** A provider that is briefly unavailable (503) on the first request, then never answers */
+const blipThenHangingModel = vi.fn(async (url: string, init?: RequestInit) =>
+  blipThenHangingModel.mock.calls.length === 1
+    ? new Response('{"error":"service unavailable"}', { status: 503 })
+    : hangingModel(url, init),
 );
 
 const experience: V2PipelineInput['experience'] = {
@@ -129,6 +136,31 @@ describe('a visitor who leaves while the model has not answered', () => {
 
     await expect(turn).rejects.toBeInstanceOf(TurnAbandonedError);
     expect(hangingModel).toHaveBeenCalledOnce();
+    expect(usage.trackUsage).toHaveBeenCalledOnce();
+    expect(usage.trackUsage.mock.calls[0][0]).toMatchObject({ success: true, metadata: { cancelled: true } });
+    expect(getCircuitStatus('p1')).toMatchObject({ failures: 0 });
+    expect(log.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('a visitor who leaves while the AI service waits to retry a failed model call', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('ends the turn as abandoned, the call as cancelled, not as the provider failing', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', blipThenHangingModel);
+    const visitor = new AbortController();
+
+    const turn = runV2Pipeline({ experience, message: 'Search for red shoes', sessionId: 'session-1', onEvent: vi.fn(), signal: visitor.signal }, makeDeps(), { maxTotalDurationMs: 600_000 })
+      .catch((error: unknown) => error);
+    await vi.waitFor(() => expect(log.debug).toHaveBeenCalledWith('Retrying after error', expect.anything()));
+    visitor.abort();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(await turn).toBeInstanceOf(TurnAbandonedError);
+    expect(blipThenHangingModel).toHaveBeenCalledOnce(); // not retried
     expect(usage.trackUsage).toHaveBeenCalledOnce();
     expect(usage.trackUsage.mock.calls[0][0]).toMatchObject({ success: true, metadata: { cancelled: true } });
     expect(getCircuitStatus('p1')).toMatchObject({ failures: 0 });
