@@ -2,7 +2,6 @@
 
 'use client';
 
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
   Database,
@@ -15,6 +14,7 @@ import {
   HardDrive,
 } from 'lucide-react';
 import type { CacheStats, CacheFeatureInfo } from '../_lib/api-client';
+import { ActionButton } from '@/shared/access/ActionControls';
 
 interface CacheFeatureCardProps {
   feature: CacheFeatureInfo;
@@ -147,25 +147,18 @@ export function CacheFeatureCard({
         </div>
 
         {/* Clear Button */}
-        <Button
+        <ActionButton
+          action="settings.clear-cache"
+          icon={isClearing ? Loader2 : Trash2}
+          iconClassName={isClearing ? 'mr-2 size-4 animate-spin' : 'mr-2 size-4'}
           variant="outline"
           size="sm"
           onClick={onClear}
           disabled={isClearing || size === 0}
           className="w-full rounded-xl"
         >
-          {isClearing ? (
-            <>
-              <Loader2 className="mr-2 size-4 animate-spin" />
-              Clearing...
-            </>
-          ) : (
-            <>
-              <Trash2 className="mr-2 size-4" />
-              Clear Cache
-            </>
-          )}
-        </Button>
+          {isClearing ? 'Clearing...' : 'Clear Cache'}
+        </ActionButton>
       </div>
     </div>
   );

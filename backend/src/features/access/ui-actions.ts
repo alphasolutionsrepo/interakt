@@ -117,6 +117,15 @@ export const UI_ACTIONS = {
     does: 'test chat experiences', permission: 'playground:use', routes: [],
     checkedIn: 'src/features/auth/token-or-session.ts',
   },
+
+  // Background jobs
+  'jobs.run': { does: 'run background jobs', permission: 'jobs:run', routes: ['POST /api/jobs'] },
+  'jobs.schedule': { does: 'schedule background jobs', permission: 'jobs:run', routes: ['POST /api/jobs/schedules', 'DELETE /api/jobs/schedules/[queue]'] },
+  'jobs.manage': { does: 'retry, cancel or delete jobs', permission: 'jobs:run', routes: ['POST /api/jobs/[queue]/[id]'] },
+
+  // Settings
+  'settings.clear-cache': { does: 'clear caches', permission: 'settings:manage', routes: ['POST /api/search-indexes/cache/clear', 'POST /api/ai-providers/cache'] },
+  'settings.search': { does: 'change search settings', permission: 'settings:manage', routes: ['PUT /api/settings/search'] },
 } as const satisfies Record<string, UiAction>;
 
 export type UiActionId = keyof typeof UI_ACTIONS;

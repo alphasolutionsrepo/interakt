@@ -12,8 +12,8 @@ import type { JobTypeInfo, QueueSummary, ScheduleRecord } from '../_lib/api-clie
 import { RunJobDialog } from './RunJobDialog';
 import { ScheduleDialog } from './ScheduleDialog';
 
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ActionButton } from '@/shared/access/ActionControls';
 
 
 
@@ -72,23 +72,18 @@ export function JobTypeCard({
       </div>
 
       <div className="mt-auto flex gap-2">
-        <Button className="flex-1 rounded-xl" onClick={() => setRunOpen(true)}>
-          <Play className="mr-2 size-4" />
+        <ActionButton action="jobs.run" icon={Play} className="flex-1 rounded-xl" onClick={() => setRunOpen(true)}>
           Run now
-        </Button>
-        <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setScheduleOpen(true)}>
-          {schedule ? (
-            <>
-              <CalendarClock className="mr-2 size-4" />
-              Edit schedule
-            </>
-          ) : (
-            <>
-              <CalendarPlus className="mr-2 size-4" />
-              Schedule
-            </>
-          )}
-        </Button>
+        </ActionButton>
+        <ActionButton
+          action="jobs.schedule"
+          icon={schedule ? CalendarClock : CalendarPlus}
+          variant="outline"
+          className="flex-1 rounded-xl"
+          onClick={() => setScheduleOpen(true)}
+        >
+          {schedule ? 'Edit schedule' : 'Schedule'}
+        </ActionButton>
       </div>
 
       <RunJobDialog jobType={jobType} open={runOpen} onOpenChange={setRunOpen} />

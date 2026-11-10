@@ -28,6 +28,7 @@ import { useCacheManagement } from './_lib/hooks/useCacheManagement';
 import { CACHE_FEATURES } from './_lib/api-client';
 import { CacheStatsGrid, CacheFeatureCard } from './_components';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // Page Skeleton
@@ -79,6 +80,7 @@ function CachePageSkeleton() {
 // ============================================================================
 
 export default function CacheManagementPage() {
+  const clearGate = useActionGate('settings.clear-cache');
   const {
     stats,
     aggregateStats,
@@ -143,39 +145,46 @@ export default function CacheManagementPage() {
               <RefreshCw className="mr-2 size-4" />
               Refresh
             </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="destructive"
-                  className="rounded-xl shadow-lg"
-                  disabled={isClearingAllCaches || (aggregateStats?.totalEntries ?? 0) === 0}
-                >
-                  <Trash2 className="mr-2 size-4" />
-                  Clear All Caches
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent className="rounded-2xl">
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2">
-                    <AlertTriangle className="size-5 text-destructive" />
-                    Clear All Caches?
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will clear all cached data across all features. This action cannot be undone.
-                    The application may experience temporary slowdowns as caches are rebuilt.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => clearAllCaches()}
-                    className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            {/* Locked: the button alone, so a click on the lock hint can't open the confirmation */}
+            {clearGate.state === 'allowed' ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    className="rounded-xl shadow-lg"
+                    disabled={isClearingAllCaches || (aggregateStats?.totalEntries ?? 0) === 0}
                   >
+                    <Trash2 className="mr-2 size-4" />
                     Clear All Caches
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="rounded-2xl">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                      <AlertTriangle className="size-5 text-destructive" />
+                      Clear All Caches?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will clear all cached data across all features. This action cannot be undone.
+                      The application may experience temporary slowdowns as caches are rebuilt.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => clearAllCaches()}
+                      className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Clear All Caches
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : (
+              <ActionButton gate={clearGate} icon={Trash2} variant="destructive" className="rounded-xl shadow-lg">
+                Clear All Caches
+              </ActionButton>
+            )}
           </>
         }
       />
