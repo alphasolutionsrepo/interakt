@@ -12,7 +12,7 @@
 
 import 'server-only';
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import { AccessDeniedError } from './access-policy';
 import { BUILT_IN_REFUSAL } from './permissions';
@@ -43,28 +43,44 @@ export const REFUSAL = BUILT_IN_REFUSAL;
 export const GUARDS_BUILT_IN = Symbol.for('interakt.guardsBuiltIn');
 
 /**
- * Whether the row is built in: marked so by the docs setup, or (a tool or an index) used by a
- * built-in help experience, such as one an Admin attached later. An id that can't name a row
- * isn't (the route answers it).
+ * Which of these rows are built in: marked so by the docs setup, or (a tool or an index) used by
+ * a built-in help experience, such as one an Admin attached later. The one owner of the rule:
+ * the route gate (isBuiltIn) and the admin's lists and pages (withBuiltInFlag) both read it.
+ * Ids that can't name a row aren't (the route answers them).
  */
-export async function isBuiltIn(kind: BuiltInKind, id: string): Promise<boolean> {
-  if (!UUID.test(id)) return false;
+export async function builtInIds(kind: BuiltInKind, ids: readonly string[]): Promise<Set<string>> {
+  const valid = [...new Set(ids)].filter((id) => UUID.test(id));
+  if (valid.length === 0) return new Set();
   const table = TABLES[kind];
-  const [row] = await db.select({ isBuiltIn: table.isBuiltIn }).from(table).where(eq(table.id, id)).limit(1);
-  if (row?.isBuiltIn === true) return true;
+  const marked = await db.select({ id: table.id }).from(table).where(and(inArray(table.id, valid), eq(table.isBuiltIn, true)));
+  const found = new Set(marked.map((r) => r.id));
   if (kind === 'tool') {
-    const [used] = await db.select({ id: aiExperienceTools.id }).from(aiExperienceTools)
+    const used = await db.selectDistinct({ id: aiExperienceTools.toolId }).from(aiExperienceTools)
       .innerJoin(aiExperiences, eq(aiExperiences.id, aiExperienceTools.aiExperienceId))
-      .where(and(eq(aiExperienceTools.toolId, id), eq(aiExperiences.isBuiltIn, true))).limit(1);
-    return !!used;
+      .where(and(inArray(aiExperienceTools.toolId, valid), eq(aiExperiences.isBuiltIn, true)));
+    used.forEach((r) => found.add(r.id));
   }
   if (kind === 'search-index') {
-    const [used] = await db.select({ id: searchExperienceIndexes.id }).from(searchExperienceIndexes)
+    const used = await db.selectDistinct({ id: searchExperienceIndexes.searchIndexId }).from(searchExperienceIndexes)
       .innerJoin(searchExperiences, eq(searchExperiences.id, searchExperienceIndexes.searchExperienceId))
-      .where(and(eq(searchExperienceIndexes.searchIndexId, id), eq(searchExperiences.isBuiltIn, true))).limit(1);
-    return !!used;
+      .where(and(inArray(searchExperienceIndexes.searchIndexId, valid), eq(searchExperiences.isBuiltIn, true)));
+    used.forEach((r) => found.add(r.id));
   }
-  return false;
+  return found;
+}
+
+/** Whether one row is built in (see builtInIds). */
+export async function isBuiltIn(kind: BuiltInKind, id: string): Promise<boolean> {
+  return (await builtInIds(kind, [id])).has(id);
+}
+
+/**
+ * Rows for the admin UI with isBuiltIn as the server enforces it (including "used by a built-in
+ * experience"), so the UI locks exactly what the routes refuse.
+ */
+export async function withBuiltInFlag<T extends { id: string }>(kind: BuiltInKind, rows: T[]): Promise<Array<T & { isBuiltIn: boolean }>> {
+  const builtIn = await builtInIds(kind, rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, isBuiltIn: builtIn.has(r.id) }));
 }
 
 /** Mark rows the docs setup made as built in. */
