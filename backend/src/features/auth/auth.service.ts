@@ -125,7 +125,12 @@ export async function listUsers(): Promise<Omit<repository.UserWithRole, 'passwo
 /** The profile fields a user update may change */
 export type ProfileUpdate = Pick<UpdateUserDTO, 'email' | 'firstName' | 'lastName'>;
 
-/** The profile change as it will be stored, after checking the email is free (throws "already in use"). */
+/**
+ * The profile change as it will be stored, after checking the email is free (throws "already in
+ * use"). Two saves at the same moment can both pass this check: user.email has no unique index
+ * (it never had one, and creating a user has the same gap). The fix is that index, on the
+ * lowercased email, after checking existing rows for duplicates — a change of its own.
+ */
 export async function prepareProfileUpdate(id: string, input: ProfileUpdate): Promise<ProfileUpdate> {
   if (input.email) {
     const existingUser = await repository.getUserByEmail(input.email);
