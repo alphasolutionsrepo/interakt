@@ -20,6 +20,7 @@
  * search alone.
  */
 
+import { recordBuiltInExperience } from './built-in-help';
 import { DOCS_SEED_KEY } from '@/shared/help/help-content';
 import 'server-only';
 
@@ -150,6 +151,9 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
 
   const existing = await getRegistryEntry(SEED_TYPES.DOCS, DOCS_KEY);
   if (existing && existing.checksum === checksum && !options.force) {
+    // Entries written before experience ids were recorded get the id once
+    const help = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+    if (help) await recordBuiltInExperience(DOCS_SEED_KEY, help.id, { onlyIfMissing: true });
     logger.info('Docs already seeded and unchanged — skipping');
     return { skipped: true, reason: 'unchanged (use force to re-run)' };
   }
@@ -183,6 +187,10 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
     chunks,
     seededAt: new Date().toISOString(),
   });
+
+  // The experience the help check trusts (built-in-help.ts)
+  const help = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  if (help) await recordBuiltInExperience(DOCS_SEED_KEY, help.id);
 
   logger.info('✅ Docs seed complete', { dataSourceId, experienceSlug, docs: docs.length, chunks });
   return { skipped: false, dataSourceId, documents: docs.length, chunks, toolId, experienceSlug };
@@ -460,4 +468,18 @@ export async function resetDocs(): Promise<DocsResetSummary> {
 
   await tryStep('seed-registry entry', () => deleteRegistryEntry(SEED_TYPES.DOCS, DOCS_KEY));
   return { deleted };
+}
+
+/**
+ * At startup: a Help Assistant seeded before experience ids were recorded gets its id once, so
+ * the built-in help check (built-in-help.ts) recognises it without re-running the docs setup.
+ * Never throws.
+ */
+export async function recordHelpAssistantOnStartup(): Promise<void> {
+  try {
+    const help = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+    if (help) await recordBuiltInExperience(DOCS_KEY, help.id, { onlyIfMissing: true });
+  } catch (e) {
+    logger.warn('Could not record the Help Assistant for the built-in help check', { error: (e as Error).message });
+  }
 }

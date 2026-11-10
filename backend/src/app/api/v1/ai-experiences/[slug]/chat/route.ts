@@ -53,7 +53,7 @@ async function post(
 
     // ── Authenticate ───────────────────────────────────────────────────────────
     // Access token (external/demo-site clients) or dashboard session (admin test panel)
-    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, aiExperienceAccess(experience), { slug: experience.slug, createdAt: experience.createdAt });
+    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, aiExperienceAccess(experience), { slug: experience.slug, id: experience.id });
     if (!caller) {
       return refused ?? apiResponse.unauthorized();
     }

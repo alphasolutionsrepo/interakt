@@ -71,6 +71,8 @@ export async function register() {
     // Assistant it's a feature, not sample data. Skips when the docs are unchanged.
     const { buildDocsSearchOnStartup } = await import('@/shared/seeders/docs/docs-search.seeder');
     void buildDocsSearchOnStartup();
+    const { recordHelpAssistantOnStartup } = await import('@/shared/seeders/docs/docs.seeder');
+    void recordHelpAssistantOnStartup();
 
     // Start the background jobs engine (pg-boss). Fire-and-forget: failures are
     // logged inside startJobs and must not block server boot. Respects

@@ -572,3 +572,14 @@ describe('adding a secret to a config that had none', () => {
     expect((await call(dataSourceRoute.PUT, 'PUT', `/api/data-sources/${source.id}`, sourceUpdate, { id: source.id })).status).toBe(403);
   });
 });
+
+describe("a role's permissions compared as granted", () => {
+  it('lets a user manager whose role holds a permission it lacks the companions for still manage that role', async () => {
+    // setup:run without its companions grants nothing; the role is still within its holders' reach
+    const role = await makeRole(`Mgr setup ${n}`, ['users:manage', 'setup:run']);
+    const peer = await makeUser(role);
+    as(await makeUser(role));
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${peer}`, { firstName: 'Peer' }, { id: peer })).status).toBe(200);
+    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${role}`, { description: 'Managers' }, { id: role })).status).toBe(200);
+  });
+});

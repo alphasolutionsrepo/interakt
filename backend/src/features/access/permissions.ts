@@ -163,7 +163,8 @@ export function effectivePermissions(permissions: readonly Permission[]): Permis
 }
 
 /**
- * Whether a caller holds everything a role grants, so may assign, edit or delete it. Admin
+ * Whether a caller holds everything a role grants (its effective permissions), so may assign,
+ * edit or delete it. Admin
  * holds everything; only Admin holds the built-in Admin role. The one copy of this rule: the
  * server's access-policy.ts and the Users page both use it.
  */
@@ -173,6 +174,7 @@ export function holdsAllOf(
 ): boolean {
   if (caller.isAdmin) return true;
   if (role.isBuiltIn) return false;
+  // Both sides as granted (implied added, unmet left out): caller.permissions already are
   const mine = new Set(caller.permissions);
-  return role.permissions.every((p) => mine.has(p));
+  return effectivePermissions(role.permissions.filter(isPermission)).every((p) => mine.has(p));
 }

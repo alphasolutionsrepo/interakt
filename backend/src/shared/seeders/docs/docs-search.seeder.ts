@@ -25,6 +25,7 @@
  * model, or a day passing tries hybrid again.
  */
 
+import { recordBuiltInExperience } from './built-in-help';
 import 'server-only';
 import { sql } from 'drizzle-orm';
 
@@ -232,6 +233,8 @@ async function buildWithMode(
   assertOwned(!!entry, index, experience);
 
   if (!force && entry?.checksum === checksum && index && experience) {
+    // Entries written before experience ids were recorded get the id once
+    await recordBuiltInExperience(DOCS_SEARCH_SEED_KEY, experience.id, { onlyIfMissing: true });
     logger.info('Docs search unchanged — skipping');
     return { skipped: true, reason: 'unchanged', searchType: mode.searchType, sections: records.length };
   }
@@ -283,6 +286,9 @@ async function buildWithMode(
     hybridFailure,
   };
   await upsertRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY, checksum, nextMeta as unknown as Record<string, unknown>);
+  // The experience the help check trusts (built-in-help.ts)
+  const built = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
+  if (built) await recordBuiltInExperience(DOCS_SEARCH_SEED_KEY, built.id);
 
   logger.info('✅ Docs search built', { sections: result.indexedDocuments, searchType: mode.searchType, embedded });
   return { skipped: false, searchType: mode.searchType, sections: result.indexedDocuments };

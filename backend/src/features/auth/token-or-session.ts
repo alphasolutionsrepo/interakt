@@ -38,8 +38,8 @@ export type TokenOrSessionResult =
 export async function authenticateTokenOrSession(
   request: NextRequest,
   experience: ExperienceAccess,
-  /** The experience's slug and creation time, to recognise the built-in help experiences */
-  options: { slug?: string; createdAt?: Date | string | null } = {},
+  /** The experience's slug and id, to recognise the built-in help experiences */
+  options: { slug?: string; id?: string } = {},
 ): Promise<TokenOrSessionResult> {
   const token = readAccessToken(request);
   if (token && experience.accessToken && token === experience.accessToken) {
