@@ -280,24 +280,24 @@ async function ingestDocs(dataSourceId: string, docs: DocFile[]): Promise<{ chun
 
 async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<string> {
   // Only the tools the setup made (marked built in) belong to the help, never one someone added.
-  // Any of its own that are missing are made again, whatever else is on the data source.
-  let tools = (await getToolsByDataSourceId(dataSourceId)).filter((t) => t.isBuiltIn);
-  if (!tools.some((t) => t.operation === 'search')) {
-    const made = await createToolsForDataSource(
-      dataSourceId,
-      DATA_SOURCE_NAME,
-      DATA_SOURCE_SLUG,
-      'file_store',
-      null,
-      adminId,
-      { counting: (t) => t.isBuiltIn },
-    );
+  // Any of its own that are missing are made again, whatever else is on the data source: the
+  // generator makes only the operations none of its own covers.
+  const own = (await getToolsByDataSourceId(dataSourceId)).filter((t) => t.isBuiltIn);
+  const made = await createToolsForDataSource(
+    dataSourceId,
+    DATA_SOURCE_NAME,
+    DATA_SOURCE_SLUG,
+    'file_store',
+    null,
+    adminId,
+    { counting: (t) => t.isBuiltIn },
+  );
+  if (made.length > 0) {
     // Part of the built-in help: only an Admin may change them
     await markBuiltIn('tool', made.map((t) => t.id));
     logger.info('Scaffolded docs tools', { operations: made.map((t) => t.operation) });
-    tools = [...tools, ...made];
   }
-  const search = tools.find((t) => t.operation === 'search');
+  const search = [...own, ...made].find((t) => t.operation === 'search');
   if (!search) throw new Error('No search tool could be created for the docs data source.');
   return search.id;
 }

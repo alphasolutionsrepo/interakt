@@ -180,4 +180,15 @@ describe('the docs setup and the Help Assistant', () => {
     expect(world.assignedTool).toBe(again!.id);
     expect(world.tools.filter((t) => t.operation === 'get' && t.isBuiltIn)).toHaveLength(1);
   });
+
+  it('makes any of its own tools again when missing, not only the search tool', async () => {
+    await seedDocs();
+    const get = world.tools.find((t) => t.operation === 'get')!;
+    world.tools = world.tools.filter((t) => t.id !== get.id);
+    await seedDocs({ force: true });
+    const again = world.tools.filter((t) => t.operation === 'get' && t.isBuiltIn);
+    expect(again).toHaveLength(1);
+    expect(again[0].id).not.toBe(get.id);
+    expect(world.tools.filter((t) => t.operation === 'search' && t.isBuiltIn)).toHaveLength(1);
+  });
 });

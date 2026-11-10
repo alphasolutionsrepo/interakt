@@ -10,15 +10,15 @@
 
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { AccessDeniedError } from './access-policy';
 import { checkAccess, SIGNED_IN, withPermission, withPermissionOrIngestionKey, type AccessRule } from './route-guard';
 
 import { db } from '@/db/index';
-import { aiExperiences } from '@/db/schema/ai-experience.schema';
+import { aiExperiences, aiExperienceTools } from '@/db/schema/ai-experience.schema';
 import { dataSources } from '@/db/schema/data-sources.schema';
-import { searchExperiences } from '@/db/schema/search-experience.schema';
+import { searchExperienceIndexes, searchExperiences } from '@/db/schema/search-experience.schema';
 import { searchIndex } from '@/db/schema/search-index.schema';
 import { tools } from '@/db/schema/tools.schema';
 import { apiResponse } from '@/shared/api/response';
@@ -39,12 +39,29 @@ export const REFUSAL = 'Only an Admin can change the built-in help';
 
 export const GUARDS_BUILT_IN = Symbol.for('interakt.guardsBuiltIn');
 
-/** Whether the row is built in. An id that can't name a row isn't (the route answers it). */
+/**
+ * Whether the row is built in: marked so by the docs setup, or (a tool or an index) used by a
+ * built-in help experience, such as one an Admin attached later. An id that can't name a row
+ * isn't (the route answers it).
+ */
 export async function isBuiltIn(kind: BuiltInKind, id: string): Promise<boolean> {
   if (!UUID.test(id)) return false;
   const table = TABLES[kind];
   const [row] = await db.select({ isBuiltIn: table.isBuiltIn }).from(table).where(eq(table.id, id)).limit(1);
-  return row?.isBuiltIn === true;
+  if (row?.isBuiltIn === true) return true;
+  if (kind === 'tool') {
+    const [used] = await db.select({ id: aiExperienceTools.id }).from(aiExperienceTools)
+      .innerJoin(aiExperiences, eq(aiExperiences.id, aiExperienceTools.aiExperienceId))
+      .where(and(eq(aiExperienceTools.toolId, id), eq(aiExperiences.isBuiltIn, true))).limit(1);
+    return !!used;
+  }
+  if (kind === 'search-index') {
+    const [used] = await db.select({ id: searchExperienceIndexes.id }).from(searchExperienceIndexes)
+      .innerJoin(searchExperiences, eq(searchExperiences.id, searchExperienceIndexes.searchExperienceId))
+      .where(and(eq(searchExperienceIndexes.searchIndexId, id), eq(searchExperiences.isBuiltIn, true))).limit(1);
+    return !!used;
+  }
+  return false;
 }
 
 /** Mark rows the docs setup made as built in. */

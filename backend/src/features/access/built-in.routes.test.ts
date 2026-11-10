@@ -128,6 +128,23 @@ describe('changing what the built-in help is made of', () => {
     expect(changed).toEqual([change]);
   });
 
+  it('treats a tool or index the built-in help uses as built in, though not marked (one an Admin attached)', async () => {
+    const attached = await rows(false);
+    await testDb.db.execute(sql`INSERT INTO ai_experience_tools (ai_experience_id, tool_id) VALUES (${builtIn.chat}, ${attached.tool})`);
+    await testDb.db.execute(sql`INSERT INTO search_experience_indexes (search_experience_id, search_index_id) VALUES (${builtIn.search}, ${attached.index})`);
+    asEditor();
+    expect((await call(toolOne.PUT, attached.tool)).status).toBe(403);
+    expect((await call(indexOne.PUT, attached.index)).status).toBe(403);
+    expect(changed).toEqual([]);
+
+    // Used only by an ordinary experience: an Editor may change it
+    const usedElsewhere = await rows(false);
+    await testDb.db.execute(sql`INSERT INTO ai_experience_tools (ai_experience_id, tool_id) VALUES (${other.chat}, ${usedElsewhere.tool})`);
+    await testDb.db.execute(sql`INSERT INTO search_experience_indexes (search_experience_id, search_index_id) VALUES (${other.search}, ${usedElsewhere.index})`);
+    expect((await call(toolOne.PUT, usedElsewhere.tool)).status).toBe(200);
+    expect((await call(indexOne.PUT, usedElsewhere.index)).status).toBe(200);
+  });
+
   it('refuses an ingestion key writing to the built-in docs index, and lets it write to others', async () => {
     accessStub.session = null;
     const key = { Authorization: 'Bearer ik_test' };
