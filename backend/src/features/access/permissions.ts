@@ -65,7 +65,7 @@ export const PERMISSION_GROUPS = [
       { id: 'settings:manage', label: 'Change settings and system defaults, clear caches' },
       { id: 'jobs:run', label: 'Run, cancel and schedule background jobs' },
       { id: 'secrets:manage', label: 'Manage secrets and ingestion keys' },
-      { id: 'users:manage', label: 'Manage users and assign their roles' },
+      { id: 'users:manage', label: 'Manage users and give them any role except Admin' },
       { id: 'setup:run', label: 'Run the demo and docs setup' },
     ],
   },
@@ -171,18 +171,10 @@ export function effectivePermissions(permissions: readonly Permission[]): Permis
 }
 
 /**
- * Whether a caller holds everything a role grants (its effective permissions), so may assign,
- * edit or delete it. Admin
- * holds everything; only Admin holds the built-in Admin role. The one copy of this rule: the
- * server's access-policy.ts and the Users page both use it.
+ * Whether a caller may give a role to a user, or manage a user who holds it. A user manager may
+ * give any role except the built-in Admin; only an Admin gives Admin or manages an Admin. The
+ * one copy of this rule: the server's access-policy.ts and the Users page both use it.
  */
-export function holdsAllOf(
-  caller: { isAdmin: boolean; permissions: Iterable<string> },
-  role: { isBuiltIn: boolean; permissions: readonly string[] },
-): boolean {
-  if (caller.isAdmin) return true;
-  if (role.isBuiltIn) return false;
-  // Both sides as granted (implied added, unmet left out): caller.permissions already are
-  const mine = new Set(caller.permissions);
-  return effectivePermissions(role.permissions.filter(isPermission)).every((p) => mine.has(p));
+export function mayAssignRole(caller: { isAdmin: boolean }, role: { isBuiltIn: boolean }): boolean {
+  return caller.isAdmin || !role.isBuiltIn;
 }

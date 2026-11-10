@@ -84,13 +84,15 @@ function useGate({ action, gate }: { action?: UiActionId; gate?: ActionGate }): 
   return gate ?? gateFor(access, action as UiActionId);
 }
 
-const withHint = (gate: ActionGate, control: ReactNode, block = false) =>
-  gate.state === 'locked' ? <LockedHint reason={gate.reason} block={block}>{control}</LockedHint> : control;
+/** The control as is, or inside a LockedHint when its gate is locked (no gate: as is). */
+export function withLockHint(gate: ActionGate | undefined, control: ReactNode, block = false): ReactNode {
+  return gate?.state === 'locked' ? <LockedHint reason={gate.reason} block={block}>{control}</LockedHint> : control;
+}
 
 /** A button: usable when allowed, locked with the reason otherwise. */
 export function ActionButton({ action, gate: given, icon, iconClassName = 'mr-2 size-4', disabled, children, ...props }: ComponentProps<typeof Button> & GateProps) {
   const gate = useGate({ action, gate: given });
-  return withHint(gate, (
+  return withLockHint(gate, (
     <Button {...props} disabled={disabled || gate.state !== 'allowed'}>
       {iconFor(gate, icon, iconClassName)}
       {children}
@@ -101,7 +103,7 @@ export function ActionButton({ action, gate: given, icon, iconClassName = 'mr-2 
 /** A menu item: usable when allowed, locked with the reason otherwise. */
 export function ActionMenuItem({ action, gate: given, icon, iconClassName = 'mr-2 size-4', disabled, children, ...props }: ComponentProps<typeof DropdownMenuItem> & GateProps) {
   const gate = useGate({ action, gate: given });
-  return withHint(gate, (
+  return withLockHint(gate, (
     <DropdownMenuItem {...props} disabled={disabled || gate.state !== 'allowed'}>
       {iconFor(gate, icon, iconClassName)}
       {children}
@@ -112,5 +114,5 @@ export function ActionMenuItem({ action, gate: given, icon, iconClassName = 'mr-
 /** A switch: always shows its value; switchable only when allowed. */
 export function ActionSwitch({ action, gate: given, disabled, ...props }: ComponentProps<typeof Switch> & Omit<GateProps, 'icon' | 'iconClassName'>) {
   const gate = useGate({ action, gate: given });
-  return withHint(gate, <Switch {...props} disabled={disabled || gate.state !== 'allowed'} />);
+  return withLockHint(gate, <Switch {...props} disabled={disabled || gate.state !== 'allowed'} />);
 }

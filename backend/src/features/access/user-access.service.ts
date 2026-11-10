@@ -6,16 +6,15 @@
  *
  *  - Acting on yourself needs no permission for your own profile and password, but you can't
  *    change your own role or deactivate yourself (another user manager does that).
- *  - Acting on someone else needs users:manage AND holding everything their role grants
- *    (so only an Admin manages an Admin).
- *  - A new role must also be one the caller holds; the last active Admin can't lose it
- *    (roles.repository.updateUserAccess).
+ *  - Acting on someone else needs users:manage; only an Admin acts on an Admin.
+ *  - A user manager may give any role except Admin; only an Admin makes someone an Admin. The
+ *    last active Admin can't lose it (roles.repository.updateUserAccess).
  */
 
 import 'server-only';
 
 
-import { AccessDeniedError, assertHoldsRole } from './access-policy';
+import { AccessDeniedError, assertMayAssignRole } from './access-policy';
 import { can, type UserAccess } from './user-access';
 import { conflictOnConstraint } from './constraint-errors';
 import * as roles from './roles.repository';
@@ -38,14 +37,14 @@ export async function assertCanManageUser(caller: UserAccess, targetUserId: stri
   const target = await getUserById(targetUserId);
   if (!target) throw new NotFoundError('User not found');
   if (target.id === caller.userId) return target;
-  assertHoldsRole(caller, await roleOrFail(target.roleId), 'manage a user with');
+  assertMayAssignRole(caller, await roleOrFail(target.roleId), 'manage a user with');
   return target;
 }
 
 /** A role the caller may give to a new or existing user. */
 export async function assertCanAssignRole(caller: UserAccess, roleId: string) {
   if (!can(caller, 'users:manage')) throw new AccessDeniedError('Your role doesn\'t allow managing users.');
-  assertHoldsRole(caller, await roleOrFail(roleId), 'assign');
+  assertMayAssignRole(caller, await roleOrFail(roleId), 'give');
 }
 
 type AccessChanges = { roleId?: string; isActive?: boolean };

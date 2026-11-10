@@ -186,7 +186,7 @@ describe('the default roles', () => {
   });
 });
 
-describe('nobody gives more than they hold', () => {
+describe('user managers give any role except Admin', () => {
   let manager: string, managerRole: string;
   beforeEach(async () => {
     managerRole = await makeRole(`Managers ${n}`, ['users:manage', 'search-experiences:view']);
@@ -196,17 +196,33 @@ describe('nobody gives more than they hold', () => {
 
   const newUser = (roleId: string) => ({ email: `new${++n}@x.test`, password: 'Passw0rd-long', roleId });
 
-  it('refuses a user manager creating an Admin or a role-holder above themselves', async () => {
-    expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(ADMIN_ROLE_ID))).status).toBe(403);
-    expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(EDITOR))).status).toBe(403);
+  it('lets a user manager create a user with any role except Admin, even one above their own', async () => {
+    const admins = await call(usersRoute.POST, 'POST', '/api/users', newUser(ADMIN_ROLE_ID));
+    expect(admins.status).toBe(403);
+    expect(admins.body?.message).toBe('Only an Admin can give the Admin role.');
+    expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(EDITOR))).status).toBe(201);
     expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(managerRole))).status).toBe(201);
   });
 
-  it('refuses promoting someone to a role above the manager, or to Admin', async () => {
+  it('lets a user manager give someone any role except Admin', async () => {
     const target = await makeUser(managerRole);
-    expect((await call(userRoute.PUT, 'PUT', `/api/users/${target}`, { roleId: EDITOR }, { id: target })).status).toBe(403);
     expect((await call(userRoute.PUT, 'PUT', `/api/users/${target}`, { roleId: ADMIN_ROLE_ID }, { id: target })).status).toBe(403);
     expect((await getUser(target)).roleId).toBe(managerRole);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${target}`, { roleId: EDITOR }, { id: target })).status).toBe(200);
+    expect((await getUser(target)).roleId).toBe(EDITOR);
+  });
+
+  it('lets a user manager manage a user whose role is above their own, but not an Admin', async () => {
+    const editorUser = await makeUser(EDITOR);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${editorUser}`, { firstName: 'Ed' }, { id: editorUser })).status).toBe(200);
+    expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${editorUser}/deactivate`, undefined, { id: editorUser })).status).toBe(200);
+    const adminUser = await makeUser(ADMIN_ROLE_ID);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${adminUser}`, { firstName: 'Ad' }, { id: adminUser })).status).toBe(403);
+  });
+
+  it('still refuses a user manager changing their own role', async () => {
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${manager}`, { roleId: EDITOR }, { id: manager })).status).toBe(403);
+    expect((await getUser(manager)).roleId).toBe(managerRole);
   });
 
   it('refuses a user manager who is not an Admin creating, changing or deleting any role, even one below them', async () => {
