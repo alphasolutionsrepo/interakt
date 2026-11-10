@@ -245,6 +245,11 @@ async function checkProviderHealth(
       return { healthy: false, message: 'Host not found', responseTimeMs, endpointTested: url };
     }
 
+    // fetch quotes the address (password included) when it can't build the request. The address
+    // belongs in endpointTested only, which roles without ai-providers:view never get.
+    if (error instanceof TypeError) {
+      return { healthy: false, message: 'Invalid provider address', responseTimeMs, endpointTested: url };
+    }
     return { healthy: false, message: errorMessage, responseTimeMs, endpointTested: url };
   }
 }

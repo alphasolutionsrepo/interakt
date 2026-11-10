@@ -1,7 +1,8 @@
 // src/features/access/access-tokens.routes.test.ts
 
 /**
- * Experience access tokens reach only roles that may edit that kind of experience, on the real
+ * Experience access tokens reach only roles that may edit that kind of experience or use the
+ * playgrounds (the widget playground and search autocomplete call public routes with them), on the real
  * admin routes (the experiences themselves stubbed at the service).
  */
 
@@ -65,6 +66,14 @@ describe('experience access tokens in the admin API', () => {
   it("follow each kind's own edit permission", async () => {
     as('ai-experiences:view', 'search-experiences:view', 'search-experiences:edit');
     expect(await text(aiOne.GET, '/api/ai-experiences/a1')).not.toContain('chat-secret-token');
+    expect(await text(searchOne.GET, '/api/search-experiences/s1')).toContain('search-secret-token');
+  });
+
+  it('reach a role that may use the playgrounds without editing, which the playgrounds need', async () => {
+    as('ai-experiences:view', 'search-experiences:view', 'playground:use');
+    expect(await text(aiList.GET, '/api/ai-experiences')).toContain('chat-secret-token');
+    expect(await text(aiOne.GET, '/api/ai-experiences/a1')).toContain('chat-secret-token');
+    expect(await text(searchList.GET, '/api/search-experiences')).toContain('search-secret-token');
     expect(await text(searchOne.GET, '/api/search-experiences/s1')).toContain('search-secret-token');
   });
 });

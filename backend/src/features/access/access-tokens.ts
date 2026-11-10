@@ -2,7 +2,8 @@
 
 /**
  * An experience's access token lets anyone call its public routes (and spend AI tokens), so
- * the admin API gives it only to roles that may edit that kind of experience. Others get the
+ * the admin API gives it only to roles that may edit that kind of experience or use the
+ * playgrounds (which call those routes with it, and may spend AI tokens anyway). Others get the
  * experience without it.
  */
 
@@ -22,8 +23,9 @@ function strip(value: unknown): unknown {
   return value;
 }
 
-/** The experience(s) as the caller may see them: without access tokens unless they hold `editPermission`. */
+/** The experience(s) as the caller may see them: without access tokens unless they hold `editPermission` or `playground:use`. */
 export async function tokensFor<T>(value: T, editPermission: Permission): Promise<T> {
   const { access } = await checkAccess(SIGNED_IN);
-  return access && can(access, editPermission) ? value : (strip(value) as T);
+  const keeps = access && (can(access, editPermission) || can(access, 'playground:use'));
+  return keeps ? value : (strip(value) as T);
 }

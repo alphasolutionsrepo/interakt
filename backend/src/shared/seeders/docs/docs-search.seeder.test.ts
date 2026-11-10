@@ -200,6 +200,30 @@ describe('seedDocsSearch', () => {
     expect(calls.createIndex).toEqual([]);
   });
 
+  it('records the experience it built, so the built-in help check trusts that one', async () => {
+    await seedDocsSearch();
+    expect(world.registry?.metadata.experienceId).toBe(world.experience?.id);
+
+    // A rebuild that recreates the experience records the new one
+    world.embedding = MODEL;
+    await seedDocsSearch();
+    expect(world.experience?.id).toBeDefined();
+    expect(world.registry?.metadata.experienceId).toBe(world.experience?.id);
+  });
+
+  it('when unchanged, backfills a missing experience id but never replaces one', async () => {
+    await seedDocsSearch();
+    const built = world.experience!.id;
+    delete world.registry!.metadata.experienceId; // an entry from before ids were recorded
+
+    await seedDocsSearch();
+    expect(world.registry?.metadata.experienceId).toBe(built);
+
+    world.registry!.metadata.experienceId = 'recorded-earlier';
+    await seedDocsSearch();
+    expect(world.registry?.metadata.experienceId).toBe('recorded-earlier');
+  });
+
   it('reloads the existing index in place when only the docs changed', async () => {
     await seedDocsSearch();
     const indexId = world.index?.id;
