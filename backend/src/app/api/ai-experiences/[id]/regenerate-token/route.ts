@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 
-import { withPermission } from '@/features/access/route-guard';
+import { forExperienceChange } from '@/features/access/built-in-experiences';
 import { handleRegenerateAccessToken } from '@/features/ai-experience/ai-experience.api.handlers';
 
-export const POST = withPermission('ai-experiences:edit', async function POST(
+export const POST = forExperienceChange('ai', async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {

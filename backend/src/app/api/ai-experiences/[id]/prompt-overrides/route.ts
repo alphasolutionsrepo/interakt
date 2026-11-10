@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 
+import { forExperienceChange } from '@/features/access/built-in-experiences';
 import { withPermission } from '@/features/access/route-guard';
 import {
   handleListExperienceOverrides,
@@ -13,7 +14,7 @@ export const GET = withPermission('ai-experiences:view', async function GET(
   return handleListExperienceOverrides(request, context);
 });
 
-export const PUT = withPermission('ai-experiences:edit', async function PUT(
+export const PUT = forExperienceChange('ai', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {

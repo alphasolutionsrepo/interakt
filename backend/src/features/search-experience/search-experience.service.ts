@@ -493,6 +493,14 @@ export async function regenerateAccessToken(
 /**
  * Delete a search experience
  */
+/** Mark the experience the docs setup made as the built-in help (see token-or-session.ts). */
+export async function markSearchExperienceBuiltIn(id: string): Promise<void> {
+  const existing = await repository.getSearchExperienceById(id);
+  if (!existing || existing.isBuiltIn) return;
+  await repository.updateSearchExperience(id, { isBuiltIn: true });
+  await cache.invalidateExperience(id, existing.accessToken);
+}
+
 export async function deleteSearchExperience(
   id: string,
   userId: string

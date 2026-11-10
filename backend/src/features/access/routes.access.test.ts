@@ -25,6 +25,7 @@ vi.mock('@/features/access/access.service', async () => (await import('@/shared/
 vi.mock('@/db/index', () => ({ get db() { throw new Error('no database in this test'); } }));
 
 import { AI_MODEL_READERS, type Permission } from './permissions';
+import { GUARDS_BUILT_IN_EXPERIENCES } from './built-in-experiences';
 import { HIDES_PROVIDER_ADDRESSES } from './provider-addresses';
 import { acceptsIngestionKey, accessRuleOf, SIGNED_IN, type AccessRule } from './route-guard';
 
@@ -157,10 +158,19 @@ describe('every admin API route is gated', () => {
   }, 300_000);
 
   it('hides provider addresses on every route open to those who pick a model', () => {
-    const readers = gated.filter((r) => r.rule === AI_MODEL_READERS);
+    // By the rule's permissions, not the list object: a route gated by a copy of the list counts too
+    const modelReaders = [...AI_MODEL_READERS].sort().join(' | ');
+    const readers = gated.filter((r) => typeof r.rule !== 'string' && [...r.rule!].sort().join(' | ') === modelReaders);
     expect(readers.length).toBeGreaterThanOrEqual(7);
     const leaking = readers.filter((r) => !(r.fn as unknown as Record<symbol, unknown>)[HIDES_PROVIDER_ADDRESSES]);
     expect(leaking.map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
+  });
+
+  it('lets only an Admin change a built-in help experience, on every route that changes an experience', () => {
+    const changing = gated.filter((r) => r.method !== 'GET' && /^(ai|search)-experiences\/\[id\](\/|$)/.test(r.route));
+    expect(changing.length).toBeGreaterThanOrEqual(19);
+    const unguarded = changing.filter((r) => !(r.fn as unknown as Record<symbol, unknown>)[GUARDS_BUILT_IN_EXPERIENCES]);
+    expect(unguarded.map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
   });
 
   it('lets only the search index document routes accept an ingestion key instead of a session', () => {

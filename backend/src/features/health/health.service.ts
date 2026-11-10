@@ -514,10 +514,3 @@ export async function checkSystemHealth(): Promise<SystemHealth> {
     };
   }
 }
-
-// ============================================================================
-// What each role sees
-// ============================================================================
-
-/** Health as a role without ai-providers:view sees it (the addresses are left out). */
-export { withoutProviderAddresses } from '@/features/access/provider-addresses';

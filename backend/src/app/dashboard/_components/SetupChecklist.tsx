@@ -25,10 +25,9 @@ export function SetupChecklist({ steps }: { steps: HomeChecklistStep[] }) {
   const { can } = useAccess();
   // The server sends only the steps this role can take (homeDataForRole). Hiding the list
   // hides it for everyone, so it needs analytics:manage.
-  const shown = steps;
-  const done = shown.filter((s) => s.done).length;
-  if (shown.length === 0) return null;
-  const next = shown.find((s) => !s.done);
+  const done = steps.filter((s) => s.done).length;
+  if (steps.length === 0) return null;
+  const next = steps.find((s) => !s.done);
 
   return (
     <section aria-labelledby="setup-checklist" className="relative rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
@@ -49,14 +48,14 @@ export function SetupChecklist({ steps }: { steps: HomeChecklistStep[] }) {
           Get started
         </h2>
         <p className="text-sm text-muted-foreground">
-          {done} of {shown.length} done
+          {done} of {steps.length} done
         </p>
         <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-muted" aria-hidden>
-          <div className="h-full rounded-full bg-viz-good transition-all" style={{ width: `${(done / shown.length) * 100}%` }} />
+          <div className="h-full rounded-full bg-viz-good transition-all" style={{ width: `${(done / steps.length) * 100}%` }} />
         </div>
       </div>
       <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        {shown.map((s) => (
+        {steps.map((s) => (
           <li key={s.id}>
             <Link
               href={s.href}

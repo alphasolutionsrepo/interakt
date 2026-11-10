@@ -22,9 +22,12 @@ import { conflictOnConstraint } from '@/features/access/constraint-errors';
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
 import {
   assertCanAssignRole,
+  assertCanChangeUserAccess,
   assertCanManageUser,
   changeUserAccess,
+  writeUserChanges,
 } from '@/features/access/user-access.service';
+import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -44,7 +47,7 @@ export async function handleCreateUser(request: NextRequest) {
     const { access, response } = await checkAccess('users:manage');
     if (response) return response;
 
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validation = createUserSchema.safeParse(body);
 
     if (!validation.success) {
@@ -146,7 +149,7 @@ export async function handleUpdateUser(
     const { access, response } = await checkAccess(SIGNED_IN);
     if (response) return response;
 
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validation = updateUserSchema.safeParse(body);
 
     if (!validation.success) {
@@ -154,12 +157,11 @@ export async function handleUpdateUser(
     }
 
     const { roleId, isActive, ...profile } = validation.data;
-    // Profile and role are saved in one write, after every check (the email is free, the
-    // caller may make the change, one active Admin remains), so a refusal saves neither.
-    await assertCanManageUser(access, userId);
+    // Profile and role are saved in one write, after every check (the caller may make the
+    // change, the email is free, one active Admin remains), so a refusal saves neither.
+    const changes = await assertCanChangeUserAccess(access, userId, { roleId, isActive });
     const checkedProfile = await service.prepareProfileUpdate(userId, profile);
-    const wrote = await changeUserAccess(access, userId, { roleId, isActive }, checkedProfile);
-    if (!wrote) await service.updateUser(userId, profile);
+    await writeUserChanges(userId, changes, checkedProfile);
     const updatedUser = await service.getUserById(userId);
     if (!updatedUser) return apiResponse.notFound('User not found');
 
@@ -245,7 +247,7 @@ export async function handleChangePassword(
 
     await assertCanManageUser(access, userId);
 
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validation = changePasswordSchema.safeParse(body);
 
     if (!validation.success) {

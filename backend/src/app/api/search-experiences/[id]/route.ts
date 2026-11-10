@@ -10,6 +10,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forExperienceChange } from '@/features/access/built-in-experiences';
 import { withPermission } from '@/features/access/route-guard';
 import {
   handleGetSearchExperience,
@@ -24,14 +25,14 @@ export const GET = withPermission('search-experiences:view', async function GET(
   return handleGetSearchExperience(request, context);
 });
 
-export const PUT = withPermission('search-experiences:edit', async function PUT(
+export const PUT = forExperienceChange('search', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleUpdateSearchExperience(request, context);
 });
 
-export const DELETE = withPermission('search-experiences:edit', async function DELETE(
+export const DELETE = forExperienceChange('search', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {

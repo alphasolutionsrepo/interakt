@@ -122,9 +122,7 @@ export async function listUsers(): Promise<Omit<repository.UserWithRole, 'passwo
 // UPDATE OPERATIONS
 // ============================================================================
 
-/**
- * Update user
- */
+/** The profile fields a user update may change */
 export type ProfileUpdate = Pick<UpdateUserDTO, 'email' | 'firstName' | 'lastName'>;
 
 /** The profile change as it will be stored, after checking the email is free (throws "already in use"). */
@@ -136,23 +134,6 @@ export async function prepareProfileUpdate(id: string, input: ProfileUpdate): Pr
     }
   }
   return { ...input, email: input.email?.toLowerCase() };
-}
-
-export async function updateUser(
-  id: string,
-  input: ProfileUpdate
-): Promise<Omit<User, 'password'>> {
-  try {
-    const updatedUser = await repository.updateUser(id, await prepareProfileUpdate(id, input));
-
-    logger.info('Updated user via service', { userId: id });
-
-    const { password: _, ...userWithoutPassword } = updatedUser;
-    return userWithoutPassword;
-  } catch (error) {
-    logger.error('Failed to update user', error as Error);
-    throw error;
-  }
 }
 
 /**

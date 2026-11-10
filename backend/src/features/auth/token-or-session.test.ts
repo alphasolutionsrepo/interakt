@@ -20,7 +20,7 @@ function request(headers: Record<string, string>): NextRequest {
 }
 
 function experience(policy: Partial<ExperienceAccess['policy']> = {}): ExperienceAccess {
-  return { scope: 'search:e1', accessToken: 't1', policy: { allowedOrigins: [], perMinute: 60, ...policy } };
+  return { scope: 'search:e1', accessToken: 't1', isBuiltIn: false, policy: { allowedOrigins: [], perMinute: 60, ...policy } };
 }
 
 describe('authenticateTokenOrSession', () => {

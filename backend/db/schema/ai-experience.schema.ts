@@ -275,6 +275,8 @@ export const aiExperiences = pgTable('ai_experiences', {
   // STATUS & LIFECYCLE
   // ═══════════════════════════════════════════════════════════════════════════
   isActive: boolean('is_active').default(true).notNull(),
+  /** The built-in help (Help Assistant, docs search), set by the docs setup: every signed-in user may use it, only an Admin may change it */
+  isBuiltIn: boolean('is_built_in').default(false).notNull(),
   createdBy: uuid('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

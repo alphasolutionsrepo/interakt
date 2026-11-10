@@ -28,12 +28,6 @@ const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: mocks.auth }));
-// Which help experiences the docs setup created (none unless a test says so)
-// seed key -> the experience id the docs setup recorded
-const seeded = vi.hoisted(() => new Map<string, string>());
-vi.mock('@/shared/seeders/seed-registry.service', () => ({
-  getRegistryEntry: async (_t: string, key: string) => (seeded.has(key) ? { seedKey: key, metadata: { experienceId: seeded.get(key) } } : null),
-}));
 vi.mock('@/features/telemetry', () => ({
   flushTelemetry: vi.fn().mockResolvedValue(undefined),
   runWithTelemetryLevel: (_level: string, fn: () => unknown) => fn(),
@@ -976,48 +970,37 @@ describe('a dashboard session on the slug routes (the playgrounds)', () => {
     expect(work).not.toHaveBeenCalled();
   });
 
-  afterEach(() => seeded.clear());
+  /** The experience the route serves, marked built in (the help the docs setup made) or not */
+  const serving = (route: Route, isBuiltIn: boolean) => {
+    if (route.token === 'chat-token') {
+      mocks.getAIExperienceBySlug.mockResolvedValue({ ...aiExperience, isBuiltIn });
+      return;
+    }
+    const experience = { ...searchExperience, isBuiltIn };
+    mocks.getSearchExperienceBySlug.mockResolvedValue(experience);
+    mocks.getSearchExperienceWithIndexes.mockResolvedValue(experience);
+  };
 
-  it('serves the built-in docs search to any signed-in role, without playground:use', async () => {
-    seeded.set('interakt-docs-search', 'docs-1');
+  it.each(slugRoutes)('$name: the built-in help serves any signed-in role without playground:use; any other experience needs it', async (route) => {
     mocks.auth.mockResolvedValue({ user: { id: 'v' } });
     accessStub.access = { ...viewerAccess, permissions: new Set() } as never;
-    const docs = { ...searchExperience, id: 'docs-1', slug: 'interakt-docs' };
-    mocks.getSearchExperienceBySlug.mockResolvedValue(docs);
-    mocks.getSearchExperienceWithIndexes.mockResolvedValue(docs);
-    const res = await searchBySlug(req('/api/v1/search/interakt-docs/search', 'POST', {}, { query: 'roles' }), slugParams('interakt-docs'));
-    expect(await settle(res)).toBe(200);
-    // Any other experience still needs playground:use
-    mocks.getSearchExperienceBySlug.mockResolvedValue(searchExperience);
-    mocks.getSearchExperienceWithIndexes.mockResolvedValue(searchExperience);
-    expect(await settle(await searchBySlug(req('/api/v1/search/catalog/search', 'POST', {}, { query: 'roles' }), slugParams('catalog')))).toBe(403);
+    const work = route.work();
+
+    serving(route, true);
+    expect(await settle(await route.call({}))).toBe(200);
+    expect(work).toHaveBeenCalled();
+
+    work.mockClear();
+    rateLimiter.clear();
+    serving(route, false); // e.g. one someone made under a help slug: not built in
+    expect(await settle(await route.call({}))).toBe(403);
+    expect(work).not.toHaveBeenCalled();
   });
 
-  it("doesn't exempt an experience that only borrows a help slug: no docs setup, or not the one it created", async () => {
-    mocks.auth.mockResolvedValue({ user: { id: 'v' } });
-    accessStub.access = { ...viewerAccess, permissions: new Set() } as never;
-    const search = async (id: string) => {
-      const docs = { ...searchExperience, id, slug: 'interakt-docs' };
-      mocks.getSearchExperienceBySlug.mockResolvedValue(docs);
-      mocks.getSearchExperienceWithIndexes.mockResolvedValue(docs);
-      rateLimiter.clear();
-      return settle(await searchBySlug(req('/api/v1/search/interakt-docs/search', 'POST', {}, { query: 'x' }), slugParams('interakt-docs')));
-    };
-    expect(await search('docs-1')).toBe(403); // no docs setup recorded
-    seeded.set('interakt-docs-search', 'docs-1');
-    expect(await search('lookalike')).toBe(403); // same slug, not the experience the setup created
-    expect(await search('docs-1')).toBe(200); // the one the setup created
-  });
-
-  it('serves the built-in help assistant chat to any signed-in role, without playground:use', async () => {
-    seeded.set('interakt-docs', 'help-1');
-    mocks.auth.mockResolvedValue({ user: { id: 'v' } });
-    accessStub.access = { ...viewerAccess, permissions: new Set() } as never;
-    mocks.getAIExperienceBySlug.mockResolvedValue({ ...aiExperience, id: 'help-1', slug: 'help-assistant' });
-    const res = await chatBySlug(req('/api/v1/ai-experiences/help-assistant/chat', 'POST', {}, { message: 'hi' }), slugParams('help-assistant'));
-    expect(await settle(res)).toBe(200);
-    mocks.getAIExperienceBySlug.mockResolvedValue(aiExperience);
-    expect(await settle(await chatBySlug(req('/api/v1/ai-experiences/assistant/chat', 'POST', {}, { message: 'hi' }), slugParams('assistant')))).toBe(403);
+  it.each(slugRoutes)('$name: the built-in help still needs a session', async (route) => {
+    serving(route, true);
+    expect(await settle(await route.call({}))).toBe(401);
+    expect(route.work()).not.toHaveBeenCalled();
   });
 
   it.each(slugRoutes)('$name: a deactivated session gets 401, a failed role lookup an explained error, before any work', async (route) => {

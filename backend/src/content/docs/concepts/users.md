@@ -49,7 +49,7 @@ Permissions come in groups, each with a view permission and one to change things
 
 Tools, MCP connections and data sources that use a secret from the vault can be set up or changed only by a role that can manage secrets. An experience's access token goes to roles that can edit that kind of experience, and to roles that can use the playgrounds (which call the experience with it). The token and widget snippet on the experience's page are shown to roles that can edit it.
 
-A permission to change something includes the one to see it, and asking the analytics assistant includes viewing analytics; the Roles dialog shows these as included. Running the demo and docs setup takes effect only together with the permissions for what it sets up: AI providers, settings, indexes and documents, data sources, experiences, tools and prompts.
+A permission to change something includes the one to see it, asking the analytics assistant includes viewing analytics, and using the playgrounds includes viewing indexes and experiences; the Roles dialog shows these as included. Running the demo and docs setup takes effect only together with the permissions for what it sets up: AI providers, settings, indexes and documents, data sources, experiences, tools and prompts.
 
 The sidebar shows each user the pages their role can open, and the server checks the role on every request.
 

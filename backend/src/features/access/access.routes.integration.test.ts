@@ -15,7 +15,10 @@ import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, type Permission } from './permissions';
+import * as rolesRepository from './roles.repository';
 import { updateUserAccess } from './roles.repository';
+
+import * as authRepository from '@/features/auth/auth.repository';
 
 import { findSecretReferences } from '@/features/secrets/secrets.repository';
 
@@ -43,6 +46,15 @@ let testDb: AppTestDb;
 let session: { user: { id: string } } | null = null;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => session }));
+// The real user and role lookups, counted (to check a save looks each up once)
+vi.mock('@/features/auth/auth.repository', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/features/auth/auth.repository')>();
+  return { ...real, getUserById: vi.fn(real.getUserById), getUserByEmail: vi.fn(real.getUserByEmail) };
+});
+vi.mock('@/features/access/roles.repository', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/features/access/roles.repository')>();
+  return { ...real, getRole: vi.fn(real.getRole) };
+});
 
 import * as usersRoute from '@/app/api/users/route';
 import * as userRoute from '@/app/api/users/[id]/route';
@@ -57,6 +69,8 @@ import * as dataSourceRoute from '@/app/api/data-sources/[id]/route';
 import * as passwordRoute from '@/app/api/users/[id]/change-password/route';
 import * as secretsRoute from '@/app/api/secrets/route';
 import * as searchExperiencesRoute from '@/app/api/search-experiences/route';
+import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
+import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 
@@ -448,6 +462,17 @@ describe('review round 2', () => {
     const me = await call(meRoute.GET, 'GET', '/api/me/access');
     expect((me.body?.data as { permissions: string[] }).permissions.sort()).toEqual(['analytics:ask', 'analytics:view', 'tools:edit', 'tools:view']);
   });
+
+  it('lets a role that may only use the playgrounds load what they pick from: indexes and experiences', async () => {
+    as(await makeUser(await makeRole(`Testers ${n}`, ['playground:use'])));
+    const me = await call(meRoute.GET, 'GET', '/api/me/access');
+    expect((me.body?.data as { permissions: string[] }).permissions.sort()).toEqual(
+      ['ai-experiences:view', 'playground:use', 'search-experiences:view', 'search-indexes:view'],
+    );
+    expect((await call(allIndexesRoute.GET, 'GET', '/api/search-indexes/all')).status).toBe(200);
+    expect((await call(searchExperiencesRoute.GET, 'GET', '/api/search-experiences')).status).toBe(200);
+    expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(200);
+  });
 });
 
 describe('review round 3', () => {
@@ -473,6 +498,32 @@ describe('review round 3', () => {
     const res = await call(userRoute.PUT, 'PUT', `/api/users/${viewer}`, { firstName: 'Both', roleId: EDITOR }, { id: viewer });
     expect(res.status).toBe(200);
     expect(await getUser(viewer)).toMatchObject({ roleId: EDITOR, firstName: 'Both' });
+  });
+
+  it('looks the user, their role, the new role and the email up once each when saving', async () => {
+    as(admin);
+    vi.mocked(authRepository.getUserById).mockClear();
+    vi.mocked(authRepository.getUserByEmail).mockClear();
+    vi.mocked(rolesRepository.getRole).mockClear();
+    const res = await call(userRoute.PUT, 'PUT', `/api/users/${viewer}`, { email: `new${n}@x.test`, roleId: EDITOR }, { id: viewer });
+    expect(res.status).toBe(200);
+    // The user: once for the checks, once to answer with the saved user
+    expect(authRepository.getUserById).toHaveBeenCalledTimes(2);
+    expect(authRepository.getUserByEmail).toHaveBeenCalledTimes(1);
+    // Their current role, then the new one
+    expect(vi.mocked(rolesRepository.getRole).mock.calls).toEqual([[VIEWER], [EDITOR]]);
+  });
+
+  it.each([
+    ['create a user', () => usersRoute.POST, 'POST', false],
+    ['update a user', () => userRoute.PUT, 'PUT', true],
+    ['change a password', () => passwordRoute.POST, 'POST', true],
+  ] as const)('answers a body that is not JSON with 400 INVALID_JSON: %s', async (_name, fn, method, forUser) => {
+    as(admin);
+    const req = new NextRequest('http://localhost/api/users', { method, headers: { 'Content-Type': 'application/json' }, body: '{"email": "a' });
+    const res = await (fn() as unknown as Route)(req, { params: Promise.resolve(forUser ? { id: viewer } : {}) });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'INVALID_JSON' });
   });
 
   it('lets a role that manages secrets set up an MCP connection and a data source that use one', async () => {

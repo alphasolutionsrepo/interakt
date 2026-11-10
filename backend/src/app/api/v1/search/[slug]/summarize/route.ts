@@ -58,7 +58,7 @@ async function post(
 
     // 3. Authenticate: the experience's access token, or an admin session. Admin
     //    summaries are not traced unless the request asks for it (then in full).
-    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience), { slug: experience.slug, id: experience.id });
+    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
     if (!caller) {
       return refused ?? apiResponse.unauthorized('Unauthorized');
     }

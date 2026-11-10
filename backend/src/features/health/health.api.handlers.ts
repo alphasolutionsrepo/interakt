@@ -14,11 +14,6 @@ import { providerAddressesFor } from '@/features/access/provider-addresses';
 
 const logger = createLogger('health-handlers');
 
-/** Health is for every signed-in user; AI provider addresses only for roles that view providers */
-function forRole<T>(health: T): Promise<T> {
-  return providerAddressesFor(health);
-}
-
 /**
  * GET /api/health
  * Get overall system health status
@@ -30,7 +25,7 @@ export async function handleGetSystemHealth(request: NextRequest) {
       return apiResponse.unauthorized('You must be logged in to view system health');
     }
 
-    const health = await forRole(await service.checkSystemHealth());
+    const health = await providerAddressesFor(await service.checkSystemHealth());
 
     logger.info('System health check requested', {
       userId,
@@ -93,7 +88,7 @@ export async function handleGetAIProvidersHealth(request: NextRequest) {
       return apiResponse.unauthorized('You must be logged in');
     }
 
-    const health = await forRole(await service.checkAIProvidersHealth());
+    const health = await providerAddressesFor(await service.checkAIProvidersHealth());
     return apiResponse.success(health);
   } catch (error) {
     const err = error as Error;

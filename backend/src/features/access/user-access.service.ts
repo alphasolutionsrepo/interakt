@@ -79,21 +79,21 @@ export async function assertCanChangeUserAccess(
   return real;
 }
 
-/**
- * Make the role / active changes (with `profile` in the same write). Returns false when there
- * was nothing to change, so the caller saves the profile on its own.
- */
-export async function changeUserAccess(
-  caller: UserAccess,
+/** Save checked role / active changes and profile fields in one write (refusing a last-Admin loss). */
+export async function writeUserChanges(
   targetUserId: string,
   changes: AccessChanges,
   profile: Parameters<typeof roles.updateUserAccess>[2] = {},
-): Promise<boolean> {
-  const real = await assertCanChangeUserAccess(caller, targetUserId, changes);
-  if (real.roleId === undefined && real.isActive === undefined) return false;
-  const found = await conflictOnConstraint(() => roles.updateUserAccess(targetUserId, real, profile), {
+): Promise<void> {
+  const found = await conflictOnConstraint(() => roles.updateUserAccess(targetUserId, changes, profile), {
     foreignKey: 'That role was just deleted. Choose another role.',
   });
   if (!found) throw new NotFoundError('User not found');
-  return true;
+}
+
+/** Check, then make, role / active changes (activate, deactivate). */
+export async function changeUserAccess(caller: UserAccess, targetUserId: string, changes: AccessChanges): Promise<void> {
+  const real = await assertCanChangeUserAccess(caller, targetUserId, changes);
+  if (real.roleId === undefined && real.isActive === undefined) return;
+  await writeUserChanges(targetUserId, real);
 }

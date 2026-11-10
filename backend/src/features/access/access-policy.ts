@@ -27,13 +27,8 @@ export class AccessDeniedError extends AppError {
   }
 }
 
-/** Whether the caller holds everything the role grants. */
-export function holdsRole(caller: UserAccess, role: RoleShape): boolean {
-  return holdsAllOf(caller, role);
-}
-
 export function assertHoldsRole(caller: UserAccess, role: RoleShape, action: string): void {
-  if (!holdsRole(caller, role)) {
+  if (!holdsAllOf(caller, role)) {
     throw new AccessDeniedError(
       role.isBuiltIn
         ? `Only an Admin can ${action} the Admin role.`

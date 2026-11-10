@@ -1,19 +1,18 @@
 // src/shared/seeders/docs/docs.seeder.test.ts
 
 /**
- * The docs setup records the Help Assistant it made, which is the one the built-in help check
- * trusts (built-in-help.ts). The registry and services are an in-memory stand-in; the recording
- * itself runs for real through built-in-help.ts.
+ * The docs setup marks the Help Assistant it makes as the built-in help (open to every
+ * signed-in user, changed only by an Admin), and never takes over someone else's experience
+ * under the same slug. The registry and services are an in-memory stand-in.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const world = vi.hoisted(() => ({
   registry: null as null | { checksum: string; metadata: Record<string, unknown> },
-  help: null as null | { id: string; slug: string },
-  lookupError: null as null | Error,
-  registryError: null as null | Error,
+  help: null as null | { id: string; slug: string; isBuiltIn: boolean },
   nextId: 1,
+  uploads: 0,
 }));
 
 const log = vi.hoisted(() => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }));
@@ -39,7 +38,10 @@ vi.mock('@/features/data-source/data-source.service', () => ({
 vi.mock('@/features/knowledge-base/knowledge-base.service', () => ({
   listDocuments: async () => [],
   deleteDocument: async () => {},
-  uploadDocument: async () => ({ document: { status: 'ready' }, chunkCount: 1 }),
+  uploadDocument: async () => {
+    world.uploads++;
+    return { document: { status: 'ready' }, chunkCount: 1 };
+  },
 }));
 vi.mock('@/features/tools/tools.service', () => ({
   getToolsByDataSourceId: async () => [{ id: 't1', operation: 'search' }],
@@ -48,86 +50,54 @@ vi.mock('@/features/tools/tools.service', () => ({
 }));
 vi.mock('@/features/ai-experience/ai-experience.service', () => ({
   getAIExperienceBySlug: async () => {
-    if (world.lookupError) throw world.lookupError;
     if (!world.help) throw new Error('not found');
     return world.help;
   },
   createAIExperience: async (input: { slug: string }) => {
-    world.help = { id: `help-${world.nextId++}`, slug: input.slug };
+    world.help = { id: `help-${world.nextId++}`, slug: input.slug, isBuiltIn: false };
     return world.help;
+  },
+  markAIExperienceBuiltIn: async (id: string) => {
+    if (world.help?.id === id) world.help.isBuiltIn = true;
   },
   updateAIExperience: async () => world.help,
   deleteAIExperience: async () => {},
 }));
 vi.mock('@/shared/seeders/seed-registry.service', () => ({
   calculateChecksum: (data: unknown) => JSON.stringify(data),
-  getRegistryEntry: async () => {
-    if (world.registryError) throw world.registryError;
-    return world.registry;
-  },
+  getRegistryEntry: async () => world.registry,
   upsertRegistryEntry: async (_t: string, _k: string, checksum: string, metadata: Record<string, unknown>) => {
     world.registry = { checksum, metadata };
   },
   deleteRegistryEntry: async () => {},
 }));
 
-import { recordHelpAssistantOnStartup, seedDocs } from './docs.seeder';
+import { ConflictError } from '@/shared/errors/app-error';
+
+import { seedDocs } from './docs.seeder';
 
 beforeEach(() => {
-  Object.assign(world, { registry: null, help: null, lookupError: null, registryError: null, nextId: 1 });
+  Object.assign(world, { registry: null, help: null, nextId: 1, uploads: 0 });
 });
 
-describe('the docs setup and the Help Assistant it records', () => {
-  it('records the Help Assistant it created', async () => {
+describe('the docs setup and the Help Assistant', () => {
+  it('marks the Help Assistant it creates as the built-in help', async () => {
     await seedDocs();
-    expect(world.help?.id).toBe('help-1');
-    expect(world.registry?.metadata.experienceId).toBe('help-1');
+    expect(world.help).toMatchObject({ id: 'help-1', isBuiltIn: true });
   });
 
-  it('records it again on a forced re-run (the registry entry is rewritten without it)', async () => {
+  it('updates its own Help Assistant on a re-run and keeps it built in', async () => {
     await seedDocs();
     await seedDocs({ force: true });
-    expect(world.registry?.metadata.experienceId).toBe('help-1');
+    expect(world.help).toMatchObject({ id: 'help-1', isBuiltIn: true });
   });
 
-  it('when unchanged, backfills a missing id but never replaces one', async () => {
-    await seedDocs();
-    delete world.registry!.metadata.experienceId; // an entry from before ids were recorded
+  it("refuses someone else's experience under the Help Assistant's slug, before changing anything", async () => {
+    world.help = { id: 'theirs', slug: 'help-assistant', isBuiltIn: false };
 
-    expect(await seedDocs()).toMatchObject({ skipped: true });
-    expect(world.registry?.metadata.experienceId).toBe('help-1');
-
-    world.registry!.metadata.experienceId = 'recorded-earlier';
-    await seedDocs();
-    expect(world.registry?.metadata.experienceId).toBe('recorded-earlier');
-  });
-});
-
-describe('recordHelpAssistantOnStartup', () => {
-  it('backfills a missing id but never replaces one', async () => {
-    world.registry = { checksum: 'c', metadata: { documents: 1 } };
-    world.help = { id: 'h9', slug: 'help-assistant' };
-
-    await recordHelpAssistantOnStartup();
-    expect(world.registry.metadata).toEqual({ documents: 1, experienceId: 'h9' });
-
-    world.help = { id: 'lookalike', slug: 'help-assistant' };
-    await recordHelpAssistantOnStartup();
-    expect(world.registry.metadata.experienceId).toBe('h9');
-  });
-
-  it('records nothing before the docs setup ran, and never throws', async () => {
-    world.help = { id: 'h9', slug: 'help-assistant' };
-    await recordHelpAssistantOnStartup();
+    await expect(seedDocs()).rejects.toBeInstanceOf(ConflictError);
+    expect(world.help).toMatchObject({ id: 'theirs', isBuiltIn: false });
+    expect(world.uploads).toBe(0);
     expect(world.registry).toBeNull();
-
-    world.registry = { checksum: 'c', metadata: {} };
-    world.lookupError = new Error('experience lookup failed');
-    await expect(recordHelpAssistantOnStartup()).resolves.toBeUndefined();
-    expect(world.registry.metadata.experienceId).toBeUndefined();
-
-    world.lookupError = null;
-    world.registryError = new Error('database unavailable');
-    await expect(recordHelpAssistantOnStartup()).resolves.toBeUndefined();
   });
 });

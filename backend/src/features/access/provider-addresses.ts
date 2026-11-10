@@ -38,8 +38,10 @@ export const HIDES_PROVIDER_ADDRESSES = Symbol.for('interakt.hidesProviderAddres
 export function forModelReaders<A extends unknown[]>(handler: (...args: A) => Response | Promise<Response>) {
   const route = withPermission(AI_MODEL_READERS, async (...args: A): Promise<Response> => {
     const res = await handler(...args);
-    if (!res.headers.get('content-type')?.includes('application/json')) return res;
-    const body = await providerAddressesFor(await res.json());
+    const { access } = await checkAccess(SIGNED_IN);
+    // A role that views providers gets the answer as it is
+    if ((access && can(access, 'ai-providers:view')) || !res.headers.get('content-type')?.includes('application/json')) return res;
+    const body = withoutProviderAddresses(await res.json());
     const headers = new Headers(res.headers);
     headers.delete('content-length');
     return NextResponse.json(body, { status: res.status, headers });

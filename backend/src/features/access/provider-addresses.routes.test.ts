@@ -23,6 +23,7 @@ import * as defaults from '@/app/api/system-defaults/ai/route';
 import { accessStub } from '@/shared/test/access-stub';
 
 import type { Permission } from './permissions';
+import { forModelReaders } from './provider-addresses';
 
 afterEach(() => accessStub.reset());
 
@@ -55,4 +56,13 @@ describe('AI provider addresses on the model-picker routes', () => {
       }
     },
   );
+
+  it('sends a role that views providers the answer as it is, without rewriting it', async () => {
+    const answer = Response.json({ data: [{ baseUrl: 'http://10.0.0.5' }] });
+    const route = forModelReaders(async () => answer);
+    as('ai-providers:view');
+    expect(await route()).toBe(answer);
+    as('playground:use');
+    expect(await route()).not.toBe(answer);
+  });
 });

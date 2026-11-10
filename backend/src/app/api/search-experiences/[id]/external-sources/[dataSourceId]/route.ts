@@ -8,10 +8,10 @@
 
 import { NextRequest } from 'next/server';
 
-import { withPermission } from '@/features/access/route-guard';
+import { forExperienceChange } from '@/features/access/built-in-experiences';
 import { handleRemoveExternalSource } from '@/features/search-experience/search-experience.admin.handlers';
 
-export const DELETE = withPermission('search-experiences:edit', async function DELETE(
+export const DELETE = forExperienceChange('search', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string; dataSourceId: string }> }
 ) {

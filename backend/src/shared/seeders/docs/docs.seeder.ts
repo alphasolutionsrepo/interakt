@@ -20,7 +20,6 @@
  * search alone.
  */
 
-import { recordBuiltInExperience } from './built-in-help';
 import { DOCS_SEED_KEY } from '@/shared/help/help-content';
 import 'server-only';
 
@@ -32,6 +31,7 @@ import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import {
   createAIExperience,
   getAIExperienceBySlug,
+  markAIExperienceBuiltIn,
   updateAIExperience,
   deleteAIExperience,
 } from '@/features/ai-experience/ai-experience.service';
@@ -51,7 +51,7 @@ import {
   getToolsByDataSourceId,
   deleteTool,
 } from '@/features/tools/tools.service';
-import { SetupRequiredError } from '@/shared/errors/app-error';
+import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
   calculateChecksum,
@@ -151,13 +151,11 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
 
   const existing = await getRegistryEntry(SEED_TYPES.DOCS, DOCS_KEY);
   if (existing && existing.checksum === checksum && !options.force) {
-    // Entries written before experience ids were recorded get the id once
-    const help = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
-    if (help) await recordBuiltInExperience(DOCS_SEED_KEY, help.id, { onlyIfMissing: true });
     logger.info('Docs already seeded and unchanged — skipping');
     return { skipped: true, reason: 'unchanged (use force to re-run)' };
   }
 
+  await ownHelpAssistant(); // refuse before changing anything
   logger.info('📚 Seeding docs Help Assistant', { docs: docs.length, embedding: embedding.modelKey });
 
   // 1. Data source (file_store)
@@ -187,10 +185,6 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
     chunks,
     seededAt: new Date().toISOString(),
   });
-
-  // The experience the help check trusts (built-in-help.ts)
-  const help = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
-  if (help) await recordBuiltInExperience(DOCS_SEED_KEY, help.id);
 
   logger.info('✅ Docs seed complete', { dataSourceId, experienceSlug, docs: docs.length, chunks });
   return { skipped: false, dataSourceId, documents: docs.length, chunks, toolId, experienceSlug };
@@ -300,6 +294,21 @@ async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<
 // Step 4 — Help Assistant chat experience
 // ---------------------------------------------------------------------------
 
+/**
+ * The Help Assistant the docs setup made earlier, or null. Someone else's experience under the
+ * same slug is never taken over (the built-in help is open to everyone): that's a conflict.
+ */
+async function ownHelpAssistant() {
+  const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  if (existing && !existing.isBuiltIn) {
+    throw new ConflictError(
+      `A chat experience "${HELP_EXPERIENCE_SLUG}" already exists and wasn't created by the docs setup. ` +
+        'Rename or delete it to set up the Help Assistant.',
+    );
+  }
+  return existing;
+}
+
 async function ensureExperience(toolId: string, adminId: string): Promise<string> {
   const systemInstructions =
     'You are the Interakt Help Assistant. You help users of the Interakt platform understand how to ' +
@@ -338,7 +347,7 @@ async function ensureExperience(toolId: string, adminId: string): Promise<string
   // Reapply the prompt + tool wiring on every rebuild so prompt updates in
   // this seeder take effect without requiring a reset. We update an existing
   // experience in place rather than reusing-as-is.
-  const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  const existing = await ownHelpAssistant();
   if (existing) {
     await updateAIExperience(
       existing.id,
@@ -375,6 +384,8 @@ async function ensureExperience(toolId: string, adminId: string): Promise<string
     input as unknown as Parameters<typeof createAIExperience>[0],
     adminId,
   );
+  // The built-in help: every signed-in user may use it, only an Admin may change it
+  await markAIExperienceBuiltIn(created.id);
   logger.info('Created Help Assistant experience', { slug: created.slug });
   return created.slug;
 }
@@ -468,18 +479,4 @@ export async function resetDocs(): Promise<DocsResetSummary> {
 
   await tryStep('seed-registry entry', () => deleteRegistryEntry(SEED_TYPES.DOCS, DOCS_KEY));
   return { deleted };
-}
-
-/**
- * At startup: a Help Assistant seeded before experience ids were recorded gets its id once, so
- * the built-in help check (built-in-help.ts) recognises it without re-running the docs setup.
- * Never throws.
- */
-export async function recordHelpAssistantOnStartup(): Promise<void> {
-  try {
-    const help = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
-    if (help) await recordBuiltInExperience(DOCS_KEY, help.id, { onlyIfMissing: true });
-  } catch (e) {
-    logger.warn('Could not record the Help Assistant for the built-in help check', { error: (e as Error).message });
-  }
 }

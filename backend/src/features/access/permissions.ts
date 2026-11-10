@@ -118,8 +118,9 @@ export const AI_MODEL_READERS: readonly Permission[] = [
 ];
 
 /**
- * Permissions that only make sense with another: changing something implies seeing it, and
- * asking the analytics assistant reads analytics. Applied when a role's permissions are read,
+ * Permissions that only make sense with another: changing something implies seeing it,
+ * asking the analytics assistant reads analytics, and the playgrounds read the indexes and
+ * experiences they test. Applied when a role's permissions are read,
  * so no role can hold the first without the second.
  */
 export const IMPLIED_PERMISSIONS: Partial<Record<Permission, readonly Permission[]>> = {
@@ -135,6 +136,8 @@ export const IMPLIED_PERMISSIONS: Partial<Record<Permission, readonly Permission
   'analytics:manage': ['analytics:view'],
   'settings:manage': ['settings:view'],
   'jobs:run': ['settings:view'],
+  // The playgrounds pick from the indexes and experiences, so using them includes seeing those
+  'playground:use': ['search-indexes:view', 'search-experiences:view', 'ai-experiences:view'],
 };
 
 /**

@@ -16,7 +16,9 @@ const stubFetch = vi.fn(async () => new Response('{}', { status: 200 })) as type
 globalThis.fetch = stubFetch;
 afterAll(() => { globalThis.fetch = realFetch; });
 
-import { checkAIProvidersHealth, withoutProviderAddresses } from './health.service';
+import { checkAIProvidersHealth } from './health.service';
+
+import { withoutProviderAddresses } from '@/features/access/provider-addresses';
 
 describe('provider addresses in health output', () => {
   it('are in the real output, and none is left after removing them', async () => {

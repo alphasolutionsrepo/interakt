@@ -20,7 +20,7 @@ const world = vi.hoisted(() => ({
   embedding: null as null | { providerId: string; modelId: number; modelKey: string; dimensions: number },
   registry: null as null | { checksum: string; metadata: Record<string, unknown> },
   index: null as null | FakeIndex,
-  experience: null as null | { id: string; slug: string; description: string | null },
+  experience: null as null | { id: string; slug: string; description: string | null; isBuiltIn?: boolean },
   /** Replaces the default indexDocuments result (all indexed, embedded when hybrid). */
   indexDocuments: null as null | ((n: number, hybrid: boolean) => unknown),
   adminError: null as null | Error,
@@ -116,6 +116,9 @@ vi.mock('@/features/search-experience/search-experience.service', () => ({
     calls.deleteExperience++;
     world.experience = null;
   },
+  markSearchExperienceBuiltIn: async (id: string) => {
+    if (world.experience?.id === id) world.experience.isBuiltIn = true;
+  },
 }));
 
 vi.mock('@/features/document-indexing/document-indexer.service', () => ({
@@ -200,28 +203,26 @@ describe('seedDocsSearch', () => {
     expect(calls.createIndex).toEqual([]);
   });
 
-  it('records the experience it built, so the built-in help check trusts that one', async () => {
+  it('marks the experience it builds as the built-in help, also when a rebuild recreates it', async () => {
     await seedDocsSearch();
-    expect(world.registry?.metadata.experienceId).toBe(world.experience?.id);
+    expect(world.experience?.isBuiltIn).toBe(true);
 
-    // A rebuild that recreates the experience records the new one
-    world.embedding = MODEL;
+    world.embedding = MODEL; // recreated as hybrid
     await seedDocsSearch();
-    expect(world.experience?.id).toBeDefined();
-    expect(world.registry?.metadata.experienceId).toBe(world.experience?.id);
+    expect(calls.createExperience).toBe(2);
+    expect(world.experience?.isBuiltIn).toBe(true);
   });
 
-  it('when unchanged, backfills a missing experience id but never replaces one', async () => {
+  it("refuses an experience under its slug that it didn't make, even after an earlier build", async () => {
     await seedDocsSearch();
-    const built = world.experience!.id;
-    delete world.registry!.metadata.experienceId; // an entry from before ids were recorded
+    // Someone deleted ours and made their own under the slug
+    world.experience = { id: 'theirs', slug: 'interakt-docs', description: 'Our team search', isBuiltIn: false };
+    world.docs = [...DOCS, { slug: 'x', title: 'X', content: '# X\nChanged.' }];
+    resetCalls();
 
-    await seedDocsSearch();
-    expect(world.registry?.metadata.experienceId).toBe(built);
-
-    world.registry!.metadata.experienceId = 'recorded-earlier';
-    await seedDocsSearch();
-    expect(world.registry?.metadata.experienceId).toBe('recorded-earlier');
+    await expect(seedDocsSearch()).rejects.toBeInstanceOf(DocsSearchConflictError);
+    expect(world.experience).toMatchObject({ id: 'theirs', isBuiltIn: false });
+    expect(calls).toMatchObject({ deleteExperience: 0, indexDocuments: 0 });
   });
 
   it('reloads the existing index in place when only the docs changed', async () => {
@@ -415,31 +416,5 @@ describe('buildDocsSearchOnStartup', () => {
   it('never throws', async () => {
     world.adminError = new Error('boom');
     await expect(buildDocsSearchOnStartup(0)).resolves.toBeUndefined();
-  });
-
-  it('records the existing docs search id first, so a failed rebuild leaves it open to every role', async () => {
-    await seedDocsSearch();
-    const built = world.experience!.id;
-    delete world.registry!.metadata.experienceId; // an entry from before ids were recorded
-    world.docs = [...DOCS, { slug: 'x', title: 'X', content: '# X\nChanged.' }]; // so it rebuilds
-    world.embedding = MODEL; // a recreate, which needs the admin user
-    world.adminError = new Error('No admin user found.');
-
-    await buildDocsSearchOnStartup(0);
-
-    expect(world.experience?.id).toBe(built);
-    expect(world.registry?.metadata.experienceId).toBe(built);
-  });
-
-  it('never replaces a recorded id at startup', async () => {
-    await seedDocsSearch();
-    world.registry!.metadata.experienceId = 'recorded-earlier';
-    world.adminError = new Error('No admin user found.');
-    world.docs = [...DOCS, { slug: 'x', title: 'X', content: '# X\nChanged.' }];
-    world.embedding = MODEL;
-
-    await buildDocsSearchOnStartup(0);
-
-    expect(world.registry?.metadata.experienceId).toBe('recorded-earlier');
   });
 });

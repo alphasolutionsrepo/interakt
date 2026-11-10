@@ -58,6 +58,8 @@ export interface ExperienceAccess {
   scope: string;
   accessToken: string | null | undefined;
   policy: AccessPolicy;
+  /** The built-in help (set by the docs setup): every signed-in user may use it */
+  isBuiltIn: boolean;
 }
 
 /** A search experience. Searches, autocomplete, AI summaries and document reads count against searchPerMinute. */
@@ -66,10 +68,12 @@ export function searchExperienceAccess(experience: {
   accessToken?: string | null;
   allowedOrigins?: string[] | null;
   rateLimitConfig?: { searchPerMinute?: number } | null;
+  isBuiltIn?: boolean;
 }): ExperienceAccess {
   return {
     scope: `search:${experience.id}`,
     accessToken: experience.accessToken,
+    isBuiltIn: experience.isBuiltIn === true,
     policy: {
       allowedOrigins: experience.allowedOrigins ?? [],
       perMinute: experience.rateLimitConfig?.searchPerMinute ?? DEFAULT_PER_MINUTE,
@@ -82,11 +86,13 @@ export function aiExperienceAccess(experience: {
   id: string;
   accessToken?: string | null;
   accessConfig?: { allowedOrigins?: string[]; rateLimits?: { chatPerMinute?: number; requestsPerDay?: number } } | null;
+  isBuiltIn?: boolean;
 }): ExperienceAccess {
   const access = experience.accessConfig;
   return {
     scope: `ai:${experience.id}`,
     accessToken: experience.accessToken,
+    isBuiltIn: experience.isBuiltIn === true,
     policy: {
       allowedOrigins: access?.allowedOrigins ?? [],
       perMinute: access?.rateLimits?.chatPerMinute ?? DEFAULT_PER_MINUTE,

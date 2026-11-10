@@ -15,7 +15,6 @@ import 'server-only';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
-import { isBuiltInHelpExperience } from '@/shared/seeders/docs/built-in-help';
 
 import { auth } from './auth.api.handlers';
 import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
@@ -38,8 +37,6 @@ export type TokenOrSessionResult =
 export async function authenticateTokenOrSession(
   request: NextRequest,
   experience: ExperienceAccess,
-  /** The experience's slug and id, to recognise the built-in help experiences */
-  options: { slug?: string; id?: string } = {},
 ): Promise<TokenOrSessionResult> {
   const token = readAccessToken(request);
   if (token && experience.accessToken && token === experience.accessToken) {
@@ -48,13 +45,10 @@ export async function authenticateTokenOrSession(
     return { caller: 'api', analyticsSource: await analyticsSourceOfTokenCaller(request) };
   }
 
-  const session = await auth();
-  if (!session?.user) return { caller: null };
   // A dashboard session is the playground, which spends tokens: the role must allow it. The
-  // built-in help (seeded by the docs setup) is for everyone signed in.
-  const isHelp = await isBuiltInHelpExperience(options);
-  const { response } = await checkAccess(isHelp ? SIGNED_IN : 'playground:use');
-  if (response) return { caller: null, refused: response };
+  // built-in help (set up by the docs setup) is for everyone signed in. No session: 401.
+  const { response } = await checkAccess(experience.isBuiltIn ? SIGNED_IN : 'playground:use');
+  if (response) return response.status === 401 ? { caller: null } : { caller: null, refused: response };
   // The playground: an admin testing the experience gets errors explained in full
   markAdminCaller();
   return { caller: 'admin', analyticsSource: 'admin_test' };

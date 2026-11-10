@@ -146,36 +146,6 @@ export async function emailExists(email: string): Promise<boolean> {
 // ============================================================================
 
 /**
- * Update user
- */
-export async function updateUser(
-  id: string,
-  updates: Partial<Omit<User, 'id' | 'createdAt'>>
-): Promise<User> {
-  try {
-    const [updatedUser] = await db
-      .update(user)
-      .set({
-        ...updates,
-        updatedAt: new Date(),
-      })
-      .where(eq(user.id, id))
-      .returning();
-
-    if (!updatedUser) {
-      throw new Error(`User with ID ${id} not found`);
-    }
-
-    logger.info('Updated user', { userId: id });
-
-    return updatedUser;
-  } catch (error) {
-    logger.error('Failed to update user', error as Error, { userId: id });
-    throw error;
-  }
-}
-
-/**
  * Update user password
  */
 export async function updateUserPassword(

@@ -25,7 +25,6 @@
  * model, or a day passing tries hybrid again.
  */
 
-import { recordBuiltInExperience } from './built-in-help';
 import 'server-only';
 import { sql } from 'drizzle-orm';
 
@@ -40,6 +39,7 @@ import {
   createSearchExperience,
   deleteSearchExperience,
   getSearchExperienceBySlug,
+  markSearchExperienceBuiltIn,
 } from '@/features/search-experience/search-experience.service';
 import {
   createFieldsFromMappingEntries,
@@ -233,8 +233,6 @@ async function buildWithMode(
   assertOwned(!!entry, index, experience);
 
   if (!force && entry?.checksum === checksum && index && experience) {
-    // Entries written before experience ids were recorded get the id once
-    await recordBuiltInExperience(DOCS_SEARCH_SEED_KEY, experience.id, { onlyIfMissing: true });
     logger.info('Docs search unchanged — skipping');
     return { skipped: true, reason: 'unchanged', searchType: mode.searchType, sections: records.length };
   }
@@ -275,7 +273,8 @@ async function buildWithMode(
   const embedded = result.embeddingStats?.generated ?? 0;
   if (mode.searchType === 'hybrid' && embedded < result.indexedDocuments / 2) return 'embeddings-failed';
 
-  if (!experience) await createExperience(index!.id, adminId);
+  // The built-in help: every signed-in user may use it, only an Admin may change it
+  await markSearchExperienceBuiltIn((experience ?? (await createExperience(index!.id, adminId))).id);
 
   const nextMeta: DocsSearchMeta = {
     schemaVersion: SCHEMA_VERSION,
@@ -286,10 +285,6 @@ async function buildWithMode(
     hybridFailure,
   };
   await upsertRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY, checksum, nextMeta as unknown as Record<string, unknown>);
-  // The experience the help check trusts (built-in-help.ts)
-  const built = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
-  if (built) await recordBuiltInExperience(DOCS_SEARCH_SEED_KEY, built.id);
-
   logger.info('✅ Docs search built', { sections: result.indexedDocuments, searchType: mode.searchType, embedded });
   return { skipped: false, searchType: mode.searchType, sections: result.indexedDocuments };
 }
@@ -306,18 +301,21 @@ function modelSignature(mode: Extract<SearchMode, { searchType: 'hybrid' }>): st
 
 /**
  * Refuse to manage an index or experience called "interakt-docs" that this
- * seeder didn't create — an admin may have made one by hand. Ours are those
- * recorded in the seed registry, or that carry our description.
+ * seeder didn't create — an admin may have made one by hand. Our index is the one
+ * recorded in the seed registry, or that carries our description. Our experience is
+ * the one marked built in (it is open to every signed-in user), or, from before that
+ * mark, one that carries our description while the registry records the build.
  */
 function assertOwned(
   registered: boolean,
   index: { description?: string | null } | null,
-  experience: { description?: string | null } | null,
+  experience: { description?: string | null; isBuiltIn?: boolean } | null,
 ): void {
-  if (registered) return;
+  const ourIndex = !index || registered || index.description === INDEX_DESCRIPTION;
+  const ourExperience = !experience || experience.isBuiltIn === true || (registered && experience.description === EXPERIENCE_DESCRIPTION);
   const foreign = [
-    index && index.description !== INDEX_DESCRIPTION && `search index "${INDEX_NAME}"`,
-    experience && experience.description !== EXPERIENCE_DESCRIPTION && `search experience "${DOCS_SEARCH_SLUG}"`,
+    !ourIndex && `search index "${INDEX_NAME}"`,
+    !ourExperience && `search experience "${DOCS_SEARCH_SLUG}"`,
   ].filter(Boolean);
   if (foreign.length) {
     throw new DocsSearchConflictError(
@@ -504,7 +502,6 @@ const STARTUP_RETRY_MS = 20_000;
  * Never throws.
  */
 export async function buildDocsSearchOnStartup(retryDelayMs = STARTUP_RETRY_MS): Promise<void> {
-  await recordDocsSearchOnStartup();
   for (let attempt = 1; attempt <= STARTUP_ATTEMPTS; attempt++) {
     try {
       await seedDocsSearch();
@@ -518,19 +515,5 @@ export async function buildDocsSearchOnStartup(retryDelayMs = STARTUP_RETRY_MS):
       if (!retry) return;
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
-  }
-}
-
-/**
- * Before any rebuild (which may fail): a docs search seeded before experience ids were recorded
- * gets its id once, so the built-in help check (built-in-help.ts) keeps it open to every role.
- * Never throws.
- */
-async function recordDocsSearchOnStartup(): Promise<void> {
-  try {
-    const experience = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
-    if (experience) await recordBuiltInExperience(DOCS_SEARCH_SEED_KEY, experience.id, { onlyIfMissing: true });
-  } catch (e) {
-    logger.warn('Could not record the docs search for the built-in help check', { error: (e as Error).message });
   }
 }
