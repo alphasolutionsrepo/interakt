@@ -66,6 +66,16 @@ export const UI_ACTIONS = {
     does: 'reindex or recreate search indexes', permission: 'documents:edit',
     routes: ['POST /api/search-indexes/[id]/reindex', 'POST /api/search-indexes/[id]/recreate-index'],
   },
+
+  // Data sources
+  'data-sources.create': { does: 'create data sources', permission: 'data-sources:edit', routes: ['POST /api/data-sources'] },
+  'data-sources.edit': { does: 'edit data sources', permission: 'data-sources:edit', routes: ['PUT /api/data-sources/[id]'] },
+  'data-sources.delete': { does: 'delete data sources', permission: 'data-sources:edit', routes: ['DELETE /api/data-sources/[id]'] },
+  // Contacts the external service, like a playground test
+  'data-sources.health-check': { does: 'run data source health checks', permission: 'playground:use', routes: ['POST /api/data-sources/[id]/health'] },
+
+  // Tools
+  'tools.scaffold': { does: 'create tools', permission: 'tools:edit', routes: ['POST /api/tools/scaffold'] },
 } as const satisfies Record<string, UiAction>;
 
 export type UiActionId = keyof typeof UI_ACTIONS;

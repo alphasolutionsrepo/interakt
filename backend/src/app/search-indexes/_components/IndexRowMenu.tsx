@@ -2,21 +2,13 @@
 
 'use client';
 
-import { Edit2, Eye, MoreVertical, RotateCcw, Trash2 } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import type { SearchIndexSummary } from '@/features/search-index';
-import { ActionMenuItem } from '@/shared/access/ActionControls';
+import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
-/** One index's menu, the same in the card and table views; changes locked with the reason for who may not make them. */
-export function IndexRowMenu({ index, onView, onEdit, onDelete, triggerClassName, iconClassName = 'size-4', itemClassName }: {
+/** One index's menu, the same in the card and table views. */
+export function IndexRowMenu({ index, onView, onEdit, onDelete, triggerClassName, iconClassName, itemClassName }: {
   index: Pick<SearchIndexSummary, 'status'>;
   onView: () => void;
   onEdit: () => void;
@@ -25,43 +17,24 @@ export function IndexRowMenu({ index, onView, onEdit, onDelete, triggerClassName
   iconClassName?: string;
   itemClassName: string;
 }) {
-  const stop = (run: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); run(); };
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className={triggerClassName} onClick={(e) => e.stopPropagation()}>
-          <MoreVertical className={iconClassName} />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48 rounded-xl">
-        <DropdownMenuItem onClick={stop(onView)} className={itemClassName}>
-          <Eye className="size-4" />
-          View Details
-        </DropdownMenuItem>
-        <ActionMenuItem action="search-indexes.edit" icon={Edit2} iconClassName="size-4" onClick={stop(onEdit)} className={itemClassName}>
-          Edit
-        </ActionMenuItem>
-        <ActionMenuItem
-          action="documents.reindex"
-          icon={RotateCcw}
-          iconClassName="size-4"
-          onClick={(e) => e.stopPropagation()}
-          className={itemClassName}
-          disabled={index.status === 'indexing' || index.status === 'creating'}
-        >
-          Reindex
-        </ActionMenuItem>
-        <DropdownMenuSeparator />
-        <ActionMenuItem
-          action="search-indexes.delete"
-          icon={Trash2}
-          iconClassName="size-4"
-          onClick={stop(onDelete)}
-          className={`text-destructive focus:text-destructive ${itemClassName}`}
-        >
-          Delete
-        </ActionMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <RowActionsMenu
+      onView={onView}
+      onEdit={onEdit}
+      onDelete={onDelete}
+      editAction="search-indexes.edit"
+      deleteAction="search-indexes.delete"
+      extra={[{
+        label: 'Reindex',
+        icon: RotateCcw,
+        action: 'documents.reindex',
+        // Not wired to a reindex yet (on the roadmap); the detail page's Reindex works
+        onSelect: () => {},
+        disabled: index.status === 'indexing' || index.status === 'creating',
+      }]}
+      triggerClassName={triggerClassName}
+      triggerIconClassName={iconClassName}
+      itemClassName={itemClassName}
+    />
   );
 }

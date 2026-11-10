@@ -12,10 +12,6 @@ import {
   LayoutGrid,
   List,
   TrendingUp,
-  MoreVertical,
-  Eye,
-  Edit2,
-  Trash2,
   ChevronLeft,
   ChevronRight,
   ArrowUpRight,
@@ -34,18 +30,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../_components/DataSourceTypeChip';
 import { HealthStatusChip } from '../_components/HealthStatusChip';
+
+import { ActionButton } from '@/shared/access/ActionControls';
+import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 import { useDataSources } from '../_lib/hooks/useDataSources';
 import type { DataSource, DataSourceType } from '../_lib/api-client';
 
@@ -174,29 +167,15 @@ function DataSourceCard({ dataSource, onView, onEdit, onDelete }: {
               <p className="text-sm text-muted-foreground font-mono truncate mt-0.5">{dataSource.slug}</p>
             </div>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost" size="icon"
-                className="size-9 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44 rounded-xl">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(); }} className="rounded-lg py-2">
-                <Eye className="size-4" /> View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }} className="rounded-lg py-2">
-                <Edit2 className="size-4" /> Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-destructive focus:text-destructive rounded-lg py-2">
-                <Trash2 className="size-4" /> Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <RowActionsMenu
+            onView={onView}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            editAction="data-sources.edit"
+            deleteAction="data-sources.delete"
+            triggerClassName="size-9 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+            itemClassName="rounded-lg py-2"
+          />
         </div>
 
         {/* Description */}
@@ -334,25 +313,15 @@ function TableView({ dataSources, onView, onEdit, onDelete, emptyAction }: {
                     {format(new Date(ds.createdAt), 'MMM d, yyyy')}
                   </td>
                   <td className="px-6 py-4">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-9 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44 rounded-xl">
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(ds); }} className="rounded-lg py-2">
-                          <Eye className="size-4" /> View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(ds); }} className="rounded-lg py-2">
-                          <Edit2 className="size-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(ds); }} className="text-destructive focus:text-destructive rounded-lg py-2">
-                          <Trash2 className="size-4" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <RowActionsMenu
+                      onView={() => onView(ds)}
+                      onEdit={() => onEdit(ds)}
+                      onDelete={() => onDelete(ds)}
+                      editAction="data-sources.edit"
+                      deleteAction="data-sources.delete"
+                      triggerClassName="size-9 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      itemClassName="rounded-lg py-2"
+                    />
                   </td>
                 </tr>
               );
@@ -404,9 +373,9 @@ export default function DataSourcesPage() {
   const hasFilters = search || typeFilter !== 'all' || statusFilter !== 'all';
 
   const createButton = (
-    <Button onClick={() => router.push('/data-sources/create')} size="lg" className="rounded-xl px-6 font-bold">
-      <Plus className="mr-2 size-5" /> New Data Source
-    </Button>
+    <ActionButton action="data-sources.create" icon={Plus} iconClassName="mr-2 size-5" onClick={() => router.push('/data-sources/create')} size="lg" className="rounded-xl px-6 font-bold">
+      New Data Source
+    </ActionButton>
   );
 
   if (isLoading && !dataSources.length) {
