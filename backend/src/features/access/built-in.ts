@@ -3,9 +3,11 @@
 /**
  * The built-in help (the Help Assistant and docs search) is open to every signed-in user, so
  * everything the docs setup made for it — the two experiences, the docs data source and its
- * tools, the docs search index — is marked built in and only an Admin may change it. A role
- * that edits experiences, tools, data sources or indexes could otherwise change what the help
- * does or returns for everyone.
+ * tools, the docs search index — is marked built in and only an Admin may change it, as may only
+ * an Admin a tool or index attached to a built-in experience. A role that edits experiences,
+ * tools, data sources or indexes could otherwise change what the help does or returns for
+ * everyone. Deliberately not further: what an Admin connects behind an attached tool (its data
+ * source, an MCP connection, an external source) keeps its usual permissions.
  */
 
 import 'server-only';
