@@ -78,7 +78,7 @@ export function AccessOverview({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border/60">
-              <th scope="col" className="p-3 text-left font-medium text-muted-foreground">Permission</th>
+              <th scope="col" className="sticky left-0 z-10 min-w-[18rem] bg-background p-3 text-left font-medium text-muted-foreground">Permission</th>
               {roles.map((role) => (
                 <th key={role.id} scope="col" className="p-3 text-center font-semibold whitespace-nowrap">{role.name}</th>
               ))}
@@ -88,12 +88,12 @@ export function AccessOverview({
             <tbody key={group.id} className="border-b border-border/60 last:border-b-0">
               <tr>
                 <th scope="rowgroup" colSpan={roles.length + 1} className="bg-muted/40 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {group.label}
+                  <span className="sticky left-3">{group.label}</span>
                 </th>
               </tr>
               {group.permissions.map((p) => (
                 <tr key={p.id}>
-                  <th scope="row" className="p-3 text-left font-normal">{p.label}</th>
+                  <th scope="row" className="sticky left-0 z-10 min-w-[18rem] bg-background p-3 text-left font-normal">{p.label}</th>
                   {roles.map((role) => {
                     const state = cellState(role, p.id);
                     const fixed = role.isBuiltIn || state === 'included';
