@@ -8,7 +8,6 @@
  * this install could do better, dismissible for good.
  */
 
-import { useAccess } from '@/shared/access/useAccess';
 import { AlertTriangle, CheckCircle2, CircleAlert, Info, Lightbulb, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 
@@ -19,6 +18,7 @@ import { useAskPanel } from '@/app/analytics/_lib/AskPanelContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/ui/components/button';
 import { Skeleton } from '@/shared/ui/components/skeleton';
+import { ActionButton } from '@/shared/access/ActionControls';
 
 
 const TONE = {
@@ -63,22 +63,22 @@ function InsightCard({ card }: { card: HomeCard }) {
 
 function TipCard({ tip }: { tip: HomeTip }) {
   const dismiss = useDismissTip();
-  // Dismissing hides the tip for everyone: analytics:manage
-  const canDismiss = useAccess().can('analytics:manage');
+  // Dismissing hides the tip for everyone (analytics:manage): locked with the reason otherwise
   return (
     <article className={cn(CARD, 'relative bg-muted/30')}>
-      {canDismiss && (
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute right-2 top-2 size-8 text-muted-foreground"
-        onClick={() => dismiss.mutate(tip.id)}
-        aria-label={`Dismiss tip: ${tip.title}`}
-        title="Don't show this tip again"
-      >
-        <X className="size-4" />
-      </Button>
-      )}
+      <div className="absolute right-2 top-2">
+        <ActionButton
+          action="home.dismiss-tip"
+          icon={X}
+          iconClassName="size-4"
+          variant="ghost"
+          size="icon"
+          className="size-8 text-muted-foreground"
+          onClick={() => dismiss.mutate(tip.id)}
+          aria-label={`Dismiss tip: ${tip.title}`}
+          title="Don't show this tip again"
+        />
+      </div>
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Lightbulb className="size-3.5 text-viz-warning" aria-hidden /> Tip
       </p>

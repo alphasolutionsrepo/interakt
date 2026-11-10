@@ -11,7 +11,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ActionButton, ActionMenuItem, ActionSwitch, adminGateFor, gateFor } from './ActionControls';
+import { ActionButton, ActionMenuItem, ActionSwitch, adminGateFor, builtInGateFor, gateFor } from './ActionControls';
 
 import { allowsAction, type UiActionId } from '@/features/access/ui-actions';
 import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
@@ -34,6 +34,21 @@ describe('gateFor', () => {
     expect(gateFor(access(['ai-providers:manage']), 'ai-providers.add')).toEqual({ state: 'allowed' });
     expect(gateFor(access([]), 'ai-providers.add')).toEqual({ state: 'locked', reason: REASON.replace('&#x27;', "'") });
     expect(gateFor(access(['ai-providers:manage'], { isLoading: true }), 'ai-providers.add')).toEqual({ state: 'loading' });
+  });
+});
+
+describe('builtInGateFor', () => {
+  const editor = access(['tools:edit']);
+
+  it('locks a change to the built-in help for anyone but an Admin, with the server\'s wording', () => {
+    expect(builtInGateFor(editor, 'tools.edit', true)).toEqual({ state: 'locked', reason: 'Only an Admin can change the built-in help.' });
+    expect(builtInGateFor(access(['tools:edit'], { isAdmin: true }), 'tools.edit', true)).toEqual({ state: 'allowed' });
+  });
+
+  it('leaves other rows to the action\'s own permission', () => {
+    expect(builtInGateFor(editor, 'tools.edit', false)).toEqual({ state: 'allowed' });
+    expect(builtInGateFor(access([]), 'tools.edit', true).state).toBe('locked');
+    expect(builtInGateFor(access([]), 'tools.edit', true)).not.toEqual({ state: 'locked', reason: 'Only an Admin can change the built-in help.' });
   });
 });
 
@@ -74,6 +89,15 @@ describe('action controls', () => {
     expect(html).toContain('disabled=""');
     expect(html).not.toContain('lucide-lock');
     expect(html).not.toContain('data-locked');
+  });
+
+  it('lock a built-in row for a non-Admin who holds the permission', () => {
+    uiAccess.hold('ai-providers:manage');
+    const html = renderToStaticMarkup(createElement(ActionButton, { action: 'ai-providers.add', builtIn: true, children: 'Add' }));
+    expect(html).toContain('lucide-lock');
+    expect(html).toContain('Only an Admin can change the built-in help.');
+    uiAccess.asAdmin();
+    expect(renderToStaticMarkup(createElement(ActionButton, { action: 'ai-providers.add', builtIn: true, children: 'Add' }))).not.toContain('data-locked');
   });
 
   it('stay disabled for their own reason even when allowed', () => {

@@ -51,7 +51,7 @@ describe('the experiences hub', () => {
 
 describe("an experience's header actions", () => {
   const header = (kind: 'ai' | 'search') => renderToStaticMarkup(createElement(ExperienceHeaderActions, {
-    kind, isActive: true, onEdit: () => {},
+    kind, experience: { isActive: true, isBuiltIn: false }, onEdit: () => {},
     controls: { regenerateToken: async () => {}, isRegeneratingToken: false, updateExperience: async () => {}, isUpdating: false },
   }));
 
@@ -62,6 +62,18 @@ describe("an experience's header actions", () => {
       expect(buttonState(header('ai'), label)).toBe('locked');
     }
     expect(header('ai')).toContain('You don&#x27;t have permission to regenerate access tokens.');
+  });
+});
+
+describe("the built-in Help Assistant's header", () => {
+  it('is locked for a chat editor who is not an Admin', () => {
+    uiAccess.hold('ai-experiences:view', 'ai-experiences:edit');
+    const html = renderToStaticMarkup(createElement(ExperienceHeaderActions, {
+      kind: 'ai', experience: { isActive: true, isBuiltIn: true }, onEdit: () => {},
+      controls: { regenerateToken: async () => {}, isRegeneratingToken: false, updateExperience: async () => {}, isUpdating: false },
+    }));
+    for (const label of ['Regenerate Token', 'Deactivate', 'Edit']) expect(buttonState(html, label)).toBe('locked');
+    expect(html).toContain('Only an Admin can change the built-in help.');
   });
 });
 

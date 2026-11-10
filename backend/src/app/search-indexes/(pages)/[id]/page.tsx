@@ -389,6 +389,7 @@ export default function SearchIndexDetailPage() {
           <>
             <ActionButton
               action="documents.upload"
+              builtIn={searchIndex.isBuiltIn}
               icon={Upload}
               iconClassName="h-4 w-4 mr-2"
               className="rounded-xl"
@@ -406,6 +407,7 @@ export default function SearchIndexDetailPage() {
             </Button>
             <ActionButton
               action="search-indexes.activate"
+              builtIn={searchIndex.isBuiltIn}
               icon={searchIndex.isActive ? PowerOff : Power}
               iconClassName="h-4 w-4 mr-2"
               variant={searchIndex.isActive ? 'outline' : 'default'}
@@ -422,6 +424,7 @@ export default function SearchIndexDetailPage() {
             />
             <ActionButton
               action="search-indexes.edit"
+              builtIn={searchIndex.isBuiltIn}
               icon={Edit2}
               iconClassName="h-4 w-4 mr-2"
               variant="outline"
@@ -455,6 +458,7 @@ export default function SearchIndexDetailPage() {
               </div>
               <ActionButton
                 action="documents.reindex"
+                builtIn={searchIndex.isBuiltIn}
                 icon={isRecreatingIndex ? RotateCcw : Wrench}
                 iconClassName={`h-3.5 w-3.5 mr-2 ${isRecreatingIndex ? 'animate-spin' : ''}`}
                 variant="outline"
@@ -488,6 +492,7 @@ export default function SearchIndexDetailPage() {
               </div>
               <ActionButton
                 action="documents.reindex"
+                builtIn={searchIndex.isBuiltIn}
                 icon={RotateCcw}
                 iconClassName={`h-3.5 w-3.5 mr-2 ${isReindexing ? 'animate-spin' : ''}`}
                 variant="outline"
@@ -620,6 +625,7 @@ export default function SearchIndexDetailPage() {
             </div>
             <ActionButton
               action="documents.reindex"
+              builtIn={searchIndex.isBuiltIn}
               icon={RotateCcw}
               iconClassName={`h-3.5 w-3.5 mr-2 ${isReindexing ? 'animate-spin' : ''}`}
               variant="outline"
@@ -866,6 +872,7 @@ export default function SearchIndexDetailPage() {
         thing="search index"
         detail={`This will permanently delete the index, all field mappings, and remove it from ${providerLabel}.`}
         action="search-indexes.delete"
+        builtIn={searchIndex.isBuiltIn}
         onDelete={() => setDeleteDialogOpen(true)}
       />
 

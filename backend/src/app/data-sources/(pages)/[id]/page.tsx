@@ -189,6 +189,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
           <>
             <ActionButton
               action="data-sources.edit"
+              builtIn={dataSource.isBuiltIn}
               icon={dataSource.isActive ? PowerOff : Power}
               iconClassName="size-4 mr-2"
               variant={dataSource.isActive ? 'outline' : 'default'}
@@ -198,7 +199,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
             >
               {dataSource.isActive ? 'Deactivate' : 'Activate'}
             </ActionButton>
-            <ActionButton action="data-sources.edit" icon={Edit2} iconClassName="size-4 mr-2" variant="outline" className="rounded-xl" onClick={() => router.push(`/data-sources/${id}/edit`)}>
+            <ActionButton action="data-sources.edit" builtIn={dataSource.isBuiltIn} icon={Edit2} iconClassName="size-4 mr-2" variant="outline" className="rounded-xl" onClick={() => router.push(`/data-sources/${id}/edit`)}>
               Edit
             </ActionButton>
           </>
@@ -439,6 +440,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
         thing="data source"
         detail="Permanently deletes this data source. Tools referencing it will lose access."
         action="data-sources.delete"
+        builtIn={dataSource.isBuiltIn}
         onDelete={() => setDeleteOpen(true)}
       />
 

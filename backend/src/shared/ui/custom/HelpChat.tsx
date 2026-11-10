@@ -10,7 +10,6 @@
 // up yet, it degrades to a friendly prompt rather than erroring.
 
 import { BookOpen, Loader2, Sparkles } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -21,6 +20,7 @@ import { ApiError, errorText } from '@/shared/api/api-error';
 
 import { helpChatError } from './help-chat-error';
 import { startExperienceChat } from './start-experience-chat';
+import { AccessLink } from '@/shared/access/Can';
 
 interface ChatMessage {
   id: string;
@@ -186,9 +186,9 @@ export function AssistantNotReady() {
         An admin can enable it in Initial Setup once an AI provider is configured. Searching the docs works in the
         meantime.
       </p>
-      <Link href="/setup" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+      <AccessLink href="/setup" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
         Go to Initial Setup
-      </Link>
+      </AccessLink>
     </div>
   );
 }

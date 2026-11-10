@@ -25,11 +25,13 @@ interface DangerZoneProps {
   onDelete: () => void;
   /** Disabled for its own reason, which `detail` explains (still in use) */
   disabled?: boolean;
+  /** Part of the built-in help: locked for anyone but an Admin */
+  builtIn?: boolean;
   /** Folded away until opened (the experience pages) */
   collapsible?: boolean;
 }
 
-export function DangerZone({ thing, detail, action, onDelete, disabled = false, collapsible = false }: DangerZoneProps) {
+export function DangerZone({ thing, detail, action, onDelete, disabled = false, builtIn = false, collapsible = false }: DangerZoneProps) {
   const description = `Irreversible actions that permanently affect this ${thing}.`;
   const body = (
     <div className="flex items-center justify-between gap-4 p-4 bg-destructive/5 rounded-xl border border-destructive/20">
@@ -37,7 +39,7 @@ export function DangerZone({ thing, detail, action, onDelete, disabled = false, 
         <p className="font-medium text-sm">Delete this {thing}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>
       </div>
-      <ActionButton action={action} icon={Trash2} variant="destructive" className="rounded-xl shrink-0" onClick={onDelete} disabled={disabled}>
+      <ActionButton action={action} builtIn={builtIn} icon={Trash2} variant="destructive" className="rounded-xl shrink-0" onClick={onDelete} disabled={disabled}>
         Delete
       </ActionButton>
     </div>

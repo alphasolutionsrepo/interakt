@@ -102,6 +102,7 @@ export async function getSearchIndexById(id: string): Promise<SearchIndexComplet
                 lastMappingSyncedAt: searchIndex.lastMappingSyncedAt,
                 requiresReindex: searchIndex.requiresReindex,
                 isActive: searchIndex.isActive,
+                isBuiltIn: searchIndex.isBuiltIn,
                 createdBy: searchIndex.createdBy,
                 createdAt: searchIndex.createdAt,
                 updatedAt: searchIndex.updatedAt,
@@ -303,6 +304,7 @@ export async function listSearchIndexes(
                 dataTemplateId: searchIndex.dataTemplateId,
                 documentCount: searchIndex.documentCount,
                 isActive: searchIndex.isActive,
+                isBuiltIn: searchIndex.isBuiltIn,
                 createdAt: searchIndex.createdAt,
                 updatedAt: searchIndex.updatedAt,
             })
@@ -346,6 +348,7 @@ export async function getAllActiveSearchIndexes(): Promise<SearchIndexSummary[]>
                 dataTemplateId: searchIndex.dataTemplateId,
                 documentCount: searchIndex.documentCount,
                 isActive: searchIndex.isActive,
+                isBuiltIn: searchIndex.isBuiltIn,
                 createdAt: searchIndex.createdAt,
                 updatedAt: searchIndex.updatedAt,
             })

@@ -13,6 +13,7 @@ import { Sparkline, pluralize } from '@/app/analytics/_components/viz';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/ui/components/button';
 import { Skeleton } from '@/shared/ui/components/skeleton';
+import { AccessLink } from '@/shared/access/Can';
 
 
 /** showActivity false: the role can't view analytics, so no traffic figures or analytics links */
@@ -23,20 +24,19 @@ export function ExperiencesList({ experiences, loading, showActivity = true }: {
         <h2 id="home-experiences" className="text-base font-semibold">
           Your experiences
         </h2>
-        <Link href="/experiences" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
+        <AccessLink href="/experiences" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
           All experiences
-        </Link>
+        </AccessLink>
       </div>
 
       {loading || !experiences ? (
         <Skeleton className="h-48 rounded-2xl" />
       ) : experiences.length === 0 ? (
         <p className="rounded-2xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-          No experiences yet.{' '}
-          <Link href="/experiences/create" className="text-foreground underline">
-            Create your first one
-          </Link>
-          .
+          No experiences yet.
+          <AccessLink href="/experiences/create" className="text-foreground underline">
+            {' '}Create your first one.
+          </AccessLink>
         </p>
       ) : (
         <ul className="divide-y rounded-2xl border border-border/60 bg-card shadow-sm">

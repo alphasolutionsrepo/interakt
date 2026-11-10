@@ -172,6 +172,7 @@ function DataSourceCard({ dataSource, onView, onEdit, onDelete }: {
             onEdit={onEdit}
             onDelete={onDelete}
             editAction="data-sources.edit"
+            builtIn={dataSource.isBuiltIn}
             deleteAction="data-sources.delete"
             triggerClassName="size-9 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
             itemClassName="rounded-lg py-2"
@@ -318,6 +319,7 @@ function TableView({ dataSources, onView, onEdit, onDelete, emptyAction }: {
                       onEdit={() => onEdit(ds)}
                       onDelete={() => onDelete(ds)}
                       editAction="data-sources.edit"
+                      builtIn={ds.isBuiltIn}
                       deleteAction="data-sources.delete"
                       triggerClassName="size-9 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                       itemClassName="rounded-lg py-2"

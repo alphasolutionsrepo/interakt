@@ -204,6 +204,8 @@ export type {
  */
 export interface SearchIndexWithTemplate {
     id: string;
+    /** Made by the docs setup for the built-in help: only an Admin changes it */
+    isBuiltIn: boolean;
     name: string;
     displayName: string;
     description: string | null;
@@ -297,6 +299,8 @@ export interface SearchIndexSummary {
     status: string;
     documentCount: number;
     isActive: boolean;
+    /** Made by the docs setup for the built-in help: only an Admin changes it */
+    isBuiltIn: boolean;
     createdAt: Date;
     
     // Template info (deprecated - templates feature removed)

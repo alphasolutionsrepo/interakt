@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { BUILT_IN_REFUSAL } from '@/features/access/permissions';
 import { lockReason, noPermissionTo, type UiActionId } from '@/features/access/ui-actions';
 
 export type ActionGate = { state: 'loading' } | { state: 'allowed' } | { state: 'locked'; reason: string };
@@ -34,6 +35,16 @@ type AccessView = Pick<ReturnType<typeof useAccess>, 'isLoading' | 'canDo' | 'is
 export function gateFor(access: AccessView, action: UiActionId): ActionGate {
   if (access.isLoading) return { state: 'loading' };
   return access.canDo(action) ? { state: 'allowed' } : { state: 'locked', reason: lockReason(action) };
+}
+
+/**
+ * The gate for an action on a row that may be part of the built-in help: besides the action's
+ * permission, only an Admin changes a built-in row (the server refuses everyone else).
+ */
+export function builtInGateFor(access: AccessView, action: UiActionId, isBuiltIn: boolean): ActionGate {
+  const gate = gateFor(access, action);
+  if (gate.state !== 'allowed' || !isBuiltIn || access.isAdmin) return gate;
+  return { state: 'locked', reason: `${BUILT_IN_REFUSAL}.` };
 }
 
 /** Whether the user may take the action now, may not (and why), or it isn't known yet. */
@@ -89,11 +100,13 @@ const iconFor = (gate: ActionGate, Icon: LucideIcon | undefined, className: stri
 type GateProps = ({ action: UiActionId; gate?: never } | { gate: ActionGate; action?: never }) & {
   icon?: LucideIcon;
   iconClassName?: string;
+  /** The row is part of the built-in help: locked for anyone but an Admin */
+  builtIn?: boolean;
 };
 
-function useGate({ action, gate }: { action?: UiActionId; gate?: ActionGate }): ActionGate {
+function useGate({ action, gate, builtIn = false }: { action?: UiActionId; gate?: ActionGate; builtIn?: boolean }): ActionGate {
   const access = useAccess();
-  return gate ?? gateFor(access, action as UiActionId);
+  return gate ?? builtInGateFor(access, action as UiActionId, builtIn);
 }
 
 /** The control as is, or inside a LockedHint when its gate is locked (no gate: as is). */
@@ -102,8 +115,8 @@ export function withLockHint(gate: ActionGate | undefined, control: ReactNode, b
 }
 
 /** A button: usable when allowed, locked with the reason otherwise. */
-export function ActionButton({ action, gate: given, icon, iconClassName = 'mr-2 size-4', disabled, children, ...props }: ComponentProps<typeof Button> & GateProps) {
-  const gate = useGate({ action, gate: given });
+export function ActionButton({ action, gate: given, builtIn, icon, iconClassName = 'mr-2 size-4', disabled, children, ...props }: ComponentProps<typeof Button> & GateProps) {
+  const gate = useGate({ action, gate: given, builtIn });
   return withLockHint(gate, (
     <Button {...props} disabled={disabled || gate.state !== 'allowed'}>
       {iconFor(gate, icon, iconClassName)}
@@ -113,8 +126,8 @@ export function ActionButton({ action, gate: given, icon, iconClassName = 'mr-2 
 }
 
 /** A menu item: usable when allowed, locked with the reason otherwise. */
-export function ActionMenuItem({ action, gate: given, icon, iconClassName = 'mr-2 size-4', disabled, children, ...props }: ComponentProps<typeof DropdownMenuItem> & GateProps) {
-  const gate = useGate({ action, gate: given });
+export function ActionMenuItem({ action, gate: given, builtIn, icon, iconClassName = 'mr-2 size-4', disabled, children, ...props }: ComponentProps<typeof DropdownMenuItem> & GateProps) {
+  const gate = useGate({ action, gate: given, builtIn });
   return withLockHint(gate, (
     <DropdownMenuItem {...props} disabled={disabled || gate.state !== 'allowed'}>
       {iconFor(gate, icon, iconClassName)}
@@ -124,7 +137,7 @@ export function ActionMenuItem({ action, gate: given, icon, iconClassName = 'mr-
 }
 
 /** A switch: always shows its value; switchable only when allowed. */
-export function ActionSwitch({ action, gate: given, disabled, ...props }: ComponentProps<typeof Switch> & Omit<GateProps, 'icon' | 'iconClassName'>) {
-  const gate = useGate({ action, gate: given });
+export function ActionSwitch({ action, gate: given, builtIn, disabled, ...props }: ComponentProps<typeof Switch> & Omit<GateProps, 'icon' | 'iconClassName'>) {
+  const gate = useGate({ action, gate: given, builtIn });
   return withLockHint(gate, <Switch {...props} disabled={disabled || gate.state !== 'allowed'} />);
 }

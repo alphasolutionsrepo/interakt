@@ -41,13 +41,15 @@ interface RowActionsMenuProps {
   deleteAction: UiActionId;
   /** Between Edit and Delete */
   extra?: RowExtraAction[];
+  /** Part of the built-in help: every change locked for anyone but an Admin */
+  builtIn?: boolean;
   triggerClassName: string;
   triggerIconClassName?: string;
   itemClassName: string;
 }
 
 export function RowActionsMenu({
-  onView, onEdit, onDelete, editAction, deleteAction, extra = [], triggerClassName, triggerIconClassName = 'size-4', itemClassName,
+  onView, onEdit, onDelete, editAction, deleteAction, extra = [], builtIn = false, triggerClassName, triggerIconClassName = 'size-4', itemClassName,
 }: RowActionsMenuProps) {
   const only = (run: () => void) => (e: MouseEvent) => { e.stopPropagation(); run(); };
   return (
@@ -63,18 +65,19 @@ export function RowActionsMenu({
           View Details
         </DropdownMenuItem>
         {onEdit && editAction && (
-          <ActionMenuItem action={editAction} icon={Edit2} iconClassName="size-4" onClick={only(onEdit)} className={itemClassName}>
+          <ActionMenuItem action={editAction} builtIn={builtIn} icon={Edit2} iconClassName="size-4" onClick={only(onEdit)} className={itemClassName}>
             Edit
           </ActionMenuItem>
         )}
         {extra.map((x) => (
-          <ActionMenuItem key={x.label} action={x.action} icon={x.icon} iconClassName="size-4" onClick={only(x.onSelect)} disabled={x.disabled} className={itemClassName}>
+          <ActionMenuItem key={x.label} action={x.action} builtIn={builtIn} icon={x.icon} iconClassName="size-4" onClick={only(x.onSelect)} disabled={x.disabled} className={itemClassName}>
             {x.label}
           </ActionMenuItem>
         ))}
         <DropdownMenuSeparator />
         <ActionMenuItem
           action={deleteAction}
+          builtIn={builtIn}
           icon={Trash2}
           iconClassName="size-4"
           onClick={only(onDelete)}

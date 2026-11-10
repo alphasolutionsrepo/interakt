@@ -7,8 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import type { ServiceHealth } from '../_lib/api-client';
+import { AccessLink } from '@/shared/access/Can';
 
 interface ServiceStatusCardProps {
   service: ServiceHealth;
@@ -219,14 +219,14 @@ export function ServiceStatusCard({ service, index = 0 }: ServiceStatusCardProps
 
               {/* Playground link for real testing */}
               <div className="mt-4 pt-3 border-t border-border/40">
-                <Link
+                <AccessLink
                   href="/playground/ai-service"
                   className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors"
                 >
                   <FlaskConical className="size-4" />
                   <span>Test with real API calls in Playground</span>
                   <ExternalLink className="size-3" />
-                </Link>
+                </AccessLink>
               </div>
             </div>
           ) : (

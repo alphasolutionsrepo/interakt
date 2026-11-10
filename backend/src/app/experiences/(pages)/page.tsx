@@ -148,6 +148,7 @@ function ExperienceCard({ experience, onView, onEdit, onDelete }: {
             onEdit={onEdit}
             onDelete={onDelete}
             {...experienceActions(experience._type)}
+            builtIn={experience.isBuiltIn}
             triggerClassName="size-8 rounded-lg shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
             itemClassName="rounded-lg"
           />
@@ -289,6 +290,7 @@ function DataTableView({ items, onView, onEdit, onDelete }: {
                       onEdit={() => onEdit(exp)}
                       onDelete={() => onDelete(exp)}
                       {...experienceActions(exp._type)}
+                      builtIn={exp.isBuiltIn}
                       triggerClassName="size-8 rounded-lg"
                       itemClassName="rounded-lg"
                     />

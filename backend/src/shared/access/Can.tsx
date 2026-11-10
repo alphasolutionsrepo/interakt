@@ -42,7 +42,13 @@ export function Can({ children, fallback = null, ...rule }: CanProps) {
  * for example the same label as plain text.
  */
 export function AccessLink({ fallback = null, ...props }: ComponentProps<typeof Link> & { fallback?: ReactNode }) {
-  const { can } = useAccess();
+  const canOpen = useCanOpenPage();
   const path = typeof props.href === 'string' ? props.href : (props.href.pathname ?? '');
-  return canOpenPage(path.split(/[?#]/)[0], can) ? <Link {...props} /> : <>{fallback}</>;
+  return canOpen(path) ? <Link {...props} /> : <>{fallback}</>;
+}
+
+/** Whether the user can open a page (query and hash ignored), for a link AccessLink can't wrap. */
+export function useCanOpenPage(): (href: string) => boolean {
+  const { can } = useAccess();
+  return (href) => canOpenPage(href.split(/[?#]/)[0], can);
 }

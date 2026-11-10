@@ -126,6 +126,16 @@ export const UI_ACTIONS = {
   // Settings
   'settings.clear-cache': { does: 'clear caches', permission: 'settings:manage', routes: ['POST /api/search-indexes/cache/clear', 'POST /api/ai-providers/cache'] },
   'settings.search': { does: 'change search settings', permission: 'settings:manage', routes: ['PUT /api/settings/search'] },
+
+  // Analytics
+  'analytics.refresh': { does: 'refresh analytics findings', permission: 'analytics:manage', routes: ['POST /api/analytics/process'] },
+  'analytics.findings': {
+    does: 'hide or show findings', permission: 'analytics:manage',
+    routes: ['POST /api/analytics/insights/hidden', 'DELETE /api/analytics/insights/hidden'],
+  },
+
+  // Home page
+  'home.dismiss-tip': { does: 'dismiss tips for everyone', permission: 'analytics:manage', routes: ['POST /api/dashboard/home/tips'] },
 } as const satisfies Record<string, UiAction>;
 
 export type UiActionId = keyof typeof UI_ACTIONS;

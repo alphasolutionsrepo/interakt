@@ -152,6 +152,7 @@ function ToolCard({ tool, onView, onEdit, onDelete }: {
             onEdit={onEdit}
             onDelete={onDelete}
             editAction="tools.edit"
+            builtIn={tool.isBuiltIn}
             deleteAction="tools.delete"
             triggerClassName="size-9 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
             itemClassName="rounded-lg py-2"
@@ -297,6 +298,7 @@ function TableView({ tools, onView, onEdit, onDelete, emptyAction }: {
                       onEdit={() => onEdit(tool)}
                       onDelete={() => onDelete(tool)}
                       editAction="tools.edit"
+                      builtIn={tool.isBuiltIn}
                       deleteAction="tools.delete"
                       triggerClassName="size-9 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                       itemClassName="rounded-lg py-2"

@@ -11,7 +11,6 @@
 // refreshes docs search, upgrading it to hybrid now that embeddings exist.
 
 import { BookOpen, Check, Loader2, RefreshCw, AlertTriangle, ArrowRight, Search } from 'lucide-react';
-import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -24,6 +23,7 @@ import { apiErrorFrom, errorText } from '@/shared/api/api-error';
 import { DOCS_SEED_STEPS } from '@/shared/seeders/docs/docs-steps';
 
 import { loadDocsStatus, startDocsBuild, type DocsStatus } from '../_lib/docs-assistant-api';
+import { AccessLink } from '@/shared/access/Can';
 
 function describeDocsSearch(search: DocsStatus['search']): string {
   const sections = `${search.sections ?? 0} sections`;
@@ -164,12 +164,12 @@ export function DocsAssistantCard() {
                 {status.embedding.reason ??
                   'A system default embedding model is required to build the assistant.'}
               </p>
-              <Link
+              <AccessLink
                 href="/ai-providers"
                 className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
               >
                 Configure an AI provider <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
+              </AccessLink>
               <p className="text-xs text-muted-foreground">
                 Reading and searching the docs work without this — only “Ask” (chat) needs it.
               </p>

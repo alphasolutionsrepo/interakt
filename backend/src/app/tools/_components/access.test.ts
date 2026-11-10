@@ -48,6 +48,19 @@ describe('tool and MCP menus', () => {
   });
 });
 
+describe('the built-in help', () => {
+  it('locks Edit and Delete on a built-in tool for a tool editor who is not an Admin', () => {
+    uiAccess.hold('tools:view', 'tools:edit');
+    const html = renderToStaticMarkup(createElement(RowActionsMenu, {
+      onView: noop, onEdit: noop, onDelete: noop, editAction: 'tools.edit', deleteAction: 'tools.delete', builtIn: true, triggerClassName: '', itemClassName: '',
+    }));
+    expect(menuItems(html)).toEqual(['View Details', 'Edit (locked)', 'Delete (locked)']);
+    expect(html).toContain('Only an Admin can change the built-in help.');
+    const zone = renderToStaticMarkup(createElement(DangerZone, { thing: 'tool', detail: 'x', action: 'tools.delete', onDelete: noop, builtIn: true }));
+    expect(buttonState(zone, 'Delete')).toBe('locked');
+  });
+});
+
 describe('tool test panel', () => {
   const panel = () => renderToStaticMarkup(createElement(ToolTestPanel, { toolId: 't', isActive: true, executorType: 'llm_inference', operation: null }));
 

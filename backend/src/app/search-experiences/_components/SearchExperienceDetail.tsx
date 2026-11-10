@@ -207,7 +207,7 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
         actions={
           <ExperienceHeaderActions
             kind="search"
-            isActive={experience.isActive}
+            experience={experience}
             controls={{ regenerateToken, isRegeneratingToken, updateExperience, isUpdating }}
             onEdit={() => router.push(`${basePath}/${id}/edit`)}
           />
@@ -450,6 +450,7 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
         detail="This will permanently delete the experience."
         action="search-experiences.delete"
         onDelete={() => setDeleteDialogOpen(true)}
+        builtIn={experience.isBuiltIn}
         collapsible
       />
 

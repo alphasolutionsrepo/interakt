@@ -102,6 +102,8 @@ export interface SearchExperienceSummary {
   slug: string;
   description: string | null;
   isActive: boolean;
+  /** Part of the built-in help: only an Admin changes it (features/access/built-in.ts) */
+  isBuiltIn: boolean;
   indexCount: number;
   aiEnabled: boolean;
   createdAt: Date;

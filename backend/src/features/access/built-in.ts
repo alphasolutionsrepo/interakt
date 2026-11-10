@@ -15,6 +15,7 @@ import 'server-only';
 import { and, eq } from 'drizzle-orm';
 
 import { AccessDeniedError } from './access-policy';
+import { BUILT_IN_REFUSAL } from './permissions';
 import { checkAccess, SIGNED_IN, withPermission, withPermissionOrIngestionKey, type AccessRule } from './route-guard';
 
 import { db } from '@/db/index';
@@ -37,7 +38,7 @@ export type BuiltInKind = keyof typeof TABLES;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const REFUSAL = 'Only an Admin can change the built-in help';
+export const REFUSAL = BUILT_IN_REFUSAL;
 
 export const GUARDS_BUILT_IN = Symbol.for('interakt.guardsBuiltIn');
 

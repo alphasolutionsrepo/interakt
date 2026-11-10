@@ -121,7 +121,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
         actions={
           <ExperienceHeaderActions
             kind="ai"
-            isActive={experience.isActive}
+            experience={experience}
             controls={{ regenerateToken, isRegeneratingToken, updateExperience, isUpdating }}
             onEdit={() => router.push(`${basePath}/${id}/edit`)}
           />
@@ -289,6 +289,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
         detail="Permanently deletes the experience and all tool assignments."
         action="ai-experiences.delete"
         onDelete={() => setDeleteOpen(true)}
+        builtIn={experience.isBuiltIn}
         collapsible
       />
 

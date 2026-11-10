@@ -179,6 +179,7 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
           <>
             <ActionButton
               action="tools.edit"
+              builtIn={tool.isBuiltIn}
               icon={tool.isActive ? PowerOff : Power}
               iconClassName="size-4 mr-2"
               variant={tool.isActive ? 'outline' : 'default'}
@@ -188,7 +189,7 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
             >
               {tool.isActive ? 'Deactivate' : 'Activate'}
             </ActionButton>
-            <ActionButton action="tools.edit" icon={Edit2} iconClassName="size-4 mr-2" variant="outline" className="rounded-xl" onClick={() => router.push(`/tools/${id}/edit`)}>
+            <ActionButton action="tools.edit" builtIn={tool.isBuiltIn} icon={Edit2} iconClassName="size-4 mr-2" variant="outline" className="rounded-xl" onClick={() => router.push(`/tools/${id}/edit`)}>
               Edit
             </ActionButton>
           </>
@@ -328,6 +329,7 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
           ? `This tool is used by ${experiences.length} experience${experiences.length !== 1 ? 's' : ''}. Remove it from all experiences first.`
           : 'Permanently deletes this tool. This action cannot be undone.'}
         action="tools.delete"
+        builtIn={tool.isBuiltIn}
         onDelete={() => setDeleteOpen(true)}
         disabled={experiences.length > 0}
       />

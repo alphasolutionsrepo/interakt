@@ -25,9 +25,10 @@ export interface ExperienceControls {
  * same for both kinds; each locked with the reason for a role that can't edit that kind.
  * The buttons do their own work through the page's detail hook.
  */
-export function ExperienceHeaderActions({ kind, isActive, controls, onEdit }: {
+export function ExperienceHeaderActions({ kind, experience: { isActive, isBuiltIn }, controls, onEdit }: {
   kind: 'ai' | 'search';
-  isActive: boolean;
+  /** isBuiltIn: the built-in help, locked for anyone but an Admin */
+  experience: { isActive: boolean; isBuiltIn: boolean };
   controls: ExperienceControls;
   onEdit: () => void;
 }) {
@@ -36,6 +37,7 @@ export function ExperienceHeaderActions({ kind, isActive, controls, onEdit }: {
     <>
       <ActionButton
         action={token}
+        builtIn={isBuiltIn}
         icon={RefreshCw}
         iconClassName={`size-3.5 mr-1.5 ${controls.isRegeneratingToken ? 'animate-spin' : ''}`}
         variant="outline"
@@ -48,6 +50,7 @@ export function ExperienceHeaderActions({ kind, isActive, controls, onEdit }: {
       </ActionButton>
       <ActionButton
         action={edit}
+        builtIn={isBuiltIn}
         icon={isActive ? PowerOff : Power}
         iconClassName="size-4 mr-2"
         variant={isActive ? 'outline' : 'default'}
@@ -57,7 +60,8 @@ export function ExperienceHeaderActions({ kind, isActive, controls, onEdit }: {
       >
         {isActive ? 'Deactivate' : 'Activate'}
       </ActionButton>
-      <ActionButton action={edit} icon={Edit2} iconClassName="size-4 mr-2" variant="outline" className="rounded-xl" onClick={onEdit}>
+      <ActionButton action={edit}
+        builtIn={isBuiltIn} icon={Edit2} iconClassName="size-4 mr-2" variant="outline" className="rounded-xl" onClick={onEdit}>
         Edit
       </ActionButton>
     </>
