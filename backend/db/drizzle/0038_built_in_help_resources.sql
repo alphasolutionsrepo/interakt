@@ -6,8 +6,10 @@ ALTER TABLE "tools" ADD COLUMN "is_built_in" boolean DEFAULT false NOT NULL;--> 
 UPDATE "data_sources" SET "is_built_in" = true
 WHERE "slug" = 'interakt-docs'
   AND EXISTS (SELECT 1 FROM "seed_registry" WHERE "seed_type" = 'docs' AND "seed_key" = 'interakt-docs');--> statement-breakpoint
+-- Only the tools the setup generated there (system tools under the docs slug), not one someone added
 UPDATE "tools" SET "is_built_in" = true
-WHERE "data_source_id" IN (SELECT "id" FROM "data_sources" WHERE "is_built_in" = true);--> statement-breakpoint
+WHERE "data_source_id" IN (SELECT "id" FROM "data_sources" WHERE "is_built_in" = true)
+  AND "is_system" = true AND "slug" LIKE 'interakt-docs-%';--> statement-breakpoint
 UPDATE "search_index" SET "is_built_in" = true
 WHERE "name" = 'interakt-docs'
   AND EXISTS (SELECT 1 FROM "seed_registry" WHERE "seed_type" = 'docs' AND "seed_key" = 'interakt-docs-search');

@@ -46,8 +46,8 @@ const search = (slug: string) =>
   `INSERT INTO search_experiences (name, slug, search_config, ai_config, tools_config, created_by) VALUES ('${slug}', '${slug}', '{}', '{}', '{}', '${U}');`;
 const dataSource = (slug: string) =>
   `INSERT INTO data_sources (name, slug, type, config) VALUES ('${slug}', '${slug}', 'file_store', '{}');`;
-const toolOf = (slug: string, dataSourceSlug: string) =>
-  `INSERT INTO tools (name, slug, ai_description, data_source_id) VALUES ('${slug}', '${slug}', 'd', (SELECT id FROM data_sources WHERE slug = '${dataSourceSlug}'));`;
+const toolOf = (slug: string, dataSourceSlug: string, isSystem = true) =>
+  `INSERT INTO tools (name, slug, ai_description, data_source_id, is_system) VALUES ('${slug}', '${slug}', 'd', (SELECT id FROM data_sources WHERE slug = '${dataSourceSlug}'), ${isSystem});`;
 const index = (name: string) =>
   `INSERT INTO search_index (name, display_name, search_type) VALUES ('${name}', '${name}', 'lexical');`;
 const registry = (key: string) =>
@@ -85,13 +85,14 @@ describe('migration 0037: built-in experiences', () => {
     const client = await migrated([
       dataSource('interakt-docs'), dataSource('crm'),
       toolOf('interakt-docs-search', 'interakt-docs'), toolOf('crm-search', 'crm'),
+      toolOf('my-docs-tool', 'interakt-docs', false), // someone added it by hand
       index('interakt-docs'), index('products'),
       registry('interakt-docs'), registry('interakt-docs-search'),
     ].join('\n'));
     const marked = async (table: string, key: string) =>
       Object.fromEntries((await client.query<{ k: string; b: boolean }>(`SELECT ${key} AS k, is_built_in AS b FROM ${table}`)).rows.map((r) => [r.k, r.b]));
     expect(await marked('data_sources', 'slug')).toEqual({ 'interakt-docs': true, crm: false });
-    expect(await marked('tools', 'slug')).toEqual({ 'interakt-docs-search': true, 'crm-search': false });
+    expect(await marked('tools', 'slug')).toEqual({ 'interakt-docs-search': true, 'crm-search': false, 'my-docs-tool': false });
     expect(await marked('search_index', 'name')).toEqual({ 'interakt-docs': true, products: false });
   }, 60_000);
 

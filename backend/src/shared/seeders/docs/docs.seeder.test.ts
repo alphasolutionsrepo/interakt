@@ -58,11 +58,12 @@ vi.mock('@/features/knowledge-base/knowledge-base.service', () => ({
 }));
 vi.mock('@/features/tools/tools.service', () => ({
   getToolsByDataSourceId: async () => world.tools,
-  createToolsForDataSource: async () => {
-    const made = [
-      { id: 't1', slug: 'interakt-docs-search', operation: 'search', isBuiltIn: false },
-      { id: 't2', slug: 'interakt-docs-get', operation: 'get', isBuiltIn: false },
-    ];
+  // Like the real one: makes each operation no counted tool covers yet
+  createToolsForDataSource: async (...args: unknown[]) => {
+    const counting = (args[6] as { counting?: (t: { isBuiltIn: boolean }) => boolean } | undefined)?.counting ?? (() => true);
+    const covered = new Set(world.tools.filter(counting).map((t) => t.operation));
+    const made = ['search', 'get'].filter((op) => !covered.has(op))
+      .map((op) => ({ id: `t-${op}-${world.tools.length + 1}`, slug: `interakt-docs-${op}`, operation: op, isBuiltIn: false }));
     world.tools.push(...made);
     return made;
   },
@@ -128,7 +129,8 @@ describe('the docs setup and the Help Assistant', () => {
 
   it('marks the docs data source and its tools as part of the built-in help', async () => {
     await seedDocs();
-    expect([...world.marked].sort()).toEqual(['data-source:ds1', 'tool:t1', 'tool:t2']);
+    expect([...world.marked].sort()).toEqual(['data-source:ds1', ...world.tools.map((t) => `tool:${t.id}`)].sort());
+    expect(world.tools.map((t) => t.operation).sort()).toEqual(['get', 'search']);
   });
 
   it("refuses someone else's data source under the docs slug, before changing anything", async () => {
@@ -156,9 +158,26 @@ describe('the docs setup and the Help Assistant', () => {
     await seedDocs();
     // Someone adds their own search tool to the docs data source (an Admin could; nobody else can)
     world.tools.unshift({ id: 'theirs', slug: 'my-search', operation: 'search', isBuiltIn: false });
+    const ours = world.tools.find((t) => t.operation === 'search' && t.isBuiltIn)!.id;
     await seedDocs({ force: true });
-    expect(world.assignedTool).toBe('t1');
+    expect(world.assignedTool).toBe(ours);
     expect(world.tools.find((t) => t.id === 'theirs')?.isBuiltIn).toBe(false);
     expect(world.marked.has('tool:theirs')).toBe(false);
+  });
+
+  it("makes its own search tool again when it's gone, even with someone else's search tool there", async () => {
+    world.tools.push({ id: 'theirs', slug: 'my-search', operation: 'search', isBuiltIn: false });
+    await seedDocs();
+    const mine = world.tools.find((t) => t.operation === 'search' && t.isBuiltIn);
+    expect(mine).toBeDefined();
+    expect(world.assignedTool).toBe(mine!.id);
+
+    // The setup's search tool deleted; its other tool kept
+    world.tools = world.tools.filter((t) => t.id !== mine!.id);
+    await seedDocs({ force: true });
+    const again = world.tools.find((t) => t.operation === 'search' && t.isBuiltIn);
+    expect(again && again.id !== mine!.id).toBe(true);
+    expect(world.assignedTool).toBe(again!.id);
+    expect(world.tools.filter((t) => t.operation === 'get' && t.isBuiltIn)).toHaveLength(1);
   });
 });
