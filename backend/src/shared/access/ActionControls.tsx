@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { lockReason, type UiActionId } from '@/features/access/ui-actions';
+import { lockReason, noPermissionTo, type UiActionId } from '@/features/access/ui-actions';
 
 export type ActionGate = { state: 'loading' } | { state: 'allowed' } | { state: 'locked'; reason: string };
 
@@ -39,6 +39,18 @@ export function gateFor(access: AccessView, action: UiActionId): ActionGate {
 /** Whether the user may take the action now, may not (and why), or it isn't known yet. */
 export function useActionGate(action: UiActionId): ActionGate {
   return gateFor(useAccess(), action);
+}
+
+/** Allowed when any one of the actions is (New Experience: either kind); `does` names them together. */
+export function anyActionGateFor(access: AccessView, actions: readonly UiActionId[], does: string): ActionGate {
+  if (access.isLoading) return { state: 'loading' };
+  return actions.some((a) => access.canDo(a))
+    ? { state: 'allowed' }
+    : { state: 'locked', reason: noPermissionTo(does) };
+}
+
+export function useAnyActionGate(actions: readonly UiActionId[], does: string): ActionGate {
+  return anyActionGateFor(useAccess(), actions, does);
 }
 
 /** For the few Admin-only actions (shaping roles, changing the built-in help); `does` finishes "Only an Admin can ...". */

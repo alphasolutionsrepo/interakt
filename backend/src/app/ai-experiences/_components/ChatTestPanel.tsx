@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 import { startExperienceChat } from '@/shared/ui/custom/start-experience-chat';
 
 // ============================================================================
@@ -383,6 +384,8 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
   const [isStreaming, setIsStreaming] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  // Sending runs the experience for real (spends AI tokens): playground:use
+  const sendGate = useActionGate('ai-experiences.test-chat');
   const currentAssistantIdRef = useRef<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Buffer preset data until text content starts streaming (so grid + text appear together)
@@ -414,7 +417,8 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
 
   async function sendMessage() {
     const text = input.trim();
-    if (!text || isStreaming) return;
+    // Enter in the box sends too, so the check sits here as well as on the button
+    if (!text || isStreaming || sendGate.state !== 'allowed') return;
 
     setIsExpanded(true);
     setInput('');
@@ -683,17 +687,15 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
             rows={2}
             className="rounded-xl resize-none flex-1 text-sm"
           />
-          <Button
+          <ActionButton
+            gate={sendGate}
+            icon={isStreaming ? Loader2 : Send}
+            iconClassName={isStreaming ? 'size-4 animate-spin' : 'size-4'}
             className="rounded-xl h-[60px] px-4 shrink-0"
             onClick={() => void sendMessage()}
             disabled={isStreaming || !input.trim()}
-          >
-            {isStreaming ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-          </Button>
+            aria-label="Send"
+          />
         </div>
 
         {sessionId && (

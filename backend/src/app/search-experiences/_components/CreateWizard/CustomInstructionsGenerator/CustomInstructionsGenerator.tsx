@@ -29,6 +29,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { reportActionError } from '@/shared/activity/report';
 import { errorText } from '@/shared/api/api-error';
 import { searchExperiencesApi } from '../../../_lib/api-client';
+import { ActionButton } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // TYPES
@@ -254,35 +255,30 @@ export function CustomInstructionsGenerator({
               >
                 Cancel
               </Button>
-              <Button
+              <ActionButton
+                action="search-experiences.generate-instructions"
+                icon={generateMutation.isPending ? Loader2 : Sparkles}
+                iconClassName={generateMutation.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
                 onClick={handleGenerate}
                 disabled={generateMutation.isPending || indexIds.length + dataSourceIds.length === 0}
                 className="gap-2"
               >
-                {generateMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Generate Instructions
-                  </>
-                )}
-              </Button>
+                {generateMutation.isPending ? 'Generating...' : 'Generate Instructions'}
+              </ActionButton>
             </>
           ) : (
             <>
-              <Button
+              <ActionButton
+                action="search-experiences.generate-instructions"
+                icon={RefreshCw}
+                iconClassName="h-4 w-4"
                 variant="outline"
                 onClick={handleRegenerate}
                 disabled={generateMutation.isPending}
                 className="gap-2"
               >
-                <RefreshCw className="h-4 w-4" />
                 Regenerate
-              </Button>
+              </ActionButton>
               <Button
                 onClick={handleApply}
                 className="gap-2"

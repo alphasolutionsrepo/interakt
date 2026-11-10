@@ -3,6 +3,7 @@
 'use client';
 
 import { Can } from '@/shared/access/Can';
+import { noPermissionTo } from '@/features/access/ui-actions';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
@@ -929,7 +930,7 @@ export default function EditSearchIndexPage() {
               fallback={
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Lock className="size-4" aria-hidden />
-                  You don&apos;t have permission to manage ingestion keys. Ask an Admin if you need it.
+                  {noPermissionTo('manage ingestion keys')}
                 </p>
               }
             >

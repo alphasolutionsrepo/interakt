@@ -20,6 +20,11 @@ interface UiAction {
   permission: Permission | readonly Permission[];
   /** "METHOD /api/path" as the route-permissions snapshot writes it */
   routes: readonly string[];
+  /**
+   * For a public route (/api/v1, token or session) the snapshot doesn't cover: the file that
+   * checks this permission for a signed-in admin. The test reads it.
+   */
+  checkedIn?: string;
 }
 
 export const UI_ACTIONS = {
@@ -92,13 +97,38 @@ export const UI_ACTIONS = {
   // Prompt templates
   'prompts.edit': { does: 'edit prompts', permission: 'prompts:edit', routes: ['POST /api/prompt-templates'] },
   'prompts.make-default': { does: 'change which prompt version is the default', permission: 'prompts:edit', routes: ['POST /api/prompt-templates/[id]/rollback'] },
+
+  // Search experiences
+  'search-experiences.create': { does: 'create search experiences', permission: 'search-experiences:edit', routes: ['POST /api/search-experiences'] },
+  'search-experiences.edit': { does: 'edit search experiences', permission: 'search-experiences:edit', routes: ['PUT /api/search-experiences/[id]'] },
+  'search-experiences.delete': { does: 'delete search experiences', permission: 'search-experiences:edit', routes: ['DELETE /api/search-experiences/[id]'] },
+  'search-experiences.token': { does: 'regenerate access tokens', permission: 'search-experiences:edit', routes: ['POST /api/search-experiences/[id]/token'] },
+  // Asks the AI model, like a playground run
+  'search-experiences.generate-instructions': { does: 'generate instructions with AI', permission: 'playground:use', routes: ['POST /api/search-experiences/generate-instructions'] },
+
+  // Chat (AI) experiences
+  'ai-experiences.create': { does: 'create chat experiences', permission: 'ai-experiences:edit', routes: ['POST /api/ai-experiences'] },
+  'ai-experiences.edit': { does: 'edit chat experiences', permission: 'ai-experiences:edit', routes: ['PUT /api/ai-experiences/[id]'] },
+  'ai-experiences.delete': { does: 'delete chat experiences', permission: 'ai-experiences:edit', routes: ['DELETE /api/ai-experiences/[id]'] },
+  'ai-experiences.token': { does: 'regenerate access tokens', permission: 'ai-experiences:edit', routes: ['POST /api/ai-experiences/[id]/regenerate-token'] },
+
+  // Test chat on a chat experience: the public chat route, as a signed-in admin
+  'ai-experiences.test-chat': {
+    does: 'test chat experiences', permission: 'playground:use', routes: [],
+    checkedIn: 'src/features/auth/token-or-session.ts',
+  },
 } as const satisfies Record<string, UiAction>;
 
 export type UiActionId = keyof typeof UI_ACTIONS;
 
 /** Why the action is locked for someone without its permission. Names no role: a user may hold several. */
 export function lockReason(action: UiActionId): string {
-  return `You don't have permission to ${UI_ACTIONS[action].does}. Ask an Admin if you need it.`;
+  return noPermissionTo(UI_ACTIONS[action].does);
+}
+
+/** The one wording of a lock reason; `does` finishes "You don't have permission to ...". */
+export function noPermissionTo(does: string): string {
+  return `You don't have permission to ${does}. Ask an Admin if you need it.`;
 }
 
 /** True when a holder of these permissions may take the action. */

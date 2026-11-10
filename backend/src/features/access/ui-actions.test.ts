@@ -33,7 +33,12 @@ const asRule = (permission: Permission | readonly Permission[]) =>
 
 describe('UI actions', () => {
   it.each(Object.entries(UI_ACTIONS))('%s needs what the server checks on each of its routes', (_id, action) => {
-    expect(action.routes.length).toBeGreaterThan(0);
+    const checkedIn = 'checkedIn' in action ? action.checkedIn : undefined;
+    expect(action.routes.length > 0 || !!checkedIn, 'an action names its routes, or the file that checks it').toBe(true);
+    if (checkedIn) {
+      // A public route checks the permission in code: that file must ask for exactly it
+      expect(readFileSync(join(__dirname, '..', '..', '..', checkedIn), 'utf8')).toContain(`'${asRule(action.permission)}'`);
+    }
     for (const route of action.routes) {
       expect(serverRules.has(route), `${route} is not an API route`).toBe(true);
       expect(serverRules.get(route), route).toBe(asRule(action.permission));

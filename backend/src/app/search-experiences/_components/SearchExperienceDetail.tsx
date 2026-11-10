@@ -10,23 +10,17 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ChevronLeft,
-  Edit2,
-  Trash2,
   Compass,
   Database,
   Globe,
   Brain,
-  RefreshCw,
   Layers,
   Clock,
-  Power,
-  PowerOff,
   Search,
   Shield,
   Zap,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
 import { useSearchExperience } from '../_lib/hooks';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
 import { AccessTokenRow } from '@/shared/ui/custom/AccessTokenRow';
@@ -41,6 +35,8 @@ import {
   type ResultMergeStrategy,
   type IndexRole,
 } from '@/features/search-experience/search-experience.client';
+import { ExperienceHeaderActions } from '@/app/experiences/_components/ExperienceHeaderActions';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -145,18 +141,7 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
   };
 
   // Handle toggle active
-  const handleToggleActive = async () => {
-    if (!experience) return;
-    await updateExperience({ isActive: !experience.isActive });
-  };
 
-  // Handle regenerate token
-  const handleRegenerateToken = async () => {
-    await regenerateToken();
-    toast.success('New access token generated', {
-      description: 'Make sure to update your client applications.',
-    });
-  };
 
   // Loading state
   if (isLoading) {
@@ -220,34 +205,12 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
           </div>
         }
         actions={
-          <>
-            <Button variant="outline" size="sm" className="rounded-xl" onClick={handleRegenerateToken} disabled={isRegeneratingToken}>
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRegeneratingToken ? 'animate-spin' : ''}`} />
-              Regenerate Token
-            </Button>
-            <Button
-              variant={experience.isActive ? 'outline' : 'default'}
-              className={`rounded-xl ${experience.isActive ? '' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
-              onClick={handleToggleActive}
-              disabled={isUpdating}
-            >
-              {experience.isActive ? (
-                <>
-                  <PowerOff className="h-4 w-4 mr-2" />
-                  Deactivate
-                </>
-              ) : (
-                <>
-                  <Power className="h-4 w-4 mr-2" />
-                  Activate
-                </>
-              )}
-            </Button>
-            <Button variant="outline" className="rounded-xl" onClick={() => router.push(`${basePath}/${id}/edit`)}>
-              <Edit2 className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-          </>
+          <ExperienceHeaderActions
+            kind="search"
+            isActive={experience.isActive}
+            controls={{ regenerateToken, isRegeneratingToken, updateExperience, isUpdating }}
+            onEdit={() => router.push(`${basePath}/${id}/edit`)}
+          />
         }
       />
 
@@ -482,29 +445,13 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
       </div>
 
       {/* Danger Zone */}
-      <CollapsibleCard
-        className="border-destructive/30"
-        icon={<Trash2 className="h-4 w-4 text-destructive" />}
-        title={<span className="text-destructive">Danger Zone</span>}
-        description="Irreversible actions that permanently affect this search experience."
-      >
-        <div className="flex items-center justify-between p-4 bg-destructive/5 rounded-xl border border-destructive/20">
-          <div>
-            <p className="font-medium text-sm">Delete this search experience</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              This will permanently delete the experience.
-            </p>
-          </div>
-          <Button
-            variant="destructive"
-            className="rounded-xl"
-            onClick={() => setDeleteDialogOpen(true)}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </Button>
-        </div>
-      </CollapsibleCard>
+      <DangerZone
+        thing="search experience"
+        detail="This will permanently delete the experience."
+        action="search-experiences.delete"
+        onDelete={() => setDeleteDialogOpen(true)}
+        collapsible
+      />
 
       {/* Delete Dialog */}
       <DeleteConfirmDialog

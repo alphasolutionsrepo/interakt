@@ -4,7 +4,9 @@ import { useMemo } from 'react';
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
 import { useSearchExperiences } from '@/app/search-experiences/_lib/hooks';
 import type { AIExperienceWithTools } from '@/app/ai-experiences/_lib/api-client';
+import type { Permission } from '@/features/access/permissions';
 import type { SearchExperienceSummary } from '@/features/search-experience/search-experience.types';
+import { useAccess } from '@/shared/access/useAccess';
 
 // Discriminated union type
 export type UnifiedExperience =
@@ -19,31 +21,39 @@ export interface UseUnifiedExperiencesParams {
   pageSize?: number;
 }
 
+/**
+ * Which lists the hub loads: each kind the user may view, whatever the tab (the counts at the
+ * top show both kinds). A list the server would refuse is never requested.
+ */
+export function listsToLoad(can: (p: Permission) => boolean) {
+  return {
+    skipAI: !can('ai-experiences:view'),
+    skipSearch: !can('search-experiences:view'),
+  };
+}
+
+/** The hub's type tabs a user may use: one per kind they can view, and "All" when they can view both. */
+export function viewableTypes(can: (p: Permission) => boolean): Array<'all' | 'ai' | 'search'> {
+  const ai = can('ai-experiences:view');
+  const search = can('search-experiences:view');
+  return [...(ai && search ? ['all' as const] : []), ...(ai ? ['ai' as const] : []), ...(search ? ['search' as const] : [])];
+}
+
 export function useUnifiedExperiences(params: UseUnifiedExperiencesParams) {
   const { typeFilter, search, isActive, page = 1, pageSize = 12 } = params;
 
-  const skipAI = typeFilter === 'search';
-  const skipSearch = typeFilter === 'ai';
+  // While access is loading neither list is requested
+  const { can, isLoading: accessLoading } = useAccess();
+  const { skipAI, skipSearch } = listsToLoad(can);
+  const listParams = {
+    page: typeFilter === 'all' ? 1 : page,
+    pageSize: typeFilter === 'all' ? 100 : pageSize, // fetch more when merging
+    search: search || undefined,
+    isActive,
+  };
 
-  // AI experiences hook
-  const ai = useAIExperiences(
-    skipAI ? undefined : {
-      page: typeFilter === 'all' ? 1 : page,
-      pageSize: typeFilter === 'all' ? 100 : pageSize, // fetch more when merging
-      search: search || undefined,
-      isActive,
-    }
-  );
-
-  // Search experiences hook
-  const search_ = useSearchExperiences(
-    skipSearch ? undefined : {
-      page: typeFilter === 'all' ? 1 : page,
-      pageSize: typeFilter === 'all' ? 100 : pageSize,
-      search: search || undefined,
-      isActive,
-    }
-  );
+  const ai = useAIExperiences(listParams, { enabled: !skipAI });
+  const search_ = useSearchExperiences(listParams, { enabled: !skipSearch });
 
   // Merge and sort
   const { items, pagination } = useMemo(() => {
@@ -100,7 +110,7 @@ export function useUnifiedExperiences(params: UseUnifiedExperiencesParams) {
     items,
     pagination,
     metrics,
-    isLoading: (!skipAI && ai.isLoading) || (!skipSearch && search_.isLoading),
+    isLoading: accessLoading || (!skipAI && ai.isLoading) || (!skipSearch && search_.isLoading),
     isRefetching: ai.isRefetching || search_.isRefetching,
     refetch: () => {
       if (!skipAI) ai.refetch();

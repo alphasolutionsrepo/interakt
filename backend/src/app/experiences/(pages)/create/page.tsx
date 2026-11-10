@@ -1,10 +1,11 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Bot, Compass, ChevronRight, Sparkles, ArrowRight } from 'lucide-react';
+import { Bot, Compass, ChevronRight, Sparkles, ArrowRight, Lock } from 'lucide-react';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { useActionGate, withLockHint, type ActionGate } from '@/shared/access/ActionControls';
 import { CreateWizard as AICreateWizard } from '@/app/ai-experiences/_components/CreateWizard/CreateWizard';
 import { CreateWizard as SearchCreateWizard } from '@/app/search-experiences/_components/CreateWizard/CreateWizard';
 
@@ -21,7 +22,13 @@ export default function CreateExperiencePage() {
 function CreateExperienceContent() {
   const searchParams = useSearchParams();
   const preselected = searchParams.get('type') as ExperienceType;
-  const [selectedType, setSelectedType] = useState<ExperienceType>(preselected);
+  const [chosenType, setSelectedType] = useState<ExperienceType>(preselected);
+  const aiGate = useActionGate('ai-experiences.create');
+  const searchGate = useActionGate('search-experiences.create');
+  // A link straight to a kind this user can't create shows the choice instead of a wizard the
+  // server would refuse at the end
+  const allowedKind = (t: ExperienceType) => (t === 'ai' ? aiGate : searchGate).state === 'allowed';
+  const selectedType: ExperienceType = chosenType && allowedKind(chosenType) ? chosenType : null;
 
   if (selectedType === 'ai') {
     return (
@@ -103,40 +110,56 @@ function CreateExperienceContent() {
       />
 
       <div className="grid md:grid-cols-2 gap-6 max-w-3xl">
-        {/* AI Experience Card */}
-        <button
-          onClick={() => setSelectedType('ai')}
-          className="group relative flex flex-col items-start text-left rounded-2xl border border-border/60 bg-card shadow-sm p-8 transition-all duration-200 hover:shadow-md hover:border-indigo-500/30 hover:bg-indigo-500/[0.02]"
-        >
-          <div className="flex size-14 items-center justify-center rounded-xl bg-indigo-500/10 ring-1 ring-indigo-500/20 mb-5">
-            <Bot className="size-7 text-indigo-500" />
-          </div>
-          <h3 className="text-lg font-semibold mb-2">AI Experience</h3>
-          <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-            Build conversational AI assistants powered by tools and configurable pipelines. Great for chatbots, support agents, and interactive Q&A.
-          </p>
-          <div className="mt-auto flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 group-hover:gap-3 transition-all">
-            Get started <ArrowRight className="size-4" />
-          </div>
-        </button>
-
-        {/* Search Experience Card */}
-        <button
-          onClick={() => setSelectedType('search')}
-          className="group relative flex flex-col items-start text-left rounded-2xl border border-border/60 bg-card shadow-sm p-8 transition-all duration-200 hover:shadow-md hover:border-violet-500/30 hover:bg-violet-500/[0.02]"
-        >
-          <div className="flex size-14 items-center justify-center rounded-xl bg-violet-500/10 ring-1 ring-violet-500/20 mb-5">
-            <Compass className="size-7 text-violet-500" />
-          </div>
-          <h3 className="text-lg font-semibold mb-2">Search Experience</h3>
-          <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-            Create search interfaces with multi-index support, AI summaries, and configurable result displays. Ideal for product search and knowledge bases.
-          </p>
-          <div className="mt-auto flex items-center gap-2 text-sm font-medium text-violet-600 dark:text-violet-400 group-hover:gap-3 transition-all">
-            Get started <ArrowRight className="size-4" />
-          </div>
-        </button>
+        <KindCard
+          gate={aiGate}
+          onSelect={() => setSelectedType('ai')}
+          icon={<Bot className="size-7 text-indigo-500" />}
+          iconClassName="bg-indigo-500/10 ring-indigo-500/20"
+          hoverClassName="hover:border-indigo-500/30 hover:bg-indigo-500/[0.02]"
+          linkClassName="text-indigo-600 dark:text-indigo-400"
+          title="AI Experience"
+          text="Build conversational AI assistants powered by tools and configurable pipelines. Great for chatbots, support agents, and interactive Q&A."
+        />
+        <KindCard
+          gate={searchGate}
+          onSelect={() => setSelectedType('search')}
+          icon={<Compass className="size-7 text-violet-500" />}
+          iconClassName="bg-violet-500/10 ring-violet-500/20"
+          hoverClassName="hover:border-violet-500/30 hover:bg-violet-500/[0.02]"
+          linkClassName="text-violet-600 dark:text-violet-400"
+          title="Search Experience"
+          text="Create search interfaces with multi-index support, AI summaries, and configurable result displays. Ideal for product search and knowledge bases."
+        />
       </div>
     </div>
   );
+}
+
+/** One kind to create; locked with the reason for a user who may not create it. */
+function KindCard({ gate, onSelect, icon, iconClassName, hoverClassName, linkClassName, title, text }: {
+  gate: ActionGate;
+  onSelect: () => void;
+  icon: ReactNode;
+  iconClassName: string;
+  hoverClassName: string;
+  linkClassName: string;
+  title: string;
+  text: string;
+}) {
+  const locked = gate.state === 'locked';
+  const card = (
+    <button
+      onClick={onSelect}
+      disabled={gate.state !== 'allowed'}
+      className={`group relative flex h-full w-full flex-col items-start text-left rounded-2xl border border-border/60 bg-card shadow-sm p-8 transition-all duration-200 disabled:opacity-60 ${locked ? '' : `hover:shadow-md ${hoverClassName}`}`}
+    >
+      <div className={`flex size-14 items-center justify-center rounded-xl ring-1 mb-5 ${iconClassName}`}>{icon}</div>
+      <h3 className="text-lg font-semibold mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground leading-relaxed mb-6">{text}</p>
+      <div className={`mt-auto flex items-center gap-2 text-sm font-medium ${locked ? 'text-muted-foreground' : `${linkClassName} group-hover:gap-3`} transition-all`}>
+        {locked ? <><Lock className="size-4" aria-hidden /> Locked</> : <>Get started <ArrowRight className="size-4" /></>}
+      </div>
+    </button>
+  );
+  return <>{withLockHint(gate, card, true)}</>;
 }
