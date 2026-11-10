@@ -17,6 +17,7 @@ import { RolesPanel } from './RolesPanel';
 
 import { ADMIN_ROLE_ID, ALL_PERMISSIONS, EDITOR_DEFAULT_PERMISSIONS } from '@/features/access/permissions';
 import { uiAccess } from '@/shared/test/ui-access-stub';
+import { controlState } from '@/shared/test/rendered-controls';
 
 const role = (over: Partial<RoleResponse>): RoleResponse => ({
   id: 'r', name: 'R', description: null, permissions: [], isBuiltIn: false, userCount: 0, ...over,
@@ -110,10 +111,6 @@ describe('RolesPanel', () => {
     else uiAccess.hold('users:manage');
     return renderToStaticMarkup(createElement(RolesPanel));
   };
-  /** A button wrapped in the lock hint, disabled, and carrying this attribute or text */
-  const locked = (html: string, label: string) =>
-    [...html.matchAll(/<span[^>]*data-locked=""[^>]*>(<button[^>]*>)(.*?)<\/button>/g)]
-      .some(([, tag, inner]) => tag.includes('disabled=""') && (tag + inner).includes(label));
 
   it('gives an Admin the add, edit and delete buttons, never on the built-in Admin role', () => {
     const html = panel(true);
@@ -127,9 +124,9 @@ describe('RolesPanel', () => {
 
   it('shows another user manager the same buttons, locked with the reason, and the overview read-only', () => {
     const html = panel(false);
-    expect(locked(html, 'aria-label="Edit Editor"')).toBe(true);
-    expect(locked(html, 'aria-label="Delete Tester"')).toBe(true);
-    expect(locked(html, 'Add Role')).toBe(true);
+    expect(controlState(html, { attr: 'aria-label="Edit Editor"' }) === 'locked').toBe(true);
+    expect(controlState(html, { attr: 'aria-label="Delete Tester"' }) === 'locked').toBe(true);
+    expect(controlState(html, { text: 'Add Role' }) === 'locked').toBe(true);
     expect(html).toContain('Only an Admin can add, change or delete roles.');
     expect(switches(html).every(([, , disabled]) => disabled)).toBe(true);
   });

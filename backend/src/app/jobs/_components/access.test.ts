@@ -18,18 +18,12 @@ import { JobTypeCard } from './JobTypeCard';
 
 import { CacheFeatureCard } from '@/app/settings/cache/_components/CacheFeatureCard';
 import { uiAccess } from '@/shared/test/ui-access-stub';
+import { controlState } from '@/shared/test/rendered-controls';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 vi.mock('@/components/ui/dropdown-menu', async () => (await import('@/shared/test/open-overlays-stub')).dropdownMenu);
 
 const render = (el: ReactElement) => renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, el));
-/** "locked", "disabled" or "open", for the button or menu item holding this text */
-const state = (html: string, text: string) => {
-  const m = [...html.matchAll(/(<span[^>]*data-locked=""[^>]*>)?(<button[^>]*>)((?:(?!<\/button>).)*)<\/button>/g)]
-    .find(([, , , inner]) => inner.replace(/<[^>]+>/g, '').trim() === text);
-  if (!m) return 'missing';
-  return m[1] ? 'locked' : m[2].includes('disabled=""') ? 'disabled' : 'open';
-};
 
 const jobType = { queue: 'reindex', label: 'Reindex', description: 'Rebuild an index', payloadExample: {} };
 const failedJob: JobRecord = {
@@ -47,25 +41,25 @@ describe('background jobs', () => {
   beforeEach(() => uiAccess.hold('settings:view'));
 
   it('locks Run now, Schedule and the per-job actions for a settings viewer', () => {
-    expect(state(card(), 'Run now')).toBe('locked');
-    expect(state(card(), 'Schedule')).toBe('locked');
-    expect(state(table(), 'Retry')).toBe('locked');
-    expect(state(table(), 'View details')).toBe('open');
+    expect(controlState(card(), { text: 'Run now' })).toBe('locked');
+    expect(controlState(card(), { text: 'Schedule' })).toBe('locked');
+    expect(controlState(table(), { text: 'Retry' })).toBe('locked');
+    expect(controlState(table(), { text: 'View details' })).toBe('open');
     expect(card()).toContain('You don&#x27;t have permission to run background jobs.');
   });
 
   it('opens them with jobs:run', () => {
     uiAccess.hold('settings:view', 'jobs:run');
-    expect(state(card(), 'Run now')).toBe('open');
-    expect(state(table(), 'Retry')).toBe('open');
+    expect(controlState(card(), { text: 'Run now' })).toBe('open');
+    expect(controlState(table(), { text: 'Retry' })).toBe('open');
   });
 });
 
 describe('caches', () => {
   it('locks Clear Cache without settings:manage', () => {
     uiAccess.hold('settings:view');
-    expect(state(cache(), 'Clear Cache')).toBe('locked');
+    expect(controlState(cache(), { text: 'Clear Cache' })).toBe('locked');
     uiAccess.hold('settings:view', 'settings:manage');
-    expect(state(cache(), 'Clear Cache')).toBe('open');
+    expect(controlState(cache(), { text: 'Clear Cache' })).toBe('open');
   });
 });

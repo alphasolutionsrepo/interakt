@@ -16,6 +16,7 @@ import { FieldMappingsCard } from './FieldMappingsCard';
 import { IndexRowMenu } from './IndexRowMenu';
 
 import { uiAccess } from '@/shared/test/ui-access-stub';
+import { controlState, menuItems } from '@/shared/test/rendered-controls';
 import { DangerZone } from '@/shared/ui/custom/DangerZone';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
@@ -26,16 +27,9 @@ const noop = () => {};
 const render = (el: Parameters<typeof renderToStaticMarkup>[0]) =>
   renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, el));
 
-/** Each menu item as "label" or "label (locked)" */
-const menuItems = (html: string) => [...html.matchAll(/<button[^>]*role="menuitem"([^>]*)>(.*?)<\/button>/g)]
-  .map(([, attrs, inner]) => `${inner.replace(/<[^>]+>/g, '')}${attrs.includes('disabled') && inner.includes('lucide-lock') ? ' (locked)' : ''}`);
-/** Whether a button with this text is locked (inside the hint, disabled, with the lock icon) */
-const locked = (html: string, text: string) =>
-  [...html.matchAll(/<span[^>]*data-locked=""[^>]*>(<button[^>]*>)(.*?)<\/button>/g)]
-    .some(([, tag, inner]) => tag.includes('disabled=""') && inner.includes('lucide-lock') && inner.includes(text));
 
-const menu = (status = 'active') => render(createElement(IndexRowMenu, {
-  index: { status } as never, onView: noop, onEdit: noop, onDelete: noop, triggerClassName: '', itemClassName: '',
+const menu = (status = 'active', isBuiltIn = false) => render(createElement(IndexRowMenu, {
+  index: { status, isBuiltIn } as never, onView: noop, onEdit: noop, onDelete: noop, triggerClassName: '', itemClassName: '',
 }));
 
 describe('index menu (card and table views)', () => {
@@ -59,28 +53,38 @@ describe('index menu (card and table views)', () => {
   });
 });
 
+describe('the built-in docs index', () => {
+  it('locks every change for an index and document editor who is not an Admin', () => {
+    uiAccess.hold('search-indexes:view', 'search-indexes:edit', 'documents:edit');
+    expect(menuItems(menu('active', true))).toEqual(['View Details', 'Edit (locked)', 'Reindex (locked)', 'Delete (locked)']);
+    const card = render(createElement(FieldMappingsCard, { searchIndexId: 'i', summary: null, isLoading: false, builtIn: true }));
+    expect(controlState(card, { text: 'Configure Fields' })).toBe('locked');
+    expect(card).toContain('Only an Admin can change the built-in help.');
+  });
+});
+
 describe('index page parts', () => {
   beforeEach(() => uiAccess.hold('search-indexes:view'));
 
   it('locks Import for a viewer and allows it with search-indexes:edit', () => {
-    expect(locked(render(createElement(ExportImportButtons, { importOnly: true })), 'Import')).toBe(true);
+    expect((controlState(render(createElement(ExportImportButtons, { importOnly: true })), { text: 'Import' }) === 'locked')).toBe(true);
     uiAccess.hold('search-indexes:view', 'search-indexes:edit');
-    expect(locked(render(createElement(ExportImportButtons, { importOnly: true })), 'Import')).toBe(false);
+    expect((controlState(render(createElement(ExportImportButtons, { importOnly: true })), { text: 'Import' }) === 'locked')).toBe(false);
   });
 
   it('locks Configure Fields for a viewer', () => {
     const card = () => render(createElement(FieldMappingsCard, { searchIndexId: 'i', summary: null, isLoading: false }));
-    expect(locked(card(), 'Configure Fields')).toBe(true);
+    expect((controlState(card(), { text: 'Configure Fields' }) === 'locked')).toBe(true);
     uiAccess.hold('search-indexes:view', 'search-indexes:edit');
-    expect(locked(card(), 'Configure Fields')).toBe(false);
+    expect((controlState(card(), { text: 'Configure Fields' }) === 'locked')).toBe(false);
   });
 
   it("locks the Danger Zone's Delete with the reason", () => {
     const zone = () => render(createElement(DangerZone, { thing: 'search index', detail: 'Gone for good.', action: 'search-indexes.delete', onDelete: noop }));
-    expect(locked(zone(), 'Delete')).toBe(true);
+    expect((controlState(zone(), { text: 'Delete' }) === 'locked')).toBe(true);
     expect(zone()).toContain('You don&#x27;t have permission to delete search indexes.');
     expect(zone()).toContain('Delete this search index');
     uiAccess.hold('search-indexes:edit');
-    expect(locked(zone(), 'Delete')).toBe(false);
+    expect((controlState(zone(), { text: 'Delete' }) === 'locked')).toBe(false);
   });
 });

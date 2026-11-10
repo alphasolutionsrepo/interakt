@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToolTestPanel } from './ToolTestPanel';
 
 import { uiAccess } from '@/shared/test/ui-access-stub';
+import { controlState, menuItems } from '@/shared/test/rendered-controls';
 import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
@@ -19,15 +20,6 @@ vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui
 vi.mock('@/components/ui/dropdown-menu', async () => (await import('@/shared/test/open-overlays-stub')).dropdownMenu);
 
 const noop = () => {};
-const menuItems = (html: string) => [...html.matchAll(/<button[^>]*role="menuitem"([^>]*)>(.*?)<\/button>/g)]
-  .map(([, attrs, inner]) => `${inner.replace(/<[^>]+>/g, '')}${attrs.includes('disabled') && inner.includes('lucide-lock') ? ' (locked)' : ''}`);
-/** "locked", "disabled" (for its own reason) or "open", for the button holding this text */
-const buttonState = (html: string, text: string) => {
-  const m = [...html.matchAll(/(<span[^>]*data-locked=""[^>]*>)?(<button[^>]*>)((?:(?!<\/button>).)*)<\/button>/g)]
-    .find(([, , , inner]) => inner.replace(/<[^>]+>/g, '').trim() === text);
-  if (!m) return 'missing';
-  return m[1] ? 'locked' : m[2].includes('disabled=""') ? 'disabled' : 'open';
-};
 
 describe('tool and MCP menus', () => {
   beforeEach(() => uiAccess.hold('tools:view'));
@@ -57,7 +49,7 @@ describe('the built-in help', () => {
     expect(menuItems(html)).toEqual(['View Details', 'Edit (locked)', 'Delete (locked)']);
     expect(html).toContain('Only an Admin can change the built-in help.');
     const zone = renderToStaticMarkup(createElement(DangerZone, { thing: 'tool', detail: 'x', action: 'tools.delete', onDelete: noop, builtIn: true }));
-    expect(buttonState(zone, 'Delete')).toBe('locked');
+    expect(controlState(zone, { text: 'Delete' })).toBe('locked');
   });
 });
 
@@ -66,13 +58,13 @@ describe('tool test panel', () => {
 
   it('shows the panel with Run locked without playground:use, even for a tool editor', () => {
     uiAccess.hold('tools:view', 'tools:edit');
-    expect(buttonState(panel(), 'Run')).toBe('locked');
+    expect(controlState(panel(), { text: 'Run' })).toBe('locked');
     expect(panel()).toContain('You don&#x27;t have permission to test tools.');
   });
 
   it('lets a playground user run it once there is input', () => {
     uiAccess.hold('tools:view', 'playground:use');
-    expect(buttonState(panel(), 'Run')).toBe('disabled'); // empty input: its own reason, no lock
+    expect(controlState(panel(), { text: 'Run' })).toBe('disabled'); // empty input: its own reason, no lock
   });
 });
 
@@ -83,12 +75,12 @@ describe("a tool's Danger Zone", () => {
 
   it('locks Delete for a viewer', () => {
     uiAccess.hold('tools:view');
-    expect(buttonState(zone(false), 'Delete')).toBe('locked');
+    expect(controlState(zone(false), { text: 'Delete' })).toBe('locked');
   });
 
   it('keeps Delete disabled, without the lock, while experiences still use the tool', () => {
     uiAccess.hold('tools:edit');
-    expect(buttonState(zone(true), 'Delete')).toBe('disabled');
-    expect(buttonState(zone(false), 'Delete')).toBe('open');
+    expect(controlState(zone(true), { text: 'Delete' })).toBe('disabled');
+    expect(controlState(zone(false), { text: 'Delete' })).toBe('open');
   });
 });

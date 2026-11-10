@@ -173,8 +173,8 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
       </Card>
 
       {/* Chat Test Panel */}
-      {/* Send is locked with the reason for a role without playground:use */}
-      <ChatTestPanel experienceSlug={experience.slug} experienceName={experience.name} />
+      {/* Send is locked with the reason for a role without playground:use (open on the built-in help) */}
+      <ChatTestPanel experienceSlug={experience.slug} experienceName={experience.name} isBuiltIn={experience.isBuiltIn} />
 
       {/* Pipeline Configuration */}
       <PipelineStepsCard

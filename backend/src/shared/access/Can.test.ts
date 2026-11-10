@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccessLink, Can } from './Can';
 
 import type { Permission } from '@/features/access/permissions';
-import { uiAccess } from '@/shared/test/ui-access-stub';
+import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
 
 vi.mock('./useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 
@@ -44,7 +44,12 @@ describe('Can', () => {
     expect(renderToStaticMarkup(createElement(Can, { action: 'ai-providers.add', fallback: 'no', children: 'yes' }))).toBe('no');
   });
 
-  it('shows nothing while access is loading (no permissions known yet)', () => {
+  it('shows neither the section nor its fallback while access is loading', () => {
+    uiAccessLoading();
+    expect(can('settings:view')).toBe('');
+  });
+
+  it('shows the fallback once access is known to lack the permission', () => {
     expect(can('settings:view')).toBe('no');
   });
 });

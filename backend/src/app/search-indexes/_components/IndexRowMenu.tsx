@@ -9,7 +9,7 @@ import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
 /** One index's menu, the same in the card and table views. */
 export function IndexRowMenu({ index, onView, onEdit, onDelete, triggerClassName, iconClassName, itemClassName }: {
-  index: Pick<SearchIndexSummary, 'status'>;
+  index: Pick<SearchIndexSummary, 'status' | 'isBuiltIn'>;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -24,6 +24,7 @@ export function IndexRowMenu({ index, onView, onEdit, onDelete, triggerClassName
       onDelete={onDelete}
       editAction="search-indexes.edit"
       deleteAction="search-indexes.delete"
+      builtIn={index.isBuiltIn}
       extra={[{
         label: 'Reindex',
         icon: RotateCcw,

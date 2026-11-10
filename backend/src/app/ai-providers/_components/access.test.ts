@@ -15,6 +15,7 @@ import { SystemDefaultsCard } from './SystemDefaultsCard';
 
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { uiAccess } from '@/shared/test/ui-access-stub';
+import { controlState, menuItems } from '@/shared/test/rendered-controls';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 vi.mock('@/components/ui/dropdown-menu', async () => (await import('@/shared/test/open-overlays-stub')).dropdownMenu);
@@ -38,9 +39,6 @@ const defaults = () => renderToStaticMarkup(createElement(SystemDefaultsCard, {
   defaults: undefined, providers: [ollama], onSave: async () => {},
 }));
 
-/** Each menu item as "label" or "label (locked)" */
-const menuItems = (html: string) => [...html.matchAll(/<button[^>]*role="menuitem"([^>]*)>(.*?)<\/button>/g)]
-  .map(([, attrs, inner]) => `${inner.replace(/<[^>]+>/g, '')}${attrs.includes('disabled') && inner.includes('lucide-lock') ? ' (locked)' : ''}`);
 const switchDisabled = (html: string, label: string) =>
   new RegExp(`<button[^>]*role="switch"[^>]*aria-label="${label}"[^>]*>`).exec(html)?.[0].includes('disabled=""');
 
@@ -66,15 +64,13 @@ describe('provider list', () => {
 
 describe('models dialog', () => {
   beforeEach(() => uiAccess.hold('ai-providers:view'));
-  const lockedButton = (html: string, label: string) =>
-    new RegExp(`<button[^>]*disabled=""[^>]*>(?:(?!</button>).)*lucide-lock(?:(?!</button>).)*${label}</button>`).test(html);
 
   it('lists the models for a viewer with every change locked', () => {
     const html = models();
     expect(html).toContain('Models for Local Ollama');
     expect(html).toContain('Qwen');
-    expect(lockedButton(html, 'Add Model')).toBe(true);
-    expect(lockedButton(html, 'Discover Models')).toBe(true);
+    expect(controlState(html, { text: 'Add Model' }) === 'locked').toBe(true);
+    expect(controlState(html, { text: 'Discover Models' }) === 'locked').toBe(true);
     expect(menuItems(html)).toEqual(['Edit (locked)', 'Delete (locked)']);
     expect(switchDisabled(html, 'Qwen available')).toBe(true);
   });
@@ -83,7 +79,7 @@ describe('models dialog', () => {
     uiAccess.hold('ai-providers:manage', 'ai-providers:view');
     const html = models();
     expect(html).toContain('Add, edit, or remove models for Local Ollama');
-    expect(lockedButton(html, 'Add Model')).toBe(false);
+    expect(controlState(html, { text: 'Add Model' }) === 'locked').toBe(false);
     expect(html).toContain('Add Model');
     expect(menuItems(html)).toEqual(['Edit', 'Delete']);
     expect(switchDisabled(html, 'Qwen available')).toBe(false);
@@ -93,7 +89,7 @@ describe('models dialog', () => {
     const html = models(empty);
     expect(html).toContain('No models configured');
     expect(html.match(/Add Model/g)).toHaveLength(2); // action bar + empty state
-    expect(lockedButton(html, 'Add Model')).toBe(true);
+    expect(controlState(html, { text: 'Add Model' }) === 'locked').toBe(true);
   });
 });
 

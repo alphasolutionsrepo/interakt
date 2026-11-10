@@ -13,6 +13,7 @@ import { roleChoices, userGates } from './user-gates';
 
 import { ADMIN_ROLE_ID } from '@/features/access/permissions';
 import { uiAccess } from '@/shared/test/ui-access-stub';
+import { menuItems } from '@/shared/test/rendered-controls';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 vi.mock('@/components/ui/dropdown-menu', async () => (await import('@/shared/test/open-overlays-stub')).dropdownMenu);
@@ -75,16 +76,14 @@ describe("a user's row menu", () => {
     users: [{ id: 'x', email: 'x@x.test', firstName: null, lastName: null, roleId: 'editor', isActive: true, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', ...u }],
     onEdit: noop, onChangePassword: noop, onActivate: noop, onDeactivate: noop,
   }));
-  const locked = (html: string) => [...html.matchAll(/<button[^>]*role="menuitem"([^>]*)>(.*?)<\/button>/g)]
-    .map(([, attrs, inner]) => `${inner.replace(/<[^>]+>/g, '')}${attrs.includes('disabled') && inner.includes('lucide-lock') ? ' (locked)' : ''}`);
 
   it("is usable on someone else's account", () => {
-    expect(locked(row({ role: { id: 'editor', name: 'Editor', isBuiltIn: false } }))).toEqual(['Edit User', 'Change Password', 'Deactivate']);
+    expect(menuItems(row({ role: { id: 'editor', name: 'Editor', isBuiltIn: false } }))).toEqual(['Edit User', 'Change Password', 'Deactivate']);
   });
 
   it("is locked on an Admin's account, with the reason", () => {
     const html = row({ roleId: ADMIN_ROLE_ID, role: { id: ADMIN_ROLE_ID, name: 'Admin', isBuiltIn: true } });
-    expect(locked(html)).toEqual(['Edit User (locked)', 'Change Password (locked)', 'Deactivate (locked)']);
+    expect(menuItems(html)).toEqual(['Edit User (locked)', 'Change Password (locked)', 'Deactivate (locked)']);
     expect(html).toContain('Only an Admin can manage a user with the Admin role.');
   });
 });

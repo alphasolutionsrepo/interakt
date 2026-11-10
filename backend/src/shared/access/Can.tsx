@@ -31,7 +31,9 @@ interface CanProps {
 
 /** Renders its children only for a user who may take the action or holds the permission; `fallback` otherwise. */
 export function Can({ children, fallback = null, ...rule }: CanProps) {
-  const { can, canDo } = useAccess();
+  const { can, canDo, isLoading } = useAccess();
+  // Neither the section nor its fallback while loading: a "no permission" note must not flash
+  if (isLoading) return null;
   const allowed = rule.action ? canDo(rule.action) : !!rule.permission && holdsAny(can, rule.permission);
   return <>{allowed ? children : fallback}</>;
 }

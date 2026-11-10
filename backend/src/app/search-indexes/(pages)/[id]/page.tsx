@@ -601,6 +601,7 @@ export default function SearchIndexDetailPage() {
         {/* Fields — takes 2/3 */}
         <div className="lg:col-span-2">
           <FieldMappingsCard
+            builtIn={searchIndex.isBuiltIn}
             searchIndexId={indexId}
             summary={fieldMappingSummary ?? null}
             isLoading={isLoadingMappingSummary}

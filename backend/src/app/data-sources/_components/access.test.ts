@@ -13,14 +13,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { healthCheckDue } from '../_lib/hooks/useHealthCheck';
 
 import { uiAccess } from '@/shared/test/ui-access-stub';
+import { menuItems } from '@/shared/test/rendered-controls';
 import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 vi.mock('@/components/ui/dropdown-menu', async () => (await import('@/shared/test/open-overlays-stub')).dropdownMenu);
 
 const noop = () => {};
-const menuItems = (html: string) => [...html.matchAll(/<button[^>]*role="menuitem"([^>]*)>(.*?)<\/button>/g)]
-  .map(([, attrs, inner]) => `${inner.replace(/<[^>]+>/g, '')}${attrs.includes('disabled') && inner.includes('lucide-lock') ? ' (locked)' : ''}`);
 const menu = () => renderToStaticMarkup(createElement(RowActionsMenu, {
   onView: noop, onEdit: noop, onDelete: noop, editAction: 'data-sources.edit', deleteAction: 'data-sources.delete',
   triggerClassName: '', itemClassName: '',

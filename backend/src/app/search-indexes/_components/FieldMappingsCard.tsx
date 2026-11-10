@@ -26,6 +26,8 @@ interface FieldMappingsCardProps {
     searchIndexId: string;
     summary: FieldMappingSummary | null;
     isLoading?: boolean;
+    /** The built-in docs index: locked for anyone but an Admin */
+    builtIn?: boolean;
 }
 
 // ============================================================================
@@ -68,6 +70,7 @@ export function FieldMappingsCard({
     searchIndexId,
     summary,
     isLoading,
+    builtIn = false,
 }: FieldMappingsCardProps) {
     const router = useRouter();
 
@@ -170,6 +173,7 @@ export function FieldMappingsCard({
                 <div className="flex justify-end">
                     <ActionButton
                         action="search-indexes.edit"
+                        builtIn={builtIn}
                         icon={Settings2}
                         iconClassName="h-4 w-4"
                         variant="outline"
