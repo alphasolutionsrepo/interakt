@@ -37,7 +37,10 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
   const listHref = listPath ?? basePath;
   const router = useRouter();
   // Test runs spend AI tokens or call the tool: playground:use
-  const canTest = useAccess().can('playground:use');
+  const { can } = useAccess();
+  const canTest = can('playground:use');
+  // The token also reaches playground users; the widget editor (which saves) is for editors
+  const canEdit = can('ai-experiences:edit');
   const {
     experience, isLoading, isError, refetch,
     updateExperience, deleteExperience, regenerateToken,
@@ -277,8 +280,8 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
           <div className="h-px flex-1 bg-border/60" />
         </div>
 
-        {/* Access Token and widget: only roles that may edit chat experiences get the token */}
-        {experience.accessToken && (
+        {/* Access Token and widget: for roles that may edit chat experiences */}
+        {canEdit && experience.accessToken && (
         <>
         <AccessTokenRow token={experience.accessToken} />
 

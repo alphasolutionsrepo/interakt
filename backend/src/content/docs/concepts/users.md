@@ -47,7 +47,7 @@ Permissions come in groups, each with a view permission and one to change things
 - **Testing and analytics**: the playgrounds and test buttons (these spend AI tokens); viewing analytics, conversations, traces and what the assistant remembers about visitors; asking the analytics assistant; changing analytics and tracing settings and dismissing tips.
 - **System**: settings and background jobs; running jobs; secrets and ingestion keys; users and roles; the demo and docs setup.
 
-Tools, MCP connections and data sources that use a secret from the vault can be set up or changed only by a role that can manage secrets. An experience's access token, and its widget snippet, are shown to roles that can edit that kind of experience.
+Tools, MCP connections and data sources that use a secret from the vault can be set up or changed only by a role that can manage secrets. An experience's access token goes to roles that can edit that kind of experience, and to roles that can use the playgrounds (which call the experience with it). The token and widget snippet on the experience's page are shown to roles that can edit it.
 
 A permission to change something includes the one to see it, and asking the analytics assistant includes viewing analytics; the Roles dialog shows these as included. Running the demo and docs setup takes effect only together with the permissions for what it sets up: AI providers, settings, indexes and documents, data sources, experiences, tools and prompts.
 
