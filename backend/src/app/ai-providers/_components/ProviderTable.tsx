@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import {
   MoreVertical,
   Edit,
@@ -37,6 +36,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
+import { ActionMenuItem, ActionSwitch } from '@/shared/access/ActionControls';
 import { useAccess } from '@/shared/access/useAccess';
 
 interface ProviderTableProps {
@@ -66,7 +66,6 @@ export function ProviderTable({
 }: ProviderTableProps) {
   const [testingId, setTestingId] = useState<string | null>(null);
   const { canDo } = useAccess();
-  const canDelete = canDo('ai-providers.delete');
 
   const handleTestConnection = async (provider: AIProviderWithModelsResponse) => {
     setTestingId(provider.id);
@@ -202,11 +201,11 @@ export function ProviderTable({
 
                 {/* Enabled Toggle */}
                 <TableCell>
-                  <Switch
+                  <ActionSwitch
+                    action="ai-providers.enable"
                     checked={provider.isEnabled}
                     onCheckedChange={() => onToggleEnabled(provider)}
-                    // Shown to everyone who sees the list; only switchable for those who may
-                    disabled={!canDo('ai-providers.enable') || isEnabling || isDisabling}
+                    disabled={isEnabling || isDisabling}
                     aria-label={`${provider.displayName} enabled`}
                   />
                 </TableCell>
@@ -225,43 +224,35 @@ export function ProviderTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
-                      {canDo('ai-providers.edit') && (
-                        <DropdownMenuItem onClick={() => onEdit(provider)}>
-                          <Edit className="mr-2 size-4" />
-                          Edit Provider
-                        </DropdownMenuItem>
-                      )}
+                      <ActionMenuItem action="ai-providers.edit" icon={Edit} onClick={() => onEdit(provider)}>
+                        Edit Provider
+                      </ActionMenuItem>
                       <DropdownMenuItem onClick={() => onManageModels(provider)}>
                         <Layers className="mr-2 size-4" />
                         {canDo('ai-models.change') ? 'Manage Models' : 'View Models'}
                       </DropdownMenuItem>
-                      {canDo('ai-providers.test') && (
-                        <DropdownMenuItem
-                          onClick={() => handleTestConnection(provider)}
-                          disabled={testingId === provider.id || isTesting}
-                        >
-                          <TestTube className="mr-2 size-4" />
-                          {testingId === provider.id ? 'Testing...' : 'Test Connection'}
-                        </DropdownMenuItem>
-                      )}
-                      {provider.providerKey === 'ollama' && onDiscoverModels && canDo('ai-providers.discover-models') && (
-                        <DropdownMenuItem onClick={() => onDiscoverModels(provider)}>
-                          <Search className="mr-2 size-4" />
+                      <ActionMenuItem
+                        action="ai-providers.test"
+                        icon={TestTube}
+                        onClick={() => handleTestConnection(provider)}
+                        disabled={testingId === provider.id || isTesting}
+                      >
+                        {testingId === provider.id ? 'Testing...' : 'Test Connection'}
+                      </ActionMenuItem>
+                      {provider.providerKey === 'ollama' && onDiscoverModels && (
+                        <ActionMenuItem action="ai-providers.discover-models" icon={Search} onClick={() => onDiscoverModels(provider)}>
                           Discover Models
-                        </DropdownMenuItem>
+                        </ActionMenuItem>
                       )}
-                      {canDelete && (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => onDelete(provider)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="mr-2 size-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </>
-                      )}
+                      <DropdownMenuSeparator />
+                      <ActionMenuItem
+                        action="ai-providers.delete"
+                        icon={Trash2}
+                        onClick={() => onDelete(provider)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        Delete
+                      </ActionMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

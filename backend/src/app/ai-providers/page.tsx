@@ -37,7 +37,7 @@ import {
 import { reportActionError } from '@/shared/activity/report';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { Can } from '@/shared/access/Can';
+import { ActionButton } from '@/shared/access/ActionControls';
 import type { AIProviderWithModelsResponse, CreateAIProviderInput, UpdateAIProviderInput } from '@/features/ai-providers';
 
 // ============================================================================
@@ -296,15 +296,9 @@ export default function AIProvidersPage() {
               <RefreshCw className="mr-2 size-4" />
               Refresh
             </Button>
-            <Can action="ai-providers.add">
-              <Button
-                onClick={handleCreateProvider}
-                className="rounded-xl shadow-lg"
-              >
-                <Plus className="mr-2 size-4" />
-                Add Provider
-              </Button>
-            </Can>
+            <ActionButton action="ai-providers.add" icon={Plus} onClick={handleCreateProvider} className="rounded-xl shadow-lg">
+              Add Provider
+            </ActionButton>
           </>
         }
       />

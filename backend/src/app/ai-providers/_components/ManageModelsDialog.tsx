@@ -22,11 +22,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import {
     DropdownMenu,
     DropdownMenuContent,
-    DropdownMenuItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -48,6 +46,7 @@ import { toast } from 'sonner';
 
 import { reportActionError } from '@/shared/activity/report';
 import { cn } from '@/lib/utils';
+import { ActionButton, ActionMenuItem, ActionSwitch } from '@/shared/access/ActionControls';
 import { useAccess } from '@/shared/access/useAccess';
 import { ModelFormDialog } from './ModelFormDialog';
 import { aiModelsApi } from '../_lib/api-client';
@@ -100,11 +99,9 @@ interface ModelRowProps {
     onDelete: (model: AIProviderModelResponse) => void;
     onToggleAvailable: (model: AIProviderModelResponse, available: boolean) => void;
     isUpdating: boolean;
-    /** May add, edit, delete and switch models; otherwise the row is read-only */
-    canChange: boolean;
 }
 
-function ModelRow({ model, onEdit, onDelete, onToggleAvailable, isUpdating, canChange }: ModelRowProps) {
+function ModelRow({ model, onEdit, onDelete, onToggleAvailable, isUpdating }: ModelRowProps) {
     return (
         <div className={cn(
             "group flex items-center justify-between p-3 rounded-lg border transition-colors",
@@ -158,16 +155,16 @@ function ModelRow({ model, onEdit, onDelete, onToggleAvailable, isUpdating, canC
             {/* Actions */}
             <div className="flex items-center gap-2 ml-2">
                 {/* Available Toggle */}
-                <Switch
+                <ActionSwitch
+                    action="ai-models.change"
                     checked={model.isAvailable}
                     onCheckedChange={(checked) => onToggleAvailable(model, checked)}
-                    disabled={!canChange || isUpdating}
+                    disabled={isUpdating}
                     className="data-[state=checked]:bg-emerald-500"
                     aria-label={`${model.displayName} available`}
                 />
 
                 {/* Menu */}
-                {canChange && (
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button
@@ -179,48 +176,50 @@ function ModelRow({ model, onEdit, onDelete, onToggleAvailable, isUpdating, canC
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(model)}>
-                            <Pencil className="h-4 w-4 mr-2" />
+                        <ActionMenuItem action="ai-models.change" icon={Pencil} iconClassName="h-4 w-4 mr-2" onClick={() => onEdit(model)}>
                             Edit
-                        </DropdownMenuItem>
+                        </ActionMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
+                        <ActionMenuItem
+                            action="ai-models.change"
+                            icon={Trash2}
+                            iconClassName="h-4 w-4 mr-2"
                             onClick={() => onDelete(model)}
                             className="text-red-600 focus:text-red-600"
                         >
-                            <Trash2 className="h-4 w-4 mr-2" />
                             Delete
-                        </DropdownMenuItem>
+                        </ActionMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
-                )}
             </div>
         </div>
     );
 }
 
-/** Add Model and, for Ollama, Discover Models: each only for a user who may take it. */
-function ModelActions({ canAdd, onAdd, onDiscover, isDiscovering }: {
-    canAdd: boolean;
+/** Add Model and, for Ollama, Discover Models; locked with the reason for someone who may not. */
+function ModelActions({ onAdd, onDiscover, isDiscovering }: {
     onAdd: () => void;
-    /** Set only when discovery applies and the user may run it */
+    /** Set only when discovery applies (Ollama) */
     onDiscover?: () => void;
     isDiscovering: boolean;
 }) {
-    if (!canAdd && !onDiscover) return null;
     return (
         <div className="flex items-center gap-2">
-            {canAdd && (
-                <Button size="sm" onClick={onAdd}>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Model
-                </Button>
-            )}
+            <ActionButton action="ai-models.change" icon={Plus} iconClassName="h-4 w-4 mr-1" size="sm" onClick={onAdd}>
+                Add Model
+            </ActionButton>
             {onDiscover && (
-                <Button size="sm" variant="outline" onClick={onDiscover} disabled={isDiscovering}>
-                    {isDiscovering ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
+                <ActionButton
+                    action="ai-providers.discover-models"
+                    icon={isDiscovering ? Loader2 : Search}
+                    iconClassName={isDiscovering ? 'h-4 w-4 mr-1 animate-spin' : 'h-4 w-4 mr-1'}
+                    size="sm"
+                    variant="outline"
+                    onClick={onDiscover}
+                    disabled={isDiscovering}
+                >
                     {isDiscovering ? 'Discovering...' : 'Discover Models'}
-                </Button>
+                </ActionButton>
             )}
         </div>
     );
@@ -249,7 +248,7 @@ export function ManageModelsDialog({
     const isOllama = provider.providerKey === 'ollama';
     const { canDo } = useAccess();
     const canChange = canDo('ai-models.change');
-    const discover = isOllama && canDo('ai-providers.discover-models') ? onDiscoverModels : undefined;
+    const discover = isOllama ? onDiscoverModels : undefined;
 
     // Handle add model
     const handleAddModel = () => {
@@ -333,8 +332,7 @@ export function ManageModelsDialog({
         }
     };
 
-    const hasActions = canChange || !!discover;
-    const actions = <ModelActions canAdd={canChange} onAdd={handleAddModel} onDiscover={discover} isDiscovering={isDiscovering} />;
+    const actions = <ModelActions onAdd={handleAddModel} onDiscover={discover} isDiscovering={isDiscovering} />;
 
     return (
         <>
@@ -353,11 +351,9 @@ export function ManageModelsDialog({
                     </DialogHeader>
 
                     {/* Action Bar */}
-                    {hasActions && (
-                        <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-border">
-                            {actions}
-                        </div>
-                    )}
+                    <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-border">
+                        {actions}
+                    </div>
 
                     {/* Models List */}
                     <div className="flex-1 overflow-y-auto py-2 -mx-6 px-6">
@@ -367,16 +363,12 @@ export function ManageModelsDialog({
                                     <Database className="h-6 w-6 text-slate-400" />
                                 </div>
                                 <p className="text-slate-600 font-medium">No models configured</p>
-                                {hasActions && (
-                                    <>
-                                        <p className="text-sm text-slate-400 mt-1 mb-4">
-                                            {isOllama && discover
-                                                ? 'Discover models from Ollama or add them manually'
-                                                : 'Add models to start using this provider'}
-                                        </p>
-                                        <div className="flex justify-center">{actions}</div>
-                                    </>
-                                )}
+                                <p className="text-sm text-slate-400 mt-1 mb-4">
+                                    {isOllama && discover
+                                        ? 'Discover models from Ollama or add them manually'
+                                        : 'Add models to start using this provider'}
+                                </p>
+                                <div className="flex justify-center">{actions}</div>
                             </div>
                         ) : (
                             <div className="space-y-2">
@@ -388,7 +380,6 @@ export function ManageModelsDialog({
                                         onDelete={handleDeleteModel}
                                         onToggleAvailable={handleToggleAvailable}
                                         isUpdating={updatingModelId === model.id}
-                                        canChange={canChange}
                                     />
                                 ))}
                             </div>

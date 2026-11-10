@@ -16,6 +16,7 @@ import { allowsAction, type UiActionId } from '@/features/access/ui-actions';
 
 const held = new Set<Permission>();
 let admin = false;
+let loading = false;
 
 export const uiAccess = {
   /** Render as a user holding exactly these permissions (not an Admin) */
@@ -23,6 +24,7 @@ export const uiAccess = {
     held.clear();
     permissions.forEach((p) => held.add(p));
     admin = false;
+    loading = false;
   },
   /** Render as an Admin (every permission) */
   asAdmin() {
@@ -31,13 +33,20 @@ export const uiAccess = {
   },
 };
 
+/** Render as if the access lookup hasn't answered yet (until the next hold / asAdmin) */
+export function uiAccessLoading() {
+  held.clear();
+  admin = false;
+  loading = true;
+}
+
 const can = (p: Permission) => held.has(p);
 
 export const useAccessModule = {
   accessKeys: { mine: ['access', 'mine'] as const },
   useAccess: () => ({
     access: undefined,
-    isLoading: false,
+    isLoading: loading,
     errorStatus: null,
     retry: () => {},
     can,

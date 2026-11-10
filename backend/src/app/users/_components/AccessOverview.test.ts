@@ -16,6 +16,7 @@ import { AccessOverview, cellState, toggled } from './AccessOverview';
 import { RolesPanel } from './RolesPanel';
 
 import { ADMIN_ROLE_ID, ALL_PERMISSIONS, EDITOR_DEFAULT_PERMISSIONS } from '@/features/access/permissions';
+import { uiAccess } from '@/shared/test/ui-access-stub';
 
 const role = (over: Partial<RoleResponse>): RoleResponse => ({
   id: 'r', name: 'R', description: null, permissions: [], isBuiltIn: false, userCount: 0, ...over,
@@ -25,6 +26,7 @@ const editor = role({ id: 'editor', name: 'Editor', permissions: [...EDITOR_DEFA
 const tester = role({ id: 'tester', name: 'Tester', permissions: ['playground:use'] });
 const ROLES = [admin, editor, tester];
 
+vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 vi.mock('../_lib/hooks/useRoles', () => ({
   useRoles: () => ({
     roles: ROLES, isLoading: false, error: null, retry: () => {},
@@ -103,10 +105,19 @@ describe('AccessOverview', () => {
 });
 
 describe('RolesPanel', () => {
-  const panel = (isAdmin: boolean) => renderToStaticMarkup(createElement(RolesPanel, { isAdmin }));
+  const panel = (isAdmin: boolean) => {
+    if (isAdmin) uiAccess.asAdmin();
+    else uiAccess.hold('users:manage');
+    return renderToStaticMarkup(createElement(RolesPanel));
+  };
+  /** A button wrapped in the lock hint, disabled, and carrying this attribute or text */
+  const locked = (html: string, label: string) =>
+    [...html.matchAll(/<span[^>]*data-locked=""[^>]*>(<button[^>]*>)(.*?)<\/button>/g)]
+      .some(([, tag, inner]) => tag.includes('disabled=""') && (tag + inner).includes(label));
 
   it('gives an Admin the add, edit and delete buttons, never on the built-in Admin role', () => {
     const html = panel(true);
+    expect(html).not.toContain('data-locked');
     expect(html).toContain('Add Role');
     expect(html).toContain('aria-label="Edit Editor"');
     expect(html).toContain('aria-label="Delete Tester"');
@@ -114,10 +125,11 @@ describe('RolesPanel', () => {
     expect(html).toContain('Access overview');
   });
 
-  it('shows another user manager the roles and the overview, but no way to change them', () => {
+  it('shows another user manager the same buttons, locked with the reason, and the overview read-only', () => {
     const html = panel(false);
-    expect(html).not.toContain('Add Role');
-    expect(html).not.toMatch(/aria-label="(Edit|Delete) (Editor|Tester)"/);
+    expect(locked(html, 'aria-label="Edit Editor"')).toBe(true);
+    expect(locked(html, 'aria-label="Delete Tester"')).toBe(true);
+    expect(locked(html, 'Add Role')).toBe(true);
     expect(html).toContain('Only an Admin can add, change or delete roles.');
     expect(switches(html).every(([, , disabled]) => disabled)).toBe(true);
   });

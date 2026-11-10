@@ -14,6 +14,7 @@ import { RoleFormDialog } from './RoleFormDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { effectivePermissions, PERMISSION_GROUPS, type Permission } from '@/features/access/permissions';
+import { ActionButton, useAdminGate } from '@/shared/access/ActionControls';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
@@ -24,9 +25,11 @@ const PERMISSION_COUNT = PERMISSION_GROUPS.reduce((n, g) => n + g.permissions.le
 /**
  * The Roles tab: every role, how many users hold it, and the Access overview. Only an Admin
  * creates, edits and deletes roles (the server refuses everyone else); other user managers
- * see the roles they assign, read-only.
+ * see the same screen with those controls locked.
  */
-export function RolesPanel({ isAdmin }: { isAdmin: boolean }) {
+export function RolesPanel() {
+  const gate = useAdminGate('add, change or delete roles');
+  const isAdmin = gate.state === 'allowed';
   const { roles, isLoading, error, retry, createRoleAsync, updateRoleAsync, setRolePermissions, savingRoleId, deleteRole, isSaving, isDeleting } = useRoles();
   const [editing, setEditing] = useState<RoleResponse | null>(null);
   const [creating, setCreating] = useState(false);
@@ -47,14 +50,10 @@ export function RolesPanel({ isAdmin }: { isAdmin: boolean }) {
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-muted-foreground">
           A role is a set of permissions. Admin is built in and holds every permission.
-          {isAdmin ? '' : ' Only an Admin can add, change or delete roles.'}
         </p>
-        {isAdmin && (
-          <Button onClick={() => setCreating(true)} className="rounded-xl shrink-0">
-            <Plus className="mr-2 size-4" />
-            Add Role
-          </Button>
-        )}
+        <ActionButton gate={gate} icon={Plus} onClick={() => setCreating(true)} className="rounded-xl shrink-0">
+          Add Role
+        </ActionButton>
       </div>
 
       <div className="rounded-2xl border border-border/60 divide-y divide-border/60">
@@ -77,21 +76,20 @@ export function RolesPanel({ isAdmin }: { isAdmin: boolean }) {
             <span className="text-sm text-muted-foreground whitespace-nowrap">
               {role.userCount} {role.userCount === 1 ? 'user' : 'users'}
             </span>
-            {isAdmin && !role.isBuiltIn && (
+            {!role.isBuiltIn && (
               <div className="flex gap-1">
-                <Button variant="ghost" size="icon" onClick={() => setEditing(role)} aria-label={`Edit ${role.name}`}>
-                  <Pencil className="size-4" />
-                </Button>
-                <Button
+                <ActionButton gate={gate} icon={Pencil} iconClassName="size-4" variant="ghost" size="icon" onClick={() => setEditing(role)} aria-label={`Edit ${role.name}`} />
+                <ActionButton
+                  gate={gate}
+                  icon={Trash2}
+                  iconClassName="size-4"
                   variant="ghost"
                   size="icon"
                   disabled={role.userCount > 0}
                   title={role.userCount > 0 ? 'Give its users another role first' : undefined}
                   onClick={() => setToDelete(role)}
                   aria-label={`Delete ${role.name}`}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                />
               </div>
             )}
           </div>

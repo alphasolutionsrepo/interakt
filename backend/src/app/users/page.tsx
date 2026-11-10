@@ -231,7 +231,7 @@ export default function UsersPage() {
           <TabsTrigger value="roles">Roles</TabsTrigger>
         </TabsList>
         <TabsContent value="roles">
-          <RolesPanel isAdmin={isAdmin} />
+          <RolesPanel />
         </TabsContent>
         <TabsContent value="users" className="space-y-8">
       {/* Stats */}
