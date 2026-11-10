@@ -504,6 +504,7 @@ const STARTUP_RETRY_MS = 20_000;
  * Never throws.
  */
 export async function buildDocsSearchOnStartup(retryDelayMs = STARTUP_RETRY_MS): Promise<void> {
+  await recordDocsSearchOnStartup();
   for (let attempt = 1; attempt <= STARTUP_ATTEMPTS; attempt++) {
     try {
       await seedDocsSearch();
@@ -517,5 +518,19 @@ export async function buildDocsSearchOnStartup(retryDelayMs = STARTUP_RETRY_MS):
       if (!retry) return;
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
+  }
+}
+
+/**
+ * Before any rebuild (which may fail): a docs search seeded before experience ids were recorded
+ * gets its id once, so the built-in help check (built-in-help.ts) keeps it open to every role.
+ * Never throws.
+ */
+async function recordDocsSearchOnStartup(): Promise<void> {
+  try {
+    const experience = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
+    if (experience) await recordBuiltInExperience(DOCS_SEARCH_SEED_KEY, experience.id, { onlyIfMissing: true });
+  } catch (e) {
+    logger.warn('Could not record the docs search for the built-in help check', { error: (e as Error).message });
   }
 }

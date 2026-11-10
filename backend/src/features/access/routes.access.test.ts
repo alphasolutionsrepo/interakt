@@ -24,7 +24,8 @@ vi.mock('@/features/access/access.service', async () => (await import('@/shared/
 // A handler that gets past the gate finds no database, so it can't change anything
 vi.mock('@/db/index', () => ({ get db() { throw new Error('no database in this test'); } }));
 
-import type { Permission } from './permissions';
+import { AI_MODEL_READERS, type Permission } from './permissions';
+import { HIDES_PROVIDER_ADDRESSES } from './provider-addresses';
 import { acceptsIngestionKey, accessRuleOf, SIGNED_IN, type AccessRule } from './route-guard';
 
 import { AppError } from '@/shared/errors/app-error';
@@ -154,6 +155,13 @@ describe('every admin API route is gated', () => {
     }
     expect(wrong).toEqual([]);
   }, 300_000);
+
+  it('hides provider addresses on every route open to those who pick a model', () => {
+    const readers = gated.filter((r) => r.rule === AI_MODEL_READERS);
+    expect(readers.length).toBeGreaterThanOrEqual(7);
+    const leaking = readers.filter((r) => !(r.fn as unknown as Record<symbol, unknown>)[HIDES_PROVIDER_ADDRESSES]);
+    expect(leaking.map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
+  });
 
   it('lets only the search index document routes accept an ingestion key instead of a session', () => {
     const keyRoutes = gated.filter((r) => acceptsIngestionKey(r.fn)).map((r) => r.route);

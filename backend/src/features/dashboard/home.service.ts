@@ -726,6 +726,9 @@ async function readRecentJobs(since: Date): Promise<Array<{ id: string; name: st
 /** Hiding the checklist is stored like a dismissed tip */
 export const CHECKLIST_ID = 'tip:checklist';
 
+/** The checklist's last step: the Ask box on the home page */
+export const ASK_STEP_HREF = '#home-ask';
+
 /** The first-run checklist, or null once every step is done */
 export function buildChecklist(
   setup: Pick<Setup, 'experiences' | 'indexes' | 'enabledProviders'>,
@@ -742,7 +745,7 @@ export function buildChecklist(
       done: usage.anyTraffic,
       href: firstExperience ? `/experiences/${firstExperience.type}/${firstExperience.id}` : '/experiences',
     },
-    { id: 'ask', label: 'Ask a question about your data', done: usage.askedAQuestion, href: '#home-ask' },
+    { id: 'ask', label: 'Ask a question about your data', done: usage.askedAQuestion, href: ASK_STEP_HREF },
   ];
   return steps.every((s) => s.done) ? null : steps;
 }
@@ -928,19 +931,20 @@ export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
 
 /**
  * The home page as a role sees it. Tasks, recent changes, getting-started steps, cards, tips and
- * experiences that link to
- * a page the role can't open go (the checklist's Ask step, an in-page link, stays: the page
- * hides the Ask box itself). Without analytics:view, the traffic figures, insight cards and tips
+ * experiences that link to a page the role can't open go; the checklist's Ask step (the Ask
+ * box on the page) needs analytics:ask. The checklist goes once every step the role sees is
+ * done, as it does for everyone once all are. Without analytics:view, the traffic figures, insight cards and tips
  * (all from analytics) go too, as on the analytics pages themselves, and `analytics` says so. The cached data is shared by
  * everyone, so this runs per request.
  */
 export function homeDataForRole(data: HomeData, can: (permission: Permission) => boolean): HomeData {
   const opens = (href: string) => href.startsWith('#') || canOpenPage(href.split(/[?#]/)[0], can);
+  const steps = data.checklist?.filter((step) => (step.href === ASK_STEP_HREF ? can('analytics:ask') : opens(step.href)));
   const linked = {
     ...data,
     tasks: data.tasks.filter((t) => opens(t.href)),
     recent: data.recent.filter((r) => opens(r.href)),
-    checklist: data.checklist?.filter((step) => opens(step.href)) ?? null,
+    checklist: steps?.some((step) => !step.done) ? steps : null,
     cards: data.cards.filter((c) => opens(c.href)),
     tips: data.tips.filter((t) => opens(t.action.href)),
     experiences: data.experiences.filter((e) => opens(e.href)),

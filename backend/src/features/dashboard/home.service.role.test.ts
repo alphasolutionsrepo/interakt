@@ -11,7 +11,7 @@ const holding = (...list: Permission[]) => (p: Permission) => list.includes(p);
 const data = {
   generatedAt: 'now', analytics: true, period: { from: 'a', to: 'b', label: 'Last 7 days', previousLabel: 'p', days: ['d'] },
   live: { requestsLast5Min: 12 }, health: null,
-  checklist: [{ id: 'index', href: '/search-indexes/create' }, { id: 'ask', href: '#home-ask' }],
+  checklist: [{ id: 'index', href: '/search-indexes/create', done: false }, { id: 'ask', href: '#home-ask', done: false }],
   metrics: [{ id: 'searches' }],
   cards: [{ id: 'c', href: '/analytics/search' }, { id: 'idx', href: '/search-indexes/abc' }], tips: [{ id: 'tip:x', action: { label: 'Set up', href: '/ai-providers' } }],
   tasks: [
@@ -29,7 +29,7 @@ const data = {
 
 describe('the home page for each role', () => {
   it('keeps everything for a role that may view analytics', () => {
-    expect(homeDataForRole(data, holding('analytics:view', 'search-indexes:view', 'search-indexes:edit', 'settings:view', 'ai-providers:view', 'search-experiences:view', 'ai-experiences:view'))).toEqual(data);
+    expect(homeDataForRole(data, holding('analytics:view', 'analytics:ask', 'search-indexes:view', 'search-indexes:edit', 'settings:view', 'ai-providers:view', 'search-experiences:view', 'ai-experiences:view'))).toEqual(data);
   });
 
   it('drops traffic figures, insight cards and tips for a role that may not, and keeps the rest', () => {
@@ -44,9 +44,27 @@ describe('the home page for each role', () => {
 
 describe('home links a role can follow', () => {
   it("drops recent changes and getting-started steps that link to pages the role can't open, keeps in-page steps", () => {
-    const seen = homeDataForRole(data, holding('analytics:view', 'search-indexes:view'));
+    const seen = homeDataForRole(data, holding('analytics:view', 'analytics:ask', 'search-indexes:view'));
     expect(seen.recent.map((r) => r.id)).toEqual(['index']);
     expect(seen.checklist?.map((c) => c.id)).toEqual(['ask']);
+  });
+
+  it('keeps the Ask step only for a role that may ask', () => {
+    const seen = homeDataForRole(data, holding('analytics:view', 'search-indexes:view', 'search-indexes:edit'));
+    expect(seen.checklist?.map((c) => c.id)).toEqual(['index']);
+  });
+
+  it('drops the checklist once every step the role sees is done, though others are not', () => {
+    const steps = [
+      { id: 'provider', href: '/ai-providers', done: false },
+      { id: 'traffic', href: '/experiences/search/e', done: true },
+      { id: 'ask', href: '#home-ask', done: false },
+    ];
+    const withSteps = { ...data, checklist: steps } as unknown as HomeData;
+    // A Viewer: no providers page, no Ask; the one step left is done
+    expect(homeDataForRole(withSteps, holding('search-experiences:view', 'analytics:view')).checklist).toBeNull();
+    // A role that may ask still has a step to do
+    expect(homeDataForRole(withSteps, holding('search-experiences:view', 'analytics:view', 'analytics:ask')).checklist?.map((c) => c.id)).toEqual(['traffic', 'ask']);
   });
 
   it("drops cards and tips whose action opens a page the role can't open", () => {

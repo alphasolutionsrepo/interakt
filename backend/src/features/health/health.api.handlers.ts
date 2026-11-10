@@ -10,15 +10,13 @@ import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import * as service from './health.service';
 
-import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
-import { can } from '@/features/access/user-access';
+import { providerAddressesFor } from '@/features/access/provider-addresses';
 
 const logger = createLogger('health-handlers');
 
 /** Health is for every signed-in user; AI provider addresses only for roles that view providers */
-async function forRole<T>(health: T): Promise<T> {
-  const { access } = await checkAccess(SIGNED_IN);
-  return access && can(access, 'ai-providers:view') ? health : service.withoutProviderAddresses(health);
+function forRole<T>(health: T): Promise<T> {
+  return providerAddressesFor(health);
 }
 
 /**

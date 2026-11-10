@@ -10,22 +10,15 @@
 import 'server-only';
 
 import type { Permission } from './permissions';
+import { withoutFields } from './redact';
 import { checkAccess, SIGNED_IN } from './route-guard';
 import { can } from './user-access';
 
-function strip(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(strip);
-  if (value && typeof value === 'object' && !(value instanceof Date)) {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).filter(([k]) => k !== 'accessToken').map(([k, v]) => [k, strip(v)]),
-    );
-  }
-  return value;
-}
+const TOKEN_FIELDS: ReadonlySet<string> = new Set(['accessToken']);
 
 /** The experience(s) as the caller may see them: without access tokens unless they hold `editPermission` or `playground:use`. */
 export async function tokensFor<T>(value: T, editPermission: Permission): Promise<T> {
   const { access } = await checkAccess(SIGNED_IN);
   const keeps = access && (can(access, editPermission) || can(access, 'playground:use'));
-  return keeps ? value : (strip(value) as T);
+  return keeps ? value : withoutFields(value, TOKEN_FIELDS);
 }

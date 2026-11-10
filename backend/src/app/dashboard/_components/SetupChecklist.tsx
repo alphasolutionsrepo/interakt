@@ -23,10 +23,10 @@ export const CHECKLIST_ID = 'tip:checklist';
 export function SetupChecklist({ steps }: { steps: HomeChecklistStep[] }) {
   const dismiss = useDismissTip();
   const { can } = useAccess();
-  // Hiding the list hides it for everyone (analytics:manage); the Ask step needs analytics:ask
-  const shown = steps.filter((s) => s.href !== '#home-ask' || can('analytics:ask'));
+  // The server sends only the steps this role can take (homeDataForRole). Hiding the list
+  // hides it for everyone, so it needs analytics:manage.
+  const shown = steps;
   const done = shown.filter((s) => s.done).length;
-  // Nothing left for this role to do here
   if (shown.length === 0) return null;
   const next = shown.find((s) => !s.done);
 

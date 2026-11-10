@@ -416,4 +416,30 @@ describe('buildDocsSearchOnStartup', () => {
     world.adminError = new Error('boom');
     await expect(buildDocsSearchOnStartup(0)).resolves.toBeUndefined();
   });
+
+  it('records the existing docs search id first, so a failed rebuild leaves it open to every role', async () => {
+    await seedDocsSearch();
+    const built = world.experience!.id;
+    delete world.registry!.metadata.experienceId; // an entry from before ids were recorded
+    world.docs = [...DOCS, { slug: 'x', title: 'X', content: '# X\nChanged.' }]; // so it rebuilds
+    world.embedding = MODEL; // a recreate, which needs the admin user
+    world.adminError = new Error('No admin user found.');
+
+    await buildDocsSearchOnStartup(0);
+
+    expect(world.experience?.id).toBe(built);
+    expect(world.registry?.metadata.experienceId).toBe(built);
+  });
+
+  it('never replaces a recorded id at startup', async () => {
+    await seedDocsSearch();
+    world.registry!.metadata.experienceId = 'recorded-earlier';
+    world.adminError = new Error('No admin user found.');
+    world.docs = [...DOCS, { slug: 'x', title: 'X', content: '# X\nChanged.' }];
+    world.embedding = MODEL;
+
+    await buildDocsSearchOnStartup(0);
+
+    expect(world.registry?.metadata.experienceId).toBe('recorded-earlier');
+  });
 });

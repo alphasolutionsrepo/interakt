@@ -519,22 +519,5 @@ export async function checkSystemHealth(): Promise<SystemHealth> {
 // What each role sees
 // ============================================================================
 
-/** The fields of health output that carry an AI provider's address (see checkProviderHealth). */
-const ADDRESS_FIELDS = new Set(['baseUrl', 'endpointTested']);
-
-/**
- * Health as a role without ai-providers:view sees it: the status of every service, without the
- * AI providers' addresses (ADDRESS_FIELDS) found anywhere in the output.
- */
-export function withoutProviderAddresses<T>(health: T): T {
-  const strip = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(strip);
-    if (value && typeof value === 'object' && !(value instanceof Date)) {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).filter(([k]) => !ADDRESS_FIELDS.has(k)).map(([k, v]) => [k, strip(v)]),
-      );
-    }
-    return value;
-  };
-  return strip(health) as T;
-}
+/** Health as a role without ai-providers:view sees it (the addresses are left out). */
+export { withoutProviderAddresses } from '@/features/access/provider-addresses';
