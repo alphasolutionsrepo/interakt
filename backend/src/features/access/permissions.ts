@@ -65,7 +65,7 @@ export const PERMISSION_GROUPS = [
       { id: 'settings:manage', label: 'Change settings and system defaults, clear caches' },
       { id: 'jobs:run', label: 'Run, cancel and schedule background jobs' },
       { id: 'secrets:manage', label: 'Manage secrets and ingestion keys' },
-      { id: 'users:manage', label: 'Manage users and roles' },
+      { id: 'users:manage', label: 'Manage users and assign their roles' },
       { id: 'setup:run', label: 'Run the demo and docs setup' },
     ],
   },

@@ -57,14 +57,14 @@ The sidebar shows each user the pages their role can open, and the server checks
 
 ## Who can give which role
 
-Anyone with the *Manage users and roles* permission can add users, edit roles and assign them, within one rule: **you can only give out what you have yourself**.
+Only an Admin creates, changes or deletes roles. Anyone with the *Manage users and assign their roles* permission can add users and assign them roles, within one rule: **you can only give out what you have yourself**.
 
-- You can assign a role, create one, or change one only when every permission in it is one of yours.
+- You can assign a role only when every permission in it is one of yours.
 - Only an Admin can make someone an Admin, or manage a user who is an Admin.
 - You can't change your own role or deactivate yourself. Another user manager does that.
 - Interakt always keeps at least one active Admin.
 
-A role can be deleted once no user holds it.
+An Admin can delete a role once no user holds it.
 
 ## Changing your password
 

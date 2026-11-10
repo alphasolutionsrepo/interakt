@@ -4,8 +4,9 @@
  * Who may hand out or change which role. Pure functions, so every rule is unit-tested.
  *
  * The one rule behind all of them: nobody can give anyone, themselves included, more than
- * they hold. A caller may assign, edit or delete a role only when every permission that role
- * holds (before and after the change) is one of theirs. The built-in Admin role holds every
+ * they hold. A caller may assign a role, or manage a user holding one, only when every
+ * permission that role holds is one of theirs. (Creating, editing and deleting roles is
+ * Admin-only, roles.service.ts.) The built-in Admin role holds every
  * permission, so only an Admin can assign it or manage a user who has it.
  */
 
@@ -35,8 +36,4 @@ export function assertHoldsRole(caller: UserAccess, role: RoleShape, action: str
         : `You can't ${action} a role with permissions your own role doesn't have.`,
     );
   }
-}
-
-export function assertHoldsPermissions(caller: UserAccess, permissions: readonly string[], action: string): void {
-  assertHoldsRole(caller, { isBuiltIn: false, permissions }, action);
 }

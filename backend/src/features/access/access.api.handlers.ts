@@ -2,8 +2,8 @@
 
 /**
  * API handlers for the caller's own access and for managing roles.
- * Routes gate these with withPermission; the handlers re-read the caller's access for the
- * privilege rules (nobody grants more than they hold).
+ * Routes gate these with withPermission (users:manage); the handlers re-read the caller's
+ * access, and roles.service.ts lets only an Admin create, change or delete a role.
  */
 
 import 'server-only';

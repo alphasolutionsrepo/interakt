@@ -1,14 +1,18 @@
 // src/features/access/roles.service.ts
 
 /**
- * Roles: list, create, edit, delete, with the rules from access-policy.ts applied.
- * The built-in Admin role can't be edited or deleted.
+ * Roles: list, create, edit, delete.
+ *
+ * Only an Admin creates, edits or deletes roles. A user manager who isn't an Admin can read the
+ * roles and assign them to users (within what they hold, user-access.service.ts), but not shape
+ * them: what each role may do is decided in one place, by an Admin. The built-in Admin role
+ * can't be edited or deleted by anyone.
  */
 
 import 'server-only';
 
 
-import { AccessDeniedError, assertHoldsPermissions, assertHoldsRole } from './access-policy';
+import { AccessDeniedError } from './access-policy';
 import type { UserAccess } from './user-access';
 import { conflictOnConstraint } from './constraint-errors';
 import * as repository from './roles.repository';
@@ -18,6 +22,10 @@ import { ConflictError, NotFoundError } from '@/shared/errors/app-error';
 
 export const listRoles = repository.listRoles;
 
+function assertAdmin(caller: UserAccess, action: string): void {
+  if (!caller.isAdmin) throw new AccessDeniedError(`Only an Admin can ${action} roles.`);
+}
+
 async function editableRole(id: string) {
   const role = await repository.getRole(id);
   if (!role) throw new NotFoundError('Role not found');
@@ -26,7 +34,7 @@ async function editableRole(id: string) {
 }
 
 export async function createRole(caller: UserAccess, input: CreateRoleInput) {
-  assertHoldsPermissions(caller, input.permissions, 'create');
+  assertAdmin(caller, 'create');
   if (await repository.roleNameTaken(input.name)) throw new ConflictError(`A role named "${input.name}" already exists`);
   return conflictOnConstraint(
     () => repository.createRole({ name: input.name, description: input.description ?? null, permissions: input.permissions }),
@@ -35,9 +43,8 @@ export async function createRole(caller: UserAccess, input: CreateRoleInput) {
 }
 
 export async function updateRole(caller: UserAccess, id: string, input: UpdateRoleInput) {
-  const role = await editableRole(id);
-  assertHoldsRole(caller, role, 'edit');
-  if (input.permissions) assertHoldsPermissions(caller, input.permissions, 'edit');
+  assertAdmin(caller, 'change');
+  await editableRole(id);
   if (input.name && (await repository.roleNameTaken(input.name, id))) {
     throw new ConflictError(`A role named "${input.name}" already exists`);
   }
@@ -48,7 +55,7 @@ export async function updateRole(caller: UserAccess, id: string, input: UpdateRo
 }
 
 export async function deleteRole(caller: UserAccess, id: string) {
-  const role = await editableRole(id);
-  assertHoldsRole(caller, role, 'delete');
+  assertAdmin(caller, 'delete');
+  await editableRole(id);
   await repository.deleteRole(id);
 }
