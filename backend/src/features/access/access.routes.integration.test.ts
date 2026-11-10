@@ -69,6 +69,9 @@ import * as dataSourceRoute from '@/app/api/data-sources/[id]/route';
 import * as passwordRoute from '@/app/api/users/[id]/change-password/route';
 import * as secretsRoute from '@/app/api/secrets/route';
 import * as searchExperiencesRoute from '@/app/api/search-experiences/route';
+import * as scaffoldRoute from '@/app/api/tools/scaffold/route';
+import * as kbDocRoute from '@/app/api/knowledge-base/[id]/route';
+import { knowledgeDocuments } from '@/db/schema/knowledge-base.schema';
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
@@ -403,6 +406,39 @@ describe('configs that send a vault secret need secrets:manage', () => {
     as(editor);
     const res = await call(dataSourceRoute.PUT, 'PUT', `/api/data-sources/${source.id}`, { name: 'Moved' }, { id: source.id });
     expect(res.status).toBe(403);
+  });
+});
+
+describe('what the built-in help is made of', () => {
+  const httpTool = (slug: string) => ({
+    name: slug, slug, aiDescription: 'Looks things up over HTTP', executorType: 'http',
+    executorConfig: { baseUrl: 'https://api.example.test/x', method: 'GET', responseMapping: { resultsPath: '$.r' } },
+  });
+  const docsSource = async (isBuiltIn: boolean) => (await testDb.db.insert(dataSources).values({
+    name: 'Docs', slug: `docs-${isBuiltIn}-${++n}`, type: 'file_store', config: {} as never, isBuiltIn,
+  }).returning())[0];
+
+  it('refuses an Editor adding a tool to the docs data source (new or scaffolded), not to another', async () => {
+    const builtIn = await docsSource(true);
+    const other = await docsSource(false);
+    as(editor);
+    expect((await call(toolsRoute.POST, 'POST', '/api/tools', { ...httpTool(`onto-docs-${n}`), dataSourceId: builtIn.id })).status).toBe(403);
+    expect((await call(scaffoldRoute.POST, 'POST', '/api/tools/scaffold', { dataSourceId: builtIn.id })).status).toBe(403);
+    expect((await call(toolsRoute.POST, 'POST', '/api/tools', { ...httpTool(`mine-${n}`), dataSourceId: other.id })).status).toBe(201);
+    // Admin may
+    as(admin);
+    expect((await call(toolsRoute.POST, 'POST', '/api/tools', { ...httpTool(`admin-docs-${n}`), dataSourceId: builtIn.id })).status).toBe(201);
+  });
+
+  it("refuses an Editor deleting a document of the docs data source's knowledge base, not another's", async () => {
+    const builtIn = await docsSource(true);
+    const other = await docsSource(false);
+    const [docsDoc] = await testDb.db.insert(knowledgeDocuments).values({ dataSourceId: builtIn.id, name: 'intro.md' }).returning();
+    const [otherDoc] = await testDb.db.insert(knowledgeDocuments).values({ dataSourceId: other.id, name: 'mine.md' }).returning();
+    as(editor);
+    expect((await call(kbDocRoute.DELETE, 'DELETE', `/api/knowledge-base/${docsDoc.id}`, undefined, { id: docsDoc.id })).status).toBe(403);
+    expect(await testDb.db.query.knowledgeDocuments.findFirst({ where: (t, { eq: e }) => e(t.id, docsDoc.id) })).toBeTruthy();
+    expect((await call(kbDocRoute.DELETE, 'DELETE', `/api/knowledge-base/${otherDoc.id}`, undefined, { id: otherDoc.id })).status).toBe(200);
   });
 });
 

@@ -24,6 +24,7 @@ import { assertMayWriteSecretConfig } from '@/features/access/secret-references'
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { readJsonBody } from '@/shared/api/read-json-body';
+import { assertMayChange } from '@/features/access/built-in';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
@@ -87,6 +88,9 @@ export async function handleCreateTool(request: NextRequest) {
     }
 
     await assertMayWriteSecretConfig(validation.data);
+    // A tool on the docs data source can end up in the built-in help: only an Admin adds one
+    const dataSourceId = (validation.data as { dataSourceId?: string | null }).dataSourceId;
+    if (dataSourceId) await assertMayChange('data-source', dataSourceId);
     const tool = await service.createTool(validation.data, userId);
     logger.info('Created tool', {
       toolId: tool.id,
@@ -377,6 +381,7 @@ export async function handleScaffoldTools(request: NextRequest) {
     }
 
     const { dataSourceId } = validation.data;
+    await assertMayChange('data-source', dataSourceId);
 
     // Look up the data source to get name, slug, type, and schema
     const dataSource = await dataSourceService.getDataSourceById(dataSourceId);

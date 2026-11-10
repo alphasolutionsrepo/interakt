@@ -12,6 +12,8 @@ const world = vi.hoisted(() => ({
   registry: null as null | { checksum: string; metadata: Record<string, unknown> },
   help: null as null | { id: string; slug: string; isBuiltIn: boolean },
   dataSource: null as null | { id: string; isBuiltIn: boolean },
+  tools: [] as Array<{ id: string; slug: string; operation: string; isBuiltIn: boolean }>,
+  assignedTool: null as null | string,
   marked: new Set<string>(),
   deleted: [] as string[],
   nextId: 1,
@@ -43,6 +45,7 @@ vi.mock('@/features/access/built-in', () => ({
   markBuiltIn: async (kind: string, ids: string[]) => {
     for (const id of ids) world.marked.add(`${kind}:${id}`);
     if (kind === 'data-source' && world.dataSource && ids.includes(world.dataSource.id)) world.dataSource.isBuiltIn = true;
+    if (kind === 'tool') for (const t of world.tools) if (ids.includes(t.id)) t.isBuiltIn = true;
   },
 }));
 vi.mock('@/features/knowledge-base/knowledge-base.service', () => ({
@@ -54,8 +57,15 @@ vi.mock('@/features/knowledge-base/knowledge-base.service', () => ({
   },
 }));
 vi.mock('@/features/tools/tools.service', () => ({
-  getToolsByDataSourceId: async () => [{ id: 't1', slug: 'interakt-docs-search', operation: 'search' }, { id: 't2', slug: 'interakt-docs-get', operation: 'get' }],
-  createToolsForDataSource: async () => [],
+  getToolsByDataSourceId: async () => world.tools,
+  createToolsForDataSource: async () => {
+    const made = [
+      { id: 't1', slug: 'interakt-docs-search', operation: 'search', isBuiltIn: false },
+      { id: 't2', slug: 'interakt-docs-get', operation: 'get', isBuiltIn: false },
+    ];
+    world.tools.push(...made);
+    return made;
+  },
   deleteTool: async () => {},
 }));
 vi.mock('@/features/ai-experience/ai-experience.service', () => ({
@@ -63,14 +73,18 @@ vi.mock('@/features/ai-experience/ai-experience.service', () => ({
     if (!world.help) throw new Error('not found');
     return world.help;
   },
-  createAIExperience: async (input: { slug: string }) => {
+  createAIExperience: async (input: { slug: string; toolIds?: string[] }) => {
+    world.assignedTool = input.toolIds?.[0] ?? null;
     world.help = { id: `help-${world.nextId++}`, slug: input.slug, isBuiltIn: false };
     return world.help;
   },
   markAIExperienceBuiltIn: async (id: string) => {
     if (world.help?.id === id) world.help.isBuiltIn = true;
   },
-  updateAIExperience: async () => world.help,
+  updateAIExperience: async (_id: string, input: { toolIds?: string[] }) => {
+    world.assignedTool = input.toolIds?.[0] ?? null;
+    return world.help;
+  },
   deleteAIExperience: async (id: string) => { world.deleted.push(`ai-experience:${id}`); },
 }));
 vi.mock('@/shared/seeders/seed-registry.service', () => ({
@@ -87,7 +101,7 @@ import { ConflictError } from '@/shared/errors/app-error';
 import { resetDocs, seedDocs } from './docs.seeder';
 
 beforeEach(() => {
-  Object.assign(world, { registry: null, help: null, dataSource: null, marked: new Set(), deleted: [], nextId: 1, uploads: 0, searchBuilds: 0 });
+  Object.assign(world, { registry: null, help: null, dataSource: null, tools: [], assignedTool: null, marked: new Set(), deleted: [], nextId: 1, uploads: 0, searchBuilds: 0 });
 });
 
 describe('the docs setup and the Help Assistant', () => {
@@ -136,5 +150,15 @@ describe('the docs setup and the Help Assistant', () => {
     world.dataSource = { id: 'ds1', isBuiltIn: true };
     await resetDocs();
     expect(world.deleted).toEqual(['ai-experience:help-1', 'data-source:ds1']);
+  });
+
+  it("uses and marks only the tools it made, never one someone added to the docs data source", async () => {
+    await seedDocs();
+    // Someone adds their own search tool to the docs data source (an Admin could; nobody else can)
+    world.tools.unshift({ id: 'theirs', slug: 'my-search', operation: 'search', isBuiltIn: false });
+    await seedDocs({ force: true });
+    expect(world.assignedTool).toBe('t1');
+    expect(world.tools.find((t) => t.id === 'theirs')?.isBuiltIn).toBe(false);
+    expect(world.marked.has('tool:theirs')).toBe(false);
   });
 });

@@ -279,7 +279,8 @@ async function ingestDocs(dataSourceId: string, docs: DocFile[]): Promise<{ chun
 // ---------------------------------------------------------------------------
 
 async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<string> {
-  let tools = await getToolsByDataSourceId(dataSourceId);
+  // Only the tools the setup made (marked built in) belong to the help, never one someone added
+  let tools = (await getToolsByDataSourceId(dataSourceId)).filter((t) => t.isBuiltIn);
   if (tools.length === 0) {
     tools = await createToolsForDataSource(
       dataSourceId,
@@ -289,11 +290,11 @@ async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<
       null,
       adminId,
     );
+    // Part of the built-in help: only an Admin may change them
+    await markBuiltIn('tool', tools.map((t) => t.id));
     logger.info('Scaffolded docs tools', { operations: tools.map((t) => t.operation) });
   }
-  // The docs data source's tools are part of the built-in help: only an Admin may change them
-  await markBuiltIn('tool', tools.map((t) => t.id));
-  const search = tools.find((t) => t.operation === 'search') ?? tools[0];
+  const search = tools.find((t) => t.operation === 'search');
   if (!search) throw new Error('No search tool could be created for the docs data source.');
   return search.id;
 }
