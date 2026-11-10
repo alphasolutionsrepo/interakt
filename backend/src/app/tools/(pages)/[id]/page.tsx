@@ -1,6 +1,5 @@
 'use client';
 
-import { useAccess } from '@/shared/access/useAccess';
 import { use, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -9,23 +8,15 @@ import {
   Edit2,
   Power,
   PowerOff,
-  Trash2,
   Bot,
   ChevronDown,
   ChevronUp,
   ExternalLink,
   CircleCheck,
   CircleDashed,
-  FlaskConical,
-  Play,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  Clock,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -33,9 +24,10 @@ import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { ToolTypeChip, resolveToolChipConfig } from '../../_components/ToolTypeChip';
 import { LookupFieldsWarnings } from '../../_components/LookupFieldsSection';
-import { toolsApi, type ToolTestResult } from '../../_lib/api-client';
 import { useLookupFields, useTool } from '../../_lib/hooks/useTools';
-import { errorText } from '@/shared/api/api-error';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
+import { ToolTestPanel } from '../../_components/ToolTestPanel';
 
 // ============================================================================
 // CONFIG DISPLAY
@@ -107,183 +99,12 @@ function ConfigDisplay({ tool }: { tool: { executorType: string; operation: stri
 }
 
 // ============================================================================
-// TEST PANEL
-// ============================================================================
-
-function ToolTestPanel({ toolId, isActive, executorType, operation }: {
-  toolId: string;
-  isActive: boolean;
-  executorType: string;
-  operation?: string | null;
-}) {
-  const [query, setQuery] = useState('');
-  const [fieldName, setFieldName] = useState('');
-  const [lookupId, setLookupId] = useState('');
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<ToolTestResult | null>(null);
-
-  // Build the correct input object based on operation type
-  function buildInput(): Record<string, unknown> | null {
-    if (executorType === 'data_source') {
-      if (operation === 'inspect') return {};
-      if (operation === 'enumerate') {
-        if (!fieldName.trim()) return null;
-        return { field: fieldName.trim() };
-      }
-      if (operation === 'lookup') {
-        if (!lookupId.trim()) return null;
-        return { id: lookupId.trim() };
-      }
-      // search (default)
-      if (!query.trim()) return null;
-      return { query: query.trim() };
-    }
-    if (executorType === 'ai_call') {
-      if (!query.trim()) return null;
-      return { input: query.trim() };
-    }
-    if (!query.trim()) return null;
-    return { query: query.trim() };
-  }
-
-  const canRun = isActive && !running && (() => {
-    if (!isActive) return false;
-    if (operation === 'inspect') return true;
-    if (operation === 'enumerate') return !!fieldName.trim();
-    if (operation === 'lookup') return !!lookupId.trim();
-    return !!query.trim();
-  })();
-
-  async function handleRun() {
-    const input = buildInput();
-    if (input === null || running) return;
-    setRunning(true);
-    setResult(null);
-    try {
-      setResult(await toolsApi.test(toolId, input));
-    } catch (err) {
-      setResult({ success: false, error: errorText(err, 'The test run failed'), durationMs: 0 });
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  const runButton = (
-    <Button className="rounded-xl shrink-0" onClick={handleRun} disabled={!canRun}>
-      {running ? <><Loader2 className="size-4 mr-2 animate-spin" />Running…</> : <><Play className="size-4 mr-2" />Run</>}
-    </Button>
-  );
-
-  return (
-    <Card className="border-border/60 shadow-sm rounded-2xl">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <FlaskConical className="size-4 text-amber-500" />
-          Test Tool
-        </CardTitle>
-        <CardDescription>
-          Run a live query to verify this tool is configured correctly.
-          {!isActive && <span className="text-amber-500 ml-1">— Tool must be active to test.</span>}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Input — varies by operation type */}
-        {operation === 'inspect' ? (
-          <div className="flex items-center gap-3">
-            <p className="flex-1 text-sm text-muted-foreground italic">No input required — returns the full schema.</p>
-            {runButton}
-          </div>
-        ) : operation === 'enumerate' ? (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                value={fieldName}
-                onChange={(e) => setFieldName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleRun(); }}
-                placeholder="Field name to enumerate, e.g. category, brand, size…"
-                className="rounded-xl font-mono text-sm"
-                disabled={!isActive || running}
-              />
-              {runButton}
-            </div>
-            <p className="text-xs text-muted-foreground">Enter the exact field name whose distinct values you want to list.</p>
-          </div>
-        ) : operation === 'lookup' ? (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                value={lookupId}
-                onChange={(e) => setLookupId(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleRun(); }}
-                placeholder="Document ID to look up…"
-                className="rounded-xl font-mono text-sm"
-                disabled={!isActive || running}
-              />
-              {runButton}
-            </div>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleRun(); }}
-              placeholder={executorType === 'ai_call' ? 'Enter a prompt or question…' : 'Enter a search query…'}
-              className="rounded-xl font-mono text-sm"
-              disabled={!isActive || running}
-            />
-            {runButton}
-          </div>
-        )}
-
-        {/* Result */}
-        {result && (
-          <div className="space-y-2">
-            {/* Status bar */}
-            <div className="flex items-center gap-3 text-sm">
-              {result.success ? (
-                <span className="flex items-center gap-1.5 text-emerald-600 font-medium">
-                  <CheckCircle2 className="size-4" />Success
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 text-destructive font-medium">
-                  <XCircle className="size-4" />Error
-                </span>
-              )}
-              <span className="flex items-center gap-1 text-muted-foreground text-xs">
-                <Clock className="size-3" />{result.durationMs}ms
-              </span>
-            </div>
-
-            {/* Error message */}
-            {!result.success && result.error && (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive font-mono">
-                {result.error}
-              </div>
-            )}
-
-            {/* Response JSON */}
-            {result.success && result.data !== undefined && (
-              <pre className="text-xs font-mono bg-muted/60 border border-border/60 p-4 rounded-xl overflow-auto max-h-96 leading-relaxed">
-                {JSON.stringify(result.data, null, 2)}
-              </pre>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ============================================================================
 // PAGE
 // ============================================================================
 
 export default function ToolDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  // Test runs spend AI tokens or call the tool: playground:use
-  const canTest = useAccess().can('playground:use');
   const { tool, isLoading, isError, updateTool, deleteTool, isUpdating, isDeleting, experiences } = useTool(id);
   const { status: lookupFields } = useLookupFields(tool?.operation === 'lookup' ? id : undefined, tool?.dataSourceId);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -356,21 +177,20 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
         badge={<ToolTypeChip executorType={tool.executorType} operation={tool.operation} />}
         actions={
           <>
-            <Button
+            <ActionButton
+              action="tools.edit"
+              icon={tool.isActive ? PowerOff : Power}
+              iconClassName="size-4 mr-2"
               variant={tool.isActive ? 'outline' : 'default'}
               className={`rounded-xl ${!tool.isActive ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
               onClick={handleToggleActive}
               disabled={isUpdating}
             >
-              {tool.isActive ? (
-                <><PowerOff className="size-4 mr-2" />Deactivate</>
-              ) : (
-                <><Power className="size-4 mr-2" />Activate</>
-              )}
-            </Button>
-            <Button variant="outline" className="rounded-xl" onClick={() => router.push(`/tools/${id}/edit`)}>
-              <Edit2 className="size-4 mr-2" />Edit
-            </Button>
+              {tool.isActive ? 'Deactivate' : 'Activate'}
+            </ActionButton>
+            <ActionButton action="tools.edit" icon={Edit2} iconClassName="size-4 mr-2" variant="outline" className="rounded-xl" onClick={() => router.push(`/tools/${id}/edit`)}>
+              Edit
+            </ActionButton>
           </>
         }
       />
@@ -472,7 +292,8 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Test Panel */}
-      {canTest && <ToolTestPanel toolId={id} isActive={tool.isActive} executorType={tool.executorType} operation={tool.operation} />}
+      {/* Run is locked with the reason for a role that can't test (it calls the tool: playground:use) */}
+      <ToolTestPanel toolId={id} isActive={tool.isActive} executorType={tool.executorType} operation={tool.operation} />
 
       {/* Used in AI Experiences */}
       {experiences.length > 0 && (
@@ -501,34 +322,15 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
       )}
 
       {/* Danger Zone */}
-      <Card className="border-destructive/30 shadow-sm rounded-2xl">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2 font-semibold text-destructive">
-            <Trash2 className="size-4" />Danger Zone
-          </CardTitle>
-          <CardDescription>Irreversible actions that permanently affect this tool.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 bg-destructive/5 rounded-xl border border-destructive/20">
-            <div>
-              <p className="font-medium text-sm">Delete this tool</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {experiences.length > 0
-                  ? `This tool is used by ${experiences.length} experience${experiences.length !== 1 ? 's' : ''}. Remove it from all experiences first.`
-                  : 'Permanently deletes this tool. This action cannot be undone.'}
-              </p>
-            </div>
-            <Button
-              variant="destructive"
-              className="rounded-xl"
-              onClick={() => setDeleteOpen(true)}
-              disabled={experiences.length > 0}
-            >
-              <Trash2 className="size-4 mr-2" />Delete
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <DangerZone
+        thing="tool"
+        detail={experiences.length > 0
+          ? `This tool is used by ${experiences.length} experience${experiences.length !== 1 ? 's' : ''}. Remove it from all experiences first.`
+          : 'Permanently deletes this tool. This action cannot be undone.'}
+        action="tools.delete"
+        onDelete={() => setDeleteOpen(true)}
+        disabled={experiences.length > 0}
+      />
 
       <DeleteConfirmDialog
         open={deleteOpen}

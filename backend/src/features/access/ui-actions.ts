@@ -76,6 +76,18 @@ export const UI_ACTIONS = {
 
   // Tools
   'tools.scaffold': { does: 'create tools', permission: 'tools:edit', routes: ['POST /api/tools/scaffold'] },
+  'tools.create': { does: 'create tools', permission: 'tools:edit', routes: ['POST /api/tools'] },
+  'tools.edit': { does: 'edit tools', permission: 'tools:edit', routes: ['PUT /api/tools/[id]'] },
+  'tools.delete': { does: 'delete tools', permission: 'tools:edit', routes: ['DELETE /api/tools/[id]'] },
+  // Calls the tool for real, like a playground run
+  'tools.test': { does: 'test tools', permission: 'playground:use', routes: ['POST /api/tools/[id]/test'] },
+
+  // MCP connections
+  'mcp.create': { does: 'add MCP connections', permission: 'tools:edit', routes: ['POST /api/mcp-connections'] },
+  'mcp.edit': { does: 'turn MCP connections on or off', permission: 'tools:edit', routes: ['PATCH /api/mcp-connections/[id]'] },
+  'mcp.delete': { does: 'delete MCP connections', permission: 'tools:edit', routes: ['DELETE /api/mcp-connections/[id]'] },
+  'mcp.sync': { does: 'sync MCP connections', permission: 'tools:edit', routes: ['POST /api/mcp-connections/[id]/sync'] },
+  'mcp.test': { does: 'test MCP connections', permission: 'playground:use', routes: ['POST /api/mcp-connections/[id]/test'] },
 } as const satisfies Record<string, UiAction>;
 
 export type UiActionId = keyof typeof UI_ACTIONS;

@@ -1,7 +1,8 @@
 // src/shared/ui/custom/RowActionsMenu.tsx
 
 /**
- * The "⋮" menu on a row or card in a list page: View Details, Edit, any extra actions, Delete.
+ * The "⋮" menu on a row or card in a list page: View Details, Edit (when there is one), any
+ * extra actions, Delete.
  * Each change is locked with the reason for someone who may not make it (ActionControls.tsx).
  * Clicks don't reach the row underneath, which opens the item.
  */
@@ -33,9 +34,10 @@ export interface RowExtraAction {
 
 interface RowActionsMenuProps {
   onView: () => void;
-  onEdit: () => void;
+  /** Left out where the item has no edit page (MCP connections) */
+  onEdit?: () => void;
   onDelete: () => void;
-  editAction: UiActionId;
+  editAction?: UiActionId;
   deleteAction: UiActionId;
   /** Between Edit and Delete */
   extra?: RowExtraAction[];
@@ -60,9 +62,11 @@ export function RowActionsMenu({
           <Eye className="size-4" />
           View Details
         </DropdownMenuItem>
-        <ActionMenuItem action={editAction} icon={Edit2} iconClassName="size-4" onClick={only(onEdit)} className={itemClassName}>
-          Edit
-        </ActionMenuItem>
+        {onEdit && editAction && (
+          <ActionMenuItem action={editAction} icon={Edit2} iconClassName="size-4" onClick={only(onEdit)} className={itemClassName}>
+            Edit
+          </ActionMenuItem>
+        )}
         {extra.map((x) => (
           <ActionMenuItem key={x.label} action={x.action} icon={x.icon} iconClassName="size-4" onClick={only(x.onSelect)} disabled={x.disabled} className={itemClassName}>
             {x.label}
