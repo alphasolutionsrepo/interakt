@@ -65,6 +65,7 @@ DELETE /api/analytics/config/experience/[experienceId]  analytics:manage
 GET    /api/analytics/dashboard  analytics:view
 DELETE /api/analytics/data  analytics:manage
 GET    /api/analytics/experience-summary  analytics:view
+GET    /api/analytics/experiences  analytics:view
 GET    /api/analytics/insights  analytics:view
 POST   /api/analytics/insights/hidden  analytics:manage
 DELETE /api/analytics/insights/hidden  analytics:manage

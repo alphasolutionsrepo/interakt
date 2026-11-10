@@ -1,5 +1,6 @@
 // src/features/ai-experience/ai-experience.api.handlers.ts
 
+import { tokensFor } from '@/features/access/access-tokens';
 import { NextRequest } from 'next/server';
 import { apiResponse } from '@/shared/api/response';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
@@ -28,7 +29,7 @@ export async function handleListAIExperiences(request: NextRequest) {
     }
 
     const result = await service.listAIExperiences(validation.data);
-    return apiResponse.successWithPagination(result.experiences, result.pagination);
+    return apiResponse.successWithPagination(await tokensFor(result.experiences, 'ai-experiences:edit'), result.pagination);
   } catch (error) {
     const err = error as Error;
     return apiResponse.error(err, undefined, { operation: 'listAIExperiences' });
@@ -79,7 +80,7 @@ export async function handleGetAIExperience(
       return apiResponse.notFound('AI Experience not found');
     }
 
-    return apiResponse.success(experience);
+    return apiResponse.success(await tokensFor(experience, 'ai-experiences:edit'));
   } catch (error) {
     const err = error as Error;
     return apiResponse.error(err, undefined, { operation: 'getAIExperience' });

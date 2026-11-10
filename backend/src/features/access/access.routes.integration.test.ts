@@ -28,6 +28,8 @@ import * as batchRoute from '@/app/api/search-indexes/[id]/documents/batches/[ba
 import * as bulkRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
 import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/delete-by-filter/route';
 import * as setupDemoRoute from '@/app/api/admin/setup-demo/route';
+import * as analyticsExperiencesRoute from '@/app/api/analytics/experiences/route';
+import { aiExperiences } from '@/db/schema/ai-experience.schema';
 import * as roleRoute from '@/app/api/roles/[id]/route';
 import * as rolesRoute from '@/app/api/roles/route';
 import { aiProviders } from '@/db/schema/ai-providers.schema';
@@ -581,5 +583,18 @@ describe("a role's permissions compared as granted", () => {
     as(await makeUser(role));
     expect((await call(userRoute.PUT, 'PUT', `/api/users/${peer}`, { firstName: 'Peer' }, { id: peer })).status).toBe(200);
     expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${role}`, { description: 'Managers' }, { id: role })).status).toBe(200);
+  });
+});
+
+describe('the experiences analytics can be scoped to', () => {
+  it('are listed by name for a role that only reads analytics, without configs or tokens', async () => {
+    const tag = `${n}-${Date.now()}`;
+    await testDb.db.insert(aiExperiences).values({ name: `Helper ${tag}`, slug: `helper-${tag}`, accessToken: '00000000-0000-4000-8000-00000000c0de', createdBy: admin,
+      personaConfig: {}, sessionConfig: {}, accessConfig: {}, observabilityConfig: {} } as never);
+    as(await makeUser(await makeRole(`Analysts ${n}`, ['analytics:view'])));
+    const res = await call(analyticsExperiencesRoute.GET, 'GET', '/api/analytics/experiences');
+    expect(res.status).toBe(200);
+    expect(res.body?.data).toEqual(expect.arrayContaining([{ id: expect.any(String), name: `Helper ${tag}`, slug: `helper-${tag}`, type: 'ai', isActive: true }]));
+    expect(JSON.stringify(res.body)).not.toContain('00000000c0de');
   });
 });

@@ -58,7 +58,8 @@ export interface AIExperienceWithTools {
   personaConfig: Record<string, unknown>;
   guardrailConfig: Record<string, unknown> | null;
   sessionConfig: Record<string, unknown>;
-  accessToken: string;
+  /** Only for roles that may edit chat experiences */
+  accessToken?: string;
   accessConfig: Record<string, unknown>;
   observabilityConfig: Record<string, unknown>;
   providerId: string | null;

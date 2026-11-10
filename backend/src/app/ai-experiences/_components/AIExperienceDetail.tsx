@@ -277,7 +277,9 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
           <div className="h-px flex-1 bg-border/60" />
         </div>
 
-        {/* Access Token */}
+        {/* Access Token and widget: only roles that may edit chat experiences get the token */}
+        {experience.accessToken && (
+        <>
         <AccessTokenRow token={experience.accessToken} />
 
         {/* Chat Widget — one collapsible card with snippet + content + styling */}
@@ -290,6 +292,8 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
           isSaving={isUpdating}
           defaultContainerId="interakt-chat"
         />
+        </>
+        )}
       </div>
 
       {/* Danger Zone */}

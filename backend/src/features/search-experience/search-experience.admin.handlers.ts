@@ -7,6 +7,7 @@
  * These endpoints require session authentication (admin users).
  */
 
+import { tokensFor } from '@/features/access/access-tokens';
 import { NextRequest } from 'next/server';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
@@ -93,7 +94,7 @@ export async function handleListSearchExperiences(request: NextRequest) {
 
     const result = await service.listSearchExperiences(validation.data, userId);
 
-    return apiResponse.successWithPagination(result.items, {
+    return apiResponse.successWithPagination(await tokensFor(result.items, 'search-experiences:edit'), {
       page: result.page,
       pageSize: result.pageSize,
       totalPages: result.totalPages,
@@ -122,7 +123,7 @@ export async function handleGetSearchExperience(
 
     const experience = await service.getSearchExperienceWithIndexes(params.id);
 
-    return apiResponse.success(experience);
+    return apiResponse.success(await tokensFor(experience, 'search-experiences:edit'));
   } catch (error) {
     const err = error as Error;
 

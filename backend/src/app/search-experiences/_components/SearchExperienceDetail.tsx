@@ -461,6 +461,9 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
           <div className="h-px flex-1 bg-border/60" />
         </div>
 
+        {/* Access Token and widget: only roles that may edit search experiences get the token */}
+        {experience.accessToken && (
+        <>
         {/* Access Token — same compact row as AI experiences; Regenerate is in the header */}
         <AccessTokenRow
           token={experience.accessToken}
@@ -472,6 +475,8 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
           accessToken={experience.accessToken}
           defaultContainerId="interakt-search"
         />
+        </>
+        )}
       </div>
 
       {/* Danger Zone */}
