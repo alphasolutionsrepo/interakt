@@ -13,9 +13,10 @@ import { errorEvent } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('server-only', () => ({}));
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
-vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUser: async () => ({ id: 'admin', role: 'admin' }) }));
 vi.mock('@/db/index', () => ({ db: {} }));
 
 import { POST as setupDemo } from './route';

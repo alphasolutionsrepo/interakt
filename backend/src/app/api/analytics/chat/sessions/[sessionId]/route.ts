@@ -10,8 +10,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { apiResponse } from '@/shared/api/response';
-import { readJsonBody } from '@/shared/api/read-json-body';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   getAdminChatSession,
   updateAdminChatSession,
@@ -19,6 +19,8 @@ import {
   addAdminChatMessages,
   type AdminChatMessage,
 } from '@/features/analytics';
+import { readJsonBody } from '@/shared/api/read-json-body';
+import { apiResponse } from '@/shared/api/response';
 
 // ============================================================================
 // SCHEMAS
@@ -65,7 +67,7 @@ interface RouteParams {
 // GET - Get Session
 // ============================================================================
 
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export const GET = withPermission('analytics:ask', async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { sessionId } = await params;
 
@@ -85,13 +87,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'getAnalyticsChatSession' });
   }
-}
+});
 
 // ============================================================================
 // PATCH - Update Session
 // ============================================================================
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export const PATCH = withPermission('analytics:ask', async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { sessionId } = await params;
     const body = await readJsonBody(request);
@@ -138,13 +140,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return apiResponse.error(error, 500, { operation: 'updateAnalyticsChatSession' });
   }
-}
+});
 
 // ============================================================================
 // DELETE - Delete Session
 // ============================================================================
 
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export const DELETE = withPermission('analytics:ask', async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { sessionId } = await params;
 
@@ -164,4 +166,4 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'deleteAnalyticsChatSession' });
   }
-}
+});

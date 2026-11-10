@@ -11,6 +11,8 @@ import { expectInternalFailure, failedQuery } from '@/shared/test/error-answers'
 import type { LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 const failure = vi.hoisted(() => ({ error: undefined as unknown }));
 vi.mock('@/features/search/providers', () => ({

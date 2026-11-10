@@ -2,10 +2,12 @@
 
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { getUserForAuth } from './auth.service';
-import { verifyPassword } from '@/shared/utils/auth-utils';
 import { v4 as uuidv4 } from 'uuid';
+
+import { getUserForAuth } from './auth.service';
+
 import { createLogger } from '@/shared/logger/logger';
+import { verifyPassword } from '@/shared/utils/auth-utils';
 
 const logger = createLogger('auth');
 
@@ -45,7 +47,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
             firstName: user.firstName ?? '',
             lastName: user.lastName ?? '',
-            role: user.role ?? 'user',
           };
         } catch (error) {
           logger.error('Authentication error', error as Error);
@@ -66,7 +67,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.email = user.email;
         token.firstName = user.firstName;
         token.lastName = user.lastName;
-        token.role = user.role;
       }
       return token;
     },
@@ -81,7 +81,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.firstName = token.firstName as string;
       session.user.lastName = token.lastName as string;
       session.user.email = token.email as string;
-      session.user.role = token.role as string;
       session.user.name = token.name as string;
 
       return session;

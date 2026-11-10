@@ -6,12 +6,14 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleGetSearchContextById } from '@/features/search/search.api.handlers';
 
-export async function GET(
+export const GET = withPermission('playground:use', async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     const resolvedParams = await params;
     return handleGetSearchContextById(request, resolvedParams);
-}
+});

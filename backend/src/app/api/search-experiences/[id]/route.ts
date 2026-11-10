@@ -9,29 +9,32 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { forBuiltInChange } from '@/features/access/built-in';
+import { withPermission } from '@/features/access/route-guard';
 import {
   handleGetSearchExperience,
   handleUpdateSearchExperience,
   handleDeleteSearchExperience,
 } from '@/features/search-experience/search-experience.admin.handlers';
 
-export async function GET(
+export const GET = withPermission('search-experiences:view', async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleGetSearchExperience(request, context);
-}
+});
 
-export async function PUT(
+export const PUT = forBuiltInChange('search-experience', 'search-experiences:edit', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleUpdateSearchExperience(request, context);
-}
+});
 
-export async function DELETE(
+export const DELETE = forBuiltInChange('search-experience', 'search-experiences:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleDeleteSearchExperience(request, context);
-}
+});

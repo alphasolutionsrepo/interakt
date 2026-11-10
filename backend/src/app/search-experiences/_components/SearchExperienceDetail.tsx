@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAccess } from '@/shared/access/useAccess';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -119,6 +120,7 @@ interface SearchExperienceDetailProps {
 export function SearchExperienceDetail({ id, basePath = '/search-experiences', listPath }: SearchExperienceDetailProps) {
   const listHref = listPath ?? basePath;
   const router = useRouter();
+  const canEdit = useAccess().can('search-experiences:edit');
 
   // State
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -461,6 +463,9 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
           <div className="h-px flex-1 bg-border/60" />
         </div>
 
+        {/* Access Token and widget: for roles that may edit search experiences (playground users get the token too) */}
+        {canEdit && experience.accessToken && (
+        <>
         {/* Access Token — same compact row as AI experiences; Regenerate is in the header */}
         <AccessTokenRow
           token={experience.accessToken}
@@ -472,6 +477,8 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
           accessToken={experience.accessToken}
           defaultContainerId="interakt-search"
         />
+        </>
+        )}
       </div>
 
       {/* Danger Zone */}

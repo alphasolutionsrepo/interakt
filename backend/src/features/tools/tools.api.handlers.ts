@@ -2,28 +2,33 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { readJsonBody } from '@/shared/api/read-json-body';
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
-import { getCurrentUserId } from '@/shared/utils/auth-utils';
-import * as service from './tools.service';
-import * as dataSourceService from '@/features/data-source/data-source.service';
-import { executeTool } from './tools.executor';
-import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
-import { lookupFieldsStatus } from './lookup-fields.service';
+
 import type { LookupFieldsConfig } from './executors/data-source/lookup-field-rules';
+import { lookupFieldsStatus } from './lookup-fields.service';
+import { executeTool } from './tools.executor';
+import {
+  getOperationsForDataSource,
+  getAllExecutorTypes,
+  type DataSourceType,
+} from './tools.registry';
+import * as service from './tools.service';
 import {
   createToolSchema,
   updateToolSchema,
   listToolsQuerySchema,
   DATA_SOURCE_OPERATIONS,
 } from './tools.validation';
-import {
-  getOperationsForDataSource,
-  getAllExecutorTypes,
-  type DataSourceType,
-} from './tools.registry';
+
 import type { DataSourceSchema } from '@/db/schema/data-sources.schema';
+import { assertMayWriteSecretConfig } from '@/features/access/secret-references';
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import * as dataSourceService from '@/features/data-source/data-source.service';
+import { readJsonBody } from '@/shared/api/read-json-body';
+import { assertMayChange } from '@/features/access/built-in';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
+
 
 const logger = createLogger('tools-handlers');
 
@@ -82,6 +87,10 @@ export async function handleCreateTool(request: NextRequest) {
       return apiResponse.validationError(validation.error);
     }
 
+    await assertMayWriteSecretConfig(validation.data);
+    // A tool on the docs data source can end up in the built-in help: only an Admin adds one
+    const dataSourceId = (validation.data as { dataSourceId?: string | null }).dataSourceId;
+    if (dataSourceId) await assertMayChange('data-source', dataSourceId);
     const tool = await service.createTool(validation.data, userId);
     logger.info('Created tool', {
       toolId: tool.id,
@@ -149,6 +158,8 @@ export async function handleUpdateTool(
       return apiResponse.validationError(validation.error);
     }
 
+    // The stored config too: changing only the host of a tool that sends a secret redirects it
+    await assertMayWriteSecretConfig(await service.getToolById(id), validation.data);
     const updated = await service.updateTool(id, validation.data, userId);
     if (!updated) {
       return apiResponse.notFound('Tool not found');
@@ -370,6 +381,7 @@ export async function handleScaffoldTools(request: NextRequest) {
     }
 
     const { dataSourceId } = validation.data;
+    await assertMayChange('data-source', dataSourceId);
 
     // Look up the data source to get name, slug, type, and schema
     const dataSource = await dataSourceService.getDataSourceById(dataSourceId);

@@ -8,6 +8,7 @@
  * away once all are done, or when someone hides it.
  */
 
+import { useAccess } from '@/shared/access/useAccess';
 import { CheckCircle2, Circle, X } from 'lucide-react';
 import Link from 'next/link';
 
@@ -21,21 +22,27 @@ export const CHECKLIST_ID = 'tip:checklist';
 
 export function SetupChecklist({ steps }: { steps: HomeChecklistStep[] }) {
   const dismiss = useDismissTip();
+  const { can } = useAccess();
+  // The server sends only the steps this role can take (homeDataForRole). Hiding the list
+  // hides it for everyone, so it needs analytics:manage.
   const done = steps.filter((s) => s.done).length;
+  if (steps.length === 0) return null;
   const next = steps.find((s) => !s.done);
 
   return (
     <section aria-labelledby="setup-checklist" className="relative rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute right-2 top-2 size-8 text-muted-foreground"
-        onClick={() => dismiss.mutate(CHECKLIST_ID)}
-        aria-label="Hide the getting started list"
-        title="Hide this list"
-      >
-        <X className="size-4" />
-      </Button>
+      {can('analytics:manage') && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-2 size-8 text-muted-foreground"
+          onClick={() => dismiss.mutate(CHECKLIST_ID)}
+          aria-label="Hide the getting started list"
+          title="Hide this list"
+        >
+          <X className="size-4" />
+        </Button>
+      )}
       <div className="mb-4 space-y-1 pr-8">
         <h2 id="setup-checklist" className="font-semibold">
           Get started

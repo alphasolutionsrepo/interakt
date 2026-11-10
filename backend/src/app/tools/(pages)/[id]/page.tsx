@@ -1,5 +1,6 @@
 'use client';
 
+import { useAccess } from '@/shared/access/useAccess';
 import { use, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -281,6 +282,8 @@ function ToolTestPanel({ toolId, isActive, executorType, operation }: {
 export default function ToolDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  // Test runs spend AI tokens or call the tool: playground:use
+  const canTest = useAccess().can('playground:use');
   const { tool, isLoading, isError, updateTool, deleteTool, isUpdating, isDeleting, experiences } = useTool(id);
   const { status: lookupFields } = useLookupFields(tool?.operation === 'lookup' ? id : undefined, tool?.dataSourceId);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -469,7 +472,7 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Test Panel */}
-      <ToolTestPanel toolId={id} isActive={tool.isActive} executorType={tool.executorType} operation={tool.operation} />
+      {canTest && <ToolTestPanel toolId={id} isActive={tool.isActive} executorType={tool.executorType} operation={tool.operation} />}
 
       {/* Used in AI Experiences */}
       {experiences.length > 0 && (

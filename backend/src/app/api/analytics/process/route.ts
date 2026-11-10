@@ -8,6 +8,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import {
   runAnalyticsProcessing,
   getProcessingStatus,
@@ -49,7 +51,7 @@ async function getActiveExperienceIds(): Promise<string[]> {
 // POST — Trigger Processing
 // ============================================================================
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('analytics:manage', async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const {
@@ -157,13 +159,13 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'startAnalyticsProcessing' });
   }
-}
+});
 
 // ============================================================================
 // GET — Processing Status
 // ============================================================================
 
-export async function GET(request: NextRequest) {
+export const GET = withPermission('analytics:view', async function GET(request: NextRequest) {
   try {
     const experienceId =
       request.nextUrl.searchParams.get('experienceId') || undefined;
@@ -174,4 +176,4 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'getAnalyticsProcessingStatus' });
   }
-}
+});

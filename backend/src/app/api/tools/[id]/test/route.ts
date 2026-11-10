@@ -9,11 +9,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleTestTool } from '@/features/tools/tools.api.handlers';
 
-export async function POST(
+export const POST = withPermission('playground:use', async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   return handleTestTool(request, context);
-}
+});

@@ -39,6 +39,7 @@ import {
   createSearchExperience,
   deleteSearchExperience,
   getSearchExperienceBySlug,
+  markSearchExperienceBuiltIn,
 } from '@/features/search-experience/search-experience.service';
 import {
   createFieldsFromMappingEntries,
@@ -52,7 +53,8 @@ import {
   getSearchIndexByName,
   recreateEmptyIndex,
 } from '@/features/search-index/search-index.service';
-import { DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
+import { DOCS_SEARCH_SEED_KEY, DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
+import { markBuiltIn } from '@/features/access/built-in';
 import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { calculateChecksum, getRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-registry.service';
@@ -63,7 +65,7 @@ const logger = createLogger('docs-search-seeder');
 // Constants
 // ---------------------------------------------------------------------------
 
-const SEARCH_KEY = 'interakt-docs-search';
+const SEARCH_KEY = DOCS_SEARCH_SEED_KEY;
 /** The index shares the experience's slug; valid for both Elasticsearch and Azure AI Search. */
 const INDEX_NAME = DOCS_SEARCH_SLUG;
 /** Bump when the fields or experience config below change — forces a full recreate. */
@@ -272,7 +274,9 @@ async function buildWithMode(
   const embedded = result.embeddingStats?.generated ?? 0;
   if (mode.searchType === 'hybrid' && embedded < result.indexedDocuments / 2) return 'embeddings-failed';
 
-  if (!experience) await createExperience(index!.id, adminId);
+  // The built-in help: every signed-in user may use it, only an Admin may change it or its index
+  await markBuiltIn('search-index', [index!.id]);
+  await markSearchExperienceBuiltIn((experience ?? (await createExperience(index!.id, adminId))).id);
 
   const nextMeta: DocsSearchMeta = {
     schemaVersion: SCHEMA_VERSION,
@@ -283,7 +287,6 @@ async function buildWithMode(
     hybridFailure,
   };
   await upsertRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY, checksum, nextMeta as unknown as Record<string, unknown>);
-
   logger.info('✅ Docs search built', { sections: result.indexedDocuments, searchType: mode.searchType, embedded });
   return { skipped: false, searchType: mode.searchType, sections: result.indexedDocuments };
 }
@@ -300,18 +303,21 @@ function modelSignature(mode: Extract<SearchMode, { searchType: 'hybrid' }>): st
 
 /**
  * Refuse to manage an index or experience called "interakt-docs" that this
- * seeder didn't create — an admin may have made one by hand. Ours are those
- * recorded in the seed registry, or that carry our description.
+ * seeder didn't create — an admin may have made one by hand. Our index is the one
+ * recorded in the seed registry, or that carries our description. Our experience is
+ * the one marked built in (it is open to every signed-in user), or, from before that
+ * mark, one that carries our description while the registry records the build.
  */
 function assertOwned(
   registered: boolean,
   index: { description?: string | null } | null,
-  experience: { description?: string | null } | null,
+  experience: { description?: string | null; isBuiltIn?: boolean } | null,
 ): void {
-  if (registered) return;
+  const ourIndex = !index || registered || index.description === INDEX_DESCRIPTION;
+  const ourExperience = !experience || experience.isBuiltIn === true || (registered && experience.description === EXPERIENCE_DESCRIPTION);
   const foreign = [
-    index && index.description !== INDEX_DESCRIPTION && `search index "${INDEX_NAME}"`,
-    experience && experience.description !== EXPERIENCE_DESCRIPTION && `search experience "${DOCS_SEARCH_SLUG}"`,
+    !ourIndex && `search index "${INDEX_NAME}"`,
+    !ourExperience && `search experience "${DOCS_SEARCH_SLUG}"`,
   ].filter(Boolean);
   if (foreign.length) {
     throw new DocsSearchConflictError(

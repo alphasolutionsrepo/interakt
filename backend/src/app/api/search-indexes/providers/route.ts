@@ -6,11 +6,13 @@
  */
 
 import { NextResponse } from 'next/server';
-import { apiResponse } from '@/shared/api/response';
-import { getEnabledProviderTypes, getSearchEngineProvider } from '@/features/search/providers';
-import { searchProvidersConfig } from '@/config/search-provider.config';
 
-export async function GET() {
+import { searchProvidersConfig } from '@/config/search-provider.config';
+import { withPermission } from '@/features/access/route-guard';
+import { getEnabledProviderTypes, getSearchEngineProvider } from '@/features/search/providers';
+import { apiResponse } from '@/shared/api/response';
+
+export const GET = withPermission('search-indexes:view', async function GET() {
     try {
         const enabledTypes = getEnabledProviderTypes();
         const isDefaultType = (type: string) =>
@@ -58,4 +60,4 @@ export async function GET() {
     } catch (error) {
         return apiResponse.error(error, 500, { operation: 'listSearchProviders' });
     }
-}
+});

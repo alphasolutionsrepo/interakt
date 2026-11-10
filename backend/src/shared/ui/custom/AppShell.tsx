@@ -1,12 +1,14 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
 import Image from 'next/image'
+import { usePathname } from 'next/navigation'
+
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/shared/ui/custom/appSidebar"
-import { Navbar } from "@/shared/ui/custom/navbar"
-import { HelpButton } from "@/shared/ui/custom/HelpButton"
+import { PageAccessGate } from "@/shared/access/PageAccessGate"
 import { ActivityMenu } from "@/shared/ui/custom/ActivityMenu"
+import { AppSidebar } from "@/shared/ui/custom/appSidebar"
+import { HelpButton } from "@/shared/ui/custom/HelpButton"
+import { Navbar } from "@/shared/ui/custom/navbar"
 
 // Public routes that should NOT show the sidebar
 const PUBLIC_ROUTES = ['/', '/login', '/register']
@@ -74,7 +76,7 @@ export function AppShell({ children }: AppShellProps) {
           </header>
           <main className="flex-1 bg-background font-sans overflow-auto">
             <div id="mainDiv" className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              {children}
+              <PageAccessGate>{children}</PageAccessGate>
             </div>
           </main>
         </div>

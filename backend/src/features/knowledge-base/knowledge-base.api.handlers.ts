@@ -11,6 +11,7 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { assertMayChange } from '@/features/access/built-in';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
@@ -39,6 +40,8 @@ export async function handleUploadDocument(request: NextRequest) {
     const body = await request.json();
     const validation = uploadSchema.safeParse(body);
     if (!validation.success) return apiResponse.validationError(validation.error);
+    // The docs data source feeds the built-in help: only an Admin changes it
+    await assertMayChange('data-source', validation.data.dataSourceId);
 
     const result = await service.uploadDocument(validation.data as UploadDocumentInput);
 
@@ -105,6 +108,7 @@ export async function handleDeleteDocument(
 
     const doc = await repository.getDocumentById(id);
     if (!doc) return apiResponse.notFound('Document not found');
+    await assertMayChange('data-source', doc.dataSourceId);
 
     await service.deleteDocument(id);
 

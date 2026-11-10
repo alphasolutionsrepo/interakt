@@ -8,11 +8,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { forBuiltInChange } from '@/features/access/built-in';
 import { handleUpdateFieldMappingConfig } from '@/features/search-index/search-index.api.handlers';
 
-export async function PUT(
+export const PUT = forBuiltInChange('search-index', 'search-indexes:edit', async function PUT(
     request: NextRequest,
     context: { params: Promise<{ id: string; fieldId: string }> }
 ) {
     return handleUpdateFieldMappingConfig(request, context);
-}
+});

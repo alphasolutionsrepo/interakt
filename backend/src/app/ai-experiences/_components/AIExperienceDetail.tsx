@@ -1,5 +1,6 @@
 'use client';
 
+import { useAccess } from '@/shared/access/useAccess';
 import { format } from 'date-fns';
 import {
   ChevronRight, Edit2, Power, PowerOff, Trash2,
@@ -35,6 +36,11 @@ import { PageHeader } from '@/shared/ui/custom/PageHeader';
 export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath }: { id: string; basePath?: string; listPath?: string }) {
   const listHref = listPath ?? basePath;
   const router = useRouter();
+  // Test runs spend AI tokens or call the tool: playground:use
+  const { can } = useAccess();
+  const canTest = can('playground:use');
+  // The token also reaches playground users; the widget editor (which saves) is for editors
+  const canEdit = can('ai-experiences:edit');
   const {
     experience, isLoading, isError, refetch,
     updateExperience, deleteExperience, regenerateToken,
@@ -184,7 +190,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
       </Card>
 
       {/* Chat Test Panel */}
-      <ChatTestPanel experienceSlug={experience.slug} experienceName={experience.name} />
+      {canTest && <ChatTestPanel experienceSlug={experience.slug} experienceName={experience.name} />}
 
       {/* Pipeline Configuration */}
       <PipelineStepsCard
@@ -274,7 +280,9 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
           <div className="h-px flex-1 bg-border/60" />
         </div>
 
-        {/* Access Token */}
+        {/* Access Token and widget: for roles that may edit chat experiences */}
+        {canEdit && experience.accessToken && (
+        <>
         <AccessTokenRow token={experience.accessToken} />
 
         {/* Chat Widget — one collapsible card with snippet + content + styling */}
@@ -287,6 +295,8 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
           isSaving={isUpdating}
           defaultContainerId="interakt-chat"
         />
+        </>
+        )}
       </div>
 
       {/* Danger Zone */}

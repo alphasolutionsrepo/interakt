@@ -8,7 +8,7 @@ This is the step-by-step for creating an index, configuring its fields, and load
 
 ## Before you start
 
-- You're logged in as an admin or moderator.
+- Your role can edit search indexes (Admin and Editor can).
 - If you want **semantic** or **hybrid** search, you have an [AI provider configured](configure-an-ai-provider).
 - You have some data in JSON, JSONL, CSV, or Excel format. If you don't, the [Initial Setup demo](../getting-started/initial-setup) gives you a ready-made Fashion Catalog.
 

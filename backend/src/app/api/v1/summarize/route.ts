@@ -11,6 +11,7 @@
  */
 
 import { NextRequest } from 'next/server';
+
 import { handleSummarize } from '@/features/chat';
 import { publicRoute } from '@/shared/api/public-route';
 

@@ -11,10 +11,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { apiResponse, describeError } from '@/shared/api/response';
-import { readJsonBody } from '@/shared/api/read-json-body';
-import { runAnalyticsPipeline } from '@/features/analytics/pipeline/analytics-pipeline-orchestrator';
+
+import { withPermission } from '@/features/access/route-guard';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';
+import { runAnalyticsPipeline } from '@/features/analytics/pipeline/analytics-pipeline-orchestrator';
+import { readJsonBody } from '@/shared/api/read-json-body';
+import { apiResponse, describeError } from '@/shared/api/response';
 
 // ============================================================================
 // SCHEMA
@@ -49,7 +51,7 @@ const chatRequestSchema = z.object({
 // HANDLER
 // ============================================================================
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('analytics:ask', async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
 
   try {
@@ -121,4 +123,4 @@ export async function POST(request: NextRequest) {
     if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return apiResponse.error(error, 500, { operation: 'analyticsChatRequest' });
   }
-}
+});

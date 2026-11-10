@@ -8,21 +8,24 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { forBuiltInChange } from '@/features/access/built-in';
+
 import {
   handleUpdateIndex,
   handleRemoveIndex,
 } from '@/features/search-experience/search-experience.admin.handlers';
 
-export async function PUT(
+export const PUT = forBuiltInChange('search-experience', 'search-experiences:edit', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string; indexId: string }> }
 ) {
   return handleUpdateIndex(request, context);
-}
+});
 
-export async function DELETE(
+export const DELETE = forBuiltInChange('search-experience', 'search-experiences:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string; indexId: string }> }
 ) {
   return handleRemoveIndex(request, context);
-}
+});

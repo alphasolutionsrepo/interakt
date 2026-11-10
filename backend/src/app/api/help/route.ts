@@ -6,10 +6,11 @@
 
 import { NextResponse } from 'next/server';
 
+import { withPermission } from '@/features/access/route-guard';
 import { listDocs } from '@/shared/help/help.server';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export const GET = withPermission('signed-in', async function GET() {
   return NextResponse.json(await listDocs());
-}
+});

@@ -17,7 +17,9 @@ export * from './enums.schema';
 // IMPORT ALL SCHEMAS
 // ============================================================================
 
-// Users
+// Roles and users
+export * from './roles.schema';
+import { roles } from './roles.schema';
 export * from './users.schema';
 import { user } from './users.schema';
 
@@ -147,8 +149,12 @@ import {
 /**
  * User Relations
  */
-export const userRelations = relations(user, ({ }) => ({
-  // User relations can be extended as needed
+export const userRelations = relations(user, ({ one }) => ({
+  role: one(roles, { fields: [user.roleId], references: [roles.id] }),
+}));
+
+export const rolesRelations = relations(roles, ({ many }) => ({
+  users: many(user),
 }));
 
 /**
@@ -238,7 +244,9 @@ export const toolsRelations = relations(tools, ({ one, many }) => ({
 // ============================================================================
 
 export const schema = {
-  // Users
+  // Roles and users
+  roles,
+  rolesRelations,
   user,
   userRelations,
 

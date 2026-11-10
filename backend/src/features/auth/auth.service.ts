@@ -1,10 +1,11 @@
 // src/features/auth/auth.service.ts
 
-import { createLogger } from '@/shared/logger/logger';
 import * as repository from './auth.repository';
-import { hashPassword, verifyPassword } from '@/shared/utils/auth-utils';
 import type { CreateUserDTO, UpdateUserDTO } from './auth.validations';
+
 import type { User } from '@/db/schema/users.schema';
+import { createLogger } from '@/shared/logger/logger';
+import { hashPassword, verifyPassword } from '@/shared/utils/auth-utils';
 
 const logger = createLogger('auth-service');
 
@@ -32,14 +33,14 @@ export async function createUser(input: CreateUserDTO): Promise<Omit<User, 'pass
       password: hashedPassword,
       firstName: input.firstName ?? null,
       lastName: input.lastName ?? null,
-      role: input.role ?? 'user',
+      roleId: input.roleId,
       isActive: input.isActive ?? true,
     });
 
     logger.info('Created user via service', {
       userId: newUser.id,
       email: newUser.email,
-      role: newUser.role,
+      roleId: newUser.roleId,
     });
 
     // Return user without password
@@ -107,7 +108,7 @@ export async function getUserForAuth(email: string): Promise<User | null> {
 /**
  * List all users (without passwords)
  */
-export async function listUsers(): Promise<Omit<User, 'password'>[]> {
+export async function listUsers(): Promise<Omit<repository.UserWithRole, 'password'>[]> {
   try {
     const users = await repository.listUsers();
     return users.map(({ password: _, ...user }) => user);
@@ -121,35 +122,23 @@ export async function listUsers(): Promise<Omit<User, 'password'>[]> {
 // UPDATE OPERATIONS
 // ============================================================================
 
+/** The profile fields a user update may change */
+export type ProfileUpdate = Pick<UpdateUserDTO, 'email' | 'firstName' | 'lastName'>;
+
 /**
- * Update user
+ * The profile change as it will be stored, after checking the email is free (throws "already in
+ * use"). Two saves at the same moment can both pass this check: user.email has no unique index
+ * (it never had one, and creating a user has the same gap). The fix is that index, on the
+ * lowercased email, after checking existing rows for duplicates — a change of its own.
  */
-export async function updateUser(
-  id: string,
-  input: UpdateUserDTO
-): Promise<Omit<User, 'password'>> {
-  try {
-    // If email is being updated, check uniqueness
-    if (input.email) {
-      const existingUser = await repository.getUserByEmail(input.email);
-      if (existingUser && existingUser.id !== id) {
-        throw new Error(`Email ${input.email} is already in use`);
-      }
+export async function prepareProfileUpdate(id: string, input: ProfileUpdate): Promise<ProfileUpdate> {
+  if (input.email) {
+    const existingUser = await repository.getUserByEmail(input.email);
+    if (existingUser && existingUser.id !== id) {
+      throw new Error(`Email ${input.email} is already in use`);
     }
-
-    const updatedUser = await repository.updateUser(id, {
-      ...input,
-      email: input.email?.toLowerCase(),
-    });
-
-    logger.info('Updated user via service', { userId: id });
-
-    const { password: _, ...userWithoutPassword } = updatedUser;
-    return userWithoutPassword;
-  } catch (error) {
-    logger.error('Failed to update user', error as Error);
-    throw error;
   }
+  return { ...input, email: input.email?.toLowerCase() };
 }
 
 /**
@@ -180,32 +169,6 @@ export async function changePassword(
     logger.info('Changed user password', { userId });
   } catch (error) {
     logger.error('Failed to change password', error as Error);
-    throw error;
-  }
-}
-
-/**
- * Deactivate user
- */
-export async function deactivateUser(id: string): Promise<void> {
-  try {
-    await repository.deactivateUser(id);
-    logger.info('Deactivated user via service', { userId: id });
-  } catch (error) {
-    logger.error('Failed to deactivate user', error as Error);
-    throw error;
-  }
-}
-
-/**
- * Activate user
- */
-export async function activateUser(id: string): Promise<void> {
-  try {
-    await repository.activateUser(id);
-    logger.info('Activated user via service', { userId: id });
-  } catch (error) {
-    logger.error('Failed to activate user', error as Error);
     throw error;
   }
 }

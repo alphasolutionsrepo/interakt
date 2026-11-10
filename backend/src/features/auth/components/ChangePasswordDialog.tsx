@@ -1,15 +1,17 @@
-// app/users/_components/ChangePasswordDialog.tsx
+// src/features/auth/components/ChangePasswordDialog.tsx
 
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Key } from 'lucide-react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+
+
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -23,20 +25,18 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Loader2, Key } from 'lucide-react';
 import { changePasswordSchema } from '@/features/auth/auth.validations';
 import type { ChangePasswordDTO } from '@/features/auth/auth.validations';
-import type { UserResponse } from '../_lib/api-client';
 import { useInlineError } from '@/shared/activity/useInlineError';
-import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
+import { DialogFormFooter } from '@/shared/ui/custom/DialogFormFooter';
 
 interface ChangePasswordDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Rejects when the save fails; the dialog then shows why */
   onSubmit: (data: ChangePasswordDTO) => void | Promise<void>;
-  user?: UserResponse;
+  /** Whose password, shown in the dialog */
+  email?: string;
   isSubmitting?: boolean;
 }
 
@@ -44,7 +44,7 @@ export function ChangePasswordDialog({
   open,
   onOpenChange,
   onSubmit,
-  user,
+  email,
   isSubmitting,
 }: ChangePasswordDialogProps) {
   const inline = useInlineError();
@@ -54,6 +54,7 @@ export function ChangePasswordDialog({
     defaultValues: {
       currentPassword: '',
       newPassword: '',
+      confirmPassword: '',
     },
   });
 
@@ -64,6 +65,7 @@ export function ChangePasswordDialog({
       form.reset({
         currentPassword: '',
         newPassword: '',
+        confirmPassword: '',
       });
     }
   }, [open, form, clearInlineError]);
@@ -87,9 +89,9 @@ export function ChangePasswordDialog({
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold">Change Password</DialogTitle>
-              {user && (
+              {email && (
                 <DialogDescription className="mt-1">
-                  Update password for {user.email}
+                  Update password for {email}
                 </DialogDescription>
               )}
             </div>
@@ -141,29 +143,24 @@ export function ChangePasswordDialog({
                   </FormItem>
                 )}
               />
+
+              {/* Confirm New Password: the schema checks it matches */}
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm New Password *</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="••••••••" {...field} className="h-11 rounded-lg" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
-            <ProblemAlert error={inline.error} hideFields={inline.hideFields} onDismiss={inline.clear} />
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
-                className="rounded-lg"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="rounded-lg"
-              >
-                {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-                Change Password
-              </Button>
-            </DialogFooter>
+            <DialogFormFooter inline={inline} onCancel={() => onOpenChange(false)} submitLabel="Change Password" isSubmitting={isSubmitting} />
           </form>
         </Form>
       </DialogContent>

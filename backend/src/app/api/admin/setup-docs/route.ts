@@ -10,29 +10,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withPermission } from '@/features/access/route-guard';
 import { apiResponse, describeError } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { seedDocs, resetDocs, getDocsSeedStatus } from '@/shared/seeders/docs';
 import type { DocsSeedProgressEvent } from '@/shared/seeders/docs/docs-steps';
-import { getCurrentUser } from '@/shared/utils/auth-utils';
 
 const logger = createLogger('setup-docs-api');
 
 // Embedding ~20 docs can take a little while.
 export const maxDuration = 300;
 
-async function requireAdmin() {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false as const, res: apiResponse.unauthorized('You must be logged in') };
-  if ((user as { role?: string }).role !== 'admin') {
-    return { ok: false as const, res: apiResponse.forbidden('Admin role required') };
-  }
-  return { ok: true as const, user };
-}
-
-export async function GET() {
-  const guard = await requireAdmin();
-  if (!guard.ok) return guard.res;
+export const GET = withPermission('setup:run', async function GET() {
 
   try {
     const status = await getDocsSeedStatus();
@@ -40,11 +29,9 @@ export async function GET() {
   } catch (e) {
     return apiResponse.error(e as Error, undefined, { operation: 'setupDocsStatus' });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
-  const guard = await requireAdmin();
-  if (!guard.ok) return guard.res;
+export const POST = withPermission('setup:run', async function POST(request: NextRequest) {
 
   let body: { action?: string; force?: boolean; stream?: boolean } = {};
   try {
@@ -74,7 +61,7 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     return apiResponse.error(e as Error, undefined, { operation: 'setupDocs' });
   }
-}
+});
 
 /** Run the seed while streaming step progress as SSE (matches the demo route's convention). */
 function streamSeed(force: boolean): Response {

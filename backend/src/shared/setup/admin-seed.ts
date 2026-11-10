@@ -18,15 +18,18 @@
  */
 
 import 'server-only';
-import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+
+import bcrypt from 'bcryptjs';
+import { eq } from 'drizzle-orm';
 import YAML from 'yaml';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
-import bcrypt from 'bcryptjs';
+
 import { db } from '@/db/index';
 import { user } from '@/db/schema/users.schema';
+import { ADMIN_ROLE_ID } from '@/features/access/permissions';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('admin-seed');
@@ -95,7 +98,7 @@ async function createAdmin(admin: AdminConfig, source: string): Promise<void> {
       password: hashed,
       firstName: admin.firstName,
       lastName: admin.lastName,
-      role: 'admin',
+      roleId: ADMIN_ROLE_ID,
       isActive: true,
     })
     .returning();
@@ -105,7 +108,7 @@ async function createAdmin(admin: AdminConfig, source: string): Promise<void> {
 
 export async function seedAdminFromYaml(): Promise<void> {
   // Short-circuit if any admin already exists.
-  const existing = await db.select().from(user).where(eq(user.role, 'admin')).limit(1);
+  const existing = await db.select().from(user).where(eq(user.roleId, ADMIN_ROLE_ID)).limit(1);
   if (existing.length > 0) {
     logger.info('Admin user already exists — skipping seed', { email: existing[0].email });
     return;

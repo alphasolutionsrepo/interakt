@@ -285,6 +285,8 @@ export const searchExperiences = pgTable('search_experiences', {
   // STATUS
   // ═══════════════════════════════════════════════════════════════════════════
   isActive: boolean('is_active').default(true).notNull(),
+  /** The built-in help (Help Assistant, docs search), set by the docs setup: every signed-in user may use it, only an Admin may change it */
+  isBuiltIn: boolean('is_built_in').default(false).notNull(),
 
   /** Telemetry detail level: 'off' | 'metadata' | 'full' */
   telemetryDetailLevel: text('telemetry_detail_level').$type<'off' | 'metadata' | 'full'>().default('metadata').notNull(),

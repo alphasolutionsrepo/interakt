@@ -110,9 +110,11 @@ export async function createToolsForDataSource(
   dataSourceType: DataSourceType,
   schema?: DataSourceSchema | null,
   userId?: string,
+  /** Which tools count as already there (default: every tool on the data source) */
+  options: { counting?: (tool: Tool) => boolean } = {},
 ): Promise<Tool[]> {
   const operations = getOperationsForDataSource(dataSourceType);
-  const existingTools = await repository.getToolsByDataSourceId(dataSourceId);
+  const existingTools = (await repository.getToolsByDataSourceId(dataSourceId)).filter(options.counting ?? (() => true));
   const existingOperations = new Set(existingTools.map(t => t.operation));
 
   const createdTools: Tool[] = [];

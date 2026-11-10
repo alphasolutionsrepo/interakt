@@ -27,6 +27,8 @@ export function AskBox() {
     setText('');
   };
 
+  if (!askPanel.canAsk) return null;
+
   return (
     <div className="space-y-3">
       <form

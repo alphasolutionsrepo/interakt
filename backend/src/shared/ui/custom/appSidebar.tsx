@@ -1,11 +1,12 @@
 'use client'
-import React, { useState, useEffect } from "react"
 import {
   ChevronRight
 } from "lucide-react"
-import { usePathname } from "next/navigation"
 import Image from "next/image"
+import { usePathname } from "next/navigation"
+import React, { useState, useEffect } from "react"
 import { useTranslation } from 'react-i18next'
+
 import {
   Sidebar,
   SidebarContent,
@@ -22,12 +23,16 @@ import {
   SidebarHeader,
   useSidebar
 } from "../components/sidebar"
+
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { sidebarFooterItems, sidebarGroups } from "@/shared/data/SideBar-Items"
+import { canOpenPage } from "@/features/access/page-permissions"
+import { accessState } from "@/shared/access/access-state"
+import { useAccess } from "@/shared/access/useAccess"
+import { sidebarFooterItems, sidebarGroups, visibleSidebarGroups } from "@/shared/data/SideBar-Items"
 
 /**
  * Check if a sidebar item should be considered active.
@@ -109,6 +114,14 @@ function computeOpenStates(currentPath: string) {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
+  const { can, isLoading: accessLoading, errorStatus } = useAccess()
+  // Nothing until access is known, so no item flashes in and then disappears. If the lookup
+  // failed, the full sidebar: the server still checks every request, and the page says why.
+  const accessView = accessState({ isLoading: accessLoading, errorStatus, canOpen: true })
+  const visibleGroups =
+    accessView === 'loading' || accessView === 'signed-out' ? []
+      : accessView === 'unavailable' ? sidebarGroups
+        : visibleSidebarGroups(sidebarGroups, (url) => canOpenPage(url, can))
   const { t } = useTranslation()
   const { state } = useSidebar()
   const isCollapsed = state === "collapsed"
@@ -156,7 +169,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       <SidebarContent className="px-2">
-        {sidebarGroups.map((group) => (
+        {visibleGroups.map((group) => (
             <SidebarGroup key={group.name} className="py-1">
               {/* Group label - hidden when collapsed to icon, and for a group that needs none */}
               {!group.hideLabel && (

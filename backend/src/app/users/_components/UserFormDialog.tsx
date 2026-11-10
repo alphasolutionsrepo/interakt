@@ -2,14 +2,16 @@
 
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+
+import type { UserResponse } from '../_lib/api-client';
+
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -22,6 +24,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -29,14 +32,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
 import { createUserSchema, updateUserSchema } from '@/features/auth/auth.validations';
 import type { CreateUserDTO, UpdateUserDTO } from '@/features/auth/auth.validations';
-import type { UserResponse } from '../_lib/api-client';
 import { useInlineError } from '@/shared/activity/useInlineError';
-import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
+import { DialogFormFooter } from '@/shared/ui/custom/DialogFormFooter';
 
 interface UserFormDialogProps {
   open: boolean;
@@ -44,6 +43,8 @@ interface UserFormDialogProps {
   /** Rejects when the save fails; the dialog then shows why */
   onSubmit: (data: CreateUserDTO | UpdateUserDTO) => void | Promise<void>;
   user?: UserResponse;
+  /** Roles to choose from: the ones the signed-in user may assign */
+  roles: Array<{ id: string; name: string }>;
   isSubmitting?: boolean;
 }
 
@@ -52,6 +53,7 @@ export function UserFormDialog({
   onOpenChange,
   onSubmit,
   user,
+  roles,
   isSubmitting,
 }: UserFormDialogProps) {
   const isEditing = !!user;
@@ -66,7 +68,7 @@ export function UserFormDialog({
       password: '',
       firstName: '',
       lastName: '',
-      role: 'user',
+      roleId: '',
       isActive: true,
     },
   });
@@ -80,7 +82,7 @@ export function UserFormDialog({
           email: user.email,
           firstName: user.firstName || '',
           lastName: user.lastName || '',
-          role: user.role,
+          roleId: user.roleId,
           isActive: user.isActive,
         });
       } else {
@@ -89,7 +91,7 @@ export function UserFormDialog({
           password: '',
           firstName: '',
           lastName: '',
-          role: 'user',
+          roleId: '',
           isActive: true,
         });
       }
@@ -208,24 +210,24 @@ export function UserFormDialog({
               {/* Role */}
               <FormField
                 control={form.control}
-                name="role"
+                name="roleId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Role *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={(field.value as string | undefined) ?? ''}>
                       <FormControl>
                         <SelectTrigger className="h-11 rounded-lg">
-                          <SelectValue placeholder="Select a role" />
+                          <SelectValue placeholder={roles.length ? "Select a role" : "No roles to choose from (see the Roles tab)"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="moderator">Moderator</SelectItem>
-                        <SelectItem value="admin">Administrator</SelectItem>
+                        {roles.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormDescription className="text-xs">
-                      Defines user permissions and access level
+                      What this user can see and do. Edit roles on the Roles tab.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -233,27 +235,7 @@ export function UserFormDialog({
               />
             </div>
 
-            <ProblemAlert error={inline.error} hideFields={inline.hideFields} onDismiss={inline.clear} />
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
-                className="rounded-lg"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="rounded-lg"
-              >
-                {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-                {isEditing ? 'Save Changes' : 'Create User'}
-              </Button>
-            </DialogFooter>
+            <DialogFormFooter inline={inline} onCancel={() => onOpenChange(false)} submitLabel={isEditing ? 'Save Changes' : 'Create User'} isSubmitting={isSubmitting} />
           </form>
         </Form>
       </DialogContent>

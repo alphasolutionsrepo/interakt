@@ -2,19 +2,19 @@
 
 'use client';
 
-import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Plus, Sparkles } from 'lucide-react';
+import Link from 'next/link';
 
-import { useAnalyticsContext } from '../_lib/AnalyticsContext';
-import { useAskPanel } from '../_lib/AskPanelContext';
-import { ANALYTICS_SECTIONS } from '../_lib/sections';
 import { AnalyticsEmptyState } from '../_components/AnalyticsEmptyState';
 import { ExperienceComparisonTable } from '../_components/ExperienceComparisonTable';
 import { NeedsAttention } from '../_components/NeedsAttention';
 import { useDashboardView } from '../_components/sections/useDashboardView';
 import { AskConversation } from '../_components/shell/AskConversation';
 import { ChatHistoryButton } from '../_components/shell/ChatHistoryButton';
+import { useAnalyticsContext } from '../_lib/AnalyticsContext';
+import { useAskPanel } from '../_lib/AskPanelContext';
+import { ANALYTICS_SECTIONS } from '../_lib/sections';
 
 import { Button } from '@/shared/ui/components/button';
 
@@ -50,8 +50,9 @@ export default function AnalyticsOverviewPage() {
 
 /** The conversation, inline: the same one the Ask drawer shows on other sections */
 function InlineConversation() {
-  const { chat } = useAskPanel();
+  const { chat, canAsk } = useAskPanel();
   const { experienceId, experienceName } = useAnalyticsContext();
+  if (!canAsk) return null;
 
   return (
     <section

@@ -2,6 +2,7 @@
 
 'use client';
 
+import { useAccess } from '@/shared/access/useAccess';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
@@ -200,6 +201,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 export default function EditSearchIndexPage() {
   const params = useParams();
   const router = useRouter();
+  // Ingestion keys are credentials: listing and creating them needs secrets:manage
+  const canManageKeys = useAccess().can('secrets:manage');
   const queryClient = useQueryClient();
   const indexId = params.id as string;
 
@@ -922,7 +925,13 @@ export default function EditSearchIndexPage() {
 
           {/* API Access Tab */}
           <TabsContent value="api-access" className="space-y-6">
-            <IngestionKeysCard searchIndexId={indexId} />
+            {canManageKeys ? (
+              <IngestionKeysCard searchIndexId={indexId} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Ingestion keys are managed by roles that can manage secrets.
+              </p>
+            )}
           </TabsContent>
 
           {/* AI Tab */}

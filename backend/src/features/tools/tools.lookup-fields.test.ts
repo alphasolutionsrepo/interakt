@@ -151,6 +151,19 @@ describe('Generate tools', () => {
   });
 });
 
+describe('Generate tools, counting only some existing tools', () => {
+  it('skips an operation only when a counted tool covers it', async () => {
+    repo.getToolsByDataSourceId.mockResolvedValueOnce([{ id: 'theirs', operation: 'search', isBuiltIn: false }] as never);
+    await createToolsForDataSource('ds', 'Docs', 'docs', 'file_store', null, 'admin', { counting: (t) => t.isBuiltIn });
+    expect(repo.createTool.mock.calls.map(([data]) => data.operation)).toContain('search');
+
+    repo.createTool.mockClear();
+    repo.getToolsByDataSourceId.mockResolvedValueOnce([{ id: 'theirs', operation: 'search', isBuiltIn: false }] as never);
+    await createToolsForDataSource('ds', 'Docs', 'docs', 'file_store', null, 'admin');
+    expect(repo.createTool.mock.calls.map(([data]) => data.operation)).not.toContain('search');
+  });
+});
+
 describe('Generate tools when the fields can\'t be read', () => {
   it('still creates every tool, Find Record without fields', async () => {
     indexFields.getFieldsBySearchIndexId.mockRejectedValue(new Error('db down'));

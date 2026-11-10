@@ -1,15 +1,17 @@
 // app/api/analytics/experience-summary/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { getExperienceSummaries } from '@/features/analytics/analytics-experience-summary.service';
-import type { TimeRange } from '@/features/analytics/analytics-query.service';
 import { PeriodError, readRequestedPeriod } from '@/features/analytics/analytics-period';
+import type { TimeRange } from '@/features/analytics/analytics-query.service';
 import { apiResponse } from '@/shared/api/response';
 
 /** The time ranges a caller can name; a custom one comes as from and to */
 const PRESETS: TimeRange[] = ['1h', '24h', '7d', '30d', '90d'];
 
-export async function GET(request: NextRequest) {
+export const GET = withPermission('analytics:view', async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     // An explicit period (from/to, as the analytics pages send) wins over the preset
@@ -28,4 +30,4 @@ export async function GET(request: NextRequest) {
     if (error instanceof PeriodError) return apiResponse.badRequest(error.message);
     return apiResponse.error(error, 500, { operation: 'getExperienceSummaries' });
   }
-}
+});

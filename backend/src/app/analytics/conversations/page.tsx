@@ -2,12 +2,9 @@
 
 'use client';
 
-import Link from 'next/link';
 import { MessagesSquare, ShieldCheck, Sparkles, Waypoints } from 'lucide-react';
+import Link from 'next/link';
 
-import { useAnalyticsContext } from '../_lib/AnalyticsContext';
-import { useAskPanel } from '../_lib/AskPanelContext';
-import { useStoredInsight } from '../_lib/hooks/useAnalytics';
 import { InsightSourceNote, InsightUnavailable } from '../_components/sections/InsightSource';
 import {
   ChartCard,
@@ -19,6 +16,9 @@ import {
   formatPercent,
   type ShareItem,
 } from '../_components/viz';
+import { useAnalyticsContext } from '../_lib/AnalyticsContext';
+import { useAskPanel } from '../_lib/AskPanelContext';
+import { useStoredInsight } from '../_lib/hooks/useAnalytics';
 
 import { Button } from '@/shared/ui/components/button';
 
@@ -153,7 +153,7 @@ export default function AnalyticsConversationsPage() {
             value: cluster.count,
             valueLabel: formatCompact(cluster.count),
             details: `${formatPercent(cluster.avgOutcomeSuccess, 0)} completed`,
-            action: (
+            action: askPanel.canAsk && (
               <Button
                 variant="ghost"
                 size="icon"

@@ -19,6 +19,8 @@ const service = vi.hoisted(() => ({ createTool: vi.fn(), deleteTool: vi.fn() }))
 vi.mock('./tools.service', () => service);
 vi.mock('@/features/data-source/data-source.service', () => ({}));
 vi.mock('./tools.executor', () => ({ executeTool: vi.fn() }));
+// The built-in help guard is tested in features/access; this file is about logging
+vi.mock('@/features/access/built-in', () => ({ assertMayChange: async () => {} }));
 vi.mock('./lookup-fields.service', () => ({ lookupFieldsStatus: vi.fn() }));
 
 import { handleCreateTool, handleDeleteTool, handleTestTool } from './tools.api.handlers';

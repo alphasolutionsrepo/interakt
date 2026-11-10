@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
+import { withPermission } from '@/features/access/route-guard';
 import { getProviderByKey } from '@/features/ai-providers/ai-providers.service';
 import { apiResponse, describeError } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
@@ -23,25 +24,13 @@ import type { DemoProviderOption, SeedProgressEvent, WarmupSummary } from '@/sha
 import type { ProviderReadinessView } from '@/shared/seeders/demo/demo-provider-view';
 import { trustedOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { getRegistryEntry } from '@/shared/seeders/seed-registry.service';
-import { getCurrentUser } from '@/shared/utils/auth-utils';
 
 const logger = createLogger('setup-demo-api');
 
 // Generous ceiling: embedding 200 docs + the warm-up replay can take a minute+.
 export const maxDuration = 300;
 
-async function requireAdmin() {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false as const, res: apiResponse.unauthorized('You must be logged in') };
-  if ((user as { role?: string }).role !== 'admin') {
-    return { ok: false as const, res: apiResponse.forbidden('Admin role required') };
-  }
-  return { ok: true as const, user };
-}
-
-export async function GET(request: NextRequest) {
-  const guard = await requireAdmin();
-  if (!guard.ok) return guard.res;
+export const GET = withPermission('setup:run', async function GET(request: NextRequest) {
 
   try {
     const loaded = await loadDemoManifest();
@@ -81,11 +70,9 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     return apiResponse.error(e as Error, undefined, { operation: 'setupDemoStatus' });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
-  const guard = await requireAdmin();
-  if (!guard.ok) return guard.res;
+export const POST = withPermission('setup:run', async function POST(request: NextRequest) {
 
   let body: {
     action?: string;
@@ -140,7 +127,7 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     return apiResponse.error(e as Error, undefined, { operation: 'setupDemo' });
   }
-}
+});
 
 // ---------------------------------------------------------------------------
 // Readiness helpers

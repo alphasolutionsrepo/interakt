@@ -9,6 +9,8 @@
  * calls a model, so the page stays fast. The result is cached for a minute.
  */
 
+import { canOpenPage } from '@/features/access/page-permissions';
+import type { Permission } from '@/features/access/permissions';
 import 'server-only';
 
 import { eq, sql } from 'drizzle-orm';
@@ -122,6 +124,8 @@ export interface HomeChange {
 
 export interface HomeData {
   generatedAt: string;
+  /** False for a role without analytics:view: the traffic figures are left out, not zero */
+  analytics: boolean;
   period: { from: string; to: string; label: string; previousLabel: string; days: string[] };
   live: { requestsLast5Min: number };
   /** null when no health check has run yet (or the jobs engine is off) */
@@ -520,6 +524,7 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
 
   return {
     generatedAt: now.toISOString(),
+    analytics: true,
     period: {
       from: current.from.toISOString(),
       to: current.to.toISOString(),
@@ -721,6 +726,9 @@ async function readRecentJobs(since: Date): Promise<Array<{ id: string; name: st
 /** Hiding the checklist is stored like a dismissed tip */
 export const CHECKLIST_ID = 'tip:checklist';
 
+/** The checklist's last step: the Ask box on the home page */
+export const ASK_STEP_HREF = '#home-ask';
+
 /** The first-run checklist, or null once every step is done */
 export function buildChecklist(
   setup: Pick<Setup, 'experiences' | 'indexes' | 'enabledProviders'>,
@@ -737,7 +745,7 @@ export function buildChecklist(
       done: usage.anyTraffic,
       href: firstExperience ? `/experiences/${firstExperience.type}/${firstExperience.id}` : '/experiences',
     },
-    { id: 'ask', label: 'Ask a question about your data', done: usage.askedAQuestion, href: '#home-ask' },
+    { id: 'ask', label: 'Ask a question about your data', done: usage.askedAQuestion, href: ASK_STEP_HREF },
   ];
   return steps.every((s) => s.done) ? null : steps;
 }
@@ -916,3 +924,39 @@ async function offTopicTip(setup: Setup, summaries: ExperienceSummary[], dismiss
 
 /** The shape of a dismissible tip id, for validating dismiss requests */
 export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
+
+// ============================================================================
+// WHAT EACH ROLE SEES
+// ============================================================================
+
+/**
+ * The home page as a role sees it. Tasks, recent changes, getting-started steps, cards, tips and
+ * experiences that link to a page the role can't open go; the checklist's Ask step (the Ask
+ * box on the page) needs analytics:ask. The checklist goes once every step the role sees is
+ * done, as it does for everyone once all are. Without analytics:view, the traffic figures, insight cards and tips
+ * (all from analytics) go too, as on the analytics pages themselves, and `analytics` says so. The cached data is shared by
+ * everyone, so this runs per request.
+ */
+export function homeDataForRole(data: HomeData, can: (permission: Permission) => boolean): HomeData {
+  const opens = (href: string) => href.startsWith('#') || canOpenPage(href.split(/[?#]/)[0], can);
+  const steps = data.checklist?.filter((step) => (step.href === ASK_STEP_HREF ? can('analytics:ask') : opens(step.href)));
+  const linked = {
+    ...data,
+    tasks: data.tasks.filter((t) => opens(t.href)),
+    recent: data.recent.filter((r) => opens(r.href)),
+    checklist: steps?.some((step) => !step.done) ? steps : null,
+    cards: data.cards.filter((c) => opens(c.href)),
+    tips: data.tips.filter((t) => opens(t.action.href)),
+    experiences: data.experiences.filter((e) => opens(e.href)),
+  };
+  if (can('analytics:view')) return linked;
+  return {
+    ...linked,
+    analytics: false,
+    live: { requestsLast5Min: 0 },
+    metrics: [],
+    cards: [],
+    tips: [],
+    experiences: linked.experiences.map((e) => ({ ...e, volume: 0, issue: null, trend: [] })),
+  };
+}

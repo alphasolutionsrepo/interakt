@@ -142,21 +142,15 @@ describe('a tool test run', () => {
 });
 
 describe('the analytics experience list', () => {
-  it('keeps one list when the other fails, and says why the other failed', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
-      url.startsWith('/api/ai-experiences') ? gatewayErrorPage() : apiSuccess([{ id: 's1', name: 'Store search', slug: 'store', isActive: false }], { pagination: page })));
-    const options = await loadExperienceOptions();
-    expect(options.experiences).toEqual([{ id: 's1', name: 'Store search', slug: 'store', type: 'search', isActive: false }]);
-    expect(options.complete).toBe(false);
-    expect(options.errors).toEqual([expect.objectContaining({ name: 'ApiError', status: 502 })]);
-  });
+  it('reads the names from the analytics API, and says why when it fails', async () => {
+    answerWith(gatewayErrorPage);
+    const failed = await loadExperienceOptions();
+    expect(failed).toMatchObject({ experiences: [], complete: false });
+    expect(failed.errors).toEqual([expect.objectContaining({ name: 'ApiError', status: 502 })]);
 
-  it('is complete when both lists load', async () => {
-    answerWith(() => apiSuccess([{ id: 'x1', name: 'Assistant', slug: 'assistant', isActive: true }], { pagination: page }));
-    const options = await loadExperienceOptions();
-    expect(options.complete).toBe(true);
-    expect(options.errors).toEqual([]);
-    expect(options.experiences.map((e) => e.type)).toEqual(['ai', 'search']);
+    const list = [{ id: 'a1', name: 'Assistant', slug: 'assistant', type: 'ai', isActive: true }, { id: 's1', name: 'Store search', slug: 'store', type: 'search', isActive: false }];
+    answerWith(() => apiSuccess(list));
+    expect(await loadExperienceOptions()).toEqual({ experiences: list, complete: true, errors: [] });
   });
 });
 
@@ -199,10 +193,10 @@ describe('the embed snippet request', () => {
 });
 
 describe('the analytics experience list request', () => {
-  it('asks for up to 100 of each kind of experience', async () => {
-    const fetchStub = answerWith(() => apiSuccess([], { pagination: page }));
+  it('asks the analytics API, which needs only analytics:view', async () => {
+    const fetchStub = answerWith(() => apiSuccess([]));
     await loadExperienceOptions();
-    expect(fetchStub.mock.calls.map(([url]) => url).sort()).toEqual(['/api/ai-experiences?page=1&pageSize=100', '/api/search-experiences?pageSize=100']);
+    expect(fetchStub.mock.calls.map(([url]) => url)).toEqual(['/api/analytics/experiences']);
   });
 });
 

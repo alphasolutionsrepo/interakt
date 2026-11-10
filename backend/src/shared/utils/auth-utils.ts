@@ -1,23 +1,15 @@
 // src/shared/auth/auth-utils.ts
 
-import { auth } from '@/features/auth/auth.api.handlers';
-import { redirect } from 'next/navigation';
-import type { Session } from 'next-auth';
 import bcrypt from 'bcryptjs'
+import type { Session } from 'next-auth';
+
+import { auth } from '@/features/auth/auth.api.handlers';
 
 /**
  * Get current session (returns null if not authenticated)
  */
 export async function getSession(): Promise<Session | null> {
   return await auth();
-}
-
-/**
- * Get current user (returns null if not authenticated)
- */
-export async function getCurrentUser() {
-  const session = await auth();
-  return session?.user ?? null;
 }
 
 /**
@@ -34,39 +26,6 @@ export async function getCurrentUserId(): Promise<string | null> {
 export async function getCurrentUserEmail(): Promise<string | null> {
   const session = await auth();
   return session?.user?.email ?? null;
-}
-
-/**
- * Require authentication - redirects to login if not authenticated
- * Use in Server Components and API routes
- */
-export async function requireAuth() {
-  const session = await auth();
-  if (!session?.user) {
-    redirect('/login');
-  }
-  return session.user;
-}
-
-/**
- * Require specific role - redirects if user doesn't have role
- */
-export async function requireRole(requiredRole: 'user' | 'admin' | 'moderator') {
-  const user = await requireAuth();
-
-  if (user.role !== requiredRole) {
-    redirect('/unauthorized');
-  }
-
-  return user;
-}
-
-/**
- * Check if user has role (returns boolean, doesn't redirect)
- */
-export async function hasRole(requiredRole: 'user' | 'admin' | 'moderator'): Promise<boolean> {
-  const session = await auth();
-  return session?.user?.role === requiredRole;
 }
 
 /**

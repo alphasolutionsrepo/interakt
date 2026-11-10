@@ -24,7 +24,7 @@ function request(headers: Record<string, string> = {}): NextRequest {
 }
 
 function access(policy: Partial<ExperienceAccess['policy']> = {}): ExperienceAccess {
-  return { scope: 'search:e1', accessToken: 't1', policy: { allowedOrigins: [], perMinute: 60, ...policy } };
+  return { scope: 'search:e1', accessToken: 't1', isBuiltIn: false, policy: { allowedOrigins: [], perMinute: 60, ...policy } };
 }
 
 describe('readAccessToken', () => {
@@ -74,7 +74,8 @@ describe('experience access settings', () => {
     const stored = { searchPerMinute: 5, chatPerMinute: 7, requestsPerDay: 100 };
     expect(searchExperienceAccess({
       id: 'e1', accessToken: 't1', allowedOrigins: ['https://shop.example'], rateLimitConfig: stored,
-    })).toEqual({ scope: 'search:e1', accessToken: 't1', policy: { allowedOrigins: ['https://shop.example'], perMinute: 5 } });
+    })).toEqual({ scope: 'search:e1', accessToken: 't1', isBuiltIn: false, policy: { allowedOrigins: ['https://shop.example'], perMinute: 5 } });
+    expect(searchExperienceAccess({ id: 'e1', isBuiltIn: true }).isBuiltIn).toBe(true);
     expect(searchExperienceAccess({ id: 'e1' }).policy).toEqual({ allowedOrigins: [], perMinute: 60 });
   });
 
@@ -82,7 +83,8 @@ describe('experience access settings', () => {
     expect(aiExperienceAccess({
       id: 'a1', accessToken: 't9',
       accessConfig: { allowedOrigins: ['https://shop.example'], rateLimits: { chatPerMinute: 3, requestsPerDay: 10 } },
-    })).toEqual({ scope: 'ai:a1', accessToken: 't9', policy: { allowedOrigins: ['https://shop.example'], perMinute: 3, perDay: 10 } });
+    })).toEqual({ scope: 'ai:a1', accessToken: 't9', isBuiltIn: false, policy: { allowedOrigins: ['https://shop.example'], perMinute: 3, perDay: 10 } });
+    expect(aiExperienceAccess({ id: 'a1', isBuiltIn: true }).isBuiltIn).toBe(true);
     expect(aiExperienceAccess({ id: 'a1', accessConfig: null }).policy).toEqual({ allowedOrigins: [], perMinute: 60, perDay: undefined });
   });
 });

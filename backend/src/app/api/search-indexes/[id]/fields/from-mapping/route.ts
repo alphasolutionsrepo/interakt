@@ -11,11 +11,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { forBuiltInChange } from '@/features/access/built-in';
 import { handleCreateFieldsFromMapping } from '@/features/search-index/search-index.api.handlers';
 
-export async function POST(
+export const POST = forBuiltInChange('search-index', 'search-indexes:edit', async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleCreateFieldsFromMapping(request, context);
-}
+});

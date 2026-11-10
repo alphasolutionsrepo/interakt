@@ -273,3 +273,21 @@ export const sidebarFooterItems: SidebarItem[] = [
         icon: BookOpen,
     },
 ];
+
+/**
+ * The sidebar a role sees: items whose page it can open (see features/access/page-permissions),
+ * a parent kept when any of its sub-items is, and groups left empty dropped.
+ */
+export function visibleSidebarGroups(
+    groups: SidebarGroupDef[],
+    canOpen: (url: string) => boolean,
+): SidebarGroupDef[] {
+    const visibleItem = (item: SidebarItem): SidebarItem | null => {
+        if (!item.subItems?.length) return canOpen(item.url) ? item : null;
+        const subItems = item.subItems.filter((s) => canOpen(s.url));
+        return subItems.length > 0 ? { ...item, subItems } : null;
+    };
+    return groups
+        .map((g) => ({ ...g, items: g.items.map(visibleItem).filter((i): i is SidebarItem => i !== null) }))
+        .filter((g) => g.items.length > 0);
+}

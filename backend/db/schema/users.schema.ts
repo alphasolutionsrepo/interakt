@@ -6,7 +6,7 @@
  */
 
 import { pgTable, uuid, varchar, timestamp, boolean } from 'drizzle-orm/pg-core';
-import { userRoleEnum } from './enums.schema';
+import { roles } from './roles.schema';
 
 // ============================================================================
 // USERS TABLE
@@ -21,7 +21,8 @@ export const user = pgTable('user', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
   isActive: boolean('isActive').default(true),
-  role: userRoleEnum('role').default('user'),
+  // Every user has one role; a role in use can't be deleted (restrict).
+  roleId: uuid('role_id').notNull().references(() => roles.id, { onDelete: 'restrict' }),
 });
 
 // Export types

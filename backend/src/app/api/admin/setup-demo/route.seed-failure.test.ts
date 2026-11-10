@@ -20,8 +20,9 @@ import { deleteRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
-vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUser: async () => ({ id: 'admin', role: 'admin' }) }));
 
 const INDEX = { id: 'i1', name: 'shop', searchType: 'keyword', searchProvider: 'elasticsearch' };
 vi.mock('@/shared/seeders/demo/demo-manifest', () => ({

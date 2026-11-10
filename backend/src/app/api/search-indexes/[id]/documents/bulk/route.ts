@@ -10,15 +10,17 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { forBuiltInDocumentChange } from '@/features/access/built-in';
 import { handleBulkWriteDocuments } from '@/features/document-indexing';
-import { withRateLimit } from '@/shared/api/rate-limit';
 import { ingestionRateLimitKey } from '@/features/ingestion-keys';
+import { withRateLimit } from '@/shared/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 // Rate limited per ingestion key — see the documents route for the rationale
-export const POST = withRateLimit(
+export const POST = forBuiltInDocumentChange('documents:edit', withRateLimit(
     async (request: NextRequest, context: { params: Promise<{ id: string }> }) =>
         handleBulkWriteDocuments(request, context),
     { maxRequests: 60, windowMs: 60_000, keyFn: ingestionRateLimitKey }
-);
+));

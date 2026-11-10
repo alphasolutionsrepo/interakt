@@ -9,10 +9,16 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DELETE as deleteSession, GET as getSession, PATCH as updateSession } from './sessions/[sessionId]/route';
+import { GET as listSessions, POST as createSession } from './sessions/route';
+import { POST as ask } from './stream/route';
+
 import { errorEvent, expectInternalFailure, expectInvalidJson, failedQuery, notJson } from '@/shared/test/error-answers';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 const sessions = vi.hoisted(() => ({
   listAdminChatSessions: vi.fn(),
@@ -27,9 +33,6 @@ vi.mock('@/features/analytics', () => sessions);
 const pipeline = vi.hoisted(() => ({ runAnalyticsPipeline: vi.fn() }));
 vi.mock('@/features/analytics/pipeline/analytics-pipeline-orchestrator', () => pipeline);
 
-import { GET as listSessions, POST as createSession } from './sessions/route';
-import { DELETE as deleteSession, GET as getSession, PATCH as updateSession } from './sessions/[sessionId]/route';
-import { POST as ask } from './stream/route';
 
 const ID = '5b0e3a52-8a7e-4a0e-9f61-2f1e9b1f2c11';
 const request = (path: string, method = 'GET', body?: unknown) =>

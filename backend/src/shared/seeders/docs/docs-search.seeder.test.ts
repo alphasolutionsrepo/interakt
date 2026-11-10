@@ -20,7 +20,7 @@ const world = vi.hoisted(() => ({
   embedding: null as null | { providerId: string; modelId: number; modelKey: string; dimensions: number },
   registry: null as null | { checksum: string; metadata: Record<string, unknown> },
   index: null as null | FakeIndex,
-  experience: null as null | { id: string; slug: string; description: string | null },
+  experience: null as null | { id: string; slug: string; description: string | null; isBuiltIn?: boolean },
   /** Replaces the default indexDocuments result (all indexed, embedded when hybrid). */
   indexDocuments: null as null | ((n: number, hybrid: boolean) => unknown),
   adminError: null as null | Error,
@@ -45,6 +45,12 @@ vi.mock('@/db/index', () => ({
     transaction: async (fn: (tx: unknown) => unknown) =>
       fn({ execute: async () => [{ locked: world.locked }] }),
   },
+}));
+
+// What the setup marked as part of the built-in help
+const marked = vi.hoisted(() => new Set<string>());
+vi.mock('@/features/access/built-in', () => ({
+  markBuiltIn: async (kind: string, ids: string[]) => { for (const id of ids) marked.add(`${kind}:${id}`); },
 }));
 
 vi.mock('./docs-source', () => ({
@@ -116,6 +122,9 @@ vi.mock('@/features/search-experience/search-experience.service', () => ({
     calls.deleteExperience++;
     world.experience = null;
   },
+  markSearchExperienceBuiltIn: async (id: string) => {
+    if (world.experience?.id === id) world.experience.isBuiltIn = true;
+  },
 }));
 
 vi.mock('@/features/document-indexing/document-indexer.service', () => ({
@@ -154,6 +163,7 @@ function resetCalls() {
 }
 
 beforeEach(() => {
+  marked.clear();
   Object.assign(world, {
     locked: true,
     docs: DOCS,
@@ -198,6 +208,36 @@ describe('seedDocsSearch', () => {
     expect(summary).toMatchObject({ skipped: true, reason: 'unchanged' });
     expect(calls).toMatchObject({ deleteIndex: 0, deleteExperience: 0, recreateEmpty: 0, indexDocuments: 0 });
     expect(calls.createIndex).toEqual([]);
+  });
+
+  it('marks the experience it builds as the built-in help, also when a rebuild recreates it', async () => {
+    await seedDocsSearch();
+    expect(world.experience?.isBuiltIn).toBe(true);
+
+    world.embedding = MODEL; // recreated as hybrid
+    await seedDocsSearch();
+    expect(calls.createExperience).toBe(2);
+    expect(world.experience?.isBuiltIn).toBe(true);
+  });
+
+  it('marks the index it builds as part of the built-in help', async () => {
+    await seedDocsSearch();
+    expect(marked.has(`search-index:${world.index!.id}`)).toBe(true);
+    world.embedding = MODEL; // recreated as hybrid
+    await seedDocsSearch();
+    expect(marked.has(`search-index:${world.index!.id}`)).toBe(true);
+  });
+
+  it("refuses an experience under its slug that it didn't make, even after an earlier build", async () => {
+    await seedDocsSearch();
+    // Someone deleted ours and made their own under the slug
+    world.experience = { id: 'theirs', slug: 'interakt-docs', description: 'Our team search', isBuiltIn: false };
+    world.docs = [...DOCS, { slug: 'x', title: 'X', content: '# X\nChanged.' }];
+    resetCalls();
+
+    await expect(seedDocsSearch()).rejects.toBeInstanceOf(DocsSearchConflictError);
+    expect(world.experience).toMatchObject({ id: 'theirs', isBuiltIn: false });
+    expect(calls).toMatchObject({ deleteExperience: 0, indexDocuments: 0 });
   });
 
   it('reloads the existing index in place when only the docs changed', async () => {

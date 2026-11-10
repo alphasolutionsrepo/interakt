@@ -7,29 +7,32 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { forBuiltInDocumentChange } from '@/features/access/built-in';
+import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
 import { handleListDocuments, handleIndexDocuments } from '@/features/document-indexing';
-import { withRateLimit } from '@/shared/api/rate-limit';
 import { ingestionRateLimitKey } from '@/features/ingestion-keys';
+import { withRateLimit } from '@/shared/api/rate-limit';
 
 // Route segment config for App Router
 // Note: Body size limit is configured in next.config.ts via serverActions.bodySizeLimit
 // For API routes, body parsing is handled automatically by Next.js
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+export const GET = withPermissionOrIngestionKey('search-indexes:view', async function GET(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleListDocuments(request, context);
-}
+});
 
 /**
  * Rate limited per ingestion key. Bulk uploads are large and infrequent, so a
  * modest ceiling is plenty and keeps a misconfigured sink from hammering the
  * embedding provider.
  */
-export const POST = withRateLimit(
+export const POST = forBuiltInDocumentChange('documents:edit', withRateLimit(
     async (request: NextRequest, context: { params: Promise<{ id: string }> }) =>
         handleIndexDocuments(request, context),
     { maxRequests: 30, windowMs: 60_000, keyFn: ingestionRateLimitKey }
-);
+));

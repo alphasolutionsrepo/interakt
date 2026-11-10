@@ -88,7 +88,7 @@ export function MetricsStrip({ data, loading }: { data?: HomeData; loading: bool
       </div>
 
       <div className="row-start-1 flex flex-col items-end gap-1 justify-self-end lg:row-auto">
-        <Live count={data?.live.requestsLast5Min} />
+        {data?.analytics !== false && <Live count={data?.live.requestsLast5Min} />}
         {data && <HealthLine health={data.health} />}
       </div>
     </section>

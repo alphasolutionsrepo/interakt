@@ -6,8 +6,10 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { forModelReaders } from '@/features/access/provider-addresses';
 import { handleGetProviders } from '@/features/ai-service/ai-service.api.handlers';
 
-export async function GET(request: NextRequest) {
+export const GET = forModelReaders(async function GET(request: NextRequest) {
   return handleGetProviders(request);
-}
+});

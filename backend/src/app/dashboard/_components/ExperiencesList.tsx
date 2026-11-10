@@ -15,7 +15,8 @@ import { Button } from '@/shared/ui/components/button';
 import { Skeleton } from '@/shared/ui/components/skeleton';
 
 
-export function ExperiencesList({ experiences, loading }: { experiences?: HomeExperience[]; loading: boolean }) {
+/** showActivity false: the role can't view analytics, so no traffic figures or analytics links */
+export function ExperiencesList({ experiences, loading, showActivity = true }: { experiences?: HomeExperience[]; loading: boolean; showActivity?: boolean }) {
   return (
     <section className="space-y-3" aria-labelledby="home-experiences">
       <div className="flex items-baseline justify-between gap-4">
@@ -76,6 +77,7 @@ export function ExperiencesList({ experiences, loading }: { experiences?: HomeEx
                     <AlertTriangle className="size-3.5 text-viz-warning" aria-hidden /> {e.issue}
                   </span>
                 )}
+                {showActivity && (
                 <span className="flex shrink-0 items-center gap-2">
                   {/* The week day by day, so a falling experience stands out */}
                   {e.volume > 0 && (
@@ -96,6 +98,7 @@ export function ExperiencesList({ experiences, loading }: { experiences?: HomeEx
                     </Link>
                   </Button>
                 </span>
+                )}
               </li>
             );
           })}

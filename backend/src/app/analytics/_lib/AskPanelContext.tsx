@@ -9,11 +9,14 @@
  * user ("Explain this"). Questions carry the section they were asked from.
  */
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+
 
 import { useAnalyticsChat } from './hooks/useAnalyticsChat';
 import { sectionForPath } from './sections';
+
+import { useAccess } from '@/shared/access/useAccess';
 
 type AnalyticsChat = ReturnType<typeof useAnalyticsChat>;
 
@@ -27,6 +30,8 @@ interface AskPanelState {
   /** Ask a question from the current section */
   ask: (question: string) => void;
   chat: AnalyticsChat;
+  /** The user's role may ask the assistant (analytics:ask); every way in is hidden otherwise */
+  canAsk: boolean;
 }
 
 const AskPanelContext = createContext<AskPanelState | null>(null);
@@ -36,6 +41,7 @@ export function AskPanelProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const chat = useAnalyticsChat();
   const { send } = chat;
+  const canAsk = useAccess().can('analytics:ask');
   // Questions name the analytics section they were asked from; elsewhere (the full chat, the home page) none
   const inSection = pathname.startsWith('/analytics/') && !pathname.startsWith('/analytics/chat');
   const pageSection = inSection ? sectionForPath(pathname).label : undefined;
@@ -51,7 +57,10 @@ export function AskPanelProvider({ children }: { children: React.ReactNode }) {
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => setIsOpen((v) => !v), []);
 
-  const value = useMemo(() => ({ isOpen, open, close, toggle, ask, chat }), [isOpen, open, close, toggle, ask, chat]);
+  const value = useMemo(
+    () => ({ isOpen, open, close, toggle, ask, chat, canAsk }),
+    [isOpen, open, close, toggle, ask, chat, canAsk],
+  );
 
   return <AskPanelContext.Provider value={value}>{children}</AskPanelContext.Provider>;
 }

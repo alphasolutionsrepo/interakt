@@ -2,12 +2,13 @@
 
 import { NextRequest } from 'next/server';
 
+import { withPermission } from '@/features/access/route-guard';
 import { handleGetSchedules, handleSetSchedule } from '@/features/jobs/jobs.api.handlers';
 
-export async function GET() {
+export const GET = withPermission('settings:view', async function GET() {
   return handleGetSchedules();
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('jobs:run', async function POST(request: NextRequest) {
   return handleSetSchedule(request);
-}
+});

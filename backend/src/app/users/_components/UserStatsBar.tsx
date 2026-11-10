@@ -3,6 +3,7 @@
 'use client';
 
 import { Users, UserCheck, UserX, Shield } from 'lucide-react';
+
 import type { UserResponse } from '../_lib/api-client';
 
 interface UserStatsBarProps {
@@ -13,7 +14,7 @@ export function UserStatsBar({ users }: UserStatsBarProps) {
   const totalUsers = users.length;
   const activeUsers = users.filter(u => u.isActive).length;
   const inactiveUsers = totalUsers - activeUsers;
-  const adminUsers = users.filter(u => u.role === 'admin').length;
+  const adminUsers = users.filter(u => u.role?.isBuiltIn).length;
 
   const stats = [
     {

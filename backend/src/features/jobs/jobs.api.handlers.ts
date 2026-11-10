@@ -15,27 +15,21 @@ import * as service from './jobs.service';
 import type { JobAction, JobState } from './jobs.types';
 
 import { apiResponse } from '@/shared/api/response';
-import { getCurrentUserId, hasRole } from '@/shared/utils/auth-utils';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
 const JOB_ACTIONS: readonly JobAction[] = ['cancel', 'resume', 'retry', 'delete'];
 
 /**
- * Shared guard for every jobs endpoint:
+ * Shared guard for every jobs endpoint (the routes check the permission: settings:view to
+ * read, jobs:run to run, cancel, delete or schedule):
  *  1. require a session,
- *  2. require the admin role — running/cancelling/deleting jobs and editing cron
- *     schedules are operator-only (matches the admin gate on setup-demo, users,
- *     etc.),
- *  3. lazily ensure the engine is up. The ensure call is memoized, so the first
+ *  2. lazily ensure the engine is up. The ensure call is memoized, so the first
  *     request after a cold start boots the engine instead of 503-ing on a
  *     not-yet-ready singleton.
  */
 async function requireReady() {
   const userId = await getCurrentUserId();
   if (!userId) return { error: apiResponse.unauthorized('You must be logged in') };
-
-  if (!(await hasRole('admin'))) {
-    return { error: apiResponse.forbidden('Admin role required') };
-  }
 
   const boss = await ensureJobsStarted();
   if (!boss) {

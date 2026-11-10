@@ -1,9 +1,7 @@
 // src/features/data-source/data-source.api.handlers.ts
 
 import { NextRequest } from 'next/server';
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
-import { getCurrentUserId } from '@/shared/utils/auth-utils';
+
 import * as service from './data-source.service';
 import {
   createDataSourceSchema,
@@ -12,6 +10,12 @@ import {
   listDataSourcesQuerySchema,
   updateHealthSchema,
 } from './data-source.validation';
+
+import { assertMayWriteSecretConfig } from '@/features/access/secret-references';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
+
 
 const logger = createLogger('data-source-handlers');
 
@@ -58,6 +62,7 @@ export async function handleCreateDataSource(request: NextRequest) {
       return apiResponse.validationError(validation.error);
     }
 
+    await assertMayWriteSecretConfig(validation.data);
     const dataSource = await service.createDataSource(validation.data, userId);
     logger.info('Created data source', { dataSourceId: dataSource.id, slug: dataSource.slug, userId });
     return apiResponse.success(dataSource, 201);
@@ -113,6 +118,9 @@ export async function handleUpdateDataSource(
     if (!validation.success) {
       return apiResponse.validationError(validation.error);
     }
+
+    // The stored config too: changing only the host of a source that sends a secret redirects it
+    await assertMayWriteSecretConfig(await service.getDataSourceById(id), validation.data);
 
     // The update schema accepts any object as config; hold it to the type's own schema
     // so an edit can't store a config the executors can't read.

@@ -8,11 +8,13 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { forBuiltInChange } from '@/features/access/built-in';
 import { handleUpdateAdditionalDataConfig } from '@/features/search-index/search-index.api.handlers';
 
-export async function PUT(
+export const PUT = forBuiltInChange('search-index', 'search-indexes:edit', async function PUT(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleUpdateAdditionalDataConfig(request, context);
-}
+});

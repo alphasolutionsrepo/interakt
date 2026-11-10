@@ -12,14 +12,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
+import * as searchService from '@/features/search/search.service';
 import { authenticateAccessToken, handleCorsPreflight, withCors, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
 import type { SearchExperienceWithIndexes } from '@/features/search-experience/search-experience.types';
+import { publicRoute } from '@/shared/api/public-route';
+import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
 import { failureLevel } from '@/shared/errors/to-app-error';
-import * as searchService from '@/features/search/search.service';
-import { publicRoute } from '@/shared/api/public-route';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('document-api');
 

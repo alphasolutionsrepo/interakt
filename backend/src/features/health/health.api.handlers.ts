@@ -10,6 +10,8 @@ import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 import * as service from './health.service';
 
+import { providerAddressesFor } from '@/features/access/provider-addresses';
+
 const logger = createLogger('health-handlers');
 
 /**
@@ -23,7 +25,7 @@ export async function handleGetSystemHealth(request: NextRequest) {
       return apiResponse.unauthorized('You must be logged in to view system health');
     }
 
-    const health = await service.checkSystemHealth();
+    const health = await providerAddressesFor(await service.checkSystemHealth());
 
     logger.info('System health check requested', {
       userId,
@@ -86,7 +88,7 @@ export async function handleGetAIProvidersHealth(request: NextRequest) {
       return apiResponse.unauthorized('You must be logged in');
     }
 
-    const health = await service.checkAIProvidersHealth();
+    const health = await providerAddressesFor(await service.checkAIProvidersHealth());
     return apiResponse.success(health);
   } catch (error) {
     const err = error as Error;

@@ -4,8 +4,10 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handlePreviewImport } from '@/features/search-index/search-index.api.handlers';
 
-export async function POST(request: NextRequest) {
+export const POST = withPermission('search-indexes:view', async function POST(request: NextRequest) {
     return handlePreviewImport(request);
-}
+});

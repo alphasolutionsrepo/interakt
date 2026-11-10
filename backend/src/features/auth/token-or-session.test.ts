@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const authMock = vi.fn();
+vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('./auth.api.handlers', () => ({ auth: () => authMock() }));
 vi.mock('@/shared/logger/logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -19,7 +20,7 @@ function request(headers: Record<string, string>): NextRequest {
 }
 
 function experience(policy: Partial<ExperienceAccess['policy']> = {}): ExperienceAccess {
-  return { scope: 'search:e1', accessToken: 't1', policy: { allowedOrigins: [], perMinute: 60, ...policy } };
+  return { scope: 'search:e1', accessToken: 't1', isBuiltIn: false, policy: { allowedOrigins: [], perMinute: 60, ...policy } };
 }
 
 describe('authenticateTokenOrSession', () => {

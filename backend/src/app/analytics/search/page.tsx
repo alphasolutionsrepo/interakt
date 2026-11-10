@@ -4,7 +4,6 @@
 
 import { AlertTriangle, Bot } from 'lucide-react';
 
-import { useAskPanel } from '../_lib/AskPanelContext';
 import { QualityScore, calculateQualityScore } from '../_components/QualityScore';
 import { RecentSearchesFeed } from '../_components/RecentSearchesFeed';
 import {
@@ -22,6 +21,7 @@ import {
   useDashboardView,
 } from '../_components/sections/useDashboardView';
 import { pluralize } from '../_components/viz';
+import { useAskPanel } from '../_lib/AskPanelContext';
 
 /**
  * Search: what people searched for, how well search answered, and the most
@@ -101,7 +101,7 @@ export default function AnalyticsSearchPage() {
           data={view.data?.popularQueries}
           loading={view.isLoading}
           refreshing={view.refreshing}
-          onAsk={askPanel.open}
+          onAsk={askPanel.canAsk ? askPanel.open : undefined}
           emptyMessage={
             showAssistantSearches && (view.data?.assistantQueries?.length ?? 0) > 0
               ? "No visitor searches yet. The assistant's searches are under Assistant searches."
@@ -120,7 +120,7 @@ export default function AnalyticsSearchPage() {
           assistantFailed={view.data?.assistantHasFailedSearches ?? false}
           loading={view.isLoading}
           refreshing={view.refreshing}
-          onAsk={askPanel.open}
+          onAsk={askPanel.canAsk ? askPanel.open : undefined}
         />
       </div>
 
@@ -129,7 +129,7 @@ export default function AnalyticsSearchPage() {
           data={view.data?.assistantQueries}
           loading={view.isLoading}
           refreshing={view.refreshing}
-          onAsk={askPanel.open}
+          onAsk={askPanel.canAsk ? askPanel.open : undefined}
           title="Assistant searches"
           description="What AI assistants searched for while answering visitors, with how often each query found nothing"
           icon={Bot}

@@ -1,5 +1,6 @@
 // src/features/secrets/secrets.repository.ts
 
+import { SECRET_REFERENCE_FIELDS } from './secret-template';
 import { eq, like, desc, sql } from 'drizzle-orm';
 import { secrets, tools, dataSources, mcpConnections } from '@/db/schema';
 import { db } from '@/db/index';
@@ -17,12 +18,12 @@ export interface SecretReference {
  * Find every config that references a secret by name, across tools, data
  * sources, and MCP connections. Matches the two canonical reference forms in
  * the serialized JSON config: the `{{secret:name}}` template (tools) and a
- * `"secretRef"|"valueRef"|"secretName": "name"` field (data sources, MCP,
- * HTTP-API auth). Secret names are constrained to `[a-z][a-z0-9_]*`, so the
+ * field named in SECRET_REFERENCE_FIELDS (data sources, MCP, HTTP-API auth, web search). Secret names are constrained to `[a-z][a-z0-9_]*`, so the
  * name needs no regex escaping. Whitespace is tolerated for hand-edited rows.
  */
 export async function findSecretReferences(name: string): Promise<SecretReference[]> {
-  const pattern = `(\\{\\{\\s*secret\\s*:\\s*${name}\\s*\\}\\}|"(secretRef|valueRef|secretName)"\\s*:\\s*"${name}")`;
+  const fields = SECRET_REFERENCE_FIELDS.join('|');
+  const pattern = `(\\{\\{\\s*secret\\s*:\\s*${name}\\s*\\}\\}|"(${fields})"\\s*:\\s*"${name}")`;
 
   try {
     const [toolRows, dataSourceRows, mcpRows] = await Promise.all([

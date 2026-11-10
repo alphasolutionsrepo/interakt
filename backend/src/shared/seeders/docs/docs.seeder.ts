@@ -20,6 +20,7 @@
  * search alone.
  */
 
+import { DOCS_SEED_KEY } from '@/shared/help/help-content';
 import 'server-only';
 
 import { getDocsSearchStatus, seedDocsSearch, type DocsSearchStatus } from './docs-search.seeder';
@@ -30,6 +31,7 @@ import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import {
   createAIExperience,
   getAIExperienceBySlug,
+  markAIExperienceBuiltIn,
   updateAIExperience,
   deleteAIExperience,
 } from '@/features/ai-experience/ai-experience.service';
@@ -49,7 +51,8 @@ import {
   getToolsByDataSourceId,
   deleteTool,
 } from '@/features/tools/tools.service';
-import { SetupRequiredError } from '@/shared/errors/app-error';
+import { markBuiltIn } from '@/features/access/built-in';
+import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
   calculateChecksum,
@@ -64,7 +67,7 @@ const logger = createLogger('docs-seeder');
 // Constants — fixed identities for the docs resources
 // ---------------------------------------------------------------------------
 
-const DOCS_KEY = 'interakt-docs';
+const DOCS_KEY = DOCS_SEED_KEY;
 const DATA_SOURCE_NAME = 'Interakt Docs';
 const DATA_SOURCE_SLUG = 'interakt-docs';
 const EXPERIENCE_NAME = 'Help Assistant';
@@ -118,6 +121,10 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
         `(e.g. OpenAI text-embedding-3-small). Pick a ${REQUIRED_EMBEDDING_DIMS}-dim embedding model, then retry.`,
     );
   }
+
+  // Someone else's data source or experience under our slugs: refuse before changing anything
+  await ownDataSource();
+  await ownHelpAssistant();
 
   // Docs search has its own checksum. Run it first: an embedding model now
   // exists, so a keyword-only index built at startup upgrades to hybrid here
@@ -196,7 +203,7 @@ async function ensureDataSource(
   embeddingModelId: number,
   adminId: string,
 ): Promise<string> {
-  const existing = await getDataSourceBySlug(DATA_SOURCE_SLUG);
+  const existing = await ownDataSource();
   if (existing) {
     logger.info('Docs data source exists — reusing', { id: existing.id });
     return existing.id;
@@ -221,6 +228,8 @@ async function ensureDataSource(
     },
   };
   const created = await createDataSource(input as Parameters<typeof createDataSource>[0], adminId);
+  // Part of the built-in help: only an Admin may change it
+  await markBuiltIn('data-source', [created.id]);
   logger.info('Created docs data source', { id: created.id });
   return created.id;
 }
@@ -270,19 +279,25 @@ async function ingestDocs(dataSourceId: string, docs: DocFile[]): Promise<{ chun
 // ---------------------------------------------------------------------------
 
 async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<string> {
-  let tools = await getToolsByDataSourceId(dataSourceId);
-  if (tools.length === 0) {
-    tools = await createToolsForDataSource(
-      dataSourceId,
-      DATA_SOURCE_NAME,
-      DATA_SOURCE_SLUG,
-      'file_store',
-      null,
-      adminId,
-    );
-    logger.info('Scaffolded docs tools', { operations: tools.map((t) => t.operation) });
+  // Only the tools the setup made (marked built in) belong to the help, never one someone added.
+  // Any of its own that are missing are made again, whatever else is on the data source: the
+  // generator makes only the operations none of its own covers.
+  const own = (await getToolsByDataSourceId(dataSourceId)).filter((t) => t.isBuiltIn);
+  const made = await createToolsForDataSource(
+    dataSourceId,
+    DATA_SOURCE_NAME,
+    DATA_SOURCE_SLUG,
+    'file_store',
+    null,
+    adminId,
+    { counting: (t) => t.isBuiltIn },
+  );
+  if (made.length > 0) {
+    // Part of the built-in help: only an Admin may change them
+    await markBuiltIn('tool', made.map((t) => t.id));
+    logger.info('Scaffolded docs tools', { operations: made.map((t) => t.operation) });
   }
-  const search = tools.find((t) => t.operation === 'search') ?? tools[0];
+  const search = [...own, ...made].find((t) => t.operation === 'search');
   if (!search) throw new Error('No search tool could be created for the docs data source.');
   return search.id;
 }
@@ -290,6 +305,33 @@ async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<
 // ---------------------------------------------------------------------------
 // Step 4 — Help Assistant chat experience
 // ---------------------------------------------------------------------------
+
+/**
+ * The docs data source and Help Assistant the docs setup made earlier, or null. Someone else's
+ * under the same slug is never taken over (the built-in help is open to everyone, changed only
+ * by an Admin): that's a conflict.
+ */
+async function ownDataSource() {
+  const existing = await getDataSourceBySlug(DATA_SOURCE_SLUG);
+  if (existing && !existing.isBuiltIn) {
+    throw new ConflictError(
+      `A data source "${DATA_SOURCE_SLUG}" already exists and wasn't created by the docs setup. ` +
+        'Rename or delete it to set up the Help Assistant.',
+    );
+  }
+  return existing;
+}
+
+async function ownHelpAssistant() {
+  const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  if (existing && !existing.isBuiltIn) {
+    throw new ConflictError(
+      `A chat experience "${HELP_EXPERIENCE_SLUG}" already exists and wasn't created by the docs setup. ` +
+        'Rename or delete it to set up the Help Assistant.',
+    );
+  }
+  return existing;
+}
 
 async function ensureExperience(toolId: string, adminId: string): Promise<string> {
   const systemInstructions =
@@ -329,7 +371,7 @@ async function ensureExperience(toolId: string, adminId: string): Promise<string
   // Reapply the prompt + tool wiring on every rebuild so prompt updates in
   // this seeder take effect without requiring a reset. We update an existing
   // experience in place rather than reusing-as-is.
-  const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  const existing = await ownHelpAssistant();
   if (existing) {
     await updateAIExperience(
       existing.id,
@@ -366,6 +408,8 @@ async function ensureExperience(toolId: string, adminId: string): Promise<string
     input as unknown as Parameters<typeof createAIExperience>[0],
     adminId,
   );
+  // The built-in help: every signed-in user may use it, only an Admin may change it
+  await markAIExperienceBuiltIn(created.id);
   logger.info('Created Help Assistant experience', { slug: created.slug });
   return created.slug;
 }
@@ -445,11 +489,12 @@ export async function resetDocs(): Promise<DocsResetSummary> {
     }
   };
 
+  // Only what the docs setup made (marked built in); a lookalike under the same slug stays
   const exp = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
-  if (exp) await tryStep(`experience ${HELP_EXPERIENCE_SLUG}`, () => deleteAIExperience(exp.id, adminId));
+  if (exp?.isBuiltIn) await tryStep(`experience ${HELP_EXPERIENCE_SLUG}`, () => deleteAIExperience(exp.id, adminId));
 
   const ds = await getDataSourceBySlug(DATA_SOURCE_SLUG).catch(() => null);
-  if (ds) {
+  if (ds?.isBuiltIn) {
     const tools = await getToolsByDataSourceId(ds.id).catch(() => []);
     for (const t of tools) await tryStep(`tool ${t.slug}`, () => deleteTool(t.id, adminId));
     const docs = await listDocuments(ds.id).catch(() => []);

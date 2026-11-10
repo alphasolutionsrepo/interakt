@@ -39,7 +39,7 @@ export const createUserSchema = z.object({
     .min(1, 'Last name is required')
     .max(64, 'Last name must be 64 characters or less')
     .optional(),
-  role: z.enum(['user', 'admin', 'moderator']).default('user'),
+  roleId: z.string().uuid('Choose a role'),
   isActive: z.boolean().default(true),
 });
 
@@ -58,7 +58,7 @@ export const updateUserSchema = z.object({
   email: emailSchema.optional(),
   firstName: z.string().max(64).optional(),
   lastName: z.string().max(64).optional(),
-  role: z.enum(['user', 'admin', 'moderator']).optional(),
+  roleId: z.string().uuid().optional(),
   isActive: z.boolean().optional(),
 });
 

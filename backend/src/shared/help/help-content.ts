@@ -12,6 +12,10 @@
  */
 export const HELP_EXPERIENCE_SLUG = 'help-assistant';
 
+/** Seed registry keys the docs setup records (docs.seeder, docs-search.seeder) */
+export const DOCS_SEED_KEY = 'interakt-docs';
+export const DOCS_SEARCH_SEED_KEY = 'interakt-docs-search';
+
 /**
  * Slug of the seeded docs search experience (and the name of its index) that
  * docs search talks to. Seeded by src/shared/seeders/docs/docs-search.seeder.ts.

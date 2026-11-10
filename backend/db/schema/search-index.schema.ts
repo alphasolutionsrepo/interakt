@@ -149,6 +149,8 @@ export const searchIndex = pgTable('search_index', {
   // STATUS FLAGS
   // ============================================================================
   isActive: boolean('is_active').notNull().default(true),
+  /** Made by the docs setup for the built-in help: only an Admin may change it */
+  isBuiltIn: boolean('is_built_in').default(false).notNull(),
 
   // ============================================================================
   // AUDIT

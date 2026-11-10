@@ -6,12 +6,14 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import { withPermission } from '@/features/access/route-guard';
 import { handleSearchByName } from '@/features/search/search.api.handlers';
 
-export async function POST(
+export const POST = withPermission('playground:use', async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ name: string }> }
 ) {
     const resolvedParams = await params;
     return handleSearchByName(request, resolvedParams);
-}
+});
