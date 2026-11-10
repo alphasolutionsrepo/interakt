@@ -1,11 +1,12 @@
 // src/shared/access/Can.tsx
 
 /**
- * Show a control or a link only to a user who can use it. The server refuses the request
- * either way; this keeps the admin UI from offering what would fail (a form the server will
- * refuse, a button that only shows an error).
+ * Hiding what a user can't open: a whole section (Can) or a link to a page closed to them
+ * (AccessLink). Actions on a page they can see are not hidden but locked, with the reason:
+ * use ActionButton / ActionMenuItem / ActionSwitch (ActionControls.tsx) for those.
  *
- * Nothing shows while access is loading, so an option never flashes in and then disappears.
+ * Nothing shows while access is loading, so a section never flashes in and then disappears.
+ * The server refuses the requests either way.
  */
 
 'use client';
@@ -19,20 +20,19 @@ import { canOpenPage } from '@/features/access/page-permissions';
 import { holdsAny, type Permission } from '@/features/access/permissions';
 import type { UiActionId } from '@/features/access/ui-actions';
 
-type CanProps = {
+interface CanProps {
   children: ReactNode;
   fallback?: ReactNode;
-} & (
-  /** A UI action (ui-actions.ts): the usual case, so the control follows the server's rule */
-  | { action: UiActionId; permission?: never }
-  /** A permission (any one, when a list), for what isn't a single API call, such as a section */
-  | { permission: Permission | readonly Permission[]; action?: never }
-);
+  /** A UI action (ui-actions.ts), so the section follows the server's rule */
+  action?: UiActionId;
+  /** Or a permission (any one, when a list), for a section that isn't one API call */
+  permission?: Permission | readonly Permission[];
+}
 
 /** Renders its children only for a user who may take the action or holds the permission; `fallback` otherwise. */
 export function Can({ children, fallback = null, ...rule }: CanProps) {
   const { can, canDo } = useAccess();
-  const allowed = rule.action ? canDo(rule.action) : holdsAny(can, rule.permission);
+  const allowed = rule.action ? canDo(rule.action) : !!rule.permission && holdsAny(can, rule.permission);
   return <>{allowed ? children : fallback}</>;
 }
 

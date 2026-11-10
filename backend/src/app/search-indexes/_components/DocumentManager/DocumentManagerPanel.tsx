@@ -15,6 +15,7 @@
 import { Fragment, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -480,15 +481,17 @@ function BrowseDocuments({ searchIndexId }: { searchIndexId: string }) {
                                         <Badge variant="outline" className="font-mono">
                                             {document.id}
                                         </Badge>
-                                        <Button
+                                        <ActionButton
+                                            action="documents.change"
+                                            icon={Trash2}
+                                            iconClassName="mr-2 h-4 w-4"
                                             variant="destructive"
                                             size="sm"
                                             onClick={() => setPendingDeleteId(document.id)}
                                             disabled={deleteDocument.isPending}
                                         >
-                                            <Trash2 className="mr-2 h-4 w-4" />
                                             Delete document
-                                        </Button>
+                                        </ActionButton>
                                     </div>
                                     <ScrollArea className="h-64 rounded-md border bg-background">
                                         <pre className="p-4 text-xs">
@@ -720,15 +723,17 @@ function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
                             <Badge variant="outline" className="font-mono">
                                 {data.documentId}
                             </Badge>
-                            <Button
+                            <ActionButton
+                                action="documents.change"
+                                icon={Trash2}
+                                iconClassName="mr-2 h-4 w-4"
                                 variant="destructive"
                                 size="sm"
                                 onClick={() => setConfirmOpen(true)}
                                 disabled={deleteDocument.isPending}
                             >
-                                <Trash2 className="mr-2 h-4 w-4" />
                                 Delete document
-                            </Button>
+                            </ActionButton>
                         </div>
                         <ScrollArea className="h-72 rounded-md border bg-muted/30">
                             <pre className="p-4 text-xs">
@@ -906,28 +911,29 @@ function DeleteByFilter({ searchIndexId }: { searchIndexId: string }) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <Button
+                    {/* The preview is a dry run of the delete, so it needs the same permission */}
+                    <ActionButton
+                        action="documents.change"
+                        icon={deleteByFilter.isPending ? Loader2 : Eye}
+                        iconClassName={deleteByFilter.isPending ? 'mr-2 h-4 w-4 animate-spin' : 'mr-2 h-4 w-4'}
                         variant="outline"
                         onClick={handlePreview}
                         disabled={isIncomplete || deleteByFilter.isPending}
                     >
-                        {deleteByFilter.isPending ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                            <Eye className="mr-2 h-4 w-4" />
-                        )}
                         Preview matches
-                    </Button>
+                    </ActionButton>
 
-                    <Button
+                    <ActionButton
+                        action="documents.change"
+                        icon={Trash2}
+                        iconClassName="mr-2 h-4 w-4"
                         variant="destructive"
                         onClick={() => setConfirmOpen(true)}
                         // Require a preview first: a filter typo here deletes real data
                         disabled={matched === null || matched === 0 || deleteByFilter.isPending}
                     >
-                        <Trash2 className="mr-2 h-4 w-4" />
                         Delete matches
-                    </Button>
+                    </ActionButton>
 
                     {matched !== null && (
                         <Badge variant={matched > 0 ? 'default' : 'secondary'}>

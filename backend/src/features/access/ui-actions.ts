@@ -38,6 +38,34 @@ export const UI_ACTIONS = {
     routes: ['POST /api/ai-provider-models', 'PUT /api/ai-provider-models/[id]', 'DELETE /api/ai-provider-models/[id]'],
   },
   'system-defaults.save': { does: 'change the system default models', permission: 'settings:manage', routes: ['PUT /api/system-defaults/ai', 'PUT /api/system-defaults/ai/[purpose]'] },
+
+  // Search indexes
+  'search-indexes.create': { does: 'create search indexes', permission: 'search-indexes:edit', routes: ['POST /api/search-indexes'] },
+  'search-indexes.import': { does: 'import search indexes', permission: 'search-indexes:edit', routes: ['POST /api/search-indexes/import'] },
+  'search-indexes.edit': { does: 'edit search indexes', permission: 'search-indexes:edit', routes: ['PUT /api/search-indexes/[id]'] },
+  'search-indexes.delete': { does: 'delete search indexes', permission: 'search-indexes:edit', routes: ['DELETE /api/search-indexes/[id]'] },
+  'search-indexes.activate': {
+    does: 'activate or deactivate search indexes', permission: 'search-indexes:edit',
+    routes: ['PATCH /api/search-indexes/[id]/activate', 'PATCH /api/search-indexes/[id]/deactivate'],
+  },
+
+  // Documents in a search index
+  'documents.upload': {
+    does: 'upload documents', permission: 'documents:edit',
+    routes: ['POST /api/search-indexes/[id]/documents', 'POST /api/search-indexes/[id]/documents/bulk'],
+  },
+  'documents.change': {
+    does: 'edit or delete documents', permission: 'documents:edit',
+    routes: [
+      'PUT /api/search-indexes/[id]/documents/[documentId]', 'PATCH /api/search-indexes/[id]/documents/[documentId]',
+      'DELETE /api/search-indexes/[id]/documents/[documentId]', 'DELETE /api/search-indexes/[id]/documents/batches/[batchId]',
+      'POST /api/search-indexes/[id]/documents/delete-by-filter',
+    ],
+  },
+  'documents.reindex': {
+    does: 'reindex or recreate search indexes', permission: 'documents:edit',
+    routes: ['POST /api/search-indexes/[id]/reindex', 'POST /api/search-indexes/[id]/recreate-index'],
+  },
 } as const satisfies Record<string, UiAction>;
 
 export type UiActionId = keyof typeof UI_ACTIONS;

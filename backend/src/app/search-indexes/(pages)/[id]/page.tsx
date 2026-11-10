@@ -26,7 +26,6 @@ import {
   Power,
   PowerOff,
   RotateCcw,
-  Trash2,
   CheckCircle2,
   AlertCircle,
   Activity,
@@ -45,6 +44,8 @@ import { toast } from 'sonner';
 import { useSearchIndex, useIndexStats, useSyncStatus } from '../../_lib/hooks/useSearchIndexes';
 import { useFieldMappingSummary } from '../../_lib/hooks/useSearchIndexFields';
 import { FieldMappingsCard } from '../../_components/FieldMappingsCard';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ReindexDialog } from '../../_components/ReindexDialog';
@@ -386,13 +387,15 @@ export default function SearchIndexDetailPage() {
         }
         actions={
           <>
-            <Button
+            <ActionButton
+              action="documents.upload"
+              icon={Upload}
+              iconClassName="h-4 w-4 mr-2"
               className="rounded-xl"
               onClick={() => router.push(`/search-indexes/${indexId}/upload`)}
             >
-              <Upload className="h-4 w-4 mr-2" />
               Upload
-            </Button>
+            </ActionButton>
             <Button
               variant="outline"
               className="rounded-xl"
@@ -401,33 +404,32 @@ export default function SearchIndexDetailPage() {
               <FileCog className="h-4 w-4 mr-2" />
               Documents
             </Button>
-            <Button
+            <ActionButton
+              action="search-indexes.activate"
+              icon={searchIndex.isActive ? PowerOff : Power}
+              iconClassName="h-4 w-4 mr-2"
               variant={searchIndex.isActive ? 'outline' : 'default'}
               className={`rounded-xl ${searchIndex.isActive ? '' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
               onClick={handleToggleActive}
               disabled={isActivating || isDeactivating}
             >
-              {searchIndex.isActive ? (
-                <>
-                  <PowerOff className="h-4 w-4 mr-2" />
-                  Deactivate
-                </>
-              ) : (
-                <>
-                  <Power className="h-4 w-4 mr-2" />
-                  Activate
-                </>
-              )}
-            </Button>
+              {searchIndex.isActive ? 'Deactivate' : 'Activate'}
+            </ActionButton>
             <ExportImportButtons
               searchIndexId={indexId}
               searchIndexName={searchIndex.name}
               exportOnly
             />
-            <Button variant="outline" className="rounded-xl" onClick={() => router.push(`/search-indexes/${indexId}/edit`)}>
-              <Edit2 className="h-4 w-4 mr-2" />
+            <ActionButton
+              action="search-indexes.edit"
+              icon={Edit2}
+              iconClassName="h-4 w-4 mr-2"
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => router.push(`/search-indexes/${indexId}/edit`)}
+            >
               Edit
-            </Button>
+            </ActionButton>
           </>
         }
       />
@@ -451,25 +453,18 @@ export default function SearchIndexDetailPage() {
                   The search provider index may be missing or corrupted. You can recreate the empty index structure from your saved field definitions, then re-upload your documents.
                 </p>
               </div>
-              <Button
+              <ActionButton
+                action="documents.reindex"
+                icon={isRecreatingIndex ? RotateCcw : Wrench}
+                iconClassName={`h-3.5 w-3.5 mr-2 ${isRecreatingIndex ? 'animate-spin' : ''}`}
                 variant="outline"
                 size="sm"
                 className="rounded-xl border-amber-500/30 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-950/50 shrink-0"
                 onClick={() => recreateEmptyIndex()}
                 disabled={isRecreatingIndex}
               >
-                {isRecreatingIndex ? (
-                  <>
-                    <RotateCcw className="h-3.5 w-3.5 mr-2 animate-spin" />
-                    Recreating...
-                  </>
-                ) : (
-                  <>
-                    <Wrench className="h-3.5 w-3.5 mr-2" />
-                    Recreate Index
-                  </>
-                )}
-              </Button>
+                {isRecreatingIndex ? 'Recreating...' : 'Recreate Index'}
+              </ActionButton>
             </div>
           </CardContent>
         </Card>
@@ -491,16 +486,18 @@ export default function SearchIndexDetailPage() {
                   Text analysis or field mapping settings changed since the last reindex. Reindex to apply them to the provider index.
                 </p>
               </div>
-              <Button
+              <ActionButton
+                action="documents.reindex"
+                icon={RotateCcw}
+                iconClassName={`h-3.5 w-3.5 mr-2 ${isReindexing ? 'animate-spin' : ''}`}
                 variant="outline"
                 size="sm"
                 className="rounded-xl border-blue-500/30 text-blue-700 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-950/50 shrink-0"
                 onClick={() => setReindexDialogOpen(true)}
                 disabled={isReindexing || searchIndex.status === 'indexing' || searchIndex.status === 'creating'}
               >
-                <RotateCcw className={`h-3.5 w-3.5 mr-2 ${isReindexing ? 'animate-spin' : ''}`} />
                 {isReindexing ? 'Reindexing...' : 'Reindex Now'}
-              </Button>
+              </ActionButton>
             </div>
           </CardContent>
         </Card>
@@ -621,16 +618,18 @@ export default function SearchIndexDetailPage() {
               <code className="flex-1 text-foreground/80 truncate">{searchIndex.name}</code>
               <CopyButton text={searchIndex.name} label="Index name" />
             </div>
-            <Button
+            <ActionButton
+              action="documents.reindex"
+              icon={RotateCcw}
+              iconClassName={`h-3.5 w-3.5 mr-2 ${isReindexing ? 'animate-spin' : ''}`}
               variant="outline"
               size="sm"
               className="w-full rounded-xl"
               onClick={() => setReindexDialogOpen(true)}
               disabled={isReindexing || searchIndex.status === 'indexing' || searchIndex.status === 'creating'}
             >
-              <RotateCcw className={`h-3.5 w-3.5 mr-2 ${isReindexing ? 'animate-spin' : ''}`} />
               {isReindexing ? 'Reindexing...' : 'Reindex'}
-            </Button>
+            </ActionButton>
           </CardContent>
         </Card>
       </div>
@@ -863,35 +862,12 @@ export default function SearchIndexDetailPage() {
       )}
 
       {/* Danger Zone */}
-      <Card className="border-destructive/30 shadow-sm rounded-2xl">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2 font-semibold text-destructive">
-            <Trash2 className="h-4 w-4" />
-            Danger Zone
-          </CardTitle>
-          <CardDescription>
-            Irreversible actions that permanently affect this search index
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 bg-destructive/5 rounded-xl border border-destructive/20">
-            <div>
-              <p className="font-medium text-sm">Delete this search index</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                This will permanently delete the index, all field mappings, and remove it from {providerLabel}.
-              </p>
-            </div>
-            <Button
-              variant="destructive"
-              className="rounded-xl"
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <DangerZone
+        thing="search index"
+        detail={`This will permanently delete the index, all field mappings, and remove it from ${providerLabel}.`}
+        action="search-indexes.delete"
+        onDelete={() => setDeleteDialogOpen(true)}
+      />
 
       {/* Delete Confirmation */}
       <DeleteConfirmDialog
