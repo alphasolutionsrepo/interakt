@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { useAccess } from '@/shared/access/useAccess';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     Select,
@@ -61,6 +62,8 @@ interface DefaultRowProps {
     onProviderChange: (purpose: string, providerId: string) => void;
     onModelChange: (purpose: string, modelId: string) => void;
     onSave: () => void;
+    /** Shows the defaults without letting them change (no settings:manage) */
+    readOnly: boolean;
 }
 
 /**
@@ -85,6 +88,7 @@ function DefaultRow({
     onProviderChange,
     onModelChange,
     onSave,
+    readOnly,
 }: DefaultRowProps) {
     const enabledProviders = providers.filter(p => p.isEnabled);
     const selectedProvider = providers.find(p => p.id === setting.providerId);
@@ -133,7 +137,7 @@ function DefaultRow({
                     </div>
                 </div>
 
-                {hasChanges && (
+                {hasChanges && !readOnly && (
                     <Button
                         size="sm"
                         variant={cannotSave ? "outline" : "default"}
@@ -162,6 +166,7 @@ function DefaultRow({
                 <Select
                     value={setting.providerId ?? 'none'}
                     onValueChange={(value) => onProviderChange(setting.purpose, value)}
+                    disabled={readOnly}
                 >
                     <SelectTrigger
                         className={cn(
@@ -204,7 +209,7 @@ function DefaultRow({
                 <Select
                     value={setting.modelId?.toString() ?? 'none'}
                     onValueChange={(value) => onModelChange(setting.purpose, value)}
-                    disabled={!setting.providerId}
+                    disabled={readOnly || !setting.providerId}
                 >
                     <SelectTrigger
                         className={cn(
@@ -273,6 +278,7 @@ export function SystemDefaultsCard({
     isLoading,
     isSaving,
 }: SystemDefaultsCardProps) {
+    const readOnly = !useAccess().canDo('system-defaults.save');
     const [settings, setSettings] = useState<DefaultSetting[]>([
         {
             purpose: 'chat',
@@ -408,6 +414,7 @@ export function SystemDefaultsCard({
                         onProviderChange={handleProviderChange}
                         onModelChange={handleModelChange}
                         onSave={() => handleSave(setting)}
+                        readOnly={readOnly}
                     />
                 ))}
             </div>

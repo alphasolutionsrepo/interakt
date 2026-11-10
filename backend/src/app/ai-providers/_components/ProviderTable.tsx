@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
+import { useAccess } from '@/shared/access/useAccess';
 
 interface ProviderTableProps {
   providers: AIProviderWithModelsResponse[];
@@ -64,6 +65,8 @@ export function ProviderTable({
   isTesting,
 }: ProviderTableProps) {
   const [testingId, setTestingId] = useState<string | null>(null);
+  const { canDo } = useAccess();
+  const canDelete = canDo('ai-providers.delete');
 
   const handleTestConnection = async (provider: AIProviderWithModelsResponse) => {
     setTestingId(provider.id);
@@ -202,7 +205,9 @@ export function ProviderTable({
                   <Switch
                     checked={provider.isEnabled}
                     onCheckedChange={() => onToggleEnabled(provider)}
-                    disabled={isEnabling || isDisabling}
+                    // Shown to everyone who sees the list; only switchable for those who may
+                    disabled={!canDo('ai-providers.enable') || isEnabling || isDisabling}
+                    aria-label={`${provider.displayName} enabled`}
                   />
                 </TableCell>
 
@@ -220,35 +225,43 @@ export function ProviderTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem onClick={() => onEdit(provider)}>
-                        <Edit className="mr-2 size-4" />
-                        Edit Provider
-                      </DropdownMenuItem>
+                      {canDo('ai-providers.edit') && (
+                        <DropdownMenuItem onClick={() => onEdit(provider)}>
+                          <Edit className="mr-2 size-4" />
+                          Edit Provider
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => onManageModels(provider)}>
                         <Layers className="mr-2 size-4" />
-                        Manage Models
+                        {canDo('ai-models.change') ? 'Manage Models' : 'View Models'}
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleTestConnection(provider)}
-                        disabled={testingId === provider.id || isTesting}
-                      >
-                        <TestTube className="mr-2 size-4" />
-                        {testingId === provider.id ? 'Testing...' : 'Test Connection'}
-                      </DropdownMenuItem>
-                      {provider.providerKey === 'ollama' && onDiscoverModels && (
+                      {canDo('ai-providers.test') && (
+                        <DropdownMenuItem
+                          onClick={() => handleTestConnection(provider)}
+                          disabled={testingId === provider.id || isTesting}
+                        >
+                          <TestTube className="mr-2 size-4" />
+                          {testingId === provider.id ? 'Testing...' : 'Test Connection'}
+                        </DropdownMenuItem>
+                      )}
+                      {provider.providerKey === 'ollama' && onDiscoverModels && canDo('ai-providers.discover-models') && (
                         <DropdownMenuItem onClick={() => onDiscoverModels(provider)}>
                           <Search className="mr-2 size-4" />
                           Discover Models
                         </DropdownMenuItem>
                       )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => onDelete(provider)}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="mr-2 size-4" />
-                        Delete
-                      </DropdownMenuItem>
+                      {canDelete && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => onDelete(provider)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 size-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

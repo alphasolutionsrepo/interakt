@@ -97,11 +97,11 @@ export default function UsersPage() {
     isChangingPassword,
   } = useUsers();
   const { roles } = useRoles();
-  const { access } = useAccess();
+  const { access, isAdmin } = useAccess();
 
   // A role the signed-in user may hand out: they hold everything it grants (the server checks too)
   const canHold = (role: Pick<RoleResponse, 'isBuiltIn' | 'permissions'>) =>
-    !!access && holdsAllOf({ isAdmin: access.role.isAdmin, permissions: access.permissions }, role);
+    !!access && holdsAllOf({ isAdmin, permissions: access.permissions }, role);
   const assignableRoles = roles.filter(canHold);
   const rolesFor = (current?: string) =>
     roles.filter((r) => canHold(r) || r.id === current);
@@ -231,7 +231,7 @@ export default function UsersPage() {
           <TabsTrigger value="roles">Roles</TabsTrigger>
         </TabsList>
         <TabsContent value="roles">
-          <RolesPanel isAdmin={!!access?.role.isAdmin} />
+          <RolesPanel isAdmin={isAdmin} />
         </TabsContent>
         <TabsContent value="users" className="space-y-8">
       {/* Stats */}

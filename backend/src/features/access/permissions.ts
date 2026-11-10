@@ -80,6 +80,11 @@ export const ALL_PERMISSIONS: readonly Permission[] = PERMISSION_GROUPS.flatMap(
 
 const PERMISSION_SET: ReadonlySet<string> = new Set(ALL_PERMISSIONS);
 
+/** Whether a holder passes a rule of one permission, or any one of a list. */
+export function holdsAny(can: (p: Permission) => boolean, rule: Permission | readonly Permission[]): boolean {
+  return typeof rule === 'string' ? can(rule) : rule.some(can);
+}
+
 export function isPermission(value: unknown): value is Permission {
   return typeof value === 'string' && PERMISSION_SET.has(value);
 }
