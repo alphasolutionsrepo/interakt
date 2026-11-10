@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useRoles } from '../_lib/hooks/useRoles';
 import type { RoleResponse } from '../_lib/roles-api';
 
+import { AccessOverview } from './AccessOverview';
 import { RoleFormDialog } from './RoleFormDialog';
 
 import { Badge } from '@/components/ui/badge';
@@ -20,9 +21,13 @@ import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 const PERMISSION_COUNT = PERMISSION_GROUPS.reduce((n, g) => n + g.permissions.length, 0);
 
-/** The Roles tab: every role, how many users hold it, and create / edit / delete. */
-export function RolesPanel({ canHold }: { canHold: (role: Pick<RoleResponse, 'isBuiltIn' | 'permissions'>) => boolean }) {
-  const { roles, isLoading, error, retry, createRoleAsync, updateRoleAsync, deleteRole, isSaving, isDeleting } = useRoles();
+/**
+ * The Roles tab: every role, how many users hold it, and the Access overview. Only an Admin
+ * creates, edits and deletes roles (the server refuses everyone else); other user managers
+ * see the roles they assign, read-only.
+ */
+export function RolesPanel({ isAdmin }: { isAdmin: boolean }) {
+  const { roles, isLoading, error, retry, createRoleAsync, updateRoleAsync, setRolePermissions, savingRoleId, deleteRole, isSaving, isDeleting } = useRoles();
   const [editing, setEditing] = useState<RoleResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<RoleResponse | null>(null);
@@ -41,45 +46,46 @@ export function RolesPanel({ canHold }: { canHold: (role: Pick<RoleResponse, 'is
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-muted-foreground">
-          A role is a set of permissions. Admin is built in and holds every permission. You can give a role
-          only permissions your own role has.
+          A role is a set of permissions. Admin is built in and holds every permission.
+          {isAdmin ? '' : ' Only an Admin can add, change or delete roles.'}
         </p>
-        <Button onClick={() => setCreating(true)} className="rounded-xl shrink-0">
-          <Plus className="mr-2 size-4" />
-          Add Role
-        </Button>
+        {isAdmin && (
+          <Button onClick={() => setCreating(true)} className="rounded-xl shrink-0">
+            <Plus className="mr-2 size-4" />
+            Add Role
+          </Button>
+        )}
       </div>
 
       <div className="rounded-2xl border border-border/60 divide-y divide-border/60">
-        {roles.map((role) => {
-          const editable = !role.isBuiltIn && canHold(role);
-          return (
-            <div key={role.id} className="flex items-center gap-4 p-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{role.name}</span>
-                  {role.isBuiltIn && (
-                    <Badge variant="secondary" className="gap-1">
-                      <Lock className="size-3" /> Built in
-                    </Badge>
-                  )}
-                </div>
-                {role.description && <p className="text-sm text-muted-foreground">{role.description}</p>}
+        {roles.map((role) => (
+          <div key={role.id} className="flex items-center gap-4 p-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">{role.name}</span>
+                {role.isBuiltIn && (
+                  <Badge variant="secondary" className="gap-1">
+                    <Lock className="size-3" /> Built in
+                  </Badge>
+                )}
               </div>
-              <span className="text-sm text-muted-foreground whitespace-nowrap">
-                {role.isBuiltIn ? PERMISSION_COUNT : effectivePermissions(role.permissions as Permission[]).length} of {PERMISSION_COUNT} permissions
-              </span>
-              <span className="text-sm text-muted-foreground whitespace-nowrap">
-                {role.userCount} {role.userCount === 1 ? 'user' : 'users'}
-              </span>
+              {role.description && <p className="text-sm text-muted-foreground">{role.description}</p>}
+            </div>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              {role.isBuiltIn ? PERMISSION_COUNT : effectivePermissions(role.permissions as Permission[]).length} of {PERMISSION_COUNT} permissions
+            </span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              {role.userCount} {role.userCount === 1 ? 'user' : 'users'}
+            </span>
+            {isAdmin && !role.isBuiltIn && (
               <div className="flex gap-1">
-                <Button variant="ghost" size="icon" disabled={!editable} onClick={() => setEditing(role)} aria-label={`Edit ${role.name}`}>
+                <Button variant="ghost" size="icon" onClick={() => setEditing(role)} aria-label={`Edit ${role.name}`}>
                   <Pencil className="size-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  disabled={!editable || role.userCount > 0}
+                  disabled={role.userCount > 0}
                   title={role.userCount > 0 ? 'Give its users another role first' : undefined}
                   onClick={() => setToDelete(role)}
                   aria-label={`Delete ${role.name}`}
@@ -87,15 +93,21 @@ export function RolesPanel({ canHold }: { canHold: (role: Pick<RoleResponse, 'is
                   <Trash2 className="size-4" />
                 </Button>
               </div>
-            </div>
-          );
-        })}
+            )}
+          </div>
+        ))}
       </div>
+
+      <AccessOverview
+        roles={roles}
+        editable={isAdmin}
+        savingRoleId={savingRoleId}
+        onChange={(role, permissions) => setRolePermissions({ id: role.id, permissions })}
+      />
 
       <RoleFormDialog
         open={creating || !!editing}
         role={editing ?? undefined}
-        canHoldPermission={(p) => canHold({ isBuiltIn: false, permissions: [p] })}
         isSubmitting={isSaving}
         onOpenChange={(open) => { if (!open) { setCreating(false); setEditing(null); } }}
         onSubmit={async (data) => {
