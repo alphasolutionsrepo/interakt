@@ -17,6 +17,7 @@ import { VariableLegend } from '../../_components/VariableLegend';
 import { VersionHistory } from '../../_components/VersionHistory';
 import { usePromptTemplate } from '../../_lib/hooks/usePromptTemplates';
 import { STATUS_CONFIG, STEP_LABELS } from '../../_lib/template-display';
+import { ActionButton } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // MAIN PAGE
@@ -155,10 +156,9 @@ export default function PromptTemplateDetailPage({
           ) : (
             <>
               <div className="flex justify-end">
-                <Button onClick={() => setIsEditing(true)} className="gap-1.5">
-                  <Pencil className="size-3.5" />
+                <ActionButton action="prompts.edit" icon={Pencil} iconClassName="size-3.5" onClick={() => setIsEditing(true)} className="gap-1.5">
                   Edit prompt
-                </Button>
+                </ActionButton>
               </div>
               <PromptContentViewer
                 content={template.content}

@@ -88,6 +88,10 @@ export const UI_ACTIONS = {
   'mcp.delete': { does: 'delete MCP connections', permission: 'tools:edit', routes: ['DELETE /api/mcp-connections/[id]'] },
   'mcp.sync': { does: 'sync MCP connections', permission: 'tools:edit', routes: ['POST /api/mcp-connections/[id]/sync'] },
   'mcp.test': { does: 'test MCP connections', permission: 'playground:use', routes: ['POST /api/mcp-connections/[id]/test'] },
+
+  // Prompt templates
+  'prompts.edit': { does: 'edit prompts', permission: 'prompts:edit', routes: ['POST /api/prompt-templates'] },
+  'prompts.make-default': { does: 'change which prompt version is the default', permission: 'prompts:edit', routes: ['POST /api/prompt-templates/[id]/rollback'] },
 } as const satisfies Record<string, UiAction>;
 
 export type UiActionId = keyof typeof UI_ACTIONS;
