@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
   handleGetDataSource,
@@ -14,14 +15,14 @@ export const GET = withPermission('data-sources:view', async function GET(
   return handleGetDataSource(request, context);
 });
 
-export const PUT = withPermission('data-sources:edit', async function PUT(
+export const PUT = forBuiltInChange('data-source', 'data-sources:edit', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   return handleUpdateDataSource(request, context);
 });
 
-export const DELETE = withPermission('data-sources:edit', async function DELETE(
+export const DELETE = forBuiltInChange('data-source', 'data-sources:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {

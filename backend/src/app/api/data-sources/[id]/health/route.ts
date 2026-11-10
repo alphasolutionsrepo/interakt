@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import { handleUpdateHealth, handlePerformHealthCheck } from '@/features/data-source/data-source.api.handlers';
 import { withRateLimit } from '@/shared/api/rate-limit';
 
 // PUT: Manually set health status (external systems reporting in)
-export const PUT = withPermission('data-sources:edit', async function PUT(
+export const PUT = forBuiltInChange('data-source', 'data-sources:edit', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {

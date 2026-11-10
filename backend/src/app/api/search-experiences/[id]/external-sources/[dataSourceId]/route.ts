@@ -8,10 +8,11 @@
 
 import { NextRequest } from 'next/server';
 
-import { forExperienceChange } from '@/features/access/built-in-experiences';
+import { forBuiltInChange } from '@/features/access/built-in';
+
 import { handleRemoveExternalSource } from '@/features/search-experience/search-experience.admin.handlers';
 
-export const DELETE = forExperienceChange('search', async function DELETE(
+export const DELETE = forBuiltInChange('search-experience', 'search-experiences:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string; dataSourceId: string }> }
 ) {

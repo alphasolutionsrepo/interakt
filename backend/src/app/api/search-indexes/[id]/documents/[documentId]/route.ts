@@ -13,6 +13,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInDocumentChange } from '@/features/access/built-in';
 import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
 import {
     handleGetDocument,
@@ -41,19 +42,19 @@ export const GET = withPermissionOrIngestionKey('search-indexes:view', async fun
     return handleGetDocument(request, context);
 });
 
-export const PUT = withPermissionOrIngestionKey('documents:edit', withRateLimit(
+export const PUT = forBuiltInDocumentChange('documents:edit', withRateLimit(
     async (request: NextRequest, context: DocumentContext) =>
         handleReplaceDocument(request, context),
     singleDocumentRateLimit
 ));
 
-export const PATCH = withPermissionOrIngestionKey('documents:edit', withRateLimit(
+export const PATCH = forBuiltInDocumentChange('documents:edit', withRateLimit(
     async (request: NextRequest, context: DocumentContext) =>
         handleMergeDocument(request, context),
     singleDocumentRateLimit
 ));
 
-export const DELETE = withPermissionOrIngestionKey('documents:edit', withRateLimit(
+export const DELETE = forBuiltInDocumentChange('documents:edit', withRateLimit(
     async (request: NextRequest, context: DocumentContext) =>
         handleDeleteDocument(request, context),
     singleDocumentRateLimit

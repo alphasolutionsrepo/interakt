@@ -13,7 +13,7 @@
 
 import { NextRequest } from 'next/server';
 
-import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
+import { forBuiltInDocumentChange } from '@/features/access/built-in';
 import { handleDeleteDocumentsByFilter } from '@/features/document-indexing';
 import { ingestionRateLimitKey } from '@/features/ingestion-keys';
 import { withRateLimit } from '@/shared/api/rate-limit';
@@ -22,7 +22,7 @@ export const dynamic = 'force-dynamic';
 
 // Rate limited per ingestion key. Tighter than the other write routes: this one
 // can remove an unbounded number of documents per call.
-export const POST = withPermissionOrIngestionKey('documents:edit', withRateLimit(
+export const POST = forBuiltInDocumentChange('documents:edit', withRateLimit(
     async (request: NextRequest, context: { params: Promise<{ id: string }> }) =>
         handleDeleteDocumentsByFilter(request, context),
     { maxRequests: 20, windowMs: 60_000, keyFn: ingestionRateLimitKey }

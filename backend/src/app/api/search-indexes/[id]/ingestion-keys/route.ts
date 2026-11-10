@@ -10,6 +10,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
     handleListIngestionKeys,
@@ -23,7 +24,7 @@ export const GET = withPermission('secrets:manage', async function GET(
     return handleListIngestionKeys(request, context);
 });
 
-export const POST = withPermission('secrets:manage', async function POST(
+export const POST = forBuiltInChange('search-index', 'secrets:manage', async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {

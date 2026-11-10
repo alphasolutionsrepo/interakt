@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
   handleGetTool,
@@ -14,14 +15,14 @@ export const GET = withPermission('tools:view', async function GET(
   return handleGetTool(request, context);
 });
 
-export const PUT = withPermission('tools:edit', async function PUT(
+export const PUT = forBuiltInChange('tool', 'tools:edit', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleUpdateTool(request, context);
 });
 
-export const DELETE = withPermission('tools:edit', async function DELETE(
+export const DELETE = forBuiltInChange('tool', 'tools:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {

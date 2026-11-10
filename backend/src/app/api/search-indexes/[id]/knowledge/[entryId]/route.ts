@@ -9,6 +9,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
   handleGetKnowledgeEntry,
@@ -23,14 +24,14 @@ export const GET = withPermission('prompts:view', async function GET(
   return handleGetKnowledgeEntry(request, context);
 });
 
-export const PUT = withPermission('prompts:edit', async function PUT(
+export const PUT = forBuiltInChange('search-index', 'prompts:edit', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string; entryId: string }> }
 ) {
   return handleUpdateKnowledgeEntry(request, context);
 });
 
-export const DELETE = withPermission('prompts:edit', async function DELETE(
+export const DELETE = forBuiltInChange('search-index', 'prompts:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string; entryId: string }> }
 ) {

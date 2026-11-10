@@ -12,6 +12,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
     handleGetFieldMappings,
@@ -25,7 +26,7 @@ export const GET = withPermission('search-indexes:view', async function GET(
     return handleGetFieldMappings(request, context);
 });
 
-export const PUT = withPermission('search-indexes:edit', async function PUT(
+export const PUT = forBuiltInChange('search-index', 'search-indexes:edit', async function PUT(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {

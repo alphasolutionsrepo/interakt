@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 
-import { forExperienceChange } from '@/features/access/built-in-experiences';
+import { forBuiltInChange } from '@/features/access/built-in';
+
 import { handleAssignTool } from '@/features/ai-experience/ai-experience.api.handlers';
 
-export const POST = forExperienceChange('ai', async function POST(
+export const POST = forBuiltInChange('ai-experience', 'ai-experiences:edit', async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {

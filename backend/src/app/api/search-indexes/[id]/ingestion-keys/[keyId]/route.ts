@@ -9,10 +9,10 @@
 
 import { NextRequest } from 'next/server';
 
-import { withPermission } from '@/features/access/route-guard';
+import { forBuiltInChange } from '@/features/access/built-in';
 import { handleRevokeIngestionKey } from '@/features/ingestion-keys/ingestion-key.api.handlers';
 
-export const DELETE = withPermission('secrets:manage', async function DELETE(
+export const DELETE = forBuiltInChange('search-index', 'secrets:manage', async function DELETE(
     request: NextRequest,
     context: { params: Promise<{ id: string; keyId: string }> }
 ) {

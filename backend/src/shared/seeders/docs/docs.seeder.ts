@@ -51,6 +51,7 @@ import {
   getToolsByDataSourceId,
   deleteTool,
 } from '@/features/tools/tools.service';
+import { markBuiltIn } from '@/features/access/built-in';
 import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
@@ -121,6 +122,10 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
     );
   }
 
+  // Someone else's data source or experience under our slugs: refuse before changing anything
+  await ownDataSource();
+  await ownHelpAssistant();
+
   // Docs search has its own checksum. Run it first: an embedding model now
   // exists, so a keyword-only index built at startup upgrades to hybrid here
   // without waiting for a restart. A failure here never blocks the assistant.
@@ -155,7 +160,6 @@ export async function seedDocs(options: DocsSeedOptions = {}): Promise<DocsSeedS
     return { skipped: true, reason: 'unchanged (use force to re-run)' };
   }
 
-  await ownHelpAssistant(); // refuse before changing anything
   logger.info('📚 Seeding docs Help Assistant', { docs: docs.length, embedding: embedding.modelKey });
 
   // 1. Data source (file_store)
@@ -199,7 +203,7 @@ async function ensureDataSource(
   embeddingModelId: number,
   adminId: string,
 ): Promise<string> {
-  const existing = await getDataSourceBySlug(DATA_SOURCE_SLUG);
+  const existing = await ownDataSource();
   if (existing) {
     logger.info('Docs data source exists — reusing', { id: existing.id });
     return existing.id;
@@ -224,6 +228,8 @@ async function ensureDataSource(
     },
   };
   const created = await createDataSource(input as Parameters<typeof createDataSource>[0], adminId);
+  // Part of the built-in help: only an Admin may change it
+  await markBuiltIn('data-source', [created.id]);
   logger.info('Created docs data source', { id: created.id });
   return created.id;
 }
@@ -285,6 +291,8 @@ async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<
     );
     logger.info('Scaffolded docs tools', { operations: tools.map((t) => t.operation) });
   }
+  // The docs data source's tools are part of the built-in help: only an Admin may change them
+  await markBuiltIn('tool', tools.map((t) => t.id));
   const search = tools.find((t) => t.operation === 'search') ?? tools[0];
   if (!search) throw new Error('No search tool could be created for the docs data source.');
   return search.id;
@@ -295,9 +303,21 @@ async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<
 // ---------------------------------------------------------------------------
 
 /**
- * The Help Assistant the docs setup made earlier, or null. Someone else's experience under the
- * same slug is never taken over (the built-in help is open to everyone): that's a conflict.
+ * The docs data source and Help Assistant the docs setup made earlier, or null. Someone else's
+ * under the same slug is never taken over (the built-in help is open to everyone, changed only
+ * by an Admin): that's a conflict.
  */
+async function ownDataSource() {
+  const existing = await getDataSourceBySlug(DATA_SOURCE_SLUG);
+  if (existing && !existing.isBuiltIn) {
+    throw new ConflictError(
+      `A data source "${DATA_SOURCE_SLUG}" already exists and wasn't created by the docs setup. ` +
+        'Rename or delete it to set up the Help Assistant.',
+    );
+  }
+  return existing;
+}
+
 async function ownHelpAssistant() {
   const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
   if (existing && !existing.isBuiltIn) {
@@ -465,11 +485,12 @@ export async function resetDocs(): Promise<DocsResetSummary> {
     }
   };
 
+  // Only what the docs setup made (marked built in); a lookalike under the same slug stays
   const exp = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
-  if (exp) await tryStep(`experience ${HELP_EXPERIENCE_SLUG}`, () => deleteAIExperience(exp.id, adminId));
+  if (exp?.isBuiltIn) await tryStep(`experience ${HELP_EXPERIENCE_SLUG}`, () => deleteAIExperience(exp.id, adminId));
 
   const ds = await getDataSourceBySlug(DATA_SOURCE_SLUG).catch(() => null);
-  if (ds) {
+  if (ds?.isBuiltIn) {
     const tools = await getToolsByDataSourceId(ds.id).catch(() => []);
     for (const t of tools) await tryStep(`tool ${t.slug}`, () => deleteTool(t.id, adminId));
     const docs = await listDocuments(ds.id).catch(() => []);

@@ -8,6 +8,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
     handleGetFields,
@@ -21,7 +22,7 @@ export const GET = withPermission('search-indexes:view', async function GET(
     return handleGetFields(request, context);
 });
 
-export const POST = withPermission('search-indexes:edit', async function POST(
+export const POST = forBuiltInChange('search-index', 'search-indexes:edit', async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {

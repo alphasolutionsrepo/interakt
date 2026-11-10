@@ -54,6 +54,7 @@ import {
   recreateEmptyIndex,
 } from '@/features/search-index/search-index.service';
 import { DOCS_SEARCH_SEED_KEY, DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
+import { markBuiltIn } from '@/features/access/built-in';
 import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { calculateChecksum, getRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-registry.service';
@@ -273,7 +274,8 @@ async function buildWithMode(
   const embedded = result.embeddingStats?.generated ?? 0;
   if (mode.searchType === 'hybrid' && embedded < result.indexedDocuments / 2) return 'embeddings-failed';
 
-  // The built-in help: every signed-in user may use it, only an Admin may change it
+  // The built-in help: every signed-in user may use it, only an Admin may change it or its index
+  await markBuiltIn('search-index', [index!.id]);
   await markSearchExperienceBuiltIn((experience ?? (await createExperience(index!.id, adminId))).id);
 
   const nextMeta: DocsSearchMeta = {

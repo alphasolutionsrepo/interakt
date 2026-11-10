@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 
-import { forExperienceChange } from '@/features/access/built-in-experiences';
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
   handleGetAIExperience,
@@ -15,14 +15,14 @@ export const GET = withPermission('ai-experiences:view', async function GET(
   return handleGetAIExperience(request, context);
 });
 
-export const PUT = forExperienceChange('ai', async function PUT(
+export const PUT = forBuiltInChange('ai-experience', 'ai-experiences:edit', async function PUT(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   return handleUpdateAIExperience(request, context);
 });
 
-export const DELETE = forExperienceChange('ai', async function DELETE(
+export const DELETE = forBuiltInChange('ai-experience', 'ai-experiences:edit', async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {

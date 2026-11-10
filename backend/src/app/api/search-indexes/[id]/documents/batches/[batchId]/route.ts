@@ -8,6 +8,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInDocumentChange } from '@/features/access/built-in';
 import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
 import {
     handleGetBatchStatus,
@@ -21,7 +22,7 @@ export const GET = withPermissionOrIngestionKey('search-indexes:view', async fun
     return handleGetBatchStatus(request, context);
 });
 
-export const DELETE = withPermissionOrIngestionKey('documents:edit', async function DELETE(
+export const DELETE = forBuiltInDocumentChange('documents:edit', async function DELETE(
     request: NextRequest,
     context: { params: Promise<{ id: string; batchId: string }> }
 ) {

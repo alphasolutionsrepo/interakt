@@ -8,6 +8,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInDocumentChange } from '@/features/access/built-in';
 import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
 import { handleListDocuments, handleIndexDocuments } from '@/features/document-indexing';
 import { ingestionRateLimitKey } from '@/features/ingestion-keys';
@@ -30,7 +31,7 @@ export const GET = withPermissionOrIngestionKey('search-indexes:view', async fun
  * modest ceiling is plenty and keeps a misconfigured sink from hammering the
  * embedding provider.
  */
-export const POST = withPermissionOrIngestionKey('documents:edit', withRateLimit(
+export const POST = forBuiltInDocumentChange('documents:edit', withRateLimit(
     async (request: NextRequest, context: { params: Promise<{ id: string }> }) =>
         handleIndexDocuments(request, context),
     { maxRequests: 30, windowMs: 60_000, keyFn: ingestionRateLimitKey }

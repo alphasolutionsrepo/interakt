@@ -8,10 +8,11 @@
 
 import { NextRequest } from 'next/server';
 
-import { forExperienceChange } from '@/features/access/built-in-experiences';
+import { forBuiltInChange } from '@/features/access/built-in';
+
 import { handleAddIndex } from '@/features/search-experience/search-experience.admin.handlers';
 
-export const POST = forExperienceChange('search', async function POST(
+export const POST = forBuiltInChange('search-experience', 'search-experiences:edit', async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {

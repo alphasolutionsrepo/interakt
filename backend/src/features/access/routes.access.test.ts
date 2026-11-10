@@ -25,7 +25,7 @@ vi.mock('@/features/access/access.service', async () => (await import('@/shared/
 vi.mock('@/db/index', () => ({ get db() { throw new Error('no database in this test'); } }));
 
 import { AI_MODEL_READERS, type Permission } from './permissions';
-import { GUARDS_BUILT_IN_EXPERIENCES } from './built-in-experiences';
+import { GUARDS_BUILT_IN } from './built-in';
 import { HIDES_PROVIDER_ADDRESSES } from './provider-addresses';
 import { acceptsIngestionKey, accessRuleOf, SIGNED_IN, type AccessRule } from './route-guard';
 
@@ -166,10 +166,15 @@ describe('every admin API route is gated', () => {
     expect(leaking.map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
   });
 
-  it('lets only an Admin change a built-in help experience, on every route that changes an experience', () => {
-    const changing = gated.filter((r) => r.method !== 'GET' && /^(ai|search)-experiences\/\[id\](\/|$)/.test(r.route));
-    expect(changing.length).toBeGreaterThanOrEqual(19);
-    const unguarded = changing.filter((r) => !(r.fn as unknown as Record<symbol, unknown>)[GUARDS_BUILT_IN_EXPERIENCES]);
+  it('lets only an Admin change what the built-in help is made of, on every route that changes an experience, tool, data source or index', () => {
+    // Calls under these that change nothing: a tool test run, a data source health probe
+    const READ_ONLY = ['POST /api/tools/[id]/test', 'POST /api/data-sources/[id]/health'];
+    const changing = gated.filter((r) =>
+      r.method !== 'GET' &&
+      /^((ai|search)-experiences|tools|data-sources|search-indexes)\/\[id\](\/|$)/.test(r.route) &&
+      !READ_ONLY.includes(`${r.method} /api/${r.route}`));
+    expect(changing.length).toBeGreaterThanOrEqual(54);
+    const unguarded = changing.filter((r) => !(r.fn as unknown as Record<symbol, unknown>)[GUARDS_BUILT_IN]);
     expect(unguarded.map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
   });
 

@@ -296,6 +296,8 @@ export const tools = pgTable('tools', {
   // STATUS & LIFECYCLE
   // ═══════════════════════════════════════════════════════════════════════════
   isActive: boolean('is_active').default(true).notNull(),
+  /** Made by the docs setup for the built-in help: only an Admin may change it */
+  isBuiltIn: boolean('is_built_in').default(false).notNull(),
   createdBy: uuid('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedBy: uuid('updated_by'),

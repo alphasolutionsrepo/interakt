@@ -8,6 +8,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
   handleListKnowledgeEntries,
@@ -21,7 +22,7 @@ export const GET = withPermission('prompts:view', async function GET(
   return handleListKnowledgeEntries(request, context);
 });
 
-export const POST = withPermission('prompts:edit', async function POST(
+export const POST = forBuiltInChange('search-index', 'prompts:edit', async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {

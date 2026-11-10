@@ -9,6 +9,7 @@
 
 import { NextRequest } from 'next/server';
 
+import { forBuiltInChange } from '@/features/access/built-in';
 import { withPermission } from '@/features/access/route-guard';
 import {
     handleGetSearchIndex,  // Changed from handleGetSearchIndexById
@@ -23,14 +24,14 @@ export const GET = withPermission('search-indexes:view', async function GET(
     return handleGetSearchIndex(request, context);  // Changed
 });
 
-export const PUT = withPermission('search-indexes:edit', async function PUT(
+export const PUT = forBuiltInChange('search-index', 'search-indexes:edit', async function PUT(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     return handleUpdateSearchIndex(request, context);
 });
 
-export const DELETE = withPermission('search-indexes:edit', async function DELETE(
+export const DELETE = forBuiltInChange('search-index', 'search-indexes:edit', async function DELETE(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {

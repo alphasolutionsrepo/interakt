@@ -47,6 +47,12 @@ vi.mock('@/db/index', () => ({
   },
 }));
 
+// What the setup marked as part of the built-in help
+const marked = vi.hoisted(() => new Set<string>());
+vi.mock('@/features/access/built-in', () => ({
+  markBuiltIn: async (kind: string, ids: string[]) => { for (const id of ids) marked.add(`${kind}:${id}`); },
+}));
+
 vi.mock('./docs-source', () => ({
   readDocs: async () => world.docs,
   getAdminUserId: async () => {
@@ -157,6 +163,7 @@ function resetCalls() {
 }
 
 beforeEach(() => {
+  marked.clear();
   Object.assign(world, {
     locked: true,
     docs: DOCS,
@@ -211,6 +218,14 @@ describe('seedDocsSearch', () => {
     await seedDocsSearch();
     expect(calls.createExperience).toBe(2);
     expect(world.experience?.isBuiltIn).toBe(true);
+  });
+
+  it('marks the index it builds as part of the built-in help', async () => {
+    await seedDocsSearch();
+    expect(marked.has(`search-index:${world.index!.id}`)).toBe(true);
+    world.embedding = MODEL; // recreated as hybrid
+    await seedDocsSearch();
+    expect(marked.has(`search-index:${world.index!.id}`)).toBe(true);
   });
 
   it("refuses an experience under its slug that it didn't make, even after an earlier build", async () => {

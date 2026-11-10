@@ -8,20 +8,20 @@
 
 import { NextRequest } from 'next/server';
 
-import { withPermission } from '@/features/access/route-guard';
+import { forBuiltInChange } from '@/features/access/built-in';
 import {
     handleUpdateField,
     handleDeleteField,
 } from '@/features/search-index/search-index.api.handlers';
 
-export const PUT = withPermission('search-indexes:edit', async function PUT(
+export const PUT = forBuiltInChange('search-index', 'search-indexes:edit', async function PUT(
     request: NextRequest,
     context: { params: Promise<{ id: string; fieldId: string }> }
 ) {
     return handleUpdateField(request, context);
 });
 
-export const DELETE = withPermission('search-indexes:edit', async function DELETE(
+export const DELETE = forBuiltInChange('search-index', 'search-indexes:edit', async function DELETE(
     request: NextRequest,
     context: { params: Promise<{ id: string; fieldId: string }> }
 ) {
