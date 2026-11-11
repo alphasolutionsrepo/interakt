@@ -250,6 +250,8 @@ interface OpenAIEmbeddingRequest {
     model: string;
     input: string | string[];
     encoding_format?: 'float' | 'base64';
+    /** Shortens the vector (text-embedding-3 and compatible servers) */
+    dimensions?: number;
 }
 
 interface OpenAIEmbeddingResponse {
@@ -585,6 +587,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
             model: config.modelKey,
             input: request.texts,
             encoding_format: 'float',
+            ...(request.dimensions && { dimensions: request.dimensions }),
         };
 
         const response = await this.makeRequest<OpenAIEmbeddingResponse>(
