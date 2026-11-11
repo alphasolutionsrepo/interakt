@@ -593,6 +593,14 @@ describe('review round 2', () => {
     expect(indexRows.length).toBeGreaterThan(0);
     const indexShown = new Set(['id', 'name', 'displayName', 'description', 'searchType', 'searchProvider', 'status', 'documentCount', 'isActive', 'isBuiltIn']);
     expect(indexRows.flatMap((r) => Object.keys(r)).filter((k) => !indexShown.has(k))).toEqual([]);
+    // ...and still what it reads
+    expect(indexRows.find((r) => r.id === indexId)).toMatchObject({ id: indexId, name: `pick-index-${n}`, displayName: `Pick index ${n}`, searchType: 'lexical' });
+    // A role that views indexes still gets whole rows
+    const searchEditor = session;
+    as(await makeUser(await makeRole(`Index viewers ${n}`, ['search-indexes:view'])));
+    const whole = ((await call(indexesRoute.GET, 'GET', '/api/search-indexes?pageSize=100')).body?.data as { items: Array<Record<string, unknown>> }).items;
+    expect(whole.flatMap((r) => Object.keys(r)).some((k) => !indexShown.has(k))).toBe(true);
+    session = searchEditor;
     // Not an index's documents or export, nor secrets
     expect((await call(documentsRoute.GET, 'GET', '/api/search-indexes/x/documents', undefined, { id: 'x' })).status).toBe(403);
     expect((await call(exportRoute.GET, 'GET', '/api/search-indexes/x/export', undefined, { id: 'x' })).status).toBe(403);
@@ -614,6 +622,8 @@ describe('review round 2', () => {
     expect(tools.length).toBeGreaterThan(0);
     const shown = new Set(['id', 'name', 'slug', 'description', 'aiDescription', 'executorType', 'operation', 'notReadyReason', 'isActive', 'isBuiltIn']);
     expect(tools.flatMap((t) => Object.keys(t)).filter((k) => !shown.has(k))).toEqual([]);
+    // ...and still what it reads
+    for (const t of tools) expect(t).toMatchObject({ id: expect.any(String), name: expect.any(String), executorType: expect.any(String) });
     const mcp = (await call(mcpRoute.GET, 'GET', '/api/mcp-connections?pageSize=100')).body?.data as Array<Record<string, unknown>>;
     const conn = mcp.find((c) => c.name === tag)!;
     // Only the host of its address (the path, query or user part can carry a token), and the tools' names
@@ -629,6 +639,8 @@ describe('review round 2', () => {
     expect(rows.length).toBeGreaterThan(0);
     const picked = new Set(['id', 'step', 'version', 'label', 'status', 'isSystemDefault']);
     expect(rows.flatMap((d) => Object.keys(d)).filter((k) => !picked.has(k))).toEqual([]);
+    for (const d of rows) expect(d).toMatchObject({ id: expect.any(String), step: expect.any(String), version: expect.any(Number) });
+    expect(JSON.parse(templates) as Array<Record<string, unknown>>).toContainEqual(expect.objectContaining({ label: tag, version: 1, step: 'agentic_loop', id: expect.any(String) }));
 
     // The experience's own list of attached connections shows them the same way
     const experienceId = ((await testDb.db.execute(sql`INSERT INTO ai_experiences (name, slug, created_by, persona_config, session_config, access_config, observability_config) VALUES (${tag}, ${tag}, ${admin}, '{}', '{}', '{}', '{}') RETURNING id`)) as unknown as { rows: Array<{ id: string }> }).rows[0].id;
@@ -637,9 +649,12 @@ describe('review round 2', () => {
     expect(attached.status).toBe(200);
     expect(attached.body?.data).toMatchObject([{ mcpConnection: { name: tag, serverUrl: 'mcp.test' } }]);
     expect(JSON.stringify(attached.body?.data)).not.toMatch(/path-token|key=abc|pw@|inputSchema|mcp-token|health detail/);
-    // A role that views tools sees the attached connection whole
+    // A role that views tools sees the attached connection, the MCP list and the tool list whole
     as(await makeUser(await makeRole(`Tool viewers ${n}`, ['tools:view', 'ai-experiences:view'])));
     expect(JSON.stringify((await call(attachmentsRoute.GET, 'GET', `/api/ai-experiences/${experienceId}/mcp-connections`, undefined, { id: experienceId })).body?.data)).toContain('mcp-token');
+    expect(JSON.stringify((await call(mcpRoute.GET, 'GET', '/api/mcp-connections?pageSize=100')).body?.data)).toContain('path-token');
+    const wholeTools = (await call(allToolsRoute.GET, 'GET', '/api/tools/all')).body?.data as Array<Record<string, unknown>>;
+    expect(wholeTools.flatMap((t) => Object.keys(t)).some((k) => !shown.has(k))).toBe(true);
 
     // A role that views them still gets them whole
     as(await makeUser(await makeRole(`Prompt viewers ${n}`, ['prompts:view'])));
@@ -662,6 +677,7 @@ describe('review round 2', () => {
     const list = await call(dataSourcesRoute.GET, 'GET', '/api/data-sources?pageSize=100');
     expect(JSON.stringify(list.body?.data)).not.toContain('search.internal.test');
     expect(JSON.stringify(list.body?.data)).not.toContain('azure-key');
+    expect(list.body?.data).toContainEqual(expect.objectContaining({ id, name, config: { provider: 'azure_ai_search' } }));
     // A role that views data sources still sees them whole
     as(await makeUser(await makeRole(`Source viewers ${n}`, ['data-sources:view'])));
     expect((await call(dataSourceRoute.GET, 'GET', `/api/data-sources/${id}`, undefined, { id: id! })).body?.data).toHaveProperty('config');
