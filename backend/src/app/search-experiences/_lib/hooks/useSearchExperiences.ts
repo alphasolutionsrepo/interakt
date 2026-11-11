@@ -12,11 +12,13 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+
 import { searchExperiencesApi, searchExperienceIndexesApi,
   searchExperienceExternalSourcesApi } from '../api-client';
+
 import type {
   CreateSearchExperienceDTO,
   UpdateSearchExperienceDTO,

@@ -2,31 +2,8 @@
 
 'use client';
 
-import { builtInGateFor } from '@/shared/access/ActionControls';
-import { LockedPage } from '@/shared/access/PageAccessGate';
-import { useAccess } from '@/shared/access/useAccess';
-import { Can } from '@/shared/access/Can';
-import { noPermissionTo } from '@/features/access/ui-actions';
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
   Loader2,
@@ -52,12 +29,35 @@ import {
   Check,
   KeyRound,
 } from 'lucide-react';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, useMemo } from 'react';
+import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+
 import { useSearchIndex, searchIndexKeys } from '../../../_lib/hooks/useSearchIndexes';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+
 import { searchIndexesApi } from '../../../_lib/api-client';
 import { ChangeAIConfigDialog } from '../../../_components/ChangeAIConfigDialog';
 import { IngestionKeysCard } from '../../../_components/IngestionKeysCard';
+
+import { noPermissionTo } from '@/features/access/ui-actions';
 import {
   updateSearchIndexSchema,
   INDEXING_STRATEGY_INFO,
@@ -72,7 +72,13 @@ import {
   type VectorSimilarity,
   type SearchType,
 } from '@/features/search-index';
+
 import { getProviderUI } from '../../../_components/providers/provider-registry';
+
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { Can } from '@/shared/access/Can';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import '../../../_components/providers'; // ensure all providers are registered
 
 // ============================================================================

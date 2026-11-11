@@ -10,17 +10,18 @@
  */
 
 import { NextRequest } from 'next/server';
-import { withBuiltInFlag } from '@/features/access/built-in';
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
-import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
-// Service imports
-import * as service from './search-index.service';
 import * as fieldsService from './search-index-fields.service';
-import { refreshSchemaForSearchIndex } from '@/features/data-source/data-source.service';
-
-// Validation imports
+import type { FieldMappingConfig, UpdateSearchIndexFieldDTO } from './search-index-fields.types';
+import {
+    createSearchIndexFieldSchema,
+    updateSearchIndexFieldSchema,
+    bulkUpdateFieldMappingsSchema,
+    fieldMappingConfigSchema,
+    additionalDataConfigSchema,
+    searchIndexFieldIdSchema,
+} from './search-index-fields.validation';
+import * as service from './search-index.service';
 import {
     createSearchIndexSchema,
     updateSearchIndexSchema,
@@ -32,16 +33,16 @@ import {
     searchIndexImportSchema,
 } from './search-index.validation';
 
-import {
-    createSearchIndexFieldSchema,
-    updateSearchIndexFieldSchema,
-    bulkUpdateFieldMappingsSchema,
-    fieldMappingConfigSchema,
-    additionalDataConfigSchema,
-    searchIndexFieldIdSchema,
-} from './search-index-fields.validation';
+import { withBuiltInFlag } from '@/features/access/built-in';
+import { refreshSchemaForSearchIndex } from '@/features/data-source/data-source.service';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
-import type { FieldMappingConfig, UpdateSearchIndexFieldDTO } from './search-index-fields.types';
+// Service imports
+
+
+// Validation imports
 
 const logger = createLogger('search-index-handlers');
 

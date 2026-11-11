@@ -4,10 +4,9 @@
 
 import { Edit2, Power, PowerOff, RefreshCw } from 'lucide-react';
 
-import type { UiActionId } from '@/features/access/ui-actions';
-import { ActionButton } from '@/shared/access/ActionControls';
+import { ActionButton, type BuiltInActionId } from '@/shared/access/ActionControls';
 
-const ACTIONS: Record<'ai' | 'search', { token: UiActionId; edit: UiActionId }> = {
+const ACTIONS: Record<'ai' | 'search', { token: BuiltInActionId; edit: BuiltInActionId }> = {
   ai: { token: 'ai-experiences.token', edit: 'ai-experiences.edit' },
   search: { token: 'search-experiences.token', edit: 'search-experiences.edit' },
 };

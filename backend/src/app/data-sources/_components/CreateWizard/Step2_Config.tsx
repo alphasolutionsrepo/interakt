@@ -1,9 +1,12 @@
 'use client';
 
-import { AccessLink } from '@/shared/access/Can';
-import { Label } from '@/components/ui/label';
+import { Loader2, AlertCircle } from 'lucide-react';
+
+import type { DataSourceType } from '../../_lib/api-client';
+
+import { useAllActiveSearchIndexes } from '@/app/search-indexes/_lib/hooks/useSearchIndexes';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -11,9 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, AlertCircle } from 'lucide-react';
-import { useAllActiveSearchIndexes } from '@/app/search-indexes/_lib/hooks/useSearchIndexes';
-import type { DataSourceType } from '../../_lib/api-client';
+import { Textarea } from '@/components/ui/textarea';
+import { AccessLink } from '@/shared/access/Can';
 
 interface Step2Props {
   dataSourceType: DataSourceType;

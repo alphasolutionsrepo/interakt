@@ -18,23 +18,22 @@ import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, type Permission } from '
 import * as rolesRepository from './roles.repository';
 import { updateUserAccess } from './roles.repository';
 
-import * as authRepository from '@/features/auth/auth.repository';
 
-import { findSecretReferences } from '@/features/secrets/secrets.repository';
 
+import * as setupDemoRoute from '@/app/api/admin/setup-demo/route';
+import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
 import * as aiTextRoute from '@/app/api/ai-service/text/route';
-import * as meRoute from '@/app/api/me/access/route';
-import * as docRoute from '@/app/api/search-indexes/[id]/documents/[documentId]/route';
-import * as batchesRoute from '@/app/api/search-indexes/[id]/documents/batches/route';
-import * as batchRoute from '@/app/api/search-indexes/[id]/documents/batches/[batchId]/route';
-import * as bulkRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
-import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/delete-by-filter/route';
-import * as setupDemoRoute from '@/app/api/admin/setup-demo/route';
 import * as analyticsExperiencesRoute from '@/app/api/analytics/experiences/route';
-import { aiExperiences } from '@/db/schema/ai-experience.schema';
+import * as meRoute from '@/app/api/me/access/route';
 import * as roleRoute from '@/app/api/roles/[id]/route';
 import * as rolesRoute from '@/app/api/roles/route';
+import * as docRoute from '@/app/api/search-indexes/[id]/documents/[documentId]/route';
+import * as batchRoute from '@/app/api/search-indexes/[id]/documents/batches/[batchId]/route';
+import * as batchesRoute from '@/app/api/search-indexes/[id]/documents/batches/route';
+import * as bulkRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
+import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/delete-by-filter/route';
+import { aiExperiences } from '@/db/schema/ai-experience.schema';
 import { aiProviders } from '@/db/schema/ai-providers.schema';
 import { dataSources } from '@/db/schema/data-sources.schema';
 import { mcpConnections } from '@/db/schema/mcp-connections.schema';
@@ -72,10 +71,11 @@ import * as searchExperiencesRoute from '@/app/api/search-experiences/route';
 import * as scaffoldRoute from '@/app/api/tools/scaffold/route';
 import * as kbDocRoute from '@/app/api/knowledge-base/[id]/route';
 import { knowledgeDocuments } from '@/db/schema/knowledge-base.schema';
-import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
+import * as authRepository from '@/features/auth/auth.repository';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
+import { findSecretReferences } from '@/features/secrets/secrets.repository';
 
 
 const EDITOR = '00000000-0000-4000-8000-000000000002';

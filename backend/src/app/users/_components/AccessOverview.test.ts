@@ -16,8 +16,8 @@ import { AccessOverview, cellState, toggled, unmetTitle } from './AccessOverview
 import { RolesPanel } from './RolesPanel';
 
 import { ADMIN_ROLE_ID, ALL_PERMISSIONS, EDITOR_DEFAULT_PERMISSIONS, REQUIRED_WITH } from '@/features/access/permissions';
-import { uiAccess } from '@/shared/test/ui-access-stub';
 import { controlState } from '@/shared/test/rendered-controls';
+import { uiAccess } from '@/shared/test/ui-access-stub';
 
 const role = (over: Partial<RoleResponse>): RoleResponse => ({
   id: 'r', name: 'R', description: null, permissions: [], isBuiltIn: false, userCount: 0, ...over,

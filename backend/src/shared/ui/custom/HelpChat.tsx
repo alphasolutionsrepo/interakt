@@ -13,14 +13,15 @@ import { BookOpen, Loader2, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { DocBody } from '@/shared/help/DocBody';
-import { HELP_EXPERIENCE_SLUG } from '@/shared/help/help-content';
-import { reportActionError } from '@/shared/activity/report';
-import { ApiError, errorText } from '@/shared/api/api-error';
 
 import { helpChatError } from './help-chat-error';
 import { startExperienceChat } from './start-experience-chat';
+
 import { AccessLink } from '@/shared/access/Can';
+import { reportActionError } from '@/shared/activity/report';
+import { ApiError, errorText } from '@/shared/api/api-error';
+import { DocBody } from '@/shared/help/DocBody';
+import { HELP_EXPERIENCE_SLUG } from '@/shared/help/help-content';
 
 interface ChatMessage {
   id: string;

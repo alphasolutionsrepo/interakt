@@ -6,13 +6,10 @@ import { formatDistanceToNow } from 'date-fns';
 import { MoreVertical, Edit, Key, UserCheck, UserX, Mail, Calendar } from 'lucide-react';
 
 import type { UserResponse } from '../_lib/api-client';
-
-import { Badge } from '@/components/ui/badge';
 import { userGates, type RoleInfo, type RolesState } from '../_lib/user-gates';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ActionMenuItem } from '@/shared/access/ActionControls';
-import { useAccess } from '@/shared/access/useAccess';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +24,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { ActionMenuItem } from '@/shared/access/ActionControls';
+import { useAccess } from '@/shared/access/useAccess';
 
 interface UserTableProps {
   users: UserResponse[];

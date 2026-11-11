@@ -13,8 +13,8 @@ import { useState, useMemo } from 'react';
 import { UserTable, UserFormDialog, ChangePasswordDialog, UserStatsBar, RolesPanel } from './_components';
 import type { UserResponse } from './_lib/api-client';
 import { useRoles } from './_lib/hooks/useRoles';
-import { roleChoices, userGates } from './_lib/user-gates';
 import { useUsers } from './_lib/hooks/useUsers';
+import { roleChoices, userGates } from './_lib/user-gates';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -298,7 +298,8 @@ export default function UsersPage() {
         onSubmit={handleUpdateUser}
         user={editingUser || undefined}
         roles={choices}
-        roleGate={editingUser ? userGates(caller, editingUser, roles, rolesState).role : undefined}
+        // A new user's role picker waits for access too, so nothing is offered before its lock is known
+        roleGate={editingUser ? userGates(caller, editingUser, roles, rolesState).role : caller.isLoading ? { state: 'loading' } : undefined}
         isSubmitting={isUpdating}
       />
 

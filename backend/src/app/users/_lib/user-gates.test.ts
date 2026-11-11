@@ -11,9 +11,9 @@ import { UserTable } from '../_components/UserTable';
 import type { UserResponse } from './api-client';
 import { roleChoices, userGates } from './user-gates';
 
-import { ADMIN_ROLE_ID } from '@/features/access/permissions';
-import { uiAccess } from '@/shared/test/ui-access-stub';
+import { ADMIN_ROLE_ID, roleRefusal } from '@/features/access/permissions';
 import { menuItems } from '@/shared/test/rendered-controls';
+import { uiAccess } from '@/shared/test/ui-access-stub';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 vi.mock('@/components/ui/dropdown-menu', async () => (await import('@/shared/test/open-overlays-stub')).dropdownMenu);
@@ -33,12 +33,24 @@ describe('roleChoices', () => {
     expect(roleChoices(manager, ROLES)).toEqual([
       { id: ADMIN_ROLE_ID, name: 'Admin', lockedReason: 'Only an Admin can give the Admin role.' },
       { id: 'viewer', name: 'Index viewer', lockedReason: undefined },
-      { id: 'editor', name: 'Editor', lockedReason: 'This role has permissions yours doesn\u2019t.' },
+      { id: 'editor', name: 'Editor', lockedReason: "You can't give a role with permissions your own role doesn't have." },
     ]);
   });
 
   it('locks nothing for an Admin', () => {
     expect(roleChoices(admin, ROLES).every((r) => !r.lockedReason)).toBe(true);
+  });
+
+  it("locks nothing while access is still loading, even for an Admin, so no wrong reason shows", () => {
+    for (const caller of [manager, admin]) {
+      expect(roleChoices({ ...caller, isLoading: true }, ROLES).every((c) => c.lockedReason === undefined)).toBe(true);
+    }
+  });
+
+  it('words each refusal as the server does', () => {
+    expect(roleChoices(manager, ROLES).map((c) => c.lockedReason)).toEqual([
+      roleRefusal('give', { isBuiltIn: true }), undefined, roleRefusal('give', { isBuiltIn: false }),
+    ]);
   });
 });
 

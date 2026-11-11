@@ -24,13 +24,12 @@ vi.mock('@/features/access/access.service', async () => (await import('@/shared/
 // A handler that gets past the gate finds no database, so it can't change anything
 vi.mock('@/db/index', () => ({ get db() { throw new Error('no database in this test'); } }));
 
-import { AI_MODEL_READERS, type Permission } from './permissions';
 import { GUARDS_BUILT_IN } from './built-in';
+import { AI_MODEL_READERS, type Permission } from './permissions';
 import { HIDES_PROVIDER_ADDRESSES } from './provider-addresses';
 import { acceptsIngestionKey, accessRuleOf, SIGNED_IN, type AccessRule } from './route-guard';
 
 import { AppError } from '@/shared/errors/app-error';
-
 import { accessStub } from '@/shared/test/access-stub';
 
 
@@ -90,7 +89,9 @@ describe('every admin API route is gated', () => {
 
   it('matches the reviewed route -> permission table', async () => {
     const ruleText = (rule: AccessRule) => (typeof rule === 'string' ? rule : `any of ${rule.join(' | ')}`);
-    const table = gated.map((r) => `${r.method.padEnd(6)} /api/${r.route}  ${ruleText(r.rule!)}`).join('\n');
+    // "+built-in": a non-Admin's change to the built-in help is refused too (built-in.ts)
+    const builtIn = (r: RouteMethod) => ((r.fn as unknown as Record<symbol, unknown>)[GUARDS_BUILT_IN] ? '  +built-in' : '');
+    const table = gated.map((r) => `${r.method.padEnd(6)} /api/${r.route}  ${ruleText(r.rule!)}${builtIn(r)}`).join('\n');
     await expect(table + '\n').toMatchFileSnapshot('./__snapshots__/route-permissions.txt');
   });
 

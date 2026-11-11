@@ -54,6 +54,8 @@ describe("a tool's page", () => {
     const html = detail();
     expect(html).toContain('Shop assistant');
     expect(html).toContain('href="/experiences/ai/e1"');
+    // The link is styled as a button, not wrapped around one (a button inside a link is invalid HTML)
+    expect(html).not.toMatch(/<a [^>]*href="\/experiences\/ai\/e1"[^>]*>(?:(?!<\/a>).)*<button/);
   });
 
   it('lists the experience without View for a role that can’t', () => {

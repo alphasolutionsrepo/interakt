@@ -17,16 +17,15 @@ import { allowsAction, UI_ACTIONS } from './ui-actions';
 
 const SNAPSHOT = join(__dirname, '__snapshots__', 'route-permissions.txt');
 
+const rows = readFileSync(SNAPSHOT, 'utf8').split('\n').filter(Boolean).map((line) => {
+  const [method, path, ...rest] = line.trim().split(/\s+/);
+  const builtIn = rest.at(-1) === '+built-in';
+  return { route: `${method} ${path}`, rule: (builtIn ? rest.slice(0, -1) : rest).join(' '), builtIn };
+});
 /** "METHOD /api/path" -> the rule as the snapshot writes it */
-const serverRules = new Map(
-  readFileSync(SNAPSHOT, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const [method, path, ...rule] = line.trim().split(/\s+/);
-      return [`${method} ${path}`, rule.join(' ')] as const;
-    }),
-);
+const serverRules = new Map(rows.map((r) => [r.route, r.rule] as const));
+/** Routes that also refuse a non-Admin's change to the built-in help */
+const builtInRoutes = new Set(rows.filter((r) => r.builtIn).map((r) => r.route));
 
 const asRule = (permission: Permission | readonly Permission[]) =>
   typeof permission === 'string' ? permission : `any of ${permission.join(' | ')}`;
@@ -43,6 +42,12 @@ describe('UI actions', () => {
       expect(serverRules.has(route), `${route} is not an API route`).toBe(true);
       expect(serverRules.get(route), route).toBe(asRule(action.permission));
     }
+  });
+
+  it.each(Object.entries(UI_ACTIONS))('%s is marked builtIn exactly when its routes refuse changes to the built-in help', (_id, action) => {
+    const guarded = action.routes.map((r) => builtInRoutes.has(r));
+    expect(new Set(guarded).size, 'all of its routes or none').toBeLessThanOrEqual(1);
+    expect('builtIn' in action && action.builtIn === true).toBe(guarded[0] ?? false);
   });
 
   it('allows an action only with its permission', () => {

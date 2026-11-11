@@ -7,9 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { ActionButton, useActionGate, type ActionGate } from '@/shared/access/ActionControls';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
-import { ActionButton, useActionGate, type ActionGate } from '@/shared/access/ActionControls';
 import { startExperienceChat } from '@/shared/ui/custom/start-experience-chat';
 
 // ============================================================================

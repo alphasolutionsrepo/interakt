@@ -11,9 +11,10 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ActionButton, ActionMenuItem, ActionSwitch, adminGateFor, anyActionGateFor, builtInGateFor, gateFor, useAdminGate, useAnyActionGate } from './ActionControls';
+import { ACCESS_UNAVAILABLE, ActionButton, ActionMenuItem, ActionSwitch, adminGateFor, anyActionGateFor, builtInGateFor, gateFor, useAdminGate, useAnyActionGate } from './ActionControls';
 
 import { allowsAction, type UiActionId } from '@/features/access/ui-actions';
+import { lockedMenuReasons } from '@/shared/test/rendered-controls';
 import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
 
 vi.mock('./useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
@@ -34,6 +35,18 @@ describe('gateFor', () => {
     expect(gateFor(access(['ai-providers:manage']), 'ai-providers.add')).toEqual({ state: 'allowed' });
     expect(gateFor(access([]), 'ai-providers.add')).toEqual({ state: 'locked', reason: REASON.replace('&#x27;', "'") });
     expect(gateFor(access(['ai-providers:manage'], { isLoading: true }), 'ai-providers.add')).toEqual({ state: 'loading' });
+  });
+});
+
+describe('when the access lookup failed', () => {
+  it("says access couldn't be checked, never that the permission is missing", () => {
+    const failed = access(['ai-providers:manage'], {}) as ReturnType<typeof access> & { errorStatus: number };
+    failed.errorStatus = 503;
+    const unavailable = { state: 'locked', reason: ACCESS_UNAVAILABLE };
+    expect(gateFor(failed, 'ai-providers.add')).toEqual(unavailable);
+    expect(adminGateFor(failed, 'add roles')).toEqual(unavailable);
+    expect(anyActionGateFor(failed, ['ai-experiences.create'], 'create experiences')).toEqual(unavailable);
+    expect(builtInGateFor(failed, 'tools.edit', true)).toEqual(unavailable);
   });
 });
 
@@ -103,11 +116,15 @@ describe('action controls', () => {
 
   it('are locked when not allowed: disabled, a lock instead of the icon, and the reason', () => {
     for (const html of [button(), item()]) {
-      expect(html).toContain('disabled=""');
       expect(html).toContain('lucide-lock');
       expect(html).not.toContain('lucide-plus');
       expect(html).toContain(REASON);
     }
+    expect(button()).toContain('disabled=""');
+    // A locked menu item stays focusable (menus skip disabled items), with its reason read out inside it
+    expect(item()).not.toContain('disabled=""');
+    expect(item()).toContain('aria-disabled="true"');
+    expect(lockedMenuReasons(item())).toEqual([REASON]);
     expect(toggle()).toContain('disabled=""');
     expect(toggle()).toContain('aria-checked="true"'); // the value still shows
     expect(toggle()).toContain('turn AI providers on or off');
@@ -122,17 +139,17 @@ describe('action controls', () => {
   });
 
   it('lock a built-in row for a non-Admin who holds the permission', () => {
-    uiAccess.hold('ai-providers:manage');
-    const html = renderToStaticMarkup(createElement(ActionButton, { action: 'ai-providers.add', builtIn: true, children: 'Add' }));
+    uiAccess.hold('tools:edit');
+    const html = renderToStaticMarkup(createElement(ActionButton, { action: 'tools.edit', builtIn: true, children: 'Edit' }));
     expect(html).toContain('lucide-lock');
     expect(html).toContain('Only an Admin can change the built-in help.');
     uiAccess.asAdmin();
-    expect(renderToStaticMarkup(createElement(ActionButton, { action: 'ai-providers.add', builtIn: true, children: 'Add' }))).not.toContain('data-locked');
+    expect(renderToStaticMarkup(createElement(ActionButton, { action: 'tools.edit', builtIn: true, children: 'Edit' }))).not.toContain('data-locked');
   });
 
   it('lock a built-in switch for a non-Admin, still showing its value', () => {
-    uiAccess.hold('ai-providers:manage');
-    const html = renderToStaticMarkup(createElement(ActionSwitch, { action: 'ai-providers.enable', checked: true, builtIn: true }));
+    uiAccess.hold('search-indexes:edit');
+    const html = renderToStaticMarkup(createElement(ActionSwitch, { action: 'search-indexes.activate', checked: true, builtIn: true }));
     expect(html).toContain('disabled=""');
     expect(html).toContain('aria-checked="true"');
     expect(html).toContain('Only an Admin can change the built-in help.');
@@ -140,7 +157,7 @@ describe('action controls', () => {
 
   it('stay disabled without the lock while access loads, on a built-in row too', () => {
     uiAccessLoading();
-    const html = renderToStaticMarkup(createElement(ActionButton, { action: 'ai-providers.add', builtIn: true, children: 'Add' }));
+    const html = renderToStaticMarkup(createElement(ActionButton, { action: 'tools.edit', builtIn: true, children: 'Edit' }));
     expect(html).toContain('disabled=""');
     expect(html).not.toContain('data-locked');
   });

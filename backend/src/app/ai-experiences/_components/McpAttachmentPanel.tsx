@@ -1,6 +1,5 @@
 'use client';
 
-import { AccessLink } from '@/shared/access/Can';
 import {
   Plus,
   Trash2,
@@ -39,6 +38,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { AccessLink } from '@/shared/access/Can';
 
 interface McpAttachmentPanelProps {
   experienceId: string;

@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { dataSourcesApi } from '../api-client';
 import type { HealthCheckResult } from '../api-client';
+
 import { dataSourceKeys } from './useDataSources';
 
 import { useAccess } from '@/shared/access/useAccess';

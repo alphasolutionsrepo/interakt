@@ -1,8 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { format } from 'date-fns';
 import { ChevronRight, History, RotateCcw } from 'lucide-react';
+import Link from 'next/link';
+
+import type { PromptTemplate } from '../_lib/api-client';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,8 +15,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-
-import type { PromptTemplate } from '../_lib/api-client';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 
 // ============================================================================

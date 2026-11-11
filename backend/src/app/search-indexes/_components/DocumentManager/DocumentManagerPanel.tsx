@@ -12,14 +12,45 @@
 
 'use client';
 
+import {
+    Search,
+    Trash2,
+    AlertCircle,
+    Loader2,
+    FileText,
+    Filter,
+    Eye,
+    Rows3,
+    ChevronRight,
+    ChevronDown,
+    ChevronLeft,
+    Check,
+    X,
+    Sparkles,
+} from 'lucide-react';
 import { Fragment, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
+
+import type {
+    DocumentColumnDescriptor,
+    DocumentSummary,
+    EmbeddingPreview,
+} from '../../_lib/api-client';
+import {
+    useBrowseDocuments,
+    useDocument,
+    useDeleteDocument,
+    useDeleteDocumentsByFilter,
+    useSearchIndexFields,
+} from '../../_lib/hooks';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ActionButton } from '@/shared/access/ActionControls';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -37,38 +68,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
-import {
-    Search,
-    Trash2,
-    AlertCircle,
-    Loader2,
-    FileText,
-    Filter,
-    Eye,
-    Rows3,
-    ChevronRight,
-    ChevronDown,
-    ChevronLeft,
-    Check,
-    X,
-    Sparkles,
-} from 'lucide-react';
-import { toast } from 'sonner';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { reportActionError } from '@/shared/activity/report';
 import { safeUrl, safeMailto } from '@/shared/utils/safe-url';
-import {
-    useBrowseDocuments,
-    useDocument,
-    useDeleteDocument,
-    useDeleteDocumentsByFilter,
-    useSearchIndexFields,
-} from '../../_lib/hooks';
-import type {
-    DocumentColumnDescriptor,
-    DocumentSummary,
-    EmbeddingPreview,
-} from '../../_lib/api-client';
+
 
 // ============================================================================
 // TYPES

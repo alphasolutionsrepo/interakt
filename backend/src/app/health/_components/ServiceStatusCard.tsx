@@ -2,12 +2,14 @@
 
 'use client';
 
+import { formatDistanceToNow } from 'date-fns';
 import { CheckCircle2, AlertTriangle, XCircle, Clock, Database, Search, Zap, Cpu, Activity, Info, ExternalLink, FlaskConical } from 'lucide-react';
+import { useEffect, useState } from 'react';
+
+import type { ServiceHealth } from '../_lib/api-client';
+
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { formatDistanceToNow } from 'date-fns';
-import { useEffect, useState } from 'react';
-import type { ServiceHealth } from '../_lib/api-client';
 import { AccessLink } from '@/shared/access/Can';
 
 interface ServiceStatusCardProps {

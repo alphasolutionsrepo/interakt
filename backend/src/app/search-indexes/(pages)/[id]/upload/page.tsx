@@ -8,15 +8,7 @@
 
 'use client';
 
-import { builtInGateFor } from '@/shared/access/ActionControls';
-import { LockedPage } from '@/shared/access/PageAccessGate';
-import { useAccess } from '@/shared/access/useAccess';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { format } from 'date-fns';
 import {
   ChevronLeft,
   Database,
@@ -34,10 +26,23 @@ import {
   Zap,
   Layers,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { useSearchIndex } from '../../../_lib/hooks/useSearchIndexes';
-import { useIndexingBatches } from '../../../_lib/hooks/useDocumentIndexing';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+
 import { DocumentUploadPanel } from '../../../_components/DocumentUpload';
+import { useIndexingBatches } from '../../../_lib/hooks/useDocumentIndexing';
+import { useSearchIndex } from '../../../_lib/hooks/useSearchIndexes';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
+
+import { Skeleton } from '@/components/ui/skeleton';
+
+
+
 import { cn } from '@/lib/utils';
 
 // ============================================================================

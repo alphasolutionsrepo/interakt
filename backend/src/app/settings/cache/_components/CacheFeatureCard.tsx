@@ -2,7 +2,6 @@
 
 'use client';
 
-import { Progress } from '@/components/ui/progress';
 import {
   Database,
   Layers,
@@ -13,7 +12,10 @@ import {
   Clock,
   HardDrive,
 } from 'lucide-react';
+
 import type { CacheStats, CacheFeatureInfo } from '../_lib/api-client';
+
+import { Progress } from '@/components/ui/progress';
 import { ActionButton } from '@/shared/access/ActionControls';
 
 interface CacheFeatureCardProps {

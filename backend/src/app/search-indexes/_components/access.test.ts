@@ -15,8 +15,8 @@ import { ExportImportButtons } from './ExportImportButtons';
 import { FieldMappingsCard } from './FieldMappingsCard';
 import { IndexRowMenu } from './IndexRowMenu';
 
-import { uiAccess } from '@/shared/test/ui-access-stub';
 import { controlState, menuItems } from '@/shared/test/rendered-controls';
+import { uiAccess } from '@/shared/test/ui-access-stub';
 import { DangerZone } from '@/shared/ui/custom/DangerZone';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
@@ -36,27 +36,19 @@ describe('index menu (card and table views)', () => {
   beforeEach(() => uiAccess.hold('search-indexes:view'));
 
   it('locks every change for a viewer, keeping View Details', () => {
-    expect(menuItems(menu())).toEqual(['View Details', 'Edit (locked)', 'Reindex (locked)', 'Delete (locked)']);
+    expect(menuItems(menu())).toEqual(['View Details', 'Edit (locked)', 'Delete (locked)']);
   });
 
-  it('separates index changes from document changes', () => {
+  it('opens Edit and Delete with search-indexes:edit; reindexing is on the index page', () => {
     uiAccess.hold('search-indexes:view', 'search-indexes:edit');
-    expect(menuItems(menu())).toEqual(['View Details', 'Edit', 'Reindex (locked)', 'Delete']);
-    uiAccess.hold('search-indexes:view', 'documents:edit');
-    expect(menuItems(menu())).toEqual(['View Details', 'Edit (locked)', 'Reindex', 'Delete (locked)']);
-  });
-
-  it('still waits for a running job before a reindex, without the lock', () => {
-    uiAccess.hold('search-indexes:view', 'documents:edit');
-    const html = menu('indexing');
-    expect(html).toMatch(/role="menuitem" disabled="">(?:(?!lucide-lock).)*Reindex<\/button>/);
+    expect(menuItems(menu())).toEqual(['View Details', 'Edit', 'Delete']);
   });
 });
 
 describe('the built-in docs index', () => {
   it('locks every change for an index and document editor who is not an Admin', () => {
     uiAccess.hold('search-indexes:view', 'search-indexes:edit', 'documents:edit');
-    expect(menuItems(menu('active', true))).toEqual(['View Details', 'Edit (locked)', 'Reindex (locked)', 'Delete (locked)']);
+    expect(menuItems(menu('active', true))).toEqual(['View Details', 'Edit (locked)', 'Delete (locked)']);
     const card = render(createElement(FieldMappingsCard, { searchIndexId: 'i', summary: null, isLoading: false, builtIn: true }));
     expect(controlState(card, { text: 'Configure Fields' })).toBe('locked');
     expect(card).toContain('Only an Admin can change the built-in help.');
@@ -80,7 +72,7 @@ describe('index page parts', () => {
   });
 
   it("locks the Danger Zone's Delete with the reason", () => {
-    const zone = () => render(createElement(DangerZone, { thing: 'search index', detail: 'Gone for good.', action: 'search-indexes.delete', onDelete: noop }));
+    const zone = () => render(createElement(DangerZone, { thing: 'search index', detail: 'Gone for good.', action: 'search-indexes.delete', onDelete: noop, builtIn: false }));
     expect((controlState(zone(), { text: 'Delete' }) === 'locked')).toBe(true);
     expect(zone()).toContain('You don&#x27;t have permission to delete search indexes.');
     expect(zone()).toContain('Delete this search index');

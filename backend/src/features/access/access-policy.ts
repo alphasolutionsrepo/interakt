@@ -9,8 +9,8 @@
  * (Creating, editing and deleting roles is Admin-only, roles.service.ts.)
  */
 
+import { mayAssignRole, roleRefusal } from './permissions';
 import type { UserAccess } from './user-access';
-import { mayAssignRole } from './permissions';
 
 import { AppError } from '@/shared/errors/app-error';
 
@@ -27,12 +27,8 @@ export class AccessDeniedError extends AppError {
   }
 }
 
-/** Throws unless the caller may give this role, or act on a user holding it (`action` names which). */
-export function assertMayAssignRole(caller: UserAccess, role: RoleShape, action: string): void {
+/** Throws unless the caller may give this role, or manage a user holding it (`action` names which). */
+export function assertMayAssignRole(caller: UserAccess, role: RoleShape, action: 'give' | 'manage'): void {
   if (mayAssignRole(caller, role)) return;
-  throw new AccessDeniedError(
-    role.isBuiltIn
-      ? `Only an Admin can ${action} the Admin role.`
-      : `You can't ${action} a role with permissions your own role doesn't have.`,
-  );
+  throw new AccessDeniedError(roleRefusal(action, role));
 }

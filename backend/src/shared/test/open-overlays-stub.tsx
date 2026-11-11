@@ -14,9 +14,9 @@ import type { ReactNode } from 'react';
 const Inline = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
 const Nothing = () => null;
 
-/** A menu item, as a button carrying its label, so tests can find it */
-const Item = ({ children, disabled }: { children?: ReactNode; disabled?: boolean }) => (
-  <button type="button" role="menuitem" disabled={disabled}>{children}</button>
+/** A menu item, as a button carrying its label, so tests can find it (aria-disabled: a locked item stays focusable) */
+const Item = ({ children, disabled, 'aria-disabled': ariaDisabled }: { children?: ReactNode; disabled?: boolean; 'aria-disabled'?: boolean }) => (
+  <button type="button" role="menuitem" disabled={disabled} aria-disabled={ariaDisabled || undefined}>{children}</button>
 );
 
 export const dropdownMenu = {

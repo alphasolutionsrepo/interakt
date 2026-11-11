@@ -2,11 +2,6 @@
 
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ActionButton } from '@/shared/access/ActionControls';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
     Layers,
     ChevronRight,
@@ -14,9 +9,15 @@ import {
     AlertCircle,
     Settings2,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
 import type { FieldMappingSummary } from '@/features/search-index';
+import { cn } from '@/lib/utils';
+import { ActionButton } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // TYPES

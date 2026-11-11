@@ -8,6 +8,13 @@
  */
 
 import { eq, desc, asc, ilike, or, sql, and, count, SQL } from 'drizzle-orm';
+
+import type {
+    SearchIndexComplete,
+    SearchIndexSummary,
+    ListSearchIndexesQuery,
+} from './search-index.types';
+
 import { db } from '@/db/index';
 import {
     searchIndex,
@@ -19,11 +26,6 @@ import {
     dataSources,
 } from '@/db/schema';
 import type { IndexLastJob, SearchIndex, NewSearchIndex } from '@/db/schema/search-index.schema';
-import type {
-    SearchIndexComplete,
-    SearchIndexSummary,
-    ListSearchIndexesQuery,
-} from './search-index.types';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('search-index-repository');

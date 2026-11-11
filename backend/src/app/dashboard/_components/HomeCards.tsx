@@ -16,9 +16,9 @@ import { useDismissTip, type HomeCard, type HomeTip } from '../_lib/useHome';
 import { MiniCompareChart } from '@/app/analytics/_components/viz';
 import { useAskPanel } from '@/app/analytics/_lib/AskPanelContext';
 import { cn } from '@/lib/utils';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { Button } from '@/shared/ui/components/button';
 import { Skeleton } from '@/shared/ui/components/skeleton';
-import { ActionButton } from '@/shared/access/ActionControls';
 
 
 const TONE = {

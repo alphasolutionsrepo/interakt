@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   Wrench,
   Plus,
@@ -18,10 +17,17 @@ import {
   CircleCheck,
   CircleDashed,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+
+import { NeedsSetupBadge } from '../_components/ToolNotReadyNote';
+import { ToolTypeChip, resolveToolChipConfig } from '../_components/ToolTypeChip';
+import type { ToolWithUsage, ExecutorType } from '../_lib/api-client';
+import { useTools } from '../_lib/hooks/useTools';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -29,16 +35,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { NeedsSetupBadge } from '../_components/ToolNotReadyNote';
-import { ToolTypeChip, resolveToolChipConfig } from '../_components/ToolTypeChip';
-import { useTools } from '../_lib/hooks/useTools';
-import type { ToolWithUsage, ExecutorType } from '../_lib/api-client';
 import { ActionButton } from '@/shared/access/ActionControls';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
+import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
+
 
 type ViewMode = 'cards' | 'table';
 
@@ -364,7 +366,8 @@ export default function ToolsPage() {
   const hasFilters = search || executorTypeFilter !== 'all' || statusFilter !== 'all';
 
   const createButton = (
-    <ActionButton action="tools.create" icon={Plus} iconClassName="mr-2 size-5" onClick={() => router.push('/tools/create')} size="lg" className="rounded-xl px-6 font-bold">
+    // No row yet: the data source is chosen in the form, which marks the built-in docs one
+    <ActionButton action="tools.create" builtIn={false} icon={Plus} iconClassName="mr-2 size-5" onClick={() => router.push('/tools/create')} size="lg" className="rounded-xl px-6 font-bold">
       New Tool
     </ActionButton>
   );

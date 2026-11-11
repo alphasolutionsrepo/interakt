@@ -14,7 +14,6 @@
  * places to change the same content.
  */
 
-import { AccessLink } from '@/shared/access/Can';
 import { ExternalLink, RotateCcw } from 'lucide-react';
 
 import type { PromptTemplate, PromptTemplateStep } from '@/app/prompt-templates/_lib/api-client';
@@ -28,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { AccessLink } from '@/shared/access/Can';
 
 /**
  * Steps offered here, with what each one decides.

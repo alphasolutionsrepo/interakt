@@ -39,9 +39,10 @@ import {
   buildEmbedSnippet,
   type EmbedBrandingConfig,
 } from '@/features/embed/build-snippet';
-import { fetchEmbedSnippet, type EmbedSnippet } from '@/shared/ui/custom/fetch-embed-snippet';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { errorText } from '@/shared/api/api-error';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+import { fetchEmbedSnippet, type EmbedSnippet } from '@/shared/ui/custom/fetch-embed-snippet';
 
 
 interface ChatWidgetCardProps {
@@ -51,6 +52,8 @@ interface ChatWidgetCardProps {
   isSaving?: boolean;
   defaultContainerId?: string;
   defaultOpen?: boolean;
+  /** The built-in help: its Save is locked for anyone but an Admin */
+  builtIn: boolean;
 }
 
 type FetchState =
@@ -76,6 +79,7 @@ export function ChatWidgetCard({
   isSaving,
   defaultContainerId,
   defaultOpen = false,
+  builtIn,
 }: ChatWidgetCardProps) {
   const normalized = useMemo(() => readAccessConfig(accessConfig), [accessConfig]);
   const embed = normalized.embedConfig ?? {};
@@ -245,15 +249,18 @@ export function ChatWidgetCard({
             {copied ? <Check className="h-3.5 w-3.5 mr-2" /> : <Copy className="h-3.5 w-3.5 mr-2" />}
             {copied ? 'Copied' : 'Copy'}
           </Button>
-          <Button
+          <ActionButton
+            action="ai-experiences.edit"
+            builtIn={builtIn}
+            icon={isSaving ? Loader2 : Save}
+            iconClassName={isSaving ? 'size-3.5 mr-2 animate-spin' : 'size-3.5 mr-2'}
             onClick={handleSave}
             disabled={!isDirty || isSaving}
             size="sm"
             className="rounded-xl"
           >
-            {isSaving ? <Loader2 className="size-3.5 mr-2 animate-spin" /> : <Save className="size-3.5 mr-2" />}
             {isSaving ? 'Saving…' : 'Save'}
-          </Button>
+          </ActionButton>
         </div>
       }
     >

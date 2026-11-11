@@ -25,6 +25,11 @@ interface UiAction {
    * checks this permission for a signed-in admin. The test reads it.
    */
   checkedIn?: string;
+  /**
+   * Its routes also refuse a non-Admin's change to the built-in help ("+built-in" in the
+   * snapshot), so every control for it must say whether its row is built in (ActionControls).
+   */
+  builtIn?: true;
 }
 
 export const UI_ACTIONS = {
@@ -47,17 +52,19 @@ export const UI_ACTIONS = {
   // Search indexes
   'search-indexes.create': { does: 'create search indexes', permission: 'search-indexes:edit', routes: ['POST /api/search-indexes'] },
   'search-indexes.import': { does: 'import search indexes', permission: 'search-indexes:edit', routes: ['POST /api/search-indexes/import'] },
-  'search-indexes.edit': { does: 'edit search indexes', permission: 'search-indexes:edit', routes: ['PUT /api/search-indexes/[id]'] },
-  'search-indexes.delete': { does: 'delete search indexes', permission: 'search-indexes:edit', routes: ['DELETE /api/search-indexes/[id]'] },
+  'search-indexes.edit': { does: 'edit search indexes', permission: 'search-indexes:edit', routes: ['PUT /api/search-indexes/[id]'], builtIn: true },
+  'search-indexes.delete': { does: 'delete search indexes', permission: 'search-indexes:edit', routes: ['DELETE /api/search-indexes/[id]'], builtIn: true },
   'search-indexes.activate': {
     does: 'activate or deactivate search indexes', permission: 'search-indexes:edit',
     routes: ['PATCH /api/search-indexes/[id]/activate', 'PATCH /api/search-indexes/[id]/deactivate'],
+    builtIn: true,
   },
 
   // Documents in a search index
   'documents.upload': {
     does: 'upload documents', permission: 'documents:edit',
     routes: ['POST /api/search-indexes/[id]/documents', 'POST /api/search-indexes/[id]/documents/bulk'],
+    builtIn: true,
   },
   'documents.change': {
     does: 'edit or delete documents', permission: 'documents:edit',
@@ -66,24 +73,26 @@ export const UI_ACTIONS = {
       'DELETE /api/search-indexes/[id]/documents/[documentId]', 'DELETE /api/search-indexes/[id]/documents/batches/[batchId]',
       'POST /api/search-indexes/[id]/documents/delete-by-filter',
     ],
+    builtIn: true,
   },
   'documents.reindex': {
     does: 'reindex or recreate search indexes', permission: 'documents:edit',
     routes: ['POST /api/search-indexes/[id]/reindex', 'POST /api/search-indexes/[id]/recreate-index'],
+    builtIn: true,
   },
 
   // Data sources
   'data-sources.create': { does: 'create data sources', permission: 'data-sources:edit', routes: ['POST /api/data-sources'] },
-  'data-sources.edit': { does: 'edit data sources', permission: 'data-sources:edit', routes: ['PUT /api/data-sources/[id]'] },
-  'data-sources.delete': { does: 'delete data sources', permission: 'data-sources:edit', routes: ['DELETE /api/data-sources/[id]'] },
+  'data-sources.edit': { does: 'edit data sources', permission: 'data-sources:edit', routes: ['PUT /api/data-sources/[id]'], builtIn: true },
+  'data-sources.delete': { does: 'delete data sources', permission: 'data-sources:edit', routes: ['DELETE /api/data-sources/[id]'], builtIn: true },
   // Contacts the external service, like a playground test
   'data-sources.health-check': { does: 'run data source health checks', permission: 'playground:use', routes: ['POST /api/data-sources/[id]/health'] },
 
   // Tools
-  'tools.scaffold': { does: 'create tools', permission: 'tools:edit', routes: ['POST /api/tools/scaffold'] },
-  'tools.create': { does: 'create tools', permission: 'tools:edit', routes: ['POST /api/tools'] },
-  'tools.edit': { does: 'edit tools', permission: 'tools:edit', routes: ['PUT /api/tools/[id]'] },
-  'tools.delete': { does: 'delete tools', permission: 'tools:edit', routes: ['DELETE /api/tools/[id]'] },
+  'tools.scaffold': { does: 'create tools', permission: 'tools:edit', routes: ['POST /api/tools/scaffold'], builtIn: true },
+  'tools.create': { does: 'create tools', permission: 'tools:edit', routes: ['POST /api/tools'], builtIn: true },
+  'tools.edit': { does: 'edit tools', permission: 'tools:edit', routes: ['PUT /api/tools/[id]'], builtIn: true },
+  'tools.delete': { does: 'delete tools', permission: 'tools:edit', routes: ['DELETE /api/tools/[id]'], builtIn: true },
   // Calls the tool for real, like a playground run
   'tools.test': { does: 'test tools', permission: 'playground:use', routes: ['POST /api/tools/[id]/test'] },
 
@@ -100,17 +109,17 @@ export const UI_ACTIONS = {
 
   // Search experiences
   'search-experiences.create': { does: 'create search experiences', permission: 'search-experiences:edit', routes: ['POST /api/search-experiences'] },
-  'search-experiences.edit': { does: 'edit search experiences', permission: 'search-experiences:edit', routes: ['PUT /api/search-experiences/[id]'] },
-  'search-experiences.delete': { does: 'delete search experiences', permission: 'search-experiences:edit', routes: ['DELETE /api/search-experiences/[id]'] },
-  'search-experiences.token': { does: 'regenerate access tokens', permission: 'search-experiences:edit', routes: ['POST /api/search-experiences/[id]/token'] },
+  'search-experiences.edit': { does: 'edit search experiences', permission: 'search-experiences:edit', routes: ['PUT /api/search-experiences/[id]'], builtIn: true },
+  'search-experiences.delete': { does: 'delete search experiences', permission: 'search-experiences:edit', routes: ['DELETE /api/search-experiences/[id]'], builtIn: true },
+  'search-experiences.token': { does: 'regenerate access tokens', permission: 'search-experiences:edit', routes: ['POST /api/search-experiences/[id]/token'], builtIn: true },
   // Asks the AI model, like a playground run
   'search-experiences.generate-instructions': { does: 'generate instructions with AI', permission: 'playground:use', routes: ['POST /api/search-experiences/generate-instructions'] },
 
   // Chat (AI) experiences
   'ai-experiences.create': { does: 'create chat experiences', permission: 'ai-experiences:edit', routes: ['POST /api/ai-experiences'] },
-  'ai-experiences.edit': { does: 'edit chat experiences', permission: 'ai-experiences:edit', routes: ['PUT /api/ai-experiences/[id]'] },
-  'ai-experiences.delete': { does: 'delete chat experiences', permission: 'ai-experiences:edit', routes: ['DELETE /api/ai-experiences/[id]'] },
-  'ai-experiences.token': { does: 'regenerate access tokens', permission: 'ai-experiences:edit', routes: ['POST /api/ai-experiences/[id]/regenerate-token'] },
+  'ai-experiences.edit': { does: 'edit chat experiences', permission: 'ai-experiences:edit', routes: ['PUT /api/ai-experiences/[id]'], builtIn: true },
+  'ai-experiences.delete': { does: 'delete chat experiences', permission: 'ai-experiences:edit', routes: ['DELETE /api/ai-experiences/[id]'], builtIn: true },
+  'ai-experiences.token': { does: 'regenerate access tokens', permission: 'ai-experiences:edit', routes: ['POST /api/ai-experiences/[id]/regenerate-token'], builtIn: true },
 
   // Test chat on a chat experience: the public chat route, as a signed-in admin
   'ai-experiences.test-chat': {

@@ -28,6 +28,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { DocsAssistantCard } from './_components/DocsAssistantCard';
+import { loadDemoStatus, resetDemo, startDemoSeed, type DemoStatus, type ProviderView, type SeedResult } from './_lib/demo-setup-api';
+
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -48,13 +51,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { StepProgress } from '@/components/ui/steps-progress';
-import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shared/seeders/demo/demo-steps';
-import { sameOllamaUrl } from '@/shared/seeders/demo/ollama-url';
-import { DocsAssistantCard } from './_components/DocsAssistantCard';
+import { AccessLink } from '@/shared/access/Can';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
-import { loadDemoStatus, resetDemo, startDemoSeed, type DemoStatus, type ProviderView, type SeedResult } from './_lib/demo-setup-api';
-import { AccessLink } from '@/shared/access/Can';
+import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shared/seeders/demo/demo-steps';
+import { sameOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 
 type StepState = 'pending' | 'active' | 'done';
 

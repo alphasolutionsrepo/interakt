@@ -1,9 +1,6 @@
 'use client';
 
-import { AccessLink } from '@/shared/access/Can';
-import { use, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   ChevronRight,
   Edit2,
@@ -16,19 +13,25 @@ import {
   CircleCheck,
   CircleDashed,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { ToolTypeChip, resolveToolChipConfig } from '../../_components/ToolTypeChip';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { use, useState } from 'react';
+
 import { LookupFieldsWarnings } from '../../_components/LookupFieldsSection';
-import { useLookupFields, useTool } from '../../_lib/hooks/useTools';
-import { ActionButton } from '@/shared/access/ActionControls';
-import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { ToolTestPanel } from '../../_components/ToolTestPanel';
+import { ToolTypeChip, resolveToolChipConfig } from '../../_components/ToolTypeChip';
+import { useLookupFields, useTool } from '../../_lib/hooks/useTools';
+
+import { Badge } from '@/components/ui/badge';
+import { buttonVariants } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { AccessLink } from '@/shared/access/Can';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 // ============================================================================
 // CONFIG DISPLAY
@@ -315,10 +318,8 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
                   </div>
                 </div>
                 {/* Offered only to a role that can open chat experiences */}
-                <AccessLink href={`/experiences/ai/${exp.id}`}>
-                  <Button variant="ghost" size="sm" className="rounded-lg gap-1.5 text-xs" tabIndex={-1}>
-                    View <ExternalLink className="size-3" />
-                  </Button>
+                <AccessLink href={`/experiences/ai/${exp.id}`} className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'rounded-lg gap-1.5 text-xs')}>
+                  View <ExternalLink className="size-3" />
                 </AccessLink>
               </div>
             ))}

@@ -1,29 +1,30 @@
 'use client';
 
-import { Suspense, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   Bot, Plus, Search, RefreshCw, Activity, X,
   LayoutGrid, List, TrendingUp, ChevronLeft, ChevronRight, ArrowUpRight,
   CircleCheck, CircleDashed, Sparkles,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
+
+import { useUnifiedExperiences, viewableTypes, type UnifiedExperience } from '../_hooks/useUnifiedExperiences';
+
+import { ExperienceBadges } from '@/app/ai-experiences/_components/ExperienceBadges';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-
-
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { ExperienceBadges } from '@/app/ai-experiences/_components/ExperienceBadges';
-import { useUnifiedExperiences, viewableTypes, type UnifiedExperience } from '../_hooks/useUnifiedExperiences';
 import { ActionButton, useAnyActionGate } from '@/shared/access/ActionControls';
 import { useAccess } from '@/shared/access/useAccess';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
+import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
+
 
 type ViewMode = 'cards' | 'table';
 type TypeFilter = 'all' | 'ai' | 'search';

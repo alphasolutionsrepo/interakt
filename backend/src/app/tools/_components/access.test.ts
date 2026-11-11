@@ -11,8 +11,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ToolTestPanel } from './ToolTestPanel';
 
-import { uiAccess } from '@/shared/test/ui-access-stub';
 import { controlState, menuItems } from '@/shared/test/rendered-controls';
+import { uiAccess } from '@/shared/test/ui-access-stub';
 import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
@@ -26,14 +26,14 @@ describe('tool and MCP menus', () => {
 
   it('locks Edit and Delete on a tool for a viewer', () => {
     const html = renderToStaticMarkup(createElement(RowActionsMenu, {
-      onView: noop, onEdit: noop, onDelete: noop, editAction: 'tools.edit', deleteAction: 'tools.delete', triggerClassName: '', itemClassName: '',
+      onView: noop, onEdit: noop, onDelete: noop, editAction: 'tools.edit', deleteAction: 'tools.delete', builtIn: false, triggerClassName: '', itemClassName: '',
     }));
     expect(menuItems(html)).toEqual(['View Details', 'Edit (locked)', 'Delete (locked)']);
   });
 
   it('leaves Edit out where there is none (MCP connections) and locks Delete', () => {
     const html = renderToStaticMarkup(createElement(RowActionsMenu, {
-      onView: noop, onDelete: noop, deleteAction: 'mcp.delete', triggerClassName: '', itemClassName: '',
+      onView: noop, onDelete: noop, deleteAction: 'mcp.delete', builtIn: false, triggerClassName: '', itemClassName: '',
     }));
     expect(menuItems(html)).toEqual(['View Details', 'Delete (locked)']);
     expect(html).toContain('You don&#x27;t have permission to delete MCP connections.');
@@ -70,7 +70,7 @@ describe('tool test panel', () => {
 
 describe("a tool's Danger Zone", () => {
   const zone = (disabled: boolean) => renderToStaticMarkup(createElement(DangerZone, {
-    thing: 'tool', detail: 'x', action: 'tools.delete', onDelete: noop, disabled,
+    thing: 'tool', detail: 'x', action: 'tools.delete', onDelete: noop, disabled, builtIn: false,
   }));
 
   it('locks Delete for a viewer', () => {

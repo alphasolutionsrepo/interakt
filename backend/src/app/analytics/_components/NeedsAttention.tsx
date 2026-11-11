@@ -32,11 +32,11 @@ import { refreshInsights } from '../_lib/insights-api';
 import { formatTimeAgo } from './viz';
 
 import { cn } from '@/lib/utils';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { reportActionError } from '@/shared/activity/report';
 import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
-import { ActionButton } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // PROCESSING (computing insights)

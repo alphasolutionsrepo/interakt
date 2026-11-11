@@ -2,23 +2,22 @@
 
 'use client';
 
-import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, CheckCircle2, CircleOff, Database, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { useCallback, useState } from 'react';
 
-import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { useProcessingStatus, useRefreshInsights } from '../_components/NeedsAttention';
 import { formatTimeAgo } from '../_components/viz';
+import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { fetchAnalytics } from '../_lib/hooks/useAnalytics';
-import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
 import { clearAnalyticsData, INSIGHTS_QUEUE, loadInsightsSchedule } from '../_lib/insights-api';
-import { jobsApi } from '@/app/jobs/_lib/api-client';
+import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
 
+import { jobsApi } from '@/app/jobs/_lib/api-client';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { AccessLink } from '@/shared/access/Can';
 import { reportActionError } from '@/shared/activity/report';
 import { errorText } from '@/shared/api/api-error';
-import { Button } from '@/shared/ui/components/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
-import { Skeleton } from '@/shared/ui/components/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,8 +28,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/shared/ui/components/alert-dialog';
-import { ActionButton } from '@/shared/access/ActionControls';
-import { AccessLink } from '@/shared/access/Can';
+import { Button } from '@/shared/ui/components/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
+import { Skeleton } from '@/shared/ui/components/skeleton';
 
 // ============================================================================
 // DATA

@@ -11,9 +11,9 @@ import type { HomeExperience } from '../_lib/useHome';
 
 import { Sparkline, pluralize } from '@/app/analytics/_components/viz';
 import { cn } from '@/lib/utils';
+import { AccessLink } from '@/shared/access/Can';
 import { Button } from '@/shared/ui/components/button';
 import { Skeleton } from '@/shared/ui/components/skeleton';
-import { AccessLink } from '@/shared/access/Can';
 
 
 /** showActivity false: the role can't view analytics, so no traffic figures or analytics links */

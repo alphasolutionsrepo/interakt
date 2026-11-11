@@ -18,10 +18,19 @@ export function textOf(html: string): string {
   return text.replace(/[<>]/g, '').trim();
 }
 
+/** Text only screen readers get (a locked item's reason), left out of a label. */
+const withoutScreenReaderText = (html: string) => html.replace(/<span class="sr-only">[^<]*<\/span>/g, '');
+
 /** Each menu item as "label", or "label (locked)" when locked. */
 export function menuItems(html: string): string[] {
   return [...html.matchAll(/<button[^>]*role="menuitem"([^>]*)>(.*?)<\/button>/g)]
-    .map(([, attrs, inner]) => `${textOf(inner)}${attrs.includes('disabled') && inner.includes('lucide-lock') ? ' (locked)' : ''}`);
+    .map(([, attrs, inner]) => `${textOf(withoutScreenReaderText(inner))}${attrs.includes('disabled') && inner.includes('lucide-lock') ? ' (locked)' : ''}`);
+}
+
+/** What a screen reader hears for each locked menu item: its reason, read out inside the item. */
+export function lockedMenuReasons(html: string): string[] {
+  return [...html.matchAll(/<button[^>]*role="menuitem"[^>]*aria-disabled="true"[^>]*>(.*?)<\/button>/g)]
+    .flatMap(([, inner]) => [...inner.matchAll(/<span class="sr-only">\. ([^<]*)<\/span>/g)].map(([, reason]) => reason));
 }
 
 /**
@@ -32,14 +41,16 @@ export function controlState(
   html: string,
   find: { text: string } | { textStartsWith: string } | { attr: string },
 ): ControlState {
+  const label = (inner: string) => textOf(withoutScreenReaderText(inner));
   const matches = (tag: string, inner: string) =>
-    'text' in find ? textOf(inner) === find.text
-      : 'textStartsWith' in find ? textOf(inner).startsWith(find.textStartsWith)
+    'text' in find ? label(inner) === find.text
+      : 'textStartsWith' in find ? label(inner).startsWith(find.textStartsWith)
         : tag.includes(find.attr);
   const match = [...html.matchAll(/(<span[^>]*data-locked=""[^>]*>)?(<button[^>]*>)((?:(?!<\/button>).)*)<\/button>/g)]
     .find(([, , tag, inner]) => matches(tag, inner));
   if (!match) return 'missing';
   const [, hint, tag] = match;
-  if (hint) return 'locked';
+  // A locked menu item stays focusable: aria-disabled instead of disabled (ActionMenuItem)
+  if (hint || tag.includes('aria-disabled="true"')) return 'locked';
   return tag.includes('disabled=""') ? 'disabled' : 'open';
 }

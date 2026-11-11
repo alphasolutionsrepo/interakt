@@ -43,6 +43,16 @@ export const REFUSAL = BUILT_IN_REFUSAL;
 export const GUARDS_BUILT_IN = Symbol.for('interakt.guardsBuiltIn');
 
 /**
+ * Marks a route whose handler refuses a non-Admin's change to the built-in help itself
+ * (assertMayChange on a row it's given, such as the data source tools are made from), so the
+ * route snapshot records it like the routes forBuiltInChange wraps.
+ */
+export function checksBuiltInInHandler<T extends object>(route: T): T {
+  Object.defineProperty(route, GUARDS_BUILT_IN, { value: true });
+  return route;
+}
+
+/**
  * Which of these rows are built in: marked so by the docs setup, or (a tool or an index) used by
  * a built-in help experience, such as one an Admin attached later. The one owner of the rule:
  * the route gate (isBuiltIn) and the admin's lists and pages (withBuiltInFlag) both read it.
@@ -52,20 +62,22 @@ export async function builtInIds(kind: BuiltInKind, ids: readonly string[]): Pro
   const valid = [...new Set(ids)].filter((id) => UUID.test(id));
   if (valid.length === 0) return new Set();
   const table = TABLES[kind];
-  const marked = await db.select({ id: table.id }).from(table).where(and(inArray(table.id, valid), eq(table.isBuiltIn, true)));
-  const found = new Set(marked.map((r) => r.id));
-  if (kind === 'tool') {
-    const used = await db.selectDistinct({ id: aiExperienceTools.toolId }).from(aiExperienceTools)
-      .innerJoin(aiExperiences, eq(aiExperiences.id, aiExperienceTools.aiExperienceId))
-      .where(and(inArray(aiExperienceTools.toolId, valid), eq(aiExperiences.isBuiltIn, true)));
-    used.forEach((r) => found.add(r.id));
-  }
-  if (kind === 'search-index') {
-    const used = await db.selectDistinct({ id: searchExperienceIndexes.searchIndexId }).from(searchExperienceIndexes)
-      .innerJoin(searchExperiences, eq(searchExperiences.id, searchExperienceIndexes.searchExperienceId))
-      .where(and(inArray(searchExperienceIndexes.searchIndexId, valid), eq(searchExperiences.isBuiltIn, true)));
-    used.forEach((r) => found.add(r.id));
-  }
+  // Marked rows, and (tools, indexes) rows a built-in experience uses: asked together
+  const usedByBuiltIn =
+    kind === 'tool'
+      ? db.selectDistinct({ id: aiExperienceTools.toolId }).from(aiExperienceTools)
+        .innerJoin(aiExperiences, eq(aiExperiences.id, aiExperienceTools.aiExperienceId))
+        .where(and(inArray(aiExperienceTools.toolId, valid), eq(aiExperiences.isBuiltIn, true)))
+      : kind === 'search-index'
+        ? db.selectDistinct({ id: searchExperienceIndexes.searchIndexId }).from(searchExperienceIndexes)
+          .innerJoin(searchExperiences, eq(searchExperiences.id, searchExperienceIndexes.searchExperienceId))
+          .where(and(inArray(searchExperienceIndexes.searchIndexId, valid), eq(searchExperiences.isBuiltIn, true)))
+        : Promise.resolve([] as Array<{ id: string }>);
+  const [marked, used] = await Promise.all([
+    db.select({ id: table.id }).from(table).where(and(inArray(table.id, valid), eq(table.isBuiltIn, true))),
+    usedByBuiltIn,
+  ]);
+  const found = new Set([...marked, ...used].map((r) => r.id));
   return found;
 }
 

@@ -177,6 +177,17 @@ export function effectivePermissions(permissions: readonly Permission[]): Permis
 }
 
 /**
+ * Why a caller can't give a role, or manage a user who holds it (mayAssignRole said no). The one
+ * wording: the server's refusal and the Users page's lock both use it.
+ */
+export function roleRefusal(action: 'give' | 'manage', role: { isBuiltIn: boolean }): string {
+  if (role.isBuiltIn) return action === 'give' ? 'Only an Admin can give the Admin role.' : 'Only an Admin can manage a user with the Admin role.';
+  return action === 'give'
+    ? "You can't give a role with permissions your own role doesn't have."
+    : "You can't manage a user whose role has permissions your own role doesn't have.";
+}
+
+/**
  * Whether a caller may give a role to a user, or manage a user who holds it: every permission the
  * role grants (implied added, unmet left out) must be one the caller holds, so nobody hands out
  * more than they have. Admin holds everything; only Admin holds the built-in Admin role. The one

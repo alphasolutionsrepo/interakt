@@ -17,8 +17,8 @@ import { JobsTable } from './JobsTable';
 import { JobTypeCard } from './JobTypeCard';
 
 import { CacheFeatureCard } from '@/app/settings/cache/_components/CacheFeatureCard';
-import { uiAccess } from '@/shared/test/ui-access-stub';
 import { controlState } from '@/shared/test/rendered-controls';
+import { uiAccess } from '@/shared/test/ui-access-stub';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 vi.mock('@/components/ui/dropdown-menu', async () => (await import('@/shared/test/open-overlays-stub')).dropdownMenu);
