@@ -108,6 +108,7 @@ export function useTool(id: string | undefined) {
   const experiencesQuery = useQuery({
     queryKey: toolKeys.experiences(id!),
     queryFn: () => toolsApi.getExperiences(id!),
+    select: (data) => data.experiences,
     enabled: !!id,
   });
 

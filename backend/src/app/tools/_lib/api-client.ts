@@ -10,6 +10,21 @@ export { ApiError };
 // TYPES
 // ============================================================================
 
+/** A chat experience that uses a tool */
+export interface ToolExperience {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+}
+
+/** What GET /api/tools/:id/experiences returns */
+export interface ToolExperiences {
+  toolId: string;
+  experienceCount: number;
+  experiences: ToolExperience[];
+}
+
 /** Executor type — how a tool runs (MCP is a separate connection type, not a tool) */
 export type ExecutorType = 'data_source' | 'http' | 'web_search' | 'ai_call';
 
@@ -262,9 +277,9 @@ export const toolsApi = {
     return handleApiResponse<LookupFieldsStatus | null>(response);
   },
 
-  getExperiences: async (id: string): Promise<{ id: string; name: string; slug: string; isActive: boolean }[]> => {
+  getExperiences: async (id: string): Promise<ToolExperiences> => {
     const response = await fetch(`/api/tools/${id}/experiences`);
-    return handleApiResponse<{ id: string; name: string; slug: string; isActive: boolean }[]>(response);
+    return handleApiResponse<ToolExperiences>(response);
   },
 
   // ── New executor model endpoints ──────────────────────────────────────────

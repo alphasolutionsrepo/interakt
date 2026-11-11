@@ -246,8 +246,8 @@ export async function handleGetToolExperiences(
       return apiResponse.notFound('Tool not found');
     }
 
-    const count = await service.getToolExperienceCount(id);
-    return apiResponse.success({ toolId: id, experienceCount: count });
+    const experiences = await service.getToolExperiences(id);
+    return apiResponse.success({ toolId: id, experienceCount: experiences.length, experiences });
   } catch (error) {
     const err = error as Error;
     return apiResponse.error(err, undefined, { operation: 'getToolExperiences' });
