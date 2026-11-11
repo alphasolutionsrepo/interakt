@@ -22,6 +22,8 @@ import * as toolOne from '@/app/api/tools/[id]/route';
 import * as indexList from '@/app/api/search-indexes/route';
 import * as indexAll from '@/app/api/search-indexes/all/route';
 import * as indexOne from '@/app/api/search-indexes/[id]/route';
+import * as searchList from '@/app/api/search-experiences/route';
+import * as searchOne from '@/app/api/search-experiences/[id]/route';
 
 import { builtInIds } from './built-in';
 
@@ -91,5 +93,21 @@ describe('the index responses', () => {
     const picked = (await all.json()).data as Array<{ id: string; isBuiltIn: boolean }>;
     expect(picked.find((r) => r.id === attached)?.isBuiltIn).toBe(true);
     expect(picked.find((r) => r.id === plain)?.isBuiltIn).toBe(false);
+  });
+});
+
+describe('the search experience responses', () => {
+  it('say which experience is the built-in help, in the list and on its own', async () => {
+    const [builtIn, plain] = [await search(true), await search(false)];
+    const get = (id: string) => (searchOne.GET as unknown as (r: NextRequest, c: { params: Promise<{ id: string }> }) => Promise<Response>)(
+      new NextRequest(`http://localhost/api/search-experiences/${id}`), { params: Promise.resolve({ id }) });
+    expect((await (await get(builtIn)).json()).data.isBuiltIn).toBe(true);
+    expect((await (await get(plain)).json()).data.isBuiltIn).toBe(false);
+
+    const list = await (searchList.GET as unknown as (r: NextRequest) => Promise<Response>)(new NextRequest('http://localhost/api/search-experiences?pageSize=100'));
+    const body = (await list.json()).data;
+    const rows = (Array.isArray(body) ? body : body.items) as Array<{ id: string; isBuiltIn: boolean }>;
+    expect(rows.find((r) => r.id === builtIn)?.isBuiltIn).toBe(true);
+    expect(rows.find((r) => r.id === plain)?.isBuiltIn).toBe(false);
   });
 });

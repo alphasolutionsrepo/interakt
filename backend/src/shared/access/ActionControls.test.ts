@@ -11,7 +11,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ActionButton, ActionMenuItem, ActionSwitch, adminGateFor, builtInGateFor, gateFor } from './ActionControls';
+import { ActionButton, ActionMenuItem, ActionSwitch, adminGateFor, anyActionGateFor, builtInGateFor, gateFor, useAdminGate, useAnyActionGate } from './ActionControls';
 
 import { allowsAction, type UiActionId } from '@/features/access/ui-actions';
 import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
@@ -59,6 +59,36 @@ describe('adminGateFor', () => {
   });
 });
 
+describe('anyActionGateFor', () => {
+  const NEW = ['ai-experiences.create', 'search-experiences.create'] as const;
+
+  it('allows when any one of the actions is allowed', () => {
+    expect(anyActionGateFor(access(['ai-experiences:edit']), NEW, 'create experiences')).toEqual({ state: 'allowed' });
+    expect(anyActionGateFor(access(['search-experiences:edit']), NEW, 'create experiences')).toEqual({ state: 'allowed' });
+  });
+
+  it('locks, naming them together, when none is; waits while access loads', () => {
+    expect(anyActionGateFor(access([]), NEW, 'create experiences'))
+      .toEqual({ state: 'locked', reason: "You don't have permission to create experiences. Ask an Admin if you need it." });
+    expect(anyActionGateFor(access(['ai-experiences:edit'], { isLoading: true }), NEW, 'create experiences')).toEqual({ state: 'loading' });
+  });
+});
+
+describe('the gate hooks', () => {
+  const Probe = ({ use }: { use: () => unknown }) => JSON.stringify(use());
+  const run = (use: () => unknown) => JSON.parse(renderToStaticMarkup(createElement(Probe, { use })).replace(/&quot;/g, '"'));
+
+  it('read the signed-in user: Admin-only and any-of', () => {
+    uiAccess.hold('users:manage', 'search-experiences:edit');
+    expect(run(() => useAdminGate('add roles'))).toEqual({ state: 'locked', reason: 'Only an Admin can add roles.' });
+    expect(run(() => useAnyActionGate(['ai-experiences.create', 'search-experiences.create'], 'create experiences'))).toEqual({ state: 'allowed' });
+    uiAccess.asAdmin();
+    expect(run(() => useAdminGate('add roles'))).toEqual({ state: 'allowed' });
+    uiAccessLoading();
+    expect(run(() => useAdminGate('add roles'))).toEqual({ state: 'loading' });
+  });
+});
+
 describe('action controls', () => {
   beforeEach(() => uiAccess.hold());
 
@@ -98,6 +128,21 @@ describe('action controls', () => {
     expect(html).toContain('Only an Admin can change the built-in help.');
     uiAccess.asAdmin();
     expect(renderToStaticMarkup(createElement(ActionButton, { action: 'ai-providers.add', builtIn: true, children: 'Add' }))).not.toContain('data-locked');
+  });
+
+  it('lock a built-in switch for a non-Admin, still showing its value', () => {
+    uiAccess.hold('ai-providers:manage');
+    const html = renderToStaticMarkup(createElement(ActionSwitch, { action: 'ai-providers.enable', checked: true, builtIn: true }));
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain('Only an Admin can change the built-in help.');
+  });
+
+  it('stay disabled without the lock while access loads, on a built-in row too', () => {
+    uiAccessLoading();
+    const html = renderToStaticMarkup(createElement(ActionButton, { action: 'ai-providers.add', builtIn: true, children: 'Add' }));
+    expect(html).toContain('disabled=""');
+    expect(html).not.toContain('data-locked');
   });
 
   it('stay disabled for their own reason even when allowed', () => {
