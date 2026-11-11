@@ -21,6 +21,7 @@ import { updateUserAccess } from './roles.repository';
 
 
 import * as setupDemoRoute from '@/app/api/admin/setup-demo/route';
+import * as setupDocsRoute from '@/app/api/admin/setup-docs/route';
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
 import * as aiTextRoute from '@/app/api/ai-service/text/route';
@@ -77,6 +78,7 @@ import * as promptDefaultsRoute from '@/app/api/prompt-templates/defaults/route'
 import * as allToolsRoute from '@/app/api/tools/all/route';
 import * as indexesRoute from '@/app/api/search-indexes/route';
 import * as attachmentsRoute from '@/app/api/ai-experiences/[id]/mcp-connections/route';
+import * as indexFieldsRoute from '@/app/api/search-indexes/[id]/fields/route';
 import * as exportRoute from '@/app/api/search-indexes/[id]/export/route';
 import * as promptTemplateRoute from '@/app/api/prompt-templates/[id]/route';
 import * as promptHistoryRoute from '@/app/api/prompt-templates/[id]/history/route';
@@ -550,6 +552,18 @@ describe('review round 2', () => {
     expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(200);
   });
 
+  it('refuses a setup runner who is not an Admin any build or reset of the docs assistant, through the real role lookup', async () => {
+    as(await makeUser(await makeRole(`Setup runners ${n}`, ['setup:run', ...(REQUIRED_WITH['setup:run'] ?? [])])));
+    for (const action of ['seed', 'reset', 'check-only']) {
+      const res = await call(setupDocsRoute.POST, 'POST', '/api/admin/setup-docs', { action });
+      expect(res.status, action).toBe(403);
+      expect(res.body).toMatchObject({ error: expect.stringContaining('Only an Admin can change the built-in help') });
+    }
+    // An Admin gets past the check (an unknown action is then refused as such)
+    as(admin);
+    expect((await call(setupDocsRoute.POST, 'POST', '/api/admin/setup-docs', { action: 'check-only' })).status).toBe(400);
+  });
+
   it("lets a chat editor load the lists the experience's pickers choose from, and nothing more", async () => {
     as(await makeUser(await makeRole(`Chat editors ${n}`, ['ai-experiences:edit'])));
     expect((await call(allToolsRoute.GET, 'GET', '/api/tools/all')).status).toBe(200);
@@ -572,7 +586,9 @@ describe('review round 2', () => {
     expect((await call(indexesRoute.GET, 'GET', '/api/search-indexes?isActive=true&pageSize=100')).status).toBe(200);
     expect((await call(dataSourcesRoute.GET, 'GET', '/api/data-sources?pageSize=100')).status).toBe(200);
     // Index rows carry only what the source picker shows
-    await testDb.db.execute(sql`INSERT INTO search_index (name, display_name, search_type) VALUES (${`pick-index-${n}`}, ${`Pick index ${n}`}, 'lexical')`);
+    const indexId = ((await testDb.db.execute(sql`INSERT INTO search_index (name, display_name, search_type) VALUES (${`pick-index-${n}`}, ${`Pick index ${n}`}, 'lexical') RETURNING id`)) as unknown as { rows: Array<{ id: string }> }).rows[0].id;
+    // An index's fields, for the display field picker
+    expect((await call(indexFieldsRoute.GET, 'GET', `/api/search-indexes/${indexId}/fields`, undefined, { id: indexId })).status).toBe(200);
     const indexRows = ((await call(indexesRoute.GET, 'GET', '/api/search-indexes?pageSize=100')).body?.data as { items: Array<Record<string, unknown>> }).items;
     expect(indexRows.length).toBeGreaterThan(0);
     const indexShown = new Set(['id', 'name', 'displayName', 'description', 'searchType', 'searchProvider', 'status', 'documentCount', 'isActive', 'isBuiltIn']);
@@ -580,6 +596,9 @@ describe('review round 2', () => {
     // Not an index's documents or export, nor secrets
     expect((await call(documentsRoute.GET, 'GET', '/api/search-indexes/x/documents', undefined, { id: 'x' })).status).toBe(403);
     expect((await call(exportRoute.GET, 'GET', '/api/search-indexes/x/export', undefined, { id: 'x' })).status).toBe(403);
+    // A role with neither gets no fields
+    as(await makeUser(await makeRole(`Chat only ${n}`, ['ai-experiences:edit'])));
+    expect((await call(indexFieldsRoute.GET, 'GET', `/api/search-indexes/${indexId}/fields`, undefined, { id: indexId })).status).toBe(403);
     expect((await call(secretsRoute.GET, 'GET', '/api/secrets')).status).toBe(403);
   });
 

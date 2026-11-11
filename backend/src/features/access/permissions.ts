@@ -114,11 +114,6 @@ export const VIEWER_DEFAULT_PERMISSIONS: readonly Permission[] = [
 ];
 
 /**
- * Who may read the AI provider and model lists (never the keys) and the system default models:
- * besides viewing providers, everyone who picks a model while editing an index or an
- * experience, and those who view settings.
- */
-/**
  * Who may read the lists an experience's pickers choose from, and only those lists: besides
  * viewing them, editing the experience that picks from them. Not the items' details, history,
  * documents or knowledge entries (those keep their view permission).
@@ -134,6 +129,11 @@ export const PICKER_READERS = {
   dataSources: ['data-sources:view', 'search-experiences:edit'],
 } as const satisfies Record<string, readonly Permission[]>;
 
+/**
+ * Who may read the AI provider and model lists (never the keys) and the system default models:
+ * besides viewing providers, everyone who picks a model while editing an index or an
+ * experience, and those who view settings.
+ */
 export const AI_MODEL_READERS: readonly Permission[] = [
   'ai-providers:view',
   'search-indexes:edit',
