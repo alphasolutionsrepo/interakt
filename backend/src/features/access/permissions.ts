@@ -118,6 +118,22 @@ export const VIEWER_DEFAULT_PERMISSIONS: readonly Permission[] = [
  * besides viewing providers, everyone who picks a model while editing an index or an
  * experience, and those who view settings.
  */
+/**
+ * Who may read the lists an experience's pickers choose from, and only those lists: besides
+ * viewing them, editing the experience that picks from them. Not the items' details, history,
+ * documents or knowledge entries (those keep their view permission).
+ */
+export const PICKER_READERS = {
+  /** Tools and MCP connections, for a chat experience */
+  tools: ['tools:view', 'ai-experiences:edit'],
+  /** Prompt templates and the system defaults, for a chat experience's steps */
+  prompts: ['prompts:view', 'ai-experiences:edit'],
+  /** Search indexes and their fields, for a search experience's sources */
+  indexes: ['search-indexes:view', 'search-experiences:edit'],
+  /** Data sources (without their connection settings unless viewable), for a search experience's external sources */
+  dataSources: ['data-sources:view', 'search-experiences:edit'],
+} as const satisfies Record<string, readonly Permission[]>;
+
 export const AI_MODEL_READERS: readonly Permission[] = [
   'ai-providers:view',
   'search-indexes:edit',
@@ -130,15 +146,13 @@ export const AI_MODEL_READERS: readonly Permission[] = [
 
 /**
  * Permissions that only make sense with another: changing something implies seeing it,
- * asking the analytics assistant reads analytics, the playgrounds read the indexes and
- * experiences they test, and editing an experience reads what its pickers choose from (a chat
- * experience: tools, MCP connections, prompt templates; a search experience: indexes and data
- * sources), never secrets or provider keys. Applied when a role's permissions are read,
+ * asking the analytics assistant reads analytics, and the playgrounds read the indexes and
+ * experiences they test. Applied when a role's permissions are read,
  * so no role can hold the first without the second.
  */
 export const IMPLIED_PERMISSIONS: Partial<Record<Permission, readonly Permission[]>> = {
-  'search-experiences:edit': ['search-experiences:view', 'search-indexes:view', 'data-sources:view'],
-  'ai-experiences:edit': ['ai-experiences:view', 'tools:view', 'prompts:view'],
+  'search-experiences:edit': ['search-experiences:view'],
+  'ai-experiences:edit': ['ai-experiences:view'],
   'search-indexes:edit': ['search-indexes:view'],
   'documents:edit': ['search-indexes:view'],
   'data-sources:edit': ['data-sources:view'],

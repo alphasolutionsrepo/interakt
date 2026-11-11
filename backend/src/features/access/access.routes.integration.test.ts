@@ -10,7 +10,7 @@
  * account, and the public routes that also accept a dashboard session or an ingestion key.
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -76,6 +76,10 @@ import * as promptTemplatesRoute from '@/app/api/prompt-templates/route';
 import * as promptDefaultsRoute from '@/app/api/prompt-templates/defaults/route';
 import * as allToolsRoute from '@/app/api/tools/all/route';
 import * as indexesRoute from '@/app/api/search-indexes/route';
+import * as exportRoute from '@/app/api/search-indexes/[id]/export/route';
+import * as promptTemplateRoute from '@/app/api/prompt-templates/[id]/route';
+import * as promptHistoryRoute from '@/app/api/prompt-templates/[id]/history/route';
+import * as knowledgeBaseRoute from '@/app/api/knowledge-base/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import * as authRepository from '@/features/auth/auth.repository';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
@@ -545,22 +549,47 @@ describe('review round 2', () => {
     expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(200);
   });
 
-  it("lets a chat editor load what the experience's pickers choose from: tools, MCP connections, prompt templates", async () => {
+  it("lets a chat editor load the lists the experience's pickers choose from, and nothing more", async () => {
     as(await makeUser(await makeRole(`Chat editors ${n}`, ['ai-experiences:edit'])));
     expect((await call(allToolsRoute.GET, 'GET', '/api/tools/all')).status).toBe(200);
     expect((await call(mcpRoute.GET, 'GET', '/api/mcp-connections?pageSize=100')).status).toBe(200);
     expect((await call(promptTemplatesRoute.GET, 'GET', '/api/prompt-templates')).status).toBe(200);
     expect((await call(promptDefaultsRoute.GET, 'GET', '/api/prompt-templates/defaults')).status).toBe(200);
-    // Seeing them, not changing them
+    // Not a template's own page or history, nor the knowledge entries, nor any change
+    expect((await call(promptTemplateRoute.GET, 'GET', '/api/prompt-templates/x', undefined, { id: 'x' })).status).toBe(403);
+    expect((await call(promptHistoryRoute.GET, 'GET', '/api/prompt-templates/x/history', undefined, { id: 'x' })).status).toBe(403);
+    expect((await call(knowledgeBaseRoute.GET, 'GET', '/api/knowledge-base')).status).toBe(403);
+    expect((await call(toolRoute.GET, 'GET', '/api/tools/x', undefined, { id: 'x' })).status).toBe(403);
     expect((await call(toolsRoute.POST, 'POST', '/api/tools', {})).status).toBe(403);
+    // The role itself still holds only what it was given
+    const me = await call(meRoute.GET, 'GET', '/api/me/access');
+    expect((me.body?.data as { permissions: string[] }).permissions.sort()).toEqual(['ai-experiences:edit', 'ai-experiences:view']);
   });
 
-  it("lets a search editor load what the experience's pickers choose from: indexes and data sources", async () => {
+  it("lets a search editor load the lists the experience's pickers choose from, and nothing more", async () => {
     as(await makeUser(await makeRole(`Search editors ${n}`, ['search-experiences:edit'])));
     expect((await call(indexesRoute.GET, 'GET', '/api/search-indexes?isActive=true&pageSize=100')).status).toBe(200);
     expect((await call(dataSourcesRoute.GET, 'GET', '/api/data-sources?pageSize=100')).status).toBe(200);
-    // Never secrets or provider keys
+    // Not an index's documents or export, nor secrets
+    expect((await call(documentsRoute.GET, 'GET', '/api/search-indexes/x/documents', undefined, { id: 'x' })).status).toBe(403);
+    expect((await call(exportRoute.GET, 'GET', '/api/search-indexes/x/export', undefined, { id: 'x' })).status).toBe(403);
     expect((await call(secretsRoute.GET, 'GET', '/api/secrets')).status).toBe(403);
+  });
+
+  it("gives a search editor who can't view data sources the sources without their connection settings", async () => {
+    const name = `Picker source ${n}`;
+    const rows = await testDb.db.execute(sql`INSERT INTO data_sources (name, slug, type, config) VALUES (${name}, ${`picker-source-${n}`}, 'file_store', '{"bucket":"b"}') RETURNING id`);
+    const id = (rows as unknown as { rows: Array<{ id: string }> }).rows[0].id;
+    as(await makeUser(await makeRole(`Source pickers ${n}`, ['search-experiences:edit'])));
+    const one = await call(dataSourceRoute.GET, 'GET', `/api/data-sources/${id}`, undefined, { id: id! });
+    expect(one.status).toBe(200);
+    expect(one.body?.data).toMatchObject({ id, name });
+    expect(one.body?.data).not.toHaveProperty('config');
+    const list = await call(dataSourcesRoute.GET, 'GET', '/api/data-sources?pageSize=100');
+    expect((list.body?.data as Array<Record<string, unknown>>).every((d) => !('config' in d))).toBe(true);
+    // A role that views data sources still sees them whole
+    as(await makeUser(await makeRole(`Source viewers ${n}`, ['data-sources:view'])));
+    expect((await call(dataSourceRoute.GET, 'GET', `/api/data-sources/${id}`, undefined, { id: id! })).body?.data).toHaveProperty('config');
   });
 });
 

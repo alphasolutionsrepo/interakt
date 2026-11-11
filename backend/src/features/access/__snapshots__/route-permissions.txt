@@ -84,9 +84,9 @@ DELETE /api/analytics/session  analytics:manage
 GET    /api/analytics/status  analytics:view
 GET    /api/dashboard/home  signed-in
 POST   /api/dashboard/home/tips  analytics:manage
-GET    /api/data-sources  data-sources:view
+GET    /api/data-sources  any of data-sources:view | search-experiences:edit
 POST   /api/data-sources  data-sources:edit
-GET    /api/data-sources/[id]  data-sources:view
+GET    /api/data-sources/[id]  any of data-sources:view | search-experiences:edit
 PUT    /api/data-sources/[id]  data-sources:edit  +built-in
 DELETE /api/data-sources/[id]  data-sources:edit  +built-in
 POST   /api/data-sources/[id]/health  playground:use
@@ -110,7 +110,7 @@ GET    /api/jobs/types  settings:view
 GET    /api/knowledge-base  prompts:view
 DELETE /api/knowledge-base/[id]  prompts:edit  +built-in
 POST   /api/knowledge-base/upload  prompts:edit  +built-in
-GET    /api/mcp-connections  tools:view
+GET    /api/mcp-connections  any of tools:view | ai-experiences:edit
 POST   /api/mcp-connections  tools:edit
 GET    /api/mcp-connections/[id]  tools:view
 PATCH  /api/mcp-connections/[id]  tools:edit
@@ -118,12 +118,12 @@ DELETE /api/mcp-connections/[id]  tools:edit
 POST   /api/mcp-connections/[id]/sync  tools:edit
 POST   /api/mcp-connections/[id]/test  playground:use
 GET    /api/me/access  signed-in
-GET    /api/prompt-templates  prompts:view
+GET    /api/prompt-templates  any of prompts:view | ai-experiences:edit
 POST   /api/prompt-templates  prompts:edit
 GET    /api/prompt-templates/[id]  prompts:view
 GET    /api/prompt-templates/[id]/history  prompts:view
 POST   /api/prompt-templates/[id]/rollback  prompts:edit
-GET    /api/prompt-templates/defaults  prompts:view
+GET    /api/prompt-templates/defaults  any of prompts:view | ai-experiences:edit
 GET    /api/roles  users:manage
 POST   /api/roles  users:manage
 PUT    /api/roles/[id]  users:manage
@@ -141,7 +141,7 @@ DELETE /api/search-experiences/[id]/indexes/[indexId]  search-experiences:edit  
 POST   /api/search-experiences/[id]/token  search-experiences:edit  +built-in
 GET    /api/search-experiences/check-slug  search-experiences:view
 POST   /api/search-experiences/generate-instructions  playground:use
-GET    /api/search-indexes  search-indexes:view
+GET    /api/search-indexes  any of search-indexes:view | search-experiences:edit
 POST   /api/search-indexes  search-indexes:edit
 GET    /api/search-indexes/[id]  search-indexes:view
 PUT    /api/search-indexes/[id]  search-indexes:edit  +built-in
@@ -161,7 +161,7 @@ DELETE /api/search-indexes/[id]/documents/batches/[batchId]  documents:edit  +bu
 POST   /api/search-indexes/[id]/documents/bulk  documents:edit  +built-in
 POST   /api/search-indexes/[id]/documents/delete-by-filter  documents:edit  +built-in
 GET    /api/search-indexes/[id]/export  search-indexes:view
-GET    /api/search-indexes/[id]/fields  search-indexes:view
+GET    /api/search-indexes/[id]/fields  any of search-indexes:view | search-experiences:edit
 POST   /api/search-indexes/[id]/fields  search-indexes:edit  +built-in
 PUT    /api/search-indexes/[id]/fields/[fieldId]  search-indexes:edit  +built-in
 DELETE /api/search-indexes/[id]/fields/[fieldId]  search-indexes:edit  +built-in
@@ -234,7 +234,7 @@ DELETE /api/tools/[id]  tools:edit  +built-in
 GET    /api/tools/[id]/experiences  tools:view
 GET    /api/tools/[id]/lookup-fields  tools:view
 POST   /api/tools/[id]/test  playground:use
-GET    /api/tools/all  tools:view
+GET    /api/tools/all  any of tools:view | ai-experiences:edit
 GET    /api/tools/by-data-source/[dataSourceId]  tools:view
 GET    /api/tools/capabilities  tools:view
 GET    /api/tools/check-slug  tools:view
