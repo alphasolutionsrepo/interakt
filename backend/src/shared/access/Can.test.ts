@@ -77,4 +77,15 @@ describe('AccessLink', () => {
   it('always links to pages that need only a session', () => {
     expect(link('/dashboard')).toContain('href="/dashboard"');
   });
+
+  it('keeps the content, without the link or its hover styles, when asked to stay plain', () => {
+    const card = () => renderToStaticMarkup(createElement(AccessLink, {
+      href: '/data-sources/abc', plain: 'div', className: 'flex gap-3 hover:underline group-hover:text-primary', children: 'Docs index',
+    }));
+    uiAccess.hold('search-experiences:view');
+    expect(card()).toBe('<div class="flex gap-3">Docs index</div>');
+    uiAccess.hold('data-sources:view');
+    expect(card()).toContain('href="/data-sources/abc"');
+    expect(card()).toContain('hover:underline');
+  });
 });

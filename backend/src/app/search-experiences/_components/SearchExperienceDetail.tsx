@@ -1,5 +1,6 @@
 'use client';
 
+import { AccessLink } from '@/shared/access/Can';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -374,9 +375,10 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
               </div>
             ))}
             {experience.externalSources?.map((src) => (
-              <Link
+              <AccessLink
                 key={src.id}
                 href={`/data-sources/${src.dataSourceId}`}
+                plain="div"
                 className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50 hover:bg-muted/50"
               >
                 <div className="flex items-center gap-3">
@@ -391,7 +393,7 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
                 <Badge variant="outline" className="rounded-lg px-2.5 py-1 text-xs font-semibold text-muted-foreground">
                   External index
                 </Badge>
-              </Link>
+              </AccessLink>
             ))}
           </div>
         )}

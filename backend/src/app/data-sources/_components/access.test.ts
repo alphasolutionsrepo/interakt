@@ -12,8 +12,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { healthCheckDue } from '../_lib/hooks/useHealthCheck';
 
-import { uiAccess } from '@/shared/test/ui-access-stub';
+import { Step2_Config } from './CreateWizard/Step2_Config';
+
 import { menuItems } from '@/shared/test/rendered-controls';
+import { uiAccess } from '@/shared/test/ui-access-stub';
 import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
@@ -56,5 +58,21 @@ describe('healthCheckDue', () => {
   it("doesn't run without a data source or while one is running", () => {
     expect(healthCheckDue({ ...base, dataSourceId: undefined })).toBe(false);
     expect(healthCheckDue({ ...base, running: true, force: true })).toBe(false);
+  });
+});
+
+describe("an external index's setup", () => {
+  const step = () => renderToStaticMarkup(createElement(Step2_Config, { dataSourceType: 'search_index_external', value: {}, onChange: () => {}, errors: {} } as never));
+
+  it('links the Secrets Vault for a role that can open it', () => {
+    uiAccess.hold('data-sources:edit', 'secrets:manage');
+    expect(step()).toContain('href="/secrets"');
+  });
+
+  it('names the Secrets Vault without the link for a role that can’t', () => {
+    uiAccess.hold('data-sources:edit');
+    const html = step();
+    expect(html).not.toContain('href="/secrets"');
+    expect(html).toContain('Secrets Vault');
   });
 });

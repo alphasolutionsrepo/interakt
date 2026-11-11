@@ -1,5 +1,6 @@
 'use client';
 
+import { AccessLink } from '@/shared/access/Can';
 import { use, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -313,9 +314,12 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
                     <p className="text-xs text-muted-foreground font-mono">{exp.slug}</p>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" className="rounded-lg gap-1.5 text-xs" onClick={() => router.push(`/experiences/ai/${exp.id}`)}>
-                  View <ExternalLink className="size-3" />
-                </Button>
+                {/* Offered only to a role that can open chat experiences */}
+                <AccessLink href={`/experiences/ai/${exp.id}`}>
+                  <Button variant="ghost" size="sm" className="rounded-lg gap-1.5 text-xs" tabIndex={-1}>
+                    View <ExternalLink className="size-3" />
+                  </Button>
+                </AccessLink>
               </div>
             ))}
           </CardContent>

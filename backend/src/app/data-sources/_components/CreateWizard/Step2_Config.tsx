@@ -1,5 +1,6 @@
 'use client';
 
+import { AccessLink } from '@/shared/access/Can';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -228,7 +229,7 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
           className="rounded-xl font-mono"
         />
         <p className="text-xs text-muted-foreground">
-          Name of the secret stored in the <a href="/secrets" className="underline hover:text-foreground" target="_blank">Secrets Vault</a>.
+          Name of the secret stored in the <AccessLink href="/secrets" className="underline hover:text-foreground" target="_blank" fallback="Secrets Vault">Secrets Vault</AccessLink>.
           Create the secret first, then reference it by name here.
         </p>
       </div>

@@ -40,13 +40,17 @@ export function Can({ children, fallback = null, ...rule }: CanProps) {
 
 /**
  * A link that hides itself when the page it points to is closed to the role (page-permissions.ts),
- * so nobody follows a link to "You don't have access to this page". `fallback` renders instead,
- * for example the same label as plain text.
+ * so nobody follows a link to "You don't have access to this page". `fallback` renders instead;
+ * `plain` keeps the content (a name, a card) as an ordinary span or div, without hover styles.
  */
-export function AccessLink({ fallback = null, ...props }: ComponentProps<typeof Link> & { fallback?: ReactNode }) {
+export function AccessLink({ fallback = null, plain, ...props }: ComponentProps<typeof Link> & { fallback?: ReactNode; plain?: 'span' | 'div' }) {
   const canOpen = useCanOpenPage();
   const path = typeof props.href === 'string' ? props.href : (props.href.pathname ?? '');
-  return canOpen(path) ? <Link {...props} /> : <>{fallback}</>;
+  if (canOpen(path)) return <Link {...props} />;
+  if (!plain) return <>{fallback}</>;
+  const Tag = plain;
+  const className = props.className?.split(/\s+/).filter((c) => !c.startsWith('hover:') && !c.startsWith('group-hover:')).join(' ');
+  return <Tag className={className}>{props.children as ReactNode}</Tag>;
 }
 
 /** Whether the user can open a page (query and hash ignored), for a link AccessLink can't wrap. */

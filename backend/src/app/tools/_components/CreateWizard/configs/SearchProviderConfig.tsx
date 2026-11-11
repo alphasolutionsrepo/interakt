@@ -1,5 +1,6 @@
 'use client';
 
+import { AccessLink } from '@/shared/access/Can';
 import { useEffect, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -291,9 +292,9 @@ export function SearchProviderConfig({ value, onChange, errors, onSchemaImport, 
             {dataSources.length === 0 && !loading && !loadError && (
               <div className="px-3 py-4 text-center text-sm text-muted-foreground">
                 No active data sources found.{' '}
-                <a href="/data-sources/new" className="underline hover:text-foreground" target="_blank">
+                <AccessLink href="/data-sources/create" className="underline hover:text-foreground" target="_blank">
                   Create one first
-                </a>.
+                </AccessLink>.
               </div>
             )}
             {dataSources.map((ds) => (
@@ -316,7 +317,7 @@ export function SearchProviderConfig({ value, onChange, errors, onSchemaImport, 
         {loadError && <p className="text-xs text-destructive">{loadError}</p>}
         <p className="text-xs text-muted-foreground">
           Choose the data source this tool will search. Data sources are created in the{' '}
-          <a href="/data-sources" className="underline hover:text-foreground" target="_blank">Data Sources</a> section.
+          <AccessLink href="/data-sources" className="underline hover:text-foreground" target="_blank" fallback="Data Sources">Data Sources</AccessLink> section.
         </p>
       </div>
 
