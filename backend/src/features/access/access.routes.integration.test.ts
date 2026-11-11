@@ -570,6 +570,12 @@ describe('review round 2', () => {
     as(await makeUser(await makeRole(`Search editors ${n}`, ['search-experiences:edit'])));
     expect((await call(indexesRoute.GET, 'GET', '/api/search-indexes?isActive=true&pageSize=100')).status).toBe(200);
     expect((await call(dataSourcesRoute.GET, 'GET', '/api/data-sources?pageSize=100')).status).toBe(200);
+    // Index rows carry only what the source picker shows
+    await testDb.db.execute(sql`INSERT INTO search_index (name, display_name, search_type) VALUES (${`pick-index-${n}`}, ${`Pick index ${n}`}, 'lexical')`);
+    const indexRows = ((await call(indexesRoute.GET, 'GET', '/api/search-indexes?pageSize=100')).body?.data as { items: Array<Record<string, unknown>> }).items;
+    expect(indexRows.length).toBeGreaterThan(0);
+    const indexShown = new Set(['id', 'name', 'displayName', 'description', 'searchType', 'searchProvider', 'status', 'documentCount', 'isActive', 'isBuiltIn']);
+    expect(indexRows.flatMap((r) => Object.keys(r)).filter((k) => !indexShown.has(k))).toEqual([]);
     // Not an index's documents or export, nor secrets
     expect((await call(documentsRoute.GET, 'GET', '/api/search-indexes/x/documents', undefined, { id: 'x' })).status).toBe(403);
     expect((await call(exportRoute.GET, 'GET', '/api/search-indexes/x/export', undefined, { id: 'x' })).status).toBe(403);
@@ -579,7 +585,7 @@ describe('review round 2', () => {
   it("gives a chat editor who can't view tools or prompts only what the pickers show: no settings, auth or prompt text", async () => {
     const tag = `pick${n}`;
     await testDb.db.execute(sql`INSERT INTO tools (name, slug, ai_description, executor_type, executor_config, is_active) VALUES (${tag}, ${tag}, 'Finds things', 'http', '{"baseUrl":"https://tool.internal.test","method":"GET"}', true)`);
-    await testDb.db.execute(sql`INSERT INTO mcp_connections (name, slug, server_url, auth_config, last_health_message) VALUES (${tag}, ${tag}, 'https://mcp.test', '{"type":"bearer","secretRef":"mcp-token"}', 'health detail')`);
+    await testDb.db.execute(sql`INSERT INTO mcp_connections (name, slug, server_url, auth_config, last_health_message, discovered_tools) VALUES (${tag}, ${tag}, 'https://user:pw@mcp.test/sse/path-token?key=abc', '{"type":"bearer","secretRef":"mcp-token"}', 'health detail', '{"tools":[{"name":"lookup","description":"Looks up","inputSchema":{"type":"object"}}]}')`);
     await testDb.db.execute(sql`INSERT INTO prompt_templates (step, version, label, content, metadata, is_system_default) VALUES ('agentic_loop', 1, ${tag}, 'SECRET PROMPT TEXT', '{"variables":[],"sections":[]}', true)`);
     as(await makeUser(await makeRole(`Chat pickers ${n}`, ['ai-experiences:edit'])));
 
@@ -590,9 +596,9 @@ describe('review round 2', () => {
     expect(tools.flatMap((t) => Object.keys(t)).filter((k) => !shown.has(k))).toEqual([]);
     const mcp = (await call(mcpRoute.GET, 'GET', '/api/mcp-connections?pageSize=100')).body?.data as Array<Record<string, unknown>>;
     const conn = mcp.find((c) => c.name === tag)!;
-    expect(conn).toMatchObject({ name: tag, serverUrl: 'https://mcp.test' });
-    expect(conn).not.toHaveProperty('authConfig');
-    expect(conn).not.toHaveProperty('lastHealthMessage');
+    // Only the host of its address (the path, query or user part can carry a token), and the tools' names
+    expect(conn).toMatchObject({ name: tag, serverUrl: 'mcp.test', discoveredTools: { tools: [{ name: 'lookup', description: 'Looks up' }] } });
+    expect(JSON.stringify(conn)).not.toMatch(/path-token|key=abc|pw@|inputSchema|mcp-token|health detail/);
     const templates = JSON.stringify((await call(promptTemplatesRoute.GET, 'GET', '/api/prompt-templates')).body?.data);
     expect(templates).toContain(tag);
     expect(templates).not.toContain('SECRET PROMPT TEXT');
@@ -611,7 +617,7 @@ describe('review round 2', () => {
 
   it("gives a search editor who can't view data sources the sources without their connection settings", async () => {
     const name = `Picker source ${n}`;
-    const rows = await testDb.db.execute(sql`INSERT INTO data_sources (name, slug, type, config) VALUES (${name}, ${`picker-source-${n}`}, 'search_index_external', '{"provider":"azure_ai_search","endpoint":"https://search.internal.test","apiKeySecretRef":"azure-key"}') RETURNING id`);
+    const rows = await testDb.db.execute(sql`INSERT INTO data_sources (name, slug, type, config, schema) VALUES (${name}, ${`picker-source-${n}`}, 'search_index_external', '{"provider":"azure_ai_search","endpoint":"https://search.internal.test","apiKeySecretRef":"azure-key"}', '{"fields":[{"name":"title","displayName":"Title","type":"text","isSearchable":true,"isFacetable":false,"isFilterable":false,"profile":{"sampleSize":5,"nullRate":0,"distinctInSample":5,"sampleValues":["Private doc title"],"profiledAt":"x"}}]}') RETURNING id`);
     const id = (rows as unknown as { rows: Array<{ id: string }> }).rows[0].id;
     as(await makeUser(await makeRole(`Source pickers ${n}`, ['search-experiences:edit'])));
     const one = await call(dataSourceRoute.GET, 'GET', `/api/data-sources/${id}`, undefined, { id: id! });
@@ -619,6 +625,9 @@ describe('review round 2', () => {
     expect(one.body?.data).toMatchObject({ id, name });
     // The provider names it in the picker; the rest of its settings stay out
     expect((one.body?.data as Record<string, unknown>).config).toEqual({ provider: 'azure_ai_search' });
+    // Its fields, without the values sampled from documents
+    expect(one.body?.data).toMatchObject({ schema: { fields: [{ name: 'title', type: 'text' }] } });
+    expect(JSON.stringify(one.body?.data)).not.toContain('Private doc title');
     const list = await call(dataSourcesRoute.GET, 'GET', '/api/data-sources?pageSize=100');
     expect(JSON.stringify(list.body?.data)).not.toContain('search.internal.test');
     expect(JSON.stringify(list.body?.data)).not.toContain('azure-key');
