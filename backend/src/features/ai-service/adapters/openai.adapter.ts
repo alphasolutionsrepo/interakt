@@ -27,7 +27,7 @@ import type {
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal, wasAborted } from './types';
-import { withoutUnsupportedReasoning } from './reasoning-fallback';
+import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './reasoning-fallback';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -590,11 +590,11 @@ export class OpenAIAdapter implements AIProviderAdapter {
             ...(request.dimensions && { dimensions: request.dimensions }),
         };
 
-        const response = await this.makeRequest<OpenAIEmbeddingResponse>(
+        const response = await withoutUnsupportedDimensions(config.baseUrl, openaiRequest, (body) => this.makeRequest<OpenAIEmbeddingResponse>(
             `${config.baseUrl}/embeddings`,
-            openaiRequest,
+            body,
             config
-        );
+        ));
 
         // Sort by index to ensure order matches input
         const sortedData = [...response.data].sort((a, b) => a.index - b.index);

@@ -37,3 +37,34 @@ export async function withoutUnsupportedReasoning<B extends { model: string }, T
         return send(without as B);
     }
 }
+
+/** Models already reported as refusing a vector size, by server and model */
+const warnedNoDimensions = new Set<string>();
+
+/**
+ * Send an embedding request, and when the server refuses the vector size it carries (400 or
+ * 422 naming dimensions: OpenAI's ada-002, Ollama for a size above the model's own), send it
+ * once more without one: the call works, with the model's own size (the AI service warns when
+ * that differs from the index), and a warning, once per model on each server, says so.
+ */
+export async function withoutUnsupportedDimensions<B extends { model: string; dimensions?: number }, T>(
+    server: string,
+    body: B,
+    send: (body: B) => Promise<T>,
+): Promise<T> {
+    try {
+        return await send(body);
+    } catch (error) {
+        const refused = error instanceof AdapterError
+            && (error.statusCode === 400 || error.statusCode === 422)
+            && /dimensions/i.test(error.message);
+        if (!refused || body.dimensions === undefined) throw error;
+        const key = `${server}|${body.model}`;
+        if (!warnedNoDimensions.has(key)) {
+            warnedNoDimensions.add(key);
+            logger.warn('Model refused the requested embedding size; sent without it', { model: body.model, dimensions: body.dimensions });
+        }
+        const { dimensions: _dropped, ...without } = body;
+        return send(without as B);
+    }
+}

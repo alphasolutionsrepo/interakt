@@ -81,6 +81,51 @@ describe('the OpenAI-compatible adapter embedding request', () => {
   });
 });
 
+describe('a model that refuses the requested vector size', () => {
+  const refusal = (message: string) => () => new Response(JSON.stringify({ error: { message } }), { status: 400 });
+  /** The server answers `first` to a request carrying dimensions and a vector otherwise; the bodies it was sent */
+  function refusingServer(first: () => Response, shape: 'openai' | 'ollama') {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      if ('dimensions' in body) return first();
+      return shape === 'openai'
+        ? new Response(JSON.stringify({ data: [{ index: 0, embedding: vectorOf(1536) }], usage: { prompt_tokens: 1, total_tokens: 1 } }))
+        : new Response(JSON.stringify({ model: body.model, embeddings: [vectorOf(768)] }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return () => fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string));
+  }
+  const refusedDimensions = 'This model does not support specifying dimensions';
+
+  it('is asked again once without dimensions, and answers (OpenAI-compatible)', async () => {
+    const sent = refusingServer(refusal(refusedDimensions), 'openai');
+    const result = await new OpenAIAdapter().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, { ...config, baseUrl: 'http://ada-server.test' });
+    expect(sent().map((body) => 'dimensions' in body)).toEqual([true, false]);
+    expect(result.embeddings[0]).toHaveLength(1536);
+  });
+
+  it('is asked again once without dimensions, and answers (Ollama)', async () => {
+    const sent = refusingServer(() => new Response(JSON.stringify({ error: 'dimensions 4096 exceeds embedding length 768' }), { status: 400 }), 'ollama');
+    const result = await new OllamaAdapter().generateEmbeddings({ texts: ['a'], dimensions: 4096 }, { ...config, baseUrl: 'http://small-model.test' });
+    expect(sent().map((body) => 'dimensions' in body)).toEqual([true, false]);
+    expect(result.embeddings[0]).toHaveLength(768);
+  });
+
+  it('passes on a 400 about something else without asking again', async () => {
+    const sent = refusingServer(refusal('input is too long'), 'openai');
+    await expect(new OpenAIAdapter().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, { ...config, baseUrl: 'http://other-server.test' }))
+      .rejects.toThrow(/too long/);
+    expect(sent()).toHaveLength(1);
+  });
+
+  it('does not ask again when no dimensions were sent', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: { message: refusedDimensions } }), { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(new OpenAIAdapter().generateEmbeddings({ texts: ['a'] }, { ...config, baseUrl: 'http://no-dims.test' })).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('generateEmbeddings in the AI service', () => {
   it('passes the expected dimensions on to every batch sent to Ollama', async () => {
     const sent = fakeOllama();

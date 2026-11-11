@@ -24,7 +24,7 @@ import type {
 } from '../ai-service.types';
 
 import { estimateChatUsage } from '../utils/token-counter';
-import { withoutUnsupportedReasoning } from './reasoning-fallback';
+import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './reasoning-fallback';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal, wasAborted } from './types';
 
 
@@ -363,11 +363,11 @@ export class OllamaAdapter implements AIProviderAdapter {
 
         try {
             // Try new /api/embed endpoint first (Ollama 0.1.44+)
-            const response = await this.makeRequest<OllamaEmbeddingResponse>(
+            const response = await withoutUnsupportedDimensions(config.baseUrl, ollamaRequest, (body) => this.makeRequest<OllamaEmbeddingResponse>(
                 `${config.baseUrl}/api/embed`,
-                ollamaRequest,
+                body,
                 config
-            );
+            ));
 
             return {
                 embeddings: response.embeddings,
