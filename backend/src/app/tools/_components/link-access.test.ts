@@ -78,5 +78,6 @@ describe("the search tool's setup", () => {
     expect(html).not.toContain('href="/data-sources');
     expect(html).toContain('Data Sources');
     expect(html).toContain('No active data sources found.');
+    expect(html).not.toMatch(/found\.\s*(<!-- -->)?\s*\./); // no stray period where the link was
   });
 });

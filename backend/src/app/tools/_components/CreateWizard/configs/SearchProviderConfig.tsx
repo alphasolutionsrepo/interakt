@@ -293,8 +293,8 @@ export function SearchProviderConfig({ value, onChange, errors, onSchemaImport, 
               <div className="px-3 py-4 text-center text-sm text-muted-foreground">
                 No active data sources found.{' '}
                 <AccessLink href="/data-sources/create" className="underline hover:text-foreground" target="_blank">
-                  Create one first
-                </AccessLink>.
+                  Create one first.
+                </AccessLink>
               </div>
             )}
             {dataSources.map((ds) => (
