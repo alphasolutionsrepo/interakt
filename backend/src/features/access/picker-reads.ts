@@ -74,6 +74,17 @@ function cutDown(data: unknown, pick: (row: Row) => Row, byStep: boolean): unkno
   return pick(data);
 }
 
+/** `res` as is for a caller holding `view`; otherwise its JSON `data` reshaped by `shape` */
+async function cutUnless(res: Response, view: Permission, shape: (data: unknown) => unknown): Promise<Response> {
+  const { access } = await checkAccess(SIGNED_IN);
+  if ((access && can(access, view)) || !res.headers.get('content-type')?.includes('application/json')) return res;
+  const body = (await res.json()) as unknown;
+  const headers = new Headers(res.headers);
+  headers.delete('content-length');
+  const shaped = isRow(body) && 'data' in body ? { ...body, data: shape(body.data) } : body;
+  return NextResponse.json(shaped, { status: res.status, headers });
+}
+
 /**
  * The gate for a picker's list route: PICKER_READERS[kind]; a caller without its view
  * permission (the first one listed) gets `data` cut down to `fields`.
@@ -85,15 +96,21 @@ export function forPickers<A extends unknown[]>(
   options: { byStep?: boolean } = {},
 ) {
   const rule = PICKER_READERS[kind];
-  const view: Permission = rule[0];
-  return withPermission(rule, async (...args: A): Promise<Response> => {
-    const res = await handler(...args);
-    const { access } = await checkAccess(SIGNED_IN);
-    if ((access && can(access, view)) || !res.headers.get('content-type')?.includes('application/json')) return res;
-    const body = (await res.json()) as unknown;
-    const headers = new Headers(res.headers);
-    headers.delete('content-length');
-    const shaped = isRow(body) && 'data' in body ? { ...body, data: cutDown(body.data, PICKER_FIELDS[fields], options.byStep ?? false) } : body;
-    return NextResponse.json(shaped, { status: res.status, headers });
-  });
+  return withPermission(rule, async (...args: A): Promise<Response> =>
+    cutUnless(await handler(...args), rule[0], (data) => cutDown(data, PICKER_FIELDS[fields], options.byStep ?? false)),
+  );
+}
+
+/**
+ * The MCP connections attached to a chat experience, for anyone who views the experience: a
+ * caller who can't view tools gets each attached connection as the MCP picker shows it.
+ */
+export function forExperienceMcpAttachments<A extends unknown[]>(handler: (...args: A) => Response | Promise<Response>) {
+  return withPermission('ai-experiences:view', async (...args: A): Promise<Response> =>
+    cutUnless(await handler(...args), 'tools:view', (data) =>
+      Array.isArray(data)
+        ? data.map((a) => (isRow(a) && isRow(a.mcpConnection) ? { ...a, mcpConnection: PICKER_FIELDS.mcpConnections(a.mcpConnection) } : a))
+        : data,
+    ),
+  );
 }

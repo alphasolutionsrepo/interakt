@@ -76,6 +76,7 @@ import * as promptTemplatesRoute from '@/app/api/prompt-templates/route';
 import * as promptDefaultsRoute from '@/app/api/prompt-templates/defaults/route';
 import * as allToolsRoute from '@/app/api/tools/all/route';
 import * as indexesRoute from '@/app/api/search-indexes/route';
+import * as attachmentsRoute from '@/app/api/ai-experiences/[id]/mcp-connections/route';
 import * as exportRoute from '@/app/api/search-indexes/[id]/export/route';
 import * as promptTemplateRoute from '@/app/api/prompt-templates/[id]/route';
 import * as promptHistoryRoute from '@/app/api/prompt-templates/[id]/history/route';
@@ -609,6 +610,17 @@ describe('review round 2', () => {
     expect(rows.length).toBeGreaterThan(0);
     const picked = new Set(['id', 'step', 'version', 'label', 'status', 'isSystemDefault']);
     expect(rows.flatMap((d) => Object.keys(d)).filter((k) => !picked.has(k))).toEqual([]);
+
+    // The experience's own list of attached connections shows them the same way
+    const experienceId = ((await testDb.db.execute(sql`INSERT INTO ai_experiences (name, slug, created_by, persona_config, session_config, access_config, observability_config) VALUES (${tag}, ${tag}, ${admin}, '{}', '{}', '{}', '{}') RETURNING id`)) as unknown as { rows: Array<{ id: string }> }).rows[0].id;
+    await testDb.db.execute(sql`INSERT INTO ai_experience_mcp_connections (ai_experience_id, mcp_connection_id) SELECT ${experienceId}, id FROM mcp_connections WHERE name = ${tag}`);
+    const attached = await call(attachmentsRoute.GET, 'GET', `/api/ai-experiences/${experienceId}/mcp-connections`, undefined, { id: experienceId });
+    expect(attached.status).toBe(200);
+    expect(attached.body?.data).toMatchObject([{ mcpConnection: { name: tag, serverUrl: 'mcp.test' } }]);
+    expect(JSON.stringify(attached.body?.data)).not.toMatch(/path-token|key=abc|pw@|inputSchema|mcp-token|health detail/);
+    // A role that views tools sees the attached connection whole
+    as(await makeUser(await makeRole(`Tool viewers ${n}`, ['tools:view', 'ai-experiences:view'])));
+    expect(JSON.stringify((await call(attachmentsRoute.GET, 'GET', `/api/ai-experiences/${experienceId}/mcp-connections`, undefined, { id: experienceId })).body?.data)).toContain('mcp-token');
 
     // A role that views them still gets them whole
     as(await makeUser(await makeRole(`Prompt viewers ${n}`, ['prompts:view'])));

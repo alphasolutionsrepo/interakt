@@ -212,6 +212,15 @@ describe('seedDocsSearch', () => {
     expect(calls.createIndex).toEqual([]);
   });
 
+  it('marks its own existing experience built in on a rebuild, when an older version left it unmarked', async () => {
+    await seedDocsSearch();
+    world.experience!.isBuiltIn = false; // made before the built-in flag existed
+    await seedDocsSearch({ force: true });
+    expect(calls.createExperience).toBe(1);
+    expect(calls.markExperience).toBe(1);
+    expect(world.experience?.isBuiltIn).toBe(true);
+  });
+
   it('marks the experience it builds as the built-in help, also when a rebuild recreates it', async () => {
     await seedDocsSearch();
     expect(world.experience?.isBuiltIn).toBe(true);
