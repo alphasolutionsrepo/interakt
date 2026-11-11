@@ -49,7 +49,8 @@ export function RolesPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-muted-foreground">
-          A role is a set of permissions. Admin is built in and holds every permission.
+          A role is a set of permissions. Admin is built in and holds every permission. User managers can give
+          only roles whose permissions are all in their own.
         </p>
         <ActionButton gate={gate} icon={Plus} onClick={() => setCreating(true)} className="rounded-xl shrink-0">
           Add Role

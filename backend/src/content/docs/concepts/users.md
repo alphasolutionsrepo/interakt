@@ -57,13 +57,14 @@ The sidebar shows each user the pages their role can open, and the server checks
 
 ## Who can give which role
 
-Only an Admin creates, changes or deletes roles. Anyone with the *Manage users and give them any role except Admin* permission can add users and give them any role except Admin.
+Only an Admin creates, changes or deletes roles. Anyone with the *Manage users and give them roles within your own* permission can add users and give them roles, within one rule: **you can only give out what you have yourself**.
 
+- You can give a role, or manage someone who has it, only when every permission in that role is also in yours.
 - Only an Admin can make someone an Admin, or manage a user who is an Admin.
 - You can't change your own role or deactivate yourself. Another user manager does that.
 - Interakt always keeps at least one active Admin.
 
-Giving out roles is a trusted permission: a user manager can give someone a role with more permissions than their own. Give it to people you'd trust with those roles.
+A role that can only manage users can't give much. Give user managers a role that also holds what they'll hand out, for example a *Team lead* role with the Editor permissions plus *Manage users*.
 
 An Admin can delete a role once no user holds it.
 

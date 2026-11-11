@@ -45,7 +45,12 @@ const can = (p: Permission) => held.has(p);
 export const useAccessModule = {
   accessKeys: { mine: ['access', 'mine'] as const },
   useAccess: () => ({
-    access: undefined,
+    // What /api/me/access would answer for these permissions
+    access: loading ? undefined : {
+      userId: 'me',
+      role: { id: 'role', name: admin ? 'Admin' : 'Test role', isAdmin: admin },
+      permissions: [...held],
+    },
     isLoading: loading,
     errorStatus: null,
     retry: () => {},

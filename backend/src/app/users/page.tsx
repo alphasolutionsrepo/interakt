@@ -97,7 +97,7 @@ export default function UsersPage() {
   } = useUsers();
   const { roles } = useRoles();
   const { access, isAdmin, isLoading: accessLoading } = useAccess();
-  const caller = { isLoading: accessLoading, isAdmin, userId: access?.userId };
+  const caller = { isLoading: accessLoading, isAdmin, userId: access?.userId, permissions: access?.permissions ?? [] };
   // Every role, the ones this user can't give locked with the reason (the server checks too)
   const choices = roleChoices(caller, roles);
 
@@ -275,6 +275,7 @@ export default function UsersPage() {
         onDeactivate={setUserToDeactivate}
         isActivating={isActivating}
         isDeactivating={isDeactivating}
+        roles={roles}
       />
         </TabsContent>
       </Tabs>
@@ -295,7 +296,7 @@ export default function UsersPage() {
         onSubmit={handleUpdateUser}
         user={editingUser || undefined}
         roles={choices}
-        roleGate={editingUser ? userGates(caller, editingUser).role : undefined}
+        roleGate={editingUser ? userGates(caller, editingUser, roles).role : undefined}
         isSubmitting={isUpdating}
       />
 

@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toolsApi, type ToolTestResult } from '../_lib/api-client';
 import { errorText } from '@/shared/api/api-error';
-import { ActionButton } from '@/shared/access/ActionControls';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 
 /** Run a tool with test input; Run is locked with the reason for a role that can't test (it calls the tool). */
 export function ToolTestPanel({ toolId, isActive, executorType, operation }: {
@@ -54,6 +54,8 @@ export function ToolTestPanel({ toolId, isActive, executorType, operation }: {
     return { query: query.trim() };
   }
 
+  // A test run calls the tool for real: playground:use
+  const runGate = useActionGate('tools.test');
   const canRun = isActive && !running && (() => {
     if (!isActive) return false;
     if (operation === 'inspect') return true;
@@ -64,7 +66,8 @@ export function ToolTestPanel({ toolId, isActive, executorType, operation }: {
 
   async function handleRun() {
     const input = buildInput();
-    if (input === null || running) return;
+    // Enter in the inputs runs it too, so the lock is checked here as well as on the button
+    if (input === null || running || runGate.state !== 'allowed') return;
     setRunning(true);
     setResult(null);
     try {
@@ -78,7 +81,7 @@ export function ToolTestPanel({ toolId, isActive, executorType, operation }: {
 
   const runButton = (
     <ActionButton
-      action="tools.test"
+      gate={runGate}
       icon={running ? Loader2 : Play}
       iconClassName={running ? 'size-4 mr-2 animate-spin' : 'size-4 mr-2'}
       className="rounded-xl shrink-0"
