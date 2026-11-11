@@ -208,6 +208,9 @@ export const modelFieldRules = {
     .optional()
     .nullable(),
 
+  // Left out on create, it follows the model's family (shortenable-embeddings.ts)
+  canShortenVectors: z.boolean().optional(),
+
   // Pricing fields for cost estimation
   inputCostPerMillionTokens: costPerMillionTokens,
   outputCostPerMillionTokens: costPerMillionTokens,
@@ -235,6 +238,7 @@ export const updateAIModelSchema = z.object({
   displayName: modelFieldRules.displayName.optional(),
   description: modelFieldRules.description,
   dimensions: modelFieldRules.dimensions,
+  canShortenVectors: modelFieldRules.canShortenVectors,
   capabilities: modelCapabilitiesSchema.optional(),
   isAvailable: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),

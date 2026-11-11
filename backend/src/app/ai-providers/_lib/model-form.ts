@@ -54,6 +54,7 @@ export function formValuesOf(model: AIProviderModelResponse): ModelFormData {
         description: model.description || '',
         modelType: model.modelType as ModelFormData['modelType'],
         dimensions: model.dimensions || undefined,
+        canShortenVectors: model.canShortenVectors === true,
         isAvailable: model.isAvailable,
         inputCostPerMillionTokens: model.inputCostPerMillionTokens ?? undefined,
         outputCostPerMillionTokens: model.outputCostPerMillionTokens ?? undefined,
@@ -70,6 +71,7 @@ export interface ModelFormSubmission {
     description?: string | null;
     modelType: 'text' | 'chat' | 'embedding' | 'vision';
     dimensions?: number | null;
+    canShortenVectors?: boolean;
     isAvailable: boolean;
     inputCostPerMillionTokens?: number | null;
     outputCostPerMillionTokens?: number | null;
@@ -88,6 +90,7 @@ export function modelUpdateInput(model: AIProviderModelResponse, data: ModelForm
         description: data.description,
         // Only update dimensions if it's an embedding model
         dimensions: model.modelType === 'embedding' ? data.dimensions : undefined,
+        canShortenVectors: model.modelType === 'embedding' ? data.canShortenVectors : undefined,
         isAvailable: data.isAvailable,
         inputCostPerMillionTokens: data.inputCostPerMillionTokens,
         outputCostPerMillionTokens: data.outputCostPerMillionTokens,

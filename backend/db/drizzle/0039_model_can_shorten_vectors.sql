@@ -1,0 +1,1 @@
+ALTER TABLE "ai_provider_models" ADD COLUMN "can_shorten_vectors" boolean DEFAULT false NOT NULL;

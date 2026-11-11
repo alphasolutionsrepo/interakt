@@ -1,20 +1,29 @@
 // src/features/ai-service/ai-service.embedding-dimensions.test.ts
 
 /**
- * The vector size a caller expects is sent to Ollama, so models that return longer
- * vectors (qwen3-embedding:4b gives 2560) fit an index mapped for fewer (1536).
- * Runs the real AI service and Ollama adapter; only the network is faked.
- * The last test calls a real local Ollama and runs only with OLLAMA_LIVE=1.
+ * The vector size a caller expects is sent to a model that can shorten its vectors, so
+ * models that return longer ones (qwen3-embedding:4b gives 2560) fit an index mapped for
+ * fewer (1536). A model that is not marked as able to shorten gets no size.
+ * Runs the real AI service and both adapters; only the network is faked.
+ * The last tests call a real local Ollama and run only with OLLAMA_LIVE=1.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { embedBatch } from '@/features/embedding/embedding.service';
+import { reported, type LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('./ai-service.analytics', () => ({ trackUsage: vi.fn(), updateRealtimeMetrics: vi.fn() }));
+
+/** The model row the AI service resolves: the registered size, and whether it can shorten vectors */
+const model = vi.hoisted(() => ({ modelKey: 'qwen3-embedding:4b', dimensions: 1536 as number | null, canShortenVectors: true }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
   getProviderConfigById: async () => ({ id: 'prov-1', providerKey: 'ollama', isEnabled: true, baseUrl: 'http://model.test', settings: {} }),
-  getModelById: async () => ({ id: 7, modelKey: 'qwen3-embedding:4b', capabilities: {} }),
+  getModelById: async () => ({ id: 7, capabilities: {}, ...model }),
   getProviderByKey: vi.fn(),
-  getResolvedDefaults: vi.fn(),
+  getResolvedDefaults: async () => ({ embedding: { providerId: 'prov-1', modelId: 7 } }),
 }));
 
 import { OllamaAdapter } from './adapters/ollama.adapter';
@@ -23,112 +32,128 @@ import { generateEmbeddings } from './ai-service.service';
 
 const config = { baseUrl: 'http://model.test', apiKey: '', modelKey: 'qwen3-embedding:4b', timeout: 5000, settings: {}, capabilities: {} };
 const vectorOf = (size: number) => Array.from({ length: size }, () => 0.1);
+const server = (name: string) => ({ ...config, baseUrl: `http://${name}.test` });
 
-/** Ollama answering /api/embed with vectors of the size asked for (or 2560); the bodies it was sent */
-function fakeOllama() {
+type Body = { model: string; input: string[]; dimensions?: number };
+type Style = 'openai' | 'ollama';
+
+/** A server answering with vectors of the size asked for (or `own`); the bodies it was sent */
+function fakeServer(style: Style, own = 2560, refuse?: (body: Body) => Response | undefined) {
   const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(init.body as string);
-    const size = body.dimensions ?? 2560;
-    return new Response(JSON.stringify({ model: body.model, embeddings: body.input.map(() => vectorOf(size)) }));
+    const body = JSON.parse(init.body as string) as Body;
+    const refused = refuse?.(body);
+    if (refused) return refused;
+    const size = body.dimensions ?? own;
+    return style === 'openai'
+      ? new Response(JSON.stringify({ data: body.input.map((_, index) => ({ index, embedding: vectorOf(size) })), usage: { prompt_tokens: 1, total_tokens: 1 } }))
+      : new Response(JSON.stringify({ model: body.model, embeddings: body.input.map(() => vectorOf(size)) }));
   });
   vi.stubGlobal('fetch', fetchMock);
-  return () => fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string));
+  return () => fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string) as Body);
 }
 
+const adapters = { openai: () => new OpenAIAdapter(), ollama: () => new OllamaAdapter() };
+
+beforeEach(() => {
+  logs.length = 0;
+  model.modelKey = 'qwen3-embedding:4b';
+  model.dimensions = 1536;
+  model.canShortenVectors = true;
+});
 afterEach(() => vi.unstubAllGlobals());
 
-describe('the Ollama adapter embedding request', () => {
+describe.each(['openai', 'ollama'] as const)('the %s adapter embedding request', (style) => {
   it('sends the expected dimensions when the caller gives them', async () => {
-    const sent = fakeOllama();
-    const result = await new OllamaAdapter().generateEmbeddings({ texts: ['a', 'b'], dimensions: 1536 }, config);
-    expect(sent()).toEqual([{ model: 'qwen3-embedding:4b', input: ['a', 'b'], dimensions: 1536 }]);
-    expect(result.dimensions).toBe(1536);
-  });
-
-  it('leaves dimensions out when the caller gives none', async () => {
-    const sent = fakeOllama();
-    await new OllamaAdapter().generateEmbeddings({ texts: ['a'] }, config);
-    expect(sent()[0]).not.toHaveProperty('dimensions');
-  });
-});
-
-/** An OpenAI-compatible server answering /embeddings with vectors of the size asked for (or 2560); the bodies it was sent */
-function fakeOpenAICompatible() {
-  const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(init.body as string);
-    const size = body.dimensions ?? 2560;
-    return new Response(JSON.stringify({
-      data: body.input.map((_: string, index: number) => ({ index, embedding: vectorOf(size) })),
-      usage: { prompt_tokens: 1, total_tokens: 1 },
-    }));
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return () => fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string));
-}
-
-describe('the OpenAI-compatible adapter embedding request', () => {
-  it('sends the expected dimensions when the caller gives them', async () => {
-    const sent = fakeOpenAICompatible();
-    const result = await new OpenAIAdapter().generateEmbeddings({ texts: ['a', 'b'], dimensions: 1536 }, config);
+    const sent = fakeServer(style);
+    const result = await adapters[style]().generateEmbeddings({ texts: ['a', 'b'], dimensions: 1536 }, config);
     expect(sent()[0]).toMatchObject({ model: 'qwen3-embedding:4b', input: ['a', 'b'], dimensions: 1536 });
     expect(result.dimensions).toBe(1536);
   });
 
   it('leaves dimensions out when the caller gives none', async () => {
-    const sent = fakeOpenAICompatible();
-    await new OpenAIAdapter().generateEmbeddings({ texts: ['a'] }, config);
+    const sent = fakeServer(style);
+    await adapters[style]().generateEmbeddings({ texts: ['a'] }, config);
     expect(sent()[0]).not.toHaveProperty('dimensions');
   });
 });
 
-describe('a model that refuses the requested vector size', () => {
-  const refusal = (message: string) => () => new Response(JSON.stringify({ error: { message } }), { status: 400 });
-  /** The server answers `first` to a request carrying dimensions and a vector otherwise; the bodies it was sent */
-  function refusingServer(first: () => Response, shape: 'openai' | 'ollama') {
-    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const body = JSON.parse(init.body as string);
-      if ('dimensions' in body) return first();
-      return shape === 'openai'
-        ? new Response(JSON.stringify({ data: [{ index: 0, embedding: vectorOf(1536) }], usage: { prompt_tokens: 1, total_tokens: 1 } }))
-        : new Response(JSON.stringify({ model: body.model, embeddings: [vectorOf(768)] }));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    return () => fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string));
-  }
-  const refusedDimensions = 'This model does not support specifying dimensions';
+describe.each(['openai', 'ollama'] as const)('a model that refuses the requested vector size (%s)', (style) => {
+  // The model's own size is 768; it refuses a size it can't give, in whatever shape the server uses
+  const refuses = (response: () => Response) => (body: Body) => ('dimensions' in body ? response() : undefined);
+  const sizes = (sent: () => Body[]) => sent().map((body) => 'dimensions' in body);
+  // How each API style words its error: OpenAI nests the message, Ollama gives the text
+  const errorText = (message: string) => (style === 'openai' ? { message } : message);
 
-  it('is asked again once without dimensions, and answers (OpenAI-compatible)', async () => {
-    const sent = refusingServer(refusal(refusedDimensions), 'openai');
-    const result = await new OpenAIAdapter().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, { ...config, baseUrl: 'http://ada-server.test' });
-    expect(sent().map((body) => 'dimensions' in body)).toEqual([true, false]);
-    expect(result.embeddings[0]).toHaveLength(1536);
-  });
-
-  it('is asked again once without dimensions, and answers (Ollama)', async () => {
-    const sent = refusingServer(() => new Response(JSON.stringify({ error: 'dimensions 4096 exceeds embedding length 768' }), { status: 400 }), 'ollama');
-    const result = await new OllamaAdapter().generateEmbeddings({ texts: ['a'], dimensions: 4096 }, { ...config, baseUrl: 'http://small-model.test' });
-    expect(sent().map((body) => 'dimensions' in body)).toEqual([true, false]);
+  it.each([
+    ['a JSON error body', () => new Response(JSON.stringify({ error: { message: 'This model does not support specifying dimensions' } }), { status: 400 })],
+    ['a 422', () => new Response(JSON.stringify({ detail: 'unprocessable' }), { status: 422 })],
+    ['a plain text 400', () => new Response('bad request', { status: 400 })],
+  ])('is asked again once without dimensions when refused with %s', async (_, response) => {
+    const sent = fakeServer(style, 768, refuses(response));
+    const result = await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, server(`refuses-${style}-${_}`));
+    // The retry returns the model's own size, which is what was asked for here
+    expect(sizes(sent)).toEqual([true, false]);
     expect(result.embeddings[0]).toHaveLength(768);
   });
 
-  it('passes on a 400 about something else without asking again', async () => {
-    const sent = refusingServer(refusal('input is too long'), 'openai');
-    await expect(new OpenAIAdapter().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, { ...config, baseUrl: 'http://other-server.test' }))
-      .rejects.toThrow(/too long/);
-    expect(sent()).toHaveLength(1);
+  it('is not asked again when no dimensions were sent', async () => {
+    const fetchMock = vi.fn(async () => new Response('bad request', { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(adapters[style]().generateEmbeddings({ texts: ['a'] }, server(`no-dims-${style}`))).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('does not ask again when no dimensions were sent', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: { message: refusedDimensions } }), { status: 400 }));
+  it('throws the refusal, not wrong-size vectors, when the retry still does not give the size asked for', async () => {
+    const sent = fakeServer(style, 2560, refuses(() => new Response(JSON.stringify({ error: errorText('dimensions not supported here') }), { status: 400 })));
+    await expect(adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, server(`mismatch-${style}`)))
+      .rejects.toThrow(/dimensions not supported here|HTTP 400/);
+    expect(sizes(sent)).toEqual([true, false]);
+  });
+
+  it('is sent no dimensions on later calls, and warned about once', async () => {
+    const sent = fakeServer(style, 768, refuses(() => new Response('bad request', { status: 400 })));
+    const target = server(`remembered-${style}`);
+    for (let call = 0; call < 3; call++) {
+      await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target);
+    }
+    expect(sizes(sent)).toEqual([true, false, false, false]);
+    expect(reported(logs).filter((line) => /refused the requested embedding size/.test(line.message))).toHaveLength(1);
+  });
+
+  it('after a refusal still throws the refusal for a size the model cannot give, on later calls too', async () => {
+    fakeServer(style, 768, refuses(() => new Response(JSON.stringify({ error: errorText('no dimensions here') }), { status: 400 })));
+    const target = server(`later-mismatch-${style}`);
+    await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target);
+    await expect(adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, target)).rejects.toThrow();
+  });
+});
+
+describe('the Ollama older embeddings endpoint', () => {
+  it('warns once per model that it cannot take a vector size', async () => {
+    const fetchMock = vi.fn(async (url: string) => url.endsWith('/api/embed')
+      ? new Response('not found', { status: 404 })
+      : new Response(JSON.stringify({ embedding: vectorOf(768) })));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(new OpenAIAdapter().generateEmbeddings({ texts: ['a'] }, { ...config, baseUrl: 'http://no-dims.test' })).rejects.toThrow();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const target = server('legacy-ollama');
+    await new OllamaAdapter().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, target);
+    await new OllamaAdapter().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, target);
+    expect(reported(logs).filter((line) => /older embeddings endpoint/.test(line.message))).toHaveLength(1);
+  });
+});
+
+describe('a refusing model across batches', () => {
+  it('is sent dimensions only the first time: 5 batches take 6 requests, not 10', async () => {
+    const sent = fakeServer('ollama', 768, (body) => ('dimensions' in body ? new Response('bad request', { status: 400 }) : undefined));
+    model.dimensions = 768;
+    model.modelKey = 'refusing-model'; // a refusal is remembered per model, so this one is its own
+    await generateEmbeddings(['a', 'b', 'c', 'd', 'e'], { providerId: 'prov-1', modelId: 7, feature: 'document_indexing', batchSize: 1 });
+    expect(sent()).toHaveLength(6);
   });
 });
 
 describe('generateEmbeddings in the AI service', () => {
-  it('passes the expected dimensions on to every batch sent to Ollama', async () => {
-    const sent = fakeOllama();
+  it('passes the expected dimensions on to every batch of a model that can shorten its vectors', async () => {
+    const sent = fakeServer('ollama');
     const result = await generateEmbeddings(['a', 'b', 'c'], {
       providerId: 'prov-1', modelId: 7, feature: 'document_indexing', dimensions: 1536, batchSize: 2,
     });
@@ -136,8 +161,33 @@ describe('generateEmbeddings in the AI service', () => {
     expect(result.embeddings.every((e) => e.vector.length === 1536)).toBe(true);
   });
 
-  it('sends no dimensions when none are expected', async () => {
-    const sent = fakeOllama();
+  it('sends no dimensions to a model that is not marked able to shorten, even when the caller passes one', async () => {
+    model.canShortenVectors = false;
+    const sent = fakeServer('ollama');
+    const result = await generateEmbeddings(['a'], { providerId: 'prov-1', modelId: 7, feature: 'document_indexing', dimensions: 1536 });
+    expect(sent()[0]).not.toHaveProperty('dimensions');
+    // The wrong size is still reported, as before
+    expect(result.embeddings[0].vector).toHaveLength(2560);
+    expect(reported(logs).filter((line) => /dimensions mismatch/.test(line.message))).toHaveLength(1);
+  });
+
+  it("uses the model's registered size when the caller gives none: the knowledge base and memory path", async () => {
+    // embedBatch is what the knowledge base, session messages and memories call, with no size
+    const sent = fakeServer('ollama');
+    const vectors = await embedBatch(['a', 'b'], { feature: 'knowledge_base' });
+    expect(sent()[0].dimensions).toBe(1536);
+    expect(vectors.every((vector) => vector?.length === 1536)).toBe(true);
+  });
+
+  it("lets the caller's size win over the model's registered size", async () => {
+    const sent = fakeServer('ollama');
+    await generateEmbeddings(['a'], { providerId: 'prov-1', modelId: 7, feature: 'search_query', dimensions: 1024 });
+    expect(sent()[0].dimensions).toBe(1024);
+  });
+
+  it('sends no dimensions when the model has no registered size and the caller gives none', async () => {
+    model.dimensions = null;
+    const sent = fakeServer('ollama');
     await generateEmbeddings(['a'], { providerId: 'prov-1', modelId: 7, feature: 'search_query' });
     expect(sent()[0]).not.toHaveProperty('dimensions');
   });

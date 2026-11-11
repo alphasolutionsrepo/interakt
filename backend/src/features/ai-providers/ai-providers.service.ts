@@ -8,6 +8,7 @@
 import { CacheManager } from '@/shared/cache/cache-manager';
 import { createLogger } from '@/shared/logger/logger';
 import * as repository from './ai-providers.repository';
+import { canShortenVectorsByDefault } from './shortenable-embeddings';
 import type {
   // DTOs from validation
   CreateAIProviderInput,
@@ -85,6 +86,7 @@ function mapModelDtoToInsert(
     description: input.description ?? null,
     modelType: input.modelType,
     dimensions: input.dimensions ?? null,
+    canShortenVectors: input.canShortenVectors ?? canShortenVectorsByDefault(input.modelKey, input.modelType),
     capabilities: input.capabilities ?? {},
     isAvailable: input.isAvailable ?? true,
     isDiscovered: input.isDiscovered ?? false,
@@ -128,6 +130,7 @@ function mapModelToResponse(model: AIProviderModel): AIProviderModelResponse {
     description: model.description,
     modelType: model.modelType as AIModelType,
     dimensions: model.dimensions,
+    canShortenVectors: model.canShortenVectors,
     capabilities: model.capabilities ?? {},
     isAvailable: model.isAvailable,
     isDiscovered: model.isDiscovered,
@@ -627,6 +630,7 @@ export async function updateModel(
     if (input.displayName !== undefined) updateData.displayName = input.displayName;
     if (input.description !== undefined) updateData.description = input.description ?? null;
     if (input.dimensions !== undefined) updateData.dimensions = input.dimensions ?? null;
+    if (input.canShortenVectors !== undefined) updateData.canShortenVectors = input.canShortenVectors;
     if (input.capabilities !== undefined) updateData.capabilities = input.capabilities;
     if (input.isAvailable !== undefined) updateData.isAvailable = input.isAvailable;
     if (input.sortOrder !== undefined) updateData.sortOrder = input.sortOrder;
@@ -1087,6 +1091,7 @@ export async function discoverOllamaModels(
             description: `Discovered from Ollama (${ollamaModel.details.parameter_size})`,
             modelType,
             dimensions: modelType === 'embedding' ? inferEmbeddingDimensions(ollamaModel) : null,
+            canShortenVectors: canShortenVectorsByDefault(modelKey, modelType),
             capabilities: {
               parameterSize: ollamaModel.details.parameter_size,
               quantization: ollamaModel.details.quantization_level,

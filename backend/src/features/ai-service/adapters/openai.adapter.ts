@@ -27,7 +27,7 @@ import type {
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal, wasAborted } from './types';
-import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './reasoning-fallback';
+import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -590,7 +590,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
             ...(request.dimensions && { dimensions: request.dimensions }),
         };
 
-        const response = await withoutUnsupportedDimensions(config.baseUrl, openaiRequest, (body) => this.makeRequest<OpenAIEmbeddingResponse>(
+        const response = await withoutUnsupportedDimensions<OpenAIEmbeddingRequest, OpenAIEmbeddingResponse>(config.baseUrl, openaiRequest, (answer) => answer.data[0]?.embedding.length ?? 0, (body) => this.makeRequest<OpenAIEmbeddingResponse>(
             `${config.baseUrl}/embeddings`,
             body,
             config
