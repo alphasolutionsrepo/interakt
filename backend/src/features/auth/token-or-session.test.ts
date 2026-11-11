@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const authMock = vi.fn();
+vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('./auth.api.handlers', () => ({ auth: () => authMock() }));
 vi.mock('@/shared/logger/logger', () => ({

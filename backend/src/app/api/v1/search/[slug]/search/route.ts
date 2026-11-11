@@ -23,7 +23,7 @@ import * as repository from '@/features/search-experience/search-experience.repo
 import { publicSearchRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import type { PublicSearchRequest } from '@/features/search-experience/search-experience.types';
 import { flushTelemetry, runWithTelemetryLevel } from '@/features/telemetry';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
@@ -168,4 +168,4 @@ function handleSearchError(error: unknown, slug: string): NextResponse {
   return apiResponse.error(error, undefined, { operation: 'searchBySlug', slug });
 }
 
-export const POST = publicRoute(post);
+export const POST = publicApiRoute(post);

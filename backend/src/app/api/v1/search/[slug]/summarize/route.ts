@@ -22,7 +22,7 @@ import * as repository from '@/features/search-experience/search-experience.repo
 import { summarizeAPIRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import type { SummarizeAPIRequest } from '@/features/search-experience/search-experience.types';
 import { runWithTelemetryLevel } from '@/features/telemetry';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
@@ -90,4 +90,4 @@ async function post(
   }
 }
 
-export const POST = publicRoute(post);
+export const POST = publicApiRoute(post);

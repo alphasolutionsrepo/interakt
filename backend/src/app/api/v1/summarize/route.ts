@@ -13,7 +13,7 @@
 import { NextRequest } from 'next/server';
 
 import { handleSummarize } from '@/features/chat';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 
 async function post(request: NextRequest) {
   return handleSummarize(request);
@@ -23,4 +23,4 @@ export async function OPTIONS(request: NextRequest) {
   return handleSummarize(request);
 }
 
-export const POST = publicRoute(post);
+export const POST = publicApiRoute(post);

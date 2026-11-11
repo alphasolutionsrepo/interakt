@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as searchService from '@/features/search/search.service';
 import { authenticateAccessToken, handleCorsPreflight, withCors, type MiddlewareError } from '@/features/search-experience/access-token.middleware';
 import type { SearchExperienceWithIndexes } from '@/features/search-experience/search-experience.types';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
 import { failureLevel } from '@/shared/errors/to-app-error';
@@ -119,4 +119,4 @@ export async function OPTIONS() {
   return handleCorsPreflight();
 }
 
-export const GET = publicRoute(get);
+export const GET = publicApiRoute(get);

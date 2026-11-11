@@ -62,6 +62,8 @@ export interface AIExperienceWithTools {
   providerId: string | null;
   modelId: number | null;
   isActive: boolean;
+  /** Part of the built-in help (set up by the docs setup); it belongs to the Help assistant. */
+  isBuiltIn?: boolean;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

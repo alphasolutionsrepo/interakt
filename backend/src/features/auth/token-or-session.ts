@@ -15,6 +15,7 @@ import 'server-only';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
+import { refuseExperienceIfOff } from '@/features/feature-switches/gate';
 
 import { auth } from './auth.api.handlers';
 import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
@@ -28,7 +29,8 @@ export type ExperienceCaller = 'api' | 'admin';
 /**
  * `caller` is null when the request may not go ahead. `refused` then holds the 403 or
  * 429 response for a token caller outside the experience's settings; without it, the
- * request had neither a matching token nor a session and the route answers 401.
+ * request had neither a matching token nor a session and the route answers 401. An experience
+ * whose area is turned off is refused (404) before either is checked.
  */
 export type TokenOrSessionResult =
   | { caller: ExperienceCaller; analyticsSource: 'api' | 'admin_test'; refused?: undefined }
@@ -38,6 +40,9 @@ export async function authenticateTokenOrSession(
   request: NextRequest,
   experience: ExperienceAccess,
 ): Promise<TokenOrSessionResult> {
+  const off = await refuseExperienceIfOff(request, experience);
+  if (off) return { caller: null, refused: off };
+
   const token = readAccessToken(request);
   if (token && experience.accessToken && token === experience.accessToken) {
     const refused = checkPublicAccess(request, experience);

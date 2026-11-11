@@ -11,6 +11,9 @@
  *     handler: the session and the role lookup are the only stubs, so a handler that ran
  *     would hit its own (unstubbed) dependencies and answer differently.
  *  3. Only the search index document routes accept an ingestion key in place of a session.
+ *  4. Every route belongs to a feature area or is core (always on), recorded in the same table,
+ *     and answers 404 "turned off" when its area is off, to an Admin too. The public /api/v1
+ *     routes all go through the feature switch check as well.
  */
 
 import fs from 'fs';
@@ -19,6 +22,7 @@ import path from 'path';
 import { NextRequest } from 'next/server';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
+vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 // A handler that gets past the gate finds no database, so it can't change anything
@@ -29,8 +33,12 @@ import { AI_MODEL_READERS, type Permission } from './permissions';
 import { HIDES_PROVIDER_ADDRESSES } from './provider-addresses';
 import { acceptsIngestionKey, accessRuleOf, SIGNED_IN, type AccessRule } from './route-guard';
 
+import { TURNED_OFF_CODE } from '@/features/feature-switches/areas';
+import { isFeatureGated } from '@/features/feature-switches/gate';
+import { routeArea } from '@/features/feature-switches/route-areas';
 import { AppError } from '@/shared/errors/app-error';
 import { accessStub } from '@/shared/test/access-stub';
+import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 
 
 const API = path.resolve(__dirname, '../../app/api');
@@ -52,12 +60,20 @@ type RouteMethod = { route: string; method: string; fn: (...args: unknown[]) => 
 
 const gated: RouteMethod[] = [];
 const ungated: string[] = [];
+/** The public /api/v1 routes (OPTIONS preflights aside) */
+const publicRoutes: RouteMethod[] = [];
 
 beforeAll(async () => {
-  const files = routeFiles(API)
+  const all = routeFiles(API)
     .map((f) => path.relative(API, path.dirname(f)).split(path.sep).join('/'))
-    .filter((r) => !PUBLIC.some((p) => p.test(r)))
     .sort();
+  for (const route of all.filter((r) => /^v1\//.test(r))) {
+    const mod = (await import(path.join(API, route, 'route.ts'))) as Record<string, unknown>;
+    for (const method of METHODS) {
+      if (typeof mod[method] === 'function') publicRoutes.push({ route, method, fn: mod[method] as RouteMethod['fn'] });
+    }
+  }
+  const files = all.filter((r) => !PUBLIC.some((p) => p.test(r)));
   for (const route of files) {
     const mod = (await import(path.join(API, route, 'route.ts'))) as Record<string, unknown>;
     for (const method of METHODS) {
@@ -70,7 +86,16 @@ beforeAll(async () => {
   }
 }, 120_000);
 
-afterEach(() => accessStub.reset());
+afterEach(() => {
+  accessStub.reset();
+  featureSwitchesStub.reset();
+});
+
+const areaOf = (r: RouteMethod) => routeArea(`/api/${r.route.replace(/\[[^\]]+\]/g, 'x')}`, r.method);
+const areaText = (r: RouteMethod) => {
+  const area = areaOf(r);
+  return !area ? 'NO AREA' : area.areas.length === 0 ? 'core' : area.areas.join(area.experience ? ' | ' : ' + ');
+};
 
 const call = (r: RouteMethod) =>
   r.fn(
@@ -91,7 +116,8 @@ describe('every admin API route is gated', () => {
     const ruleText = (rule: AccessRule) => (typeof rule === 'string' ? rule : `any of ${rule.join(' | ')}`);
     // "+built-in": a non-Admin's change to the built-in help is refused too (built-in.ts)
     const builtIn = (r: RouteMethod) => ((r.fn as unknown as Record<symbol, unknown>)[GUARDS_BUILT_IN] ? '  +built-in' : '');
-    const table = gated.map((r) => `${r.method.padEnd(6)} /api/${r.route}  ${ruleText(r.rule!)}${builtIn(r)}`).join('\n');
+    // [area]: the feature switch the route belongs to (features/feature-switches/route-areas.ts)
+    const table = gated.map((r) => `${r.method.padEnd(6)} /api/${r.route}  ${ruleText(r.rule!)}${builtIn(r)}  [${areaText(r)}]`).join('\n');
     await expect(table + '\n').toMatchFileSnapshot('./__snapshots__/route-permissions.txt');
   });
 
@@ -185,5 +211,40 @@ describe('every admin API route is gated', () => {
     expect(keyRoutes.filter((r) => !DOCUMENT_ROUTES.test(r))).toEqual([]);
     const documentRoutes = gated.filter((r) => DOCUMENT_ROUTES.test(r.route));
     expect(documentRoutes.filter((r) => !acceptsIngestionKey(r.fn)).map((r) => `${r.method} ${r.route}`)).toEqual([]);
+  });
+
+  it('gives every admin and public route a feature area, or core', () => {
+    expect(publicRoutes.length).toBeGreaterThanOrEqual(10);
+    const unassigned = [...gated, ...publicRoutes].filter((r) => !areaOf(r)).map((r) => `${r.method} /api/${r.route}`);
+    expect(unassigned).toEqual([]);
+  });
+
+  it('answers 404 "turned off" on every route whose area is off, to an Admin too', async () => {
+    const wrong: string[] = [];
+    for (const r of gated) {
+      const areas = areaOf(r)?.areas ?? [];
+      // Each area of the route, alone: a Test button needs its area and Playground
+      for (const area of areas) {
+        featureSwitchesStub.off = new Set([area]);
+        const res = await call(r);
+        const body = (await res.json().catch(() => ({}))) as { code?: string };
+        if (res.status !== 404 || body.code !== TURNED_OFF_CODE) wrong.push(`${r.method} /api/${r.route} with ${area} off -> ${res.status}`);
+      }
+    }
+    expect(gated.filter((r) => (areaOf(r)?.areas.length ?? 0) > 0).length).toBeGreaterThan(150);
+    expect(wrong).toEqual([]);
+  }, 120_000);
+
+  it('runs every public /api/v1 route through the feature switch check', async () => {
+    expect(publicRoutes.filter((r) => !isFeatureGated(r.fn)).map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
+    // Off, with the Help assistant (whose built-in experiences use the same routes) off too
+    const wrong: string[] = [];
+    for (const r of publicRoutes) {
+      featureSwitchesStub.off = new Set([...(areaOf(r)?.areas ?? []), 'help-assistant']);
+      const res = await call(r);
+      const body = (await res.json().catch(() => ({}))) as { code?: string };
+      if (res.status !== 404 || body.code !== TURNED_OFF_CODE) wrong.push(`${r.method} /api/${r.route} -> ${res.status}`);
+    }
+    expect(wrong).toEqual([]);
   });
 });

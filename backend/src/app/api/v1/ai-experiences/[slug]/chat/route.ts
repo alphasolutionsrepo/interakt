@@ -22,7 +22,7 @@ import { chatRequestSchema } from '@/features/ai-experience/ai-experience.valida
 import { aiExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { chatEventStream } from '@/features/pipeline/chat-event-stream';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 
@@ -70,4 +70,4 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }
 
-export const POST = publicRoute(post);
+export const POST = publicApiRoute(post);

@@ -1,0 +1,1 @@
+ALTER TABLE "global_search_settings" ADD COLUMN "features_off" jsonb DEFAULT '[]'::jsonb NOT NULL;

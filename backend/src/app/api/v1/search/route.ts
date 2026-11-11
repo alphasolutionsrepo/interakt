@@ -16,7 +16,7 @@
 import { NextRequest } from 'next/server';
 
 import { handlePublicSearch } from '@/features/search-experience/search-experience.api.handlers';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 
 async function post(request: NextRequest) {
   return handlePublicSearch(request);
@@ -26,4 +26,4 @@ export async function OPTIONS(request: NextRequest) {
   return handlePublicSearch(request);
 }
 
-export const POST = publicRoute(post);
+export const POST = publicApiRoute(post);
