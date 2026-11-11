@@ -8,7 +8,7 @@ import { MoreVertical, Edit, Key, UserCheck, UserX, Mail, Calendar } from 'lucid
 import type { UserResponse } from '../_lib/api-client';
 
 import { Badge } from '@/components/ui/badge';
-import { userGates, type RoleInfo } from '../_lib/user-gates';
+import { userGates, type RoleInfo, type RolesState } from '../_lib/user-gates';
 
 import { Button } from '@/components/ui/button';
 import { ActionMenuItem } from '@/shared/access/ActionControls';
@@ -38,6 +38,7 @@ interface UserTableProps {
   isDeactivating?: boolean;
   /** Every role with its permissions, to tell whose accounts the signed-in user may manage */
   roles: RoleInfo[];
+  rolesState?: RolesState;
 }
 
 export function UserTable({
@@ -49,6 +50,7 @@ export function UserTable({
   isActivating,
   isDeactivating,
   roles,
+  rolesState,
 }: UserTableProps) {
   if (users.length === 0) {
     return (
@@ -135,6 +137,7 @@ export function UserTable({
                   isActivating={isActivating}
                   isDeactivating={isDeactivating}
                   roles={roles}
+                  rolesState={rolesState}
                 />
               </TableCell>
             </TableRow>
@@ -156,9 +159,10 @@ function UserRowActions({
   isActivating,
   isDeactivating,
   roles,
+  rolesState,
 }: Omit<UserTableProps, 'users'> & { user: UserResponse }) {
   const { access, isAdmin, isLoading } = useAccess();
-  const gates = userGates({ isLoading, isAdmin, userId: access?.userId, permissions: access?.permissions ?? [] }, user, roles);
+  const gates = userGates({ isLoading, isAdmin, userId: access?.userId, permissions: access?.permissions ?? [] }, user, roles, rolesState);
   return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

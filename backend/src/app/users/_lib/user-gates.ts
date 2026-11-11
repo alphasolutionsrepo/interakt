@@ -39,6 +39,11 @@ const manageReason = (role: RoleInfo) =>
     ? 'Only an Admin can manage a user with the Admin role.'
     : 'This user’s role has permissions yours doesn’t, so only someone holding them can manage this account.';
 
+/** Whether the roles list (and so each role's permissions) is in */
+export type RolesState = 'loading' | 'failed' | 'ready';
+
+const ROLES_FAILED = "Couldn't load the roles to check this. Reload the page to try again.";
+
 const gate = (caller: Caller, allowed: boolean, reason: string): ActionGate =>
   caller.isLoading ? { state: 'loading' } : allowed ? { state: 'allowed' } : { state: 'locked', reason };
 
@@ -47,13 +52,20 @@ export function roleChoices(caller: Caller, roles: RoleInfo[]) {
   return roles.map((r) => ({ id: r.id, name: r.name, lockedReason: mayAssignRole(caller, r) ? undefined : giveReason(r) }));
 }
 
+/** The gate on managing a user whose role isn't in the list: an Admin manages anyone; others wait or are told why. */
+function unknownRoleGate(caller: Caller, rolesState: RolesState): ActionGate {
+  if (caller.isAdmin || caller.isLoading) return gate(caller, true, '');
+  if (rolesState === 'loading') return { state: 'loading' };
+  return { state: 'locked', reason: ROLES_FAILED };
+}
+
 /** The gates on one user's row and edit form; `roles` gives their role's permissions. */
-export function userGates(caller: Caller, user: { id: string; roleId: string }, roles: RoleInfo[]) {
+export function userGates(caller: Caller, user: { id: string; roleId: string }, roles: RoleInfo[], rolesState: RolesState = 'ready') {
   const self = user.id === caller.userId;
   const role = roles.find((r) => r.id === user.roleId);
-  // A role not in the list yet (still loading) is treated as one the caller can't manage
-  const mayManage = self || (!!role && mayAssignRole(caller, role));
-  const manage = gate(caller, mayManage, role ? manageReason(role) : 'Loading the roles…');
+  const manage = self ? gate(caller, true, '')
+    : role ? gate(caller, mayAssignRole(caller, role), manageReason(role))
+    : unknownRoleGate(caller, rolesState);
   const lockedByManage = manage.state === 'locked' ? manage : null;
   return {
     /** Edit the profile, change the password */

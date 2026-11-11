@@ -56,8 +56,18 @@ describe('userGates', () => {
     expect([boss.manage, boss.activation, boss.role]).toEqual(Array(3).fill({ state: 'locked', reason: 'Only an Admin can manage a user with the Admin role.' }));
   });
 
-  it("treats a role it can't find yet as one the manager can't manage", () => {
+  it("waits for the roles before judging a user's role, and says so when they fail to load", () => {
+    expect(userGates(manager, user('other', 'viewer'), [], 'loading').manage).toEqual({ state: 'loading' });
+    expect(userGates(manager, user('other', 'viewer'), [], 'failed').manage)
+      .toEqual({ state: 'locked', reason: "Couldn't load the roles to check this. Reload the page to try again." });
     expect(userGates(manager, user('other', 'gone'), ROLES).manage.state).toBe('locked');
+  });
+
+  it("lets an Admin manage anyone without the roles list", () => {
+    for (const state of ['loading', 'failed'] as const) {
+      const g = userGates(admin, user('other', 'viewer'), [], state);
+      expect([g.manage, g.activation, g.role]).toEqual(Array(3).fill({ state: 'allowed' }));
+    }
   });
 
   it('lets anyone edit their own profile, never their own role or active state', () => {

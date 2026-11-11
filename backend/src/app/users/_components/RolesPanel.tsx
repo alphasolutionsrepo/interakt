@@ -30,7 +30,7 @@ const PERMISSION_COUNT = PERMISSION_GROUPS.reduce((n, g) => n + g.permissions.le
 export function RolesPanel() {
   const gate = useAdminGate('add, change or delete roles');
   const isAdmin = gate.state === 'allowed';
-  const { roles, isLoading, error, retry, createRoleAsync, updateRoleAsync, setRolePermissions, savingRoleId, deleteRole, isSaving, isDeleting } = useRoles();
+  const { roles, isLoading, error, retry, createRoleAsync, updateRoleAsync, setRolePermissions, isSwitching, deleteRole, isSaving, isDeleting } = useRoles();
   const [editing, setEditing] = useState<RoleResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<RoleResponse | null>(null);
@@ -100,7 +100,7 @@ export function RolesPanel() {
       <AccessOverview
         roles={roles}
         editable={isAdmin}
-        savingRoleId={savingRoleId}
+        saving={isSwitching}
         onChange={(role, permissions) => setRolePermissions({ id: role.id, permissions })}
       />
 

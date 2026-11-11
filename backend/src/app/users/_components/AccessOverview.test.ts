@@ -32,7 +32,7 @@ vi.mock('../_lib/hooks/useRoles', () => ({
   useRoles: () => ({
     roles: ROLES, isLoading: false, error: null, retry: () => {},
     createRoleAsync: async () => {}, updateRoleAsync: async () => {}, setRolePermissions: () => {},
-    savingRoleId: null, deleteRole: () => {}, isSaving: false, isDeleting: false,
+    isSwitching: false, deleteRole: () => {}, isSaving: false, isDeleting: false,
   }),
 }));
 
@@ -46,8 +46,8 @@ function switches(html: string): Array<[string, boolean, boolean]> {
 }
 const cell = (html: string, label: string) => switches(html).find(([l]) => l === label);
 
-const grid = (editable: boolean, savingRoleId: string | null = null) =>
-  renderToStaticMarkup(createElement(AccessOverview, { roles: ROLES, editable, savingRoleId, onChange: () => {} }));
+const grid = (editable: boolean, saving = false) =>
+  renderToStaticMarkup(createElement(AccessOverview, { roles: ROLES, editable, saving, onChange: () => {} }));
 
 describe('cellState', () => {
   it('reads Admin as holding everything', () => {
@@ -97,11 +97,10 @@ describe('AccessOverview', () => {
     expect(html).toContain('Only an Admin can change it');
   });
 
-  it("holds a role's switches while its save is in flight", () => {
-    const html = grid(true, 'tester');
-    expect(switches(html).filter(([l]) => l.endsWith(': Tester')).every(([, , d]) => d)).toBe(true);
-    expect(cell(html, 'View tools and MCP connections: Editor')?.[2]).toBe(false);
-    expect(cell(html, 'Manage secrets and ingestion keys: Editor')?.[2]).toBe(false);
+  it('holds every switch, in every role, while a save is in flight', () => {
+    expect(cell(grid(true), 'Manage secrets and ingestion keys: Editor')?.[2]).toBe(false);
+    const html = grid(true, true);
+    expect(switches(html).every(([, , d]) => d)).toBe(true);
   });
 });
 

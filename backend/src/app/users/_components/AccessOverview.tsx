@@ -60,14 +60,17 @@ export function unmetTitle(stored: readonly string[], permission: Permission): s
 export function AccessOverview({
   roles,
   editable,
-  savingRoleId,
+  saving = false,
   onChange,
 }: {
   roles: RoleResponse[];
   /** Only an Admin changes roles (the server refuses everyone else) */
   editable: boolean;
-  /** A role whose save is in flight: its switches wait, so two clicks can't overwrite each other */
-  savingRoleId?: string | null;
+  /**
+   * A save is in flight: every switch waits for it and the fresh roles, because each save sends
+   * the role's whole list and a click on stale data would undo the one before
+   */
+  saving?: boolean;
   onChange: (role: RoleResponse, permissions: Permission[]) => void;
 }) {
   return (
@@ -107,7 +110,7 @@ export function AccessOverview({
                       <td key={role.id} className="p-3 text-center" title={cellTitle(state, p.id, role)}>
                         <Switch
                           checked={state !== 'off'}
-                          disabled={!editable || fixed || savingRoleId === role.id}
+                          disabled={!editable || fixed || saving}
                           onCheckedChange={(on) => onChange(role, toggled(role, p.id, on))}
                           aria-label={`${p.label}: ${role.name}`}
                           data-state-detail={state}

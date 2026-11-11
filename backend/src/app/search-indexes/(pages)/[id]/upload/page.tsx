@@ -8,6 +8,9 @@
 
 'use client';
 
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -270,6 +273,7 @@ function BatchHistory({ searchIndexId }: { searchIndexId: string }) {
 // ============================================================================
 
 export default function UploadPage() {
+  const access = useAccess();
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
@@ -301,6 +305,10 @@ export default function UploadPage() {
       </div>
     );
   }
+
+  // Only an Admin changes the built-in help; anyone else is told so instead of given a form
+  const editGate = builtInGateFor(access, 'documents.upload', searchIndex.isBuiltIn);
+  if (editGate.state !== 'allowed') return <LockedPage gate={editGate} backHref={`/search-indexes/${id}`} />;
 
   const typeColors = getSearchTypeColor(searchIndex.searchType as SearchType);
 

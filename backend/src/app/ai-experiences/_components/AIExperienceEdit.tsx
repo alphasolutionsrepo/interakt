@@ -1,5 +1,8 @@
 'use client';
 
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import { ChevronRight, ChevronDown, Loader2, Save, Bot, Plus, X, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -40,6 +43,7 @@ interface AIExperienceEditProps {
 }
 
 export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }: AIExperienceEditProps) {
+  const access = useAccess();
   const listHref = listPath ?? basePath;
   const router = useRouter();
   const {
@@ -260,6 +264,10 @@ export function AIExperienceEdit({ id, basePath = '/ai-experiences', listPath }:
       </div>
     );
   }
+
+  // Only an Admin changes the built-in help; anyone else is told so instead of given a form
+  const editGate = builtInGateFor(access, 'ai-experiences.edit', experience.isBuiltIn);
+  if (editGate.state !== 'allowed') return <LockedPage gate={editGate} backHref={`${basePath}/${id}`} />;
 
   return (
     <div className="flex-1 space-y-8 p-6 lg:p-8">

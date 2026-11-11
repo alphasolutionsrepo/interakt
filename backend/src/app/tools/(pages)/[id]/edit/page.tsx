@@ -1,5 +1,8 @@
 'use client';
 
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -20,6 +23,7 @@ import type { ExecutorType, ToolDisplayConfig } from '../../../_lib/api-client';
 import { dataSourcesApi } from '@/app/data-sources/_lib/api-client';
 
 export default function EditToolPage({ params }: { params: Promise<{ id: string }> }) {
+  const access = useAccess();
   const { id } = use(params);
   const router = useRouter();
   const { tool, isLoading, updateTool } = useTool(id);
@@ -146,6 +150,10 @@ export default function EditToolPage({ params }: { params: Promise<{ id: string 
       </div>
     );
   }
+
+  // Only an Admin changes the built-in help; anyone else is told so instead of given a form
+  const editGate = builtInGateFor(access, 'tools.edit', tool.isBuiltIn);
+  if (editGate.state !== 'allowed') return <LockedPage gate={editGate} backHref={`/tools/${id}`} />;
 
   const cfg = resolveToolChipConfig(tool);
   const Icon = cfg?.icon ?? Wrench;

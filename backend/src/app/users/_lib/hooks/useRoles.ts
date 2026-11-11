@@ -17,12 +17,13 @@ import { accessKeys } from '@/shared/access/useAccess';
 
 export function useRoles() {
   const queryClient = useQueryClient();
-  const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: roleKeys.all });
-    queryClient.invalidateQueries({ queryKey: userKeys.all });
+  // Resolves once the fresh roles are in, so a save counts as pending until then
+  const refresh = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: roleKeys.all }),
+    queryClient.invalidateQueries({ queryKey: userKeys.all }),
     // Editing a role can change the caller's own permissions
-    queryClient.invalidateQueries({ queryKey: accessKeys.mine });
-  };
+    queryClient.invalidateQueries({ queryKey: accessKeys.mine }),
+  ]);
 
   const query = useQuery({ queryKey: roleKeys.all, queryFn: rolesApi.list, staleTime: 30_000 });
 
@@ -40,9 +41,8 @@ export function useRoles() {
   // failure is reported the usual way (toast + activity), unlike the dialog's save
   const switchPermission = useMutation({
     mutationFn: ({ id, permissions }: { id: string; permissions: Permission[] }) => rolesApi.update(id, { permissions }),
-    onSuccess: refresh,
-    // A refused save leaves the switch where the server has it
-    onError: refresh,
+    // Success or refusal, the switches then show what the server has; the grid waits until they do
+    onSettled: refresh,
     meta: { label: 'Change role permissions' },
   });
   const remove = useMutation({
@@ -60,8 +60,8 @@ export function useRoles() {
     createRoleAsync: create.mutateAsync,
     updateRoleAsync: update.mutateAsync,
     setRolePermissions: switchPermission.mutate,
-    /** The role whose Access overview save is in flight, if any */
-    savingRoleId: switchPermission.isPending ? switchPermission.variables?.id ?? null : null,
+    /** An Access overview save is in flight (until the fresh roles are in) */
+    isSwitching: switchPermission.isPending,
     deleteRole: remove.mutate,
     isSaving: create.isPending || update.isPending,
     isDeleting: remove.isPending,

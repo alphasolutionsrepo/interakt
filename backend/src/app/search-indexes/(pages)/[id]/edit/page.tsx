@@ -2,6 +2,9 @@
 
 'use client';
 
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import { Can } from '@/shared/access/Can';
 import { noPermissionTo } from '@/features/access/ui-actions';
 import { useParams, useRouter } from 'next/navigation';
@@ -200,6 +203,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 // ============================================================================
 
 export default function EditSearchIndexPage() {
+  const access = useAccess();
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -384,6 +388,10 @@ export default function EditSearchIndexPage() {
       </div>
     );
   }
+
+  // Only an Admin changes the built-in help; anyone else is told so instead of given a form
+  const editGate = builtInGateFor(access, 'search-indexes.edit', searchIndex.isBuiltIn);
+  if (editGate.state !== 'allowed') return <LockedPage gate={editGate} backHref={`/search-indexes/${indexId}`} />;
 
   // Get display info for locked fields
   const searchTypeInfo = SEARCH_TYPE_INFO[searchIndex.searchType as SearchType];
