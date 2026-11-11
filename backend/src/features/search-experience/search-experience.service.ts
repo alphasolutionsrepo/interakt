@@ -91,9 +91,11 @@ export class ForbiddenError extends SearchExperienceError {
 /**
  * Create a new search experience
  */
+/** `builtIn` is for the docs setup only: the row is the built-in help from its first write. */
 export async function createSearchExperience(
   input: CreateSearchExperienceDTO,
-  createdBy: string
+  createdBy: string,
+  options: { builtIn?: boolean } = {},
 ): Promise<SearchExperienceWithIndexes> {
   // Validate input
   const validated = createSearchExperienceSchema.parse(input);
@@ -209,6 +211,7 @@ export async function createSearchExperience(
       rateLimitConfig,
       displayConfig: validated.displayConfig as SearchExperienceDisplayConfig | undefined,
       createdBy,
+      ...(options.builtIn && { isBuiltIn: true }),
     },
     indexInputs,
     validated.externalSources.map((src) => ({

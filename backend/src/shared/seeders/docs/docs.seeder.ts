@@ -31,7 +31,6 @@ import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import {
   createAIExperience,
   getAIExperienceBySlug,
-  markAIExperienceBuiltIn,
   updateAIExperience,
   deleteAIExperience,
 } from '@/features/ai-experience/ai-experience.service';
@@ -404,12 +403,13 @@ async function ensureExperience(toolId: string, adminId: string): Promise<string
     // providerId/modelId omitted → system default chat model.
     toolIds: [toolId],
   };
+  // The built-in help: every signed-in user may use it, only an Admin may change it. Built in
+  // from its first write, so no failure can leave it unmarked (Viewers refused, setup stuck).
   const created = await createAIExperience(
     input as unknown as Parameters<typeof createAIExperience>[0],
     adminId,
+    { builtIn: true },
   );
-  // The built-in help: every signed-in user may use it, only an Admin may change it
-  await markAIExperienceBuiltIn(created.id);
   logger.info('Created Help Assistant experience', { slug: created.slug });
   return created.slug;
 }

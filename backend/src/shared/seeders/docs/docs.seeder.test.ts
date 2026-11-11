@@ -74,13 +74,10 @@ vi.mock('@/features/ai-experience/ai-experience.service', () => ({
     if (!world.help) throw new Error('not found');
     return world.help;
   },
-  createAIExperience: async (input: { slug: string; toolIds?: string[] }) => {
+  createAIExperience: async (input: { slug: string; toolIds?: string[] }, _by: string, options?: { builtIn?: boolean }) => {
     world.assignedTool = input.toolIds?.[0] ?? null;
-    world.help = { id: `help-${world.nextId++}`, slug: input.slug, isBuiltIn: false };
+    world.help = { id: `help-${world.nextId++}`, slug: input.slug, isBuiltIn: options?.builtIn === true };
     return world.help;
-  },
-  markAIExperienceBuiltIn: async (id: string) => {
-    if (world.help?.id === id) world.help.isBuiltIn = true;
   },
   updateAIExperience: async (_id: string, input: { toolIds?: string[] }) => {
     world.assignedTool = input.toolIds?.[0] ?? null;
@@ -106,7 +103,7 @@ beforeEach(() => {
 });
 
 describe('the docs setup and the Help Assistant', () => {
-  it('marks the Help Assistant it creates as the built-in help', async () => {
+  it('creates the Help Assistant built in from its first write, with no separate mark that could fail', async () => {
     await seedDocs();
     expect(world.help).toMatchObject({ id: 'help-1', isBuiltIn: true });
   });

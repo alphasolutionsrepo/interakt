@@ -276,7 +276,9 @@ async function buildWithMode(
 
   // The built-in help: every signed-in user may use it, only an Admin may change it or its index
   await markBuiltIn('search-index', [index!.id]);
-  await markSearchExperienceBuiltIn((experience ?? (await createExperience(index!.id, adminId))).id);
+  // A new experience is built in from its first write, so no failure can leave it unmarked
+  if (experience) await markSearchExperienceBuiltIn(experience.id);
+  else await createExperience(index!.id, adminId);
 
   const nextMeta: DocsSearchMeta = {
     schemaVersion: SCHEMA_VERSION,
@@ -443,7 +445,7 @@ async function createExperience(indexId: string, adminId: string) {
     allowedOrigins: [],
     externalSources: [],
   };
-  const created = await createSearchExperience(input as unknown as Parameters<typeof createSearchExperience>[0], adminId);
+  const created = await createSearchExperience(input as unknown as Parameters<typeof createSearchExperience>[0], adminId, { builtIn: true });
   logger.info('Created docs search experience', { slug: created.slug });
   return created;
 }

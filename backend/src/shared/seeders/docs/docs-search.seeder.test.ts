@@ -35,6 +35,7 @@ const calls = vi.hoisted(() => ({
   recreateEmpty: 0,
   indexDocuments: 0,
   getAdmin: 0,
+  markExperience: 0,
 }));
 
 const log = vi.hoisted(() => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }));
@@ -113,9 +114,9 @@ vi.mock('@/features/search-experience/search-experience.service', () => ({
     if (!world.experience) throw new Error('not found');
     return world.experience;
   },
-  createSearchExperience: async (input: { slug: string; description: string }) => {
+  createSearchExperience: async (input: { slug: string; description: string }, _by: string, options?: { builtIn?: boolean }) => {
     calls.createExperience++;
-    world.experience = { id: `exp-${world.nextId++}`, slug: input.slug, description: input.description };
+    world.experience = { id: `exp-${world.nextId++}`, slug: input.slug, description: input.description, isBuiltIn: options?.builtIn === true };
     return world.experience;
   },
   deleteSearchExperience: async () => {
@@ -123,6 +124,7 @@ vi.mock('@/features/search-experience/search-experience.service', () => ({
     world.experience = null;
   },
   markSearchExperienceBuiltIn: async (id: string) => {
+    calls.markExperience++;
     if (world.experience?.id === id) world.experience.isBuiltIn = true;
   },
 }));
@@ -159,7 +161,7 @@ const rejectAll = () => ({
 function resetCalls() {
   calls.createIndex = [];
   calls.deleteIndex = calls.createExperience = calls.deleteExperience = 0;
-  calls.recreateEmpty = calls.indexDocuments = calls.getAdmin = 0;
+  calls.recreateEmpty = calls.indexDocuments = calls.getAdmin = calls.markExperience = 0;
 }
 
 beforeEach(() => {
@@ -213,6 +215,8 @@ describe('seedDocsSearch', () => {
   it('marks the experience it builds as the built-in help, also when a rebuild recreates it', async () => {
     await seedDocsSearch();
     expect(world.experience?.isBuiltIn).toBe(true);
+    // Built in from its first write: no separate mark that could fail and leave Viewers refused
+    expect(calls.markExperience).toBe(0);
 
     world.embedding = MODEL; // recreated as hybrid
     await seedDocsSearch();

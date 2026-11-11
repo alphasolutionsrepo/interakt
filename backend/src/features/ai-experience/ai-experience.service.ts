@@ -74,7 +74,8 @@ function stripGuardrailEmbeddings<T>(guardrailConfig: T): T {
 // CRUD OPERATIONS
 // ============================================================================
 
-export async function createAIExperience(input: CreateAIExperienceDTO, userId: string) {
+/** `builtIn` is for the docs setup only: the row is the built-in help from its first write. */
+export async function createAIExperience(input: CreateAIExperienceDTO, userId: string, options: { builtIn?: boolean } = {}) {
   // Validate slug uniqueness
   const slugAvailable = await repository.isSlugAvailable(input.slug);
   if (!slugAvailable) {
@@ -116,6 +117,7 @@ export async function createAIExperience(input: CreateAIExperienceDTO, userId: s
       providerId: input.providerId,
       modelId: input.modelId,
       createdBy: userId,
+      ...(options.builtIn && { isBuiltIn: true }),
     },
     input.toolIds || [],
   );
@@ -170,14 +172,6 @@ export async function listAIExperiences(query: ListAIExperiencesQuery): Promise<
   };
 }
 
-/** Mark the experience the docs setup made as the built-in help (see token-or-session.ts). */
-export async function markAIExperienceBuiltIn(id: string): Promise<void> {
-  const existing = await repository.getAIExperienceById(id);
-  if (!existing || existing.isBuiltIn) return;
-  await repository.updateAIExperience(id, { isBuiltIn: true });
-  await clearDetailCache(id, existing.slug);
-  await clearListCache();
-}
 
 export async function updateAIExperience(id: string, input: UpdateAIExperienceDTO, userId: string) {
   const existing = await repository.getAIExperienceById(id);
