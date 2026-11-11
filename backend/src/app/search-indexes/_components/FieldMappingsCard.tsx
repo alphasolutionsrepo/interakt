@@ -4,7 +4,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -26,6 +26,8 @@ interface FieldMappingsCardProps {
     searchIndexId: string;
     summary: FieldMappingSummary | null;
     isLoading?: boolean;
+    /** The built-in docs index: locked for anyone but an Admin */
+    builtIn?: boolean;
 }
 
 // ============================================================================
@@ -68,6 +70,7 @@ export function FieldMappingsCard({
     searchIndexId,
     summary,
     isLoading,
+    builtIn = false,
 }: FieldMappingsCardProps) {
     const router = useRouter();
 
@@ -168,15 +171,18 @@ export function FieldMappingsCard({
 
                 {/* Action */}
                 <div className="flex justify-end">
-                    <Button
+                    <ActionButton
+                        action="search-indexes.edit"
+                        builtIn={builtIn}
+                        icon={Settings2}
+                        iconClassName="h-4 w-4"
                         variant="outline"
                         className="rounded-xl gap-1.5"
                         onClick={handleConfigure}
                     >
-                        <Settings2 className="h-4 w-4" />
                         Configure Fields
                         <ChevronRight className="h-4 w-4" />
-                    </Button>
+                    </ActionButton>
                 </div>
             </CardContent>
         </Card>

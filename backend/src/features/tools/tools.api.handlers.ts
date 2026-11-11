@@ -24,7 +24,7 @@ import { assertMayWriteSecretConfig } from '@/features/access/secret-references'
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { readJsonBody } from '@/shared/api/read-json-body';
-import { assertMayChange } from '@/features/access/built-in';
+import { assertMayChange, withBuiltInFlag } from '@/features/access/built-in';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
@@ -48,7 +48,7 @@ export async function handleListTools(request: NextRequest) {
     }
 
     const result = await service.listTools(validation.data);
-    return apiResponse.successWithPagination(result.tools, result.pagination);
+    return apiResponse.successWithPagination(await withBuiltInFlag('tool', result.tools), result.pagination);
   } catch (error) {
     const err = error as Error;
     return apiResponse.error(err, undefined, { operation: 'listTools' });
@@ -132,7 +132,8 @@ export async function handleGetTool(
       return apiResponse.notFound('Tool not found');
     }
 
-    return apiResponse.success(tool);
+    const [flagged] = await withBuiltInFlag('tool', [tool]);
+    return apiResponse.success(flagged);
   } catch (error) {
     const err = error as Error;
     return apiResponse.error(err, undefined, { operation: 'getTool' });

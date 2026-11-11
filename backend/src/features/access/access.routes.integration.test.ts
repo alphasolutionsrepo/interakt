@@ -197,8 +197,12 @@ describe('nobody gives more than they hold', () => {
   const newUser = (roleId: string) => ({ email: `new${++n}@x.test`, password: 'Passw0rd-long', roleId });
 
   it('refuses a user manager creating an Admin or a role-holder above themselves', async () => {
-    expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(ADMIN_ROLE_ID))).status).toBe(403);
-    expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(EDITOR))).status).toBe(403);
+    const admins = await call(usersRoute.POST, 'POST', '/api/users', newUser(ADMIN_ROLE_ID));
+    expect(admins.status).toBe(403);
+    expect(admins.body?.message).toBe('Only an Admin can give the Admin role.');
+    const above = await call(usersRoute.POST, 'POST', '/api/users', newUser(EDITOR));
+    expect(above.status).toBe(403);
+    expect(above.body?.message).toBe("You can't give a role with permissions your own role doesn't have.");
     expect((await call(usersRoute.POST, 'POST', '/api/users', newUser(managerRole))).status).toBe(201);
   });
 
@@ -209,11 +213,31 @@ describe('nobody gives more than they hold', () => {
     expect((await getUser(target)).roleId).toBe(managerRole);
   });
 
-  it('refuses creating or editing a role with permissions the manager lacks', async () => {
+  it('lets a user manager give a role within their own, and refuses managing a user whose role is above it', async () => {
+    const lower = await makeRole(`Lower ${n}`, ['search-experiences:view']);
+    const target = await makeUser(managerRole);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${target}`, { roleId: lower }, { id: target })).status).toBe(200);
+    expect((await getUser(target)).roleId).toBe(lower);
+    const editorUser = await makeUser(EDITOR);
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${editorUser}`, { firstName: 'Ed' }, { id: editorUser })).status).toBe(403);
+    expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${editorUser}/deactivate`, undefined, { id: editorUser })).status).toBe(403);
+  });
+
+  it('still refuses a user manager changing their own role', async () => {
+    expect((await call(userRoute.PUT, 'PUT', `/api/users/${manager}`, { roleId: EDITOR }, { id: manager })).status).toBe(403);
+    expect((await getUser(manager)).roleId).toBe(managerRole);
+  });
+
+  it('refuses a user manager who is not an Admin creating, changing or deleting any role, even one below them', async () => {
+    const lesser = await makeRole(`Lesser ${n}`, ['search-experiences:view']);
     expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: 'Sneaky', permissions: ['secrets:manage'] })).status).toBe(403);
-    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${managerRole}`, { permissions: ['users:manage', 'secrets:manage'] }, { id: managerRole })).status).toBe(403);
-    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${VIEWER}`, { permissions: [] }, { id: VIEWER })).status).toBe(403);
-    expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: `Lesser ${n}`, permissions: ['search-experiences:view'] })).status).toBe(201);
+    expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: `Lesser2 ${n}`, permissions: ['search-experiences:view'] })).status).toBe(403);
+    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${managerRole}`, { description: 'Mine' }, { id: managerRole })).status).toBe(403);
+    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${lesser}`, { permissions: [] }, { id: lesser })).status).toBe(403);
+    expect((await call(roleRoute.DELETE, 'DELETE', `/api/roles/${lesser}`, undefined, { id: lesser })).status).toBe(403);
+    // Reading the roles, to assign them, stays with user managers
+    expect((await call(rolesRoute.GET, 'GET', '/api/roles')).status).toBe(200);
+    expect((await rolesRepository.getRole(lesser))?.permissions).toEqual(['search-experiences:view']);
   });
 
   it('refuses managing an Admin: profile, password, deactivation', async () => {
@@ -294,6 +318,7 @@ describe('the Admin role and the last Admin', () => {
     as(admin);
     expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: `Bad ${n}`, permissions: ['everything'] })).status).toBe(400);
     expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: 'Viewer', permissions: [] })).status).toBe(409);
+    expect((await call(rolesRoute.POST, 'POST', '/api/roles', { name: `Made ${n}`, permissions: ['tools:view'] })).status).toBe(201);
   });
 });
 
@@ -464,7 +489,7 @@ describe('review round 2', () => {
     expect((await call(userRoute.GET, 'GET', `/api/users/${editor}`, undefined, { id: editor })).status).toBe(403);
   });
 
-  it('refuses a manager deleting a role with permissions they lack', async () => {
+  it('refuses a manager deleting a role with permissions they lack, and lets an Admin', async () => {
     const managerRole = await makeRole(`Mgr2 ${n}`, ['users:manage']);
     const above = await makeRole(`Above ${n}`, ['secrets:manage']);
     as(await makeUser(managerRole));
@@ -663,13 +688,12 @@ describe('adding a secret to a config that had none', () => {
 });
 
 describe("a role's permissions compared as granted", () => {
-  it('lets a user manager whose role holds a permission it lacks the companions for still manage that role', async () => {
+  it('lets a user manager whose role holds a permission it lacks the companions for still manage users holding that role', async () => {
     // setup:run without its companions grants nothing; the role is still within its holders' reach
     const role = await makeRole(`Mgr setup ${n}`, ['users:manage', 'setup:run']);
     const peer = await makeUser(role);
     as(await makeUser(role));
     expect((await call(userRoute.PUT, 'PUT', `/api/users/${peer}`, { firstName: 'Peer' }, { id: peer })).status).toBe(200);
-    expect((await call(roleRoute.PUT, 'PUT', `/api/roles/${role}`, { description: 'Managers' }, { id: role })).status).toBe(200);
   });
 });
 

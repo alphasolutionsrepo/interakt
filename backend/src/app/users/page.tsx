@@ -13,8 +13,8 @@ import { useState, useMemo } from 'react';
 import { UserTable, UserFormDialog, ChangePasswordDialog, UserStatsBar, RolesPanel } from './_components';
 import type { UserResponse } from './_lib/api-client';
 import { useRoles } from './_lib/hooks/useRoles';
+import { roleChoices, userGates } from './_lib/user-gates';
 import { useUsers } from './_lib/hooks/useUsers';
-import type { RoleResponse } from './_lib/roles-api';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +29,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { CreateUserDTO, UpdateUserDTO } from '@/features/auth/auth.validations';
 import { useAccess } from '@/shared/access/useAccess';
-import { holdsAllOf } from '@/features/access/permissions';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
@@ -96,15 +95,12 @@ export default function UsersPage() {
     changePasswordAsync,
     isChangingPassword,
   } = useUsers();
-  const { roles } = useRoles();
-  const { access } = useAccess();
-
-  // A role the signed-in user may hand out: they hold everything it grants (the server checks too)
-  const canHold = (role: Pick<RoleResponse, 'isBuiltIn' | 'permissions'>) =>
-    !!access && holdsAllOf({ isAdmin: access.role.isAdmin, permissions: access.permissions }, role);
-  const assignableRoles = roles.filter(canHold);
-  const rolesFor = (current?: string) =>
-    roles.filter((r) => canHold(r) || r.id === current);
+  const { roles, isLoading: rolesLoading, error: rolesError } = useRoles();
+  const rolesState = rolesLoading ? 'loading' : rolesError ? 'failed' : 'ready';
+  const { access, isAdmin, isLoading: accessLoading } = useAccess();
+  const caller = { isLoading: accessLoading, isAdmin, userId: access?.userId, permissions: access?.permissions ?? [] };
+  // Every role, the ones this user can't give locked with the reason (the server checks too)
+  const choices = roleChoices(caller, roles);
 
   // State
   const [searchQuery, setSearchQuery] = useState('');
@@ -231,7 +227,7 @@ export default function UsersPage() {
           <TabsTrigger value="roles">Roles</TabsTrigger>
         </TabsList>
         <TabsContent value="roles">
-          <RolesPanel canHold={canHold} />
+          <RolesPanel />
         </TabsContent>
         <TabsContent value="users" className="space-y-8">
       {/* Stats */}
@@ -280,6 +276,8 @@ export default function UsersPage() {
         onDeactivate={setUserToDeactivate}
         isActivating={isActivating}
         isDeactivating={isDeactivating}
+        roles={roles}
+        rolesState={rolesState}
       />
         </TabsContent>
       </Tabs>
@@ -289,7 +287,7 @@ export default function UsersPage() {
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
         onSubmit={handleCreateUser}
-        roles={assignableRoles}
+        roles={choices}
         isSubmitting={isCreating}
       />
 
@@ -299,7 +297,8 @@ export default function UsersPage() {
         onOpenChange={(open) => !open && setEditingUser(null)}
         onSubmit={handleUpdateUser}
         user={editingUser || undefined}
-        roles={rolesFor(editingUser?.roleId)}
+        roles={choices}
+        roleGate={editingUser ? userGates(caller, editingUser, roles, rolesState).role : undefined}
         isSubmitting={isUpdating}
       />
 

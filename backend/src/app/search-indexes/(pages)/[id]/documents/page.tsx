@@ -132,7 +132,7 @@ export default function ManageDocumentsPage() {
       {/* Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <DocumentManagerPanel searchIndexId={id} />
+          <DocumentManagerPanel searchIndexId={id} builtIn={searchIndex.isBuiltIn} />
         </div>
 
         {/* Sidebar */}

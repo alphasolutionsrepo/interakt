@@ -1,5 +1,6 @@
 'use client';
 
+import { AccessLink } from '@/shared/access/Can';
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,7 +15,6 @@ import {
   Sparkles,
   RotateCcw,
  Cpu, Wrench } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useRef, useState } from 'react';
 
@@ -439,9 +439,9 @@ function Step2_Tools({ data, onChange, allTools }: {
           <div className="rounded-xl border border-dashed border-border/60 p-5 text-center text-sm">
             <Cpu className="size-7 mx-auto mb-2 text-muted-foreground/60" />
             <p className="text-muted-foreground">No MCP connections yet.</p>
-            <Link href="/mcp-connections/create" target="_blank" className="text-xs text-primary underline mt-2 inline-block">
+            <AccessLink href="/mcp-connections/create" target="_blank" className="text-xs text-primary underline mt-2 inline-block">
               Create one (opens in new tab)
-            </Link>
+            </AccessLink>
           </div>
         ) : (
           <div className="space-y-2 max-h-60 overflow-y-auto">

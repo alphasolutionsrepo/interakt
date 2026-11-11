@@ -15,19 +15,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   Plus,
   Search,
   RefreshCw,
-  Eye,
-  Edit2,
-  Trash2,
   Database,
   ChevronLeft,
   ChevronRight,
@@ -35,13 +25,11 @@ import {
   Zap,
   Brain,
   FileText,
-  RotateCcw,
   Activity,
   CheckCircle2,
   AlertCircle,
   Clock,
   WifiOff,
-  MoreVertical,
   TrendingUp,
   LayoutGrid,
   List,
@@ -53,6 +41,8 @@ import { useSearchIndexes } from '../_lib/hooks/useSearchIndexes';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { IndexRowMenu } from '../_components/IndexRowMenu';
 import { ExportImportButtons } from '../_components/ExportImportButtons';
 import {
   SEARCH_TYPE_INFO,
@@ -369,44 +359,14 @@ function IndexCard({ index, onView, onEdit, onDelete }: IndexCardProps) {
               </p>
             </div>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44 rounded-xl">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(); }} className="rounded-lg py-2">
-                <Eye className="size-4" />
-                View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }} className="rounded-lg py-2">
-                <Edit2 className="size-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); }}
-                className="rounded-lg py-2"
-                disabled={index.status === 'indexing' || index.status === 'creating'}
-              >
-                <RotateCcw className="size-4" />
-                Reindex
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                className="text-destructive focus:text-destructive rounded-lg py-2"
-              >
-                <Trash2 className="size-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <IndexRowMenu
+            index={index}
+            onView={onView}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            triggerClassName="size-9 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+            itemClassName="rounded-lg py-2"
+          />
         </div>
 
         {/* Badges */}
@@ -609,44 +569,15 @@ function DataTableView({ indexes, onView, onEdit, onDelete, emptyAction }: DataT
                     {format(new Date(idx.createdAt), 'MMM d, yyyy')}
                   </td>
                   <td className="px-6 py-5">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="size-5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48 rounded-xl">
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(idx); }} className="rounded-lg py-2.5">
-                          <Eye className="size-4" />
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(idx); }} className="rounded-lg py-2.5">
-                          <Edit2 className="size-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); }}
-                          className="rounded-lg py-2.5"
-                          disabled={idx.status === 'indexing' || idx.status === 'creating'}
-                        >
-                          <RotateCcw className="size-4" />
-                          Reindex
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); onDelete(idx); }}
-                          className="text-destructive focus:text-destructive rounded-lg py-2.5"
-                        >
-                          <Trash2 className="size-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <IndexRowMenu
+                      index={idx}
+                      onView={() => onView(idx)}
+                      onEdit={() => onEdit(idx)}
+                      onDelete={() => onDelete(idx)}
+                      triggerClassName="size-10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                      iconClassName="size-5"
+                      itemClassName="rounded-lg py-2.5"
+                    />
                   </td>
                 </tr>
               );
@@ -729,14 +660,16 @@ export default function SearchIndexesListPage() {
   const hasFilters = statusFilter !== 'all' || searchTypeFilter !== 'all' || searchQuery.trim().length > 0;
 
   const createButton = (
-    <Button
+    <ActionButton
+      action="search-indexes.create"
+      icon={Plus}
+      iconClassName="mr-2 size-5"
       onClick={() => router.push('/search-indexes/create')}
       size="lg"
       className="rounded-xl px-6 font-bold text-base shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all"
     >
-      <Plus className="mr-2 size-5" />
       New Index
-    </Button>
+    </ActionButton>
   );
 
   // Loading state

@@ -1,16 +1,16 @@
 // src/features/access/access-policy.ts
 
 /**
- * Who may hand out or change which role. Pure functions, so every rule is unit-tested.
+ * Who may hand out which role. Pure functions, so every rule is unit-tested.
  *
- * The one rule behind all of them: nobody can give anyone, themselves included, more than
- * they hold. A caller may assign, edit or delete a role only when every permission that role
- * holds (before and after the change) is one of theirs. The built-in Admin role holds every
- * permission, so only an Admin can assign it or manage a user who has it.
+ * Nobody gives anyone, themselves included, more than they hold: a caller may give a role, or
+ * manage a user holding one, only when every permission that role grants is one of theirs. The
+ * built-in Admin role holds every permission, so only an Admin gives it or manages an Admin.
+ * (Creating, editing and deleting roles is Admin-only, roles.service.ts.)
  */
 
 import type { UserAccess } from './user-access';
-import { holdsAllOf } from './permissions';
+import { mayAssignRole } from './permissions';
 
 import { AppError } from '@/shared/errors/app-error';
 
@@ -27,16 +27,12 @@ export class AccessDeniedError extends AppError {
   }
 }
 
-export function assertHoldsRole(caller: UserAccess, role: RoleShape, action: string): void {
-  if (!holdsAllOf(caller, role)) {
-    throw new AccessDeniedError(
-      role.isBuiltIn
-        ? `Only an Admin can ${action} the Admin role.`
-        : `You can't ${action} a role with permissions your own role doesn't have.`,
-    );
-  }
-}
-
-export function assertHoldsPermissions(caller: UserAccess, permissions: readonly string[], action: string): void {
-  assertHoldsRole(caller, { isBuiltIn: false, permissions }, action);
+/** Throws unless the caller may give this role, or act on a user holding it (`action` names which). */
+export function assertMayAssignRole(caller: UserAccess, role: RoleShape, action: string): void {
+  if (mayAssignRole(caller, role)) return;
+  throw new AccessDeniedError(
+    role.isBuiltIn
+      ? `Only an Admin can ${action} the Admin role.`
+      : `You can't ${action} a role with permissions your own role doesn't have.`,
+  );
 }

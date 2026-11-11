@@ -2,7 +2,6 @@
 
 'use client';
 
-import { useAccess } from '@/shared/access/useAccess';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -37,6 +36,7 @@ import { reportActionError } from '@/shared/activity/report';
 import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
+import { ActionButton } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // PROCESSING (computing insights)
@@ -128,8 +128,8 @@ export function NeedsAttention() {
     queryClient.invalidateQueries({ queryKey: ['analytics', 'insights'] });
   }, [status, queryClient]);
   const { refresh, isProcessing } = useRefreshInsights(experienceId, onDone);
-  // Refreshing, hiding and showing findings change them for everyone: analytics:manage
-  const canManage = useAccess().can('analytics:manage');
+  // Refreshing, hiding and showing findings change them for everyone (analytics:manage): the
+  // buttons show locked with the reason for anyone else
 
   const isRunning = isProcessing || status.data?.currentRun?.status === 'running';
   const result = insights.data;
@@ -156,15 +156,18 @@ export function NeedsAttention() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {canManage && (
-          <Button variant="outline" size="sm" onClick={refresh} disabled={isRunning} className="rounded-xl">
-            {isRunning ? (
-              <><Loader2 className="mr-2 size-3.5 animate-spin" /> Refreshing…</>
-            ) : (
-              <><RefreshCw className="mr-2 size-3.5" /> Refresh now</>
-            )}
-          </Button>
-          )}
+          <ActionButton
+            action="analytics.refresh"
+            icon={isRunning ? Loader2 : RefreshCw}
+            iconClassName={isRunning ? 'mr-2 size-3.5 animate-spin' : 'mr-2 size-3.5'}
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={isRunning}
+            className="rounded-xl"
+          >
+            {isRunning ? 'Refreshing…' : 'Refresh now'}
+          </ActionButton>
         </div>
       </CardHeader>
 
@@ -201,7 +204,7 @@ export function NeedsAttention() {
                 <Finding
                   key={finding.id}
                   finding={finding}
-                  onHide={canManage ? () => visibility.hide.mutate({ findingId: finding.id }) : undefined}
+                  onHide={() => visibility.hide.mutate({ findingId: finding.id })}
                   hiding={visibility.hide.isPending && visibility.hide.variables?.findingId === finding.id}
                 />
               ))}
@@ -234,17 +237,17 @@ export function NeedsAttention() {
                       {finding.title}
                       <span className="text-muted-foreground"> · back {formatComeBack(finding.hiddenUntil)}</span>
                     </span>
-                    {canManage && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 rounded-lg text-xs"
-                        disabled={visibility.show.isPending}
-                        onClick={() => visibility.show.mutate(finding.id)}
-                      >
-                        Show again
-                      </Button>
-                    )}
+                    <ActionButton
+                      action="analytics.findings"
+                      iconClassName="mr-1 size-3"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 rounded-lg text-xs"
+                      disabled={visibility.show.isPending}
+                      onClick={() => visibility.show.mutate(finding.id)}
+                    >
+                      Show again
+                    </ActionButton>
                   </li>
                 ))}
               </ul>
@@ -306,7 +309,10 @@ function Finding({ finding, onHide, hiding }: { finding: ProactiveInsight; onHid
             </Button>
           )}
           {onHide && (
-            <Button
+            <ActionButton
+              action="analytics.findings"
+              icon={hiding ? Loader2 : EyeOff}
+              iconClassName={hiding ? 'mr-1.5 size-3.5 animate-spin' : 'mr-1.5 size-3.5'}
               variant="ghost"
               size="sm"
               className="rounded-xl text-muted-foreground"
@@ -314,9 +320,8 @@ function Finding({ finding, onHide, hiding }: { finding: ProactiveInsight; onHid
               disabled={hiding}
               title="Hide this finding for 7 days, for every admin"
             >
-              {hiding ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <EyeOff className="mr-1.5 size-3.5" />}
               Hide for 7 days
-            </Button>
+            </ActionButton>
           )}
         </div>
       </div>

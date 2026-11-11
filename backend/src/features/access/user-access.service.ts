@@ -15,7 +15,7 @@
 import 'server-only';
 
 
-import { AccessDeniedError, assertHoldsRole } from './access-policy';
+import { AccessDeniedError, assertMayAssignRole } from './access-policy';
 import { can, type UserAccess } from './user-access';
 import { conflictOnConstraint } from './constraint-errors';
 import * as roles from './roles.repository';
@@ -38,14 +38,14 @@ export async function assertCanManageUser(caller: UserAccess, targetUserId: stri
   const target = await getUserById(targetUserId);
   if (!target) throw new NotFoundError('User not found');
   if (target.id === caller.userId) return target;
-  assertHoldsRole(caller, await roleOrFail(target.roleId), 'manage a user with');
+  assertMayAssignRole(caller, await roleOrFail(target.roleId), 'manage a user with');
   return target;
 }
 
 /** A role the caller may give to a new or existing user. */
 export async function assertCanAssignRole(caller: UserAccess, roleId: string) {
   if (!can(caller, 'users:manage')) throw new AccessDeniedError('Your role doesn\'t allow managing users.');
-  assertHoldsRole(caller, await roleOrFail(roleId), 'assign');
+  assertMayAssignRole(caller, await roleOrFail(roleId), 'give');
 }
 
 type AccessChanges = { roleId?: string; isActive?: boolean };

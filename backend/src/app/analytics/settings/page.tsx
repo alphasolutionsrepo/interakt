@@ -3,7 +3,6 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, CheckCircle2, CircleOff, Database, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 
@@ -30,6 +29,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/shared/ui/components/alert-dialog';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { AccessLink } from '@/shared/access/Can';
 
 // ============================================================================
 // DATA
@@ -188,17 +189,25 @@ function InsightsCard() {
         {scheduleError && <p className="text-sm text-destructive">{scheduleError}</p>}
         <div className="flex flex-wrap gap-2">
           {schedule.data === null && (
-            <Button size="sm" className="rounded-xl" onClick={scheduleNightly} disabled={scheduling}>
-              {scheduling ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <CalendarClock className="mr-2 size-3.5" />}
+            <ActionButton
+              action="jobs.schedule"
+              icon={scheduling ? Loader2 : CalendarClock}
+              iconClassName={scheduling ? 'mr-2 size-3.5 animate-spin' : 'mr-2 size-3.5'}
+              size="sm"
+              className="rounded-xl"
+              onClick={scheduleNightly}
+              disabled={scheduling}
+            >
               Schedule nightly refresh (02:00 UTC)
-            </Button>
+            </ActionButton>
           )}
-          <Button variant="outline" size="sm" className="rounded-xl" onClick={refresh} disabled={isRunning}>
-            <RefreshCw className="mr-2 size-3.5" /> Refresh now
-          </Button>
-          <Button variant="link" size="sm" className="px-1" asChild>
-            <Link href="/jobs">Change the schedule in Background Jobs</Link>
-          </Button>
+          <ActionButton action="analytics.refresh" icon={RefreshCw} iconClassName="mr-2 size-3.5" variant="outline" size="sm" className="rounded-xl" onClick={refresh} disabled={isRunning}>
+            Refresh now
+          </ActionButton>
+          {/* Background Jobs needs settings:view: no link for a role that can't open it */}
+          <AccessLink href="/jobs" className="px-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
+            Change the schedule in Background Jobs
+          </AccessLink>
         </div>
       </CardContent>
     </Card>

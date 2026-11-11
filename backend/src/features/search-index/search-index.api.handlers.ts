@@ -10,6 +10,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { withBuiltInFlag } from '@/features/access/built-in';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
@@ -98,7 +99,7 @@ export async function handleCreateSearchIndex(request: NextRequest) {
 export async function handleGetAllActiveSearchIndexes() {
     try {
         const indexes = await service.getAllActiveSearchIndexes();
-        return apiResponse.success(indexes);
+        return apiResponse.success(await withBuiltInFlag('search-index', indexes));
     } catch (error) {
         return apiResponse.error(error as Error, undefined, { operation: 'getAllActiveSearchIndexes' });
     }
@@ -121,7 +122,7 @@ export async function handleListSearchIndexes(request: NextRequest) {
 
         const result = await service.listSearchIndexes(validation.data);
 
-        return apiResponse.success(result);
+        return apiResponse.success({ ...result, items: await withBuiltInFlag('search-index', result.items) });
     } catch (error) {
         return apiResponse.error(error as Error, undefined, { operation: 'listSearchIndexes' });
     }
@@ -149,7 +150,8 @@ export async function handleGetSearchIndex(
             return apiResponse.notFound(`Search index with ID ${params.id} not found`);
         }
 
-        return apiResponse.success(searchIndex);
+        const [flagged] = await withBuiltInFlag('search-index', [searchIndex]);
+        return apiResponse.success(flagged);
     } catch (error) {
         return apiResponse.error(error as Error, undefined, { operation: 'getSearchIndex' });
     }

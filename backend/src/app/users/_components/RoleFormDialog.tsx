@@ -27,14 +27,12 @@ interface RoleFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   role?: RoleResponse;
-  /** Permissions the signed-in user doesn't hold are shown but can't be ticked */
-  canHoldPermission: (permission: Permission) => boolean;
   /** Rejects when the save fails; the dialog then shows why */
   onSubmit: (data: CreateRoleInput) => Promise<void>;
   isSubmitting?: boolean;
 }
 
-export function RoleFormDialog({ open, onOpenChange, role, canHoldPermission, onSubmit, isSubmitting }: RoleFormDialogProps) {
+export function RoleFormDialog({ open, onOpenChange, role, onSubmit, isSubmitting }: RoleFormDialogProps) {
   const inline = useInlineError();
   const clearInlineError = inline.clear;
   const [name, setName] = useState('');
@@ -91,15 +89,14 @@ export function RoleFormDialog({ open, onOpenChange, role, canHoldPermission, on
               <fieldset key={group.id} className="space-y-2">
                 <legend className="text-sm font-semibold">{group.label}</legend>
                 {group.permissions.map((p) => {
-                  const holdable = canHoldPermission(p.id);
                   const ticked = permissions.has(p.id);
                   const included = !ticked && effective.has(p.id);
                   const unmet = ticked && !effective.has(p.id);
                   return (
-                    <label key={p.id} className={`flex items-center gap-2 text-sm ${holdable ? '' : 'opacity-50'}`}>
+                    <label key={p.id} className="flex items-center gap-2 text-sm">
                       <Checkbox
                         checked={ticked || included}
-                        disabled={!holdable || included}
+                        disabled={included}
                         onCheckedChange={(v) => toggle(p.id, v === true)}
                       />
                       <span>

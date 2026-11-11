@@ -1,5 +1,8 @@
 'use client';
 
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -428,6 +431,7 @@ interface SearchExperienceEditProps {
 }
 
 export function SearchExperienceEdit({ id, basePath = '/search-experiences', listPath }: SearchExperienceEditProps) {
+  const access = useAccess();
   const listHref = listPath ?? basePath;
   const router = useRouter();
 
@@ -783,6 +787,10 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
       </div>
     );
   }
+
+  // Only an Admin changes the built-in help; anyone else is told so instead of given a form
+  const editGate = builtInGateFor(access, 'search-experiences.edit', experience.isBuiltIn);
+  if (editGate.state !== 'allowed') return <LockedPage gate={editGate} backHref={`${basePath}/${id}`} />;
 
   const hasChanges = isDirty();
   const canSave = hasChanges && formData.name.length > 0 && formData.slug.length >= 3 && slugAvailable !== false;

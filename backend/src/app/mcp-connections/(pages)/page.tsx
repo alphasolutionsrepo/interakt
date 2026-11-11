@@ -8,9 +8,6 @@ import {
   Search,
   RefreshCw,
   X,
-  MoreVertical,
-  Eye,
-  Trash2,
   ChevronLeft,
   ChevronRight,
   ArrowUpRight,
@@ -30,19 +27,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { McpStatusChip } from '../_components/McpStatusChip';
 import { useMcpConnections } from '../_lib/hooks/useMcpConnections';
 import type { McpConnection, McpStatus } from '../_lib/api-client';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
 function GlowCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
@@ -167,33 +160,13 @@ function TableView({ connections, onView, onDelete, emptyAction }: {
                   {c.lastDiscoveredAt ? format(new Date(c.lastDiscoveredAt), 'MMM d, HH:mm') : 'Never'}
                 </td>
                 <td className="px-6 py-4">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-9 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreVertical className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44 rounded-xl">
-                      <DropdownMenuItem
-                        onClick={(e) => { e.stopPropagation(); onView(c); }}
-                        className="rounded-lg py-2"
-                      >
-                        <Eye className="size-4" /> View Details
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={(e) => { e.stopPropagation(); onDelete(c); }}
-                        className="text-destructive focus:text-destructive rounded-lg py-2"
-                      >
-                        <Trash2 className="size-4" /> Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <RowActionsMenu
+                    onView={() => onView(c)}
+                    onDelete={() => onDelete(c)}
+                    deleteAction="mcp.delete"
+                    triggerClassName="size-9 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    itemClassName="rounded-lg py-2"
+                  />
                 </td>
               </tr>
             ))}
@@ -242,13 +215,16 @@ export default function McpConnectionsPage() {
   const hasFilters = search || statusFilter !== 'all';
 
   const createButton = (
-    <Button
+    <ActionButton
+      action="mcp.create"
+      icon={Plus}
+      iconClassName="mr-2 size-5"
       onClick={() => router.push('/mcp-connections/create')}
       size="lg"
       className="rounded-xl px-6 font-bold"
     >
-      <Plus className="mr-2 size-5" /> New Connection
-    </Button>
+      New Connection
+    </ActionButton>
   );
 
   if (isLoading && !connections.length) {

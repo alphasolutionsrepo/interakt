@@ -10,7 +10,7 @@
 
 'use client';
 
-import Link from 'next/link';
+import { AccessLink } from '@/shared/access/Can';
 import { Database, Globe, Layers, Plus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -190,7 +190,7 @@ export function ExperienceSources({
           <Label>External indexes</Label>
           <p className="text-xs text-muted-foreground mt-1">
             Search engines you already run (Elasticsearch, Azure AI Search, Sitecore Search), set up under{' '}
-            <Link href="/data-sources" className="underline hover:text-foreground">Data Sources</Link>. Interakt
+            <AccessLink href="/data-sources" className="underline hover:text-foreground" fallback="Data Sources">Data Sources</AccessLink>. Interakt
             queries them; content and ranking stay where they are.
           </p>
         </div>
@@ -317,13 +317,13 @@ function SourceCard({
     <Card className="border-border/60 rounded-xl">
       <CardContent className="p-3">
         <div className="flex items-center justify-between gap-3">
-          <Link href={href} className="flex items-center gap-3 min-w-0 hover:underline">
+          <AccessLink href={href} plain="div" className="flex items-center gap-3 min-w-0 hover:underline">
             <div className="p-2 bg-muted rounded-lg shrink-0">{icon}</div>
             <div className="min-w-0">
               <p className="font-medium text-foreground truncate">{title}</p>
               {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
             </div>
-          </Link>
+          </AccessLink>
           <div className="flex items-center gap-2 shrink-0">
             {children}
             <Button

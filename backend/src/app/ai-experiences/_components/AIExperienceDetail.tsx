@@ -3,8 +3,7 @@
 import { useAccess } from '@/shared/access/useAccess';
 import { format } from 'date-fns';
 import {
-  ChevronRight, Edit2, Power, PowerOff, Trash2,
-  RefreshCw, CircleCheck, CircleDashed, Bot, Shield, Thermometer,
+  ChevronRight, CircleCheck, CircleDashed, Bot, Shield, Thermometer,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -18,12 +17,13 @@ import { ExperienceBadges } from './ExperienceBadges';
 import { PipelineStepsCard } from './PipelineStepsCard';
 
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
 import { AccessTokenRow } from '@/shared/ui/custom/AccessTokenRow';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { ExperienceHeaderActions } from '@/app/experiences/_components/ExperienceHeaderActions';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
 
 
 
@@ -38,7 +38,6 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
   const router = useRouter();
   // Test runs spend AI tokens or call the tool: playground:use
   const { can } = useAccess();
-  const canTest = can('playground:use');
   // The token also reaches playground users; the widget editor (which saves) is for editors
   const canEdit = can('ai-experiences:edit');
   const {
@@ -75,18 +74,12 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
   const ac = (experience.accessConfig ?? {}) as Record<string, unknown>;
   const rl = (ac?.rateLimits ?? {}) as Record<string, unknown>;
 
-  async function handleToggleActive() {
-    await updateExperience({ isActive: !experience!.isActive });
-  }
 
   async function handleDelete() {
     await deleteExperience();
     router.push(listHref);
   }
 
-  async function handleRegenerateToken() {
-    await regenerateToken();
-  }
 
   async function handleAssignTool(payload: Parameters<typeof assignTool>[0]) {
     await assignTool(payload);
@@ -126,22 +119,12 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
         }
         badge={<ExperienceBadges mode={experience.pipelineMode} executionPolicy={experience.executionPolicy} guardrailConfig={experience.guardrailConfig} />}
         actions={
-          <>
-            <Button variant="outline" size="sm" className="rounded-xl" onClick={handleRegenerateToken} disabled={isRegeneratingToken}>
-              <RefreshCw className={`size-3.5 mr-1.5 ${isRegeneratingToken ? 'animate-spin' : ''}`} />
-              Regenerate Token
-            </Button>
-            <Button
-              variant={experience.isActive ? 'outline' : 'default'}
-              className={`rounded-xl ${!experience.isActive ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
-              onClick={handleToggleActive} disabled={isUpdating}
-            >
-              {experience.isActive ? <><PowerOff className="size-4 mr-2" />Deactivate</> : <><Power className="size-4 mr-2" />Activate</>}
-            </Button>
-            <Button variant="outline" className="rounded-xl" onClick={() => router.push(`${basePath}/${id}/edit`)}>
-              <Edit2 className="size-4 mr-2" />Edit
-            </Button>
-          </>
+          <ExperienceHeaderActions
+            kind="ai"
+            experience={experience}
+            controls={{ regenerateToken, isRegeneratingToken, updateExperience, isUpdating }}
+            onEdit={() => router.push(`${basePath}/${id}/edit`)}
+          />
         }
       />
 
@@ -190,7 +173,8 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
       </Card>
 
       {/* Chat Test Panel */}
-      {canTest && <ChatTestPanel experienceSlug={experience.slug} experienceName={experience.name} />}
+      {/* Send is locked with the reason for a role without playground:use (open on the built-in help) */}
+      <ChatTestPanel experienceSlug={experience.slug} experienceName={experience.name} isBuiltIn={experience.isBuiltIn} />
 
       {/* Pipeline Configuration */}
       <PipelineStepsCard
@@ -300,24 +284,14 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
       </div>
 
       {/* Danger Zone */}
-      <CollapsibleCard
-        className="border-destructive/30"
-        icon={<Trash2 className="size-4 text-destructive" />}
-        title={<span className="text-destructive">Danger Zone</span>}
-        description="Irreversible actions that permanently affect this AI experience."
-      >
-        <div className="flex items-center justify-between p-4 bg-destructive/5 rounded-xl border border-destructive/20">
-          <div>
-            <p className="font-medium text-sm">Delete this AI experience</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Permanently deletes the experience and all tool assignments.
-            </p>
-          </div>
-          <Button variant="destructive" className="rounded-xl" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="size-4 mr-2" />Delete
-          </Button>
-        </div>
-      </CollapsibleCard>
+      <DangerZone
+        thing="AI experience"
+        detail="Permanently deletes the experience and all tool assignments."
+        action="ai-experiences.delete"
+        onDelete={() => setDeleteOpen(true)}
+        builtIn={experience.isBuiltIn}
+        collapsible
+      />
 
       <DeleteConfirmDialog
         open={deleteOpen} onOpenChange={setDeleteOpen}

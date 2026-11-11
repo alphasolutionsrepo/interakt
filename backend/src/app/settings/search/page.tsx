@@ -31,6 +31,7 @@ import {
     useUpdateGlobalSearchSettings,
 } from './_lib/hooks/useGlobalSearchSettings';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // FORM SCHEMA
@@ -107,6 +108,7 @@ export default function GlobalSearchSettingsPage() {
     const updateSettings = useUpdateGlobalSearchSettings();
     const [hasChanges, setHasChanges] = useState(false);
 
+    const saveGate = useActionGate('settings.search');
     const form = useForm<FormData>({
         resolver: zodResolver(formSchema),
         defaultValues: {
@@ -194,23 +196,23 @@ export default function GlobalSearchSettingsPage() {
                             <RefreshCw className="mr-2 size-4" />
                             Refresh
                         </Button>
-                        <Button
+                        <ActionButton
+                            gate={saveGate}
+                            icon={updateSettings.isPending ? RefreshCw : Save}
+                            iconClassName={updateSettings.isPending ? 'mr-2 size-4 animate-spin' : 'mr-2 size-4'}
                             onClick={form.handleSubmit(onSubmit)}
                             disabled={!hasChanges || updateSettings.isPending}
                             className="rounded-xl shadow-lg"
                         >
-                            {updateSettings.isPending ? (
-                                <RefreshCw className="mr-2 size-4 animate-spin" />
-                            ) : (
-                                <Save className="mr-2 size-4" />
-                            )}
                             Save Changes
-                        </Button>
+                        </ActionButton>
                     </>
                 }
             />
 
             <form onSubmit={form.handleSubmit(onSubmit)}>
+                {/* Read-only for a role that can't save: every field is disabled */}
+                <fieldset disabled={saveGate.state !== 'allowed'} className="contents">
                 <div className="grid gap-6 md:grid-cols-2">
                     {/* Timeout Settings */}
                     <Card className="rounded-2xl border-border/60">
@@ -395,6 +397,7 @@ export default function GlobalSearchSettingsPage() {
                         </Button>
                     </div>
                 )}
+                </fieldset>
             </form>
         </div>
     );

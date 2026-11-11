@@ -68,12 +68,14 @@ interface UseSearchExperiencesParams {
 /**
  * Hook to list search experiences with pagination and filtering
  */
-export function useSearchExperiences(params?: UseSearchExperiencesParams) {
+/** `enabled: false` sends no request (a page that doesn't need the list, or may not read it). */
+export function useSearchExperiences(params?: UseSearchExperiencesParams, { enabled = true }: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: searchExperienceKeys.list(params as Record<string, unknown>),
     queryFn: () => searchExperiencesApi.list(params),
+    enabled,
     // Keep the current list on screen while a new filter loads, so the page
     // doesn't swap to its skeleton and unmount the search box.
     placeholderData: keepPreviousData,
@@ -160,7 +162,7 @@ export function useSearchExperience(id: string | undefined) {
     mutationFn: () => searchExperiencesApi.regenerateToken(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: searchExperienceKeys.detail(id!) });
-      toast.success('Access token regenerated');
+      toast.success('Access token regenerated', { description: 'Update the token in your client applications.' });
     },
     meta: { label: 'Regenerate access token' },
   });

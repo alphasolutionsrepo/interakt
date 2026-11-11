@@ -35,12 +35,14 @@ function useDebounce<T>(value: T, delay = 300): T {
 // LIST HOOK
 // ============================================================================
 
-export function useAIExperiences(params?: ListAIExperiencesParams) {
+/** `enabled: false` sends no request (a page that doesn't need the list, or may not read it). */
+export function useAIExperiences(params?: ListAIExperiencesParams, { enabled = true }: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: aiExperienceKeys.list(params as Record<string, unknown>),
     queryFn: () => aiExperiencesApi.list(params),
+    enabled,
     // Keep the current list on screen while a new filter loads, so the page
     // doesn't swap to its skeleton and unmount the search box.
     placeholderData: keepPreviousData,
@@ -103,7 +105,7 @@ export function useAIExperience(id: string | undefined) {
     mutationFn: () => aiExperiencesApi.regenerateToken(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.detail(id!) });
-      toast.success('Access token regenerated');
+      toast.success('Access token regenerated', { description: 'Update the token in your client applications.' });
     },
     meta: { label: 'Regenerate token' },
   });

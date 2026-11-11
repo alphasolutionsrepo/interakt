@@ -2,7 +2,11 @@
 
 'use client';
 
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
 import { useAccess } from '@/shared/access/useAccess';
+import { Can } from '@/shared/access/Can';
+import { noPermissionTo } from '@/features/access/ui-actions';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
@@ -199,10 +203,9 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 // ============================================================================
 
 export default function EditSearchIndexPage() {
+  const access = useAccess();
   const params = useParams();
   const router = useRouter();
-  // Ingestion keys are credentials: listing and creating them needs secrets:manage
-  const canManageKeys = useAccess().can('secrets:manage');
   const queryClient = useQueryClient();
   const indexId = params.id as string;
 
@@ -385,6 +388,10 @@ export default function EditSearchIndexPage() {
       </div>
     );
   }
+
+  // Only an Admin changes the built-in help; anyone else is told so instead of given a form
+  const editGate = builtInGateFor(access, 'search-indexes.edit', searchIndex.isBuiltIn);
+  if (editGate.state !== 'allowed') return <LockedPage gate={editGate} backHref={`/search-indexes/${indexId}`} />;
 
   // Get display info for locked fields
   const searchTypeInfo = SEARCH_TYPE_INFO[searchIndex.searchType as SearchType];
@@ -925,13 +932,18 @@ export default function EditSearchIndexPage() {
 
           {/* API Access Tab */}
           <TabsContent value="api-access" className="space-y-6">
-            {canManageKeys ? (
+            {/* Even listing the keys needs secrets:manage (they are credentials), so the section is closed, not locked */}
+            <Can
+              permission="secrets:manage"
+              fallback={
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Lock className="size-4" aria-hidden />
+                  {noPermissionTo('manage ingestion keys')}
+                </p>
+              }
+            >
               <IngestionKeysCard searchIndexId={indexId} />
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Ingestion keys are managed by roles that can manage secrets.
-              </p>
-            )}
+            </Can>
           </TabsContent>
 
           {/* AI Tab */}

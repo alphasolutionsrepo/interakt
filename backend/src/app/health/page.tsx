@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useSystemHealth } from './_lib/hooks/useHealth';
 import { HealthStatsBar, ServiceStatusCard } from './_components';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { useCanOpenPage } from '@/shared/access/Can';
 
 // ============================================================================
 // Page Skeleton
@@ -63,6 +64,7 @@ function HealthPageSkeleton() {
 // ============================================================================
 
 export default function HealthPage() {
+  const canOpen = useCanOpenPage();
   const [autoRefresh, setAutoRefresh] = useState(true);
   const { data: health, isLoading, isError, error, refetch } = useSystemHealth(
     autoRefresh ? { refetchInterval: 30000 } : undefined
@@ -147,16 +149,18 @@ export default function HealthPage() {
         }
         actions={
           <>
-            <Button
-              variant="outline"
-              asChild
-              className="rounded-xl"
-            >
-              <Link href="/playground">
-                <FlaskConical className="mr-2 size-4" />
-                Test Queries
-              </Link>
-            </Button>
+            {canOpen('/playground') && (
+              <Button
+                variant="outline"
+                asChild
+                className="rounded-xl"
+              >
+                <Link href="/playground">
+                  <FlaskConical className="mr-2 size-4" />
+                  Test Queries
+                </Link>
+              </Button>
+            )}
             <Button
               variant={autoRefresh ? 'default' : 'outline'}
               onClick={() => setAutoRefresh(!autoRefresh)}

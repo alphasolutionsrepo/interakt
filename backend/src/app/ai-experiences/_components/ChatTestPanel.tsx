@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
+import { ActionButton, useActionGate, type ActionGate } from '@/shared/access/ActionControls';
 import { startExperienceChat } from '@/shared/ui/custom/start-experience-chat';
 
 // ============================================================================
@@ -374,15 +375,27 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 interface ChatTestPanelProps {
   experienceSlug: string;
   experienceName: string;
+  /** The built-in help: every signed-in user may chat with it */
+  isBuiltIn?: boolean;
 }
 
-export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelProps) {
+/**
+ * Whether Send is open: a chat runs the experience for real (spends AI tokens), so it needs
+ * playground:use, except on the built-in help, which every signed-in user may chat with (the
+ * server's rule in token-or-session.ts).
+ */
+export function chatSendGate(actionGate: ActionGate, isBuiltIn: boolean): ActionGate {
+  return isBuiltIn && actionGate.state === 'locked' ? { state: 'allowed' } : actionGate;
+}
+
+export function ChatTestPanel({ experienceSlug, experienceName, isBuiltIn = false }: ChatTestPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const sendGate = chatSendGate(useActionGate('ai-experiences.test-chat'), isBuiltIn);
   const currentAssistantIdRef = useRef<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Buffer preset data until text content starts streaming (so grid + text appear together)
@@ -414,7 +427,8 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
 
   async function sendMessage() {
     const text = input.trim();
-    if (!text || isStreaming) return;
+    // Enter in the box sends too, so the check sits here as well as on the button
+    if (!text || isStreaming || sendGate.state !== 'allowed') return;
 
     setIsExpanded(true);
     setInput('');
@@ -683,17 +697,15 @@ export function ChatTestPanel({ experienceSlug, experienceName }: ChatTestPanelP
             rows={2}
             className="rounded-xl resize-none flex-1 text-sm"
           />
-          <Button
+          <ActionButton
+            gate={sendGate}
+            icon={isStreaming ? Loader2 : Send}
+            iconClassName={isStreaming ? 'size-4 animate-spin' : 'size-4'}
             className="rounded-xl h-[60px] px-4 shrink-0"
             onClick={() => void sendMessage()}
             disabled={isStreaming || !input.trim()}
-          >
-            {isStreaming ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-          </Button>
+            aria-label="Send"
+          />
         </div>
 
         {sessionId && (

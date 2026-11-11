@@ -12,6 +12,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { Download, Upload, Loader2 } from 'lucide-react';
 import { useExportSearchIndex } from '../_lib/hooks/useSearchIndexExport';
 import { ImportWizard } from './ImportWizard';
@@ -82,15 +83,17 @@ export function ExportImportButtons({
 
                 {/* Import Button */}
                 {!exportOnly && (
-                    <Button
+                    <ActionButton
+                        action="search-indexes.import"
+                        icon={Upload}
+                        iconClassName="h-4 w-4 mr-2"
                         variant="outline"
                         size="sm"
                         onClick={() => setImportWizardOpen(true)}
                         className="rounded-xl"
                     >
-                        <Upload className="h-4 w-4 mr-2" />
                         Import
-                    </Button>
+                    </ActionButton>
                 )}
             </div>
 

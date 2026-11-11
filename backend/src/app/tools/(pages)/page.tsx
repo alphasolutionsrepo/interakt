@@ -12,10 +12,6 @@ import {
   LayoutGrid,
   List,
   TrendingUp,
-  MoreVertical,
-  Eye,
-  Edit2,
-  Trash2,
   ChevronLeft,
   ChevronRight,
   ArrowUpRight,
@@ -33,13 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
@@ -47,6 +37,8 @@ import { NeedsSetupBadge } from '../_components/ToolNotReadyNote';
 import { ToolTypeChip, resolveToolChipConfig } from '../_components/ToolTypeChip';
 import { useTools } from '../_lib/hooks/useTools';
 import type { ToolWithUsage, ExecutorType } from '../_lib/api-client';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
 type ViewMode = 'cards' | 'table';
 
@@ -155,29 +147,16 @@ function ToolCard({ tool, onView, onEdit, onDelete }: {
               <p className="text-sm text-muted-foreground font-mono truncate mt-0.5">{tool.slug}</p>
             </div>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost" size="icon"
-                className="size-9 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44 rounded-xl">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(); }} className="rounded-lg py-2">
-                <Eye className="size-4" /> View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }} className="rounded-lg py-2">
-                <Edit2 className="size-4" /> Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-destructive focus:text-destructive rounded-lg py-2">
-                <Trash2 className="size-4" /> Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <RowActionsMenu
+            onView={onView}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            editAction="tools.edit"
+            builtIn={tool.isBuiltIn}
+            deleteAction="tools.delete"
+            triggerClassName="size-9 shrink-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+            itemClassName="rounded-lg py-2"
+          />
         </div>
 
         {/* Description */}
@@ -314,25 +293,16 @@ function TableView({ tools, onView, onEdit, onDelete, emptyAction }: {
                     {format(new Date(tool.createdAt), 'MMM d, yyyy')}
                   </td>
                   <td className="px-6 py-4">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-9 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44 rounded-xl">
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(tool); }} className="rounded-lg py-2">
-                          <Eye className="size-4" /> View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(tool); }} className="rounded-lg py-2">
-                          <Edit2 className="size-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(tool); }} className="text-destructive focus:text-destructive rounded-lg py-2">
-                          <Trash2 className="size-4" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <RowActionsMenu
+                      onView={() => onView(tool)}
+                      onEdit={() => onEdit(tool)}
+                      onDelete={() => onDelete(tool)}
+                      editAction="tools.edit"
+                      builtIn={tool.isBuiltIn}
+                      deleteAction="tools.delete"
+                      triggerClassName="size-9 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      itemClassName="rounded-lg py-2"
+                    />
                   </td>
                 </tr>
               );
@@ -394,9 +364,9 @@ export default function ToolsPage() {
   const hasFilters = search || executorTypeFilter !== 'all' || statusFilter !== 'all';
 
   const createButton = (
-    <Button onClick={() => router.push('/tools/create')} size="lg" className="rounded-xl px-6 font-bold">
-      <Plus className="mr-2 size-5" /> New Tool
-    </Button>
+    <ActionButton action="tools.create" icon={Plus} iconClassName="mr-2 size-5" onClick={() => router.push('/tools/create')} size="lg" className="rounded-xl px-6 font-bold">
+      New Tool
+    </ActionButton>
   );
 
   if (isLoading && !tools.length) {

@@ -3,10 +3,12 @@
 'use client';
 
 import { AlertTriangle, Lock } from 'lucide-react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { useEffect, type ReactNode } from 'react';
 
+import type { ActionGate } from './ActionControls';
 import { accessState } from './access-state';
 import { useAccess } from './useAccess';
 
@@ -55,6 +57,22 @@ export function PageAccessGate({ children }: { children: ReactNode }) {
       icon={<Lock className="size-6 text-muted-foreground" />}
       title="You don't have access to this page"
       text="Your role doesn't include this area. Ask an admin if you need it."
+    />
+  );
+}
+
+/**
+ * In place of a page whose only purpose is an action the user may not take, such as the edit
+ * page of the built-in help for a non-Admin: says why, and links back. Nothing while loading.
+ */
+export function LockedPage({ gate, backHref }: { gate: Exclude<ActionGate, { state: 'allowed' }>; backHref: string }) {
+  if (gate.state === 'loading') return null;
+  return (
+    <Panel
+      icon={<Lock className="size-6 text-muted-foreground" />}
+      title="You can't change this"
+      text={gate.reason}
+      action={<Button variant="outline" asChild><Link href={backHref}>Back</Link></Button>}
     />
   );
 }

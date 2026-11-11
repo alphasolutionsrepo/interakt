@@ -22,11 +22,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import {
     DropdownMenu,
     DropdownMenuContent,
-    DropdownMenuItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -48,6 +46,8 @@ import { toast } from 'sonner';
 
 import { reportActionError } from '@/shared/activity/report';
 import { cn } from '@/lib/utils';
+import { ActionButton, ActionMenuItem, ActionSwitch } from '@/shared/access/ActionControls';
+import { useAccess } from '@/shared/access/useAccess';
 import { ModelFormDialog } from './ModelFormDialog';
 import { aiModelsApi } from '../_lib/api-client';
 import { capabilitiesFromForm } from '../_lib/model-capabilities';
@@ -155,11 +155,13 @@ function ModelRow({ model, onEdit, onDelete, onToggleAvailable, isUpdating }: Mo
             {/* Actions */}
             <div className="flex items-center gap-2 ml-2">
                 {/* Available Toggle */}
-                <Switch
+                <ActionSwitch
+                    action="ai-models.change"
                     checked={model.isAvailable}
                     onCheckedChange={(checked) => onToggleAvailable(model, checked)}
                     disabled={isUpdating}
                     className="data-[state=checked]:bg-emerald-500"
+                    aria-label={`${model.displayName} available`}
                 />
 
                 {/* Menu */}
@@ -174,21 +176,51 @@ function ModelRow({ model, onEdit, onDelete, onToggleAvailable, isUpdating }: Mo
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(model)}>
-                            <Pencil className="h-4 w-4 mr-2" />
+                        <ActionMenuItem action="ai-models.change" icon={Pencil} iconClassName="h-4 w-4 mr-2" onClick={() => onEdit(model)}>
                             Edit
-                        </DropdownMenuItem>
+                        </ActionMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
+                        <ActionMenuItem
+                            action="ai-models.change"
+                            icon={Trash2}
+                            iconClassName="h-4 w-4 mr-2"
                             onClick={() => onDelete(model)}
                             className="text-red-600 focus:text-red-600"
                         >
-                            <Trash2 className="h-4 w-4 mr-2" />
                             Delete
-                        </DropdownMenuItem>
+                        </ActionMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
+        </div>
+    );
+}
+
+/** Add Model and, for Ollama, Discover Models; locked with the reason for someone who may not. */
+function ModelActions({ onAdd, onDiscover, isDiscovering }: {
+    onAdd: () => void;
+    /** Set only when discovery applies (Ollama) */
+    onDiscover?: () => void;
+    isDiscovering: boolean;
+}) {
+    return (
+        <div className="flex items-center gap-2">
+            <ActionButton action="ai-models.change" icon={Plus} iconClassName="h-4 w-4 mr-1" size="sm" onClick={onAdd}>
+                Add Model
+            </ActionButton>
+            {onDiscover && (
+                <ActionButton
+                    action="ai-providers.discover-models"
+                    icon={isDiscovering ? Loader2 : Search}
+                    iconClassName={isDiscovering ? 'h-4 w-4 mr-1 animate-spin' : 'h-4 w-4 mr-1'}
+                    size="sm"
+                    variant="outline"
+                    onClick={onDiscover}
+                    disabled={isDiscovering}
+                >
+                    {isDiscovering ? 'Discovering...' : 'Discover Models'}
+                </ActionButton>
+            )}
         </div>
     );
 }
@@ -214,6 +246,9 @@ export function ManageModelsDialog({
 
     const models = provider.models || [];
     const isOllama = provider.providerKey === 'ollama';
+    const { canDo } = useAccess();
+    const canChange = canDo('ai-models.change');
+    const discover = isOllama ? onDiscoverModels : undefined;
 
     // Handle add model
     const handleAddModel = () => {
@@ -297,50 +332,27 @@ export function ManageModelsDialog({
         }
     };
 
+    const actions = <ModelActions onAdd={handleAddModel} onDiscover={discover} isDiscovering={isDiscovering} />;
+
     return (
         <>
             <Dialog open={open} onOpenChange={onOpenChange}>
                 <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            Manage Models
+                            {canChange ? 'Manage Models' : 'Models'}
                             <Badge variant="outline" className="font-normal">
                                 {models.length} {models.length === 1 ? 'model' : 'models'}
                             </Badge>
                         </DialogTitle>
                         <DialogDescription>
-                            Add, edit, or remove models for {provider.displayName}
+                            {canChange ? `Add, edit, or remove models for ${provider.displayName}` : `Models for ${provider.displayName}`}
                         </DialogDescription>
                     </DialogHeader>
 
                     {/* Action Bar */}
                     <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-border">
-                        <div className="flex items-center gap-2">
-                            <Button size="sm" onClick={handleAddModel}>
-                                <Plus className="h-4 w-4 mr-1" />
-                                Add Model
-                            </Button>
-                            {isOllama && onDiscoverModels && (
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={onDiscoverModels}
-                                    disabled={isDiscovering}
-                                >
-                                    {isDiscovering ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                            Discovering...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Search className="h-4 w-4 mr-1" />
-                                            Discover Models
-                                        </>
-                                    )}
-                                </Button>
-                            )}
-                        </div>
+                        {actions}
                     </div>
 
                     {/* Models List */}
@@ -352,28 +364,11 @@ export function ManageModelsDialog({
                                 </div>
                                 <p className="text-slate-600 font-medium">No models configured</p>
                                 <p className="text-sm text-slate-400 mt-1 mb-4">
-                                    {isOllama
+                                    {isOllama && discover
                                         ? 'Discover models from Ollama or add them manually'
-                                        : 'Add models to start using this provider'
-                                    }
+                                        : 'Add models to start using this provider'}
                                 </p>
-                                <div className="flex items-center justify-center gap-2">
-                                    <Button size="sm" onClick={handleAddModel}>
-                                        <Plus className="h-4 w-4 mr-1" />
-                                        Add Model
-                                    </Button>
-                                    {isOllama && onDiscoverModels && (
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={onDiscoverModels}
-                                            disabled={isDiscovering}
-                                        >
-                                            <Search className="h-4 w-4 mr-1" />
-                                            Discover
-                                        </Button>
-                                    )}
-                                </div>
+                                <div className="flex justify-center">{actions}</div>
                             </div>
                         ) : (
                             <div className="space-y-2">

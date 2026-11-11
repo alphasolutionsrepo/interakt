@@ -2,7 +2,7 @@
 
 'use client';
 
-import { MoreHorizontal, RotateCcw, Ban, Play, Trash2, Eye } from 'lucide-react';
+import { MoreHorizontal, RotateCcw, Ban, Play, Trash2, Eye, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import type { JobAction, JobRecord, JobState } from '../_lib/api-client';
@@ -33,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { ActionMenuItem } from '@/shared/access/ActionControls';
 
 
 
@@ -55,7 +56,7 @@ function actionsFor(state: JobState): JobAction[] {
   }
 }
 
-const ACTION_META: Record<JobAction, { label: string; icon: React.ElementType; danger?: boolean }> = {
+const ACTION_META: Record<JobAction, { label: string; icon: LucideIcon; danger?: boolean }> = {
   retry: { label: 'Retry', icon: RotateCcw },
   cancel: { label: 'Cancel', icon: Ban },
   resume: { label: 'Resume', icon: Play },
@@ -138,16 +139,18 @@ export function JobsTable({
                         const meta = ACTION_META[a];
                         const Icon = meta.icon;
                         return (
-                          <DropdownMenuItem
+                          <ActionMenuItem
                             key={a}
+                            action="jobs.manage"
+                            icon={Icon}
                             disabled={action.isPending}
                             className={meta.danger ? 'text-destructive focus:text-destructive' : ''}
                             onClick={() =>
                               action.mutate({ queue: job.queue, id: job.id, action: a })
                             }
                           >
-                            <Icon className="mr-2 size-4" /> {meta.label}
-                          </DropdownMenuItem>
+                            {meta.label}
+                          </ActionMenuItem>
                         );
                       })}
                     </DropdownMenuContent>

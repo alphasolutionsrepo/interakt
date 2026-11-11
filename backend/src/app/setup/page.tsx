@@ -26,7 +26,6 @@ import {
   KeyRound,
   type LucideIcon,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -55,6 +54,7 @@ import { DocsAssistantCard } from './_components/DocsAssistantCard';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
 import { loadDemoStatus, resetDemo, startDemoSeed, type DemoStatus, type ProviderView, type SeedResult } from './_lib/demo-setup-api';
+import { AccessLink } from '@/shared/access/Can';
 
 type StepState = 'pending' | 'active' | 'done';
 
@@ -253,7 +253,7 @@ export default function SetupDemoPage() {
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">Initial Setup</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Get Interakt ready to use. First connect an{' '}
-          <Link href="/ai-providers" className="font-medium text-primary hover:underline">AI provider</Link>{' '}
+          <AccessLink href="/ai-providers" className="font-medium text-primary hover:underline" fallback="AI provider">AI provider</AccessLink>{' '}
           (it powers embeddings and chat) — then the in-app <span className="font-medium text-foreground">Documentation
           Assistant</span> builds automatically. Loading the sample demo data below is optional.
         </p>
@@ -738,8 +738,9 @@ function NextStep({
   title: string;
   desc: string;
 }) {
+  // A next step the role can't open isn't offered
   return (
-    <Link
+    <AccessLink
       href={href}
       className="group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:border-primary/50 hover:bg-accent"
     >
@@ -751,6 +752,6 @@ function NextStep({
         </p>
         <p className="text-xs text-muted-foreground">{desc}</p>
       </div>
-    </Link>
+    </AccessLink>
   );
 }

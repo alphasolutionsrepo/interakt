@@ -65,7 +65,7 @@ export const PERMISSION_GROUPS = [
       { id: 'settings:manage', label: 'Change settings and system defaults, clear caches' },
       { id: 'jobs:run', label: 'Run, cancel and schedule background jobs' },
       { id: 'secrets:manage', label: 'Manage secrets and ingestion keys' },
-      { id: 'users:manage', label: 'Manage users and roles' },
+      { id: 'users:manage', label: 'Manage users and give them roles within your own' },
       { id: 'setup:run', label: 'Run the demo and docs setup' },
     ],
   },
@@ -80,9 +80,20 @@ export const ALL_PERMISSIONS: readonly Permission[] = PERMISSION_GROUPS.flatMap(
 
 const PERMISSION_SET: ReadonlySet<string> = new Set(ALL_PERMISSIONS);
 
+/** Whether a holder passes a rule of one permission, or any one of a list. */
+export function holdsAny(can: (p: Permission) => boolean, rule: Permission | readonly Permission[]): boolean {
+  return typeof rule === 'string' ? can(rule) : rule.some(can);
+}
+
 export function isPermission(value: unknown): value is Permission {
   return typeof value === 'string' && PERMISSION_SET.has(value);
 }
+
+/**
+ * Why a change to the built-in help is refused for anyone but an Admin: the server's answer
+ * (built-in.ts) and the lock on the admin's controls, one wording.
+ */
+export const BUILT_IN_REFUSAL = 'Only an Admin can change the built-in help.';
 
 /** The built-in Admin role's fixed id (seeded by migration 0036). */
 export const ADMIN_ROLE_ID = '00000000-0000-4000-8000-000000000001';
@@ -166,18 +177,18 @@ export function effectivePermissions(permissions: readonly Permission[]): Permis
 }
 
 /**
- * Whether a caller holds everything a role grants (its effective permissions), so may assign,
- * edit or delete it. Admin
- * holds everything; only Admin holds the built-in Admin role. The one copy of this rule: the
- * server's access-policy.ts and the Users page both use it.
+ * Whether a caller may give a role to a user, or manage a user who holds it: every permission the
+ * role grants (implied added, unmet left out) must be one the caller holds, so nobody hands out
+ * more than they have. Admin holds everything; only Admin holds the built-in Admin role. The one
+ * copy of this rule: the server's access-policy.ts and the Users page both use it.
  */
-export function holdsAllOf(
+export function mayAssignRole(
   caller: { isAdmin: boolean; permissions: Iterable<string> },
   role: { isBuiltIn: boolean; permissions: readonly string[] },
 ): boolean {
   if (caller.isAdmin) return true;
   if (role.isBuiltIn) return false;
-  // Both sides as granted (implied added, unmet left out): caller.permissions already are
+  // Both sides as granted: caller.permissions already are
   const mine = new Set(caller.permissions);
   return effectivePermissions(role.permissions.filter(isPermission)).every((p) => mine.has(p));
 }

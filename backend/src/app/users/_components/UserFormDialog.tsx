@@ -3,6 +3,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Lock } from 'lucide-react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -34,6 +35,7 @@ import {
 } from '@/components/ui/select';
 import { createUserSchema, updateUserSchema } from '@/features/auth/auth.validations';
 import type { CreateUserDTO, UpdateUserDTO } from '@/features/auth/auth.validations';
+import { withLockHint, type ActionGate } from '@/shared/access/ActionControls';
 import { useInlineError } from '@/shared/activity/useInlineError';
 import { DialogFormFooter } from '@/shared/ui/custom/DialogFormFooter';
 
@@ -44,7 +46,10 @@ interface UserFormDialogProps {
   onSubmit: (data: CreateUserDTO | UpdateUserDTO) => void | Promise<void>;
   user?: UserResponse;
   /** Roles to choose from: the ones the signed-in user may assign */
-  roles: Array<{ id: string; name: string }>;
+  /** Every role; one the signed-in user can't give carries why */
+  roles: Array<{ id: string; name: string; lockedReason?: string }>;
+  /** Whether the role may be changed here (editing yourself or an Admin: locked with the reason) */
+  roleGate?: ActionGate;
   isSubmitting?: boolean;
 }
 
@@ -54,6 +59,7 @@ export function UserFormDialog({
   onSubmit,
   user,
   roles,
+  roleGate,
   isSubmitting,
 }: UserFormDialogProps) {
   const isEditing = !!user;
@@ -214,18 +220,26 @@ export function UserFormDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Role *</FormLabel>
-                    <Select onValueChange={field.onChange} value={(field.value as string | undefined) ?? ''}>
-                      <FormControl>
-                        <SelectTrigger className="h-11 rounded-lg">
-                          <SelectValue placeholder={roles.length ? "Select a role" : "No roles to choose from (see the Roles tab)"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {roles.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {withLockHint(roleGate, (
+                      <Select onValueChange={field.onChange} value={(field.value as string | undefined) ?? ''} disabled={!!roleGate && roleGate.state !== 'allowed'}>
+                        <FormControl>
+                          <SelectTrigger className="h-11 rounded-lg">
+                            <SelectValue placeholder={roles.length ? "Select a role" : "No roles to choose from (see the Roles tab)"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {roles.map((r) => (
+                            <SelectItem key={r.id} value={r.id} disabled={!!r.lockedReason}>
+                              <span className="flex items-center gap-2">
+                                {r.lockedReason && <Lock className="size-3.5" aria-hidden />}
+                                {r.name}
+                                {r.lockedReason && <span className="text-xs text-muted-foreground">{r.lockedReason}</span>}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ), true)}
                     <FormDescription className="text-xs">
                       What this user can see and do. Edit roles on the Roles tab.
                     </FormDescription>

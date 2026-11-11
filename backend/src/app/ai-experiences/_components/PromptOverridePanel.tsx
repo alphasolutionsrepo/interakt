@@ -14,8 +14,8 @@
  * places to change the same content.
  */
 
+import { AccessLink } from '@/shared/access/Can';
 import { ExternalLink, RotateCcw } from 'lucide-react';
-import Link from 'next/link';
 
 import type { PromptTemplate, PromptTemplateStep } from '@/app/prompt-templates/_lib/api-client';
 import { usePromptTemplates, useSystemDefaults, useExperienceOverrides } from '@/app/prompt-templates/_lib/hooks/usePromptTemplates';
@@ -138,12 +138,12 @@ export function PromptOverridePanel({ experienceId }: { experienceId: string }) 
                 </div>
 
                 {active && (
-                  <Link
+                  <AccessLink
                     href={`/prompt-templates/${active.id}`}
                     className="text-xs text-primary hover:underline inline-flex items-center gap-1 shrink-0"
                   >
                     Edit <ExternalLink className="size-3" />
-                  </Link>
+                  </AccessLink>
                 )}
               </div>
 

@@ -9,7 +9,6 @@ import {
   Edit2,
   Power,
   PowerOff,
-  Trash2,
   CircleCheck,
   CircleDashed,
   Database,
@@ -33,6 +32,9 @@ import { toast } from 'sonner';
 import { reportActionError } from '@/shared/activity/report';
 import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../_components/DataSourceTypeChip';
 import { HealthStatusChip } from '../../_components/HealthStatusChip';
+
+import { ActionButton } from '@/shared/access/ActionControls';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { SchemaFieldsEditor } from '../../_components/SchemaFieldsEditor';
 import { useDataSource } from '../../_lib/hooks/useDataSources';
 import { useHealthCheck } from '../../_lib/hooks/useHealthCheck';
@@ -185,21 +187,21 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
         badge={<DataSourceTypeChip type={dataSource.type} />}
         actions={
           <>
-            <Button
+            <ActionButton
+              action="data-sources.edit"
+              builtIn={dataSource.isBuiltIn}
+              icon={dataSource.isActive ? PowerOff : Power}
+              iconClassName="size-4 mr-2"
               variant={dataSource.isActive ? 'outline' : 'default'}
               className={`rounded-xl ${!dataSource.isActive ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
               onClick={handleToggleActive}
               disabled={isUpdating}
             >
-              {dataSource.isActive ? (
-                <><PowerOff className="size-4 mr-2" />Deactivate</>
-              ) : (
-                <><Power className="size-4 mr-2" />Activate</>
-              )}
-            </Button>
-            <Button variant="outline" className="rounded-xl" onClick={() => router.push(`/data-sources/${id}/edit`)}>
-              <Edit2 className="size-4 mr-2" />Edit
-            </Button>
+              {dataSource.isActive ? 'Deactivate' : 'Activate'}
+            </ActionButton>
+            <ActionButton action="data-sources.edit" builtIn={dataSource.isBuiltIn} icon={Edit2} iconClassName="size-4 mr-2" variant="outline" className="rounded-xl" onClick={() => router.push(`/data-sources/${id}/edit`)}>
+              Edit
+            </ActionButton>
           </>
         }
       />
@@ -211,18 +213,18 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Health</p>
-              <button
+              <ActionButton
+                action="data-sources.health-check"
+                icon={isHealthChecking ? Loader2 : RefreshCw}
+                iconClassName={isHealthChecking ? 'size-3.5 animate-spin' : 'size-3.5'}
+                variant="ghost"
+                size="icon"
                 onClick={refreshHealth}
                 disabled={isHealthChecking}
-                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                className="size-6 text-muted-foreground hover:text-foreground"
                 title="Refresh health check"
-              >
-                {isHealthChecking ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-3.5" />
-                )}
-              </button>
+                aria-label="Refresh health check"
+              />
             </div>
             <HealthStatusChip status={dataSource.status} />
           </CardContent>
@@ -403,7 +405,10 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
                   Generates one tool per supported operation with AI descriptions based on the field schema.
                 </p>
               </div>
-              <Button
+              <ActionButton
+                action="tools.scaffold"
+                icon={isScaffolding ? Loader2 : Sparkles}
+                iconClassName={isScaffolding ? 'size-4 mr-2 animate-spin' : 'size-4 mr-2'}
                 className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white"
                 onClick={async () => {
                   setIsScaffolding(true);
@@ -423,43 +428,21 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
                 }}
                 disabled={isScaffolding}
               >
-                {isScaffolding ? (
-                  <><Loader2 className="size-4 mr-2 animate-spin" />Creating...</>
-                ) : (
-                  <><Sparkles className="size-4 mr-2" />Create Tools</>
-                )}
-              </Button>
+                {isScaffolding ? 'Creating...' : 'Create Tools'}
+              </ActionButton>
             </div>
           )}
         </CardContent>
       </Card>
 
       {/* Danger Zone */}
-      <Card className="border-destructive/30 shadow-sm rounded-2xl">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2 font-semibold text-destructive">
-            <Trash2 className="size-4" />Danger Zone
-          </CardTitle>
-          <CardDescription>Irreversible actions that permanently affect this data source.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 bg-destructive/5 rounded-xl border border-destructive/20">
-            <div>
-              <p className="font-medium text-sm">Delete this data source</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Permanently deletes this data source. Tools referencing it will lose access.
-              </p>
-            </div>
-            <Button
-              variant="destructive"
-              className="rounded-xl"
-              onClick={() => setDeleteOpen(true)}
-            >
-              <Trash2 className="size-4 mr-2" />Delete
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <DangerZone
+        thing="data source"
+        detail="Permanently deletes this data source. Tools referencing it will lose access."
+        action="data-sources.delete"
+        builtIn={dataSource.isBuiltIn}
+        onDelete={() => setDeleteOpen(true)}
+      />
 
       <DeleteConfirmDialog
         open={deleteOpen}

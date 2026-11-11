@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/tooltip';
 
 import type { PromptTemplate } from '../_lib/api-client';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // VERSION HISTORY
@@ -73,22 +74,7 @@ export function VersionHistory({
                   </p>
                 </div>
                 {!isCurrent && !v.isSystemDefault && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 shrink-0"
-                          onClick={() => onRollback(v.id)}
-                          disabled={isRollingBack}
-                        >
-                          <RotateCcw className="size-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Make this the system default</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <MakeDefaultButton onClick={() => onRollback(v.id)} disabled={isRollingBack} />
                 )}
                 {!isCurrent && (
                   <Link href={`/prompt-templates/${v.id}`}>
@@ -103,5 +89,23 @@ export function VersionHistory({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Make a version the system default: the label shows on hover, or why it's locked. */
+function MakeDefaultButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  const gate = useActionGate('prompts.make-default');
+  const button = (
+    <ActionButton gate={gate} icon={RotateCcw} iconClassName="size-3.5" variant="ghost" size="icon" className="size-8 shrink-0"
+      onClick={onClick} disabled={disabled} aria-label="Make this the system default" />
+  );
+  if (gate.state === 'locked') return button;
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent>Make this the system default</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

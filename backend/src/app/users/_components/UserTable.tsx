@@ -8,11 +8,14 @@ import { MoreVertical, Edit, Key, UserCheck, UserX, Mail, Calendar } from 'lucid
 import type { UserResponse } from '../_lib/api-client';
 
 import { Badge } from '@/components/ui/badge';
+import { userGates, type RoleInfo, type RolesState } from '../_lib/user-gates';
+
 import { Button } from '@/components/ui/button';
+import { ActionMenuItem } from '@/shared/access/ActionControls';
+import { useAccess } from '@/shared/access/useAccess';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -33,6 +36,9 @@ interface UserTableProps {
   onDeactivate: (user: UserResponse) => void;
   isActivating?: boolean;
   isDeactivating?: boolean;
+  /** Every role with its permissions, to tell whose accounts the signed-in user may manage */
+  roles: RoleInfo[];
+  rolesState?: RolesState;
 }
 
 export function UserTable({
@@ -43,6 +49,8 @@ export function UserTable({
   onDeactivate,
   isActivating,
   isDeactivating,
+  roles,
+  rolesState,
 }: UserTableProps) {
   if (users.length === 0) {
     return (
@@ -120,47 +128,17 @@ export function UserTable({
 
               {/* Actions */}
               <TableCell className="text-right">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 rounded-lg"
-                    >
-                      <MoreVertical className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem onClick={() => onEdit(user)}>
-                      <Edit className="mr-2 size-4" />
-                      Edit User
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onChangePassword(user)}>
-                      <Key className="mr-2 size-4" />
-                      Change Password
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    {user.isActive ? (
-                      <DropdownMenuItem
-                        onClick={() => onDeactivate(user)}
-                        disabled={isDeactivating}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <UserX className="mr-2 size-4" />
-                        Deactivate
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem
-                        onClick={() => onActivate(user)}
-                        disabled={isActivating}
-                        className="text-emerald-600 focus:text-emerald-600"
-                      >
-                        <UserCheck className="mr-2 size-4" />
-                        Activate
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <UserRowActions
+                  user={user}
+                  onEdit={onEdit}
+                  onChangePassword={onChangePassword}
+                  onActivate={onActivate}
+                  onDeactivate={onDeactivate}
+                  isActivating={isActivating}
+                  isDeactivating={isDeactivating}
+                  roles={roles}
+                  rolesState={rolesState}
+                />
               </TableCell>
             </TableRow>
           ))}
@@ -171,6 +149,65 @@ export function UserTable({
 }
 
 // Role Badge Component
+/** One user's menu: each action locked, with the reason, when the signed-in user may not take it. */
+function UserRowActions({
+  user,
+  onEdit,
+  onChangePassword,
+  onActivate,
+  onDeactivate,
+  isActivating,
+  isDeactivating,
+  roles,
+  rolesState,
+}: Omit<UserTableProps, 'users'> & { user: UserResponse }) {
+  const { access, isAdmin, isLoading } = useAccess();
+  const gates = userGates({ isLoading, isAdmin, userId: access?.userId, permissions: access?.permissions ?? [] }, user, roles, rolesState);
+  return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 rounded-lg"
+          >
+            <MoreVertical className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <ActionMenuItem gate={gates.manage} icon={Edit} onClick={() => onEdit(user)}>
+            Edit User
+          </ActionMenuItem>
+          <ActionMenuItem gate={gates.manage} icon={Key} onClick={() => onChangePassword(user)}>
+            Change Password
+          </ActionMenuItem>
+          <DropdownMenuSeparator />
+          {user.isActive ? (
+            <ActionMenuItem
+              gate={gates.activation}
+              icon={UserX}
+              onClick={() => onDeactivate(user)}
+              disabled={isDeactivating}
+              className="text-destructive focus:text-destructive"
+            >
+              Deactivate
+            </ActionMenuItem>
+          ) : (
+            <ActionMenuItem
+              gate={gates.activation}
+              icon={UserCheck}
+              onClick={() => onActivate(user)}
+              disabled={isActivating}
+              className="text-emerald-600 focus:text-emerald-600"
+            >
+              Activate
+            </ActionMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+  );
+}
+
 function RoleBadge({ role }: { role?: { name: string; isBuiltIn: boolean } }) {
   const className = role?.isBuiltIn
     ? 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400'

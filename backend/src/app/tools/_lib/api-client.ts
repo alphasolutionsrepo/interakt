@@ -32,6 +32,8 @@ export interface ToolDisplayConfig {
 
 export interface ToolWithUsage {
   id: string;
+  /** Part of the built-in help: only an Admin changes it */
+  isBuiltIn: boolean;
   name: string;
   slug: string;
   description: string | null;

@@ -2,6 +2,9 @@
 
 'use client';
 
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -188,6 +191,7 @@ function generateAutoMappings(
 // ============================================================================
 
 export default function FieldMappingsPage() {
+    const access = useAccess();
     const params = useParams();
     const router = useRouter();
     const indexId = params.id as string;
@@ -774,6 +778,10 @@ export default function FieldMappingsPage() {
             </div>
         );
     }
+
+    // Only an Admin changes the built-in help; anyone else is told so instead of given a form
+    const editGate = builtInGateFor(access, 'search-indexes.edit', searchIndex.isBuiltIn);
+    if (editGate.state !== 'allowed') return <LockedPage gate={editGate} backHref={`/search-indexes/${indexId}`} />;
 
     const searchTypeInfo = SEARCH_TYPE_INFO[searchIndex.searchType as SearchType];
     const hasSourceData = sourceFields.length > 0;

@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { LockedHint, useActionGate, type ActionGate } from '@/shared/access/ActionControls';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     Select,
@@ -61,6 +62,8 @@ interface DefaultRowProps {
     onProviderChange: (purpose: string, providerId: string) => void;
     onModelChange: (purpose: string, modelId: string) => void;
     onSave: () => void;
+    /** Whether the defaults may change (locked shows them, with the reason) */
+    gate: ActionGate;
 }
 
 /**
@@ -85,7 +88,9 @@ function DefaultRow({
     onProviderChange,
     onModelChange,
     onSave,
+    gate,
 }: DefaultRowProps) {
+    const readOnly = gate.state !== 'allowed';
     const enabledProviders = providers.filter(p => p.isEnabled);
     const selectedProvider = providers.find(p => p.id === setting.providerId);
 
@@ -117,6 +122,80 @@ function DefaultRow({
     // Can't save if: partial selection OR selected provider missing API key
     const cannotSave = isPartial || selectedProviderMissingKey;
 
+    const selects = (
+        <div className="space-y-2">
+            {/* Provider Select */}
+            <Select
+                value={setting.providerId ?? 'none'}
+                onValueChange={(value) => onProviderChange(setting.purpose, value)}
+                disabled={readOnly}
+            >
+                <SelectTrigger
+                    className={cn(
+                        "w-full h-9 text-sm",
+                        isPartial && !hasProvider && "border-amber-400 ring-1 ring-amber-400",
+                        selectedProviderMissingKey && "border-amber-400 ring-1 ring-amber-400"
+                    )}
+                >
+                    <SelectValue placeholder="Select provider..." />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="none">
+                        <span className="text-slate-400">None</span>
+                    </SelectItem>
+                    {enabledProviders.map(provider => {
+                        const needsKey = providerNeedsApiKey(provider);
+                        return (
+                            <SelectItem
+                                key={provider.id}
+                                value={provider.id}
+                                disabled={needsKey}
+                                className={cn(needsKey && "opacity-60")}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span>{provider.displayName}</span>
+                                    {needsKey && (
+                                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                                            <AlertCircle className="h-3 w-3" />
+                                            No API Key
+                                        </span>
+                                    )}
+                                </div>
+                            </SelectItem>
+                        );
+                    })}
+                </SelectContent>
+            </Select>
+
+            {/* Model Select */}
+            <Select
+                value={setting.modelId?.toString() ?? 'none'}
+                onValueChange={(value) => onModelChange(setting.purpose, value)}
+                disabled={readOnly || !setting.providerId}
+            >
+                <SelectTrigger
+                    className={cn(
+                        "w-full h-9 text-sm",
+                        !setting.providerId && "opacity-50",
+                        isPartial && hasProvider && !hasModel && "border-amber-400 ring-1 ring-amber-400"
+                    )}
+                >
+                    <SelectValue placeholder="Select model..." />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="none">
+                        <span className="text-slate-400">None</span>
+                    </SelectItem>
+                    {availableModels.map(model => (
+                        <SelectItem key={model.id} value={model.id.toString()}>
+                            <span className="truncate">{model.displayName}</span>
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
+    );
+
     return (
         <div className="py-4 first:pt-0 last:pb-0">
             {/* Label Row */}
@@ -133,7 +212,7 @@ function DefaultRow({
                     </div>
                 </div>
 
-                {hasChanges && (
+                {hasChanges && !readOnly && (
                     <Button
                         size="sm"
                         variant={cannotSave ? "outline" : "default"}
@@ -157,76 +236,7 @@ function DefaultRow({
             </div>
 
             {/* Selects - Stacked on this card width */}
-            <div className="space-y-2">
-                {/* Provider Select */}
-                <Select
-                    value={setting.providerId ?? 'none'}
-                    onValueChange={(value) => onProviderChange(setting.purpose, value)}
-                >
-                    <SelectTrigger
-                        className={cn(
-                            "w-full h-9 text-sm",
-                            isPartial && !hasProvider && "border-amber-400 ring-1 ring-amber-400",
-                            selectedProviderMissingKey && "border-amber-400 ring-1 ring-amber-400"
-                        )}
-                    >
-                        <SelectValue placeholder="Select provider..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="none">
-                            <span className="text-slate-400">None</span>
-                        </SelectItem>
-                        {enabledProviders.map(provider => {
-                            const needsKey = providerNeedsApiKey(provider);
-                            return (
-                                <SelectItem
-                                    key={provider.id}
-                                    value={provider.id}
-                                    disabled={needsKey}
-                                    className={cn(needsKey && "opacity-60")}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <span>{provider.displayName}</span>
-                                        {needsKey && (
-                                            <span className="text-xs text-amber-600 flex items-center gap-1">
-                                                <AlertCircle className="h-3 w-3" />
-                                                No API Key
-                                            </span>
-                                        )}
-                                    </div>
-                                </SelectItem>
-                            );
-                        })}
-                    </SelectContent>
-                </Select>
-
-                {/* Model Select */}
-                <Select
-                    value={setting.modelId?.toString() ?? 'none'}
-                    onValueChange={(value) => onModelChange(setting.purpose, value)}
-                    disabled={!setting.providerId}
-                >
-                    <SelectTrigger
-                        className={cn(
-                            "w-full h-9 text-sm",
-                            !setting.providerId && "opacity-50",
-                            isPartial && hasProvider && !hasModel && "border-amber-400 ring-1 ring-amber-400"
-                        )}
-                    >
-                        <SelectValue placeholder="Select model..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="none">
-                            <span className="text-slate-400">None</span>
-                        </SelectItem>
-                        {availableModels.map(model => (
-                            <SelectItem key={model.id} value={model.id.toString()}>
-                                <span className="truncate">{model.displayName}</span>
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
+            {gate.state === 'locked' ? <LockedHint reason={gate.reason} block>{selects}</LockedHint> : selects}
 
             {/* Status indicator */}
             <div className="mt-2 flex items-center gap-1.5 text-xs">
@@ -273,6 +283,7 @@ export function SystemDefaultsCard({
     isLoading,
     isSaving,
 }: SystemDefaultsCardProps) {
+    const gate = useActionGate('system-defaults.save');
     const [settings, setSettings] = useState<DefaultSetting[]>([
         {
             purpose: 'chat',
@@ -408,6 +419,7 @@ export function SystemDefaultsCard({
                         onProviderChange={handleProviderChange}
                         onModelChange={handleModelChange}
                         onSave={() => handleSave(setting)}
+                        gate={gate}
                     />
                 ))}
             </div>

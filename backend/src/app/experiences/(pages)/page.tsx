@@ -4,8 +4,7 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Bot, Plus, Search, RefreshCw, Activity, X,
-  LayoutGrid, List, TrendingUp, MoreVertical,
-  Eye, Edit2, Trash2, ChevronLeft, ChevronRight, ArrowUpRight,
+  LayoutGrid, List, TrendingUp, ChevronLeft, ChevronRight, ArrowUpRight,
   CircleCheck, CircleDashed, Sparkles,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -15,15 +14,16 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+
+
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { ExperienceBadges } from '@/app/ai-experiences/_components/ExperienceBadges';
-import { useUnifiedExperiences, type UnifiedExperience } from '../_hooks/useUnifiedExperiences';
+import { useUnifiedExperiences, viewableTypes, type UnifiedExperience } from '../_hooks/useUnifiedExperiences';
+import { ActionButton, useAnyActionGate } from '@/shared/access/ActionControls';
+import { useAccess } from '@/shared/access/useAccess';
+import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
 
 type ViewMode = 'cards' | 'table';
 type TypeFilter = 'all' | 'ai' | 'search';
@@ -81,12 +81,23 @@ function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode
   );
 }
 
-function TypeTabs({ value, onChange }: { value: TypeFilter; onChange: (v: TypeFilter) => void }) {
-  const tabs: { key: TypeFilter; label: string; icon: React.ElementType }[] = [
-    { key: 'all', label: 'All', icon: Sparkles },
-    { key: 'ai', label: 'AI', icon: Bot },
-    { key: 'search', label: 'Search', icon: Search },
-  ];
+/** Edit and Delete follow each experience's kind: a role may edit one kind and not the other. */
+function experienceActions(type: 'ai' | 'search') {
+  return type === 'ai'
+    ? { editAction: 'ai-experiences.edit', deleteAction: 'ai-experiences.delete' } as const
+    : { editAction: 'search-experiences.edit', deleteAction: 'search-experiences.delete' } as const;
+}
+
+const ALL_TYPE_TABS: { key: TypeFilter; label: string; icon: React.ElementType }[] = [
+  { key: 'all', label: 'All', icon: Sparkles },
+  { key: 'ai', label: 'AI', icon: Bot },
+  { key: 'search', label: 'Search', icon: Search },
+];
+
+/** One tab per kind the user can view; none when there is only one kind to show. */
+function TypeTabs({ value, onChange, types }: { value: TypeFilter; onChange: (v: TypeFilter) => void; types: TypeFilter[] }) {
+  if (types.length < 2) return <div />;
+  const tabs = ALL_TYPE_TABS.filter((t) => types.includes(t.key));
   return (
     <div className="inline-flex items-center rounded-xl bg-muted/50 p-1.5 border border-border/50">
       {tabs.map(({ key, label, icon: Icon }) => (
@@ -132,25 +143,15 @@ function ExperienceCard({ experience, onView, onEdit, onDelete }: {
             <h3 className="font-semibold text-sm truncate">{experience.name}</h3>
             <p className="text-[11px] text-muted-foreground font-mono truncate mt-0.5">{experience.slug}</p>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8 rounded-lg shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                <MoreVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="rounded-xl w-44">
-              <DropdownMenuItem className="rounded-lg" onClick={(e) => { e.stopPropagation(); onView(); }}>
-                <Eye className="size-4 mr-2" />View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem className="rounded-lg" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-                <Edit2 className="size-4 mr-2" />Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="rounded-lg text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
-                <Trash2 className="size-4 mr-2" />Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <RowActionsMenu
+            onView={onView}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            {...experienceActions(experience._type)}
+            builtIn={experience.isBuiltIn}
+            triggerClassName="size-8 rounded-lg shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            itemClassName="rounded-lg"
+          />
         </div>
 
         {/* Description */}
@@ -284,25 +285,15 @@ function DataTableView({ items, onView, onEdit, onDelete }: {
                   </td>
                   <td className="px-5 py-4 text-sm text-muted-foreground">{format(new Date(exp.createdAt), 'MMM d, yyyy')}</td>
                   <td className="px-5 py-4">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-8 rounded-lg" onClick={(e) => e.stopPropagation()}>
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="rounded-xl w-44">
-                        <DropdownMenuItem className="rounded-lg" onClick={(e) => { e.stopPropagation(); onView(exp); }}>
-                          <Eye className="size-4 mr-2" />View
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="rounded-lg" onClick={(e) => { e.stopPropagation(); onEdit(exp); }}>
-                          <Edit2 className="size-4 mr-2" />Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="rounded-lg text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(exp); }}>
-                          <Trash2 className="size-4 mr-2" />Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <RowActionsMenu
+                      onView={() => onView(exp)}
+                      onEdit={() => onEdit(exp)}
+                      onDelete={() => onDelete(exp)}
+                      {...experienceActions(exp._type)}
+                      builtIn={exp.isBuiltIn}
+                      triggerClassName="size-8 rounded-lg"
+                      itemClassName="rounded-lg"
+                    />
                   </td>
                 </tr>
               );
@@ -342,7 +333,12 @@ function ExperiencesContent() {
   const [pageSize] = useState(12);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>(initialType);
+  const [chosenType, setTypeFilter] = useState<TypeFilter>(initialType);
+  // Only the kinds this user can view: a link to ?type=ai for someone who can't view chat
+  // experiences shows what they can see instead
+  const types = viewableTypes(useAccess().can);
+  const createGate = useAnyActionGate(['search-experiences.create', 'ai-experiences.create'], 'create experiences');
+  const typeFilter: TypeFilter = types.includes(chosenType) ? chosenType : (types[0] ?? 'all');
   const [deleteTarget, setDeleteTarget] = useState<UnifiedExperience | null>(null);
 
   const isActiveParam = statusFilter === 'active' ? true : statusFilter === 'inactive' ? false : undefined;
@@ -398,9 +394,9 @@ function ExperiencesContent() {
           </div>
         }
         actions={
-          <Button onClick={() => router.push('/experiences/create')} size="lg" className="rounded-xl px-6 font-bold">
-            <Plus className="size-4 mr-2" />New Experience
-          </Button>
+          <ActionButton gate={createGate} icon={Plus} iconClassName="size-4 mr-2" onClick={() => router.push('/experiences/create')} size="lg" className="rounded-xl px-6 font-bold">
+            New Experience
+          </ActionButton>
         }
       />
 
@@ -417,7 +413,7 @@ function ExperiencesContent() {
       {/* Type Tabs + Filters */}
       <div className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
-          <TypeTabs value={typeFilter} onChange={(v) => { setTypeFilter(v); setPage(1); }} />
+          <TypeTabs value={typeFilter} types={types} onChange={(v) => { setTypeFilter(v); setPage(1); }} />
           <ViewToggle view={viewMode} onChange={setViewMode} />
         </div>
 
@@ -460,9 +456,9 @@ function ExperiencesContent() {
               {hasActiveFilters ? 'Try adjusting your filters.' : 'Create your first AI or Search experience to get started.'}
             </p>
             {!hasActiveFilters && (
-              <Button onClick={() => router.push('/experiences/create')} className="mt-6 rounded-xl">
-                <Plus className="size-4 mr-2" />Create Experience
-              </Button>
+              <ActionButton gate={createGate} icon={Plus} iconClassName="size-4 mr-2" onClick={() => router.push('/experiences/create')} className="mt-6 rounded-xl">
+                Create Experience
+              </ActionButton>
             )}
           </div>
         </GlowCard>

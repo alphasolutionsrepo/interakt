@@ -18,6 +18,7 @@ import {
   CircleCheck,
   CircleDashed,
 } from 'lucide-react';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -98,31 +99,27 @@ export default function McpConnectionDetailPage({ params }: PageProps) {
         }
         actions={
           <div className="flex gap-2">
-            <Button
+            <ActionButton
+              action="mcp.test"
+              icon={isTesting ? Loader2 : Activity}
+              iconClassName={isTesting ? 'mr-1.5 size-4 animate-spin' : 'mr-1.5 size-4'}
               variant="outline"
               onClick={() => testConnection()}
               disabled={isTesting}
               className="rounded-xl"
             >
-              {isTesting ? (
-                <Loader2 className="mr-1.5 size-4 animate-spin" />
-              ) : (
-                <Activity className="mr-1.5 size-4" />
-              )}
               Test
-            </Button>
-            <Button
+            </ActionButton>
+            <ActionButton
+              action="mcp.sync"
+              icon={isSyncing ? Loader2 : RefreshCw}
+              iconClassName={isSyncing ? 'mr-1.5 size-4 animate-spin' : 'mr-1.5 size-4'}
               onClick={() => syncConnection()}
               disabled={isSyncing}
               className="rounded-xl"
             >
-              {isSyncing ? (
-                <Loader2 className="mr-1.5 size-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-1.5 size-4" />
-              )}
               Sync
-            </Button>
+            </ActionButton>
           </div>
         }
       />
@@ -169,7 +166,10 @@ export default function McpConnectionDetailPage({ params }: PageProps) {
           </h3>
           <div className="flex items-center gap-3">
             <McpStatusChip status={connection.status} />
-            <Button
+            <ActionButton
+              action="mcp.edit"
+              icon={connection.isActive ? CircleCheck : CircleDashed}
+              iconClassName={connection.isActive ? 'mr-1 size-3.5 text-emerald-500' : 'mr-1 size-3.5'}
               size="sm"
               variant="ghost"
               onClick={() =>
@@ -178,12 +178,8 @@ export default function McpConnectionDetailPage({ params }: PageProps) {
               disabled={isUpdating}
               className="rounded-lg ml-auto"
             >
-              {connection.isActive ? (
-                <><CircleCheck className="mr-1 size-3.5 text-emerald-500" /> Active</>
-              ) : (
-                <><CircleDashed className="mr-1 size-3.5" /> Inactive</>
-              )}
-            </Button>
+              {connection.isActive ? 'Active' : 'Inactive'}
+            </ActionButton>
           </div>
           {connection.lastHealthMessage && (
             <p className="text-xs text-muted-foreground line-clamp-3">

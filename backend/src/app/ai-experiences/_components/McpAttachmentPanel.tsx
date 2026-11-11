@@ -1,5 +1,6 @@
 'use client';
 
+import { AccessLink } from '@/shared/access/Can';
 import {
   Plus,
   Trash2,
@@ -13,7 +14,6 @@ import {
   CircleCheck,
   ExternalLink,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
 
 import { McpStatusChip } from '@/app/mcp-connections/_components/McpStatusChip';
@@ -85,9 +85,9 @@ export function McpAttachmentPanel({ experienceId }: McpAttachmentPanelProps) {
           <p>Attach an MCP server to expose its tools to this experience.</p>
           <p className="text-xs mt-2">
             Don&apos;t have one yet?{' '}
-            <Link href="/mcp-connections/create" className="text-primary underline">
+            <AccessLink href="/mcp-connections/create" className="text-primary underline">
               Create one
-            </Link>
+            </AccessLink>
           </p>
         </div>
       ) : (
@@ -170,13 +170,14 @@ function AttachmentRow({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <Link
+              <AccessLink
                 href={`/mcp-connections/${attachment.mcpConnectionId}`}
-                className="font-semibold hover:text-primary transition-colors truncate"
+                className="inline-flex items-center gap-2 min-w-0 font-semibold hover:text-primary transition-colors"
+                fallback={<span className="font-semibold truncate">{conn?.name ?? 'Connection'}</span>}
               >
-                {conn?.name ?? 'Connection'}
-              </Link>
-              <ExternalLink className="size-3 text-muted-foreground" />
+                <span className="truncate">{conn?.name ?? 'Connection'}</span>
+                <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
+              </AccessLink>
               {conn && <McpStatusChip status={conn.status} />}
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
@@ -345,9 +346,9 @@ function ConnectionPickerDialog({
               {connections.length === 0 ? (
                 <>
                   <p>No MCP connections exist yet.</p>
-                  <Link href="/mcp-connections/create" className="text-primary underline mt-2 inline-block">
+                  <AccessLink href="/mcp-connections/create" className="text-primary underline mt-2 inline-block">
                     Create one
-                  </Link>
+                  </AccessLink>
                 </>
               ) : (
                 <p>All connections are already attached or filtered out.</p>

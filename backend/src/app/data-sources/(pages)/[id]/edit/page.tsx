@@ -1,5 +1,8 @@
 'use client';
 
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -18,6 +21,7 @@ import type { DataSourceType } from '../../../_lib/api-client';
 import { externalConfigToForm, externalFormToConfig } from '../../../_lib/external-config';
 
 export default function EditDataSourcePage({ params }: { params: Promise<{ id: string }> }) {
+  const access = useAccess();
   const { id } = use(params);
   const router = useRouter();
   const { dataSource, isLoading, updateDataSource, isUpdating } = useDataSource(id);
@@ -96,6 +100,10 @@ export default function EditDataSourcePage({ params }: { params: Promise<{ id: s
       </div>
     );
   }
+
+  // Only an Admin changes the built-in help; anyone else is told so instead of given a form
+  const editGate = builtInGateFor(access, 'data-sources.edit', dataSource.isBuiltIn);
+  if (editGate.state !== 'allowed') return <LockedPage gate={editGate} backHref={`/data-sources/${id}`} />;
 
   const cfg = DS_TYPE_CONFIG[dataSource.type as DataSourceType];
   const Icon = cfg?.icon ?? Database;

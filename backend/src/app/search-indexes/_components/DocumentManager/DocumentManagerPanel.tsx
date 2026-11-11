@@ -15,6 +15,7 @@
 import { Fragment, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -75,6 +76,8 @@ import type {
 
 interface DocumentManagerPanelProps {
     searchIndexId: string;
+    /** The built-in docs index: document changes locked for anyone but an Admin */
+    builtIn?: boolean;
 }
 
 /** Operators offered in the filter builder, with the value input they need. */
@@ -391,7 +394,7 @@ function DocumentTable({
 // SUB COMPONENTS
 // ============================================================================
 
-function BrowseDocuments({ searchIndexId }: { searchIndexId: string }) {
+function BrowseDocuments({ searchIndexId, builtIn }: { searchIndexId: string; builtIn: boolean }) {
     const [page, setPage] = useState(1);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -480,15 +483,18 @@ function BrowseDocuments({ searchIndexId }: { searchIndexId: string }) {
                                         <Badge variant="outline" className="font-mono">
                                             {document.id}
                                         </Badge>
-                                        <Button
+                                        <ActionButton
+                                            action="documents.change"
+                                builtIn={builtIn}
+                                            icon={Trash2}
+                                            iconClassName="mr-2 h-4 w-4"
                                             variant="destructive"
                                             size="sm"
                                             onClick={() => setPendingDeleteId(document.id)}
                                             disabled={deleteDocument.isPending}
                                         >
-                                            <Trash2 className="mr-2 h-4 w-4" />
                                             Delete document
-                                        </Button>
+                                        </ActionButton>
                                     </div>
                                     <ScrollArea className="h-64 rounded-md border bg-background">
                                         <pre className="p-4 text-xs">
@@ -639,7 +645,7 @@ function EmbeddingPreviewPanel({ preview }: { preview: EmbeddingPreview }) {
     );
 }
 
-function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
+function DocumentLookup({ searchIndexId, builtIn }: { searchIndexId: string; builtIn: boolean }) {
     const [inputValue, setInputValue] = useState('');
     // Only set once the user submits, so we don't fetch on every keystroke
     const [lookupId, setLookupId] = useState<string | null>(null);
@@ -720,15 +726,18 @@ function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
                             <Badge variant="outline" className="font-mono">
                                 {data.documentId}
                             </Badge>
-                            <Button
+                            <ActionButton
+                                action="documents.change"
+                                builtIn={builtIn}
+                                icon={Trash2}
+                                iconClassName="mr-2 h-4 w-4"
                                 variant="destructive"
                                 size="sm"
                                 onClick={() => setConfirmOpen(true)}
                                 disabled={deleteDocument.isPending}
                             >
-                                <Trash2 className="mr-2 h-4 w-4" />
                                 Delete document
-                            </Button>
+                            </ActionButton>
                         </div>
                         <ScrollArea className="h-72 rounded-md border bg-muted/30">
                             <pre className="p-4 text-xs">
@@ -757,7 +766,7 @@ function DocumentLookup({ searchIndexId }: { searchIndexId: string }) {
     );
 }
 
-function DeleteByFilter({ searchIndexId }: { searchIndexId: string }) {
+function DeleteByFilter({ searchIndexId, builtIn }: { searchIndexId: string; builtIn: boolean }) {
     const [field, setField] = useState('');
     const [operator, setOperator] = useState<string>('eq');
     const [value, setValue] = useState('');
@@ -906,28 +915,31 @@ function DeleteByFilter({ searchIndexId }: { searchIndexId: string }) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <Button
+                    {/* The preview is a dry run of the delete, so it needs the same permission */}
+                    <ActionButton
+                        action="documents.change"
+                                builtIn={builtIn}
+                        icon={deleteByFilter.isPending ? Loader2 : Eye}
+                        iconClassName={deleteByFilter.isPending ? 'mr-2 h-4 w-4 animate-spin' : 'mr-2 h-4 w-4'}
                         variant="outline"
                         onClick={handlePreview}
                         disabled={isIncomplete || deleteByFilter.isPending}
                     >
-                        {deleteByFilter.isPending ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                            <Eye className="mr-2 h-4 w-4" />
-                        )}
                         Preview matches
-                    </Button>
+                    </ActionButton>
 
-                    <Button
+                    <ActionButton
+                        action="documents.change"
+                                builtIn={builtIn}
+                        icon={Trash2}
+                        iconClassName="mr-2 h-4 w-4"
                         variant="destructive"
                         onClick={() => setConfirmOpen(true)}
                         // Require a preview first: a filter typo here deletes real data
                         disabled={matched === null || matched === 0 || deleteByFilter.isPending}
                     >
-                        <Trash2 className="mr-2 h-4 w-4" />
                         Delete matches
-                    </Button>
+                    </ActionButton>
 
                     {matched !== null && (
                         <Badge variant={matched > 0 ? 'default' : 'secondary'}>
@@ -995,12 +1007,12 @@ function DeleteByFilter({ searchIndexId }: { searchIndexId: string }) {
 // MAIN COMPONENT
 // ============================================================================
 
-export function DocumentManagerPanel({ searchIndexId }: DocumentManagerPanelProps) {
+export function DocumentManagerPanel({ searchIndexId, builtIn = false }: DocumentManagerPanelProps) {
     return (
         <div className="space-y-6">
-            <BrowseDocuments searchIndexId={searchIndexId} />
-            <DocumentLookup searchIndexId={searchIndexId} />
-            <DeleteByFilter searchIndexId={searchIndexId} />
+            <BrowseDocuments searchIndexId={searchIndexId} builtIn={builtIn} />
+            <DocumentLookup searchIndexId={searchIndexId} builtIn={builtIn} />
+            <DeleteByFilter searchIndexId={searchIndexId} builtIn={builtIn} />
         </div>
     );
 }
