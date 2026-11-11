@@ -345,6 +345,37 @@ export async function getSearchExperienceByAccessToken(
   }
 }
 
+type SearchListFilters = { search?: string; isActive?: boolean; createdBy?: string };
+
+function listConditions({ search, isActive, createdBy }: SearchListFilters) {
+  const conditions = [];
+  if (search) {
+    conditions.push(
+      or(
+        ilike(searchExperiences.name, `%${search}%`),
+        ilike(searchExperiences.slug, `%${search}%`),
+        ilike(searchExperiences.description, `%${search}%`)
+      )
+    );
+  }
+  if (isActive !== undefined) {
+    conditions.push(eq(searchExperiences.isActive, isActive));
+  }
+  if (createdBy) {
+    conditions.push(eq(searchExperiences.createdBy, createdBy));
+  }
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+/** How many search experiences match the filters, and how many of those are active: the whole set, not one page. */
+export async function countSearchExperiences(filters: SearchListFilters) {
+  const [row] = await db
+    .select({ total: count(), active: sql<number>`count(*) filter (where ${searchExperiences.isActive})::int` })
+    .from(searchExperiences)
+    .where(listConditions(filters));
+  return { total: row?.total ?? 0, active: row?.active ?? 0 };
+}
+
 /**
  * List search experiences with pagination and filtering
  */
@@ -361,25 +392,7 @@ export async function listSearchExperiences(options: {
     const { page, pageSize, search, isActive, sortBy = 'createdAt', sortOrder = 'desc', createdBy } = options;
     const offset = (page - 1) * pageSize;
 
-    // Build where conditions
-    const conditions = [];
-    if (search) {
-      conditions.push(
-        or(
-          ilike(searchExperiences.name, `%${search}%`),
-          ilike(searchExperiences.slug, `%${search}%`),
-          ilike(searchExperiences.description, `%${search}%`)
-        )
-      );
-    }
-    if (isActive !== undefined) {
-      conditions.push(eq(searchExperiences.isActive, isActive));
-    }
-    if (createdBy) {
-      conditions.push(eq(searchExperiences.createdBy, createdBy));
-    }
-
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const whereClause = listConditions({ search, isActive, createdBy });
 
     // Get sort column
     const sortColumn = {

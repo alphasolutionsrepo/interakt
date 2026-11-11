@@ -322,7 +322,8 @@ export const listSearchExperiencesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
-  isActive: z.coerce.boolean().optional(),
+  // 'false' must mean false (z.coerce.boolean() turns any non-empty string into true)
+  isActive: z.enum(['true', 'false']).optional().transform((v) => (v === undefined ? undefined : v === 'true')),
   sortBy: z.enum(['name', 'createdAt', 'updatedAt']).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });

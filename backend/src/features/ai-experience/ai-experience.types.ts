@@ -134,5 +134,7 @@ export interface AIExperienceListResponse {
     pageSize: number;
     totalPages: number;
     totalItems: number;
+    /** All experiences matching the filters, and how many of them are active: not just this page */
+    counts: { total: number; active: number };
   };
 }
