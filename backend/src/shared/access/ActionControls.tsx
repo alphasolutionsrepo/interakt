@@ -168,7 +168,8 @@ export function ActionMenuItem({ action, gate: given, builtIn, icon, iconClassNa
       </DropdownMenuItem>
     );
   }
-  const stop = (e: { preventDefault: () => void }) => e.preventDefault();
+  // Choosing it does nothing, and the click goes no further (a row behind the menu doesn't open)
+  const stop = (e: { preventDefault: () => void; stopPropagation?: () => void }) => { e.preventDefault(); e.stopPropagation?.(); };
   return (
     <DropdownMenuItem
       {...props}

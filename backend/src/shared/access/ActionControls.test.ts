@@ -8,6 +8,7 @@
 
 import { Plus } from 'lucide-react';
 import { createElement } from 'react';
+import type React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -128,6 +129,18 @@ describe('action controls', () => {
     expect(toggle()).toContain('disabled=""');
     expect(toggle()).toContain('aria-checked="true"'); // the value still shows
     expect(toggle()).toContain('turn AI providers on or off');
+  });
+
+  it('a locked menu item does nothing when chosen, and the click goes no further', () => {
+    const element = ActionMenuItem({ action: 'ai-providers.add', onClick: () => { throw new Error('ran'); }, children: 'Add' }) as React.ReactElement<{
+      onClick: (e: unknown) => void; onSelect: (e: unknown) => void;
+    }>;
+    for (const handler of [element.props.onClick, element.props.onSelect]) {
+      const e = { preventDefault: vi.fn(), stopPropagation: vi.fn() };
+      handler(e);
+      expect(e.preventDefault).toHaveBeenCalled();
+      expect(e.stopPropagation).toHaveBeenCalled();
+    }
   });
 
   it('are disabled without the lock while access is loading', () => {
