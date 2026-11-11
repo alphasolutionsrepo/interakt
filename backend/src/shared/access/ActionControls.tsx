@@ -44,7 +44,7 @@ export function gateFor(access: AccessView, action: UiActionId): ActionGate {
 export function builtInGateFor(access: AccessView, action: UiActionId, isBuiltIn: boolean): ActionGate {
   const gate = gateFor(access, action);
   if (gate.state !== 'allowed' || !isBuiltIn || access.isAdmin) return gate;
-  return { state: 'locked', reason: `${BUILT_IN_REFUSAL}.` };
+  return { state: 'locked', reason: BUILT_IN_REFUSAL };
 }
 
 /** Whether the user may take the action now, may not (and why), or it isn't known yet. */

@@ -33,9 +33,16 @@ const holding = (...held: Permission[]) => (p: Permission) => held.includes(p);
 
 describe('the experiences hub', () => {
   it('requests only the lists a user may view', () => {
-    expect(listsToLoad(holding('search-experiences:view'))).toEqual({ skipAI: true, skipSearch: false });
-    expect(listsToLoad(holding('ai-experiences:view', 'search-experiences:view'))).toEqual({ skipAI: false, skipSearch: false });
-    expect(listsToLoad(holding())).toEqual({ skipAI: true, skipSearch: true });
+    expect(listsToLoad(holding('search-experiences:view'), 'all')).toEqual({ skipAI: true, skipSearch: false });
+    expect(listsToLoad(holding('ai-experiences:view', 'search-experiences:view'), 'all')).toEqual({ skipAI: false, skipSearch: false });
+    expect(listsToLoad(holding(), 'all')).toEqual({ skipAI: true, skipSearch: true });
+  });
+
+  it("on a single-kind tab requests only that kind's list", () => {
+    const both = holding('ai-experiences:view', 'search-experiences:view');
+    expect(listsToLoad(both, 'ai')).toEqual({ skipAI: false, skipSearch: true });
+    expect(listsToLoad(both, 'search')).toEqual({ skipAI: true, skipSearch: false });
+    expect(listsToLoad(holding('search-experiences:view'), 'ai')).toEqual({ skipAI: true, skipSearch: true });
   });
 
   it('offers a tab per kind the user can view, and All only with both', () => {

@@ -12,10 +12,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { RoleResponse } from '../_lib/roles-api';
 
-import { AccessOverview, cellState, toggled } from './AccessOverview';
+import { AccessOverview, cellState, toggled, unmetTitle } from './AccessOverview';
 import { RolesPanel } from './RolesPanel';
 
-import { ADMIN_ROLE_ID, ALL_PERMISSIONS, EDITOR_DEFAULT_PERMISSIONS } from '@/features/access/permissions';
+import { ADMIN_ROLE_ID, ALL_PERMISSIONS, EDITOR_DEFAULT_PERMISSIONS, REQUIRED_WITH } from '@/features/access/permissions';
 import { uiAccess } from '@/shared/test/ui-access-stub';
 import { controlState } from '@/shared/test/rendered-controls';
 
@@ -129,5 +129,15 @@ describe('RolesPanel', () => {
     expect(controlState(html, { text: 'Add Role' }) === 'locked').toBe(true);
     expect(html).toContain('Only an Admin can add, change or delete roles.');
     expect(switches(html).every(([, , disabled]) => disabled)).toBe(true);
+  });
+});
+
+describe('a ticked permission that grants nothing yet', () => {
+  it('names only the companions the role still lacks', () => {
+    const [first, ...rest] = REQUIRED_WITH['setup:run']!;
+    const stored = ['setup:run', ...rest];
+    expect(cellState(role({ permissions: stored }), 'setup:run')).toBe('unmet');
+    expect(unmetTitle(stored, 'setup:run')).toBe('Takes effect only once this role also has: Add, edit and delete AI providers, models and keys');
+    expect(first).toBe('ai-providers:manage');
   });
 });

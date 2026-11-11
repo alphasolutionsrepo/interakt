@@ -93,7 +93,7 @@ export function isPermission(value: unknown): value is Permission {
  * Why a change to the built-in help is refused for anyone but an Admin: the server's answer
  * (built-in.ts) and the lock on the admin's controls, one wording.
  */
-export const BUILT_IN_REFUSAL = 'Only an Admin can change the built-in help';
+export const BUILT_IN_REFUSAL = 'Only an Admin can change the built-in help.';
 
 /** The built-in Admin role's fixed id (seeded by migration 0036). */
 export const ADMIN_ROLE_ID = '00000000-0000-4000-8000-000000000001';

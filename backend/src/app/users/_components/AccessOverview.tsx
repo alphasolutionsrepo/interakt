@@ -40,12 +40,18 @@ export function toggled(role: Pick<RoleResponse, 'permissions'>, permission: Per
 const cellTitle = (state: CellState, permission: Permission, role: RoleResponse): string | undefined => {
   if (role.isBuiltIn) return 'Admin holds every permission';
   if (state === 'included') return 'Included by another permission this role has';
-  if (state === 'unmet') {
-    const missing = (REQUIRED_WITH[permission] ?? []).length;
-    return `Takes effect only together with ${missing} other permissions`;
-  }
+  if (state === 'unmet') return unmetTitle(role.permissions, permission);
   return undefined;
 };
+
+const LABELS = new Map<string, string>(PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => [p.id, p.label] as const)));
+
+/** Why a ticked permission grants nothing yet: the companions this role still lacks, by name. */
+export function unmetTitle(stored: readonly string[], permission: Permission): string {
+  const has = new Set(effectivePermissions(stored.filter(isPermission)));
+  const missing = (REQUIRED_WITH[permission] ?? []).filter((p) => !has.has(p)).map((p) => LABELS.get(p) ?? p);
+  return `Takes effect only once this role also has: ${missing.join('; ')}`;
+}
 
 /**
  * Every role against every permission, on one screen. An Admin switches permissions here

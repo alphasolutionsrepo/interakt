@@ -62,7 +62,7 @@ import * as searchIndexes from '@/app/api/search-experiences/[id]/indexes/route'
 import * as toolOne from '@/app/api/tools/[id]/route';
 import { accessStub } from '@/shared/test/access-stub';
 
-import { EDITOR_DEFAULT_PERMISSIONS } from './permissions';
+import { BUILT_IN_REFUSAL, EDITOR_DEFAULT_PERMISSIONS } from './permissions';
 
 beforeAll(async () => { testDb = await createAppTestDb(); }, 60_000);
 afterAll(() => testDb.close());
@@ -113,7 +113,7 @@ describe('changing what the built-in help is made of', () => {
     asEditor();
     const res = await call(fn, builtIn[kind]);
     expect(res.status).toBe(403);
-    expect((await res.json()).message).toMatch(/Only an Admin can change the built-in help/);
+    expect((await res.json()).message).toBe(BUILT_IN_REFUSAL);
     expect(changed).toEqual([]);
   });
 

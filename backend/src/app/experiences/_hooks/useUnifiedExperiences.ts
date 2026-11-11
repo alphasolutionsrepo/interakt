@@ -22,13 +22,13 @@ export interface UseUnifiedExperiencesParams {
 }
 
 /**
- * Which lists the hub loads: each kind the user may view, whatever the tab (the counts at the
- * top show both kinds). A list the server would refuse is never requested.
+ * Which lists the hub loads: the kinds the selected tab shows, and of those only the ones the
+ * user may view, so a list the server would refuse is never requested.
  */
-export function listsToLoad(can: (p: Permission) => boolean) {
+export function listsToLoad(can: (p: Permission) => boolean, typeFilter: UseUnifiedExperiencesParams['typeFilter']) {
   return {
-    skipAI: !can('ai-experiences:view'),
-    skipSearch: !can('search-experiences:view'),
+    skipAI: typeFilter === 'search' || !can('ai-experiences:view'),
+    skipSearch: typeFilter === 'ai' || !can('search-experiences:view'),
   };
 }
 
@@ -44,7 +44,7 @@ export function useUnifiedExperiences(params: UseUnifiedExperiencesParams) {
 
   // While access is loading neither list is requested
   const { can, isLoading: accessLoading } = useAccess();
-  const { skipAI, skipSearch } = listsToLoad(can);
+  const { skipAI, skipSearch } = listsToLoad(can, typeFilter);
   const listParams = {
     page: typeFilter === 'all' ? 1 : page,
     pageSize: typeFilter === 'all' ? 100 : pageSize, // fetch more when merging

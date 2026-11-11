@@ -19,6 +19,9 @@ vi.mock('@/features/access/access.service', async () => (await import('@/shared/
 
 import * as toolsList from '@/app/api/tools/route';
 import * as toolOne from '@/app/api/tools/[id]/route';
+import * as indexList from '@/app/api/search-indexes/route';
+import * as indexAll from '@/app/api/search-indexes/all/route';
+import * as indexOne from '@/app/api/search-indexes/[id]/route';
 
 import { builtInIds } from './built-in';
 
@@ -66,5 +69,27 @@ describe('the tool responses', () => {
     const rows = (await list.json()).data as Array<{ id: string; isBuiltIn: boolean }>;
     expect(rows.find((r) => r.id === attached)?.isBuiltIn).toBe(true);
     expect(rows.find((r) => r.id === plain)?.isBuiltIn).toBe(false);
+  });
+});
+
+describe('the index responses', () => {
+  it('flag an index a built-in search experience uses, in the list, the picker list and on its own', async () => {
+    const attached = await index();
+    await testDb.db.execute(sql`INSERT INTO search_experience_indexes (search_experience_id, search_index_id) VALUES (${await search(true)}, ${attached})`);
+    const plain = await index();
+
+    const one = await (indexOne.GET as unknown as (r: NextRequest, c: { params: Promise<{ id: string }> }) => Promise<Response>)(
+      new NextRequest(`http://localhost/api/search-indexes/${attached}`), { params: Promise.resolve({ id: attached }) });
+    expect((await one.json()).data.isBuiltIn).toBe(true);
+
+    const list = await (indexList.GET as unknown as (r: NextRequest) => Promise<Response>)(new NextRequest('http://localhost/api/search-indexes?pageSize=100'));
+    const listed = (await list.json()).data.items as Array<{ id: string; isBuiltIn: boolean }>;
+    expect(listed.find((r) => r.id === attached)?.isBuiltIn).toBe(true);
+    expect(listed.find((r) => r.id === plain)?.isBuiltIn).toBe(false);
+
+    const all = await (indexAll.GET as unknown as (r: NextRequest) => Promise<Response>)(new NextRequest('http://localhost/api/search-indexes/all'));
+    const picked = (await all.json()).data as Array<{ id: string; isBuiltIn: boolean }>;
+    expect(picked.find((r) => r.id === attached)?.isBuiltIn).toBe(true);
+    expect(picked.find((r) => r.id === plain)?.isBuiltIn).toBe(false);
   });
 });

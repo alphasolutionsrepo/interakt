@@ -99,7 +99,7 @@ export async function handleCreateSearchIndex(request: NextRequest) {
 export async function handleGetAllActiveSearchIndexes() {
     try {
         const indexes = await service.getAllActiveSearchIndexes();
-        return apiResponse.success(indexes);
+        return apiResponse.success(await withBuiltInFlag('search-index', indexes));
     } catch (error) {
         return apiResponse.error(error as Error, undefined, { operation: 'getAllActiveSearchIndexes' });
     }
