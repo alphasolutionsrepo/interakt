@@ -576,17 +576,52 @@ describe('review round 2', () => {
     expect((await call(secretsRoute.GET, 'GET', '/api/secrets')).status).toBe(403);
   });
 
+  it("gives a chat editor who can't view tools or prompts only what the pickers show: no settings, auth or prompt text", async () => {
+    const tag = `pick${n}`;
+    await testDb.db.execute(sql`INSERT INTO tools (name, slug, ai_description, executor_type, executor_config, is_active) VALUES (${tag}, ${tag}, 'Finds things', 'http', '{"baseUrl":"https://tool.internal.test","method":"GET"}', true)`);
+    await testDb.db.execute(sql`INSERT INTO mcp_connections (name, slug, server_url, auth_config, last_health_message) VALUES (${tag}, ${tag}, 'https://mcp.test', '{"type":"bearer","secretRef":"mcp-token"}', 'health detail')`);
+    await testDb.db.execute(sql`INSERT INTO prompt_templates (step, version, label, content, metadata, is_system_default) VALUES ('agentic_loop', 1, ${tag}, 'SECRET PROMPT TEXT', '{"variables":[],"sections":[]}', true)`);
+    as(await makeUser(await makeRole(`Chat pickers ${n}`, ['ai-experiences:edit'])));
+
+    // Every row carries only what the tool picker shows (the list may come from the cache)
+    const tools = (await call(allToolsRoute.GET, 'GET', '/api/tools/all')).body?.data as Array<Record<string, unknown>>;
+    expect(tools.length).toBeGreaterThan(0);
+    const shown = new Set(['id', 'name', 'slug', 'description', 'aiDescription', 'executorType', 'operation', 'notReadyReason', 'isActive', 'isBuiltIn']);
+    expect(tools.flatMap((t) => Object.keys(t)).filter((k) => !shown.has(k))).toEqual([]);
+    const mcp = (await call(mcpRoute.GET, 'GET', '/api/mcp-connections?pageSize=100')).body?.data as Array<Record<string, unknown>>;
+    const conn = mcp.find((c) => c.name === tag)!;
+    expect(conn).toMatchObject({ name: tag, serverUrl: 'https://mcp.test' });
+    expect(conn).not.toHaveProperty('authConfig');
+    expect(conn).not.toHaveProperty('lastHealthMessage');
+    const templates = JSON.stringify((await call(promptTemplatesRoute.GET, 'GET', '/api/prompt-templates')).body?.data);
+    expect(templates).toContain(tag);
+    expect(templates).not.toContain('SECRET PROMPT TEXT');
+    // Each step's default, as the Prompts panel shows it: never the prompt text
+    await testDb.db.execute(sql`INSERT INTO prompt_templates (step, version, label, content, metadata, is_system_default) VALUES ('turn_planner', 99, ${tag}, 'SECRET PROMPT TEXT', '{"variables":[],"sections":[]}', true)`);
+    const defaults = (await call(promptDefaultsRoute.GET, 'GET', '/api/prompt-templates/defaults')).body?.data as Record<string, Record<string, unknown> | null>;
+    const rows = Object.values(defaults).filter((d): d is Record<string, unknown> => !!d);
+    expect(rows.length).toBeGreaterThan(0);
+    const picked = new Set(['id', 'step', 'version', 'label', 'status', 'isSystemDefault']);
+    expect(rows.flatMap((d) => Object.keys(d)).filter((k) => !picked.has(k))).toEqual([]);
+
+    // A role that views them still gets them whole
+    as(await makeUser(await makeRole(`Prompt viewers ${n}`, ['prompts:view'])));
+    expect(JSON.stringify((await call(promptTemplatesRoute.GET, 'GET', '/api/prompt-templates')).body?.data)).toContain('SECRET PROMPT TEXT');
+  });
+
   it("gives a search editor who can't view data sources the sources without their connection settings", async () => {
     const name = `Picker source ${n}`;
-    const rows = await testDb.db.execute(sql`INSERT INTO data_sources (name, slug, type, config) VALUES (${name}, ${`picker-source-${n}`}, 'file_store', '{"bucket":"b"}') RETURNING id`);
+    const rows = await testDb.db.execute(sql`INSERT INTO data_sources (name, slug, type, config) VALUES (${name}, ${`picker-source-${n}`}, 'search_index_external', '{"provider":"azure_ai_search","endpoint":"https://search.internal.test","apiKeySecretRef":"azure-key"}') RETURNING id`);
     const id = (rows as unknown as { rows: Array<{ id: string }> }).rows[0].id;
     as(await makeUser(await makeRole(`Source pickers ${n}`, ['search-experiences:edit'])));
     const one = await call(dataSourceRoute.GET, 'GET', `/api/data-sources/${id}`, undefined, { id: id! });
     expect(one.status).toBe(200);
     expect(one.body?.data).toMatchObject({ id, name });
-    expect(one.body?.data).not.toHaveProperty('config');
+    // The provider names it in the picker; the rest of its settings stay out
+    expect((one.body?.data as Record<string, unknown>).config).toEqual({ provider: 'azure_ai_search' });
     const list = await call(dataSourcesRoute.GET, 'GET', '/api/data-sources?pageSize=100');
-    expect((list.body?.data as Array<Record<string, unknown>>).every((d) => !('config' in d))).toBe(true);
+    expect(JSON.stringify(list.body?.data)).not.toContain('search.internal.test');
+    expect(JSON.stringify(list.body?.data)).not.toContain('azure-key');
     // A role that views data sources still sees them whole
     as(await makeUser(await makeRole(`Source viewers ${n}`, ['data-sources:view'])));
     expect((await call(dataSourceRoute.GET, 'GET', `/api/data-sources/${id}`, undefined, { id: id! })).body?.data).toHaveProperty('config');

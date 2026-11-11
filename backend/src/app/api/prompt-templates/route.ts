@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
 
-import { PICKER_READERS } from '@/features/access/permissions';
+import { forPickers } from '@/features/access/picker-reads';
 import { withPermission } from '@/features/access/route-guard';
 import {
   handleListTemplates,
   handleCreateVersion,
 } from '@/features/prompt-templates/prompt-template.api.handlers';
 
-export const GET = withPermission(PICKER_READERS.prompts, async function GET(request: NextRequest) {
+export const GET = forPickers('prompts', 'prompts', async function GET(request: NextRequest) {
   return handleListTemplates(request);
 });
 
