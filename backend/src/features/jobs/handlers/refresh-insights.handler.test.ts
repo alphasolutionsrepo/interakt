@@ -13,6 +13,7 @@ import { refreshInsightsWorker } from './refresh-insights.handler';
 
 import { INTERNAL_MESSAGE } from '@/shared/errors/app-error';
 import { failedQuery } from '@/shared/test/error-answers';
+import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -21,6 +22,7 @@ const { runAnalyticsProcessing, listRecentlyActiveExperienceIds } = vi.hoisted((
   runAnalyticsProcessing: vi.fn(),
   listRecentlyActiveExperienceIds: vi.fn(),
 }));
+vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/analytics/analytics-processing.service', () => ({ runAnalyticsProcessing }));
 vi.mock('@/features/analytics/analytics-insights.service', () => ({ listRecentlyActiveExperienceIds }));
 
@@ -28,9 +30,20 @@ beforeEach(() => {
   logs.length = 0;
   runAnalyticsProcessing.mockReset();
   listRecentlyActiveExperienceIds.mockReset().mockResolvedValue(['exp-a', 'exp-b']);
+  featureSwitchesStub.reset();
 });
 
 describe('refreshInsightsWorker', () => {
+  it('refreshes nothing while Analytics is turned off', async () => {
+    featureSwitchesStub.off = new Set(['analytics']);
+
+    const output = await refreshInsightsWorker([{ id: 'job', data: {} }]);
+
+    expect(output).toEqual([{ jobId: 'job', skipped: 'Analytics is turned off for this installation.' }]);
+    expect(runAnalyticsProcessing).not.toHaveBeenCalled();
+    expect(listRecentlyActiveExperienceIds).not.toHaveBeenCalled();
+  });
+
   it('refreshes only the given experience', async () => {
     runAnalyticsProcessing.mockResolvedValue({ status: 'completed', runId: 'r1', durationMs: 5 });
 

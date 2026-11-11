@@ -27,6 +27,13 @@ const ACTIVE_WITHIN_DAYS = 30;
 export async function refreshInsightsWorker(
   jobs: Array<{ id: string; data: RefreshInsightsPayload }>
 ) {
+  // Analytics turned off for this installation: nothing to refresh (its data is kept)
+  const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
+  if (!(await isAreaOn('analytics'))) {
+    logger.info('Insights refresh skipped: Analytics is turned off', { jobs: jobs.length });
+    return jobs.map((job) => ({ jobId: job.id, skipped: 'Analytics is turned off for this installation.' }));
+  }
+
   // Imported lazily so the analytics feature (and its DB clients) only load
   // when a job actually runs, not at module-eval time.
   const { runAnalyticsProcessing } = await import(

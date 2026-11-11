@@ -69,8 +69,13 @@ export async function register() {
     // Build in-app docs search (index + experience over the product docs) in the
     // background. Runs regardless of ENABLE_AUTO_SEEDING: like the Help
     // Assistant it's a feature, not sample data. Skips when the docs are unchanged.
-    const { buildDocsSearchOnStartup } = await import('@/shared/seeders/docs/docs-search.seeder');
-    void buildDocsSearchOnStartup();
+    // Not when the Help assistant is turned off for this installation (if the switches can't
+    // be read, it builds as before).
+    const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
+    if (await isAreaOn('help-assistant').catch(() => true)) {
+      const { buildDocsSearchOnStartup } = await import('@/shared/seeders/docs/docs-search.seeder');
+      void buildDocsSearchOnStartup();
+    }
 
     // Start the background jobs engine (pg-boss). Fire-and-forget: failures are
     // logged inside startJobs and must not block server boot. Respects
