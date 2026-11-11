@@ -19,13 +19,16 @@ import { uiAccess } from '@/shared/test/ui-access-stub';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 
-// Each query answers from this table by its key; no requests are made
+// Each query answers from this table by its key; no requests are made. A query that isn't
+// enabled gets nothing, as with react-query, and is recorded so tests can see it wasn't asked
 const answers = new Map<string, unknown>();
+const notAsked: string[] = [];
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }: { queryKey: unknown[] }) => ({
-    data: answers.get(JSON.stringify(queryKey.filter((k) => k !== undefined))),
-    isLoading: false, isError: false, error: null, refetch: async () => {},
-  }),
+  useQuery: ({ queryKey, enabled = true }: { queryKey: unknown[]; enabled?: boolean }) => {
+    const key = JSON.stringify(queryKey.filter((k) => k !== undefined));
+    if (!enabled) notAsked.push(key);
+    return { data: enabled ? answers.get(key) : undefined, isLoading: false, isError: false, error: null, refetch: async () => {} };
+  },
   useQueryClient: () => ({ invalidateQueries: () => {} }),
   useMutation: () => ({ mutate: () => {}, mutateAsync: async () => {}, isPending: false, isError: false }),
 }));
@@ -79,13 +82,22 @@ describe('what needs attention', () => {
 });
 
 describe('analytics settings', () => {
-  it('locks Refresh and Schedule with the reason, and leaves out the Background Jobs link, for a viewer', () => {
+  it('locks Refresh, and neither asks for nor links the job schedules, for a viewer', () => {
     uiAccess.hold('analytics:view');
+    notAsked.length = 0;
     const html = settings();
     expect(controlState(html, { text: 'Refresh now' })).toBe('locked');
+    expect(notAsked).toContain(JSON.stringify(['analytics', 'settings', 'schedule']));
+    expect(html).toContain('You don&#x27;t have permission to see the background job schedules.');
+    expect(html).not.toContain('Only admins');
+    expect(html).not.toContain('href="/jobs"');
+  });
+
+  it('locks Schedule with the reason for a role that sees the schedules but cannot run jobs', () => {
+    uiAccess.hold('analytics:view', 'settings:view');
+    const html = settings();
     expect(controlState(html, { text: 'Schedule nightly refresh (02:00 UTC)' })).toBe('locked');
     expect(html).toContain('You don&#x27;t have permission to schedule background jobs.');
-    expect(html).not.toContain('href="/jobs"');
   });
 
   it('opens Refresh and Schedule and links Background Jobs for a role holding each permission', () => {

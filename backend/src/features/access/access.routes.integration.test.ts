@@ -14,7 +14,7 @@ import { eq } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, type Permission } from './permissions';
+import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, roleRefusal, type Permission } from './permissions';
 import * as rolesRepository from './roles.repository';
 import { updateUserAccess } from './roles.repository';
 
@@ -219,7 +219,11 @@ describe('nobody gives more than they hold', () => {
     expect((await call(userRoute.PUT, 'PUT', `/api/users/${target}`, { roleId: lower }, { id: target })).status).toBe(200);
     expect((await getUser(target)).roleId).toBe(lower);
     const editorUser = await makeUser(EDITOR);
-    expect((await call(userRoute.PUT, 'PUT', `/api/users/${editorUser}`, { firstName: 'Ed' }, { id: editorUser })).status).toBe(403);
+    const refused = await call(userRoute.PUT, 'PUT', `/api/users/${editorUser}`, { firstName: 'Ed' }, { id: editorUser });
+    expect(refused.status).toBe(403);
+    // The same sentence the Users page shows on that row (permissions.ts roleRefusal)
+    expect(refused.body?.message).toBe(roleRefusal('manage', { isBuiltIn: false }));
+    expect(refused.body?.message).toBe("You can't manage a user whose role has permissions your own role doesn't have.");
     expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${editorUser}/deactivate`, undefined, { id: editorUser })).status).toBe(403);
   });
 
@@ -242,7 +246,9 @@ describe('nobody gives more than they hold', () => {
 
   it('refuses managing an Admin: profile, password, deactivation', async () => {
     expect((await call(userRoute.GET, 'GET', `/api/users/${admin}`, undefined, { id: admin })).status).toBe(403);
-    expect((await call(userRoute.PUT, 'PUT', `/api/users/${admin}`, { firstName: 'Owned' }, { id: admin })).status).toBe(403);
+    const owned = await call(userRoute.PUT, 'PUT', `/api/users/${admin}`, { firstName: 'Owned' }, { id: admin });
+    expect(owned.status).toBe(403);
+    expect(owned.body?.message).toBe('Only an Admin can manage a user with the Admin role.');
     expect((await call(passwordRoute.POST, 'POST', `/api/users/${admin}/change-password`, { currentPassword: 'x', newPassword: 'Passw0rd-long', confirmPassword: 'Passw0rd-long' }, { id: admin })).status).toBe(403);
     expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${admin}/deactivate`, undefined, { id: admin })).status).toBe(403);
     expect((await getUser(admin))).toMatchObject({ firstName: 'First', isActive: true });
