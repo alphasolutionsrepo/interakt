@@ -72,6 +72,10 @@ import * as scaffoldRoute from '@/app/api/tools/scaffold/route';
 import * as kbDocRoute from '@/app/api/knowledge-base/[id]/route';
 import { knowledgeDocuments } from '@/db/schema/knowledge-base.schema';
 import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
+import * as promptTemplatesRoute from '@/app/api/prompt-templates/route';
+import * as promptDefaultsRoute from '@/app/api/prompt-templates/defaults/route';
+import * as allToolsRoute from '@/app/api/tools/all/route';
+import * as indexesRoute from '@/app/api/search-indexes/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import * as authRepository from '@/features/auth/auth.repository';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
@@ -539,6 +543,24 @@ describe('review round 2', () => {
     expect((await call(allIndexesRoute.GET, 'GET', '/api/search-indexes/all')).status).toBe(200);
     expect((await call(searchExperiencesRoute.GET, 'GET', '/api/search-experiences')).status).toBe(200);
     expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(200);
+  });
+
+  it("lets a chat editor load what the experience's pickers choose from: tools, MCP connections, prompt templates", async () => {
+    as(await makeUser(await makeRole(`Chat editors ${n}`, ['ai-experiences:edit'])));
+    expect((await call(allToolsRoute.GET, 'GET', '/api/tools/all')).status).toBe(200);
+    expect((await call(mcpRoute.GET, 'GET', '/api/mcp-connections?pageSize=100')).status).toBe(200);
+    expect((await call(promptTemplatesRoute.GET, 'GET', '/api/prompt-templates')).status).toBe(200);
+    expect((await call(promptDefaultsRoute.GET, 'GET', '/api/prompt-templates/defaults')).status).toBe(200);
+    // Seeing them, not changing them
+    expect((await call(toolsRoute.POST, 'POST', '/api/tools', {})).status).toBe(403);
+  });
+
+  it("lets a search editor load what the experience's pickers choose from: indexes and data sources", async () => {
+    as(await makeUser(await makeRole(`Search editors ${n}`, ['search-experiences:edit'])));
+    expect((await call(indexesRoute.GET, 'GET', '/api/search-indexes?isActive=true&pageSize=100')).status).toBe(200);
+    expect((await call(dataSourcesRoute.GET, 'GET', '/api/data-sources?pageSize=100')).status).toBe(200);
+    // Never secrets or provider keys
+    expect((await call(secretsRoute.GET, 'GET', '/api/secrets')).status).toBe(403);
   });
 });
 

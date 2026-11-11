@@ -130,13 +130,15 @@ export const AI_MODEL_READERS: readonly Permission[] = [
 
 /**
  * Permissions that only make sense with another: changing something implies seeing it,
- * asking the analytics assistant reads analytics, and the playgrounds read the indexes and
- * experiences they test. Applied when a role's permissions are read,
+ * asking the analytics assistant reads analytics, the playgrounds read the indexes and
+ * experiences they test, and editing an experience reads what its pickers choose from (a chat
+ * experience: tools, MCP connections, prompt templates; a search experience: indexes and data
+ * sources), never secrets or provider keys. Applied when a role's permissions are read,
  * so no role can hold the first without the second.
  */
 export const IMPLIED_PERMISSIONS: Partial<Record<Permission, readonly Permission[]>> = {
-  'search-experiences:edit': ['search-experiences:view'],
-  'ai-experiences:edit': ['ai-experiences:view'],
+  'search-experiences:edit': ['search-experiences:view', 'search-indexes:view', 'data-sources:view'],
+  'ai-experiences:edit': ['ai-experiences:view', 'tools:view', 'prompts:view'],
   'search-indexes:edit': ['search-indexes:view'],
   'documents:edit': ['search-indexes:view'],
   'data-sources:edit': ['data-sources:view'],
