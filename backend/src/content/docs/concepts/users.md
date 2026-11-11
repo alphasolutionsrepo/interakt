@@ -51,7 +51,7 @@ Tools, MCP connections and data sources that use a secret from the vault can be 
 
 A permission to change something includes the one to see it, asking the analytics assistant includes viewing analytics, and using the playgrounds includes viewing indexes and experiences; the Roles dialog shows these as included. Running the demo and docs setup takes effect only together with the permissions for what it sets up: AI providers, settings, indexes and documents, data sources, experiences, tools and prompts.
 
-The built-in Help Assistant and docs search work for every signed-in user. Only an Admin can change them, what the docs setup made for them (the docs data source with its tools and documents, and the docs search index), or a tool or index attached to them. Anything else an Admin connects to them, such as another data source or an MCP connection, keeps its usual permissions.
+The built-in Help Assistant and docs search work for every signed-in user. Only an Admin can build or rebuild them on Initial Setup, and only an Admin can change them, what the docs setup made for them (the docs data source with its tools and documents, and the docs search index), or a tool or index attached to them. Anything else an Admin connects to them, such as another data source or an MCP connection, keeps its usual permissions.
 
 The sidebar shows each user the pages their role can open, and the server checks the role on every request.
 

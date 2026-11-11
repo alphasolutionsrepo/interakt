@@ -4,7 +4,7 @@ DELETE /api/admin  setup:run
 GET    /api/admin/setup-demo  setup:run
 POST   /api/admin/setup-demo  setup:run
 GET    /api/admin/setup-docs  setup:run
-POST   /api/admin/setup-docs  setup:run
+POST   /api/admin/setup-docs  setup:run  +built-in
 GET    /api/ai-experiences  ai-experiences:view
 POST   /api/ai-experiences  ai-experiences:edit
 GET    /api/ai-experiences/[id]  ai-experiences:view
