@@ -69,3 +69,12 @@ export function userGates(caller: Caller, user: { id: string; roleId: string }, 
     role: lockedByManage ?? gate(caller, !self, NOT_YOURSELF_ROLE),
   };
 }
+
+/**
+ * The gate on the role picker in the user form: an existing user's role gate, or, for a new
+ * user, a wait while access loads (roleChoices locks nothing then, so nothing is offered early).
+ */
+export function rolePickerGate(caller: Caller, user: { id: string; roleId: string } | undefined, roles: RoleInfo[], rolesState: RolesState): ActionGate | undefined {
+  if (user) return userGates(caller, user, roles, rolesState).role;
+  return caller.isLoading ? { state: 'loading' } : undefined;
+}

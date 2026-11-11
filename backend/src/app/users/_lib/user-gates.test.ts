@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserTable } from '../_components/UserTable';
 
 import type { UserResponse } from './api-client';
-import { roleChoices, userGates } from './user-gates';
+import { roleChoices, rolePickerGate, userGates } from './user-gates';
 
 import { ADMIN_ROLE_ID, roleRefusal } from '@/features/access/permissions';
 import { menuItems } from '@/shared/test/rendered-controls';
@@ -93,6 +93,21 @@ describe('userGates', () => {
 
   it('waits while access is loading', () => {
     expect(userGates({ ...manager, isLoading: true }, user('other', 'viewer'), ROLES).manage).toEqual({ state: 'loading' });
+  });
+});
+
+describe('rolePickerGate', () => {
+  it("makes a new user's role picker wait while access loads, so no role is offered before its lock is known", () => {
+    expect(rolePickerGate({ ...manager, isLoading: true }, undefined, ROLES, 'ready')).toEqual({ state: 'loading' });
+  });
+
+  it("leaves a new user's role picker open once access is in (each role carries its own lock)", () => {
+    expect(rolePickerGate(manager, undefined, ROLES, 'ready')).toBeUndefined();
+  });
+
+  it("uses the user's own role gate when editing", () => {
+    expect(rolePickerGate(manager, user('me', 'viewer'), ROLES, 'ready')).toEqual(userGates(manager, user('me', 'viewer'), ROLES).role);
+    expect(rolePickerGate(manager, user('me', 'viewer'), ROLES, 'ready')).toMatchObject({ state: 'locked' });
   });
 });
 

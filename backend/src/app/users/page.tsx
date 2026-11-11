@@ -14,7 +14,7 @@ import { UserTable, UserFormDialog, ChangePasswordDialog, UserStatsBar, RolesPan
 import type { UserResponse } from './_lib/api-client';
 import { useRoles } from './_lib/hooks/useRoles';
 import { useUsers } from './_lib/hooks/useUsers';
-import { roleChoices, userGates } from './_lib/user-gates';
+import { roleChoices, rolePickerGate } from './_lib/user-gates';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -288,6 +288,7 @@ export default function UsersPage() {
         onOpenChange={setIsCreateDialogOpen}
         onSubmit={handleCreateUser}
         roles={choices}
+        roleGate={rolePickerGate(caller, undefined, roles, rolesState)}
         isSubmitting={isCreating}
       />
 
@@ -298,8 +299,7 @@ export default function UsersPage() {
         onSubmit={handleUpdateUser}
         user={editingUser || undefined}
         roles={choices}
-        // A new user's role picker waits for access too, so nothing is offered before its lock is known
-        roleGate={editingUser ? userGates(caller, editingUser, roles, rolesState).role : caller.isLoading ? { state: 'loading' } : undefined}
+        roleGate={rolePickerGate(caller, editingUser ?? undefined, roles, rolesState)}
         isSubmitting={isUpdating}
       />
 
