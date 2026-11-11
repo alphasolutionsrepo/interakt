@@ -195,6 +195,8 @@ interface OllamaChatResponse {
 interface OllamaEmbeddingRequest {
     model: string;
     input: string | string[];
+    /** Shortens the vector (Matryoshka models such as qwen3-embedding) */
+    dimensions?: number;
 }
 
 interface OllamaEmbeddingResponse {
@@ -356,6 +358,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         const ollamaRequest: OllamaEmbeddingRequest = {
             model: config.modelKey,
             input: request.texts,
+            ...(request.dimensions && { dimensions: request.dimensions }),
         };
 
         try {

@@ -328,6 +328,8 @@ export interface EmbeddingRequest {
     texts: string[];
     /** Model to use (resolved from options) */
     model?: string;
+    /** Vector size the caller needs; sent to providers that can shorten vectors */
+    dimensions?: number;
 }
 
 export interface EmbeddingResult {

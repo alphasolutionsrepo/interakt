@@ -784,7 +784,10 @@ export async function generateEmbeddings(
             batchSize,
             embeddingFn: async (batch) => {
                 const response = await withResilience(
-                    () => adapter.generateEmbeddings({ texts: batch }, adapterConfig),
+                    () => adapter.generateEmbeddings(
+                        { texts: batch, ...(options?.dimensions && { dimensions: options.dimensions }) },
+                        adapterConfig
+                    ),
                     {
                         providerId: config!.providerId,
                         providerKey: config!.providerKey,

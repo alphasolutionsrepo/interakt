@@ -473,6 +473,7 @@ async function getQueryEmbedding(
         const embedding = await generateEmbedding(query, {
             providerId: searchIndex.aiProviderId,
             modelId: searchIndex.aiModelId,
+            dimensions: context.embedding.dimensions || undefined,
             feature: 'search_query',
         });
 
