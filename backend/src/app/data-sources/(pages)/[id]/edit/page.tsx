@@ -1,22 +1,26 @@
 'use client';
 
+import { ChevronRight, Loader2, Save, Database } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { Step2_Config } from '../../../_components/CreateWizard/Step2_Config';
+import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../../_components/DataSourceTypeChip';
+
+import { useDataSource } from '../../../_lib/hooks/useDataSources';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { builtInGateFor } from '@/shared/access/ActionControls';
 import { LockedPage } from '@/shared/access/PageAccessGate';
 import { useAccess } from '@/shared/access/useAccess';
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ChevronRight, Loader2, Save, Database } from 'lucide-react';
+
 import { useMinDelayAction } from '@/shared/hooks';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../../_components/DataSourceTypeChip';
-import { Step2_Config } from '../../../_components/CreateWizard/Step2_Config';
-import { useDataSource } from '../../../_lib/hooks/useDataSources';
+
 import type { DataSourceType } from '../../../_lib/api-client';
 import { externalConfigToForm, externalFormToConfig } from '../../../_lib/external-config';
 

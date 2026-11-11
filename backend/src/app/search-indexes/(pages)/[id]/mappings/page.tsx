@@ -2,15 +2,6 @@
 
 'use client';
 
-import { builtInGateFor } from '@/shared/access/ActionControls';
-import { LockedPage } from '@/shared/access/PageAccessGate';
-import { useAccess } from '@/shared/access/useAccess';
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
     ArrowLeft,
     RefreshCw,
@@ -28,24 +19,25 @@ import {
     Table2,
     Plus,
 } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { reportActionError } from '@/shared/activity/report';
-import { cn } from '@/lib/utils';
+
+import { searchIndexFieldsApi } from '../../../_lib/api-client';
 import { useSearchIndex } from '../../../_lib/hooks/useSearchIndexes';
 import {
     useSearchIndexFields,
     useFieldMappingSummary,
     useBulkUpdateMappings,
 } from '../../../_lib/hooks/useSearchIndexFields';
-import { searchIndexFieldsApi } from '../../../_lib/api-client';
 import { FieldMappingTable, type FieldAttributeChange } from '../../../_components/FieldMappingTable';
 import { FieldMappingSummary } from '../../../_components/FieldMappingSummary';
 import { FieldMappingJsonEditor } from '../../../_components/FieldMappingJsonEditor';
 import { FieldMappingJsonImportDialog } from '../../../_components/FieldMappingJsonImportDialog';
 import { AddFieldDialog } from '../../../_components/AddFieldDialog';
 import { JsonSourceInput } from '../../../_components/JsonSourceInput';
-import { parseJsonForFields, isTypeCompatible } from '../../../_lib/utils/JsonFieldParser';
 import { fieldsToJson } from '../../../_lib/utils/field-mappings-json';
+import { parseJsonForFields, isTypeCompatible } from '../../../_lib/utils/JsonFieldParser';
 import { ReindexDialog } from '../../../_components/ReindexDialog';
 import { DeleteFieldDialog } from '../../../_components/DeleteFieldDialog';
 import {
@@ -53,7 +45,11 @@ import {
     type InferredField,
     type ReviewedField,
 } from '../../../_components/FieldInferenceReviewDialog';
-import { PageHeaderSkeleton } from '@/shared/ui/custom/skeletons';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
     SEARCH_TYPE_INFO,
     type SearchType,
@@ -62,6 +58,12 @@ import {
     type FieldMappingConfig,
     getFieldMappingConfig,
 } from '@/features/search-index';
+import { cn } from '@/lib/utils';
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
+import { reportActionError } from '@/shared/activity/report';
+import { PageHeaderSkeleton } from '@/shared/ui/custom/skeletons';
 
 // ============================================================================
 // TYPES

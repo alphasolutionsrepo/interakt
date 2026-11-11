@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   Database,
   Plus,
@@ -19,10 +18,17 @@ import {
   CircleDashed,
   HardDrive,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+
+import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../_components/DataSourceTypeChip';
+import { HealthStatusChip } from '../_components/HealthStatusChip';
+import type { DataSource, DataSourceType } from '../_lib/api-client';
+import { useDataSources } from '../_lib/hooks/useDataSources';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -30,17 +36,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../_components/DataSourceTypeChip';
-import { HealthStatusChip } from '../_components/HealthStatusChip';
-
 import { ActionButton } from '@/shared/access/ActionControls';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { RowActionsMenu } from '@/shared/ui/custom/RowActionsMenu';
-import { useDataSources } from '../_lib/hooks/useDataSources';
-import type { DataSource, DataSourceType } from '../_lib/api-client';
+import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
+
+
 
 type ViewMode = 'cards' | 'table';
 

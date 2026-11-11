@@ -13,8 +13,8 @@ import { useState, useMemo } from 'react';
 import { UserTable, UserFormDialog, ChangePasswordDialog, UserStatsBar, RolesPanel } from './_components';
 import type { UserResponse } from './_lib/api-client';
 import { useRoles } from './_lib/hooks/useRoles';
-import { roleChoices, userGates } from './_lib/user-gates';
 import { useUsers } from './_lib/hooks/useUsers';
+import { roleChoices, rolePickerGate } from './_lib/user-gates';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -288,6 +288,7 @@ export default function UsersPage() {
         onOpenChange={setIsCreateDialogOpen}
         onSubmit={handleCreateUser}
         roles={choices}
+        roleGate={rolePickerGate(caller, undefined, roles, rolesState)}
         isSubmitting={isCreating}
       />
 
@@ -298,7 +299,7 @@ export default function UsersPage() {
         onSubmit={handleUpdateUser}
         user={editingUser || undefined}
         roles={choices}
-        roleGate={editingUser ? userGates(caller, editingUser, roles, rolesState).role : undefined}
+        roleGate={rolePickerGate(caller, editingUser ?? undefined, roles, rolesState)}
         isSubmitting={isUpdating}
       />
 

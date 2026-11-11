@@ -1,8 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   Cpu,
   ChevronRight,
@@ -18,19 +16,24 @@ import {
   CircleCheck,
   CircleDashed,
 } from 'lucide-react';
-import { ActionButton } from '@/shared/access/ActionControls';
-import { format } from 'date-fns';
-import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { use, useState } from 'react';
+
+import { McpStatusChip } from '../../_components/McpStatusChip';
+import { useMcpConnection } from '../../_lib/hooks/useMcpConnections';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
 } from '@/components/ui/collapsible';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton } from '@/shared/ui/custom/skeletons';
-import { McpStatusChip } from '../../_components/McpStatusChip';
-import { useMcpConnection } from '../../_lib/hooks/useMcpConnections';
+
 
 interface PageProps {
   params: Promise<{ id: string }>;

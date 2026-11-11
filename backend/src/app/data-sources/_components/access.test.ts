@@ -23,7 +23,7 @@ vi.mock('@/components/ui/dropdown-menu', async () => (await import('@/shared/tes
 
 const noop = () => {};
 const menu = () => renderToStaticMarkup(createElement(RowActionsMenu, {
-  onView: noop, onEdit: noop, onDelete: noop, editAction: 'data-sources.edit', deleteAction: 'data-sources.delete',
+  onView: noop, onEdit: noop, onDelete: noop, editAction: 'data-sources.edit', deleteAction: 'data-sources.delete', builtIn: false,
   triggerClassName: '', itemClassName: '',
 }));
 

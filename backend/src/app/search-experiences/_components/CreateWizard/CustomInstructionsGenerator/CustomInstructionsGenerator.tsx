@@ -10,8 +10,15 @@
 
 'use client';
 
+import { useMutation } from '@tanstack/react-query';
+import { Loader2, Sparkles, ArrowRight, Check, RefreshCw, Info } from 'lucide-react';
 import * as React from 'react';
 import { useState } from 'react';
+
+import { searchExperiencesApi } from '../../../_lib/api-client';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -20,16 +27,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2, Sparkles, ArrowRight, Check, RefreshCw, Info } from 'lucide-react';
-import { useMutation } from '@tanstack/react-query';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { reportActionError } from '@/shared/activity/report';
 import { errorText } from '@/shared/api/api-error';
-import { searchExperiencesApi } from '../../../_lib/api-client';
-import { ActionButton } from '@/shared/access/ActionControls';
+
 
 // ============================================================================
 // TYPES

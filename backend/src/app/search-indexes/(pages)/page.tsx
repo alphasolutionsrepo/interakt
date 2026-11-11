@@ -2,18 +2,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { format } from 'date-fns';
 import {
   Plus,
   Search,
@@ -36,20 +25,35 @@ import {
   ArrowUpRight,
   Layers,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { useSearchIndexes } from '../_lib/hooks/useSearchIndexes';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { ActionButton } from '@/shared/access/ActionControls';
-import { IndexRowMenu } from '../_components/IndexRowMenu';
+import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
+
 import { ExportImportButtons } from '../_components/ExportImportButtons';
+import { IndexRowMenu } from '../_components/IndexRowMenu';
+import { useSearchIndexes } from '../_lib/hooks/useSearchIndexes';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   SEARCH_TYPE_INFO,
   type SearchIndexSummary,
   type SearchType,
   type IndexStatus,
 } from '@/features/search-index';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { PageHeaderSkeleton, StatsCardsSkeleton, TableSkeleton } from '@/shared/ui/custom/skeletons';
+
+
 
 // ============================================================================
 // TYPES

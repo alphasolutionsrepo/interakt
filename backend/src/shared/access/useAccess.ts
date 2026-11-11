@@ -12,11 +12,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+import { lookupErrorStatus } from './access-state';
+
 import type { Permission } from '@/features/access/permissions';
 import { allowsAction, type UiActionId } from '@/features/access/ui-actions';
 import { ApiError, handleApiResponse } from '@/shared/api/api-error';
 
-import { lookupErrorStatus } from './access-state';
 
 export interface MyAccess {
   userId: string;

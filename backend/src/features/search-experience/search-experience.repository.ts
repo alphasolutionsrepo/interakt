@@ -9,6 +9,16 @@
 import 'server-only';
 
 import { eq, desc, asc, ilike, or, and, sql, count } from 'drizzle-orm';
+
+import type {
+  SearchExperienceWithIndexes,
+  SearchExperienceSummary,
+  AddSearchExperienceIndexInput,
+  AddSearchExperienceExternalSourceInput,
+  SearchExperienceExternalSourceWithDetails,
+  UpdateSearchExperienceIndexInput,
+} from './search-experience.types';
+
 import { db } from '@/db/index';
 import {
   searchExperiences,
@@ -23,14 +33,6 @@ import type {
   SearchExperienceIndex,
   NewSearchExperienceIndex,
 } from '@/db/schema/search-experience.schema';
-import type {
-  SearchExperienceWithIndexes,
-  SearchExperienceSummary,
-  AddSearchExperienceIndexInput,
-  AddSearchExperienceExternalSourceInput,
-  SearchExperienceExternalSourceWithDetails,
-  UpdateSearchExperienceIndexInput,
-} from './search-experience.types';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('search-experience-repository');

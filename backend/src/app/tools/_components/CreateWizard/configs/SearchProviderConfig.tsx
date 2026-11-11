@@ -1,12 +1,16 @@
 'use client';
 
-import { AccessLink } from '@/shared/access/Can';
+import { Database, ChevronDown, ChevronUp, Sparkles, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+
+import { parseAzureIndexSchema } from '../../../_lib/azure-schema-parser';
+import type { DataSourceMeta } from '../Step2_Config';
+
+import { dataSourcesApi } from '@/app/data-sources/_lib/api-client';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Database, ChevronDown, ChevronUp, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -14,10 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { parseAzureIndexSchema } from '../../../_lib/azure-schema-parser';
-import type { DataSourceMeta } from '../Step2_Config';
-import { dataSourcesApi } from '@/app/data-sources/_lib/api-client';
+import { Textarea } from '@/components/ui/textarea';
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { AccessLink } from '@/shared/access/Can';
+import { useAccess } from '@/shared/access/useAccess';
 import { errorText } from '@/shared/api/api-error';
 
 // ============================================================================
@@ -35,6 +39,7 @@ interface DataSource {
   isActive: boolean;
   documentCount: number | null;
   schema: Record<string, unknown> | null;
+  isBuiltIn?: boolean;
 }
 
 interface SearchProviderConfigProps {
@@ -234,6 +239,7 @@ function AzureSchemaImportPanel({ onImport }: { onImport: (schema: object) => vo
 
 export function SearchProviderConfig({ value, onChange, errors, onSchemaImport, onDataSourceSelected }: SearchProviderConfigProps) {
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const access = useAccess();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -297,18 +303,24 @@ export function SearchProviderConfig({ value, onChange, errors, onSchemaImport, 
                 </AccessLink>
               </div>
             )}
-            {dataSources.map((ds) => (
-              <SelectItem key={ds.id} value={ds.id}>
+            {dataSources.map((ds) => {
+              // A tool on the built-in docs data source changes the built-in help: Admin only
+              const gate = builtInGateFor(access, 'tools.create', !!ds.isBuiltIn);
+              const locked = gate.state === 'locked' ? gate.reason : undefined;
+              return (
+              <SelectItem key={ds.id} value={ds.id} disabled={!!locked} title={locked}>
                 <div className="flex items-center gap-2">
-                  <Database className="size-3.5 text-muted-foreground shrink-0" />
+                  {locked ? <Lock className="size-3.5 text-muted-foreground shrink-0" aria-hidden /> : <Database className="size-3.5 text-muted-foreground shrink-0" />}
                   <span className="truncate">{ds.name}</span>
+                  {locked && <span className="sr-only">. {locked}</span>}
                   <StatusBadge status={ds.status} />
                   {ds.documentCount != null && (
                     <span className="text-[10px] text-muted-foreground tabular-nums">{ds.documentCount.toLocaleString()} docs</span>
                   )}
                 </div>
               </SelectItem>
-            ))}
+              );
+            })}
           </SelectContent>
         </Select>
         {errors?.dataSourceId && (

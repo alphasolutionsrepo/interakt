@@ -1,14 +1,6 @@
 'use client';
 
-import { AccessLink } from '@/shared/access/Can';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useAccess } from '@/shared/access/useAccess';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { format } from 'date-fns';
 import {
   ChevronLeft,
   Compass,
@@ -21,13 +13,30 @@ import {
   Shield,
   Zap,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+
 import { useSearchExperience } from '../_lib/hooks';
-import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+
+import { SearchWidgetCard } from './SearchWidgetCard';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { AccessLink } from '@/shared/access/Can';
+
+import { useAccess } from '@/shared/access/useAccess';
+import { Skeleton } from '@/components/ui/skeleton';
+
+
+
 import { AccessTokenRow } from '@/shared/ui/custom/AccessTokenRow';
+import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { SearchWidgetCard } from './SearchWidgetCard';
+
+
 import {
   MULTI_INDEX_STRATEGY_INFO,
   RESULT_MERGE_STRATEGY_INFO,
@@ -37,7 +46,6 @@ import {
   type IndexRole,
 } from '@/features/search-experience/search-experience.client';
 import { ExperienceHeaderActions } from '@/app/experiences/_components/ExperienceHeaderActions';
-import { DangerZone } from '@/shared/ui/custom/DangerZone';
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -140,9 +148,6 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
     await deleteExperience();
     router.push(listHref);
   };
-
-  // Handle toggle active
-
 
   // Loading state
   if (isLoading) {

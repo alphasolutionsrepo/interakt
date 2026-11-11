@@ -20,7 +20,7 @@ Sidebar → **Administration → User Management**. It has two tabs: **Users** a
 - **Status**: Active or Inactive.
 
 ### Add User
-Opens the create dialog: first and last name, email (used to log in), initial password, and **Role**. The role list shows the roles you can hand out (see [Who can give which role](#who-can-give-which-role)).
+Opens the create dialog: first and last name, email (used to log in), initial password, and **Role**. The role list shows every role; the ones you can't hand out are locked, with the reason (see [Who can give which role](#who-can-give-which-role)).
 
 ### Edit and deactivate
 From the user's row. Changes to someone's role or status apply on their **next request**: Interakt reads each user's role and status on every request, so a deactivated user loses access on their next request, and a new role applies straight away.

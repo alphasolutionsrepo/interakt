@@ -9,15 +9,15 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { listsToLoad, viewableTypes } from '../_hooks/useUnifiedExperiences';
-
-import { chatSendGate } from '@/app/ai-experiences/_components/ChatTestPanel';
 import CreateExperiencePage from '../(pages)/create/page';
+import { listParamsFor, listsToLoad, viewableTypes } from '../_hooks/useUnifiedExperiences';
+
 import { ExperienceHeaderActions } from './ExperienceHeaderActions';
 
+import { chatSendGate } from '@/app/ai-experiences/_components/ChatTestPanel';
 import type { Permission } from '@/features/access/permissions';
-import { uiAccess } from '@/shared/test/ui-access-stub';
 import { controlState } from '@/shared/test/rendered-controls';
+import { uiAccess } from '@/shared/test/ui-access-stub';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 let typeParam: string | null = null;
@@ -32,17 +32,17 @@ vi.mock('@/app/search-experiences/_components/CreateWizard/CreateWizard', () => 
 const holding = (...held: Permission[]) => (p: Permission) => held.includes(p);
 
 describe('the experiences hub', () => {
-  it('requests only the lists a user may view', () => {
-    expect(listsToLoad(holding('search-experiences:view'), 'all')).toEqual({ skipAI: true, skipSearch: false });
-    expect(listsToLoad(holding('ai-experiences:view', 'search-experiences:view'), 'all')).toEqual({ skipAI: false, skipSearch: false });
-    expect(listsToLoad(holding(), 'all')).toEqual({ skipAI: true, skipSearch: true });
+  it('requests only the lists a user may view, on every tab (the counts cover both kinds)', () => {
+    expect(listsToLoad(holding('search-experiences:view'))).toEqual({ skipAI: true, skipSearch: false });
+    expect(listsToLoad(holding('ai-experiences:view', 'search-experiences:view'))).toEqual({ skipAI: false, skipSearch: false });
+    expect(listsToLoad(holding())).toEqual({ skipAI: true, skipSearch: true });
   });
 
-  it("on a single-kind tab requests only that kind's list", () => {
-    const both = holding('ai-experiences:view', 'search-experiences:view');
-    expect(listsToLoad(both, 'ai')).toEqual({ skipAI: false, skipSearch: true });
-    expect(listsToLoad(both, 'search')).toEqual({ skipAI: true, skipSearch: false });
-    expect(listsToLoad(holding('search-experiences:view'), 'ai')).toEqual({ skipAI: true, skipSearch: true });
+  it("asks for the tab's page for the kind it shows, and the plain first page of the other for its count", () => {
+    const tab = { typeFilter: 'ai' as const, search: 'help', page: 3, pageSize: 12 };
+    expect(listParamsFor('ai', tab)).toEqual({ page: 3, pageSize: 12, search: 'help', isActive: undefined });
+    expect(listParamsFor('search', tab)).toBeUndefined();
+    expect(listParamsFor('search', { ...tab, typeFilter: 'all' })).toEqual({ page: 1, pageSize: 100, search: 'help', isActive: undefined });
   });
 
   it('offers a tab per kind the user can view, and All only with both', () => {

@@ -2,9 +2,6 @@
 
 'use client';
 
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Activity,
   RefreshCw,
@@ -15,10 +12,15 @@ import {
   FlaskConical,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useSystemHealth } from './_lib/hooks/useHealth';
+import { useState } from 'react';
+
 import { HealthStatsBar, ServiceStatusCard } from './_components';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { useSystemHealth } from './_lib/hooks/useHealth';
+
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useCanOpenPage } from '@/shared/access/Can';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 // ============================================================================
 // Page Skeleton

@@ -1,8 +1,5 @@
 'use client';
 
-import { builtInGateFor } from '@/shared/access/ActionControls';
-import { LockedPage } from '@/shared/access/PageAccessGate';
-import { useAccess } from '@/shared/access/useAccess';
 import { ChevronRight, ChevronDown, Loader2, Save, Bot, Plus, X, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -13,10 +10,10 @@ import { useAIExperience } from '../_lib/hooks/useAIExperiences';
 
 import { AdvancedGroup, EditAdvanced, EditSection, EditSectionNav } from './EditSection';
 import { ExecutionPolicyEditor } from './ExecutionPolicyEditor';
+import { ExperienceBadges } from './ExperienceBadges';
 import { GuardrailsSection } from './GuardrailsSection';
 import { McpAttachmentPanel } from './McpAttachmentPanel';
 import { ResponsePresetsEditor } from './pipeline/ResponsePresetsEditor';
-import { ExperienceBadges } from './ExperienceBadges';
 import { PromptOverridePanel } from './PromptOverridePanel';
 import { ToolAssignmentPanel } from './ToolAssignmentPanel';
 
@@ -33,6 +30,9 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 

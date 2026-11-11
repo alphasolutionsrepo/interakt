@@ -25,16 +25,24 @@ import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { BUILT_IN_REFUSAL } from '@/features/access/permissions';
-import { lockReason, noPermissionTo, type UiActionId } from '@/features/access/ui-actions';
+import { lockReason, noPermissionTo, UI_ACTIONS, type UiActionId } from '@/features/access/ui-actions';
 
 export type ActionGate = { state: 'loading' } | { state: 'allowed' } | { state: 'locked'; reason: string };
 
-type AccessView = Pick<ReturnType<typeof useAccess>, 'isLoading' | 'canDo' | 'isAdmin'>;
+type AccessView = Pick<ReturnType<typeof useAccess>, 'isLoading' | 'canDo' | 'isAdmin'> & { errorStatus?: number | null };
+
+export const ACCESS_UNAVAILABLE = "Couldn't check your access. Reload the page to try again.";
+
+/** The gate while what the user holds isn't known: still loading, or the lookup failed (never "no permission"). */
+function unknownAccess(access: AccessView): ActionGate | null {
+  if (access.isLoading) return { state: 'loading' };
+  if (access.errorStatus !== undefined && access.errorStatus !== null) return { state: 'locked', reason: ACCESS_UNAVAILABLE };
+  return null;
+}
 
 /** The gate for a UI action, from what the user holds. Pure, so the rule is tested on its own. */
 export function gateFor(access: AccessView, action: UiActionId): ActionGate {
-  if (access.isLoading) return { state: 'loading' };
-  return access.canDo(action) ? { state: 'allowed' } : { state: 'locked', reason: lockReason(action) };
+  return unknownAccess(access) ?? (access.canDo(action) ? { state: 'allowed' } : { state: 'locked', reason: lockReason(action) });
 }
 
 /**
@@ -54,7 +62,8 @@ export function useActionGate(action: UiActionId): ActionGate {
 
 /** Allowed when any one of the actions is (New Experience: either kind); `does` names them together. */
 export function anyActionGateFor(access: AccessView, actions: readonly UiActionId[], does: string): ActionGate {
-  if (access.isLoading) return { state: 'loading' };
+  const unknown = unknownAccess(access);
+  if (unknown) return unknown;
   return actions.some((a) => access.canDo(a))
     ? { state: 'allowed' }
     : { state: 'locked', reason: noPermissionTo(does) };
@@ -66,8 +75,7 @@ export function useAnyActionGate(actions: readonly UiActionId[], does: string): 
 
 /** For the few Admin-only actions (shaping roles, changing the built-in help); `does` finishes "Only an Admin can ...". */
 export function adminGateFor(access: AccessView, does: string): ActionGate {
-  if (access.isLoading) return { state: 'loading' };
-  return access.isAdmin ? { state: 'allowed' } : { state: 'locked', reason: `Only an Admin can ${does}.` };
+  return unknownAccess(access) ?? (access.isAdmin ? { state: 'allowed' } : { state: 'locked', reason: `Only an Admin can ${does}.` });
 }
 
 export function useAdminGate(does: string): ActionGate {
@@ -96,12 +104,32 @@ export function LockedHint({ reason, block = false, children }: { reason: string
 const iconFor = (gate: ActionGate, Icon: LucideIcon | undefined, className: string) =>
   gate.state === 'locked' ? <Lock className={className} aria-hidden /> : Icon ? <Icon className={className} aria-hidden /> : null;
 
-/** Either name the UI action, or pass a gate worked out another way (useAdminGate). */
-type GateProps = ({ action: UiActionId; gate?: never } | { gate: ActionGate; action?: never }) & {
+/** The actions whose routes also refuse a non-Admin's change to the built-in help */
+export type BuiltInActionId = { [K in UiActionId]: (typeof UI_ACTIONS)[K] extends { builtIn: true } ? K : never }[UiActionId];
+
+/**
+ * Either name the UI action, or pass a gate worked out another way (useAdminGate). An action
+ * on the built-in help's routes must say whether its row is built in, so a control can't miss
+ * the lock: leaving `builtIn` out doesn't compile.
+ */
+/**
+ * For a component that takes actions from its caller (a row menu, a delete card): `builtIn` is
+ * required when any of them is a built-in action, as on the controls themselves.
+ */
+export type BuiltInFor<A extends UiActionId> = [Extract<A, BuiltInActionId>] extends [never]
+  ? { builtIn?: boolean }
+  : { /** The row is part of the built-in help: locked for anyone but an Admin */ builtIn: boolean };
+
+/** An action with its row's built-in flag, as the controls take them (for those components). */
+export const actionProps = (action: UiActionId, builtIn = false) => ({ action, builtIn }) as { action: BuiltInActionId; builtIn: boolean };
+
+type GateProps = (
+  | { action: BuiltInActionId; /** The row is part of the built-in help: locked for anyone but an Admin */ builtIn: boolean; gate?: never }
+  | { action: Exclude<UiActionId, BuiltInActionId>; builtIn?: never; gate?: never }
+  | { gate: ActionGate; action?: never; builtIn?: never }
+) & {
   icon?: LucideIcon;
   iconClassName?: string;
-  /** The row is part of the built-in help: locked for anyone but an Admin */
-  builtIn?: boolean;
 };
 
 function useGate({ action, gate, builtIn = false }: { action?: UiActionId; gate?: ActionGate; builtIn?: boolean }): ActionGate {
@@ -125,15 +153,38 @@ export function ActionButton({ action, gate: given, builtIn, icon, iconClassName
   ));
 }
 
-/** A menu item: usable when allowed, locked with the reason otherwise. */
-export function ActionMenuItem({ action, gate: given, builtIn, icon, iconClassName = 'mr-2 size-4', disabled, children, ...props }: ComponentProps<typeof DropdownMenuItem> & GateProps) {
+/**
+ * A menu item: usable when allowed, locked with the reason otherwise. A locked item stays
+ * focusable (menus skip disabled items with the keyboard) and says why inside itself, so
+ * keyboard and screen-reader users reach the reason; choosing it does nothing.
+ */
+export function ActionMenuItem({ action, gate: given, builtIn, icon, iconClassName = 'mr-2 size-4', disabled, children, className, onSelect, onClick, ...props }: ComponentProps<typeof DropdownMenuItem> & GateProps) {
   const gate = useGate({ action, gate: given, builtIn });
-  return withLockHint(gate, (
-    <DropdownMenuItem {...props} disabled={disabled || gate.state !== 'allowed'}>
+  if (gate.state !== 'locked') {
+    return (
+      <DropdownMenuItem {...props} className={className} onSelect={onSelect} onClick={onClick} disabled={disabled || gate.state !== 'allowed'}>
+        {iconFor(gate, icon, iconClassName)}
+        {children}
+      </DropdownMenuItem>
+    );
+  }
+  // Choosing it does nothing, and the click goes no further (a row behind the menu doesn't open)
+  const stop = (e: { preventDefault: () => void; stopPropagation?: () => void }) => { e.preventDefault(); e.stopPropagation?.(); };
+  return (
+    <DropdownMenuItem
+      {...props}
+      aria-disabled
+      data-locked=""
+      title={gate.reason}
+      onSelect={stop}
+      onClick={stop}
+      className={[className, 'cursor-not-allowed opacity-50'].filter(Boolean).join(' ')}
+    >
       {iconFor(gate, icon, iconClassName)}
       {children}
+      <span className="sr-only">. {gate.reason}</span>
     </DropdownMenuItem>
-  ), true);
+  );
 }
 
 /** A switch: always shows its value; switchable only when allowed. */

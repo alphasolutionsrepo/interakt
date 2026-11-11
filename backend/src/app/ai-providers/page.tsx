@@ -2,10 +2,6 @@
 
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
 import {
   Plus,
   RefreshCw,
@@ -13,20 +9,9 @@ import {
   Search,
   Shield,
 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import {
-  useAIProviders,
-  useCreateProvider,
-  useSystemDefaults,
-} from './_lib/hooks/useAIProviders';
-import { aiProvidersApi } from './_lib/api-client';
+
 import {
   ProviderFormDialog,
   SystemDefaultsCard,
@@ -34,11 +19,28 @@ import {
   ProviderStatsBar,
   ProviderTable,
 } from './_components';
+import { aiProvidersApi } from './_lib/api-client';
+import {
+  useAIProviders,
+  useCreateProvider,
+  useSystemDefaults,
+} from './_lib/hooks/useAIProviders';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { AIProviderWithModelsResponse, CreateAIProviderInput, UpdateAIProviderInput } from '@/features/ai-providers';
+import { ActionButton } from '@/shared/access/ActionControls';
 import { reportActionError } from '@/shared/activity/report';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { ActionButton } from '@/shared/access/ActionControls';
-import type { AIProviderWithModelsResponse, CreateAIProviderInput, UpdateAIProviderInput } from '@/features/ai-providers';
 
 // ============================================================================
 // Page Skeleton

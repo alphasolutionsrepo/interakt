@@ -2,32 +2,6 @@
 
 'use client';
 
-import { useState } from 'react';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
     Plus,
     MoreHorizontal,
@@ -42,21 +16,47 @@ import {
     Sparkles,
     AlertCircle,
 } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { reportActionError } from '@/shared/activity/report';
-import { cn } from '@/lib/utils';
-import { ActionButton, ActionMenuItem, ActionSwitch } from '@/shared/access/ActionControls';
-import { useAccess } from '@/shared/access/useAccess';
-import { ModelFormDialog } from './ModelFormDialog';
 import { aiModelsApi } from '../_lib/api-client';
 import { capabilitiesFromForm } from '../_lib/model-capabilities';
 import { modelUpdateInput, type ModelFormSubmission } from '../_lib/model-form';
+import { ModelFormDialog } from './ModelFormDialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type {
     AIProviderWithModelsResponse,
     AIProviderModelResponse,
     CreateAIModelInput,
 } from '@/features/ai-providers';
+import { cn } from '@/lib/utils';
+import { ActionButton, ActionMenuItem, ActionSwitch } from '@/shared/access/ActionControls';
+import { useAccess } from '@/shared/access/useAccess';
+import { reportActionError } from '@/shared/activity/report';
 
 // ============================================================================
 // Model Type Icons

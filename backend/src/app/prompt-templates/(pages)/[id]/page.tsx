@@ -1,14 +1,10 @@
 'use client';
 
-import { use, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { ChevronRight, FileText, Pencil } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { use, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { PageHeaderSkeleton } from '@/shared/ui/custom/skeletons';
 
 import { PromptContentViewer } from '../../_components/PromptContentViewer';
 import { PromptEditor } from '../../_components/PromptEditor';
@@ -17,7 +13,12 @@ import { VariableLegend } from '../../_components/VariableLegend';
 import { VersionHistory } from '../../_components/VersionHistory';
 import { usePromptTemplate } from '../../_lib/hooks/usePromptTemplates';
 import { STATUS_CONFIG, STEP_LABELS } from '../../_lib/template-display';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ActionButton } from '@/shared/access/ActionControls';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { PageHeaderSkeleton } from '@/shared/ui/custom/skeletons';
 
 // ============================================================================
 // MAIN PAGE

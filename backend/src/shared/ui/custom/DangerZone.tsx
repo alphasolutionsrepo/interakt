@@ -12,26 +12,24 @@ import { Trash2 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { UiActionId } from '@/features/access/ui-actions';
-import { ActionButton } from '@/shared/access/ActionControls';
+import { ActionButton, actionProps, type BuiltInFor } from '@/shared/access/ActionControls';
 import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
 
-interface DangerZoneProps {
+type DangerZoneProps<A extends UiActionId> = {
   /** What is deleted, as in "Delete this search index" */
   thing: string;
   /** What deleting removes */
   detail: string;
   /** The delete action, so the button follows the server's rule */
-  action: UiActionId;
+  action: A;
   onDelete: () => void;
   /** Disabled for its own reason, which `detail` explains (still in use) */
   disabled?: boolean;
-  /** Part of the built-in help: locked for anyone but an Admin */
-  builtIn?: boolean;
   /** Folded away until opened (the experience pages) */
   collapsible?: boolean;
-}
+} & BuiltInFor<A>;
 
-export function DangerZone({ thing, detail, action, onDelete, disabled = false, builtIn = false, collapsible = false }: DangerZoneProps) {
+export function DangerZone<A extends UiActionId>({ thing, detail, action, onDelete, disabled = false, builtIn = false, collapsible = false }: DangerZoneProps<A>) {
   const description = `Irreversible actions that permanently affect this ${thing}.`;
   const body = (
     <div className="flex items-center justify-between gap-4 p-4 bg-destructive/5 rounded-xl border border-destructive/20">
@@ -39,7 +37,7 @@ export function DangerZone({ thing, detail, action, onDelete, disabled = false, 
         <p className="font-medium text-sm">Delete this {thing}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>
       </div>
-      <ActionButton action={action} builtIn={builtIn} icon={Trash2} variant="destructive" className="rounded-xl shrink-0" onClick={onDelete} disabled={disabled}>
+      <ActionButton {...actionProps(action, builtIn)} icon={Trash2} variant="destructive" className="rounded-xl shrink-0" onClick={onDelete} disabled={disabled}>
         Delete
       </ActionButton>
     </div>

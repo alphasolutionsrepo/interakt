@@ -11,7 +11,10 @@ import { sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
+import { BUILT_IN_REFUSAL, EDITOR_DEFAULT_PERMISSIONS } from './permissions';
+
+import * as chatToken from '@/app/api/ai-experiences/[id]/regenerate-token/route';
+import * as chatOne from '@/app/api/ai-experiences/[id]/route';
 
 let testDb: AppTestDb;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
@@ -51,18 +54,16 @@ vi.mock('@/features/knowledge-base/knowledge-base.service', () => ({
   uploadDocument: async () => { changed.push('kb:upload'); return { document: { id: 'd' }, chunkCount: 1, embeddedCount: 1 }; },
 }));
 
-import * as chatOne from '@/app/api/ai-experiences/[id]/route';
-import * as chatToken from '@/app/api/ai-experiences/[id]/regenerate-token/route';
 import * as chatTools from '@/app/api/ai-experiences/[id]/tools/route';
 import * as dataSourceOne from '@/app/api/data-sources/[id]/route';
 import * as kbUpload from '@/app/api/knowledge-base/upload/route';
-import * as indexOne from '@/app/api/search-indexes/[id]/route';
-import * as indexDocuments from '@/app/api/search-indexes/[id]/documents/route';
 import * as searchIndexes from '@/app/api/search-experiences/[id]/indexes/route';
+import * as indexDocuments from '@/app/api/search-indexes/[id]/documents/route';
+import * as indexOne from '@/app/api/search-indexes/[id]/route';
 import * as toolOne from '@/app/api/tools/[id]/route';
 import { accessStub } from '@/shared/test/access-stub';
+import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
-import { BUILT_IN_REFUSAL, EDITOR_DEFAULT_PERMISSIONS } from './permissions';
 
 beforeAll(async () => { testDb = await createAppTestDb(); }, 60_000);
 afterAll(() => testDb.close());

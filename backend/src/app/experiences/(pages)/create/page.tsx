@@ -1,13 +1,14 @@
 'use client';
 
-import { Suspense, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { Bot, Compass, ChevronRight, Sparkles, ArrowRight, Lock } from 'lucide-react';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { useActionGate, withLockHint, type ActionGate } from '@/shared/access/ActionControls';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState, type ReactNode } from 'react';
+
 import { CreateWizard as AICreateWizard } from '@/app/ai-experiences/_components/CreateWizard/CreateWizard';
 import { CreateWizard as SearchCreateWizard } from '@/app/search-experiences/_components/CreateWizard/CreateWizard';
+import { useActionGate, withLockHint, type ActionGate } from '@/shared/access/ActionControls';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 type ExperienceType = 'ai' | 'search' | null;
 

@@ -2,7 +2,6 @@
 
 'use client';
 
-import { useState } from 'react';
 import {
   FlaskConical,
   Play,
@@ -11,11 +10,14 @@ import {
   XCircle,
   Clock,
 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useState } from 'react';
+
 import { toolsApi, type ToolTestResult } from '../_lib/api-client';
-import { errorText } from '@/shared/api/api-error';
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { errorText } from '@/shared/api/api-error';
 
 /** Run a tool with test input; Run is locked with the reason for a role that can't test (it calls the tool). */
 export function ToolTestPanel({ toolId, isActive, executorType, operation }: {

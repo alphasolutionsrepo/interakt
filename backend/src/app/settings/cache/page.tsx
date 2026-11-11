@@ -2,8 +2,6 @@
 
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   RefreshCw,
   Settings2,
@@ -12,6 +10,12 @@ import {
   AlertTriangle,
   Info,
 } from 'lucide-react';
+
+import { CacheStatsGrid, CacheFeatureCard } from './_components';
+import { CACHE_FEATURES } from './_lib/api-client';
+import { useCacheManagement } from './_lib/hooks/useCacheManagement';
+
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,12 +27,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { useCacheManagement } from './_lib/hooks/useCacheManagement';
-import { CACHE_FEATURES } from './_lib/api-client';
-import { CacheStatsGrid, CacheFeatureCard } from './_components';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 // ============================================================================
 // Page Skeleton

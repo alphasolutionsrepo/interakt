@@ -1,6 +1,5 @@
 'use client';
 
-import { AccessLink } from '@/shared/access/Can';
 import {
   ChevronLeft,
   ChevronRight,
@@ -39,6 +38,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { GOVERNED_POLICY } from '@/features/ai-experience/execution-policy';
+import { AccessLink } from '@/shared/access/Can';
 import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 
 

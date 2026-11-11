@@ -21,36 +21,35 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { UiActionId } from '@/features/access/ui-actions';
-import { ActionMenuItem } from '@/shared/access/ActionControls';
+import { ActionMenuItem, actionProps, type BuiltInFor } from '@/shared/access/ActionControls';
 
-export interface RowExtraAction {
+export interface RowExtraAction<X extends UiActionId = UiActionId> {
   label: string;
   icon: LucideIcon;
-  action: UiActionId;
+  action: X;
   onSelect: () => void;
   /** Disabled for its own reason (a job running), without the lock */
   disabled?: boolean;
 }
 
-interface RowActionsMenuProps {
+type RowActionsMenuProps<E extends UiActionId, D extends UiActionId, X extends UiActionId> = {
   onView: () => void;
   /** Left out where the item has no edit page (MCP connections) */
   onEdit?: () => void;
   onDelete: () => void;
-  editAction?: UiActionId;
-  deleteAction: UiActionId;
+  editAction?: E;
+  deleteAction: D;
   /** Between Edit and Delete */
-  extra?: RowExtraAction[];
-  /** Part of the built-in help: every change locked for anyone but an Admin */
-  builtIn?: boolean;
+  extra?: Array<RowExtraAction<X>>;
   triggerClassName: string;
   triggerIconClassName?: string;
   itemClassName: string;
-}
+  /** builtIn (part of the built-in help, every change locked for anyone but an Admin): required when an action touches it */
+} & BuiltInFor<E | D | X>;
 
-export function RowActionsMenu({
+export function RowActionsMenu<E extends UiActionId = never, D extends UiActionId = UiActionId, X extends UiActionId = never>({
   onView, onEdit, onDelete, editAction, deleteAction, extra = [], builtIn = false, triggerClassName, triggerIconClassName = 'size-4', itemClassName,
-}: RowActionsMenuProps) {
+}: RowActionsMenuProps<E, D, X>) {
   const only = (run: () => void) => (e: MouseEvent) => { e.stopPropagation(); run(); };
   return (
     <DropdownMenu>
@@ -65,19 +64,18 @@ export function RowActionsMenu({
           View Details
         </DropdownMenuItem>
         {onEdit && editAction && (
-          <ActionMenuItem action={editAction} builtIn={builtIn} icon={Edit2} iconClassName="size-4" onClick={only(onEdit)} className={itemClassName}>
+          <ActionMenuItem {...actionProps(editAction, builtIn)} icon={Edit2} iconClassName="size-4" onClick={only(onEdit)} className={itemClassName}>
             Edit
           </ActionMenuItem>
         )}
         {extra.map((x) => (
-          <ActionMenuItem key={x.label} action={x.action} builtIn={builtIn} icon={x.icon} iconClassName="size-4" onClick={only(x.onSelect)} disabled={x.disabled} className={itemClassName}>
+          <ActionMenuItem key={x.label} {...actionProps(x.action, builtIn)} icon={x.icon} iconClassName="size-4" onClick={only(x.onSelect)} disabled={x.disabled} className={itemClassName}>
             {x.label}
           </ActionMenuItem>
         ))}
         <DropdownMenuSeparator />
         <ActionMenuItem
-          action={deleteAction}
-          builtIn={builtIn}
+          {...actionProps(deleteAction, builtIn)}
           icon={Trash2}
           iconClassName="size-4"
           onClick={only(onDelete)}

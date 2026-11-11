@@ -2,16 +2,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Slider } from '@/components/ui/slider';
 import {
     Settings2,
     RefreshCw,
@@ -20,18 +11,29 @@ import {
     Blend,
     Info,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+
+import {
+    useGlobalSearchSettings,
+    useUpdateGlobalSearchSettings,
+} from './_lib/hooks/useGlobalSearchSettings';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
 import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-    useGlobalSearchSettings,
-    useUpdateGlobalSearchSettings,
-} from './_lib/hooks/useGlobalSearchSettings';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 // ============================================================================
 // FORM SCHEMA

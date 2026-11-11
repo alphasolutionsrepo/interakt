@@ -2,17 +2,6 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { LockedHint, useActionGate, type ActionGate } from '@/shared/access/ActionControls';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import {
     MessageSquare,
     FileText,
@@ -23,11 +12,23 @@ import {
     Circle,
     AlertCircle,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+
+import { Button } from '@/components/ui/button';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import type {
     SystemDefaultsResponse,
     AIProviderWithModelsResponse,
 } from '@/features/ai-providers';
 import { cn } from '@/lib/utils';
+import { LockedHint, useActionGate, type ActionGate } from '@/shared/access/ActionControls';
 
 // ============================================================================
 // Types

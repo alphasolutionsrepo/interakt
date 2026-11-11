@@ -25,8 +25,8 @@ import { Loader2, Save } from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ActionButton } from '@/shared/access/ActionControls';
 
 /** Mirrors DataSourceField in db/schema/data-sources.schema.ts. */
 interface SchemaField {
@@ -51,6 +51,8 @@ interface Props {
   schema: Record<string, unknown> | null;
   onSave: (fields: SchemaField[]) => Promise<void>;
   isSaving: boolean;
+  /** The built-in docs data source: Save is locked for anyone but an Admin */
+  builtIn: boolean;
 }
 
 /** How full a field is, in words an operator can act on. */
@@ -64,7 +66,7 @@ function coverage(field: SchemaField): { label: string; muted: boolean } {
   return { label: `${filled}% filled`, muted: false };
 }
 
-export function SchemaFieldsEditor({ schema, onSave, isSaving }: Props) {
+export function SchemaFieldsEditor({ schema, onSave, isSaving, builtIn }: Props) {
   const fields = ((schema?.fields as SchemaField[]) ?? []);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
@@ -108,15 +110,19 @@ export function SchemaFieldsEditor({ schema, onSave, isSaving }: Props) {
             ? `${fields.length} fields, ${profiled} profiled from a document sample. Add a description where a field's name is misleading — it is included in the planning prompt.`
             : `${fields.length} fields. Run a health check to measure how full each one is and what values it holds.`}
         </p>
-        <Button
+        {/* Saves through the data source's update route: data-sources:edit, Admin on the built-in one */}
+        <ActionButton
+          action="data-sources.edit"
+          builtIn={builtIn}
+          icon={isSaving ? Loader2 : Save}
+          iconClassName={isSaving ? 'size-3.5 animate-spin' : 'size-3.5'}
           size="sm"
           onClick={handleSave}
           disabled={dirty.length === 0 || isSaving}
           className="gap-1.5 shrink-0"
         >
-          {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
           {dirty.length > 0 ? `Save ${dirty.length}` : 'Save'}
-        </Button>
+        </ActionButton>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border/50">

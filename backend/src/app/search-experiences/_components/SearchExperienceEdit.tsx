@@ -1,15 +1,5 @@
 'use client';
 
-import { builtInGateFor } from '@/shared/access/ActionControls';
-import { LockedPage } from '@/shared/access/PageAccessGate';
-import { useAccess } from '@/shared/access/useAccess';
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -52,12 +42,14 @@ import {
   Blend,
   Wand2,
 } from 'lucide-react';
-import { Slider } from '@/components/ui/slider';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
+
 import { useSearchExperience, useSlugAvailability } from '../_lib/hooks';
 import { useAvailableDisplayFields } from '../_lib/hooks/useAvailableDisplayFields';
-import { ExperienceSourcesCard } from './ExperienceSources';
-import { errorText } from '@/shared/api/api-error';
+
 import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 import {
   MULTI_INDEX_STRATEGY_INFO,
@@ -70,7 +62,17 @@ import {
   type DisplayFieldRole,
  SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
 import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
+import { ExperienceSourcesCard } from './ExperienceSources';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
+import { errorText } from '@/shared/api/api-error';
 
 // ============================================================================
 // ICON MAP FOR DISPLAY FIELD ROLES

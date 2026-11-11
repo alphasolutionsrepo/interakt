@@ -8,8 +8,8 @@ import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { useEffect, type ReactNode } from 'react';
 
-import type { ActionGate } from './ActionControls';
 import { accessState } from './access-state';
+import type { ActionGate } from './ActionControls';
 import { useAccess } from './useAccess';
 
 import { Button } from '@/components/ui/button';

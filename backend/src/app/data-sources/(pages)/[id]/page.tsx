@@ -1,8 +1,6 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   ChevronRight,
   ChevronDown,
@@ -22,25 +20,28 @@ import {
   ExternalLink,
   Check,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { use, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { reportActionError } from '@/shared/activity/report';
+
 import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../_components/DataSourceTypeChip';
 import { HealthStatusChip } from '../../_components/HealthStatusChip';
-
-import { ActionButton } from '@/shared/access/ActionControls';
-import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { SchemaFieldsEditor } from '../../_components/SchemaFieldsEditor';
+import type { DataSourceType } from '../../_lib/api-client';
 import { useDataSource } from '../../_lib/hooks/useDataSources';
 import { useHealthCheck } from '../../_lib/hooks/useHealthCheck';
+
 import { toolsApi } from '@/app/tools/_lib/api-client';
 import type { ScaffoldToolsResponse } from '@/app/tools/_lib/api-client';
-import type { DataSourceType } from '../../_lib/api-client';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { reportActionError } from '@/shared/activity/report';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 // ============================================================================
 // HELPERS
@@ -332,6 +333,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
           <CardContent>
             <SchemaFieldsEditor
               schema={dataSource.schema}
+              builtIn={dataSource.isBuiltIn}
               isSaving={isUpdating}
               onSave={async (fields) => {
                 await updateDataSource({
@@ -407,6 +409,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
               </div>
               <ActionButton
                 action="tools.scaffold"
+                builtIn={dataSource.isBuiltIn}
                 icon={isScaffolding ? Loader2 : Sparkles}
                 iconClassName={isScaffolding ? 'size-4 mr-2 animate-spin' : 'size-4 mr-2'}
                 className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white"

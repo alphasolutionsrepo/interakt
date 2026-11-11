@@ -1,26 +1,28 @@
 'use client';
 
-import { builtInGateFor } from '@/shared/access/ActionControls';
-import { LockedPage } from '@/shared/access/PageAccessGate';
-import { useAccess } from '@/shared/access/useAccess';
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronRight, Loader2, Save, Wrench } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, Loader2, Save, Wrench } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { ToolTypeChip, resolveToolChipConfig } from '../../../_components/ToolTypeChip';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { Step2_Config } from '../../../_components/CreateWizard/Step2_Config';
 import { DisplayConfigEditor } from '../../../_components/DisplayConfigEditor';
 import { LookupFieldsSection, lookupConfigView } from '../../../_components/LookupFieldsSection';
+import { ToolTypeChip, resolveToolChipConfig } from '../../../_components/ToolTypeChip';
 import { useLookupFields, useTool } from '../../../_lib/hooks/useTools';
-import { useMinDelayAction } from '@/shared/hooks';
+
 import type { ExecutorType, ToolDisplayConfig } from '../../../_lib/api-client';
 import { dataSourcesApi } from '@/app/data-sources/_lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { builtInGateFor } from '@/shared/access/ActionControls';
+import { LockedPage } from '@/shared/access/PageAccessGate';
+import { useAccess } from '@/shared/access/useAccess';
+import { useMinDelayAction } from '@/shared/hooks';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 export default function EditToolPage({ params }: { params: Promise<{ id: string }> }) {
   const access = useAccess();

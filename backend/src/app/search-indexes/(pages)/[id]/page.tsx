@@ -2,13 +2,7 @@
 
 'use client';
 
-import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { format } from 'date-fns';
 import {
   ChevronLeft,
   Edit2,
@@ -39,18 +33,24 @@ import {
   RefreshCw,
   Wrench,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { toast } from 'sonner';
-import { useSearchIndex, useIndexStats, useSyncStatus } from '../../_lib/hooks/useSearchIndexes';
-import { useFieldMappingSummary } from '../../_lib/hooks/useSearchIndexFields';
-import { FieldMappingsCard } from '../../_components/FieldMappingsCard';
-import { ActionButton } from '@/shared/access/ActionControls';
-import { DangerZone } from '@/shared/ui/custom/DangerZone';
-import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
-import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { ReindexDialog } from '../../_components/ReindexDialog';
-import { LastJobBanner } from '../../_components/LastJobBanner';
+
 import { ExportImportButtons } from '../../_components/ExportImportButtons';
+import { FieldMappingsCard } from '../../_components/FieldMappingsCard';
+import { LastJobBanner } from '../../_components/LastJobBanner';
+import { ReindexDialog } from '../../_components/ReindexDialog';
+import { useSearchIndex, useIndexStats, useSyncStatus } from '../../_lib/hooks/useSearchIndexes';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+
+
+import { useFieldMappingSummary } from '../../_lib/hooks/useSearchIndexFields';
+
 import {
   SEARCH_TYPE_INFO,
   INDEXING_STRATEGY_INFO,
@@ -60,6 +60,11 @@ import {
   type IndexingStrategy,
   type VectorSimilarity,
 } from '@/features/search-index';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
+import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
+import { PageHeader } from '@/shared/ui/custom/PageHeader';
+
 import { getProviderUI } from '../../_components/providers/provider-registry';
 import '../../_components/providers'; // ensure all providers are registered
 

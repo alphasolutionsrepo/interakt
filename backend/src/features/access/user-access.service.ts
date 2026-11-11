@@ -16,9 +16,9 @@ import 'server-only';
 
 
 import { AccessDeniedError, assertMayAssignRole } from './access-policy';
-import { can, type UserAccess } from './user-access';
 import { conflictOnConstraint } from './constraint-errors';
 import * as roles from './roles.repository';
+import { can, type UserAccess } from './user-access';
 
 import { getUserById } from '@/features/auth/auth.repository';
 import { NotFoundError, ValidationError } from '@/shared/errors/app-error';
@@ -38,7 +38,7 @@ export async function assertCanManageUser(caller: UserAccess, targetUserId: stri
   const target = await getUserById(targetUserId);
   if (!target) throw new NotFoundError('User not found');
   if (target.id === caller.userId) return target;
-  assertMayAssignRole(caller, await roleOrFail(target.roleId), 'manage a user with');
+  assertMayAssignRole(caller, await roleOrFail(target.roleId), 'manage');
   return target;
 }
 

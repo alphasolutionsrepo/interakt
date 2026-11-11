@@ -20,11 +20,11 @@ import {
 } from './tools.validation';
 
 import type { DataSourceSchema } from '@/db/schema/data-sources.schema';
+import { assertMayChange, withBuiltInFlag } from '@/features/access/built-in';
 import { assertMayWriteSecretConfig } from '@/features/access/secret-references';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { readJsonBody } from '@/shared/api/read-json-body';
-import { assertMayChange, withBuiltInFlag } from '@/features/access/built-in';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';

@@ -14,27 +14,26 @@ import { eq } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, type Permission } from './permissions';
+import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, roleRefusal, type Permission } from './permissions';
 import * as rolesRepository from './roles.repository';
 import { updateUserAccess } from './roles.repository';
 
-import * as authRepository from '@/features/auth/auth.repository';
 
-import { findSecretReferences } from '@/features/secrets/secrets.repository';
 
+import * as setupDemoRoute from '@/app/api/admin/setup-demo/route';
+import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
 import * as aiTextRoute from '@/app/api/ai-service/text/route';
-import * as meRoute from '@/app/api/me/access/route';
-import * as docRoute from '@/app/api/search-indexes/[id]/documents/[documentId]/route';
-import * as batchesRoute from '@/app/api/search-indexes/[id]/documents/batches/route';
-import * as batchRoute from '@/app/api/search-indexes/[id]/documents/batches/[batchId]/route';
-import * as bulkRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
-import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/delete-by-filter/route';
-import * as setupDemoRoute from '@/app/api/admin/setup-demo/route';
 import * as analyticsExperiencesRoute from '@/app/api/analytics/experiences/route';
-import { aiExperiences } from '@/db/schema/ai-experience.schema';
+import * as meRoute from '@/app/api/me/access/route';
 import * as roleRoute from '@/app/api/roles/[id]/route';
 import * as rolesRoute from '@/app/api/roles/route';
+import * as docRoute from '@/app/api/search-indexes/[id]/documents/[documentId]/route';
+import * as batchRoute from '@/app/api/search-indexes/[id]/documents/batches/[batchId]/route';
+import * as batchesRoute from '@/app/api/search-indexes/[id]/documents/batches/route';
+import * as bulkRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
+import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/delete-by-filter/route';
+import { aiExperiences } from '@/db/schema/ai-experience.schema';
 import { aiProviders } from '@/db/schema/ai-providers.schema';
 import { dataSources } from '@/db/schema/data-sources.schema';
 import { mcpConnections } from '@/db/schema/mcp-connections.schema';
@@ -72,10 +71,11 @@ import * as searchExperiencesRoute from '@/app/api/search-experiences/route';
 import * as scaffoldRoute from '@/app/api/tools/scaffold/route';
 import * as kbDocRoute from '@/app/api/knowledge-base/[id]/route';
 import { knowledgeDocuments } from '@/db/schema/knowledge-base.schema';
-import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
+import * as authRepository from '@/features/auth/auth.repository';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
+import { findSecretReferences } from '@/features/secrets/secrets.repository';
 
 
 const EDITOR = '00000000-0000-4000-8000-000000000002';
@@ -219,7 +219,11 @@ describe('nobody gives more than they hold', () => {
     expect((await call(userRoute.PUT, 'PUT', `/api/users/${target}`, { roleId: lower }, { id: target })).status).toBe(200);
     expect((await getUser(target)).roleId).toBe(lower);
     const editorUser = await makeUser(EDITOR);
-    expect((await call(userRoute.PUT, 'PUT', `/api/users/${editorUser}`, { firstName: 'Ed' }, { id: editorUser })).status).toBe(403);
+    const refused = await call(userRoute.PUT, 'PUT', `/api/users/${editorUser}`, { firstName: 'Ed' }, { id: editorUser });
+    expect(refused.status).toBe(403);
+    // The same sentence the Users page shows on that row (permissions.ts roleRefusal)
+    expect(refused.body?.message).toBe(roleRefusal('manage', { isBuiltIn: false }));
+    expect(refused.body?.message).toBe("You can't manage a user whose role has permissions your own role doesn't have.");
     expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${editorUser}/deactivate`, undefined, { id: editorUser })).status).toBe(403);
   });
 
@@ -242,7 +246,9 @@ describe('nobody gives more than they hold', () => {
 
   it('refuses managing an Admin: profile, password, deactivation', async () => {
     expect((await call(userRoute.GET, 'GET', `/api/users/${admin}`, undefined, { id: admin })).status).toBe(403);
-    expect((await call(userRoute.PUT, 'PUT', `/api/users/${admin}`, { firstName: 'Owned' }, { id: admin })).status).toBe(403);
+    const owned = await call(userRoute.PUT, 'PUT', `/api/users/${admin}`, { firstName: 'Owned' }, { id: admin });
+    expect(owned.status).toBe(403);
+    expect(owned.body?.message).toBe('Only an Admin can manage a user with the Admin role.');
     expect((await call(passwordRoute.POST, 'POST', `/api/users/${admin}/change-password`, { currentPassword: 'x', newPassword: 'Passw0rd-long', confirmPassword: 'Passw0rd-long' }, { id: admin })).status).toBe(403);
     expect((await call(deactivateRoute.PATCH, 'PATCH', `/api/users/${admin}/deactivate`, undefined, { id: admin })).status).toBe(403);
     expect((await getUser(admin))).toMatchObject({ firstName: 'First', isActive: true });

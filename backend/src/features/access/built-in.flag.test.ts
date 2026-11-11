@@ -10,6 +10,15 @@ import { sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { builtInIds } from './built-in';
+
+import * as searchOne from '@/app/api/search-experiences/[id]/route';
+import * as searchList from '@/app/api/search-experiences/route';
+import * as indexOne from '@/app/api/search-indexes/[id]/route';
+import * as indexAll from '@/app/api/search-indexes/all/route';
+import * as indexList from '@/app/api/search-indexes/route';
+import * as toolOne from '@/app/api/tools/[id]/route';
+import * as toolsList from '@/app/api/tools/route';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 let testDb: AppTestDb;
@@ -17,15 +26,7 @@ vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 
-import * as toolsList from '@/app/api/tools/route';
-import * as toolOne from '@/app/api/tools/[id]/route';
-import * as indexList from '@/app/api/search-indexes/route';
-import * as indexAll from '@/app/api/search-indexes/all/route';
-import * as indexOne from '@/app/api/search-indexes/[id]/route';
-import * as searchList from '@/app/api/search-experiences/route';
-import * as searchOne from '@/app/api/search-experiences/[id]/route';
 
-import { builtInIds } from './built-in';
 
 beforeAll(async () => { testDb = await createAppTestDb(); }, 60_000);
 afterAll(() => testDb.close());

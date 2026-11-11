@@ -10,8 +10,12 @@
 
 'use client';
 
-import { AccessLink } from '@/shared/access/Can';
 import { Database, Globe, Layers, Plus, X } from 'lucide-react';
+
+import { useSearchExperience } from '../_lib/hooks';
+
+import { useDataSources } from '@/app/data-sources/_lib/hooks/useDataSources';
+import { useAllActiveSearchIndexes } from '@/app/search-indexes/_lib/hooks/useSearchIndexes';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,10 +28,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useDataSources } from '@/app/data-sources/_lib/hooks/useDataSources';
-import { useAllActiveSearchIndexes } from '@/app/search-indexes/_lib/hooks/useSearchIndexes';
+import { AccessLink } from '@/shared/access/Can';
 import { errorText } from '@/shared/api/api-error';
-import { useSearchExperience } from '../_lib/hooks';
+
 
 // ============================================================================
 // OPTIONS

@@ -2,23 +2,24 @@
 
 'use client';
 
-import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, CheckCircle2, CircleOff, Database, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { useCallback, useState } from 'react';
 
-import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { useProcessingStatus, useRefreshInsights } from '../_components/NeedsAttention';
 import { formatTimeAgo } from '../_components/viz';
+import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { fetchAnalytics } from '../_lib/hooks/useAnalytics';
-import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
 import { clearAnalyticsData, INSIGHTS_QUEUE, loadInsightsSchedule } from '../_lib/insights-api';
-import { jobsApi } from '@/app/jobs/_lib/api-client';
+import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
 
+import { jobsApi } from '@/app/jobs/_lib/api-client';
+import { ActionButton } from '@/shared/access/ActionControls';
+import { AccessLink } from '@/shared/access/Can';
+import { useAccess } from '@/shared/access/useAccess';
+import { noPermissionTo } from '@/features/access/ui-actions';
 import { reportActionError } from '@/shared/activity/report';
 import { errorText } from '@/shared/api/api-error';
-import { Button } from '@/shared/ui/components/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
-import { Skeleton } from '@/shared/ui/components/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,8 +30,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/shared/ui/components/alert-dialog';
-import { ActionButton } from '@/shared/access/ActionControls';
-import { AccessLink } from '@/shared/access/Can';
+import { Button } from '@/shared/ui/components/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
+import { Skeleton } from '@/shared/ui/components/skeleton';
 
 // ============================================================================
 // DATA
@@ -39,14 +41,20 @@ import { AccessLink } from '@/shared/access/Can';
 /** Matches the default the server sets at startup (job-registry.ts) */
 const NIGHTLY_CRON = '0 2 * * *';
 
-/** null = not scheduled; 'forbidden' = the viewer may not see schedules (admin only) */
-function useInsightsSchedule() {
+/**
+ * null = not scheduled; 'forbidden' = the server refused. Asked only of a role that can view
+ * the job schedules (settings:view), so a request the server would refuse isn't sent.
+ */
+function useInsightsSchedule(canView: boolean) {
   return useQuery({
     queryKey: ['analytics', 'settings', 'schedule'],
     queryFn: loadInsightsSchedule,
     staleTime: 60000,
+    enabled: canView,
   });
 }
+
+const CANT_SEE_SCHEDULE = noPermissionTo('see the background job schedules');
 
 function useTrackingConfig() {
   return useQuery({
@@ -110,7 +118,8 @@ export default function AnalyticsSettingsPage() {
 function InsightsCard() {
   const { experienceId, experienceName } = useAnalyticsContext();
   const queryClient = useQueryClient();
-  const schedule = useInsightsSchedule();
+  const canSeeSchedule = useAccess().can('settings:view');
+  const schedule = useInsightsSchedule(canSeeSchedule);
   const status = useProcessingStatus(experienceId);
   const onDone = useCallback(() => {
     status.refetch();
@@ -151,12 +160,14 @@ function InsightsCard() {
           <div className="flex flex-wrap justify-between gap-2">
             <dt className="text-muted-foreground">Schedule</dt>
             <dd className="text-right">
-              {schedule.isLoading ? (
+              {!canSeeSchedule ? (
+                CANT_SEE_SCHEDULE
+              ) : schedule.isLoading ? (
                 <Skeleton className="h-4 w-32" />
               ) : schedule.isError ? (
                 <span className="text-destructive">{errorText(schedule.error, 'Failed to load schedules')}</span>
               ) : schedule.data === 'forbidden' ? (
-                'Only admins can see the schedule'
+                CANT_SEE_SCHEDULE
               ) : schedule.data ? (
                 <span title={`${schedule.data.cron} (${schedule.data.timezone ?? 'UTC'})`}>
                   {describeCron(schedule.data.cron, schedule.data.timezone ?? 'UTC') ?? (

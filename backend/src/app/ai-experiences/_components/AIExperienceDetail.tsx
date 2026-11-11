@@ -1,6 +1,5 @@
 'use client';
 
-import { useAccess } from '@/shared/access/useAccess';
 import { format } from 'date-fns';
 import {
   ChevronRight, CircleCheck, CircleDashed, Bot, Shield, Thermometer,
@@ -16,14 +15,15 @@ import { ChatWidgetCard } from './ChatWidgetCard';
 import { ExperienceBadges } from './ExperienceBadges';
 import { PipelineStepsCard } from './PipelineStepsCard';
 
+import { ExperienceHeaderActions } from '@/app/experiences/_components/ExperienceHeaderActions';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+import { useAccess } from '@/shared/access/useAccess';
 import { AccessTokenRow } from '@/shared/ui/custom/AccessTokenRow';
+import { CollapsibleCard } from '@/shared/ui/custom/CollapsibleCard';
+import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { ExperienceHeaderActions } from '@/app/experiences/_components/ExperienceHeaderActions';
-import { DangerZone } from '@/shared/ui/custom/DangerZone';
 
 
 
@@ -36,15 +36,13 @@ import { DangerZone } from '@/shared/ui/custom/DangerZone';
 export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath }: { id: string; basePath?: string; listPath?: string }) {
   const listHref = listPath ?? basePath;
   const router = useRouter();
-  // Test runs spend AI tokens or call the tool: playground:use
+  // The access token and the chat widget (with its Save) are for roles that may edit chat experiences
   const { can } = useAccess();
-  // The token also reaches playground users; the widget editor (which saves) is for editors
   const canEdit = can('ai-experiences:edit');
   const {
-    experience, isLoading, isError, refetch,
+    experience, isLoading, isError,
     updateExperience, deleteExperience, regenerateToken,
-    assignTool, updateToolAssignment, removeTool,
-    isUpdating, isDeleting, isRegeneratingToken, isAssigningTool, isRemovingTool,
+    isUpdating, isDeleting, isRegeneratingToken,
   } = useAIExperience(id);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -78,21 +76,6 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
   async function handleDelete() {
     await deleteExperience();
     router.push(listHref);
-  }
-
-
-  async function handleAssignTool(payload: Parameters<typeof assignTool>[0]) {
-    await assignTool(payload);
-    await refetch();
-  }
-
-  async function handleUpdateToolAssignment(toolId: string, data: Parameters<typeof updateToolAssignment>[0]['data']) {
-    await updateToolAssignment({ toolId, data });
-  }
-
-  async function handleRemoveTool(toolId: string) {
-    await removeTool(toolId);
-    await refetch();
   }
 
   return (
@@ -278,6 +261,7 @@ export function AIExperienceDetail({ id, basePath = '/ai-experiences', listPath 
           }}
           isSaving={isUpdating}
           defaultContainerId="interakt-chat"
+          builtIn={experience.isBuiltIn}
         />
         </>
         )}

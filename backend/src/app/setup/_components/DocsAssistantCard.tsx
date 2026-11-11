@@ -13,17 +13,18 @@
 import { BookOpen, Check, Loader2, RefreshCw, AlertTriangle, ArrowRight, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { loadDocsStatus, startDocsBuild, type DocsStatus } from '../_lib/docs-assistant-api';
+
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StepProgress } from '@/components/ui/steps-progress';
+import { AccessLink } from '@/shared/access/Can';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
 import { DOCS_SEED_STEPS } from '@/shared/seeders/docs/docs-steps';
 
-import { loadDocsStatus, startDocsBuild, type DocsStatus } from '../_lib/docs-assistant-api';
-import { AccessLink } from '@/shared/access/Can';
 
 function describeDocsSearch(search: DocsStatus['search']): string {
   const sections = `${search.sections ?? 0} sections`;
