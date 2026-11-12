@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 
 import { forBuiltInChange } from '@/features/access/built-in';
-import { withPermission } from '@/features/access/route-guard';
+import { forExperienceMcpAttachments } from '@/features/access/picker-reads';
 import { handleListAttachments, handleAttach } from '@/features/mcp-connection/mcp-connection.api.handlers';
 
-export const GET = withPermission('ai-experiences:view', async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+export const GET = forExperienceMcpAttachments(async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   return handleListAttachments(request, context);
 });
 

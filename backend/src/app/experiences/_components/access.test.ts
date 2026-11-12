@@ -38,10 +38,10 @@ describe('the experiences hub', () => {
     expect(listsToLoad(holding())).toEqual({ skipAI: true, skipSearch: true });
   });
 
-  it("asks for the tab's page for the kind it shows, and the plain first page of the other for its count", () => {
+  it("asks for the tab's page for the kind it shows, and one row with the same filters of the other for its count", () => {
     const tab = { typeFilter: 'ai' as const, search: 'help', page: 3, pageSize: 12 };
     expect(listParamsFor('ai', tab)).toEqual({ page: 3, pageSize: 12, search: 'help', isActive: undefined });
-    expect(listParamsFor('search', tab)).toBeUndefined();
+    expect(listParamsFor('search', tab)).toEqual({ page: 1, pageSize: 1, search: 'help', isActive: undefined });
     expect(listParamsFor('search', { ...tab, typeFilter: 'all' })).toEqual({ page: 1, pageSize: 100, search: 'help', isActive: undefined });
   });
 

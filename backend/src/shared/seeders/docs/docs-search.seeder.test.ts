@@ -24,6 +24,7 @@ const world = vi.hoisted(() => ({
   /** Replaces the default indexDocuments result (all indexed, embedded when hybrid). */
   indexDocuments: null as null | ((n: number, hybrid: boolean) => unknown),
   adminError: null as null | Error,
+  lookupError: null as null | Error,
   nextId: 1,
 }));
 
@@ -35,6 +36,7 @@ const calls = vi.hoisted(() => ({
   recreateEmpty: 0,
   indexDocuments: 0,
   getAdmin: 0,
+  markExperience: 0,
 }));
 
 const log = vi.hoisted(() => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }));
@@ -108,14 +110,17 @@ vi.mock('@/features/search-index/search-index-fields.service', () => ({
   createFieldsFromMappingEntries: async () => ({ created: [], errors: [] }),
 }));
 
-vi.mock('@/features/search-experience/search-experience.service', () => ({
+vi.mock('@/features/search-experience/search-experience.service', async (importOriginal) => ({
+  // The service's own not-found error, as the real lookup throws it
+  NotFoundError: (await importOriginal<typeof import('@/features/search-experience/search-experience.service')>()).NotFoundError,
   getSearchExperienceBySlug: async () => {
-    if (!world.experience) throw new Error('not found');
+    if (world.lookupError) throw world.lookupError;
+    if (!world.experience) throw new NotFoundError('Search experience', 'interakt-docs-search');
     return world.experience;
   },
-  createSearchExperience: async (input: { slug: string; description: string }) => {
+  createSearchExperience: async (input: { slug: string; description: string }, _by: string, options?: { builtIn?: boolean }) => {
     calls.createExperience++;
-    world.experience = { id: `exp-${world.nextId++}`, slug: input.slug, description: input.description };
+    world.experience = { id: `exp-${world.nextId++}`, slug: input.slug, description: input.description, isBuiltIn: options?.builtIn === true };
     return world.experience;
   },
   deleteSearchExperience: async () => {
@@ -123,6 +128,7 @@ vi.mock('@/features/search-experience/search-experience.service', () => ({
     world.experience = null;
   },
   markSearchExperienceBuiltIn: async (id: string) => {
+    calls.markExperience++;
     if (world.experience?.id === id) world.experience.isBuiltIn = true;
   },
 }));
@@ -140,6 +146,8 @@ vi.mock('@/features/document-indexing/document-indexer.service', () => ({
     };
   },
 }));
+
+import { NotFoundError } from '@/features/search-experience/search-experience.service';
 
 import { buildDocsSearchOnStartup, DocsSearchConflictError, getDocsSearchStatus, seedDocsSearch } from './docs-search.seeder';
 
@@ -159,12 +167,13 @@ const rejectAll = () => ({
 function resetCalls() {
   calls.createIndex = [];
   calls.deleteIndex = calls.createExperience = calls.deleteExperience = 0;
-  calls.recreateEmpty = calls.indexDocuments = calls.getAdmin = 0;
+  calls.recreateEmpty = calls.indexDocuments = calls.getAdmin = calls.markExperience = 0;
 }
 
 beforeEach(() => {
   marked.clear();
   Object.assign(world, {
+    lookupError: null,
     locked: true,
     docs: DOCS,
     embedding: null,
@@ -199,6 +208,16 @@ describe('seedDocsSearch', () => {
     warn.mockRestore();
   });
 
+  it('passes on an error from the experience lookup instead of reading it as "no experience" and rebuilding', async () => {
+    await seedDocsSearch();
+    resetCalls();
+    world.lookupError = new Error('connection terminated');
+
+    await expect(seedDocsSearch({ force: true })).rejects.toThrow('connection terminated');
+    expect(calls.createIndex).toEqual([]);
+    expect(calls.createExperience).toBe(0);
+  });
+
   it('skips when nothing changed', async () => {
     await seedDocsSearch();
     resetCalls();
@@ -210,9 +229,20 @@ describe('seedDocsSearch', () => {
     expect(calls.createIndex).toEqual([]);
   });
 
+  it('marks its own existing experience built in on a rebuild, when an older version left it unmarked', async () => {
+    await seedDocsSearch();
+    world.experience!.isBuiltIn = false; // made before the built-in flag existed
+    await seedDocsSearch({ force: true });
+    expect(calls.createExperience).toBe(1);
+    expect(calls.markExperience).toBe(1);
+    expect(world.experience?.isBuiltIn).toBe(true);
+  });
+
   it('marks the experience it builds as the built-in help, also when a rebuild recreates it', async () => {
     await seedDocsSearch();
     expect(world.experience?.isBuiltIn).toBe(true);
+    // Built in from its first write: no separate mark that could fail and leave Viewers refused
+    expect(calls.markExperience).toBe(0);
 
     world.embedding = MODEL; // recreated as hybrid
     await seedDocsSearch();

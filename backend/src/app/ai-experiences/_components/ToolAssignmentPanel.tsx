@@ -107,7 +107,7 @@ function ToolPickerDialog({ open, onOpenChange, assignedToolIds, onAssign, isAss
                   {tool.description && (
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{tool.description}</p>
                   )}
-                  {tool.notReadyReason && <ToolNotReadyNote toolId={tool.id} reason={tool.notReadyReason} />}
+                  {tool.notReadyReason && <ToolNotReadyNote toolId={tool.id} reason={tool.notReadyReason} isBuiltIn={tool.isBuiltIn} />}
                 </div>
                 <Button
                   size="sm"

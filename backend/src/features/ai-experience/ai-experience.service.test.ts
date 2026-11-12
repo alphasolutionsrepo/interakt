@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // shaping.
 vi.mock('./ai-experience.repository', () => ({
   listAIExperiences: vi.fn(),
+  countAIExperiences: vi.fn().mockResolvedValue({ total: 1, active: 1 }),
 }));
 
 import * as repository from './ai-experience.repository';

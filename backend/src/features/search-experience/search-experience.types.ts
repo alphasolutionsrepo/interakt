@@ -646,5 +646,7 @@ export interface SearchExperienceListResponse {
     totalPages: number;
     hasNextPage: boolean;
     hasPreviousPage: boolean;
+    /** All experiences matching the filters, and how many of them are active: not just this page */
+    counts: { total: number; active: number };
   };
 }

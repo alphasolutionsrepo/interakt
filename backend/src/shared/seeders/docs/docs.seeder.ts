@@ -24,7 +24,7 @@ import { DOCS_SEED_KEY } from '@/shared/help/help-content';
 import 'server-only';
 
 import { getDocsSearchStatus, seedDocsSearch, type DocsSearchStatus } from './docs-search.seeder';
-import { DOCS_ROOT, getAdminUserId, readDocs, type DocFile } from './docs-source';
+import { DOCS_ROOT, getAdminUserId, isAdminUser, readDocs, type DocFile } from './docs-source';
 import type { DocsSeedProgressEvent } from './docs-steps';
 
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
@@ -51,7 +51,6 @@ import {
   getToolsByDataSourceId,
   deleteTool,
 } from '@/features/tools/tools.service';
-import { markBuiltIn } from '@/features/access/built-in';
 import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
@@ -71,6 +70,7 @@ const DOCS_KEY = DOCS_SEED_KEY;
 const DATA_SOURCE_NAME = 'Interakt Docs';
 const DATA_SOURCE_SLUG = 'interakt-docs';
 const EXPERIENCE_NAME = 'Help Assistant';
+const HELP_DESCRIPTION = 'Answers questions about using Interakt, grounded in the product documentation.';
 export const HELP_EXPERIENCE_SLUG = 'help-assistant';
 
 /** knowledge_chunks.embedding is a hard-coded vector(1536) — ingestion needs a matching model. */
@@ -227,9 +227,8 @@ async function ensureDataSource(
       extractTables: false,
     },
   };
-  const created = await createDataSource(input as Parameters<typeof createDataSource>[0], adminId);
-  // Part of the built-in help: only an Admin may change it
-  await markBuiltIn('data-source', [created.id]);
+  // Part of the built-in help from its first write: only an Admin may change it
+  const created = await createDataSource(input as Parameters<typeof createDataSource>[0], adminId, { builtIn: true });
   logger.info('Created docs data source', { id: created.id });
   return created.id;
 }
@@ -290,11 +289,10 @@ async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<
     'file_store',
     null,
     adminId,
-    { counting: (t) => t.isBuiltIn },
+    // Part of the built-in help from their first write: only an Admin may change them
+    { counting: (t) => t.isBuiltIn, builtIn: true },
   );
   if (made.length > 0) {
-    // Part of the built-in help: only an Admin may change them
-    await markBuiltIn('tool', made.map((t) => t.id));
     logger.info('Scaffolded docs tools', { operations: made.map((t) => t.operation) });
   }
   const search = [...own, ...made].find((t) => t.operation === 'search');
@@ -323,7 +321,14 @@ async function ownDataSource() {
 }
 
 async function ownHelpAssistant() {
-  const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG);
+  // Made by an earlier setup that stopped before marking it built in: an Admin made it and it
+  // carries our description. (The description is public, so it alone proves nothing: a role
+  // that edits experiences could copy it.) Marked now, it can be rebuilt and Viewers can use it.
+  if (existing && !existing.isBuiltIn && existing.description === HELP_DESCRIPTION && (await isAdminUser(existing.createdBy))) {
+    await markAIExperienceBuiltIn(existing.id);
+    return { ...existing, isBuiltIn: true };
+  }
   if (existing && !existing.isBuiltIn) {
     throw new ConflictError(
       `A chat experience "${HELP_EXPERIENCE_SLUG}" already exists and wasn't created by the docs setup. ` +
@@ -386,7 +391,7 @@ async function ensureExperience(toolId: string, adminId: string): Promise<string
   const input = {
     name: EXPERIENCE_NAME,
     slug: HELP_EXPERIENCE_SLUG,
-    description: "Answers questions about using Interakt, grounded in the product documentation.",
+    description: HELP_DESCRIPTION,
     icon: 'book-open',
     pipelineMode: 'deterministic' as const,
     personaConfig,
@@ -404,12 +409,13 @@ async function ensureExperience(toolId: string, adminId: string): Promise<string
     // providerId/modelId omitted → system default chat model.
     toolIds: [toolId],
   };
+  // The built-in help: every signed-in user may use it, only an Admin may change it. Built in
+  // from its first write, so no failure can leave it unmarked (Viewers refused, setup stuck).
   const created = await createAIExperience(
     input as unknown as Parameters<typeof createAIExperience>[0],
     adminId,
+    { builtIn: true },
   );
-  // The built-in help: every signed-in user may use it, only an Admin may change it
-  await markAIExperienceBuiltIn(created.id);
   logger.info('Created Help Assistant experience', { slug: created.slug });
   return created.slug;
 }
@@ -490,10 +496,10 @@ export async function resetDocs(): Promise<DocsResetSummary> {
   };
 
   // Only what the docs setup made (marked built in); a lookalike under the same slug stays
-  const exp = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  const exp = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG);
   if (exp?.isBuiltIn) await tryStep(`experience ${HELP_EXPERIENCE_SLUG}`, () => deleteAIExperience(exp.id, adminId));
 
-  const ds = await getDataSourceBySlug(DATA_SOURCE_SLUG).catch(() => null);
+  const ds = await getDataSourceBySlug(DATA_SOURCE_SLUG);
   if (ds?.isBuiltIn) {
     const tools = await getToolsByDataSourceId(ds.id).catch(() => []);
     for (const t of tools) await tryStep(`tool ${t.slug}`, () => deleteTool(t.id, adminId));

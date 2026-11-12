@@ -114,6 +114,22 @@ export const VIEWER_DEFAULT_PERMISSIONS: readonly Permission[] = [
 ];
 
 /**
+ * Who may read the lists an experience's pickers choose from, and only those lists: besides
+ * viewing them, editing the experience that picks from them. Not the items' details, history,
+ * documents or knowledge entries (those keep their view permission).
+ */
+export const PICKER_READERS = {
+  /** Tools and MCP connections, for a chat experience */
+  tools: ['tools:view', 'ai-experiences:edit'],
+  /** Prompt templates and the system defaults, for a chat experience's steps */
+  prompts: ['prompts:view', 'ai-experiences:edit'],
+  /** Search indexes and their fields, for a search experience's sources */
+  indexes: ['search-indexes:view', 'search-experiences:edit'],
+  /** Data sources (without their connection settings unless viewable), for a search experience's external sources */
+  dataSources: ['data-sources:view', 'search-experiences:edit'],
+} as const satisfies Record<string, readonly Permission[]>;
+
+/**
  * Who may read the AI provider and model lists (never the keys) and the system default models:
  * besides viewing providers, everyone who picks a model while editing an index or an
  * experience, and those who view settings.

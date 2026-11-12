@@ -1,6 +1,6 @@
-import { withPermission } from '@/features/access/route-guard';
+import { forPickers } from '@/features/access/picker-reads';
 import { handleGetSystemDefaults } from '@/features/prompt-templates/prompt-template.api.handlers';
 
-export const GET = withPermission('prompts:view', async function GET() {
+export const GET = forPickers('prompts', 'prompts', async function GET() {
   return handleGetSystemDefaults();
-});
+}, { byStep: true });
