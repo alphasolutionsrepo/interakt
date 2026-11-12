@@ -105,6 +105,33 @@ describe('the experiences hub cards', () => {
   });
 });
 
+describe('a search term with a wildcard character', () => {
+  // Added after the groups above, which count the whole data set
+  beforeAll(async () => {
+    await testDb.db.execute(sql`INSERT INTO ai_experiences (name, slug, created_by, persona_config, session_config, access_config, observability_config, is_active) VALUES ('under_score', 'under-score', ${U}, '{}', '{}', '{}', '{}', true)`);
+    await testDb.db.execute(sql`INSERT INTO search_experiences (name, slug, search_config, ai_config, tools_config, created_by, is_active) VALUES ('100% match', 'full-match', '{}', '{}', '{}', ${U}, true)`);
+  });
+
+  it('matches only itself: _ and % do not match everything', async () => {
+    for (const tab of ['all', 'ai', 'search'] as const) {
+      expect(await cardsOn(tab, { search: '_' })).toEqual({ total: 1, active: 1, aiCount: 1, searchCount: 0 });
+      expect(await cardsOn(tab, { search: '%' })).toEqual({ total: 1, active: 1, aiCount: 0, searchCount: 1 });
+    }
+  });
+});
+
+describe('the length of the search term', () => {
+  const ask = (route: { GET: unknown }, search: string) =>
+    (route.GET as (r: NextRequest) => Promise<Response>)(new NextRequest(`http://localhost/api/x?search=${search}`));
+
+  it('is limited to 255 characters on both lists, so the hub never gets an answer from one kind and a refusal from the other', async () => {
+    for (const route of [aiList, searchList]) {
+      expect((await ask(route, 'a'.repeat(255))).status).toBe(200);
+      expect((await ask(route, 'a'.repeat(256))).status).toBe(400);
+    }
+  });
+});
+
 describe('hubMetrics', () => {
   it('adds the kinds the user can see and counts a kind that was not loaded as zero', () => {
     expect(hubMetrics({ total: 3, active: 2 }, { total: 4, active: 1 })).toEqual({ total: 7, active: 3, aiCount: 3, searchCount: 4 });
