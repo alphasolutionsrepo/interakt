@@ -55,6 +55,7 @@ import {
 } from '@/features/search-index/search-index.service';
 import { DOCS_SEARCH_SEED_KEY, DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
 import { markBuiltIn } from '@/features/access/built-in';
+import { notFoundAsNull } from './not-found-as-null';
 import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { calculateChecksum, getRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-registry.service';
@@ -230,7 +231,7 @@ async function buildWithMode(
   const entry = await getRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY);
   const meta = entry?.metadata as Partial<DocsSearchMeta> | undefined;
   let index = await getSearchIndexByName(INDEX_NAME);
-  let experience = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
+  let experience = await notFoundAsNull(getSearchExperienceBySlug(DOCS_SEARCH_SLUG));
   assertOwned(!!entry, index, experience);
 
   if (!force && entry?.checksum === checksum && index && experience) {
@@ -474,7 +475,7 @@ export async function getDocsSearchStatus(): Promise<DocsSearchStatus> {
   if (!entry) {
     try {
       const index = await getSearchIndexByName(INDEX_NAME);
-      const experience = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
+      const experience = await notFoundAsNull(getSearchExperienceBySlug(DOCS_SEARCH_SLUG));
       assertOwned(false, index, experience);
     } catch (e) {
       if (e instanceof DocsSearchConflictError) conflict = e.message;

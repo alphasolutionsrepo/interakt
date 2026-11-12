@@ -24,6 +24,7 @@ const world = vi.hoisted(() => ({
   /** Replaces the default indexDocuments result (all indexed, embedded when hybrid). */
   indexDocuments: null as null | ((n: number, hybrid: boolean) => unknown),
   adminError: null as null | Error,
+  lookupError: null as null | Error,
   nextId: 1,
 }));
 
@@ -111,7 +112,8 @@ vi.mock('@/features/search-index/search-index-fields.service', () => ({
 
 vi.mock('@/features/search-experience/search-experience.service', () => ({
   getSearchExperienceBySlug: async () => {
-    if (!world.experience) throw new Error('not found');
+    if (world.lookupError) throw world.lookupError;
+    if (!world.experience) throw new NotFoundError('Search experience not found');
     return world.experience;
   },
   createSearchExperience: async (input: { slug: string; description: string }, _by: string, options?: { builtIn?: boolean }) => {
@@ -143,6 +145,8 @@ vi.mock('@/features/document-indexing/document-indexer.service', () => ({
   },
 }));
 
+import { NotFoundError } from '@/shared/errors/app-error';
+
 import { buildDocsSearchOnStartup, DocsSearchConflictError, getDocsSearchStatus, seedDocsSearch } from './docs-search.seeder';
 
 const MODEL = { providerId: 'prov', modelId: 7, modelKey: 'embed-small', dimensions: 1536 };
@@ -167,6 +171,7 @@ function resetCalls() {
 beforeEach(() => {
   marked.clear();
   Object.assign(world, {
+    lookupError: null,
     locked: true,
     docs: DOCS,
     embedding: null,
@@ -199,6 +204,16 @@ describe('seedDocsSearch', () => {
 
     expect(warn).toHaveBeenCalledWith('Some docs sections failed to index', expect.objectContaining({ err: timedOut }));
     warn.mockRestore();
+  });
+
+  it('passes on an error from the experience lookup instead of reading it as "no experience" and rebuilding', async () => {
+    await seedDocsSearch();
+    resetCalls();
+    world.lookupError = new Error('connection terminated');
+
+    await expect(seedDocsSearch({ force: true })).rejects.toThrow('connection terminated');
+    expect(calls.createIndex).toEqual([]);
+    expect(calls.createExperience).toBe(0);
   });
 
   it('skips when nothing changed', async () => {

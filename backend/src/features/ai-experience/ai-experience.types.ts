@@ -58,6 +58,8 @@ export interface AIExperienceWithTools {
   sessionConfig: SessionConfig;
   accessToken: string;
   accessConfig: AccessConfig;
+  /** Part of the built-in help: only an Admin changes it */
+  isBuiltIn: boolean;
   observabilityConfig: ObservabilityConfig;
   providerId: string | null;
   modelId: number | null;

@@ -70,6 +70,7 @@ const DOCS_KEY = DOCS_SEED_KEY;
 const DATA_SOURCE_NAME = 'Interakt Docs';
 const DATA_SOURCE_SLUG = 'interakt-docs';
 const EXPERIENCE_NAME = 'Help Assistant';
+const HELP_DESCRIPTION = 'Answers questions about using Interakt, grounded in the product documentation.';
 export const HELP_EXPERIENCE_SLUG = 'help-assistant';
 
 /** knowledge_chunks.embedding is a hard-coded vector(1536) — ingestion needs a matching model. */
@@ -226,9 +227,8 @@ async function ensureDataSource(
       extractTables: false,
     },
   };
-  const created = await createDataSource(input as Parameters<typeof createDataSource>[0], adminId);
-  // Part of the built-in help: only an Admin may change it
-  await markBuiltIn('data-source', [created.id]);
+  // Part of the built-in help from its first write: only an Admin may change it
+  const created = await createDataSource(input as Parameters<typeof createDataSource>[0], adminId, { builtIn: true });
   logger.info('Created docs data source', { id: created.id });
   return created.id;
 }
@@ -289,11 +289,10 @@ async function ensureSearchTool(dataSourceId: string, adminId: string): Promise<
     'file_store',
     null,
     adminId,
-    { counting: (t) => t.isBuiltIn },
+    // Part of the built-in help from their first write: only an Admin may change them
+    { counting: (t) => t.isBuiltIn, builtIn: true },
   );
   if (made.length > 0) {
-    // Part of the built-in help: only an Admin may change them
-    await markBuiltIn('tool', made.map((t) => t.id));
     logger.info('Scaffolded docs tools', { operations: made.map((t) => t.operation) });
   }
   const search = [...own, ...made].find((t) => t.operation === 'search');
@@ -322,7 +321,13 @@ async function ownDataSource() {
 }
 
 async function ownHelpAssistant() {
-  const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG);
+  // Made by an earlier setup that stopped before marking it built in: it carries our
+  // description, so it is ours. Marked now, it can be rebuilt and Viewers can use it.
+  if (existing && !existing.isBuiltIn && existing.description === HELP_DESCRIPTION) {
+    await markBuiltIn('ai-experience', [existing.id]);
+    return { ...existing, isBuiltIn: true };
+  }
   if (existing && !existing.isBuiltIn) {
     throw new ConflictError(
       `A chat experience "${HELP_EXPERIENCE_SLUG}" already exists and wasn't created by the docs setup. ` +
@@ -385,7 +390,7 @@ async function ensureExperience(toolId: string, adminId: string): Promise<string
   const input = {
     name: EXPERIENCE_NAME,
     slug: HELP_EXPERIENCE_SLUG,
-    description: "Answers questions about using Interakt, grounded in the product documentation.",
+    description: HELP_DESCRIPTION,
     icon: 'book-open',
     pipelineMode: 'deterministic' as const,
     personaConfig,
@@ -490,10 +495,10 @@ export async function resetDocs(): Promise<DocsResetSummary> {
   };
 
   // Only what the docs setup made (marked built in); a lookalike under the same slug stays
-  const exp = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG).catch(() => null);
+  const exp = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG);
   if (exp?.isBuiltIn) await tryStep(`experience ${HELP_EXPERIENCE_SLUG}`, () => deleteAIExperience(exp.id, adminId));
 
-  const ds = await getDataSourceBySlug(DATA_SOURCE_SLUG).catch(() => null);
+  const ds = await getDataSourceBySlug(DATA_SOURCE_SLUG);
   if (ds?.isBuiltIn) {
     const tools = await getToolsByDataSourceId(ds.id).catch(() => []);
     for (const t of tools) await tryStep(`tool ${t.slug}`, () => deleteTool(t.id, adminId));
