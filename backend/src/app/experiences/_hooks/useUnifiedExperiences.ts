@@ -35,14 +35,26 @@ export function listsToLoad(can: (p: Permission) => boolean) {
 
 /**
  * The query for one kind's list: the tab's page and filters when the tab shows that kind (or
- * page 1 of up to 100 for "All", merged here); the plain first page when it's there only for
- * the counts, so another tab's page number never applies to it.
+ * page 1 of up to 100 for "All", merged here). A kind that's there only for the counts asks for
+ * one row with the same search and status filter, so the counts cover the same experiences on every tab.
  */
 export function listParamsFor(kind: 'ai' | 'search', params: Pick<UseUnifiedExperiencesParams, 'typeFilter' | 'search' | 'isActive' | 'page' | 'pageSize'>) {
   const { typeFilter, search, isActive, page = 1, pageSize = 12 } = params;
   if (typeFilter === 'all') return { page: 1, pageSize: 100, search: search || undefined, isActive };
   if (typeFilter === kind) return { page, pageSize, search: search || undefined, isActive };
-  return undefined;
+  return { page: 1, pageSize: 1, search: search || undefined, isActive };
+}
+
+type KindCounts = { total: number; active: number } | undefined;
+
+/** The cards at the top: each kind's own counts from the server (whole set, filters applied), added up. A kind not loaded counts 0. */
+export function hubMetrics(ai: KindCounts, search: KindCounts) {
+  return {
+    total: (ai?.total ?? 0) + (search?.total ?? 0),
+    active: (ai?.active ?? 0) + (search?.active ?? 0),
+    aiCount: ai?.total ?? 0,
+    searchCount: search?.total ?? 0,
+  };
 }
 
 /** The hub's type tabs a user may use: one per kind they can view, and "All" when they can view both. */
@@ -95,22 +107,10 @@ export function useUnifiedExperiences(params: UseUnifiedExperiencesParams) {
     };
   }, [typeFilter, ai.experiences, search_.experiences, ai.pagination, search_.pagination, page, pageSize]);
 
-  // Metrics computed from all data
-  const metrics = useMemo(() => {
-    const aiList = ai.experiences ?? [];
-    const searchList = search_.experiences ?? [];
-    const aiTotal = ai.pagination?.totalItems ?? aiList.length;
-    const searchTotal = search_.pagination?.totalItems ?? searchList.length;
-    const aiActive = aiList.filter((e) => e.isActive).length;
-    const searchActive = searchList.filter((e) => e.isActive).length;
-
-    return {
-      total: aiTotal + searchTotal,
-      active: aiActive + searchActive,
-      aiCount: aiTotal,
-      searchCount: searchTotal,
-    };
-  }, [ai.experiences, search_.experiences, ai.pagination, search_.pagination]);
+  const metrics = useMemo(
+    () => hubMetrics(skipAI ? undefined : ai.pagination?.counts, skipSearch ? undefined : search_.pagination?.counts),
+    [skipAI, skipSearch, ai.pagination, search_.pagination],
+  );
 
   return {
     items,

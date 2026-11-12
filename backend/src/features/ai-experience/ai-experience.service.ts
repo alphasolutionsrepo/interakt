@@ -160,13 +160,13 @@ export async function getAIExperienceByAccessToken(accessToken: string) {
 }
 
 export async function listAIExperiences(query: ListAIExperiencesQuery): Promise<AIExperienceListResponse> {
-  const result = await repository.listAIExperiences(query);
+  const [result, counts] = await Promise.all([repository.listAIExperiences(query), repository.countAIExperiences(query)]);
   return {
     experiences: result.experiences.map((experience) => ({
       ...experience,
       guardrailConfig: stripGuardrailEmbeddings(experience.guardrailConfig),
     })) as any[],
-    pagination: result.pagination,
+    pagination: { ...result.pagination, counts },
   };
 }
 
