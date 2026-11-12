@@ -137,6 +137,9 @@ export function useTool(id: string | undefined) {
     experienceCount: experiencesQuery.data?.experienceCount ?? 0,
     experiencesHidden: experiencesQuery.data?.experiencesHidden ?? false,
     isLoadingExperiences: experiencesQuery.isLoading,
+    /** Where the tool is used is known (the answer arrived), so Delete can be judged */
+    usageKnown: experiencesQuery.isSuccess,
+    usageFailed: experiencesQuery.isError,
   };
 }
 

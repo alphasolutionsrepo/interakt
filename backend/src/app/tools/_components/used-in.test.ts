@@ -25,10 +25,10 @@ const tool = {
   isActive: true, isBuiltIn: false, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z',
 };
 const ready = <T,>(value: T) => Object.assign(Promise.resolve(value), { status: 'fulfilled', value });
-const detail = (answer: unknown) => {
+const detail = (answer?: unknown) => {
   const client = new QueryClient();
   client.setQueryData(toolKeys.detail('t'), tool);
-  client.setQueryData(toolKeys.experiences('t'), answer);
+  if (answer !== undefined) client.setQueryData(toolKeys.experiences('t'), answer);
   return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ToolDetailPage, { params: ready({ id: 't' }) })));
 };
 
@@ -70,5 +70,12 @@ describe("a tool's page", () => {
     expect(html).not.toContain('Used in 0');
     expect(html).not.toContain("can&#x27;t view chat experiences");
     expect(html).not.toContain('Used in AI Experiences');
+  });
+
+  it('keeps Delete locked until the answer about where the tool is used has arrived', () => {
+    uiAccess.hold('tools:view', 'tools:edit');
+    const html = detail();
+    expect(html).toContain('Checking where this tool is used');
+    expect(html).toMatch(destructiveButton(true));
   });
 });

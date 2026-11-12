@@ -109,7 +109,7 @@ function ConfigDisplay({ tool }: { tool: { executorType: string; operation: stri
 export default function ToolDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { tool, isLoading, isError, updateTool, deleteTool, isUpdating, isDeleting, experiences, experienceCount, experiencesHidden } = useTool(id);
+  const { tool, isLoading, isError, updateTool, deleteTool, isUpdating, isDeleting, experiences, experienceCount, experiencesHidden, usageKnown, usageFailed } = useTool(id);
   const { status: lookupFields } = useLookupFields(tool?.operation === 'lookup' ? id : undefined, tool?.dataSourceId);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [schemaOpen, setSchemaOpen] = useState(false);
@@ -335,13 +335,15 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
       {/* Danger Zone */}
       <DangerZone
         thing="tool"
-        detail={experienceCount > 0
-          ? `This tool is used by ${experienceCount} experience${experienceCount !== 1 ? 's' : ''}. Remove it from all experiences first.`
-          : 'Permanently deletes this tool. This action cannot be undone.'}
+        detail={!usageKnown
+          ? (usageFailed ? "Couldn't check where this tool is used. Reload the page to try again." : 'Checking where this tool is used…')
+          : experienceCount > 0
+            ? `This tool is used by ${experienceCount} experience${experienceCount !== 1 ? 's' : ''}. Remove it from all experiences first.`
+            : 'Permanently deletes this tool. This action cannot be undone.'}
         action="tools.delete"
         builtIn={tool.isBuiltIn}
         onDelete={() => setDeleteOpen(true)}
-        disabled={experienceCount > 0}
+        disabled={!usageKnown || experienceCount > 0}
       />
 
       <DeleteConfirmDialog
