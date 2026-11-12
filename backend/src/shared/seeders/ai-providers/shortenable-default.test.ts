@@ -29,6 +29,7 @@ vi.mock('@/db/schema/ai-providers.schema', () => ({
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({ discoverOllamaModels: vi.fn() }));
 vi.mock('../seed-registry.service', () => ({}));
 
+import { canShortenVectorsByDefault } from '@/features/ai-providers/shortenable-embeddings';
 import { createProviderFromSeed, AI_PROVIDER_SEEDS } from './index';
 
 describe('seeded provider models', () => {
@@ -36,8 +37,9 @@ describe('seeded provider models', () => {
     for (const seed of AI_PROVIDER_SEEDS) {
       await createProviderFromSeed(seed);
       for (const row of inserted.models) {
-        const family = /^(qwen3-embedding|nomic-embed-text|text-embedding-3-)/.test(String(row.modelKey));
-        expect(row.canShortenVectors, String(row.modelKey)).toBe(row.modelType === 'embedding' && family);
+        expect(row.canShortenVectors, String(row.modelKey)).toBe(
+          canShortenVectorsByDefault(String(row.modelKey), String(row.modelType)),
+        );
       }
     }
   });
@@ -48,6 +50,7 @@ describe('seeded provider models', () => {
       await createProviderFromSeed(seed);
       marked.push(...inserted.models.filter((r) => r.canShortenVectors).map((r) => String(r.modelKey)));
     }
-    expect(marked.length).toBeGreaterThan(0);
+    expect(marked).toContain('nomic-embed-text:v1.5');
+    expect(marked).not.toContain('mxbai-embed-large');
   });
 });
