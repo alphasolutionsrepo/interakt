@@ -17,9 +17,9 @@ import { loadDocsStatus, startDocsBuild, type DocsStatus } from '../_lib/docs-as
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StepProgress } from '@/components/ui/steps-progress';
+import { ActionButton, useAdminGate } from '@/shared/access/ActionControls';
 import { AccessLink } from '@/shared/access/Can';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
@@ -40,6 +40,28 @@ function describeDocsSearch(search: DocsStatus['search']): string {
   return `keyword search · ${sections}. Building the assistant upgrades it to hybrid.`;
 }
 
+/** Building, rebuilding or removing the assistant changes the built-in help: Admin only (as the server). */
+const BUILD_DOES = 'change the built-in help';
+
+/** Whether the card builds the assistant by itself now: once, for an Admin, when it can be built and isn't. */
+export function autoBuildDue(s: { loading: boolean; building: boolean; tried: boolean; allowed: boolean; status: Pick<DocsStatus, 'ready' | 'seeded'> | null }): boolean {
+  return !s.loading && !s.building && !s.tried && s.allowed && !!s.status?.ready && !s.status.seeded;
+}
+
+/** Build (or, once built, Rebuild): locked with the reason for anyone but an Admin. */
+export function DocsBuildButton({ rebuild, onBuild }: { rebuild: boolean; onBuild: () => void }) {
+  const gate = useAdminGate(BUILD_DOES);
+  return rebuild ? (
+    <ActionButton gate={gate} icon={RefreshCw} iconClassName="h-3.5 w-3.5" variant="outline" size="sm" className="gap-1.5" onClick={onBuild}>
+      Rebuild
+    </ActionButton>
+  ) : (
+    <ActionButton gate={gate} icon={BookOpen} iconClassName="h-4 w-4" className="gap-1.5" onClick={onBuild}>
+      Build the assistant
+    </ActionButton>
+  );
+}
+
 export function DocsAssistantCard() {
   const [status, setStatus] = useState<DocsStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +70,7 @@ export function DocsAssistantCard() {
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const autoTried = useRef(false);
+  const buildAllowed = useAdminGate(BUILD_DOES).state === 'allowed';
 
   const refresh = useCallback(async () => {
     try {
@@ -101,14 +124,13 @@ export function DocsAssistantCard() {
     return () => clearInterval(id);
   }, [loading, building, status?.seeded, refresh]);
 
-  // Auto-build once when the prerequisite is met but the assistant isn't built yet.
+  // Auto-build once when the prerequisite is met but the assistant isn't built yet, for an Admin.
   useEffect(() => {
-    if (loading || building || autoTried.current) return;
-    if (status?.ready && !status.seeded) {
+    if (autoBuildDue({ loading, building, tried: autoTried.current, allowed: buildAllowed, status })) {
       autoTried.current = true;
       void build(false);
     }
-  }, [loading, building, status, build]);
+  }, [loading, building, status, build, buildAllowed]);
 
   const currentStep = Math.min(doneSteps.size + 1, DOCS_SEED_STEPS.length);
 
@@ -125,9 +147,7 @@ export function DocsAssistantCard() {
             )}
           </CardTitle>
           {status?.ready && status.seeded && !building && (
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => build(true)}>
-              <RefreshCw className="h-3.5 w-3.5" /> Rebuild
-            </Button>
+            <DocsBuildButton rebuild onBuild={() => build(true)} />
           )}
         </div>
         <CardDescription>
@@ -201,9 +221,7 @@ export function DocsAssistantCard() {
 
         {/* Ready but not yet built (e.g. auto-build hasn't fired). */}
         {!loading && !building && status?.ready && !status.seeded && (
-          <Button className="gap-1.5" onClick={() => build(false)}>
-            <BookOpen className="h-4 w-4" /> Build the assistant
-          </Button>
+          <DocsBuildButton rebuild={false} onBuild={() => build(false)} />
         )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}

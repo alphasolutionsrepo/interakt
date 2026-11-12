@@ -1,16 +1,20 @@
 // src/app/api/admin/setup-docs/route.ts
 //
 // Builds the docs "Help Assistant" from inside the Next runtime (service layer,
-// server-only modules, pipeline handlers all initialised at boot). Admin-only.
+// server-only modules, pipeline handlers all initialised at boot).
 //
 //   GET                      → status + embedding readiness (gates the build)
 //   POST { action: 'seed' }  → ingest docs + create tool + experience
 //                              (body: { force?, stream? })
 //   POST { action: 'reset' } → tear it down
+//
+// GET needs setup:run. POST is Admin-only on top: building, rebuilding or removing the
+// assistant changes the built-in help, which only an Admin may change.
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { withPermission } from '@/features/access/route-guard';
+import { checksBuiltInInHandler, REFUSAL } from '@/features/access/built-in';
+import { checkAccess, SIGNED_IN, withPermission } from '@/features/access/route-guard';
 import { apiResponse, describeError } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { seedDocs, resetDocs, getDocsSeedStatus } from '@/shared/seeders/docs';
@@ -31,7 +35,10 @@ export const GET = withPermission('setup:run', async function GET() {
   }
 });
 
-export const POST = withPermission('setup:run', async function POST(request: NextRequest) {
+export const POST = checksBuiltInInHandler(withPermission('setup:run', async function POST(request: NextRequest) {
+  // Reuses the gate's lookup for this request
+  const { access } = await checkAccess(SIGNED_IN);
+  if (!access?.isAdmin) return apiResponse.forbidden(REFUSAL);
 
   let body: { action?: string; force?: boolean; stream?: boolean } = {};
   try {
@@ -61,7 +68,7 @@ export const POST = withPermission('setup:run', async function POST(request: Nex
   } catch (e) {
     return apiResponse.error(e as Error, undefined, { operation: 'setupDocs' });
   }
-});
+}));
 
 /** Run the seed while streaming step progress as SSE (matches the demo route's convention). */
 function streamSeed(force: boolean): Response {

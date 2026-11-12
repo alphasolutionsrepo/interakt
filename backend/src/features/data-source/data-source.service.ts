@@ -27,7 +27,8 @@ const logger = createLogger('data-source-service');
 // CRUD OPERATIONS
 // ============================================================================
 
-export async function createDataSource(input: CreateDataSourceDTO, userId: string) {
+/** `builtIn` is for the docs setup only: the row is part of the built-in help from its first write. */
+export async function createDataSource(input: CreateDataSourceDTO, userId: string, options: { builtIn?: boolean } = {}) {
   const slugAvailable = await repository.isSlugAvailable(input.slug);
   if (!slugAvailable) {
     throw new Error(`Data source with slug "${input.slug}" already exists`);
@@ -42,6 +43,7 @@ export async function createDataSource(input: CreateDataSourceDTO, userId: strin
     schema: input.schema as any,
     searchIndexId: input.type === 'search_index' ? input.config.searchIndexId : null,
     createdBy: userId,
+    ...(options.builtIn && { isBuiltIn: true }),
   });
 
   logger.info('Created data source', { dataSourceId: created.id, slug: created.slug, type: created.type, userId });

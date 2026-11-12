@@ -75,3 +75,21 @@ describe("a search experience's page", () => {
     expect(states().states).toEqual(all('open'));
   });
 });
+
+describe("a search experience's access token and widget card", () => {
+  beforeEach(() => { isBuiltIn = false; });
+
+  it('are hidden without search-experiences:edit', () => {
+    uiAccess.hold('search-experiences:view');
+    const { html } = states();
+    expect(html).not.toContain('Access Token');
+    expect(html).not.toContain('Drop-in Styling');
+  });
+
+  it('show for a search experience editor', () => {
+    uiAccess.hold('search-experiences:view', 'search-experiences:edit');
+    const { html } = states();
+    expect(html).toContain('Access Token');
+    expect(html).toContain('Drop-in Styling');
+  });
+});

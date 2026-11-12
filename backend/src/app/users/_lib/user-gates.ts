@@ -59,7 +59,8 @@ export function userGates(caller: Caller, user: { id: string; roleId: string }, 
   const manage = self ? gate(caller, true, '')
     : role ? gate(caller, mayAssignRole(caller, role), roleRefusal('manage', role))
     : unknownRoleGate(caller, rolesState);
-  const lockedByManage = manage.state === 'locked' ? manage : null;
+  // Until managing them is allowed (locked, or still waiting for the roles), nothing else is
+  const lockedByManage = manage.state === 'allowed' ? null : manage;
   return {
     /** Edit the profile, change the password */
     manage,
