@@ -6,7 +6,8 @@
  *  - server-to-server document writes with an ingestion key: withPermissionOrIngestionKey;
  *  - public /api/v1 routes: publicApiRoute up front, then the access-token checks once they
  *    know which experience is asked for (a built-in help experience is the Help assistant's),
- *    and the embed snippet by the experience's kind.
+ *    and the embed snippet by the experience's kind;
+ *  - a dashboard session on a public experience route (the Test pages): Playground too.
  * A route whose area is off answers 404 "turned off" (to an Admin too), so a widget treats
  * the area as absent. Which area a route belongs to is route-areas.ts.
  */
@@ -100,6 +101,17 @@ export async function refuseExperienceIfOff(
     areas = area.areas;
   }
   return refuseUnlessOn(areas);
+}
+
+/**
+ * For a dashboard session calling an experience route, once the experience is known: that is
+ * the playground (real traffic comes with the experience's token), so Playground must be on
+ * too. The built-in help experiences are the Help assistant's and need only that, already
+ * checked by refuseExperienceIfOff.
+ */
+export async function refuseSessionIfPlaygroundOff(experience: { isBuiltIn?: boolean }): Promise<NextResponse | null> {
+  if (experience.isBuiltIn) return null;
+  return refuseUnlessOn(['playground']);
 }
 
 /** Marks a route wrapped by publicApiRoute (a test checks every /api/v1 route is). */

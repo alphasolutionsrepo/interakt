@@ -21,10 +21,13 @@
 import { errors as esErrors } from '@elastic/elasticsearch';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+
+vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 
 vi.mock('@/features/ai-service', () => ({
     chat: vi.fn(),
@@ -96,6 +99,7 @@ function freshIndexId(): string {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    featureSwitchesStub.reset();
     vi.mocked(searchIndexService.getSearchIndexById).mockResolvedValue(
         { id: 'idx', fields: INDEX_FIELDS } as unknown as Awaited<
             ReturnType<typeof searchIndexService.getSearchIndexById>
@@ -130,6 +134,20 @@ describe('global AI switch', () => {
 
         expect(aiService.chat).not.toHaveBeenCalled();
         expect(result.query).toBe(QUERY);
+    });
+
+    it('skips interpretation when the AI summaries area is turned off', async () => {
+        featureSwitchesStub.off.add('ai-summaries');
+        const result = await applyQueryInterpretation({
+            query: QUERY,
+            clientFilters: [{ field: 'brand', operator: 'eq', value: 'x' }],
+            searchIndexId: freshIndexId(),
+            aiConfig: aiConfig(),
+            experienceId: 'exp-1',
+        });
+
+        expect(aiService.chat).not.toHaveBeenCalled();
+        expect(result).toEqual({ query: QUERY, filters: [{ field: 'brand', operator: 'eq', value: 'x' }] });
     });
 
     it('interprets when both switches are on', async () => {

@@ -295,12 +295,28 @@ function flushSoon(): void {
   }
 }
 
+/** False while the Analytics area is turned off; if the switches can't be read, collection goes on. */
+async function collectionAllowed(): Promise<boolean> {
+  try {
+    const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
+    return await isAreaOn('analytics');
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Flush all event queues
  */
 async function flushAll(): Promise<void> {
   if (isShuttingDown) {
     logger.debug('flushAll skipped - shutting down');
+    return;
+  }
+
+  // Analytics off: nothing is recorded, what was queued is dropped (data already kept stays)
+  if (!(await collectionAllowed())) {
+    clearQueues();
     return;
   }
 

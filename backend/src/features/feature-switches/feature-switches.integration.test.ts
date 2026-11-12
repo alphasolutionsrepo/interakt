@@ -18,6 +18,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FEATURES_OFF_ENV, PINNED_OFF_MESSAGE, TURNED_OFF_CODE, TURNED_OFF_MESSAGE } from './areas';
 import { clearFeatureSwitchCache, isAreaOn } from './feature-switches.service';
 
+import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
+import * as analyticsStatusRoute from '@/app/api/analytics/status/route';
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import * as settingsRoute from '@/app/api/settings/features/route';
@@ -29,17 +31,33 @@ import * as summarizeRoute from '@/app/api/v1/summarize/route';
 import { aiExperiences } from '@/db/schema/ai-experience.schema';
 import { globalSearchSettings } from '@/db/schema/global-search-settings.schema';
 import { roles } from '@/db/schema/roles.schema';
+import { searchIndex } from '@/db/schema/search-index.schema';
+import { searchIndexFields } from '@/db/schema/search-index-fields.schema';
 import { searchExperiences } from '@/db/schema/search-experience.schema';
 import { user } from '@/db/schema/users.schema';
 import { ADMIN_ROLE_ID } from '@/features/access/permissions';
+import * as aiService from '@/features/ai-service';
 import { aiExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
+import { applyQueryInterpretation } from '@/features/search-experience/query-interpreter';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 let testDb: AppTestDb;
 let session: { user: { id: string } } | null = null;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => session }));
+
+// The switches can be made unreadable for one test (a database outage)
+let readFails = false;
+vi.mock('@/features/global-settings', async (original) => {
+  const real = await original<typeof import('@/features/global-settings')>();
+  return { ...real, getStoredFeaturesOff: async () => { if (readFails) throw new Error('database down'); return real.getStoredFeaturesOff(); } };
+});
+// Only the model call of query understanding is replaced
+vi.mock('@/features/ai-service', async (original) => {
+  const real = await original<typeof import('@/features/ai-service')>();
+  return { ...real, chat: vi.fn() };
+});
 
 const VIEWER = '00000000-0000-4000-8000-000000000003';
 
@@ -78,6 +96,7 @@ beforeEach(async () => {
   // Every test starts with everything on and nothing cached
   await testDb.db.delete(globalSearchSettings);
   clearFeatureSwitchCache();
+  readFails = false;
   delete process.env[FEATURES_OFF_ENV];
   admin = await makeUser(ADMIN_ROLE_ID);
   as(admin);
@@ -94,6 +113,7 @@ beforeEach(async () => {
   search = { id: se.id, accessToken: se.accessToken };
 });
 afterEach(() => {
+  readFails = false;
   delete process.env[FEATURES_OFF_ENV];
   vi.restoreAllMocks();
 });
@@ -153,6 +173,51 @@ describe('an area switched off', () => {
       .toMatchObject(turnedOff);
   });
 
+  it('stops the Test pages with Playground off: a dashboard session on an experience route', async () => {
+    const req = () => new NextRequest(`http://localhost/api/v1/ai-experiences/${chat.slug}/chat`, { method: 'POST' });
+    const experience = aiExperienceAccess({ ...chat, accessConfig: {} as never, isBuiltIn: false });
+    await switchAreas({ playground: false });
+    // Chat is on, but the session is the playground
+    expect(await authenticateTokenOrSession(req(), experience)).toMatchObject({ caller: null, refused: { status: 404 } });
+    expect(await call(slugChatRoute.POST, 'POST', `/api/v1/ai-experiences/${chat.slug}/chat`, { params: { slug: chat.slug }, body: { message: 'hi' } }))
+      .toMatchObject(turnedOff);
+    // Real traffic with the token is not the playground
+    const token = { Authorization: `Bearer ${chat.accessToken}` };
+    expect((await call(widgetConfigRoute.GET, 'GET', '/api/v1/ai-experiences/widget-config', { headers: token })).status).toBe(200);
+    // The built-in help is the Help assistant's, for everyone signed in
+    const builtIn = aiExperienceAccess({ ...chat, accessConfig: {} as never, isBuiltIn: true });
+    expect((await authenticateTokenOrSession(req(), builtIn)).caller).toBe('admin');
+    await switchAreas({ playground: true });
+    expect((await authenticateTokenOrSession(req(), experience)).caller).toBe('admin');
+  });
+
+  it('turns off AI summaries on its own, with Search on: summarize and query understanding', async () => {
+    await switchAreas({ 'ai-summaries': false });
+    expect(await call(summarizeRoute.POST, 'POST', '/api/v1/summarize', { headers: { 'X-Access-Token': search.accessToken }, body: { query: 'q', results: [] } }))
+      .toMatchObject(turnedOff);
+    expect((await call(embedSnippetRoute.GET, 'GET', '/api/v1/embed-snippet', { headers: { 'X-Access-Token': search.accessToken } })).status).toBe(200);
+
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `qu-${++n}`, displayName: 'QU', searchType: 'lexical' }).returning();
+    await testDb.db.insert(searchIndexFields).values({ searchIndexId: index.id, fieldName: 'price', fieldType: 'number', isIndexed: true });
+    const QU_INDEX = index.id;
+    const understand = () => applyQueryInterpretation({
+      query: 'waterproof jackets under 200', clientFilters: undefined, searchIndexId: QU_INDEX, experienceId: search.id,
+      aiConfig: { enabled: true, providerId: null, modelId: null, queryUnderstanding: { enabled: true, minWords: 3 } } as never,
+    });
+    expect(await understand()).toEqual({ query: 'waterproof jackets under 200', filters: undefined });
+    expect(aiService.chat).not.toHaveBeenCalled();
+    // On, the same call reaches the model (which here has nothing to answer with)
+    await switchAreas({ 'ai-summaries': true });
+    console.log('DBG', JSON.stringify(await (await import('@/features/search-index/search-index.service')).getSearchIndexById(QU_INDEX)), 'consRuns',  JSON.stringify(await understand().catch((e) => String(e))));
+    expect(aiService.chat).toHaveBeenCalled();
+  });
+
+  it('keeps the analytics settings reachable with Analytics off, and refuses its reports', async () => {
+    await switchAreas({ analytics: false });
+    expect(await call(analyticsStatusRoute.GET, 'GET', '/api/analytics/status')).toMatchObject(turnedOff);
+    expect((await call(analyticsConfigRoute.GET, 'GET', '/api/analytics/config')).status).toBe(200);
+  });
+
   it('refuses the embed snippet by the experience\'s kind', async () => {
     await switchAreas({ chat: false });
     expect(await call(embedSnippetRoute.GET, 'GET', '/api/v1/embed-snippet', { headers: { 'X-Access-Token': chat.accessToken } })).toMatchObject(turnedOff);
@@ -184,6 +249,46 @@ describe('an area switched off', () => {
     expect(listed.status).toBe(200);
     expect(JSON.stringify(listed.body)).toContain(chat.id);
     expect((await call(widgetConfigRoute.GET, 'GET', '/api/v1/ai-experiences/widget-config', { headers: { 'X-Access-Token': chat.accessToken } })).status).toBe(200);
+  });
+});
+
+describe('when the switches cannot be read', () => {
+  const sessionRequest = () => new NextRequest('http://localhost/api/v1/ai-experiences/x/chat', { method: 'POST' });
+
+  beforeEach(() => {
+    // Nothing read before: no last known switches to fall back on
+    clearFeatureSwitchCache();
+    readFails = true;
+  });
+
+  it('answers an admin route 500, like a failed role lookup', async () => {
+    expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(500);
+  });
+
+  it('answers a public route 500, with the token and before anything else', async () => {
+    const res = await call(widgetConfigRoute.GET, 'GET', '/api/v1/ai-experiences/widget-config', { headers: { Authorization: `Bearer ${chat.accessToken}` } });
+    expect(res.status).toBe(500);
+  });
+
+  it('refuses a token check and a session check with the error, not as allowed', async () => {
+    const experience = aiExperienceAccess({ ...chat, accessConfig: {} as never, isBuiltIn: false });
+    expect(await authenticateTokenOrSession(sessionRequest(), experience)).toMatchObject({ caller: null, refused: { status: 500 } });
+    const builtIn = aiExperienceAccess({ ...chat, accessConfig: {} as never, isBuiltIn: true });
+    expect(await authenticateTokenOrSession(sessionRequest(), builtIn)).toMatchObject({ caller: null, refused: { status: 500 } });
+  });
+
+  it('answers document writes with an ingestion key 500', async () => {
+    as(null);
+    const index = '00000000-0000-4000-8000-0000000000aa';
+    const res = await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, { headers: { Authorization: 'Bearer not-a-key' }, params: { id: index } });
+    expect(res.status).toBe(500);
+  });
+
+  it('uses the last known switches when they were read before', async () => {
+    readFails = false;
+    expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(200);
+    readFails = true;
+    expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(200);
   });
 });
 

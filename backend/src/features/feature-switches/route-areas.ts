@@ -77,6 +77,9 @@ const RULES: readonly Rule[] = [
   { pattern: re('search/health'), area: 'managed-indexes' },
 
   // ── Analytics ────────────────────────────────────────────────────────────────
+  // Collection and retention settings stay reachable, so an Admin can change them while off
+  { pattern: under('analytics/config'), area: 'core' },
+  { pattern: under('telemetry/config'), area: 'core' },
   { pattern: under('analytics'), area: 'analytics' },
   { pattern: under('telemetry'), area: 'analytics' },
 

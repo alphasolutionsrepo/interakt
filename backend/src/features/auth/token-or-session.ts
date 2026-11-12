@@ -15,7 +15,7 @@ import 'server-only';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
-import { refuseExperienceIfOff } from '@/features/feature-switches/gate';
+import { refuseExperienceIfOff, refuseSessionIfPlaygroundOff } from '@/features/feature-switches/gate';
 
 import { auth } from './auth.api.handlers';
 import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
@@ -55,6 +55,9 @@ export async function authenticateTokenOrSession(
   const { response } = await checkAccess(experience.isBuiltIn ? SIGNED_IN : 'playground:use');
   if (response) return response.status === 401 ? { caller: null } : { caller: null, refused: response };
   // The playground: an admin testing the experience gets errors explained in full
+  // The Test pages call these routes with the session: Playground off stops them
+  const playgroundOff = await refuseSessionIfPlaygroundOff(experience);
+  if (playgroundOff) return { caller: null, refused: playgroundOff };
   markAdminCaller();
   return { caller: 'admin', analyticsSource: 'admin_test' };
 }

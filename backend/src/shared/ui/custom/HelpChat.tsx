@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { helpChatError } from './help-chat-error';
 import { startExperienceChat } from './start-experience-chat';
 
+import { TURNED_OFF_CODE } from '@/features/feature-switches/areas';
 import { AccessLink } from '@/shared/access/Can';
 import { reportActionError } from '@/shared/activity/report';
 import { ApiError, errorText } from '@/shared/api/api-error';
@@ -36,15 +37,24 @@ export interface HelpChat {
   busy: boolean;
   /** The Help Assistant experience doesn't exist yet. */
   notReady: boolean;
+  /** The Help assistant is switched off for this installation (a 404 with the FEATURE_OFF code). */
+  turnedOff: boolean;
   send: (text: string) => Promise<void>;
   /** Start over (new session). */
   reset: () => void;
+}
+
+/** Why the assistant can't answer: switched off for this installation, or not built yet (any other 404). */
+export function unavailableKind(error: unknown): 'turned-off' | 'not-set-up' | null {
+  if (!(error instanceof ApiError) || error.status !== 404) return null;
+  return error.code === TURNED_OFF_CODE ? 'turned-off' : 'not-set-up';
 }
 
 export function useHelpChat(): HelpChat {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [notReady, setNotReady] = useState(false);
+  const [turnedOff, setTurnedOff] = useState(false);
   const sessionId = useRef<string | null>(null);
   /** The request in flight; reset() aborts it so a closed drawer doesn't leave the chat busy. */
   const inFlight = useRef<AbortController | null>(null);
@@ -58,6 +68,7 @@ export function useHelpChat(): HelpChat {
       const { signal } = controller;
       setBusy(true);
       setNotReady(false);
+      setTurnedOff(false);
 
       const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: trimmed };
       const assistantId = crypto.randomUUID();
@@ -81,9 +92,11 @@ export function useHelpChat(): HelpChat {
           events = await startExperienceChat(HELP_EXPERIENCE_SLUG, trimmed, sid, signal);
         } catch (e) {
           // The assistant hasn't been built yet (experience missing) — guide the user.
-          if (!signal.aborted && e instanceof ApiError && e.status === 404) {
+          const unavailable = unavailableKind(e);
+          if (!signal.aborted && unavailable) {
             setMessages((prev) => prev.filter((m) => m.id !== assistantId && m.id !== userMsg.id));
-            setNotReady(true);
+            if (unavailable === 'turned-off') setTurnedOff(true);
+            else setNotReady(true);
             return;
           }
           throw e;
@@ -135,10 +148,11 @@ export function useHelpChat(): HelpChat {
     setBusy(false);
     setMessages([]);
     setNotReady(false);
+    setTurnedOff(false);
     sessionId.current = null;
   }, []);
 
-  return { messages, busy, notReady, send, reset };
+  return { messages, busy, notReady, turnedOff, send, reset };
 }
 
 const GENERIC_SUGGESTIONS = [
@@ -178,7 +192,15 @@ export function AskIntro({ suggestions, onAsk }: { suggestions: string[]; onAsk:
   );
 }
 
-export function AssistantNotReady() {
+export function AssistantNotReady({ turnedOff = false }: { turnedOff?: boolean }) {
+  if (turnedOff) {
+    return (
+      <div className="flex flex-col items-center gap-3 px-6 py-12 text-center text-muted-foreground">
+        <Sparkles className="size-8 opacity-50" />
+        <p className="font-medium text-foreground">The Help assistant is turned off for this installation.</p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-12 text-center text-muted-foreground">
       <Sparkles className="size-8 opacity-50" />
