@@ -28,10 +28,17 @@ const logger = createLogger('embedding-service');
  */
 export const STORED_VECTOR_SIZE = 1536;
 
-const storedSize = (options: EmbeddingOptions): EmbeddingOptions => ({
-  ...options,
-  dimensions: options.dimensions ?? STORED_VECTOR_SIZE,
-});
+/** Options for the helpers below. */
+export type EmbedOptions = EmbeddingOptions & {
+  /**
+   * The vectors are kept somewhere that is not a fixed-size column (the topic gate keeps its
+   * vectors in rule config JSON). Leave the size to the model's own registered size.
+   */
+  keepModelSize?: boolean;
+};
+
+const storedSize = ({ keepModelSize, ...options }: EmbedOptions): EmbeddingOptions =>
+  keepModelSize ? options : { ...options, dimensions: options.dimensions ?? STORED_VECTOR_SIZE };
 
 // ============================================================================
 // EMBEDDING GENERATION
@@ -43,7 +50,7 @@ const storedSize = (options: EmbeddingOptions): EmbeddingOptions => ({
  */
 export async function embed(
   text: string,
-  options: EmbeddingOptions,
+  options: EmbedOptions,
 ): Promise<number[] | null> {
   if (!text.trim()) return null;
 
@@ -61,7 +68,7 @@ export async function embed(
  */
 export async function embedBatch(
   texts: string[],
-  options: EmbeddingOptions,
+  options: EmbedOptions,
 ): Promise<Array<number[] | null>> {
   if (texts.length === 0) return [];
 

@@ -409,7 +409,7 @@ async function resolveDefaultModel(providerId: string, preferredKey: string, typ
 /**
  * Create a provider with its models from seed data
  */
-async function createProviderFromSeed(seed: SeedAIProvider) {
+export async function createProviderFromSeed(seed: SeedAIProvider) {
     // Create provider
     const [provider] = await db
         .insert(aiProviders)

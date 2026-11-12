@@ -18,13 +18,14 @@ vi.mock('./ai-providers.repository', () => ({
   getProviderById: vi.fn(async () => ({ id: 'p', providerKey: 'ollama', baseUrl: 'http://localhost:11434' })),
   modelKeyExists: vi.fn(async () => false),
   listModelsByProvider: vi.fn(async () => []),
-  updateModel: vi.fn(async () => ({})),
+  getModelById: vi.fn(async () => ({ id: 7, providerId: 'p', modelKey: 'qwen3-embedding:4b', modelType: 'embedding' })),
+  updateModel: vi.fn(async (_id: number, row: Record<string, unknown>) => ({ id: 7, providerId: 'p', ...row })),
   updateModelAvailability: vi.fn(async () => ({})),
   createModel: vi.fn(async (row: Record<string, unknown>) => ({ id: 1, ...row })),
 }));
 
 import * as repository from './ai-providers.repository';
-import { createModel, discoverOllamaModels } from './ai-providers.service';
+import { createModel, discoverOllamaModels, updateModel } from './ai-providers.service';
 import { canShortenVectorsByDefault } from './shortenable-embeddings';
 
 const created = () => vi.mocked(repository.createModel).mock.lastCall?.[0];
@@ -77,5 +78,17 @@ describe('a model found by Ollama discovery', () => {
     await discoverOllamaModels('p');
 
     expect(created()).toMatchObject({ modelKey: 'qwen3-embedding:4b', canShortenVectors: true });
+  });
+});
+
+describe('a model changed by an admin', () => {
+  it('saves the shorten choice', async () => {
+    await updateModel(7, { canShortenVectors: false } as never);
+    expect(vi.mocked(repository.updateModel)).toHaveBeenLastCalledWith(7, { canShortenVectors: false });
+  });
+
+  it('leaves the choice alone when the change is about something else', async () => {
+    await updateModel(7, { displayName: 'Qwen' } as never);
+    expect(vi.mocked(repository.updateModel)).toHaveBeenLastCalledWith(7, { displayName: 'Qwen' });
   });
 });
