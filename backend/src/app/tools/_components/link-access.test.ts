@@ -38,7 +38,7 @@ vi.mock('../_lib/hooks/useTools', async (importOriginal) => ({
       isActive: true, isBuiltIn: false, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z',
     },
     isLoading: false, isError: false, updateTool: async () => {}, deleteTool: async () => {}, isUpdating: false, isDeleting: false,
-    experiences: [{ id: 'e1', name: 'Shop assistant', slug: 'shop', isActive: true }],
+    experiences: [{ id: 'e1', name: 'Shop assistant', slug: 'shop', isActive: true }], experienceCount: 1, experiencesHidden: false,
   }),
   useLookupFields: () => ({ status: undefined }),
 }));

@@ -8,10 +8,12 @@
 
 import { sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import * as route from '@/app/api/tools/[id]/experiences/route';
 import { toolsApi } from '@/app/tools/_lib/api-client';
+import type { Permission } from '@/features/access/permissions';
+import { ADMIN_ACCESS, accessStub } from '@/shared/test/access-stub';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 let testDb: AppTestDb;
@@ -30,7 +32,31 @@ const chat = (name: string, isActive = true) => one(sql`INSERT INTO ai_experienc
 const attach = (e: string, t: string) => testDb.db.execute(sql`INSERT INTO ai_experience_tools (ai_experience_id, tool_id) VALUES (${e}, ${t})`);
 const get = (id: string) => route.GET(new NextRequest(`http://localhost/api/tools/${id}/experiences`), { params: Promise.resolve({ id }) });
 
+const holding = (...permissions: Permission[]) => {
+  accessStub.access = { ...ADMIN_ACCESS, userId: 'viewer', roleName: 'Viewer', isAdmin: false, permissions: new Set(permissions) };
+};
+
 describe('GET /api/tools/:id/experiences', () => {
+  afterEach(() => accessStub.reset());
+
+  it('gives a role without ai-experiences:view the count and no experiences', async () => {
+    const t = await tool();
+    await attach(await chat('Secret plan'), t); await attach(await chat('Other'), t);
+    holding('tools:view');
+    const body = (await (await get(t)).json()).data;
+    expect(body).toMatchObject({ experienceCount: 2, experiences: [], experiencesHidden: true });
+    expect(JSON.stringify(body)).not.toContain('Secret plan');
+  });
+
+  it('gives a role with ai-experiences:view the names', async () => {
+    const t = await tool();
+    await attach(await chat('Visible one'), t);
+    holding('tools:view', 'ai-experiences:view');
+    const body = (await (await get(t)).json()).data;
+    expect(body).toMatchObject({ experienceCount: 1, experiencesHidden: false });
+    expect(body.experiences.map((e: { name: string }) => e.name)).toEqual(['Visible one']);
+  });
+
   it('lists the experiences that use the tool, with the count, and no others', async () => {
     const [used, other] = [await tool(), await tool()];
     const [b, a, off] = [await chat('Beta'), await chat('Alpha'), await chat('Dormant', false)];

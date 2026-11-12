@@ -32,11 +32,14 @@ const detail = (answer: unknown) => {
   return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ToolDetailPage, { params: ready({ id: 't' }) })));
 };
 
+/** The Danger Zone's Delete button, locked or not */
+const destructiveButton = (locked: boolean) => new RegExp(locked ? 'bg-destructive [^>]*disabled=""' : 'bg-destructive [^>]*shrink-0">');
+
 describe("a tool's page", () => {
   it('shows the experiences using the tool, and the count in "Used In"', () => {
     uiAccess.hold('tools:view', 'ai-experiences:view');
     const html = detail({
-      toolId: 't', experienceCount: 2,
+      toolId: 't', experienceCount: 2, experiencesHidden: false,
       experiences: [{ id: 'e1', name: 'Shop assistant', slug: 'shop', isActive: true }, { id: 'e2', name: 'Help desk', slug: 'help', isActive: false }],
     });
     expect(html).toContain('Used in AI Experiences');
@@ -48,7 +51,24 @@ describe("a tool's page", () => {
 
   it('shows no card for a tool nothing uses', () => {
     uiAccess.hold('tools:view', 'ai-experiences:view');
-    const html = detail({ toolId: 't', experienceCount: 0, experiences: [] });
+    const html = detail({ toolId: 't', experienceCount: 0, experiences: [], experiencesHidden: false });
+    expect(html).not.toContain('Used in AI Experiences');
+  });
+
+  it('without ai-experiences:view shows the count line, no names, and keeps Delete locked', () => {
+    uiAccess.hold('tools:view', 'tools:edit');
+    const html = detail({ toolId: 't', experienceCount: 2, experiences: [], experiencesHidden: true });
+    expect(html).toContain("Used in 2 chat experiences. Your role can&#x27;t view chat experiences.");
+    expect(html).toContain('This tool is used by 2 experiences.');
+    expect(html).toMatch(destructiveButton(true));
+  });
+
+  it('shows no hidden-count line when nothing uses the tool', () => {
+    uiAccess.hold('tools:view', 'tools:edit');
+    const html = detail({ toolId: 't', experienceCount: 0, experiences: [], experiencesHidden: true });
+    expect(html).toMatch(destructiveButton(false));
+    expect(html).not.toContain('Used in 0');
+    expect(html).not.toContain("can&#x27;t view chat experiences");
     expect(html).not.toContain('Used in AI Experiences');
   });
 });

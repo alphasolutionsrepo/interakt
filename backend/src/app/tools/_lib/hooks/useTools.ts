@@ -118,7 +118,6 @@ export function useTool(id: string | undefined) {
   const experiencesQuery = useQuery({
     queryKey: toolKeys.experiences(id!),
     queryFn: () => toolsApi.getExperiences(id!),
-    select: (data) => data.experiences,
     enabled: !!id,
   });
 
@@ -134,7 +133,9 @@ export function useTool(id: string | undefined) {
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
 
-    experiences: experiencesQuery.data ?? [],
+    experiences: experiencesQuery.data?.experiences ?? [],
+    experienceCount: experiencesQuery.data?.experienceCount ?? 0,
+    experiencesHidden: experiencesQuery.data?.experiencesHidden ?? false,
     isLoadingExperiences: experiencesQuery.isLoading,
   };
 }

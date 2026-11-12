@@ -22,7 +22,9 @@ export interface ToolExperience {
 export interface ToolExperiences {
   toolId: string;
   experienceCount: number;
+  /** Empty when the caller's role can't view chat experiences (experiencesHidden) */
   experiences: ToolExperience[];
+  experiencesHidden: boolean;
 }
 
 /** Executor type — how a tool runs (MCP is a separate connection type, not a tool) */

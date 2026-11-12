@@ -21,7 +21,9 @@ import {
 
 import type { DataSourceSchema } from '@/db/schema/data-sources.schema';
 import { assertMayChange, withBuiltInFlag } from '@/features/access/built-in';
+import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
 import { assertMayWriteSecretConfig } from '@/features/access/secret-references';
+import { can } from '@/features/access/user-access';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import * as dataSourceService from '@/features/data-source/data-source.service';
 import { readJsonBody } from '@/shared/api/read-json-body';
@@ -246,8 +248,16 @@ export async function handleGetToolExperiences(
       return apiResponse.notFound('Tool not found');
     }
 
-    const experiences = await service.getToolExperiences(id);
-    return apiResponse.success({ toolId: id, experienceCount: experiences.length, experiences });
+    // The count is always answered; which experiences they are only to a role that can view them
+    const all = await service.getToolExperiences(id);
+    const { access } = await checkAccess(SIGNED_IN);
+    const mayList = !!access && can(access, 'ai-experiences:view');
+    return apiResponse.success({
+      toolId: id,
+      experienceCount: all.length,
+      experiences: mayList ? all : [],
+      experiencesHidden: !mayList,
+    });
   } catch (error) {
     const err = error as Error;
     return apiResponse.error(err, undefined, { operation: 'getToolExperiences' });
