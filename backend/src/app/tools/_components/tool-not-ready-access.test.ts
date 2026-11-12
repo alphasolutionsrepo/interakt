@@ -15,7 +15,7 @@ import { uiAccess } from '@/shared/test/ui-access-stub';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 
-const note = () => renderToStaticMarkup(createElement(ToolNotReadyNote, { toolId: 't1', reason: 'Its data source is inactive' }));
+const note = (isBuiltIn = false) => renderToStaticMarkup(createElement(ToolNotReadyNote, { toolId: 't1', reason: 'Its data source is inactive', isBuiltIn }));
 
 describe("a tool picker's note on a tool that needs setup", () => {
   it('gives the reason without a link for a chat editor who cannot edit tools', () => {
@@ -28,5 +28,17 @@ describe("a tool picker's note on a tool that needs setup", () => {
   it('links to the tool to set it up for a role that can edit tools', () => {
     uiAccess.hold('ai-experiences:view', 'ai-experiences:edit', 'tools:view', 'tools:edit');
     expect(note()).toContain('href="/tools/t1/edit"');
+  });
+
+  it('gives the reason without a link on a built-in tool, to an editor who is not an Admin', () => {
+    uiAccess.hold('ai-experiences:view', 'ai-experiences:edit', 'tools:view', 'tools:edit');
+    const html = note(true);
+    expect(html).toContain('Its data source is inactive');
+    expect(html).not.toContain('href="/tools/t1/edit"');
+  });
+
+  it('links to a built-in tool for an Admin', () => {
+    uiAccess.asAdmin();
+    expect(note(true)).toContain('href="/tools/t1/edit"');
   });
 });

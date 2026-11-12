@@ -62,6 +62,8 @@ interface ToolInfo {
   aiDescription?: string;
   /** Set when the tool can't be added to an experience yet */
   notReadyReason?: string;
+  /** Part of the built-in help: only an Admin changes it */
+  isBuiltIn: boolean;
 }
 
 interface WizardData {
@@ -411,7 +413,7 @@ function Step2_Tools({ data, onChange, allTools }: {
                       <ToolTypeChip executorType={tool.executorType} operation={tool.operation} size="sm" />
                     </div>
                     {tool.description && <p className={`text-xs text-muted-foreground line-clamp-1 mt-0.5 ${blocked ? 'opacity-60' : ''}`}>{tool.description}</p>}
-                    {tool.notReadyReason && <ToolNotReadyNote toolId={tool.id} reason={tool.notReadyReason} />}
+                    {tool.notReadyReason && <ToolNotReadyNote toolId={tool.id} reason={tool.notReadyReason} isBuiltIn={tool.isBuiltIn} />}
                   </div>
                 </div>
               );
