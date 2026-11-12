@@ -7,8 +7,10 @@ import { z } from 'zod';
 
 import { getHomeData, homeDataForRole, invalidateHomeCache, TIP_ID } from './home.service';
 
+import type { Permission } from '@/features/access/permissions';
 import { can } from '@/features/access/user-access';
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
+import { isAreaOn } from '@/features/feature-switches/feature-switches.service';
 import { dismissTip } from '@/features/analytics/analytics-insights.service';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';
 import { apiResponse } from '@/shared/api/response';
@@ -21,7 +23,10 @@ export async function handleGetHome(request: NextRequest) {
   try {
     const { access, response } = await checkAccess(SIGNED_IN);
     if (response) return response;
-    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz), (p) => can(access, p)) });
+    // With Analytics off the home page shows no analytics figures, cards or tips, whoever asks
+    const analyticsOn = await isAreaOn('analytics');
+    const holds = (p: Permission) => can(access, p) && (analyticsOn || !p.startsWith('analytics:'));
+    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz), holds) });
   } catch (error) {
     return apiResponse.error('Failed to load the home page', 500, { operation: 'getHome', err: error });
   }

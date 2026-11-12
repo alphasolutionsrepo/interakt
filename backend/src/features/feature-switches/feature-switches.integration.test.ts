@@ -18,6 +18,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FEATURES_OFF_ENV, PINNED_OFF_MESSAGE, TURNED_OFF_CODE, TURNED_OFF_MESSAGE } from './areas';
 import { clearFeatureSwitchCache, isAreaOn } from './feature-switches.service';
 
+import * as homeRoute from '@/app/api/dashboard/home/route';
+import * as homeTipsRoute from '@/app/api/dashboard/home/tips/route';
 import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
 import * as analyticsStatusRoute from '@/app/api/analytics/status/route';
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
@@ -52,6 +54,15 @@ vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => session 
 
 // The switches can be made unreadable for one test (a database outage)
 let readFails = false;
+// The home page's own numbers are not under test; the cut is, so the service answers a fixed page
+vi.mock('@/features/dashboard/home.service', async (original) => ({
+  ...(await original<typeof import('@/features/dashboard/home.service')>()),
+  getHomeData: async () => ({
+    generatedAt: '2026-11-12T00:00:00Z', analytics: true, period: { from: '', to: '', label: '', previousLabel: '', days: [] },
+    live: { requestsLast5Min: 3 }, health: null, checklist: null, tasks: [], recent: [], experiences: [],
+    metrics: [{ id: 'requests' }], cards: [{ id: 'c', href: '/analytics' }], tips: [{ id: 't', action: { href: '/analytics' } }],
+  }),
+}));
 vi.mock('@/features/global-settings', async (original) => {
   const real = await original<typeof import('@/features/global-settings')>();
   return { ...real, getStoredFeaturesOff: async () => { if (readFails) throw new Error('database down'); return real.getStoredFeaturesOff(); } };
@@ -230,6 +241,15 @@ describe('an area switched off', () => {
     await switchAreas({ analytics: false });
     expect(await call(analyticsStatusRoute.GET, 'GET', '/api/analytics/status')).toMatchObject(turnedOff);
     expect((await call(analyticsConfigRoute.GET, 'GET', '/api/analytics/config')).status).toBe(200);
+  });
+
+  it('shows no analytics on the home page with Analytics off, and refuses dismissing an analytics tip', async () => {
+    const home = async () => (await call(homeRoute.GET, 'GET', '/api/dashboard/home?tz=UTC')).body?.data as { analytics: boolean; metrics: unknown[]; cards: unknown[]; tips: unknown[] };
+    expect(await home()).toMatchObject({ analytics: true, metrics: [{ id: 'requests' }] });
+
+    await switchAreas({ analytics: false });
+    expect(await home()).toMatchObject({ analytics: false, metrics: [], cards: [], tips: [] });
+    expect(await call(homeTipsRoute.POST, 'POST', '/api/dashboard/home/tips', { body: { tipId: 'tip-1' } })).toMatchObject(turnedOff);
   });
 
   it('refuses the embed snippet by the experience\'s kind', async () => {

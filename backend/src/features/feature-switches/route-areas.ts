@@ -55,7 +55,6 @@ const RULES: readonly Rule[] = [
   // ── Test buttons: their area and Playground ──────────────────────────────────
   { pattern: re(`tools/${ID}/test`), methods: ['POST'], area: ['chat', 'playground'] },
   { pattern: re(`mcp-connections/${ID}/test`), methods: ['POST'], area: ['chat', 'playground'] },
-  { pattern: re(`data-sources/${ID}/health`), methods: ['POST'], area: 'playground' },
   { pattern: under('search/(index|name)'), area: ['managed-indexes', 'playground'] },
   { pattern: re('ai-service/providers'), area: 'core' }, // the model pickers read it
   { pattern: under('ai-service'), area: 'playground' },
@@ -91,6 +90,9 @@ const RULES: readonly Rule[] = [
 
   // ── Help assistant ───────────────────────────────────────────────────────────
   { pattern: re('admin/setup-docs'), area: 'help-assistant' },
+
+  // The home page's tips are analytics tips
+  { pattern: re('dashboard/home/tips'), area: 'analytics' },
 
   // ── Always on ────────────────────────────────────────────────────────────────
   { pattern: under('admin'), area: 'core' }, // setup and the demo
