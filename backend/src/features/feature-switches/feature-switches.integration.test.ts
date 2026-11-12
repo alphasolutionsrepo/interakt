@@ -32,6 +32,8 @@ import * as slugChatRoute from '@/app/api/v1/ai-experiences/[slug]/chat/route';
 import * as widgetConfigRoute from '@/app/api/v1/ai-experiences/widget-config/route';
 import * as embedSnippetRoute from '@/app/api/v1/embed-snippet/route';
 import * as searchRoute from '@/app/api/v1/search/route';
+import * as slugSearchRoute from '@/app/api/v1/search/[slug]/search/route';
+import * as slugSummarizeRoute from '@/app/api/v1/search/[slug]/summarize/route';
 import * as summarizeRoute from '@/app/api/v1/summarize/route';
 import { aiExperiences } from '@/db/schema/ai-experience.schema';
 import { globalSearchSettings } from '@/db/schema/global-search-settings.schema';
@@ -51,6 +53,9 @@ let testDb: AppTestDb;
 let session: { user: { id: string } } | null = null;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => session }));
+
+// The chat itself is not under test: a request that gets through the checks answers 200
+vi.mock('@/features/pipeline/chat-event-stream', () => ({ chatEventStream: vi.fn(async () => new Response('ok', { status: 200 })) }));
 
 // The switches can be made unreadable for one test (a database outage)
 let readFails = false;
@@ -184,6 +189,47 @@ describe('an area switched off', () => {
 
     await switchAreas({ 'help-assistant': false });
     expect(await help()).toMatchObject(turnedOff);
+  });
+
+  it('keeps the built-in help experiences on their own area, through the routes the Help drawer calls', async () => {
+    await testDb.db.update(aiExperiences).set({ isBuiltIn: true }).where(eq(aiExperiences.id, chat.id));
+    await testDb.db.update(searchExperiences).set({ isBuiltIn: true }).where(eq(searchExperiences.id, search.id));
+    const slugs = (await testDb.db.select().from(searchExperiences).where(eq(searchExperiences.id, search.id)))[0].slug;
+    const viewer = await makeUser(VIEWER);
+    const helpChat = () => call(slugChatRoute.POST, 'POST', `/api/v1/ai-experiences/${chat.slug}/chat`, { params: { slug: chat.slug }, body: { message: 'hi' } });
+    const docsSearch = () => call(slugSearchRoute.POST, 'POST', `/api/v1/search/${slugs}/search`, { params: { slug: slugs }, body: { query: 'q' } });
+    const docsSearchByToken = () => call(searchRoute.POST, 'POST', '/api/v1/search', { headers: { 'X-Access-Token': search.accessToken }, body: { query: 'q' } });
+    const notOff = (r: { body: Record<string, unknown> | null }) => expect(r.body).not.toMatchObject({ code: TURNED_OFF_CODE });
+
+    // Chat, Search and Playground off, Help assistant on: a signed-in Viewer still gets both
+    await switchAreas({ chat: false, search: false, playground: false });
+    as(viewer);
+    expect((await helpChat()).status).toBe(200);
+    notOff(await docsSearch());
+    notOff(await docsSearchByToken());
+
+    // Help assistant off: both are turned off, for the Viewer and with the token
+    as(admin);
+    await switchAreas({ 'help-assistant': false });
+    as(viewer);
+    expect(await helpChat()).toMatchObject(turnedOff);
+    expect(await docsSearch()).toMatchObject(turnedOff);
+    expect(await docsSearchByToken()).toMatchObject(turnedOff);
+  });
+
+  it('puts the slug search routes in Search and AI summaries, with the Help assistant on', async () => {
+    const slug = (await testDb.db.select().from(searchExperiences).where(eq(searchExperiences.id, search.id)))[0].slug;
+    const summarize = () => call(slugSummarizeRoute.POST, 'POST', `/api/v1/search/${slug}/summarize`, { params: { slug }, headers: { 'X-Access-Token': search.accessToken }, body: { query: 'q', results: [] } });
+    const searchBySlug = () => call(slugSearchRoute.POST, 'POST', `/api/v1/search/${slug}/search`, { params: { slug }, headers: { 'X-Access-Token': search.accessToken }, body: { query: 'q' } });
+    const notOff = (r: { body: Record<string, unknown> | null }) => expect(r.body).not.toMatchObject({ code: TURNED_OFF_CODE });
+
+    await switchAreas({ 'ai-summaries': false });
+    expect(await summarize()).toMatchObject(turnedOff);
+    notOff(await searchBySlug());
+
+    await switchAreas({ 'ai-summaries': true, search: false });
+    expect(await searchBySlug()).toMatchObject(turnedOff);
+    expect(await summarize()).toMatchObject(turnedOff);
   });
 
   it('keeps the index lists the experience and data-source pickers read, with Managed indexes off', async () => {

@@ -235,6 +235,11 @@ describe('every admin API route is gated', () => {
     expect(wrong).toEqual([]);
   }, 120_000);
 
+  it('puts every public /api/v1 route in its area (the route snapshot lists the admin routes only)', async () => {
+    const table = publicRoutes.map((r) => `${r.method.padEnd(6)} /api/${r.route}  ${areaText(r)}`).join('\n');
+    await expect(table + '\n').toMatchFileSnapshot('./__snapshots__/public-route-areas.txt');
+  });
+
   it('runs every public /api/v1 route through the feature switch check', async () => {
     expect(publicRoutes.filter((r) => !isFeatureGated(r.fn)).map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
     // Off, with the Help assistant (whose built-in experiences use the same routes) off too
