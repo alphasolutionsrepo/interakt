@@ -7,7 +7,7 @@ import 'server-only';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { db } from '@/db/index';
 import { user } from '@/db/schema/users.schema';
@@ -56,6 +56,12 @@ export async function readDocs(): Promise<DocFile[]> {
 }
 
 /** The docs resources are created as the first admin. */
+/** Whether this user holds the Admin role (the setup only takes over what an Admin made). */
+export async function isAdminUser(userId: string): Promise<boolean> {
+  const found = await db.query.user.findFirst({ where: and(eq(user.id, userId), eq(user.roleId, ADMIN_ROLE_ID)) });
+  return !!found;
+}
+
 export async function getAdminUserId(): Promise<string> {
   const admin = await db.query.user.findFirst({ where: eq(user.roleId, ADMIN_ROLE_ID) });
   if (!admin) {

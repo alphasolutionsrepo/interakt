@@ -40,6 +40,7 @@ import {
   deleteSearchExperience,
   getSearchExperienceBySlug,
   markSearchExperienceBuiltIn,
+  NotFoundError,
 } from '@/features/search-experience/search-experience.service';
 import {
   createFieldsFromMappingEntries,
@@ -55,6 +56,7 @@ import {
 } from '@/features/search-index/search-index.service';
 import { DOCS_SEARCH_SEED_KEY, DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
 import { markBuiltIn } from '@/features/access/built-in';
+import { notFoundAsNull } from './not-found-as-null';
 import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { calculateChecksum, getRegistryEntry, upsertRegistryEntry } from '@/shared/seeders/seed-registry.service';
@@ -230,7 +232,7 @@ async function buildWithMode(
   const entry = await getRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY);
   const meta = entry?.metadata as Partial<DocsSearchMeta> | undefined;
   let index = await getSearchIndexByName(INDEX_NAME);
-  let experience = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
+  let experience = await notFoundAsNull(getSearchExperienceBySlug(DOCS_SEARCH_SLUG), NotFoundError);
   assertOwned(!!entry, index, experience);
 
   if (!force && entry?.checksum === checksum && index && experience) {
@@ -276,7 +278,9 @@ async function buildWithMode(
 
   // The built-in help: every signed-in user may use it, only an Admin may change it or its index
   await markBuiltIn('search-index', [index!.id]);
-  await markSearchExperienceBuiltIn((experience ?? (await createExperience(index!.id, adminId))).id);
+  // A new experience is built in from its first write, so no failure can leave it unmarked
+  if (experience) await markSearchExperienceBuiltIn(experience.id);
+  else await createExperience(index!.id, adminId);
 
   const nextMeta: DocsSearchMeta = {
     schemaVersion: SCHEMA_VERSION,
@@ -443,7 +447,7 @@ async function createExperience(indexId: string, adminId: string) {
     allowedOrigins: [],
     externalSources: [],
   };
-  const created = await createSearchExperience(input as unknown as Parameters<typeof createSearchExperience>[0], adminId);
+  const created = await createSearchExperience(input as unknown as Parameters<typeof createSearchExperience>[0], adminId, { builtIn: true });
   logger.info('Created docs search experience', { slug: created.slug });
   return created;
 }
@@ -472,7 +476,7 @@ export async function getDocsSearchStatus(): Promise<DocsSearchStatus> {
   if (!entry) {
     try {
       const index = await getSearchIndexByName(INDEX_NAME);
-      const experience = await getSearchExperienceBySlug(DOCS_SEARCH_SLUG).catch(() => null);
+      const experience = await notFoundAsNull(getSearchExperienceBySlug(DOCS_SEARCH_SLUG), NotFoundError);
       assertOwned(false, index, experience);
     } catch (e) {
       if (e instanceof DocsSearchConflictError) conflict = e.message;

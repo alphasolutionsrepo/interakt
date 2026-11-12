@@ -70,6 +70,9 @@ describe('userGates', () => {
 
   it("waits for the roles before judging a user's role, and says so when they fail to load", () => {
     expect(userGates(manager, user('other', 'viewer'), [], 'loading').manage).toEqual({ state: 'loading' });
+    // Deactivate and the role wait too, rather than being usable before the lock is known
+    expect(userGates(manager, user('other', 'viewer'), [], 'loading').activation).toEqual({ state: 'loading' });
+    expect(userGates(manager, user('other', 'viewer'), [], 'loading').role).toEqual({ state: 'loading' });
     expect(userGates(manager, user('other', 'viewer'), [], 'failed').manage)
       .toEqual({ state: 'locked', reason: "Couldn't load the roles to check this. Reload the page to try again." });
     expect(userGates(manager, user('other', 'gone'), ROLES).manage.state).toBe('locked');

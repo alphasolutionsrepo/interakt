@@ -181,9 +181,11 @@ function AttachmentRow({
               {conn && <McpStatusChip status={conn.status} />}
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-              <span className="font-mono truncate max-w-[200px]" title={conn?.serverUrl}>
-                {conn?.serverUrl}
-              </span>
+              {conn?.serverUrl && (
+                <span className="font-mono truncate max-w-[200px]" title={conn.serverUrl}>
+                  {conn.serverUrl}
+                </span>
+              )}
               <span className="flex items-center gap-1">
                 <Wrench className="size-3" />
                 {exposedCount}/{allTools.length} tool{allTools.length === 1 ? '' : 's'}

@@ -10,7 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const world = vi.hoisted(() => ({
   registry: null as null | { checksum: string; metadata: Record<string, unknown> },
-  help: null as null | { id: string; slug: string; isBuiltIn: boolean },
+  help: null as null | { id: string; slug: string; isBuiltIn: boolean; description?: string; createdBy?: string },
+  lookupError: null as null | Error,
   dataSource: null as null | { id: string; isBuiltIn: boolean },
   tools: [] as Array<{ id: string; slug: string; operation: string; isBuiltIn: boolean }>,
   assignedTool: null as null | string,
@@ -32,13 +33,15 @@ vi.mock('./docs-source', () => ({
   DOCS_ROOT: '/docs',
   readDocs: async () => [{ slug: 'intro', title: 'Intro', content: '# Intro\nWelcome.' }],
   getAdminUserId: async () => 'admin',
+  isAdminUser: async (id: string) => id === 'admin',
 }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
   getResolvedDefaults: async () => ({ embedding: { providerId: 'p', modelId: 7, modelKey: 'embed', dimensions: 1536 } }),
 }));
 vi.mock('@/features/data-source/data-source.service', () => ({
   getDataSourceBySlug: async () => world.dataSource,
-  createDataSource: async () => (world.dataSource = { id: 'ds1', isBuiltIn: false }),
+  createDataSource: async (_i: unknown, _by: string, options?: { builtIn?: boolean }) =>
+    (world.dataSource = { id: 'ds1', isBuiltIn: options?.builtIn === true }),
   deleteDataSource: async (id: string) => { world.deleted.push(`data-source:${id}`); },
 }));
 vi.mock('@/features/access/built-in', () => ({
@@ -60,27 +63,30 @@ vi.mock('@/features/tools/tools.service', () => ({
   getToolsByDataSourceId: async () => world.tools,
   // Like the real one: makes each operation no counted tool covers yet
   createToolsForDataSource: async (...args: unknown[]) => {
-    const counting = (args[6] as { counting?: (t: { isBuiltIn: boolean }) => boolean } | undefined)?.counting ?? (() => true);
+    const options = args[6] as { counting?: (t: { isBuiltIn: boolean }) => boolean; builtIn?: boolean } | undefined;
+    const counting = options?.counting ?? (() => true);
     const covered = new Set(world.tools.filter(counting).map((t) => t.operation));
     const made = ['search', 'get'].filter((op) => !covered.has(op))
-      .map((op) => ({ id: `t-${op}-${world.tools.length + 1}`, slug: `interakt-docs-${op}`, operation: op, isBuiltIn: false }));
+      .map((op) => ({ id: `t-${op}-${world.tools.length + 1}`, slug: `interakt-docs-${op}`, operation: op, isBuiltIn: options?.builtIn === true }));
     world.tools.push(...made);
     return made;
   },
   deleteTool: async () => {},
 }));
 vi.mock('@/features/ai-experience/ai-experience.service', () => ({
+  // Like the real one: null when there is no such experience
   getAIExperienceBySlug: async () => {
-    if (!world.help) throw new Error('not found');
+    if (world.lookupError) throw world.lookupError;
     return world.help;
   },
-  createAIExperience: async (input: { slug: string; toolIds?: string[] }) => {
+  createAIExperience: async (input: { slug: string; toolIds?: string[] }, _by: string, options?: { builtIn?: boolean }) => {
     world.assignedTool = input.toolIds?.[0] ?? null;
-    world.help = { id: `help-${world.nextId++}`, slug: input.slug, isBuiltIn: false };
+    world.help = { id: `help-${world.nextId++}`, slug: input.slug, isBuiltIn: options?.builtIn === true };
     return world.help;
   },
   markAIExperienceBuiltIn: async (id: string) => {
-    if (world.help?.id === id) world.help.isBuiltIn = true;
+    world.marked.add(`ai-experience:${id}`);
+    if (world.help && world.help.id === id) world.help.isBuiltIn = true;
   },
   updateAIExperience: async (_id: string, input: { toolIds?: string[] }) => {
     world.assignedTool = input.toolIds?.[0] ?? null;
@@ -102,11 +108,11 @@ import { ConflictError } from '@/shared/errors/app-error';
 import { resetDocs, seedDocs } from './docs.seeder';
 
 beforeEach(() => {
-  Object.assign(world, { registry: null, help: null, dataSource: null, tools: [], assignedTool: null, marked: new Set(), deleted: [], nextId: 1, uploads: 0, searchBuilds: 0 });
+  Object.assign(world, { registry: null, lookupError: null, help: null, dataSource: null, tools: [], assignedTool: null, marked: new Set(), deleted: [], nextId: 1, uploads: 0, searchBuilds: 0 });
 });
 
 describe('the docs setup and the Help Assistant', () => {
-  it('marks the Help Assistant it creates as the built-in help', async () => {
+  it('creates the Help Assistant built in from its first write, with no separate mark that could fail', async () => {
     await seedDocs();
     expect(world.help).toMatchObject({ id: 'help-1', isBuiltIn: true });
   });
@@ -127,10 +133,39 @@ describe('the docs setup and the Help Assistant', () => {
     expect(world.registry).toBeNull();
   });
 
-  it('marks the docs data source and its tools as part of the built-in help', async () => {
+  it('creates the docs data source and its tools built in from their first write, with no separate mark that could fail', async () => {
     await seedDocs();
-    expect([...world.marked].sort()).toEqual(['data-source:ds1', ...world.tools.map((t) => `tool:${t.id}`)].sort());
+    expect(world.dataSource).toMatchObject({ id: 'ds1', isBuiltIn: true });
     expect(world.tools.map((t) => t.operation).sort()).toEqual(['get', 'search']);
+    expect(world.tools.every((t) => t.isBuiltIn)).toBe(true);
+    expect(world.marked.size).toBe(0);
+  });
+
+  it('marks an unmarked Help Assistant of its own built in, so an install the old failure left stuck rebuilds', async () => {
+    world.help = { id: 'left', slug: 'help-assistant', isBuiltIn: false, createdBy: 'admin', description: 'Answers questions about using Interakt, grounded in the product documentation.' };
+    await seedDocs();
+    expect(world.marked.has('ai-experience:left')).toBe(true);
+    expect(world.help).toMatchObject({ id: 'left' });
+  });
+
+  it("does not take over an unmarked experience that copies the setup's public description but was not made by an Admin", async () => {
+    world.help = { id: 'copy', slug: 'help-assistant', isBuiltIn: false, createdBy: 'editor', description: 'Answers questions about using Interakt, grounded in the product documentation.' };
+    await expect(seedDocs()).rejects.toBeInstanceOf(ConflictError);
+    expect(world.marked.has('ai-experience:copy')).toBe(false);
+    expect(world.help).toMatchObject({ id: 'copy', isBuiltIn: false });
+  });
+
+  it('does not take over an unmarked experience under the slug that is not its own', async () => {
+    world.help = { id: 'theirs', slug: 'help-assistant', isBuiltIn: false, description: 'My own helper' };
+    await expect(seedDocs()).rejects.toBeInstanceOf(ConflictError);
+    expect(world.marked.has('ai-experience:theirs')).toBe(false);
+  });
+
+  it('passes on an error from the lookup instead of reading it as "no Help Assistant"', async () => {
+    world.lookupError = new Error('connection terminated');
+    await expect(seedDocs()).rejects.toThrow('connection terminated');
+    expect(world.uploads).toBe(0);
+    expect(world.help).toBeNull();
   });
 
   it("refuses someone else's data source under the docs slug, before changing anything", async () => {
@@ -140,6 +175,12 @@ describe('the docs setup and the Help Assistant', () => {
     expect(world.uploads).toBe(0);
     expect(world.searchBuilds).toBe(0);
     expect(world.marked.size).toBe(0);
+  });
+
+  it('does not report a reset done when a lookup failed: the error reaches the caller', async () => {
+    world.lookupError = new Error('connection terminated');
+    await expect(resetDocs()).rejects.toThrow('connection terminated');
+    expect(world.deleted).toEqual([]);
   });
 
   it('resets only what it made, never a lookalike under the same slugs', async () => {
