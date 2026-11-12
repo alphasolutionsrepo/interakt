@@ -1,9 +1,10 @@
 // src/features/ai-experience/ai-experience.repository.ts
 
-import { eq, desc, asc, like, and, count } from 'drizzle-orm';
+import { eq, desc, asc, and, count, sql } from 'drizzle-orm';
 import { aiExperiences, aiExperienceTools } from '@/db/schema';
 import { db } from '@/db/index';
 import { createLogger } from '@/shared/logger/logger';
+import { matchesExperienceSearch } from '@/shared/utils/experience-search';
 import type { ListAIExperiencesQuery } from './ai-experience.types';
 
 const logger = createLogger('ai-experience-repository');
@@ -87,21 +88,32 @@ export async function getAIExperienceByAccessToken(accessToken: string) {
   }
 }
 
+function listConditions(query: Pick<ListAIExperiencesQuery, 'isActive' | 'pipelineMode' | 'search'>) {
+  const conditions = [];
+  if (query.isActive !== undefined) {
+    conditions.push(eq(aiExperiences.isActive, query.isActive));
+  }
+  if (query.pipelineMode) {
+    conditions.push(eq(aiExperiences.pipelineMode, query.pipelineMode));
+  }
+  if (query.search) {
+    conditions.push(matchesExperienceSearch(aiExperiences, query.search));
+  }
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+/** How many chat experiences match the filters, and how many of those are active: the whole set, not one page. */
+export async function countAIExperiences(query: Pick<ListAIExperiencesQuery, 'isActive' | 'pipelineMode' | 'search'>) {
+  const [row] = await db
+    .select({ total: count(), active: sql<number>`count(*) filter (where ${aiExperiences.isActive})::int` })
+    .from(aiExperiences)
+    .where(listConditions(query));
+  return { total: row?.total ?? 0, active: row?.active ?? 0 };
+}
+
 export async function listAIExperiences(query: ListAIExperiencesQuery) {
   try {
-    const conditions = [];
-
-    if (query.isActive !== undefined) {
-      conditions.push(eq(aiExperiences.isActive, query.isActive));
-    }
-    if (query.pipelineMode) {
-      conditions.push(eq(aiExperiences.pipelineMode, query.pipelineMode));
-    }
-    if (query.search) {
-      conditions.push(like(aiExperiences.name, `%${query.search}%`));
-    }
-
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const whereClause = listConditions(query);
 
     // Get total count
     const [countResult] = await db

@@ -94,12 +94,14 @@ export async function handleListSearchExperiences(request: NextRequest) {
 
     const result = await service.listSearchExperiences(validation.data, userId);
 
-    return apiResponse.successWithPagination(await tokensFor(result.items, 'search-experiences:edit'), {
+    const pagination = {
       page: result.page,
       pageSize: result.pageSize,
       totalPages: result.totalPages,
       totalItems: result.total,
-    });
+      counts: result.counts,
+    };
+    return apiResponse.successWithPagination(await tokensFor(result.items, 'search-experiences:edit'), pagination);
   } catch (error) {
     return apiResponse.error(error as Error, undefined, { operation: 'listSearchExperiences' });
   }

@@ -332,12 +332,13 @@ export async function listSearchExperiences(
   page: number;
   pageSize: number;
   totalPages: number;
+  counts: { total: number; active: number };
 }> {
   // Ensure page and pageSize have defaults (they should from schema, but TypeScript needs assurance)
   const page = query.page ?? 1;
   const pageSize = query.pageSize ?? 20;
 
-  const { items, total } = await repository.listSearchExperiences({
+  const [{ items, total }, counts] = await Promise.all([repository.listSearchExperiences({
     page,
     pageSize,
     search: query.search,
@@ -345,7 +346,7 @@ export async function listSearchExperiences(
     sortBy: query.sortBy,
     sortOrder: query.sortOrder,
     // createdBy not filtered — admin listing shows all experiences (consistent with AI experiences)
-  });
+  }), repository.countSearchExperiences({ search: query.search, isActive: query.isActive })]);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -355,6 +356,7 @@ export async function listSearchExperiences(
     page,
     pageSize,
     totalPages,
+    counts,
   };
 }
 
