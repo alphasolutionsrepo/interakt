@@ -11,7 +11,7 @@
  */
 
 import { eq, sql } from 'drizzle-orm';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ADMIN_ROLE_ID, ALL_PERMISSIONS, REQUIRED_WITH, roleRefusal, type Permission } from './permissions';
@@ -22,6 +22,7 @@ import { updateUserAccess } from './roles.repository';
 
 import * as setupDemoRoute from '@/app/api/admin/setup-demo/route';
 import * as setupDocsRoute from '@/app/api/admin/setup-docs/route';
+import * as aiExperienceRoute from '@/app/api/ai-experiences/[id]/route';
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
 import * as aiTextRoute from '@/app/api/ai-service/text/route';
@@ -40,6 +41,7 @@ import { dataSources } from '@/db/schema/data-sources.schema';
 import { mcpConnections } from '@/db/schema/mcp-connections.schema';
 import { roles } from '@/db/schema/roles.schema';
 import { user } from '@/db/schema/users.schema';
+import { forPickers } from '@/features/access/picker-reads';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 let testDb: AppTestDb;
@@ -626,9 +628,9 @@ describe('review round 2', () => {
     for (const t of tools) expect(t).toMatchObject({ id: expect.any(String), name: expect.any(String), executorType: expect.any(String) });
     const mcp = (await call(mcpRoute.GET, 'GET', '/api/mcp-connections?pageSize=100')).body?.data as Array<Record<string, unknown>>;
     const conn = mcp.find((c) => c.name === tag)!;
-    // Only the host of its address (the path, query or user part can carry a token), and the tools' names
-    expect(conn).toMatchObject({ name: tag, serverUrl: 'mcp.test', discoveredTools: { tools: [{ name: 'lookup', description: 'Looks up' }] } });
-    expect(JSON.stringify(conn)).not.toMatch(/path-token|key=abc|pw@|inputSchema|mcp-token|health detail/);
+    // No address (like a provider's, it can name an internal host or carry a token), and the tools' names
+    expect(conn).toMatchObject({ name: tag, discoveredTools: { tools: [{ name: 'lookup', description: 'Looks up' }] } });
+    expect(JSON.stringify(conn)).not.toMatch(/mcp\.test|path-token|key=abc|pw@|inputSchema|mcp-token|health detail/);
     const templates = JSON.stringify((await call(promptTemplatesRoute.GET, 'GET', '/api/prompt-templates')).body?.data);
     expect(templates).toContain(tag);
     expect(templates).not.toContain('SECRET PROMPT TEXT');
@@ -647,8 +649,8 @@ describe('review round 2', () => {
     await testDb.db.execute(sql`INSERT INTO ai_experience_mcp_connections (ai_experience_id, mcp_connection_id) SELECT ${experienceId}, id FROM mcp_connections WHERE name = ${tag}`);
     const attached = await call(attachmentsRoute.GET, 'GET', `/api/ai-experiences/${experienceId}/mcp-connections`, undefined, { id: experienceId });
     expect(attached.status).toBe(200);
-    expect(attached.body?.data).toMatchObject([{ mcpConnection: { name: tag, serverUrl: 'mcp.test' } }]);
-    expect(JSON.stringify(attached.body?.data)).not.toMatch(/path-token|key=abc|pw@|inputSchema|mcp-token|health detail/);
+    expect(attached.body?.data).toMatchObject([{ mcpConnection: { name: tag } }]);
+    expect(JSON.stringify(attached.body?.data)).not.toMatch(/mcp\.test|path-token|key=abc|pw@|inputSchema|mcp-token|health detail/);
     // A role that views tools sees the attached connection, the MCP list and the tool list whole
     as(await makeUser(await makeRole(`Tool viewers ${n}`, ['tools:view', 'ai-experiences:view'])));
     expect(JSON.stringify((await call(attachmentsRoute.GET, 'GET', `/api/ai-experiences/${experienceId}/mcp-connections`, undefined, { id: experienceId })).body?.data)).toContain('mcp-token');
@@ -680,7 +682,7 @@ describe('review round 2', () => {
     expect(list.body?.data).toContainEqual(expect.objectContaining({ id, name, config: { provider: 'azure_ai_search' } }));
     // A role that views data sources still sees them whole
     as(await makeUser(await makeRole(`Source viewers ${n}`, ['data-sources:view'])));
-    expect((await call(dataSourceRoute.GET, 'GET', `/api/data-sources/${id}`, undefined, { id: id! })).body?.data).toHaveProperty('config');
+    expect(((await call(dataSourceRoute.GET, 'GET', `/api/data-sources/${id}`, undefined, { id: id! })).body?.data as { config: Record<string, unknown> }).config).toHaveProperty('endpoint', 'https://search.internal.test');
   });
 });
 
@@ -855,5 +857,78 @@ describe('the experiences analytics can be scoped to', () => {
     expect(res.status).toBe(200);
     expect(res.body?.data).toEqual(expect.arrayContaining([{ id: expect.any(String), name: `Helper ${tag}`, slug: `helper-${tag}`, type: 'ai', isActive: true }]));
     expect(JSON.stringify(res.body)).not.toContain('00000000c0de');
+  });
+});
+
+describe('the tool and MCP rows an experience read carries', () => {
+  const HIDDEN = /tool\.internal\.test|X-Secret-Header|mcp\.test|path-token|key=abc|pw@|mcp-token|health detail|inputSchema/;
+
+  async function experienceWithRows(tag: string) {
+    const exec = JSON.stringify({ baseUrl: 'https://tool.internal.test', method: 'GET', headers: { 'X-Secret-Header': 'abc' } });
+    const toolId = ((await testDb.db.execute(sql`INSERT INTO tools (name, slug, ai_description, executor_type, executor_config, is_active) VALUES (${tag}, ${tag}, 'Finds things', 'http', ${exec}::jsonb, true) RETURNING id`)) as unknown as { rows: Array<{ id: string }> }).rows[0].id;
+    await testDb.db.execute(sql`INSERT INTO mcp_connections (name, slug, server_url, auth_config, last_health_message, discovered_tools) VALUES (${tag}, ${tag}, 'https://user:pw@mcp.test/sse/path-token?key=abc', '{"type":"bearer","secretRef":"mcp-token"}', 'health detail', '{"tools":[{"name":"lookup","description":"Looks up","inputSchema":{"type":"object"}}]}')`);
+    const id = ((await testDb.db.execute(sql`INSERT INTO ai_experiences (name, slug, created_by, persona_config, session_config, access_config, observability_config) VALUES (${tag}, ${tag}, ${admin}, '{}', '{}', '{}', '{}') RETURNING id`)) as unknown as { rows: Array<{ id: string }> }).rows[0].id;
+    await testDb.db.execute(sql`INSERT INTO ai_experience_tools (ai_experience_id, tool_id) VALUES (${id}, ${toolId})`);
+    await testDb.db.execute(sql`INSERT INTO ai_experience_mcp_connections (ai_experience_id, mcp_connection_id) SELECT ${id}, id FROM mcp_connections WHERE name = ${tag}`);
+    return id;
+  }
+
+  it('are cut down for a role that cannot view tools, on the list, the experience and an update', async () => {
+    const tag = `embed${n}`;
+    const id = await experienceWithRows(tag);
+    for (const perms of [['ai-experiences:edit'], ['playground:use']] as Permission[][]) {
+      as(await makeUser(await makeRole(`No tools ${perms[0]} ${n}`, perms)));
+      const list = await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences?pageSize=100');
+      const one = await call(aiExperienceRoute.GET, 'GET', `/api/ai-experiences/${id}`, undefined, { id });
+      for (const answer of [list, one]) {
+        expect(answer.status).toBe(200);
+        expect(JSON.stringify(answer.body?.data)).not.toMatch(HIDDEN);
+      }
+      const row = (one.body?.data as { tools: Array<{ tool: Record<string, unknown> }>; mcpConnections: Array<{ mcpConnection: Record<string, unknown> }> });
+      // What the experience's own page and pickers still read
+      expect(row.tools[0].tool).toMatchObject({ name: tag, slug: tag, executorType: 'http', isActive: true });
+      expect(row.mcpConnections[0].mcpConnection).toMatchObject({ name: tag, discoveredTools: { tools: [{ name: 'lookup', description: 'Looks up' }] } });
+    }
+    as(await makeUser(await makeRole(`Editor ${n}`, ['ai-experiences:edit'])));
+    const updated = await call(aiExperienceRoute.PUT, 'PUT', `/api/ai-experiences/${id}`, { description: 'changed' }, { id });
+    expect(updated.status).toBe(200);
+    expect(JSON.stringify(updated.body?.data)).not.toMatch(HIDDEN);
+  });
+
+  it('stay whole for a role that views tools', async () => {
+    const id = await experienceWithRows(`whole${n}`);
+    as(await makeUser(await makeRole(`Tool viewer ${n}`, ['tools:view', 'ai-experiences:view'])));
+    const one = await call(aiExperienceRoute.GET, 'GET', `/api/ai-experiences/${id}`, undefined, { id });
+    expect(JSON.stringify(one.body?.data)).toMatch(/tool\.internal\.test/);
+    expect(JSON.stringify(one.body?.data)).toMatch(/mcp-token/);
+  });
+});
+
+describe("an index's fields for a search editor", () => {
+  it('carry only what the display field picker shows, and stay whole for a role that views indexes', async () => {
+    const indexId = ((await testDb.db.execute(sql`INSERT INTO search_index (name, display_name, search_type) VALUES (${`fields-index-${n}`}, 'Fields', 'lexical') RETURNING id`)) as unknown as { rows: Array<{ id: string }> }).rows[0].id;
+    await testDb.db.execute(sql`INSERT INTO search_index_fields (search_index_id, field_name, field_type, display_name, boost_value, include_in_response) VALUES (${indexId}, 'title', 'text', 'Title', 7, true)`);
+    as(await makeUser(await makeRole(`Search editors fields ${n}`, ['search-experiences:edit'])));
+    const fields = (await call(indexFieldsRoute.GET, 'GET', `/api/search-indexes/${indexId}/fields`, undefined, { id: indexId })).body?.data as Array<Record<string, unknown>>;
+    expect(fields).toEqual([{ id: expect.anything(), fieldName: 'title', displayName: 'Title', fieldType: 'text', includeInResponse: true }]);
+    as(await makeUser(await makeRole(`Index viewers fields ${n}`, ['search-indexes:view'])));
+    const whole = (await call(indexFieldsRoute.GET, 'GET', `/api/search-indexes/${indexId}/fields`, undefined, { id: indexId })).body?.data as Array<Record<string, unknown>>;
+    expect(whole[0]).toHaveProperty('boostValue', 7);
+  });
+});
+
+describe('a picker route whose answer the cut does not know', () => {
+  const route = (answer: () => Response) => forPickers('tools', 'tools', async () => answer());
+
+  it('refuses a success answer without rows, or that is not JSON, instead of sending it uncut', async () => {
+    as(await makeUser(await makeRole(`Chat pickers odd ${n}`, ['ai-experiences:edit'])));
+    expect((await call(route(() => NextResponse.json({ success: true, secret: 'x' })), 'GET', '/api/x')).status).toBe(500);
+    expect((await call(route(() => new Response('plain secret', { status: 200 })), 'GET', '/api/x')).status).toBe(500);
+  });
+
+  it('passes an error answer and an empty answer on as they are', async () => {
+    as(await makeUser(await makeRole(`Chat pickers err ${n}`, ['ai-experiences:edit'])));
+    expect((await call(route(() => NextResponse.json({ success: false, error: 'nope' }, { status: 404 })), 'GET', '/api/x')).status).toBe(404);
+    expect((await call(route(() => new Response(null, { status: 204 })), 'GET', '/api/x')).status).toBe(204);
   });
 });

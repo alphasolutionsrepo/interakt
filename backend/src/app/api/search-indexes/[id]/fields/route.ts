@@ -9,14 +9,13 @@
 import { NextRequest } from 'next/server';
 
 import { forBuiltInChange } from '@/features/access/built-in';
-import { PICKER_READERS } from '@/features/access/permissions';
-import { withPermission } from '@/features/access/route-guard';
+import { forPickers } from '@/features/access/picker-reads';
 import {
     handleGetFields,
     handleCreateField,
 } from '@/features/search-index/search-index.api.handlers';
 
-export const GET = withPermission(PICKER_READERS.indexes, async function GET(
+export const GET = forPickers('indexes', 'indexFields', async function GET(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {

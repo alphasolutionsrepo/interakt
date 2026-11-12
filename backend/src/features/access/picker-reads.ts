@@ -4,7 +4,7 @@
  * The list reads an experience editor's pickers make. Open to anyone in PICKER_READERS, but a
  * role without the list's own view permission gets each row cut down to what the picker shows
  * (an allow-list): no connection settings, auth settings, health messages, prompt text, document
- * samples, or anything in an MCP address beyond its host.
+ * samples, or an MCP address (like an AI provider's address, it can name an internal host).
  */
 
 import 'server-only';
@@ -22,15 +22,6 @@ const isRow = (v: unknown): v is Row => !!v && typeof v === 'object' && !Array.i
 const only = (keys: readonly string[]) => (row: Row): Row =>
   Object.fromEntries(keys.filter((k) => k in row).map((k) => [k, row[k]]));
 
-/** The host of an MCP address only: its path, query or user part can carry a token */
-function hostOf(url: unknown): string | undefined {
-  try {
-    return typeof url === 'string' ? new URL(url).host : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** A field's name and how it can be used, without the values sampled from documents (`profile`) */
 const schemaWithoutSamples = (schema: unknown): unknown => {
   const strip = (fields: unknown) => (Array.isArray(fields) ? fields.map((f) => (isRow(f) ? (({ profile: _, ...rest }) => rest)(f) : f)) : fields);
@@ -41,14 +32,12 @@ const schemaWithoutSamples = (schema: unknown): unknown => {
 /** What each picker shows of a row */
 export const PICKER_FIELDS = {
   tools: only(['id', 'name', 'slug', 'description', 'aiDescription', 'executorType', 'operation', 'notReadyReason', 'isActive', 'isBuiltIn']),
-  /** The tool names and descriptions to switch on, and the host to tell connections apart */
+  /** The tool names and descriptions to switch on; the name tells connections apart */
   mcpConnections: (row: Row): Row => {
     const catalog = row.discoveredTools as { tools?: unknown } | null | undefined;
     const tools = Array.isArray(catalog?.tools) ? catalog.tools.map((t) => (isRow(t) ? only(['name', 'description'])(t) : t)) : undefined;
-    const host = hostOf(row.serverUrl);
     return {
       ...only(['id', 'name', 'slug', 'description', 'transport', 'status', 'isActive', 'isBuiltIn'])(row),
-      ...(host !== undefined && { serverUrl: host }),
       ...(tools !== undefined && { discoveredTools: { tools } }),
     };
   },
@@ -63,6 +52,8 @@ export const PICKER_FIELDS = {
     };
   },
   indexes: only(['id', 'name', 'displayName', 'description', 'searchType', 'searchProvider', 'status', 'documentCount', 'isActive', 'isBuiltIn']),
+  /** The fields of an index the display-field picker lists: no filter values or field settings */
+  indexFields: only(['id', 'fieldName', 'displayName', 'fieldType', 'includeInResponse']),
 } satisfies Record<string, (row: Row) => Row>;
 
 /** `data` as a picker reader sees it: a list, a page (`items`), one row, or (byStep) a row per step */
@@ -77,12 +68,16 @@ function cutDown(data: unknown, pick: (row: Row) => Row, byStep: boolean): unkno
 /** `res` as is for a caller holding `view`; otherwise its JSON `data` reshaped by `shape` */
 async function cutUnless(res: Response, view: Permission, shape: (data: unknown) => unknown): Promise<Response> {
   const { access } = await checkAccess(SIGNED_IN);
-  if ((access && can(access, view)) || !res.headers.get('content-type')?.includes('application/json')) return res;
-  const body = (await res.json()) as unknown;
+  // A caller who views the list, or an answer that carries no rows (an error, an empty answer)
+  if ((access && can(access, view)) || !res.ok || res.status === 204) return res;
+  // An answer of a shape the cut doesn't know is refused, never passed on uncut
+  const body = res.headers.get('content-type')?.includes('application/json') ? ((await res.json()) as unknown) : null;
+  if (!isRow(body) || !('data' in body)) {
+    return NextResponse.json({ success: false, error: 'The answer could not be shaped for your role.' }, { status: 500 });
+  }
   const headers = new Headers(res.headers);
   headers.delete('content-length');
-  const shaped = isRow(body) && 'data' in body ? { ...body, data: shape(body.data) } : body;
-  return NextResponse.json(shaped, { status: res.status, headers });
+  return NextResponse.json({ ...body, data: shape(body.data) }, { status: res.status, headers });
 }
 
 /**
@@ -113,4 +108,25 @@ export function forExperienceMcpAttachments<A extends unknown[]>(handler: (...ar
         : data,
     ),
   );
+}
+
+/**
+ * An experience read (list, one experience, create, update) for anyone who may read experiences:
+ * a caller who can't view tools gets the tool and MCP connection rows attached to it as the
+ * pickers show them. The one place these embedded rows are cut, so no experience read can
+ * hand out a row the tool and MCP lists would cut.
+ */
+export function forExperienceRows<A extends unknown[]>(handler: (...args: A) => Response | Promise<Response>) {
+  const cutExperience = (exp: unknown): unknown => {
+    if (!isRow(exp)) return exp;
+    const cutEach = (list: unknown, key: string, pick: (row: Row) => Row) =>
+      Array.isArray(list) ? list.map((a) => (isRow(a) && isRow(a[key]) ? { ...a, [key]: pick(a[key] as Row) } : a)) : list;
+    return {
+      ...exp,
+      ...('tools' in exp && { tools: cutEach(exp.tools, 'tool', PICKER_FIELDS.tools) }),
+      ...('mcpConnections' in exp && { mcpConnections: cutEach(exp.mcpConnections, 'mcpConnection', PICKER_FIELDS.mcpConnections) }),
+    };
+  };
+  return async (...args: A): Promise<Response> =>
+    cutUnless(await handler(...args), 'tools:view', (data) => (Array.isArray(data) ? data.map(cutExperience) : cutExperience(data)));
 }

@@ -89,9 +89,9 @@ export class ForbiddenError extends SearchExperienceError {
 // ============================================================================
 
 /**
- * Create a new search experience
+ * Create a new search experience. `builtIn` is for the docs setup only: the row is the built-in
+ * help from its first write.
  */
-/** `builtIn` is for the docs setup only: the row is the built-in help from its first write. */
 export async function createSearchExperience(
   input: CreateSearchExperienceDTO,
   createdBy: string,

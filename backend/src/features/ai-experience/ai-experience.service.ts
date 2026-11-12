@@ -172,7 +172,6 @@ export async function listAIExperiences(query: ListAIExperiencesQuery): Promise<
   };
 }
 
-
 export async function updateAIExperience(id: string, input: UpdateAIExperienceDTO, userId: string) {
   const existing = await repository.getAIExperienceById(id);
   if (!existing) return null;
