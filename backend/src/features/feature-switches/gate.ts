@@ -23,12 +23,15 @@ import { routeArea } from './route-areas';
 import { publicRoute } from '@/shared/api/public-route';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
+import { createLogger } from '@/shared/logger/logger';
 
 export function turnedOff(): NextResponse {
   return apiResponse.error(new AppError(TURNED_OFF_MESSAGE, { code: TURNED_OFF_CODE, status: 404 }), 404, { operation: 'featureTurnedOff' });
 }
 
 /** null when every area is on; else the 404, or the error when the switches couldn't be read. */
+const logger = createLogger('feature-switches');
+
 async function refuseUnlessOn(areas: readonly Area[], anyOf = false): Promise<NextResponse | null> {
   try {
     for (const area of areas) {
@@ -64,7 +67,12 @@ function routeOf(request: unknown): { pathname: string; method: string } | null 
 export async function refuseIfRouteOff(request: unknown): Promise<NextResponse | null> {
   const route = routeOf(request);
   const area = route && routeArea(route.pathname, route.method);
-  if (!area) return null; // every route has a rule (features/access/routes.access.test.ts)
+  if (!area) {
+    // Every route has a rule (features/access/routes.access.test.ts); a path shape no rule
+    // models is let through, and said so
+    if (route) logger.warn('No feature area for this route; the request is not checked', { pathname: route.pathname, method: route.method });
+    return null;
+  }
   return refuseUnlessOn(area.areas);
 }
 

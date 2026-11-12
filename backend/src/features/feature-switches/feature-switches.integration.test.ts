@@ -32,6 +32,10 @@ import * as slugChatRoute from '@/app/api/v1/ai-experiences/[slug]/chat/route';
 import * as widgetConfigRoute from '@/app/api/v1/ai-experiences/widget-config/route';
 import * as embedSnippetRoute from '@/app/api/v1/embed-snippet/route';
 import * as searchRoute from '@/app/api/v1/search/route';
+import * as tokenChatRoute from '@/app/api/v1/ai-experiences/chat/route';
+import * as autocompleteRoute from '@/app/api/v1/autocomplete/route';
+import * as publicDocumentRoute from '@/app/api/v1/documents/[documentId]/route';
+import * as cacheStatsRoute from '@/app/api/search-indexes/cache/stats/route';
 import * as slugSearchRoute from '@/app/api/v1/search/[slug]/search/route';
 import * as slugSummarizeRoute from '@/app/api/v1/search/[slug]/summarize/route';
 import * as summarizeRoute from '@/app/api/v1/summarize/route';
@@ -64,7 +68,8 @@ vi.mock('@/features/dashboard/home.service', async (original) => ({
   ...(await original<typeof import('@/features/dashboard/home.service')>()),
   getHomeData: async () => ({
     generatedAt: '2026-11-12T00:00:00Z', analytics: true, period: { from: '', to: '', label: '', previousLabel: '', days: [] },
-    live: { requestsLast5Min: 3 }, health: null, checklist: null, tasks: [], recent: [], experiences: [],
+    live: { requestsLast5Min: 3 }, health: null, checklist: null,
+    tasks: [{ id: 'task', href: '/ai-experiences' }], recent: [{ id: 'recent', href: '/ai-experiences' }], experiences: [{ id: 'exp', href: '/ai-experiences', volume: 5, issue: null, trend: [1] }],
     metrics: [{ id: 'requests' }], cards: [{ id: 'c', href: '/analytics' }], tips: [{ id: 't', action: { href: '/analytics' } }],
   }),
 }));
@@ -232,6 +237,46 @@ describe('an area switched off', () => {
     expect(await summarize()).toMatchObject(turnedOff);
   });
 
+  it('refuses the token chat, autocomplete and document routes by the experience\'s own area, with the Help assistant on', async () => {
+    const chatToken = { 'X-Access-Token': chat.accessToken };
+    const searchToken = { 'X-Access-Token': search.accessToken };
+    const tokenChat = () => call(tokenChatRoute.POST, 'POST', '/api/v1/ai-experiences/chat', { headers: chatToken, body: { message: 'hi' } });
+    const autocomplete = () => call(autocompleteRoute.POST, 'POST', '/api/v1/autocomplete', { headers: searchToken, body: { query: 'ja' } });
+    const document = () => call(publicDocumentRoute.GET, 'GET', '/api/v1/documents/d1', { headers: searchToken, params: { documentId: 'd1' } });
+    const notOff = (r: { body: Record<string, unknown> | null }) => expect(r.body).not.toMatchObject({ code: TURNED_OFF_CODE });
+    notOff(await tokenChat());
+    notOff(await autocomplete());
+    notOff(await document());
+
+    await switchAreas({ chat: false });
+    expect(await tokenChat()).toMatchObject(turnedOff);
+    notOff(await autocomplete());
+    await switchAreas({ chat: true, search: false });
+    expect(await autocomplete()).toMatchObject(turnedOff);
+    expect(await document()).toMatchObject(turnedOff);
+  });
+
+  it('keeps Playground on while either Search or Chat is on, and turns it off with both off', async () => {
+    await switchAreas({ chat: false });
+    expect(await isAreaOn('playground')).toBe(true);
+    await switchAreas({ chat: true, search: false });
+    expect(await isAreaOn('playground')).toBe(true);
+    await switchAreas({ chat: false, search: false });
+    expect(await isAreaOn('playground')).toBe(false);
+  });
+
+  it('says "turned off", not "not found", for the docs search that was switched off before it was ever built', async () => {
+    const docsSearch = () => call(slugSearchRoute.POST, 'POST', '/api/v1/search/interakt-docs/search', { params: { slug: 'interakt-docs' }, body: { query: 'q' } });
+    expect((await docsSearch()).body).toMatchObject({ code: 'NOT_FOUND' });
+    await switchAreas({ 'help-assistant': false });
+    expect(await docsSearch()).toMatchObject(turnedOff);
+  });
+
+  it('keeps Settings → Cache on, index card included, with Managed indexes off', async () => {
+    await switchAreas({ 'managed-indexes': false });
+    expect((await call(cacheStatsRoute.GET, 'GET', '/api/search-indexes/cache/stats')).body).not.toMatchObject({ code: TURNED_OFF_CODE });
+  });
+
   it('keeps the index lists the experience and data-source pickers read, with Managed indexes off', async () => {
     const index = '00000000-0000-4000-8000-0000000000aa';
     await switchAreas({ 'managed-indexes': false });
@@ -303,7 +348,11 @@ describe('an area switched off', () => {
     expect(await home()).toMatchObject({ analytics: true, metrics: [{ id: 'requests' }] });
 
     await switchAreas({ analytics: false });
-    expect(await home()).toMatchObject({ analytics: false, metrics: [], cards: [], tips: [] });
+    // The analytics figures go; the rest of the page stays
+    expect(await home()).toMatchObject({
+      analytics: false, metrics: [], cards: [], tips: [],
+      tasks: [{ id: 'task' }], recent: [{ id: 'recent' }], experiences: [{ id: 'exp' }],
+    });
     expect(await call(homeTipsRoute.POST, 'POST', '/api/dashboard/home/tips', { body: { tipId: 'tip-1' } })).toMatchObject(turnedOff);
   });
 

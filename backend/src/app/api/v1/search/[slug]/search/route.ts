@@ -23,7 +23,8 @@ import * as repository from '@/features/search-experience/search-experience.repo
 import { publicSearchRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import type { PublicSearchRequest } from '@/features/search-experience/search-experience.types';
 import { flushTelemetry, runWithTelemetryLevel } from '@/features/telemetry';
-import { publicApiRoute } from '@/features/feature-switches/gate';
+import { publicApiRoute, refuseHelpIfOff } from '@/features/feature-switches/gate';
+import { DOCS_SEARCH_SLUG } from '@/shared/help/help-content';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
@@ -50,6 +51,11 @@ async function post(
     const baseExperience = await repository.getSearchExperienceBySlug(slug);
 
     if (!baseExperience) {
+      // The built-in docs search, switched off before it was ever built: "turned off", not "not found"
+      if (slug === DOCS_SEARCH_SLUG) {
+        const off = await refuseHelpIfOff();
+        if (off) return off;
+      }
       return apiResponse.notFound('Search experience not found');
     }
 
