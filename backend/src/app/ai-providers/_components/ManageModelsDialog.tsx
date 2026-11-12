@@ -314,6 +314,7 @@ export function ManageModelsDialog({
                     description: data.description,
                     modelType: data.modelType,
                     dimensions: data.modelType === 'embedding' ? data.dimensions : null,
+                    canShortenVectors: data.modelType === 'embedding' ? data.canShortenVectors : undefined,
                     isAvailable: data.isAvailable,
                     inputCostPerMillionTokens: data.inputCostPerMillionTokens,
                     outputCostPerMillionTokens: data.outputCostPerMillionTokens,

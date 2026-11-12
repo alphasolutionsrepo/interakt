@@ -20,6 +20,26 @@ import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('embedding-service');
 
+/**
+ * The vector size the stores that use these helpers keep (knowledge chunks, session messages,
+ * memories are fixed vector(1536) columns), and what memory retrieval compares against. It is
+ * sent to models marked able to shorten their vectors, so a model registered at its own larger
+ * size still fits.
+ */
+export const STORED_VECTOR_SIZE = 1536;
+
+/** Options for the helpers below. */
+export type EmbedOptions = EmbeddingOptions & {
+  /**
+   * The vectors are kept somewhere that is not a fixed-size column (the topic gate keeps its
+   * vectors in rule config JSON). Leave the size to the model's own registered size.
+   */
+  keepModelSize?: boolean;
+};
+
+const storedSize = ({ keepModelSize, ...options }: EmbedOptions): EmbeddingOptions =>
+  keepModelSize ? options : { ...options, dimensions: options.dimensions ?? STORED_VECTOR_SIZE };
+
 // ============================================================================
 // EMBEDDING GENERATION
 // ============================================================================
@@ -30,12 +50,12 @@ const logger = createLogger('embedding-service');
  */
 export async function embed(
   text: string,
-  options: EmbeddingOptions,
+  options: EmbedOptions,
 ): Promise<number[] | null> {
   if (!text.trim()) return null;
 
   try {
-    return await generateEmbedding(text, options);
+    return await generateEmbedding(text, storedSize(options));
   } catch (error) {
     logger.error('Failed to generate embedding', error as Error);
     return null;
@@ -48,12 +68,12 @@ export async function embed(
  */
 export async function embedBatch(
   texts: string[],
-  options: EmbeddingOptions,
+  options: EmbedOptions,
 ): Promise<Array<number[] | null>> {
   if (texts.length === 0) return [];
 
   try {
-    const result = await generateEmbeddings(texts, options);
+    const result = await generateEmbeddings(texts, storedSize(options));
     // Map results back by index, filling nulls for any gaps
     const vectors: Array<number[] | null> = new Array(texts.length).fill(null);
     for (const entry of result.embeddings) {

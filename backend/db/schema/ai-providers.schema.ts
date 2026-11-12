@@ -158,6 +158,9 @@ export const aiProviderModels = pgTable('ai_provider_models', {
 
   // Embedding-specific
   dimensions: integer('dimensions'), // Vector dimensions for embedding models
+  // The model can return shorter vectors when asked (Matryoshka-trained). Only these models are
+  // sent a vector size; for any other a wrong size keeps failing loudly.
+  canShortenVectors: boolean('can_shorten_vectors').default(false).notNull(),
 
   // Capabilities (JSON)
   capabilities: json('capabilities').$type<AIModelCapabilities>().default({}),

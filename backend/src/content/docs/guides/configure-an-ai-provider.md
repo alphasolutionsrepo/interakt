@@ -36,6 +36,8 @@ By default, the OpenAI provider registers:
 
 Add others via **Manage Models** on the provider row.
 
+An embedding model that can return shorter vectors on request (such as `qwen3-embedding` or `text-embedding-3-small`) has **Can shorten vectors** switched on. Interakt then asks it for the vector size the index expects, so it fits an index set up for fewer dimensions. New models of these families start with it on; for any other embedding model, switch it on only if the model supports it.
+
 ### Troubleshooting
 
 | Error | Fix |

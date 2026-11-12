@@ -23,9 +23,16 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 
+import { createLogger } from '@/shared/logger/logger';
+
 import { estimateChatUsage } from '../utils/token-counter';
-import { withoutUnsupportedReasoning } from './reasoning-fallback';
+import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal, wasAborted } from './types';
+
+const logger = createLogger('ollama-adapter');
+
+/** Servers and models already reported as unable to take a vector size on the older endpoint */
+const warnedLegacyNoDimensions = new Set<string>();
 
 
 /**
@@ -195,6 +202,8 @@ interface OllamaChatResponse {
 interface OllamaEmbeddingRequest {
     model: string;
     input: string | string[];
+    /** Shortens the vector (Matryoshka models such as qwen3-embedding) */
+    dimensions?: number;
 }
 
 interface OllamaEmbeddingResponse {
@@ -356,15 +365,16 @@ export class OllamaAdapter implements AIProviderAdapter {
         const ollamaRequest: OllamaEmbeddingRequest = {
             model: config.modelKey,
             input: request.texts,
+            ...(request.dimensions && { dimensions: request.dimensions }),
         };
 
         try {
             // Try new /api/embed endpoint first (Ollama 0.1.44+)
-            const response = await this.makeRequest<OllamaEmbeddingResponse>(
+            const response = await withoutUnsupportedDimensions<OllamaEmbeddingRequest, OllamaEmbeddingResponse>(config.baseUrl, ollamaRequest, (answer) => answer.embeddings[0]?.length ?? 0, (body) => this.makeRequest<OllamaEmbeddingResponse>(
                 `${config.baseUrl}/api/embed`,
-                ollamaRequest,
+                body,
                 config
-            );
+            ));
 
             return {
                 embeddings: response.embeddings,
@@ -374,6 +384,14 @@ export class OllamaAdapter implements AIProviderAdapter {
         } catch (error) {
             // Fall back to legacy /api/embeddings endpoint (processes one at a time)
             if ((error as AdapterError).statusCode === 404) {
+                const key = `${config.baseUrl}|${config.modelKey}`;
+                if (request.dimensions && !warnedLegacyNoDimensions.has(key)) {
+                    warnedLegacyNoDimensions.add(key);
+                    logger.warn('This Ollama only has the older embeddings endpoint, which cannot take a vector size; sent without it', {
+                        model: config.modelKey,
+                        dimensions: request.dimensions,
+                    });
+                }
                 return this.generateEmbeddingsLegacy(request, config);
             }
             throw error;

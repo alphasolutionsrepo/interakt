@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import type { AIProviderModelResponse, UpdateAIModelInput } from '@/features/ai-providers';
 import { modelFieldRules, modelTypeSchema } from '@/features/ai-providers/ai-providers.validation';
+import { canShortenVectorsByDefault } from '@/features/ai-providers/shortenable-embeddings';
 
 import { capabilitiesFromForm, REASONING_CHOICES, reasoningChoiceOf, type ReasoningChoice } from './model-capabilities';
 
@@ -54,6 +55,7 @@ export function formValuesOf(model: AIProviderModelResponse): ModelFormData {
         description: model.description || '',
         modelType: model.modelType as ModelFormData['modelType'],
         dimensions: model.dimensions || undefined,
+        canShortenVectors: model.canShortenVectors === true,
         isAvailable: model.isAvailable,
         inputCostPerMillionTokens: model.inputCostPerMillionTokens ?? undefined,
         outputCostPerMillionTokens: model.outputCostPerMillionTokens ?? undefined,
@@ -70,6 +72,7 @@ export interface ModelFormSubmission {
     description?: string | null;
     modelType: 'text' | 'chat' | 'embedding' | 'vision';
     dimensions?: number | null;
+    canShortenVectors?: boolean;
     isAvailable: boolean;
     inputCostPerMillionTokens?: number | null;
     outputCostPerMillionTokens?: number | null;
@@ -88,9 +91,18 @@ export function modelUpdateInput(model: AIProviderModelResponse, data: ModelForm
         description: data.description,
         // Only update dimensions if it's an embedding model
         dimensions: model.modelType === 'embedding' ? data.dimensions : undefined,
+        canShortenVectors: model.modelType === 'embedding' ? data.canShortenVectors : undefined,
         isAvailable: data.isAvailable,
         inputCostPerMillionTokens: data.inputCostPerMillionTokens,
         outputCostPerMillionTokens: data.outputCostPerMillionTokens,
         capabilities: capabilitiesFromForm(data, (model.capabilities as Record<string, unknown> | undefined) ?? {}),
     };
+}
+
+/**
+ * The "Can shorten vectors" switch for a model being added, as the key or type changes: the
+ * known-family default until the admin has set the switch themselves, then their choice.
+ */
+export function shortenSwitchFor(touchedByAdmin: boolean, current: boolean, modelKey: string, modelType: string): boolean {
+    return touchedByAdmin ? current : canShortenVectorsByDefault(modelKey, modelType);
 }

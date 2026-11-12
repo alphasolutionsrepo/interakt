@@ -13,6 +13,7 @@ import { aiProviders, aiProviderModels, systemDefaults } from '@/db/schema/ai-pr
 import { eq } from 'drizzle-orm';
 import { discoverOllamaModels } from '@/features/ai-providers/ai-providers.service';
 import * as registryService from '../seed-registry.service';
+import { canShortenVectorsByDefault } from '@/features/ai-providers/shortenable-embeddings';
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import {
     AI_PROVIDER_SEEDS,
@@ -408,7 +409,7 @@ async function resolveDefaultModel(providerId: string, preferredKey: string, typ
 /**
  * Create a provider with its models from seed data
  */
-async function createProviderFromSeed(seed: SeedAIProvider) {
+export async function createProviderFromSeed(seed: SeedAIProvider) {
     // Create provider
     const [provider] = await db
         .insert(aiProviders)
@@ -434,6 +435,7 @@ async function createProviderFromSeed(seed: SeedAIProvider) {
                 description: model.description,
                 modelType: model.modelType,
                 dimensions: model.dimensions ?? null,
+                canShortenVectors: canShortenVectorsByDefault(model.modelKey, model.modelType),
                 capabilities: model.capabilities,
                 isAvailable: true,
                 isDiscovered: false,
