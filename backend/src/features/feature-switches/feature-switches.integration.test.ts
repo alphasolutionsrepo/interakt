@@ -208,7 +208,7 @@ describe('an area switched off', () => {
     expect(aiService.chat).not.toHaveBeenCalled();
     // On, the same call reaches the model (which here has nothing to answer with)
     await switchAreas({ 'ai-summaries': true });
-    console.log('DBG', JSON.stringify(await (await import('@/features/search-index/search-index.service')).getSearchIndexById(QU_INDEX)), 'consRuns',  JSON.stringify(await understand().catch((e) => String(e))));
+    await understand().catch(() => undefined);
     expect(aiService.chat).toHaveBeenCalled();
   });
 
