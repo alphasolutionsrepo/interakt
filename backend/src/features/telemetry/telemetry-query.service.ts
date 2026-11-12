@@ -13,6 +13,7 @@ import { and, count, desc, eq, gte, lte, sql, avg, like, asc, or } from 'drizzle
 import { ATTR } from './attribute-keys';
 import type { TraceListFacts } from './telemetry.types';
 import { createLogger } from '@/shared/logger/logger';
+import { escapeLikePattern } from '@/shared/utils/like-pattern';
 
 const logger = createLogger('telemetry-query');
 
@@ -96,17 +97,6 @@ export interface SpanFilterOptions {
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-/**
- * Escape special SQL LIKE pattern characters in user input.
- *
- * Postgres LIKE/ILIKE uses backslash as the default escape character, so the
- * backslash itself must be escaped first — otherwise user input containing a
- * '\' produces a dangling escape sequence (malformed pattern / wrong matches).
- */
-function escapeLikePattern(input: string): string {
-  return input.replace(/[\\%_]/g, '\\$&');
-}
 
 function getDateRange(timeRange: TimeRange, period?: { from: Date; to: Date }): { from: Date; to: Date } {
   // An explicit period from the analytics pages wins over the preset

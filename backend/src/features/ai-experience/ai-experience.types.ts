@@ -58,6 +58,8 @@ export interface AIExperienceWithTools {
   sessionConfig: SessionConfig;
   accessToken: string;
   accessConfig: AccessConfig;
+  /** Part of the built-in help: only an Admin changes it */
+  isBuiltIn: boolean;
   observabilityConfig: ObservabilityConfig;
   providerId: string | null;
   modelId: number | null;
@@ -134,5 +136,7 @@ export interface AIExperienceListResponse {
     pageSize: number;
     totalPages: number;
     totalItems: number;
+    /** All experiences matching the filters, and how many of them are active: not just this page */
+    counts: { total: number; active: number };
   };
 }

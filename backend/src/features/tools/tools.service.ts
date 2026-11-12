@@ -111,7 +111,11 @@ export async function createToolsForDataSource(
   schema?: DataSourceSchema | null,
   userId?: string,
   /** Which tools count as already there (default: every tool on the data source) */
-  options: { counting?: (tool: Tool) => boolean } = {},
+  options: {
+    counting?: (tool: Tool) => boolean;
+    /** For the docs setup only: the tools are part of the built-in help from their first write */
+    builtIn?: boolean;
+  } = {},
 ): Promise<Tool[]> {
   const operations = getOperationsForDataSource(dataSourceType);
   const existingTools = (await repository.getToolsByDataSourceId(dataSourceId)).filter(options.counting ?? (() => true));
@@ -170,6 +174,7 @@ export async function createToolsForDataSource(
       dataSourceId,
       isSystem: true,
       createdBy: userId,
+      ...(options.builtIn && { isBuiltIn: true }),
     });
 
     createdTools.push(tool);

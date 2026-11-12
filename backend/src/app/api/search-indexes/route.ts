@@ -8,13 +8,14 @@
 
 import { NextRequest } from 'next/server';
 
+import { forPickers } from '@/features/access/picker-reads';
 import { withPermission } from '@/features/access/route-guard';
 import {
     handleListSearchIndexes,
     handleCreateSearchIndex,
 } from '@/features/search-index/search-index.api.handlers';
 
-export const GET = withPermission('search-indexes:view', async function GET(request: NextRequest) {
+export const GET = forPickers('indexes', 'indexes', async function GET(request: NextRequest) {
     return handleListSearchIndexes(request);
 });
 
