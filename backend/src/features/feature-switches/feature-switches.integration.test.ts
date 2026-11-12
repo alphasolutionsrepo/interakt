@@ -177,6 +177,15 @@ describe('an area switched off', () => {
     expect(await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, key)).toMatchObject(turnedOff);
   });
 
+  it('says "turned off", not "not found", for the Help assistant that was switched off before it was ever built', async () => {
+    const help = () => call(slugChatRoute.POST, 'POST', '/api/v1/ai-experiences/help-assistant/chat', { params: { slug: 'help-assistant' }, body: { message: 'hi' } });
+    // On, and never built: an ordinary "not found" (the drawer says "not set up")
+    expect((await help()).body).toMatchObject({ code: 'NOT_FOUND' });
+
+    await switchAreas({ 'help-assistant': false });
+    expect(await help()).toMatchObject(turnedOff);
+  });
+
   it('keeps the index lists the experience and data-source pickers read, with Managed indexes off', async () => {
     const index = '00000000-0000-4000-8000-0000000000aa';
     await switchAreas({ 'managed-indexes': false });

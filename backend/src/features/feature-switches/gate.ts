@@ -114,6 +114,14 @@ export async function refuseSessionIfPlaygroundOff(experience: { isBuiltIn?: boo
   return refuseUnlessOn(['playground']);
 }
 
+/**
+ * For a built-in help experience that doesn't exist yet: the 404 "turned off" when the Help
+ * assistant is off, so the drawer says so instead of "not set up", or null.
+ */
+export async function refuseHelpIfOff(): Promise<NextResponse | null> {
+  return refuseUnlessOn(['help-assistant']);
+}
+
 /** Marks a route wrapped by publicApiRoute (a test checks every /api/v1 route is). */
 export const FEATURE_GATED = Symbol.for('interakt.featureGated');
 

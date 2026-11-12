@@ -22,7 +22,8 @@ import { chatRequestSchema } from '@/features/ai-experience/ai-experience.valida
 import { aiExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { chatEventStream } from '@/features/pipeline/chat-event-stream';
-import { publicApiRoute } from '@/features/feature-switches/gate';
+import { publicApiRoute, refuseHelpIfOff } from '@/features/feature-switches/gate';
+import { HELP_EXPERIENCE_SLUG } from '@/shared/help/help-content';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 
@@ -45,6 +46,11 @@ async function post(
     // ── Load experience ────────────────────────────────────────────────────────
     const experience = await getAIExperienceBySlug(slug);
     if (!experience) {
+      // The built-in help, switched off before it was ever built: "turned off", not "not found"
+      if (slug === HELP_EXPERIENCE_SLUG) {
+        const off = await refuseHelpIfOff();
+        if (off) return off;
+      }
       return apiResponse.notFound('AI Experience not found');
     }
     if (!experience.isActive) {

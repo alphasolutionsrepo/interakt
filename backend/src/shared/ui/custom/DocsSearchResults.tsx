@@ -112,7 +112,7 @@ export function DocsSearchResults({
       <footer className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-2 text-[11px] text-muted-foreground">
         <span role="status" className="truncate">
           {search.fallback
-            ? 'Matching page titles only — full-text docs search is still being set up.'
+            ? `Matching page titles only — full-text docs search is ${search.turnedOff ? 'turned off for this installation' : 'still being set up'}.`
             : search.tookMs !== null
               ? `Interakt search · ${search.tookMs} ms`
               : 'Searching…'}
