@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { useHealthCheck } from '@/app/data-sources/_lib/hooks/useHealthCheck';
 import { toast } from 'sonner';
 import { toolsApi } from '../api-client';
@@ -17,11 +18,20 @@ export const toolKeys = {
   list: (params?: Record<string, unknown>) => [...toolKeys.lists(), params] as const,
   details: () => [...toolKeys.all, 'detail'] as const,
   detail: (id: string) => [...toolKeys.details(), id] as const,
-  experiences: (id: string) => [...toolKeys.all, 'experiences', id] as const,
+  allExperiences: () => [...toolKeys.all, 'experiences'] as const,
+  experiences: (id: string) => [...toolKeys.allExperiences(), id] as const,
   lookupFields: (id: string) => [...toolKeys.all, 'lookup-fields', id] as const,
   allActive: () => [...toolKeys.all, 'all-active'] as const,
   slugCheck: (slug: string, excludeId?: string) => [...toolKeys.all, 'slug-check', slug, excludeId] as const,
 };
+
+/**
+ * Call after anything that changes which tools an AI experience uses, so every tool page's
+ * "Used In" list (and the delete lock that reads it) reloads.
+ */
+export function invalidateToolUsage(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({ queryKey: toolKeys.allExperiences() });
+}
 
 // ============================================================================
 // DEBOUNCE
