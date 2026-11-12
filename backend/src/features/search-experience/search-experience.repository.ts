@@ -8,7 +8,7 @@
 
 import 'server-only';
 
-import { eq, desc, asc, ilike, or, and, sql, count } from 'drizzle-orm';
+import { eq, desc, asc, and, sql, count } from 'drizzle-orm';
 
 import type {
   SearchExperienceWithIndexes,
@@ -34,6 +34,7 @@ import type {
   NewSearchExperienceIndex,
 } from '@/db/schema/search-experience.schema';
 import { createLogger } from '@/shared/logger/logger';
+import { matchesExperienceSearch } from '@/shared/utils/experience-search';
 
 const logger = createLogger('search-experience-repository');
 
@@ -350,13 +351,7 @@ type SearchListFilters = { search?: string; isActive?: boolean; createdBy?: stri
 function listConditions({ search, isActive, createdBy }: SearchListFilters) {
   const conditions = [];
   if (search) {
-    conditions.push(
-      or(
-        ilike(searchExperiences.name, `%${search}%`),
-        ilike(searchExperiences.slug, `%${search}%`),
-        ilike(searchExperiences.description, `%${search}%`)
-      )
-    );
+    conditions.push(matchesExperienceSearch(searchExperiences, search));
   }
   if (isActive !== undefined) {
     conditions.push(eq(searchExperiences.isActive, isActive));

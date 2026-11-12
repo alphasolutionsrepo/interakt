@@ -1,9 +1,10 @@
 // src/features/ai-experience/ai-experience.repository.ts
 
-import { eq, desc, asc, like, and, count, sql } from 'drizzle-orm';
+import { eq, desc, asc, and, count, sql } from 'drizzle-orm';
 import { aiExperiences, aiExperienceTools } from '@/db/schema';
 import { db } from '@/db/index';
 import { createLogger } from '@/shared/logger/logger';
+import { matchesExperienceSearch } from '@/shared/utils/experience-search';
 import type { ListAIExperiencesQuery } from './ai-experience.types';
 
 const logger = createLogger('ai-experience-repository');
@@ -96,7 +97,7 @@ function listConditions(query: Pick<ListAIExperiencesQuery, 'isActive' | 'pipeli
     conditions.push(eq(aiExperiences.pipelineMode, query.pipelineMode));
   }
   if (query.search) {
-    conditions.push(like(aiExperiences.name, `%${query.search}%`));
+    conditions.push(matchesExperienceSearch(aiExperiences, query.search));
   }
   return conditions.length > 0 ? and(...conditions) : undefined;
 }

@@ -36,6 +36,16 @@ beforeAll(async () => {
   for (let i = 0; i < 3; i++) await search(`find-${i}`, true);
   await search('help-search-1', true);
   await search('help-search-2', false);
+  // Matches of "zebra" that are not in the name: by description in one chat and one search
+  // experience, by slug in one of each, and by name in different case in one of each
+  const chatExtra = (name: string, slug: string, description: string) => testDb.db.execute(sql`INSERT INTO ai_experiences (name, slug, description, created_by, persona_config, session_config, access_config, observability_config, is_active) VALUES (${name}, ${slug}, ${description}, ${U}, '{}', '{}', '{}', '{}', true)`);
+  const searchExtra = (name: string, slug: string, description: string) => testDb.db.execute(sql`INSERT INTO search_experiences (name, slug, description, search_config, ai_config, tools_config, created_by, is_active) VALUES (${name}, ${slug}, ${description}, '{}', '{}', '{}', ${U}, true)`);
+  await chatExtra('plain-a', 'plain-a', 'about a Zebra crossing');
+  await chatExtra('plain-b', 'zebra-b', 'nothing');
+  await chatExtra('ZEBRA Chat', 'plain-c', 'nothing');
+  await searchExtra('plain-d', 'plain-d', 'about a Zebra crossing');
+  await searchExtra('plain-e', 'zebra-e', 'nothing');
+  await searchExtra('ZEBRA Search', 'plain-f', 'nothing');
 }, 60_000);
 afterAll(() => testDb.close());
 
@@ -59,7 +69,7 @@ async function cardsOn(tab: Tab, filters: { search?: string; isActive?: boolean 
 }
 
 describe('the experiences hub cards', () => {
-  const ALL_THE_DATA = { total: 35, active: 31, aiCount: 30, searchCount: 5 };
+  const ALL_THE_DATA = { total: 41, active: 37, aiCount: 33, searchCount: 8 };
 
   it('show the same numbers on every tab and page for the same data', async () => {
     for (const tab of ['all', 'ai', 'search'] as const) {
@@ -70,8 +80,8 @@ describe('the experiences hub cards', () => {
 
   it('count Active over everything, not the experiences on the loaded page', async () => {
     // 27 chat experiences are active, more than the 12 a tab loads, and more than 25, the server's default page
-    expect((await cardsOn('search')).active).toBe(31);
-    expect((await cardsOn('ai')).active).toBe(31);
+    expect((await cardsOn('search')).active).toBe(37);
+    expect((await cardsOn('ai')).active).toBe(37);
   });
 
   it('apply a search to both kinds, on every tab', async () => {
@@ -80,9 +90,15 @@ describe('the experiences hub cards', () => {
     }
   });
 
+  it('match a search term by name, slug or description, in any case, the same way in both kinds', async () => {
+    for (const tab of ['all', 'ai', 'search'] as const) {
+      expect(await cardsOn(tab, { search: 'zebra' })).toEqual({ total: 6, active: 6, aiCount: 3, searchCount: 3 });
+    }
+  });
+
   it('apply a status filter to both kinds, on every tab', async () => {
     for (const tab of ['all', 'ai', 'search'] as const) {
-      expect(await cardsOn(tab, { isActive: true })).toEqual({ total: 31, active: 31, aiCount: 27, searchCount: 4 });
+      expect(await cardsOn(tab, { isActive: true })).toEqual({ total: 37, active: 37, aiCount: 30, searchCount: 7 });
       // Inactive experiences: the search list must read "false" as false, not as true
       expect(await cardsOn(tab, { isActive: false })).toEqual({ total: 4, active: 0, aiCount: 3, searchCount: 1 });
     }
