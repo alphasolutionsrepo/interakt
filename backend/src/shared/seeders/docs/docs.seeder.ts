@@ -24,7 +24,7 @@ import { DOCS_SEED_KEY } from '@/shared/help/help-content';
 import 'server-only';
 
 import { getDocsSearchStatus, seedDocsSearch, type DocsSearchStatus } from './docs-search.seeder';
-import { DOCS_ROOT, getAdminUserId, readDocs, type DocFile } from './docs-source';
+import { DOCS_ROOT, getAdminUserId, isAdminUser, readDocs, type DocFile } from './docs-source';
 import type { DocsSeedProgressEvent } from './docs-steps';
 
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
@@ -322,9 +322,10 @@ async function ownDataSource() {
 
 async function ownHelpAssistant() {
   const existing = await getAIExperienceBySlug(HELP_EXPERIENCE_SLUG);
-  // Made by an earlier setup that stopped before marking it built in: it carries our
-  // description, so it is ours. Marked now, it can be rebuilt and Viewers can use it.
-  if (existing && !existing.isBuiltIn && existing.description === HELP_DESCRIPTION) {
+  // Made by an earlier setup that stopped before marking it built in: an Admin made it and it
+  // carries our description. (The description is public, so it alone proves nothing: a role
+  // that edits experiences could copy it.) Marked now, it can be rebuilt and Viewers can use it.
+  if (existing && !existing.isBuiltIn && existing.description === HELP_DESCRIPTION && (await isAdminUser(existing.createdBy))) {
     await markBuiltIn('ai-experience', [existing.id]);
     return { ...existing, isBuiltIn: true };
   }

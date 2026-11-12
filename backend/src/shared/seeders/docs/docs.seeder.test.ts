@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const world = vi.hoisted(() => ({
   registry: null as null | { checksum: string; metadata: Record<string, unknown> },
-  help: null as null | { id: string; slug: string; isBuiltIn: boolean; description?: string },
+  help: null as null | { id: string; slug: string; isBuiltIn: boolean; description?: string; createdBy?: string },
   lookupError: null as null | Error,
   dataSource: null as null | { id: string; isBuiltIn: boolean },
   tools: [] as Array<{ id: string; slug: string; operation: string; isBuiltIn: boolean }>,
@@ -33,6 +33,7 @@ vi.mock('./docs-source', () => ({
   DOCS_ROOT: '/docs',
   readDocs: async () => [{ slug: 'intro', title: 'Intro', content: '# Intro\nWelcome.' }],
   getAdminUserId: async () => 'admin',
+  isAdminUser: async (id: string) => id === 'admin',
 }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
   getResolvedDefaults: async () => ({ embedding: { providerId: 'p', modelId: 7, modelKey: 'embed', dimensions: 1536 } }),
@@ -137,10 +138,17 @@ describe('the docs setup and the Help Assistant', () => {
   });
 
   it('marks an unmarked Help Assistant of its own built in, so an install the old failure left stuck rebuilds', async () => {
-    world.help = { id: 'left', slug: 'help-assistant', isBuiltIn: false, description: 'Answers questions about using Interakt, grounded in the product documentation.' };
+    world.help = { id: 'left', slug: 'help-assistant', isBuiltIn: false, createdBy: 'admin', description: 'Answers questions about using Interakt, grounded in the product documentation.' };
     await seedDocs();
     expect(world.marked.has('ai-experience:left')).toBe(true);
     expect(world.help).toMatchObject({ id: 'left' });
+  });
+
+  it("does not take over an unmarked experience that copies the setup's public description but was not made by an Admin", async () => {
+    world.help = { id: 'copy', slug: 'help-assistant', isBuiltIn: false, createdBy: 'editor', description: 'Answers questions about using Interakt, grounded in the product documentation.' };
+    await expect(seedDocs()).rejects.toBeInstanceOf(ConflictError);
+    expect(world.marked.has('ai-experience:copy')).toBe(false);
+    expect(world.help).toMatchObject({ id: 'copy', isBuiltIn: false });
   });
 
   it('does not take over an unmarked experience under the slug that is not its own', async () => {

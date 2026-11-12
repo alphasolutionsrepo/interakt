@@ -40,6 +40,7 @@ import {
   deleteSearchExperience,
   getSearchExperienceBySlug,
   markSearchExperienceBuiltIn,
+  NotFoundError,
 } from '@/features/search-experience/search-experience.service';
 import {
   createFieldsFromMappingEntries,
@@ -231,7 +232,7 @@ async function buildWithMode(
   const entry = await getRegistryEntry(SEED_TYPES.DOCS, SEARCH_KEY);
   const meta = entry?.metadata as Partial<DocsSearchMeta> | undefined;
   let index = await getSearchIndexByName(INDEX_NAME);
-  let experience = await notFoundAsNull(getSearchExperienceBySlug(DOCS_SEARCH_SLUG));
+  let experience = await notFoundAsNull(getSearchExperienceBySlug(DOCS_SEARCH_SLUG), NotFoundError);
   assertOwned(!!entry, index, experience);
 
   if (!force && entry?.checksum === checksum && index && experience) {
@@ -475,7 +476,7 @@ export async function getDocsSearchStatus(): Promise<DocsSearchStatus> {
   if (!entry) {
     try {
       const index = await getSearchIndexByName(INDEX_NAME);
-      const experience = await notFoundAsNull(getSearchExperienceBySlug(DOCS_SEARCH_SLUG));
+      const experience = await notFoundAsNull(getSearchExperienceBySlug(DOCS_SEARCH_SLUG), NotFoundError);
       assertOwned(false, index, experience);
     } catch (e) {
       if (e instanceof DocsSearchConflictError) conflict = e.message;

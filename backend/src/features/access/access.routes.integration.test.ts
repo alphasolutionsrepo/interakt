@@ -396,7 +396,7 @@ describe('configs that send a vault secret need secrets:manage', () => {
   it('refuses an Editor changing any part of a tool that already sends a secret (its host, say)', async () => {
     as(admin);
     const created = await call(toolsRoute.POST, 'POST', '/api/tools', httpTool(`admin-${n}`, leak));
-    expect(created.status).toBe(201);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = (created.body?.data as { id: string }).id;
     as(editor);
     // The new config doesn't mention the secret; the stored one does, and the executor would keep using it
@@ -808,7 +808,7 @@ describe('which configs count as using a secret', () => {
     as(admin);
     const web = { name: 'Web', slug: `web-${n}`, aiDescription: 'Searches the web for answers', executorType: 'web_search', executorConfig: { apiKeySecret: 'web_key' } };
     const created = await call(toolsRoute.POST, 'POST', '/api/tools', web);
-    expect(created.status).toBe(201);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
     const refs = await findSecretReferences('web_key');
     expect(refs.map((r) => r.id)).toContain((created.body?.data as { id: string }).id);
   });
@@ -893,6 +893,20 @@ describe('the tool and MCP rows an experience read carries', () => {
     const updated = await call(aiExperienceRoute.PUT, 'PUT', `/api/ai-experiences/${id}`, { description: 'changed' }, { id });
     expect(updated.status).toBe(200);
     expect(JSON.stringify(updated.body?.data)).not.toMatch(HIDDEN);
+  });
+
+  it('are cut down on a create that attaches a tool, for a role that cannot view tools', async () => {
+    const tag = `created${n}`;
+    const exec = JSON.stringify({ baseUrl: 'https://tool.internal.test', method: 'GET', headers: { 'X-Secret-Header': 'abc' } });
+    const toolId = ((await testDb.db.execute(sql`INSERT INTO tools (name, slug, ai_description, executor_type, executor_config, is_active) VALUES (${tag}, ${tag}, 'Finds things', 'http', ${exec}::jsonb, true) RETURNING id`)) as unknown as { rows: Array<{ id: string }> }).rows[0].id;
+    as(await makeUser(await makeRole(`Creators ${n}`, ['ai-experiences:edit'])));
+    const created = await call(aiExperiencesRoute.POST, 'POST', '/api/ai-experiences', {
+      name: tag, slug: tag, toolIds: [toolId], sessionConfig: {}, accessConfig: { allowedOrigins: [], rateLimits: { chatPerMinute: 60, requestsPerDay: 10000 } }, observabilityConfig: {},
+      personaConfig: { tone: 'professional', systemInstructions: 'You help people find things.', responseFormats: { enabledPresets: ['summary_with_sources'], defaultPreset: 'summary_with_sources', enableCitations: true, citationStyle: 'inline' } },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect((created.body?.data as { tools: Array<{ tool: { name: string } }> }).tools[0].tool.name).toBe(tag);
+    expect(JSON.stringify(created.body?.data)).not.toMatch(HIDDEN);
   });
 
   it('stay whole for a role that views tools', async () => {

@@ -110,10 +110,12 @@ vi.mock('@/features/search-index/search-index-fields.service', () => ({
   createFieldsFromMappingEntries: async () => ({ created: [], errors: [] }),
 }));
 
-vi.mock('@/features/search-experience/search-experience.service', () => ({
+vi.mock('@/features/search-experience/search-experience.service', async (importOriginal) => ({
+  // The service's own not-found error, as the real lookup throws it
+  NotFoundError: (await importOriginal<typeof import('@/features/search-experience/search-experience.service')>()).NotFoundError,
   getSearchExperienceBySlug: async () => {
     if (world.lookupError) throw world.lookupError;
-    if (!world.experience) throw new NotFoundError('Search experience not found');
+    if (!world.experience) throw new NotFoundError('Search experience', 'interakt-docs-search');
     return world.experience;
   },
   createSearchExperience: async (input: { slug: string; description: string }, _by: string, options?: { builtIn?: boolean }) => {
@@ -145,7 +147,7 @@ vi.mock('@/features/document-indexing/document-indexer.service', () => ({
   },
 }));
 
-import { NotFoundError } from '@/shared/errors/app-error';
+import { NotFoundError } from '@/features/search-experience/search-experience.service';
 
 import { buildDocsSearchOnStartup, DocsSearchConflictError, getDocsSearchStatus, seedDocsSearch } from './docs-search.seeder';
 
