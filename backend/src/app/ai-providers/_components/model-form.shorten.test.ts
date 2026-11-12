@@ -9,7 +9,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { modelUpdateInput } from '../_lib/model-form';
+import { modelUpdateInput, shortenSwitchFor } from '../_lib/model-form';
 
 import { ModelFormDialog } from './ModelFormDialog';
 
@@ -69,5 +69,17 @@ describe('saving the switch', () => {
 
   it('leaves it out of the update of any other model', () => {
     expect(modelUpdateInput(saved({ modelType: 'chat' }), submission(true)).canShortenVectors).toBeUndefined();
+  });
+});
+
+describe('the switch while the admin edits the model key', () => {
+  it('follows the known-family default until the admin has touched it', () => {
+    expect(shortenSwitchFor(false, false, 'qwen3-embedding:4b', 'embedding')).toBe(true);
+    expect(shortenSwitchFor(false, true, 'my-own-model', 'embedding')).toBe(false);
+  });
+
+  it("keeps the admin's choice when the key or type changes afterwards", () => {
+    expect(shortenSwitchFor(true, false, 'qwen3-embedding:4b', 'embedding')).toBe(false);
+    expect(shortenSwitchFor(true, true, 'my-own-model', 'chat')).toBe(true);
   });
 });

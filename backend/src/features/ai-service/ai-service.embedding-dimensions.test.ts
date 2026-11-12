@@ -128,6 +128,62 @@ describe.each(['openai', 'ollama'] as const)('a model that refuses the requested
   });
 });
 
+describe.each(['openai', 'ollama'] as const)('what a refusal teaches about a model (%s)', (style) => {
+  const bad = () => new Response('bad request', { status: 400 });
+  const sizes = (sent: () => Body[]) => sent().map((body) => 'dimensions' in body);
+
+  it('is not remembered after an unrelated 400: the next call still sends the size', async () => {
+    let broken = true;
+    const sent = fakeServer(style, 768, () => (broken ? bad() : undefined));
+    const target = server(`unrelated-${style}`);
+    await expect(adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target)).rejects.toThrow();
+    broken = false;
+    await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target);
+    expect(sizes(sent)).toEqual([true, false, true]);
+  });
+
+  it('is not remembered when the retry without a size fails too, and that error is thrown', async () => {
+    fakeServer(style, 768, (body) => ('dimensions' in body ? bad() : new Response('model not found', { status: 404 })));
+    const target = server(`retry-fails-${style}`);
+    await expect(adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target)).rejects.toThrow(/404|not found/);
+    const again = fakeServer(style, 768);
+    await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target);
+    expect(sizes(again)).toEqual([true]);
+  });
+
+  it('refusing one size does not stop other sizes being sent', async () => {
+    const sent = fakeServer(style, 768, (body) => (body.dimensions === 1536 ? bad() : undefined));
+    const target = server(`per-size-${style}`);
+    // 1536 is refused, and the model's own 768 comes back instead: the refusal is thrown, nothing is remembered
+    await expect(adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 1536 }, target)).rejects.toThrow();
+    const result = await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target);
+    expect(sent().at(-1)?.dimensions).toBe(768);
+    expect(result.embeddings[0]).toHaveLength(768);
+  });
+
+  it('remembers a refused size only per size: after 768 is refused and answered, 1024 is still tried', async () => {
+    const sent = fakeServer(style, 768, (body) => (body.dimensions === 768 ? bad() : undefined));
+    const target = server(`per-size-2-${style}`);
+    await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target);
+    await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 768 }, target);
+    await adapters[style]().generateEmbeddings({ texts: ['a'], dimensions: 1024 }, target);
+    expect(sent().map((body) => body.dimensions)).toEqual([768, undefined, undefined, 1024]);
+  });
+});
+
+describe('the AI service and a refusal that ends in a throw', () => {
+  it('does not record it: a later call to the same model still sends the size', async () => {
+    model.modelKey = 'throwing-model';
+    model.dimensions = 1536;
+    let broken = true;
+    const sent = fakeServer('ollama', 2560, () => (broken ? new Response('bad request', { status: 400 }) : undefined));
+    await expect(generateEmbeddings(['a'], { providerId: 'prov-1', modelId: 7, feature: 'search_query' })).rejects.toThrow();
+    broken = false;
+    await generateEmbeddings(['a'], { providerId: 'prov-1', modelId: 7, feature: 'search_query' });
+    expect(sent().at(-1)?.dimensions).toBe(1536);
+  });
+});
+
 describe('the Ollama older embeddings endpoint', () => {
   it('warns once per model that it cannot take a vector size', async () => {
     const fetchMock = vi.fn(async (url: string) => url.endsWith('/api/embed')
@@ -171,12 +227,21 @@ describe('generateEmbeddings in the AI service', () => {
     expect(reported(logs).filter((line) => /dimensions mismatch/.test(line.message))).toHaveLength(1);
   });
 
-  it("uses the model's registered size when the caller gives none: the knowledge base and memory path", async () => {
-    // embedBatch is what the knowledge base, session messages and memories call, with no size
+  it.each([768, 1536, 2560])('sends 1536 on the knowledge base and memory path even when the model is registered at %s', async (registered) => {
+    // embedBatch is what the knowledge base, session messages and memories call, with no size;
+    // they store into vector(1536) columns
+    model.dimensions = registered;
     const sent = fakeServer('ollama');
     const vectors = await embedBatch(['a', 'b'], { feature: 'knowledge_base' });
     expect(sent()[0].dimensions).toBe(1536);
     expect(vectors.every((vector) => vector?.length === 1536)).toBe(true);
+  });
+
+  it("uses the model's registered size for a caller of the AI service that gives none", async () => {
+    model.dimensions = 2560;
+    const sent = fakeServer('ollama');
+    await generateEmbeddings(['a'], { providerId: 'prov-1', modelId: 7, feature: 'search_query' });
+    expect(sent()[0].dimensions).toBe(2560);
   });
 
   it("lets the caller's size win over the model's registered size", async () => {

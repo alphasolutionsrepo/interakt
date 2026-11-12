@@ -20,7 +20,7 @@ describe('embedding helpers', () => {
     expect(await embed('navy sweaters', { feature: 'topic_gate' })).toEqual([0.1]);
     expect(await embedBatch(['returns'], { feature: 'knowledge_base' })).toEqual([[0.2]]);
 
-    expect(generateEmbedding).toHaveBeenCalledWith('navy sweaters', { feature: 'topic_gate' });
-    expect(generateEmbeddings).toHaveBeenCalledWith(['returns'], { feature: 'knowledge_base' });
+    expect(generateEmbedding).toHaveBeenCalledWith('navy sweaters', { feature: 'topic_gate', dimensions: 1536 });
+    expect(generateEmbeddings).toHaveBeenCalledWith(['returns'], { feature: 'knowledge_base', dimensions: 1536 });
   });
 });

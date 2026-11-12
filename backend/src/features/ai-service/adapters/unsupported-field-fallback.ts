@@ -11,10 +11,15 @@ const logger = createLogger('ai-adapters');
  * without that field: the call works, and a warning, once per model on each server (the same
  * name on another server is another model, set up on its own), says what was left out.
  *
- * refused holds the first refusal for each server and model. With remember, a model that
- * refused is not sent the field again (no second request for every call). Each use of this
- * keeps its own map. verify, when given, sees the answer that came back without the field
- * and the refusal, and throws to reject it (for example a vector of the wrong size).
+ * refused holds the first refusal for each server and model (and, with remember, each value
+ * of the field). A refusal is written down only once the request without the field has
+ * worked, which shows the field was the problem: an unrelated 400 (a bad request, a model
+ * that is not there) fails the same way without the field, so it is thrown and nothing is
+ * remembered. With remember, a model that refused a value is not sent that value again (no
+ * second request for every call), while other values are still tried. Each use of this keeps
+ * its own map. verify, when given, sees the answer that came back without the field and the
+ * refusal, and throws to reject it (for example a vector of the wrong size); nothing is
+ * remembered then either.
  */
 export interface UnsupportedFieldFallback<B, T> {
     server: string;
@@ -35,7 +40,7 @@ export async function withoutUnsupportedField<B, T>(
 
     if (record[field] === undefined) return send(body);
 
-    const key = `${server}|${body.model}`;
+    const key = remember ? `${server}|${body.model}|${String(record[field])}` : `${server}|${body.model}`;
     const without = () => {
         const { [field]: _dropped, ...rest } = record;
         return rest as B & { model: string };
@@ -52,12 +57,12 @@ export async function withoutUnsupportedField<B, T>(
         return await send(body);
     } catch (error) {
         if (!(error instanceof AdapterError) || !isRefusal(error)) throw error;
+        const answer = await send(without());
+        verify?.(answer, error);
         if (!refused.has(key)) {
             refused.set(key, error);
             logger.warn(warning, { model: body.model, [field]: record[field], reason: error.message });
         }
-        const answer = await send(without());
-        verify?.(answer, refused.get(key)!);
         return answer;
     }
 }
@@ -92,7 +97,8 @@ const refusedDimensions = new Map<string, AdapterError>();
 /**
  * An embedding request with a vector size the server refuses (any 400 or 422, whatever the
  * body says: OpenAI's ada-002, Ollama for a size above the model's own, other servers in
- * their own words) is sent again without one, and the model is not sent a size again. When the
+ * their own words) is sent again without one. Only when that works is the model remembered as
+ * refusing that size, and it is not sent that size again (other sizes are still tried). When the
  * vectors that come back are not the size asked for, the refusal is thrown instead, with the
  * provider's own message: a wrong-size vector fails later, in the index.
  */

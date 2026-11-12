@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import type { AIProviderModelResponse, UpdateAIModelInput } from '@/features/ai-providers';
 import { modelFieldRules, modelTypeSchema } from '@/features/ai-providers/ai-providers.validation';
+import { canShortenVectorsByDefault } from '@/features/ai-providers/shortenable-embeddings';
 
 import { capabilitiesFromForm, REASONING_CHOICES, reasoningChoiceOf, type ReasoningChoice } from './model-capabilities';
 
@@ -96,4 +97,12 @@ export function modelUpdateInput(model: AIProviderModelResponse, data: ModelForm
         outputCostPerMillionTokens: data.outputCostPerMillionTokens,
         capabilities: capabilitiesFromForm(data, (model.capabilities as Record<string, unknown> | undefined) ?? {}),
     };
+}
+
+/**
+ * The "Can shorten vectors" switch for a model being added, as the key or type changes: the
+ * known-family default until the admin has set the switch themselves, then their choice.
+ */
+export function shortenSwitchFor(touchedByAdmin: boolean, current: boolean, modelKey: string, modelType: string): boolean {
+    return touchedByAdmin ? current : canShortenVectorsByDefault(modelKey, modelType);
 }

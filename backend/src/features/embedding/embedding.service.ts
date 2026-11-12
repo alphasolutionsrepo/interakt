@@ -20,6 +20,19 @@ import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('embedding-service');
 
+/**
+ * The vector size the stores that use these helpers keep (knowledge chunks, session messages,
+ * memories are fixed vector(1536) columns), and what memory retrieval compares against. It is
+ * sent to models marked able to shorten their vectors, so a model registered at its own larger
+ * size still fits.
+ */
+export const STORED_VECTOR_SIZE = 1536;
+
+const storedSize = (options: EmbeddingOptions): EmbeddingOptions => ({
+  ...options,
+  dimensions: options.dimensions ?? STORED_VECTOR_SIZE,
+});
+
 // ============================================================================
 // EMBEDDING GENERATION
 // ============================================================================
@@ -35,7 +48,7 @@ export async function embed(
   if (!text.trim()) return null;
 
   try {
-    return await generateEmbedding(text, options);
+    return await generateEmbedding(text, storedSize(options));
   } catch (error) {
     logger.error('Failed to generate embedding', error as Error);
     return null;
@@ -53,7 +66,7 @@ export async function embedBatch(
   if (texts.length === 0) return [];
 
   try {
-    const result = await generateEmbeddings(texts, options);
+    const result = await generateEmbeddings(texts, storedSize(options));
     // Map results back by index, filling nulls for any gaps
     const vectors: Array<number[] | null> = new Array(texts.length).fill(null);
     for (const entry of result.embeddings) {
