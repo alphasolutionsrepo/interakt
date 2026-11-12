@@ -73,6 +73,12 @@ const RULES: readonly Rule[] = [
   { pattern: under('user-memories'), area: 'chat' },
 
   // ── Managed indexes (domain knowledge and ingestion keys included) ───────────
+  // The index pickers of search experiences and the data-source wizard read the index list and
+  // an index's fields; they must load while Managed indexes is off (an experience can still be
+  // edited against its sources)
+  { pattern: re('search-indexes'), methods: ['GET'], area: 'core' },
+  { pattern: re('search-indexes/all'), methods: ['GET'], area: 'core' },
+  { pattern: re(`search-indexes/${ID}/fields`), methods: ['GET'], area: 'core' },
   { pattern: under('search-indexes'), area: 'managed-indexes' },
   { pattern: re('search/health'), area: 'managed-indexes' },
 

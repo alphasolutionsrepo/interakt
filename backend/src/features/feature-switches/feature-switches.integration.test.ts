@@ -21,6 +21,9 @@ import { clearFeatureSwitchCache, isAreaOn } from './feature-switches.service';
 import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
 import * as analyticsStatusRoute from '@/app/api/analytics/status/route';
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
+import * as indexFieldsRoute from '@/app/api/search-indexes/[id]/fields/route';
+import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
+import * as indexesRoute from '@/app/api/search-indexes/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import * as settingsRoute from '@/app/api/settings/features/route';
 import * as slugChatRoute from '@/app/api/v1/ai-experiences/[slug]/chat/route';
@@ -161,6 +164,17 @@ describe('an area switched off', () => {
     await switchAreas({ 'managed-indexes': false });
     as(null);
     expect(await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, key)).toMatchObject(turnedOff);
+  });
+
+  it('keeps the index lists the experience and data-source pickers read, with Managed indexes off', async () => {
+    const index = '00000000-0000-4000-8000-0000000000aa';
+    await switchAreas({ 'managed-indexes': false });
+    expect((await call(indexesRoute.GET, 'GET', '/api/search-indexes?isActive=true&pageSize=100')).status).toBe(200);
+    expect((await call(allIndexesRoute.GET, 'GET', '/api/search-indexes/all')).status).toBe(200);
+    // (an index that doesn't exist answers its own refusal, never "turned off")
+    expect((await call(indexFieldsRoute.GET, 'GET', `/api/search-indexes/${index}/fields`, { params: { id: index } })).body).not.toMatchObject({ code: TURNED_OFF_CODE });
+    // The documents and the rest of the area stay off
+    expect(await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, { params: { id: index } })).toMatchObject(turnedOff);
   });
 
   it('turns off what needs it: AI summaries with Search', async () => {
