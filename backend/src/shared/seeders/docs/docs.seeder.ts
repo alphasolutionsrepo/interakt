@@ -31,6 +31,7 @@ import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import {
   createAIExperience,
   getAIExperienceBySlug,
+  markAIExperienceBuiltIn,
   updateAIExperience,
   deleteAIExperience,
 } from '@/features/ai-experience/ai-experience.service';
@@ -50,7 +51,6 @@ import {
   getToolsByDataSourceId,
   deleteTool,
 } from '@/features/tools/tools.service';
-import { markBuiltIn } from '@/features/access/built-in';
 import { ConflictError, SetupRequiredError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import {
@@ -326,7 +326,7 @@ async function ownHelpAssistant() {
   // carries our description. (The description is public, so it alone proves nothing: a role
   // that edits experiences could copy it.) Marked now, it can be rebuilt and Viewers can use it.
   if (existing && !existing.isBuiltIn && existing.description === HELP_DESCRIPTION && (await isAdminUser(existing.createdBy))) {
-    await markBuiltIn('ai-experience', [existing.id]);
+    await markAIExperienceBuiltIn(existing.id);
     return { ...existing, isBuiltIn: true };
   }
   if (existing && !existing.isBuiltIn) {

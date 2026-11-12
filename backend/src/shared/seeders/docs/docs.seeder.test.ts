@@ -84,6 +84,10 @@ vi.mock('@/features/ai-experience/ai-experience.service', () => ({
     world.help = { id: `help-${world.nextId++}`, slug: input.slug, isBuiltIn: options?.builtIn === true };
     return world.help;
   },
+  markAIExperienceBuiltIn: async (id: string) => {
+    world.marked.add(`ai-experience:${id}`);
+    if (world.help && world.help.id === id) world.help.isBuiltIn = true;
+  },
   updateAIExperience: async (_id: string, input: { toolIds?: string[] }) => {
     world.assignedTool = input.toolIds?.[0] ?? null;
     return world.help;
@@ -171,6 +175,12 @@ describe('the docs setup and the Help Assistant', () => {
     expect(world.uploads).toBe(0);
     expect(world.searchBuilds).toBe(0);
     expect(world.marked.size).toBe(0);
+  });
+
+  it('does not report a reset done when a lookup failed: the error reaches the caller', async () => {
+    world.lookupError = new Error('connection terminated');
+    await expect(resetDocs()).rejects.toThrow('connection terminated');
+    expect(world.deleted).toEqual([]);
   });
 
   it('resets only what it made, never a lookalike under the same slugs', async () => {

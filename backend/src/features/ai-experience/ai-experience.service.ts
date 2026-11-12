@@ -172,6 +172,18 @@ export async function listAIExperiences(query: ListAIExperiencesQuery): Promise<
   };
 }
 
+/**
+ * Mark an experience the docs setup made as the built-in help (see token-or-session.ts). Clears
+ * the experience cache, which holds the row by slug and would keep refusing Viewers.
+ */
+export async function markAIExperienceBuiltIn(id: string): Promise<void> {
+  const existing = await repository.getAIExperienceById(id);
+  if (!existing || existing.isBuiltIn) return;
+  await repository.updateAIExperience(id, { isBuiltIn: true });
+  await clearDetailCache(id, existing.slug);
+  await clearListCache();
+}
+
 export async function updateAIExperience(id: string, input: UpdateAIExperienceDTO, userId: string) {
   const existing = await repository.getAIExperienceById(id);
   if (!existing) return null;
