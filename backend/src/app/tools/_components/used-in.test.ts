@@ -25,10 +25,12 @@ const tool = {
   isActive: true, isBuiltIn: false, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z',
 };
 const ready = <T,>(value: T) => Object.assign(Promise.resolve(value), { status: 'fulfilled', value });
-const detail = (answer?: unknown) => {
-  const client = new QueryClient();
+const detail = (answer?: unknown, failed = false, refetching = false) => {
+  // Fresh answers: nothing is fetched on mount, so the render shows what the cache holds
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: refetching ? 0 : Infinity, retryOnMount: false } } });
   client.setQueryData(toolKeys.detail('t'), tool);
   if (answer !== undefined) client.setQueryData(toolKeys.experiences('t'), answer);
+  if (failed) client.getQueryCache().build(client, { queryKey: toolKeys.experiences('t') }).setState({ status: 'error', error: new Error('boom'), fetchStatus: 'idle' } as never);
   return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ToolDetailPage, { params: ready({ id: 't' }) })));
 };
 
@@ -72,10 +74,27 @@ describe("a tool's page", () => {
     expect(html).not.toContain('Used in AI Experiences');
   });
 
+  it('keeps Delete locked while a newer answer is on its way, whatever an older cached count says', () => {
+    uiAccess.hold('tools:view', 'tools:edit');
+    const html = detail({ toolId: 't', experienceCount: 0, experiences: [], experiencesHidden: false }, false, true);
+    expect(html).toMatch(destructiveButton(true));
+    expect(html).toContain('<span class="text-2xl font-bold">—</span>');
+  });
+
   it('keeps Delete locked until the answer about where the tool is used has arrived', () => {
     uiAccess.hold('tools:view', 'tools:edit');
     const html = detail();
     expect(html).toContain('Checking where this tool is used');
     expect(html).toMatch(destructiveButton(true));
+  });
+
+  it('shows no count in "Used In" while the answer is unknown, and says so when the lookup failed', () => {
+    uiAccess.hold('tools:view', 'tools:edit');
+    const loading = detail();
+    expect(loading).toContain('<span class="text-2xl font-bold">—</span>');
+    const failed = detail(undefined, true);
+    expect(failed).toContain('<span class="text-2xl font-bold">—</span>');
+    expect(failed).toContain("Couldn&#x27;t check where this tool is used");
+    expect(failed).toMatch(destructiveButton(true));
   });
 });

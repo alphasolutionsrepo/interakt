@@ -216,7 +216,7 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
               </Badge>
             ),
           },
-          { label: 'Used In', value: <span className="text-2xl font-bold">{experienceCount}</span> },
+          { label: 'Used In', value: <span className="text-2xl font-bold">{usageKnown ? experienceCount : '—'}</span> },
           { label: 'Created', value: <span className="text-sm font-medium">{format(new Date(tool.createdAt), 'MMM d, yyyy')}</span> },
         ].map(({ label, value }, i) => (
           <Card key={i} className="border-border/60 shadow-sm rounded-2xl">
