@@ -145,6 +145,7 @@ export function trackSearch(event: SearchEventData, experienceId?: string): void
     logger.debug('trackSearch: feature flag disabled');
     return;
   }
+  if (!analyticsAreaOn()) return;
 
   // Skip empty queries — these are noise (e.g., match_all probes, empty tool calls)
   if (!event.queryText || event.queryText.trim().length === 0) {
@@ -194,6 +195,7 @@ export function trackSearch(event: SearchEventData, experienceId?: string): void
 export function trackAI(event: AIEventData): void {
   if (!config.enabled) return;
   if (!analyticsFlags.canTrackAI()) return;
+  if (!analyticsAreaOn()) return;
 
   try {
     const queuedEvent: QueuedAIEvent = {
@@ -222,6 +224,7 @@ export function trackAI(event: AIEventData): void {
 export function trackToolExecution(event: ToolExecutionData): void {
   if (!config.enabled) return;
   if (!analyticsFlags.canTrackTools()) return;
+  if (!analyticsAreaOn()) return;
 
   try {
     const queuedEvent: QueuedToolEvent = {
@@ -250,6 +253,7 @@ export function trackToolExecution(event: ToolExecutionData): void {
 export function trackClick(event: ClickEventData, experienceId?: string): void {
   if (!config.enabled) return;
   if (!analyticsFlags.canTrackClicks(experienceId)) return;
+  if (!analyticsAreaOn()) return;
 
   try {
     const queuedEvent: QueuedClickEvent = {
@@ -297,12 +301,35 @@ function flushSoon(): void {
 
 /** False while the Analytics area is turned off; if the switches can't be read, collection goes on. */
 async function collectionAllowed(): Promise<boolean> {
+  const mine = ++switchReads;
+  let answer = true;
   try {
-    const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
-    return await isAreaOn('analytics');
+    switchService ??= import('@/features/feature-switches/feature-switches.service');
+    answer = await (await switchService).isAreaOn('analytics');
   } catch {
-    return true;
+    switchService = null;
+    // keep collecting
   }
+  // An older read finishing late doesn't overwrite a newer answer
+  if (mine === switchReads) analyticsOn = answer;
+  return answer;
+}
+
+// The last answer of the Analytics switch. The track* functions are synchronous and the switch
+// is read asynchronously, so they use this answer and start a fresh read; a change applies from
+// the next event after that read.
+let analyticsOn = true;
+let switchReads = 0;
+// One import shared by every read, started at most once at a time
+let switchService: Promise<typeof import('@/features/feature-switches/feature-switches.service')> | null = null;
+let checkingSwitch = false;
+
+function analyticsAreaOn(): boolean {
+  if (!checkingSwitch) {
+    checkingSwitch = true;
+    void collectionAllowed().finally(() => { checkingSwitch = false; });
+  }
+  return analyticsOn;
 }
 
 /**
@@ -316,6 +343,9 @@ async function flushAll(): Promise<void> {
 
   // Analytics off: nothing is recorded, what was queued is dropped (data already kept stays)
   if (!(await collectionAllowed())) {
+    const { searchEvents, aiEvents, toolEvents, clickEvents } = getQueueStats();
+    const dropped = searchEvents + aiEvents + toolEvents + clickEvents;
+    if (dropped > 0) logger.info('Analytics is turned off: dropped the events queued before it was', { dropped });
     clearQueues();
     return;
   }

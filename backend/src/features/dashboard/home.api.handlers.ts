@@ -27,7 +27,7 @@ export async function handleGetHome(request: NextRequest) {
     // With Analytics off the home page shows no analytics figures, cards or tips, whoever asks
     const analyticsOn = await isAreaOn('analytics');
     const holds = (p: Permission) => can(access, p) && (analyticsOn || !p.startsWith('analytics:'));
-    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz), holds, { analyticsOn }) });
+    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz, analyticsOn), holds, { analyticsOn }) });
   } catch (error) {
     return apiResponse.error('Failed to load the home page', 500, { operation: 'getHome', err: error });
   }

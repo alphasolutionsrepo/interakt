@@ -21,6 +21,8 @@ import { clearFeatureSwitchCache, isAreaOn } from './feature-switches.service';
 import * as homeRoute from '@/app/api/dashboard/home/route';
 import * as homeTipsRoute from '@/app/api/dashboard/home/tips/route';
 import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
+import * as analyticsAiUsageRoute from '@/app/api/analytics/ai/usage/route';
+import * as analyticsSearchTrendsRoute from '@/app/api/analytics/search/trends/route';
 import * as analyticsStatusRoute from '@/app/api/analytics/status/route';
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as indexFieldsRoute from '@/app/api/search-indexes/[id]/fields/route';
@@ -409,6 +411,22 @@ describe('an area switched off', () => {
     await switchAreas({ analytics: false });
     expect(await call(analyticsStatusRoute.GET, 'GET', '/api/analytics/status')).toMatchObject(turnedOff);
     expect((await call(analyticsConfigRoute.GET, 'GET', '/api/analytics/config')).status).toBe(200);
+  });
+
+  it('refuses the Search report with Search off and AI & cost with Chat off, as their pages are, and keeps the rest of Analytics', async () => {
+    const trends = () => call(analyticsSearchTrendsRoute.GET, 'GET', '/api/analytics/search/trends?timeRange=7d');
+    const usage = () => call(analyticsAiUsageRoute.GET, 'GET', '/api/analytics/ai/usage?timeRange=7d');
+    expect(await trends()).not.toMatchObject(turnedOff);
+    expect(await usage()).not.toMatchObject(turnedOff);
+
+    await switchAreas({ search: false });
+    expect(await trends()).toMatchObject(turnedOff);
+    expect(await usage()).not.toMatchObject(turnedOff);
+    expect(await call(analyticsStatusRoute.GET, 'GET', '/api/analytics/status')).not.toMatchObject(turnedOff);
+
+    await switchAreas({ search: true, chat: false });
+    expect(await trends()).not.toMatchObject(turnedOff);
+    expect(await usage()).toMatchObject(turnedOff);
   });
 
   it('shows no analytics on the home page with Analytics off, and refuses dismissing an analytics tip', async () => {

@@ -89,6 +89,11 @@ const RULES: readonly Rule[] = [
   // Collection and retention settings stay reachable, so an Admin can change them while off
   { pattern: under('analytics/config'), area: 'core' },
   { pattern: under('telemetry/config'), area: 'core' },
+  // The Search report needs Search on as well, AI & cost needs Chat (as the pages do). All
+  // must be on, so Traces (Search or Chat) can't be written here; its data comes from
+  // /analytics/dashboard, which stays with Analytics alone.
+  { pattern: under('analytics/search'), area: ['analytics', 'search'] },
+  { pattern: under('analytics/ai'), area: ['analytics', 'chat'] },
   { pattern: under('analytics'), area: 'analytics' },
   { pattern: under('telemetry'), area: 'analytics' },
 
