@@ -6,7 +6,7 @@ import { RefreshCw, Settings2, ToggleRight } from 'lucide-react';
 import { useState } from 'react';
 
 import { FeatureRowItem } from './_components/FeatureRowItem';
-import { dependentsToAsk, updateBody } from './_lib/feature-rows';
+import { bodyForChoice, decideToggle, type Asking, type DialogChoice } from './_lib/feature-toggle';
 import { useFeatures, useUpdateFeatures } from './_lib/hooks/useFeatureSwitches';
 
 import {
@@ -30,16 +30,17 @@ const labelOf = (id: Area) => AREAS.find((a) => a.id === id)?.label ?? id;
 export default function FeaturesPage() {
   const { data: areas, isLoading, isError, error, refetch } = useFeatures();
   const update = useUpdateFeatures();
-  const [asking, setAsking] = useState<{ id: Area; dependents: Area[] } | null>(null);
+  const [asking, setAsking] = useState<Asking | null>(null);
 
   const toggle = (id: Area, next: boolean) => {
-    const dependents = dependentsToAsk(id, next, areas ?? []);
-    if (dependents.length > 0) setAsking({ id, dependents });
-    else update.mutate(updateBody(id, next));
+    const decision = decideToggle(areas ?? [], id, next);
+    if ('ask' in decision) setAsking(decision.ask);
+    else update.mutate(decision.save);
   };
 
-  const confirm = (alsoOff: Area[]) => {
-    if (asking) update.mutate(updateBody(asking.id, false, alsoOff));
+  const answer = (choice: DialogChoice) => {
+    const body = bodyForChoice(asking, choice);
+    if (body) update.mutate(body);
     setAsking(null);
   };
 
@@ -97,8 +98,8 @@ export default function FeaturesPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction className="rounded-xl" onClick={() => confirm([])}>Search only</AlertDialogAction>
-            <AlertDialogAction className="rounded-xl" onClick={() => confirm(asking?.dependents ?? [])}>
+            <AlertDialogAction className="rounded-xl" onClick={() => answer('only')}>Search only</AlertDialogAction>
+            <AlertDialogAction className="rounded-xl" onClick={() => answer('both')}>
               Switch both off
             </AlertDialogAction>
           </AlertDialogFooter>

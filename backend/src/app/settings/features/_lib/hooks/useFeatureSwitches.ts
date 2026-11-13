@@ -6,11 +6,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { getFeatures, updateFeatures } from '../api-client';
+import { featureKeys, invalidateAfterSave, saveErrorText } from '../feature-toggle';
 
-import { accessKeys } from '@/shared/access/useAccess';
-import { errorText } from '@/shared/api/api-error';
-
-export const featureKeys = { all: ['settings', 'features'] as const };
+export { featureKeys };
 
 export function useFeatures() {
   return useQuery({ queryKey: featureKeys.all, queryFn: getFeatures, staleTime: 30_000 });
@@ -22,11 +20,10 @@ export function useUpdateFeatures() {
     mutationFn: updateFeatures,
     onSuccess: () => {
       toast.success('Features updated');
-      queryClient.invalidateQueries({ queryKey: featureKeys.all });
-      // The menu follows what is on, so it updates at once
-      queryClient.invalidateQueries({ queryKey: accessKeys.mine });
+      // The list, and the menu (it follows what is on) update at once
+      invalidateAfterSave(queryClient);
     },
-    onError: (error) => toast.error(errorText(error, 'Could not save the change')),
+    onError: (error) => toast.error(saveErrorText(error)),
     meta: { label: 'Update features' },
   });
 }

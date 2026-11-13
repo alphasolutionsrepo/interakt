@@ -15,7 +15,7 @@ import {
 } from '@/shared/ui/components/select';
 import { Bot, Search, Layers } from 'lucide-react';
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
-import { EXPERIENCE_TYPE_AREA, experiencesWithAreaOn, loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
+import { experiencesWithAreaOn, selectionChange, loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
 import { errorText } from '@/shared/api/api-error';
 import { useAccess } from '@/shared/access/useAccess';
 
@@ -53,20 +53,17 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
   // A selection restored from the URL only carries the ID — fill in name and type,
   // or fall back to All Experiences if it no longer exists.
   useEffect(() => {
-    if (isLoading || accessLoading || !experienceId) return;
-    const exp = experiences.find((e) => e.id === experienceId);
-    const hiddenByArea = allExperiences.find((e) => e.id === experienceId && !areaOn(EXPERIENCE_TYPE_AREA[e.type]));
-    if (hiddenByArea) {
-      // A restored selection of a type that is off falls back to All Experiences
-      setExperience(undefined);
-    } else if (!exp) {
-      // Only drop the selection when we know the full list; a failed fetch is not "deleted"
-      // A saved conversation about a since-deleted experience keeps its scope (shown as deleted)
-      if (data?.complete && !keepWhenMissing) setExperience(undefined);
-    } else if (exp.name !== experienceName || exp.type !== experienceType) {
-      setExperience(exp.id, exp.name, exp.type);
-    }
-  }, [isLoading, accessLoading, data, experiences, allExperiences, areaOn, experienceId, experienceName, experienceType, keepWhenMissing, setExperience]);
+    const change = selectionChange({
+      selected: { id: experienceId, name: experienceName, type: experienceType },
+      experiences: allExperiences,
+      areaOn,
+      loading: isLoading || accessLoading,
+      complete: !!data?.complete,
+      keepWhenMissing,
+    });
+    if (change.kind === 'reset') setExperience(undefined);
+    else if (change.kind === 'fill') setExperience(change.id, change.name, change.type);
+  }, [isLoading, accessLoading, data, allExperiences, areaOn, experienceId, experienceName, experienceType, keepWhenMissing, setExperience]);
 
   // Selected experience that is not in the list (deleted, or the list is still incomplete)
   const missingSelection = !!experienceId && !allExperiences.some((e) => e.id === experienceId);
