@@ -15,6 +15,7 @@ import 'server-only';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
+import { isAreaOn } from '@/features/feature-switches/feature-switches.service';
 import { refuseExperienceIfOff, refuseSessionIfPlaygroundOff } from '@/features/feature-switches/gate';
 
 import { auth } from './auth.api.handlers';
@@ -69,7 +70,7 @@ export async function authenticateTokenOrSession(
  * login: only both together make it a test, and only for a user whose role may use the
  * playgrounds. A visitor can send the marker but not the
  * login, and a signed-in admin using a live widget sends the login but not the marker;
- * both are live traffic.
+ * both are live traffic. So is any of it while Playground is turned off.
  */
 export async function markIfAdminTest(request: NextRequest): Promise<boolean> {
   if (request.headers.get(TEST_MARKER_HEADER) !== '1') return false;
@@ -79,6 +80,9 @@ export async function markIfAdminTest(request: NextRequest): Promise<boolean> {
   // If that can't be checked, the request is live traffic (plain errors, counted as 'api').
   const allowed = await checkAccess('playground:use').then((r) => !r.response, () => false);
   if (!allowed) return false;
+  // With Playground off there is no testing: the token makes it a live call
+  const playgroundOn = await isAreaOn('playground').catch(() => false);
+  if (!playgroundOn) return false;
   markAdminCaller();
   return true;
 }

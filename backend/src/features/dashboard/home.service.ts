@@ -933,13 +933,20 @@ export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
  * The home page as a role sees it. Tasks, recent changes, getting-started steps, cards, tips and
  * experiences that link to a page the role can't open go; the checklist's Ask step (the Ask
  * box on the page) needs analytics:ask. The checklist goes once every step the role sees is
- * done, as it does for everyone once all are. Without analytics:view, the traffic figures, insight cards and tips
+ * done, as it does for everyone once all are; with Analytics off there is no traffic step. Without analytics:view, the traffic figures, insight cards and tips
  * (all from analytics) go too, as on the analytics pages themselves, and `analytics` says so. The cached data is shared by
  * everyone, so this runs per request.
  */
-export function homeDataForRole(data: HomeData, can: (permission: Permission) => boolean): HomeData {
+export function homeDataForRole(
+  data: HomeData,
+  can: (permission: Permission) => boolean,
+  { analyticsOn = true }: { analyticsOn?: boolean } = {},
+): HomeData {
   const opens = (href: string) => href.startsWith('#') || canOpenPage(href.split(/[?#]/)[0], can);
-  const steps = data.checklist?.filter((step) => (step.href === ASK_STEP_HREF ? can('analytics:ask') : opens(step.href)));
+  const steps = data.checklist
+    // With Analytics off no traffic is recorded, so the traffic step could never be done
+    ?.filter((step) => analyticsOn || step.id !== 'traffic')
+    .filter((step) => (step.href === ASK_STEP_HREF ? can('analytics:ask') : opens(step.href)));
   const linked = {
     ...data,
     tasks: data.tasks.filter((t) => opens(t.href)),

@@ -10,7 +10,8 @@ import { describe, expect, it, vi } from 'vitest';
 const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }));
 vi.mock('@/shared/logger/logger', () => ({ createLogger: () => log }));
 vi.mock('server-only', () => ({}));
-vi.mock('./feature-switches.service', () => ({ isAreaOn: async () => true }));
+const off = vi.hoisted(() => new Set<string>());
+vi.mock('./feature-switches.service', () => ({ isAreaOn: async (area: string) => !off.has(area) }));
 
 import { refuseIfRouteOff } from './gate';
 
@@ -26,5 +27,26 @@ describe('the route gate', () => {
     const request = { method: 'GET', nextUrl: { pathname: '/api/ai-experiences' }, url: 'http://localhost/api/ai-experiences' };
     expect(await refuseIfRouteOff(request)).toBeNull();
     expect(log.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('a line break in a path segment', () => {
+  // Percent-encoded, so the decoded path holds the character itself
+  it.each([
+    ['\\n', '%0A'],
+    ['\\r', '%0D'],
+    ['U+2028', '%E2%80%A8'],
+    ['U+2029', '%E2%80%A9'],
+  ])('still matches its rule (%s): a managed index stays closed while Managed indexes is off', async (_name, encoded) => {
+    off.add('managed-indexes');
+    log.warn.mockClear();
+    try {
+      const url = `http://localhost/api/search-indexes/idx/documents/a${encoded}b`;
+      const response = await refuseIfRouteOff({ method: 'PUT', url });
+      expect(response?.status).toBe(404);
+      expect(log.warn).not.toHaveBeenCalledWith('No feature area for this route; the request is not checked', expect.anything());
+    } finally {
+      off.clear();
+    }
   });
 });

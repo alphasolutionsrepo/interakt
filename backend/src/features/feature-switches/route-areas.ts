@@ -37,9 +37,11 @@ type Rule = {
 };
 
 const ID = '[^/]+';
-const re = (path: string) => new RegExp(`^/api/${path}$`);
+// dotAll ('s'): a line break in a segment (\n, \r, U+2028, U+2029, sent percent-encoded) must
+// still match its rule, or the route would match none and go unchecked
+const re = (path: string) => new RegExp(`^/api/${path}$`, 's');
 /** The path and everything under it */
-const under = (path: string) => new RegExp(`^/api/${path}(/.*)?$`);
+const under = (path: string) => new RegExp(`^/api/${path}(/.*)?$`, 's');
 
 const RULES: readonly Rule[] = [
   // ── Public API (/api/v1): the widgets and API clients ─────────────────────────
@@ -93,9 +95,8 @@ const RULES: readonly Rule[] = [
   // ── Help assistant ───────────────────────────────────────────────────────────
   { pattern: re('admin/setup-docs'), area: 'help-assistant' },
 
-  // The home page's tips are analytics tips
-  { pattern: re('dashboard/home/tips'), area: 'analytics' },
-
+  // Dismissing a tip: core, as hiding the setup checklist is; the handler refuses the analytics
+  // tips with Analytics off (the rule can't see which tip the body names)
   // ── Always on ────────────────────────────────────────────────────────────────
   { pattern: under('admin'), area: 'core' }, // setup and the demo
   { pattern: under('ai-providers'), area: 'core' },

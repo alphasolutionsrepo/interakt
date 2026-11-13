@@ -39,6 +39,7 @@ import * as cacheStatsRoute from '@/app/api/search-indexes/cache/stats/route';
 import * as slugSearchRoute from '@/app/api/v1/search/[slug]/search/route';
 import * as slugSummarizeRoute from '@/app/api/v1/search/[slug]/summarize/route';
 import * as summarizeRoute from '@/app/api/v1/summarize/route';
+import { analyticsHiddenFindings } from '@/db/analytics-schema';
 import { aiExperiences } from '@/db/schema/ai-experience.schema';
 import { globalSearchSettings } from '@/db/schema/global-search-settings.schema';
 import { roles } from '@/db/schema/roles.schema';
@@ -51,31 +52,48 @@ import * as aiService from '@/features/ai-service';
 import { aiExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { applyQueryInterpretation } from '@/features/search-experience/query-interpreter';
+import { createAnalyticsTestDb, type AnalyticsTestDb } from '@/shared/test/analytics-test-db';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 let testDb: AppTestDb;
 let session: { user: { id: string } } | null = null;
-vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
+// Dismissed tips and the hidden checklist are kept in the analytics database
+let analyticsTestDb: AnalyticsTestDb;
+vi.mock('@/db/index', () => ({ get db() { return testDb.db; }, get analyticsDB() { return analyticsTestDb.db; } }));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => session }));
 
 // The chat itself is not under test: a request that gets through the checks answers 200
 vi.mock('@/features/pipeline/chat-event-stream', () => ({ chatEventStream: vi.fn(async () => new Response('ok', { status: 200 })) }));
 
+// Docs search is not built here; the build switching the Help assistant on starts is counted
+vi.mock('@/shared/seeders/docs/docs-search.seeder', async (original) => ({
+  ...(await original<typeof import('@/shared/seeders/docs/docs-search.seeder')>()),
+  buildDocsSearchOnStartup: vi.fn(async () => {}),
+}));
+
+// Counts the public routes that take the caller for an admin testing (errors explained in full)
+vi.mock('@/shared/api/public-route', async (original) => {
+  const real = await original<typeof import('@/shared/api/public-route')>();
+  return { ...real, markAdminCaller: vi.fn(real.markAdminCaller) };
+});
+
 // The switches can be made unreadable for one test (a database outage)
 let readFails = false;
+let reads = 0;
 // The home page's own numbers are not under test; the cut is, so the service answers a fixed page
 vi.mock('@/features/dashboard/home.service', async (original) => ({
   ...(await original<typeof import('@/features/dashboard/home.service')>()),
   getHomeData: async () => ({
     generatedAt: '2026-11-12T00:00:00Z', analytics: true, period: { from: '', to: '', label: '', previousLabel: '', days: [] },
-    live: { requestsLast5Min: 3 }, health: null, checklist: null,
+    live: { requestsLast5Min: 3 }, health: null,
+    checklist: [{ id: 'experience', label: '', done: true, href: '/experiences/create' }, { id: 'traffic', label: '', done: false, href: '/experiences' }],
     tasks: [{ id: 'task', href: '/ai-experiences' }], recent: [{ id: 'recent', href: '/ai-experiences' }], experiences: [{ id: 'exp', href: '/ai-experiences', volume: 5, issue: null, trend: [1] }],
     metrics: [{ id: 'requests' }], cards: [{ id: 'c', href: '/analytics' }], tips: [{ id: 't', action: { href: '/analytics' } }],
   }),
 }));
 vi.mock('@/features/global-settings', async (original) => {
   const real = await original<typeof import('@/features/global-settings')>();
-  return { ...real, getStoredFeaturesOff: async () => { if (readFails) throw new Error('database down'); return real.getStoredFeaturesOff(); } };
+  return { ...real, getStoredFeaturesOff: async () => { reads++; if (readFails) throw new Error('database down'); return real.getStoredFeaturesOff(); } };
 });
 // Only the model call of query understanding is replaced
 vi.mock('@/features/ai-service', async (original) => {
@@ -85,8 +103,8 @@ vi.mock('@/features/ai-service', async (original) => {
 
 const VIEWER = '00000000-0000-4000-8000-000000000003';
 
-beforeAll(async () => { testDb = await createAppTestDb(); }, 60_000);
-afterAll(() => testDb.close());
+beforeAll(async () => { [testDb, analyticsTestDb] = await Promise.all([createAppTestDb(), createAnalyticsTestDb()]); }, 60_000);
+afterAll(async () => { await testDb.close(); await analyticsTestDb.close(); });
 
 let n = 0;
 async function makeUser(roleId: string): Promise<string> {
@@ -316,6 +334,51 @@ describe('an area switched off', () => {
     expect((await authenticateTokenOrSession(req(), experience)).caller).toBe('admin');
   });
 
+  it('builds docs search when the Help assistant is switched back on (start-up skipped it while off)', async () => {
+    const { buildDocsSearchOnStartup } = await import('@/shared/seeders/docs/docs-search.seeder');
+    const build = vi.mocked(buildDocsSearchOnStartup);
+    build.mockClear();
+    await switchAreas({ 'help-assistant': false });
+    await switchAreas({ chat: false });
+    await switchAreas({ chat: true });
+    expect(build).not.toHaveBeenCalled();
+
+    await switchAreas({ 'help-assistant': true });
+    await vi.waitFor(() => expect(build).toHaveBeenCalledTimes(1));
+    // Already on: saving it on again, or another area, builds nothing more
+    await switchAreas({ 'help-assistant': true, search: true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(build).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a token call with the test marker as live traffic with Playground off', async () => {
+    const { chatEventStream } = await import('@/features/pipeline/chat-event-stream');
+    const { markAdminCaller } = await import('@/shared/api/public-route');
+    const stream = vi.mocked(chatEventStream);
+    const marked = (token: string) => ({ 'X-Access-Token': token, 'X-Interakt-Test': '1' });
+    // How many of search, summarize and autocomplete took the caller for an admin testing
+    const adminCallers = async () => {
+      vi.mocked(markAdminCaller).mockClear();
+      await call(searchRoute.POST, 'POST', '/api/v1/search', { headers: marked(search.accessToken), body: { query: 'q' } });
+      await call(summarizeRoute.POST, 'POST', '/api/v1/summarize', { headers: marked(search.accessToken), body: { query: 'q', results: [{ id: 'r1', index: { id: 'i1', name: 'I' }, fields: { title: 'R' } }] } });
+      await call(autocompleteRoute.POST, 'POST', '/api/v1/autocomplete', { headers: marked(search.accessToken), body: {} });
+      return vi.mocked(markAdminCaller).mock.calls.length;
+    };
+    // The token chat's analytics source
+    const tokenChat = async () => {
+      stream.mockClear();
+      expect((await call(tokenChatRoute.POST, 'POST', '/api/v1/ai-experiences/chat', { headers: marked(chat.accessToken), body: { message: 'hi' } })).status).toBe(200);
+      return stream.mock.calls[0]?.[0]?.analyticsSource;
+    };
+
+    expect(await adminCallers()).toBe(3);
+    expect(await tokenChat()).toBe('admin_test');
+
+    await switchAreas({ playground: false });
+    expect(await adminCallers()).toBe(0);
+    expect(await tokenChat()).toBe('api');
+  });
+
   it('turns off AI summaries on its own, with Search on: summarize and query understanding', async () => {
     await switchAreas({ 'ai-summaries': false });
     expect(await call(summarizeRoute.POST, 'POST', '/api/v1/summarize', { headers: { 'X-Access-Token': search.accessToken }, body: { query: 'q', results: [] } }))
@@ -344,8 +407,8 @@ describe('an area switched off', () => {
   });
 
   it('shows no analytics on the home page with Analytics off, and refuses dismissing an analytics tip', async () => {
-    const home = async () => (await call(homeRoute.GET, 'GET', '/api/dashboard/home?tz=UTC')).body?.data as { analytics: boolean; metrics: unknown[]; cards: unknown[]; tips: unknown[] };
-    expect(await home()).toMatchObject({ analytics: true, metrics: [{ id: 'requests' }] });
+    const home = async () => (await call(homeRoute.GET, 'GET', '/api/dashboard/home?tz=UTC')).body?.data as { analytics: boolean; metrics: unknown[]; cards: unknown[]; tips: unknown[]; checklist: unknown };
+    expect(await home()).toMatchObject({ analytics: true, metrics: [{ id: 'requests' }], checklist: [{ id: 'experience' }, { id: 'traffic' }] });
 
     await switchAreas({ analytics: false });
     // The analytics figures go; the rest of the page stays
@@ -353,7 +416,16 @@ describe('an area switched off', () => {
       analytics: false, metrics: [], cards: [], tips: [],
       tasks: [{ id: 'task' }], recent: [{ id: 'recent' }], experiences: [{ id: 'exp' }],
     });
-    expect(await call(homeTipsRoute.POST, 'POST', '/api/dashboard/home/tips', { body: { tipId: 'tip-1' } })).toMatchObject(turnedOff);
+    expect(await call(homeTipsRoute.POST, 'POST', '/api/dashboard/home/tips', { body: { tipId: 'tip:low_ctr' } })).toMatchObject(turnedOff);
+  });
+
+  it('lets the setup checklist finish and be hidden with Analytics off', async () => {
+    await switchAreas({ analytics: false });
+    // No traffic is recorded with Analytics off: its step goes, and with the rest done, the list
+    expect((await call(homeRoute.GET, 'GET', '/api/dashboard/home?tz=UTC')).body?.data).toMatchObject({ checklist: null });
+    expect((await call(homeTipsRoute.POST, 'POST', '/api/dashboard/home/tips', { body: { tipId: 'tip:checklist' } })).status).toBe(200);
+    const hidden = await analyticsTestDb.db.select().from(analyticsHiddenFindings).where(eq(analyticsHiddenFindings.findingId, 'tip:checklist'));
+    expect(hidden).toHaveLength(1);
   });
 
   it('refuses the embed snippet by the experience\'s kind', async () => {
@@ -424,9 +496,21 @@ describe('when the switches cannot be read', () => {
 
   it('uses the last known switches when they were read before', async () => {
     readFails = false;
-    expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(200);
+    await switchAreas({ chat: false });
+    expect(await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).toMatchObject(turnedOff);
     readFails = true;
-    expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(200);
+    // Past the cache, so the switches are read again, and that read fails
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + 60_000);
+      reads = 0;
+      // Chat stays off and Search on, as last read
+      expect(await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).toMatchObject(turnedOff);
+      expect((await call(embedSnippetRoute.GET, 'GET', '/api/v1/embed-snippet', { headers: { 'X-Access-Token': search.accessToken } })).status).toBe(200);
+      expect(reads).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

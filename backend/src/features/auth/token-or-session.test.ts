@@ -15,6 +15,7 @@ import { type ExperienceAccess } from './public-access';
 import { authenticateTokenOrSession } from './token-or-session';
 
 import { rateLimiter } from '@/shared/api/rate-limit';
+import { featureSwitchesService, featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 
 function request(headers: Record<string, string>): NextRequest {
   return new NextRequest('http://interakt.test/api/v1/search', { headers });
@@ -28,6 +29,8 @@ describe('authenticateTokenOrSession', () => {
   beforeEach(() => {
     authMock.mockReset();
     rateLimiter.clear();
+    featureSwitchesStub.reset();
+    vi.restoreAllMocks();
   });
 
   it('treats the experience token as real traffic, in either header', async () => {
@@ -45,6 +48,21 @@ describe('authenticateTokenOrSession', () => {
 
     // A visitor can send the marker but not the login
     authMock.mockResolvedValue(null);
+    expect(await authenticateTokenOrSession(request(playground), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
+  });
+
+  it('records the marked token caller as live traffic while Playground is off, or the switches cannot be read', async () => {
+    authMock.mockResolvedValue({ user: { id: 'u' } });
+    const playground = { 'X-Access-Token': 't1', 'X-Interakt-Test': '1' };
+    featureSwitchesStub.off.add('playground');
+    expect(await authenticateTokenOrSession(request(playground), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
+
+    featureSwitchesStub.reset();
+    const isAreaOn = featureSwitchesService.isAreaOn;
+    vi.spyOn(featureSwitchesService, 'isAreaOn').mockImplementation(async (area) => {
+      if (area === 'playground') throw new Error('database down');
+      return isAreaOn(area);
+    });
     expect(await authenticateTokenOrSession(request(playground), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
   });
 

@@ -115,13 +115,27 @@ export async function setFeatureSwitches(changes: Partial<Record<Area, boolean>>
   }
   // Read fresh, so a save doesn't undo another Admin's change still in the cache
   const off = new Set((await getStoredFeaturesOff()).filter(isArea));
+  const helpWasOn = on('help-assistant', new Set([...pins, ...off]));
   for (const [area, wanted] of Object.entries(changes) as Array<[Area, boolean]>) {
     if (wanted) off.delete(area);
     else off.add(area);
   }
   await saveFeaturesOff(AREA_IDS.filter((a) => off.has(a)));
   clearFeatureSwitchCache();
+  // Start-up skips the docs search while the Help assistant is off: build it once back on
+  if (!helpWasOn && on('help-assistant', new Set([...pins, ...off]))) startDocsSearchBuild();
   return listFeatureSwitches();
+}
+
+let docsBuild: Promise<void> | null = null;
+
+/** Builds docs search in the background (skipped when the docs are unchanged); one at a time. */
+function startDocsSearchBuild(): void {
+  if (docsBuild) return;
+  docsBuild = import('@/shared/seeders/docs/docs-search.seeder')
+    .then(({ buildDocsSearchOnStartup }) => buildDocsSearchOnStartup())
+    .catch((error) => logger.error('Could not build docs search', error instanceof Error ? error : new Error(String(error))))
+    .finally(() => { docsBuild = null; });
 }
 
 /** Forget the cached stored state: the next check reads it again. */
