@@ -61,7 +61,8 @@ const queries = () => [
   analytics.getTurnsByDay, analytics.countRecentRequests, analytics.getExperienceSummaries, analytics.getProactiveInsights,
 ];
 
-describe('home page data and the Analytics switch', () => {
+// Each test builds the whole page; the first one also loads the database schema, slow on a busy CI runner
+describe('home page data and the Analytics switch', { timeout: 30_000 }, () => {
   it('runs none of the analytics queries while Analytics is off', async () => {
     await getHomeData('UTC', false);
 
