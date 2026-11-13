@@ -68,6 +68,9 @@ export function needsOf(area: Area): readonly Area[] {
   return entry && 'needsAnyOf' in entry ? entry.needsAnyOf : [];
 }
 
+/** The area an experience of each type belongs to (chat experiences need Chat, search ones Search). */
+export const EXPERIENCE_TYPE_AREA: Record<'ai' | 'search', Area> = { ai: 'chat', search: 'search' };
+
 /** What a request to a turned-off area is told (404, so a widget treats the area as absent). */
 export const TURNED_OFF_MESSAGE = 'This feature is turned off for this installation.';
 export const TURNED_OFF_CODE = 'FEATURE_OFF';

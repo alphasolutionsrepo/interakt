@@ -13,9 +13,8 @@
  * still change collection and retention.
  */
 
-import type { Area } from './areas';
-
-import { ANALYTICS_SECTIONS } from '@/app/analytics/_lib/sections';
+import { ANALYTICS_SECTION_NEEDS, type AreaNeeds } from './analytics-section-areas';
+import { EXPERIENCE_TYPE_AREA, type Area } from './areas';
 
 export type PageAreaRule = {
   /** Every one of these must be on */
@@ -29,16 +28,17 @@ const ID = '[^/]+';
 const under = (path: string) => new RegExp(`^${path}(/.*)?$`);
 
 /** The analytics sections that need more than Analytics itself (Search, Conversations, AI & cost, Traces), from the same table the section nav reads */
-const ANALYTICS_SECTION_RULES: ReadonlyArray<readonly [RegExp, PageAreaRule]> = ANALYTICS_SECTIONS.flatMap((s) =>
-  s.needs
-    ? [[under(s.href), { all: ['analytics', ...(s.needs.all ?? [])], ...(s.needs.anyOf && { anyOf: s.needs.anyOf }) }] as const]
-    : [],
+const ANALYTICS_SECTION_RULES: ReadonlyArray<readonly [RegExp, PageAreaRule]> = (Object.entries(ANALYTICS_SECTION_NEEDS) as Array<[string, AreaNeeds]>).map(
+  ([href, needs]) => [under(href), { all: ['analytics', ...(needs.all ?? [])], ...(needs.anyOf && { anyOf: needs.anyOf }) }] as const,
 );
+
+/** Both experience kinds' areas: a page serving search and chat alike needs either */
+const EITHER_KIND: readonly Area[] = [EXPERIENCE_TYPE_AREA.search, EXPERIENCE_TYPE_AREA.ai];
 
 const RULES: ReadonlyArray<readonly [RegExp, PageAreaRule | null]> = [
   // The experiences hub and the create page serve search and chat alike
-  [/^\/experiences$/, { anyOf: ['search', 'chat'] }],
-  [/^\/experiences\/create$/, { anyOf: ['search', 'chat'] }],
+  [/^\/experiences$/, { anyOf: EITHER_KIND }],
+  [/^\/experiences\/create$/, { anyOf: EITHER_KIND }],
   [under('/experiences/search'), { all: ['search'] }],
   [under('/search-experiences'), { all: ['search'] }],
   [under('/experiences/ai'), { all: ['chat'] }],

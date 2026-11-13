@@ -15,7 +15,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
-import { initialWidgetKind, pickFor, previewIfOn, settledChoice, WIDGET_KIND_AREA, type KindPick } from '@/app/playground/_lib/area-gate';
+import { initialWidgetKind, pickFor, previewIfOn, WIDGET_KIND_AREA, type KindPick } from '@/app/playground/_lib/area-gate';
 import {
   useSearchExperiences,
   useSearchExperience,
@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { settledChoice } from '@/shared/access/area-gate';
 import { AreaOffNote, offAreasText } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';

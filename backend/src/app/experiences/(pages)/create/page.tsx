@@ -7,9 +7,10 @@ import { Suspense, useState, type ReactNode } from 'react';
 
 import { CreateWizard as AICreateWizard } from '@/app/ai-experiences/_components/CreateWizard/CreateWizard';
 import { CreateWizard as SearchCreateWizard } from '@/app/search-experiences/_components/CreateWizard/CreateWizard';
+import { EXPERIENCE_TYPE_AREA } from '@/features/feature-switches/areas';
+import { useActionGate, withLockHint, type ActionGate } from '@/shared/access/ActionControls';
 import { AreaOffNote } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
-import { useActionGate, withLockHint, type ActionGate } from '@/shared/access/ActionControls';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 type ExperienceType = 'ai' | 'search' | null;
@@ -31,7 +32,7 @@ function CreateExperienceContent() {
   const searchGate = useActionGate('search-experiences.create');
   // A link straight to a kind this user can't create shows the choice instead of a wizard the
   // server would refuse at the end
-  const allowedKind = (t: ExperienceType) => (t === 'ai' ? aiGate : searchGate).state === 'allowed' && areaOn(t === 'ai' ? 'chat' : 'search');
+  const allowedKind = (t: NonNullable<ExperienceType>) => (t === 'ai' ? aiGate : searchGate).state === 'allowed' && areaOn(EXPERIENCE_TYPE_AREA[t]);
   const selectedType: ExperienceType = chosenType && allowedKind(chosenType) ? chosenType : null;
 
   if (selectedType === 'ai') {

@@ -12,9 +12,9 @@ import { Loader2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { toolsApi, type ScaffoldToolsResponse } from '@/app/tools/_lib/api-client';
 import { ActionButton, builtInGateFor } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/shared/access/area-gate';
 import { AreaOffNote } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { reportActionError } from '@/shared/activity/report';

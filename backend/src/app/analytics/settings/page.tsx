@@ -14,9 +14,9 @@ import { clearAnalyticsData, INSIGHTS_QUEUE, loadInsightsSchedule } from '../_li
 import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
 
 import { jobsApi } from '@/app/jobs/_lib/api-client';
-import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { noPermissionTo } from '@/features/access/ui-actions';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/shared/access/area-gate';
 import { AccessLink } from '@/shared/access/Can';
 import { useAccess } from '@/shared/access/useAccess';
 import { reportActionError } from '@/shared/activity/report';

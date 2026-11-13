@@ -1,5 +1,6 @@
 // app/analytics/_lib/sections.ts
 
+import { ANALYTICS_SECTION_NEEDS, type AreaNeeds } from '@/features/feature-switches/analytics-section-areas';
 import type { Area } from '@/features/feature-switches/areas';
 
 /**
@@ -15,7 +16,7 @@ export interface AnalyticsSection {
   /** Only for chat (AI) experiences and the all-experiences view */
   chatOnly?: boolean;
   /** The feature areas it needs (all of `all`, one of `anyOf`); absent: only Analytics itself */
-  needs?: { all?: readonly Area[]; anyOf?: readonly Area[] };
+  needs?: AreaNeeds;
   /** Questions the Ask panel suggests on this section */
   suggestions: string[];
 }
@@ -34,7 +35,7 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
   {
     href: '/analytics/search',
     label: 'Search',
-    needs: { all: ['search'] },
+    needs: ANALYTICS_SECTION_NEEDS['/analytics/search'],
     description: 'What people searched for, and how well search answered',
     suggestions: [
       'Which searches most often find nothing?',
@@ -47,7 +48,7 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
     label: 'Conversations',
     description: 'How the assistant handled conversations, and what people asked about',
     chatOnly: true,
-    needs: { all: ['chat'] },
+    needs: ANALYTICS_SECTION_NEEDS['/analytics/conversations'],
     suggestions: [
       'Why do conversations fail?',
       'What do people ask about most?',
@@ -59,7 +60,7 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
     label: 'AI & cost',
     description: 'Model calls, tokens, cost and tool usage',
     chatOnly: true,
-    needs: { all: ['chat'] },
+    needs: ANALYTICS_SECTION_NEEDS['/analytics/ai'],
     suggestions: [
       'Which conversations use the most tokens?',
       'Which tools fail most often?',
@@ -69,7 +70,7 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
   {
     href: '/analytics/traces',
     label: 'Traces',
-    needs: { anyOf: ['search', 'chat'] },
+    needs: ANALYTICS_SECTION_NEEDS['/analytics/traces'],
     description: 'Every chat turn, search and AI summary: what was asked, what ran, and how long it took',
     suggestions: ['Show me the slowest conversations', 'Which conversations failed today?'],
   },

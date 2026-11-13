@@ -7,8 +7,9 @@ import { Bot, Search, Layers } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
-import { EXPERIENCE_TYPE_AREA, experiencesWithAreaOn, selectionChange, loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
+import { experiencesWithAreaOn, selectionChange, loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
 
+import { EXPERIENCE_TYPE_AREA } from '@/features/feature-switches/areas';
 import { useAccess } from '@/shared/access/useAccess';
 import { errorText } from '@/shared/api/api-error';
 import {
