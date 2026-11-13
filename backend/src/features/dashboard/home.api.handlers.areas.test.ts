@@ -25,7 +25,7 @@ import { GET } from '@/app/api/dashboard/home/route';
 import { accessStub } from '@/shared/test/access-stub';
 import { featureSwitchesService, featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 
-type Home = { tasks: Array<{ id: string }>; experiences: Array<{ id: string }> };
+type Home = { analytics: boolean; tasks: Array<{ id: string }>; experiences: Array<{ id: string }> };
 const get = async () => {
   const res = await GET(new NextRequest('http://localhost/api/dashboard/home?tz=UTC'));
   return { status: res.status, body: (await res.json()) as { data?: Home } };
@@ -56,12 +56,14 @@ describe('the home page and the feature areas', () => {
     expect((await get()).body.data!.tasks.map((t) => t.id)).toEqual(['chat-task', 'jobs']);
   });
 
-  it('builds the page with every area on, and answers 200, when the switches cannot be read', async () => {
+  it('answers 200 when the switches cannot be read: every area on for links, analytics left out', async () => {
     vi.spyOn(featureSwitchesService, 'listFeatureSwitches').mockRejectedValue(new Error('db down'));
     vi.spyOn(featureSwitchesService, 'isAreaOn').mockRejectedValue(new Error('db down'));
     const { status, body } = await get();
     expect(status).toBe(200);
     expect(body.data!.tasks.map((t) => t.id)).toEqual(['reindex', 'chat-task', 'jobs']);
     expect(body.data!.experiences.map((e) => e.id)).toEqual(['e', 'a']);
+    // The page serves analytics figures directly: unknown switches must not show them
+    expect(body.data!.analytics).toBe(false);
   });
 });

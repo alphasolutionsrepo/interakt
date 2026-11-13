@@ -15,7 +15,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
-import { initialWidgetKind, WIDGET_KIND_AREA } from '@/app/playground/_lib/area-gate';
+import { initialWidgetKind, settledChoice, WIDGET_KIND_AREA } from '@/app/playground/_lib/area-gate';
 import {
   useSearchExperiences,
   useSearchExperience,
@@ -338,10 +338,13 @@ const DEFAULT_LAUNCHER: Record<WidgetKind, Launcher> = {
 
 export function WidgetPlayground() {
   const { areaOn, access } = useAccess();
-  // Opens on a kind whose area is on; the other stays visible, disabled with the reason
-  const [kind, setKind] = useState<WidgetKind>(() => initialWidgetKind(areaOn));
+  // Shows a kind whose area is on (also once access has loaded, or after a switch change); the
+  // other stays visible, disabled with the reason
+  const [pickedKind, setPickedKind] = useState<WidgetKind | null>(null);
+  const kind = settledChoice(pickedKind, WIDGET_KIND_AREA, areaOn, initialWidgetKind);
   const [selectedId, setSelectedId] = useState<string>('');
-  const [launcher, setLauncher] = useState<Launcher>(() => DEFAULT_LAUNCHER[initialWidgetKind(areaOn)]);
+  const [pickedLauncher, setLauncher] = useState<Launcher | null>(null);
+  const launcher = pickedLauncher ?? DEFAULT_LAUNCHER[kind];
   const [device, setDevice] = useState<Device>('desktop');
   const [applied, setApplied] = useState<AppliedSpec | null>(null);
 
@@ -374,9 +377,9 @@ export function WidgetPlayground() {
 
   function handleKindChange(next: WidgetKind) {
     if (next === kind) return;
-    setKind(next);
+    setPickedKind(next);
     setSelectedId('');
-    setLauncher(DEFAULT_LAUNCHER[next]);
+    setLauncher(null);
   }
 
   function handleApply() {

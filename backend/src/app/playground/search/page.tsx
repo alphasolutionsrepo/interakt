@@ -14,7 +14,7 @@ import { Search, Sparkles, Layers } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
 
-import { SEARCH_TAB_AREA, areaGateFor, initialSearchTab, type SearchTab } from '../_lib/area-gate';
+import { SEARCH_TAB_AREA, areaGateFor, initialSearchTab, settledChoice, type SearchTab } from '../_lib/area-gate';
 
 import { SearchPlayground } from './_components/SearchPlayground';
 
@@ -37,9 +37,9 @@ const TABS: { id: SearchTab; label: string; icon: typeof Search; desc: string }[
 export default function SearchPlaygroundPage() {
   const { areaOn, access, isLoading } = useAccess();
   // Each tab follows its own area: Index Search needs Managed indexes, Experience Search needs
-  // Search. The page opens on a tab that is on, until the user picks one.
+  // Search. The page shows the picked tab while its area is on, otherwise one that is on.
   const [picked, setPicked] = useState<SearchTab | null>(null);
-  const activeTab = picked ?? initialSearchTab(areaOn);
+  const activeTab = settledChoice(picked, SEARCH_TAB_AREA, areaOn, initialSearchTab);
   const tabGate = (id: SearchTab) => areaGateFor({ state: 'allowed' }, SEARCH_TAB_AREA[id], areaOn, access);
   const offTabs = isLoading ? [] : TABS.filter((t) => tabGate(t.id).state === 'locked');
 

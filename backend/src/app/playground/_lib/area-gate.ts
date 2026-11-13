@@ -35,6 +35,20 @@ export type WidgetKind = 'chat' | 'search';
 export const WIDGET_KIND_AREA: Record<WidgetKind, Area> = { chat: 'chat', search: 'search' };
 
 /** The kind to open on: chat, unless Chat is off. */
+/**
+ * The choice to show: what the user picked while its area is on, otherwise the default for the
+ * areas that are on now. So a page that opened while access was loading, or a pick whose area was
+ * switched off since, settles on one that works (the off one stays visible, disabled).
+ */
+export function settledChoice<T extends string>(
+  picked: T | null,
+  areaOf: Record<T, Area>,
+  areaOn: (area: Area) => boolean,
+  fallback: (areaOn: (area: Area) => boolean) => T,
+): T {
+  return picked !== null && areaOn(areaOf[picked]) ? picked : fallback(areaOn);
+}
+
 export function initialWidgetKind(areaOn: (area: Area) => boolean): WidgetKind {
   return areaOn('chat') || !areaOn('search') ? 'chat' : 'search';
 }

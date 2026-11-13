@@ -22,16 +22,16 @@ import { getCurrentUserId } from '@/shared/utils/auth-utils';
 const logger = createLogger('home-handlers');
 
 /**
- * The areas that are on, read once. If the switches can't be read every area counts as on (like
- * GET /api/me/access, which then sends no list): the server still refuses a switched-off
- * route itself, so a failed read must not take the home page down.
+ * The areas that are on, read once. If the switches can't be read the home page still loads: every
+ * area counts as on for its links and cards (the server refuses a switched-off route itself),
+ * except Analytics, whose figures this page serves directly, so they are left out.
  */
 async function areasOn(): Promise<ReadonlySet<Area>> {
   try {
     return new Set((await listFeatureSwitches()).filter((s) => s.on).map((s) => s.id));
   } catch (error) {
-    logger.error('Could not read the feature switches; building the home page with every area on', { error });
-    return new Set(AREA_IDS);
+    logger.error('Could not read the feature switches; building the home page without analytics', { error });
+    return new Set(AREA_IDS.filter((a) => a !== 'analytics'));
   }
 }
 

@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { areaGateFor, initialSearchTab, initialWidgetKind } from './area-gate';
+import { areaGateFor, initialSearchTab, initialWidgetKind, SEARCH_TAB_AREA, settledChoice, WIDGET_KIND_AREA } from './area-gate';
 
 const on = () => true;
 const offFor = (...off: string[]) => (a: string) => !off.includes(a);
@@ -40,6 +40,21 @@ describe('areaGateFor', () => {
 
   it('keeps loading as loading', () => {
     expect(areaGateFor({ state: 'loading' }, 'playground', offFor('playground'))).toEqual({ state: 'loading' });
+  });
+});
+
+describe('settledChoice', () => {
+  const loading = () => false;
+  it('settles on a usable kind once access loads, though it first rendered while loading', () => {
+    // While loading every area reads off; once loaded with Chat off, Search is shown
+    expect(settledChoice(null, WIDGET_KIND_AREA, loading, initialWidgetKind)).toBe('chat');
+    expect(settledChoice(null, WIDGET_KIND_AREA, offFor('chat'), initialWidgetKind)).toBe('search');
+  });
+
+  it('keeps the pick while its area is on, and leaves it when that area is switched off', () => {
+    expect(settledChoice('search', WIDGET_KIND_AREA, on, initialWidgetKind)).toBe('search');
+    expect(settledChoice('chat', WIDGET_KIND_AREA, offFor('chat'), initialWidgetKind)).toBe('search');
+    expect(settledChoice('index', SEARCH_TAB_AREA, offFor('managed-indexes'), initialSearchTab)).toBe('experience');
   });
 });
 
