@@ -138,6 +138,10 @@ export const UI_ACTIONS = {
 
   // Analytics
   'analytics.refresh': { does: 'refresh analytics findings', permission: 'analytics:manage', routes: ['POST /api/analytics/process'] },
+  'analytics.clear-data': {
+    does: 'clear analytics data', permission: 'analytics:manage',
+    routes: ['DELETE /api/analytics/data', 'DELETE /api/telemetry/traces'],
+  },
   'analytics.findings': {
     does: 'hide or show findings', permission: 'analytics:manage',
     routes: ['POST /api/analytics/insights/hidden', 'DELETE /api/analytics/insights/hidden'],

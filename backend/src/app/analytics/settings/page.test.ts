@@ -2,8 +2,8 @@
 
 /**
  * Analytics settings with Analytics off: the page stays usable for collection and the schedule,
- * and the actions that need Analytics (Refresh now, clearing data) stay in view, locked with the
- * reason, instead of disappearing. What is fetched is checked in ../_components/access.test.ts.
+ * Refresh now stays in view, locked with the reason, and clearing data stays usable (erasure
+ * works whatever the switch says). What is fetched is checked in ../_components/access.test.ts.
  */
 
 import { createElement } from 'react';
@@ -45,13 +45,20 @@ describe('Analytics settings with Analytics off', () => {
     uiAccess.asAdmin();
   });
 
-  it('keeps the Analytics data card, with both clear buttons locked and the reason', () => {
+  it('keeps clearing data usable: retention and erasure work while Analytics is off', () => {
     uiAccess.areasOff('analytics');
     const html = render();
     expect(html).toContain('Analytics data');
     for (const label of ['Clear all analytics data', 'Clear only traces, for every experience']) {
-      expect(buttonState(html, label, OFF)).toEqual({ disabled: true, locked: true });
+      expect(buttonState(html, label, OFF).disabled).toBe(false);
     }
+  });
+
+  it('locks clearing data by permission for a role without analytics:manage', () => {
+    uiAccess.hold('analytics:view', 'settings:view');
+    const html = render();
+    expect(buttonState(html, 'Clear all analytics data', 'clear analytics data').disabled).toBe(true);
+    expect(html).toContain('clear analytics data');
   });
 
   it('keeps Refresh now, locked with the reason', () => {

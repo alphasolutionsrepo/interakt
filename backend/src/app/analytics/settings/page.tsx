@@ -104,8 +104,8 @@ const TRACKING: Array<{ key: string; label: string; env: string }> = [
  * Settings: when insights refresh, what analytics records, and clearing data.
  */
 export default function AnalyticsSettingsPage() {
-  // With Analytics off, collection and the schedule stay usable; actions on insights and data live behind
-  // analytics routes, so they stay in view but locked with the reason
+  // With Analytics off, collection, the schedule and clearing data stay usable; Refresh now lives behind
+  // analytics routes, so it stays in view but locked with the reason
   const { areaOn, isLoading } = useAccess();
   const analyticsOff = !isLoading && !areaOn('analytics');
   return (
@@ -295,8 +295,6 @@ function DataCard() {
   const [confirmTraces, setConfirmTraces] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const deleteTraces = useDeleteAllSpans();
-  // Clearing goes through analytics routes: with Analytics off the buttons stay, locked with the reason
-  const clearGate = useAreaGate({ state: useAccess().isLoading ? 'loading' : 'allowed' }, 'analytics');
 
   const clearData = async () => {
     setIsClearing(true);
@@ -324,7 +322,7 @@ function DataCard() {
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
         <ActionButton
-          gate={clearGate}
+          action="analytics.clear-data"
           icon={isClearing ? Loader2 : Trash2}
           iconClassName={isClearing ? 'mr-2 size-3.5 animate-spin' : 'mr-2 size-3.5'}
           variant="outline"
@@ -336,7 +334,7 @@ function DataCard() {
           {experienceId ? `Clear data for ${experienceName}` : 'Clear all analytics data'}
         </ActionButton>
         <ActionButton
-          gate={clearGate}
+          action="analytics.clear-data"
           icon={deleteTraces.isPending ? Loader2 : Trash2}
           iconClassName={deleteTraces.isPending ? 'mr-2 size-3.5 animate-spin' : 'mr-2 size-3.5'}
           variant="ghost"

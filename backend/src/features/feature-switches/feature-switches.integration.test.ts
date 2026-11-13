@@ -20,6 +20,7 @@ import { clearFeatureSwitchCache, isAreaOn } from './feature-switches.service';
 
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
 import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
+import * as analyticsDataRoute from '@/app/api/analytics/data/route';
 import * as analyticsStatusRoute from '@/app/api/analytics/status/route';
 import * as homeRoute from '@/app/api/dashboard/home/route';
 import * as homeTipsRoute from '@/app/api/dashboard/home/tips/route';
@@ -410,6 +411,15 @@ describe('an area switched off', () => {
     await switchAreas({ analytics: false });
     expect(await call(analyticsStatusRoute.GET, 'GET', '/api/analytics/status')).toMatchObject(turnedOff);
     expect((await call(analyticsConfigRoute.GET, 'GET', '/api/analytics/config')).status).toBe(200);
+  });
+
+  it('lets an Admin erase analytics data with Analytics off', async () => {
+    await switchAreas({ analytics: false });
+    // An invalid scope reaches the handler's own check (400), so the area gate let it through;
+    // nothing is deleted
+    const res = await call(analyticsDataRoute.DELETE, 'DELETE', '/api/analytics/data', { body: { scope: 'nope' } });
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error ?? JSON.stringify(res.body))).toMatch(/Invalid scope/);
   });
 
   it('shows no analytics on the home page with Analytics off, and refuses dismissing an analytics tip', async () => {
