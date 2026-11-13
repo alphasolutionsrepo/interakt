@@ -71,10 +71,52 @@ describe('the settings row', () => {
     expect(await testDb.db.select().from(globalSearchSettings)).toHaveLength(1);
   });
 
+  it('is the oldest one when there are two', async () => {
+    const [older] = await testDb.db.insert(globalSearchSettings).values({ searchTimeout: 1111, createdAt: new Date('2026-01-01') }).returning();
+    await testDb.db.insert(globalSearchSettings).values({ searchTimeout: 2222, createdAt: new Date('2026-06-01') });
+    invalidateCache();
+    expect(await getGlobalSettings()).toMatchObject({ id: older.id, searchTimeout: 1111 });
+    await updateFeaturesOff(() => ['chat']);
+    expect(await getStoredFeaturesOff()).toEqual(['chat']);
+    expect((await updateGlobalSettings({ rrfWindowSize: 77 })).id).toBe(older.id);
+  });
+
   it('is shared with the feature switches save, which keeps the other settings', async () => {
     const created = await updateGlobalSettings({ searchTimeout: 1234 });
     await updateFeaturesOff(() => ['chat']);
     expect(await testDb.db.select().from(globalSearchSettings)).toMatchObject([{ id: created.id, searchTimeout: 1234, featuresOff: ['chat'] }]);
+  });
+});
+
+describe('every write to the settings row', () => {
+  // The database refuses a write made without the save lock held, so each save is checked to
+  // look up (or create) the row and change it under the lock. PGlite runs one query at a time,
+  // so two saves at once can't show a missing lock; this can.
+  beforeAll(async () => {
+    await testDb.db.execute(sql`
+      CREATE FUNCTION require_settings_lock() RETURNS trigger AS $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND objid = 4071113 AND granted AND pid = pg_backend_pid()) THEN
+          RAISE EXCEPTION 'settings written without the save lock';
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`);
+    await testDb.db.execute(sql`CREATE TRIGGER require_settings_lock BEFORE INSERT OR UPDATE ON global_search_settings FOR EACH ROW EXECUTE FUNCTION require_settings_lock()`);
+  });
+  afterAll(async () => {
+    await testDb.db.execute(sql`DROP TRIGGER require_settings_lock ON global_search_settings`);
+    await testDb.db.execute(sql`DROP FUNCTION require_settings_lock()`);
+  });
+
+  it('holds the lock in the general settings save, creating the row and then updating it', async () => {
+    const created = await updateGlobalSettings({ searchTimeout: 1234 });
+    expect((await updateGlobalSettings({ rrfWindowSize: 77 })).id).toBe(created.id);
+  });
+
+  it('holds the lock in the feature switches save, creating the row and then updating it', async () => {
+    await setFeatureSwitches({ chat: false }, 'admin-1');
+    await setFeatureSwitches({ analytics: false }, 'admin-1');
+    expect(new Set(await stored())).toEqual(new Set(['chat', 'analytics']));
   });
 });
 

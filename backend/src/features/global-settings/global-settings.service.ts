@@ -10,7 +10,7 @@
 import 'server-only';
 
 import { db } from '@/db/index';
-import { eq, getTableColumns, sql } from 'drizzle-orm';
+import { asc, eq, getTableColumns, sql } from 'drizzle-orm';
 import { pgTable, uuid } from 'drizzle-orm/pg-core';
 import {
     globalSearchSettings,
@@ -85,7 +85,7 @@ export async function getGlobalSettings(): Promise<GeneralSearchSettings> {
     }
 
     try {
-        const settings = await db.query.globalSearchSettings.findFirst({ columns: generalColumnNames });
+        const settings = await db.query.globalSearchSettings.findFirst({ columns: generalColumnNames, orderBy: OLDEST_FIRST });
 
         if (settings) {
             cachedSettings = settings;
@@ -205,12 +205,15 @@ export async function updateGlobalSettings(
     }
 
     // Update the settings row, created with the defaults when there is none
-    const { id, created } = await settingsRow(db);
-    const [result] = await db
-        .update(globalSearchSettings)
-        .set({ ...updateData, updatedAt: new Date() })
-        .where(eq(globalSearchSettings.id, id))
-        .returning(generalColumns);
+    const { result, created } = await underSettingsLock(async (tx) => {
+        const { id, created } = await settingsRow(tx);
+        const [row] = await tx
+            .update(globalSearchSettings)
+            .set({ ...updateData, updatedAt: new Date() })
+            .where(eq(globalSearchSettings.id, id))
+            .returning(generalColumns);
+        return { result: row, created };
+    });
     logger.info(created ? 'Created global search settings' : 'Updated global search settings', { id: result.id });
 
     // Invalidate cache
@@ -273,7 +276,7 @@ let warnedMissingColumn = false;
  */
 export async function getStoredFeaturesOff(): Promise<string[]> {
     try {
-        const row = await db.query.globalSearchSettings.findFirst({ columns: { featuresOff: true } });
+        const row = await db.query.globalSearchSettings.findFirst({ columns: { featuresOff: true }, orderBy: OLDEST_FIRST });
         return row?.featuresOff ?? [];
     } catch (error) {
         if (!isMissingColumn(error)) throw error;
@@ -295,10 +298,8 @@ export async function updateFeaturesOff(
     change: (current: string[]) => string[],
 ): Promise<{ before: string[]; after: string[] }> {
     try {
-        const result = await db.transaction(async (tx) => {
-            // Held to the end of the transaction; also covers the first save, when there is no row to lock
-            await tx.execute(sql`select pg_advisory_xact_lock(${FEATURES_OFF_LOCK})`);
-            const row = await tx.query.globalSearchSettings.findFirst({ columns: { featuresOff: true } });
+        const result = await underSettingsLock(async (tx) => {
+            const row = await tx.query.globalSearchSettings.findFirst({ columns: { featuresOff: true }, orderBy: OLDEST_FIRST });
             const before = row?.featuresOff ?? [];
             const after = change([...before]);
             const { id } = await settingsRow(tx);
@@ -320,20 +321,35 @@ export async function updateFeaturesOff(
 // HELPERS
 // ============================================================================
 
-// Arbitrary key for the advisory lock that serializes feature switch saves
-const FEATURES_OFF_LOCK = 4_071_113;
+// Arbitrary key for the advisory lock that serializes the settings saves
+const SETTINGS_LOCK = 4_071_113;
 
-type SettingsExecutor = Pick<typeof db, 'query' | 'insert'>;
+// One settings row is expected; should there be more, every read and save uses the oldest
+const OLDEST_FIRST = [asc(globalSearchSettings.createdAt), asc(globalSearchSettings.id)];
+
+type SettingsTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Runs a settings save in a transaction holding the settings lock to its end, so saves run one
+ * at a time: none loses another's change, and the first two can't both create the row (there is
+ * no row to lock yet, hence an advisory lock).
+ */
+function underSettingsLock<T>(save: (tx: SettingsTx) => Promise<T>): Promise<T> {
+    return db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(${SETTINGS_LOCK})`);
+        return save(tx);
+    });
+}
 
 // The settings table seen through its id alone: an insert names no other column, so it works
 // whichever migrations have run (the others take their defaults)
 const settingsRowIds = pgTable('global_search_settings', { id: uuid('id').primaryKey().defaultRandom() });
 
 /** The id of the settings row, creating it with the column defaults when there is none. */
-async function settingsRow(executor: SettingsExecutor): Promise<{ id: string; created: boolean }> {
-    const existing = await executor.query.globalSearchSettings.findFirst({ columns: { id: true } });
+async function settingsRow(tx: SettingsTx): Promise<{ id: string; created: boolean }> {
+    const existing = await tx.query.globalSearchSettings.findFirst({ columns: { id: true }, orderBy: OLDEST_FIRST });
     if (existing) return { id: existing.id, created: false };
-    const [inserted] = await executor.insert(settingsRowIds).values({}).returning();
+    const [inserted] = await tx.insert(settingsRowIds).values({}).returning();
     return { id: inserted.id, created: true };
 }
 
