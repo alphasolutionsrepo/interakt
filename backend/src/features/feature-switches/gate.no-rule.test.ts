@@ -88,6 +88,26 @@ describe('a public route that answers without asking for its area', () => {
     }
   });
 
+  it('is left as it answered with the Help assistant on while its own area is off (built-in help uses the same route)', async () => {
+    off.add('search');
+    log.error.mockClear();
+    try {
+      expect((await unchecked(request)).status).toBe(200);
+      expect(log.error).toHaveBeenCalledWith('A public route answered without checking its feature area', { pathname: '/api/v1/search', method: 'POST' });
+    } finally {
+      off.clear();
+    }
+  });
+
+  it('is left as it answered with the Help assistant off while its own area is on', async () => {
+    off.add('help-assistant');
+    try {
+      expect((await unchecked(request)).status).toBe(200);
+    } finally {
+      off.clear();
+    }
+  });
+
   it('answers as it did while its area is on', async () => {
     expect((await unchecked(request)).status).toBe(200);
   });
