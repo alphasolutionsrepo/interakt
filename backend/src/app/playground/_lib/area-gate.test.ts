@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { areaGateFor, initialWidgetKind } from './area-gate';
+import { areaGateFor, initialSearchTab, initialWidgetKind } from './area-gate';
 
 const on = () => true;
 const offFor = (...off: string[]) => (a: string) => !off.includes(a);
@@ -47,5 +47,14 @@ describe('initialWidgetKind', () => {
   it('opens on chat, or search when chat is off', () => {
     expect(initialWidgetKind(on)).toBe('chat');
     expect(initialWidgetKind(offFor('chat'))).toBe('search');
+  });
+});
+
+describe('initialSearchTab', () => {
+  it('opens on Index Search unless Managed indexes is off and Search is on', () => {
+    expect(initialSearchTab(on)).toBe('index');
+    expect(initialSearchTab(offFor('managed-indexes'))).toBe('experience');
+    expect(initialSearchTab(offFor('search'))).toBe('index');
+    expect(initialSearchTab(offFor('managed-indexes', 'search'))).toBe('index');
   });
 });

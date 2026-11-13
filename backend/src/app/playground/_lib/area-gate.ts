@@ -38,3 +38,12 @@ export const WIDGET_KIND_AREA: Record<WidgetKind, Area> = { chat: 'chat', search
 export function initialWidgetKind(areaOn: (area: Area) => boolean): WidgetKind {
   return areaOn('chat') || !areaOn('search') ? 'chat' : 'search';
 }
+
+/** The tabs of the search Test page, and the area each needs. */
+export type SearchTab = 'index' | 'experience';
+export const SEARCH_TAB_AREA: Record<SearchTab, Area> = { index: 'managed-indexes', experience: 'search' };
+
+/** The tab to open on: Index Search, unless Managed indexes is off and Search is on. */
+export function initialSearchTab(areaOn: (area: Area) => boolean): SearchTab {
+  return areaOn('managed-indexes') || !areaOn('search') ? 'index' : 'experience';
+}

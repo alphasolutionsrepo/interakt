@@ -54,9 +54,9 @@ describe('PageAccessGate', () => {
 
   it('names every area that keeps the page closed, and only those', () => {
     uiAccess.asAdmin();
-    uiAccess.areasOff('managed-indexes', 'playground', 'analytics');
-    expect(gate('/playground/search')).toContain('Managed indexes and Playground are turned off for this installation.');
-    uiAccess.areasOff('search', 'chat');
+    uiAccess.areasOff('managed-indexes', 'search', 'playground', 'analytics');
+    expect(gate('/playground/search')).toContain('Playground, Managed indexes and Search are turned off for this installation.');
+    uiAccess.areasOff('chat');
     expect(gate('/experiences')).toContain('Search and Chat are turned off for this installation.');
   });
 

@@ -64,7 +64,10 @@ describe('which areas a page needs', () => {
     expect(pageAreasOn('/playground', offOf('playground'))).toBe(false);
     expect(pageAreasOn('/playground/ai-service', offOf('playground'))).toBe(false);
     expect(pageAreasOn('/playground/ai-service', offOf('chat', 'search'))).toBe(true);
-    expect(pageAreasOn('/playground/search', offOf('managed-indexes'))).toBe(false);
+    // The search Test page has two tabs: Index Search (Managed indexes) and Experience Search (Search)
+    expect(pageAreasOn('/playground/search', offOf('managed-indexes'))).toBe(true);
+    expect(pageAreasOn('/playground/search', offOf('search'))).toBe(true);
+    expect(pageAreasOn('/playground/search', offOf('managed-indexes', 'search'))).toBe(false);
     expect(pageAreasOn('/playground/search', offOf('playground'))).toBe(false);
     expect(pageAreasOn('/playground/unified-search', offOf('search'))).toBe(false);
     expect(pageAreasOn('/playground/widget', offOf('search'))).toBe(true);
@@ -94,7 +97,8 @@ describe('which areas keep a page closed', () => {
 
   it('names each required area that is off', () => {
     expect(pageAreasOff('/tools', offOf('chat'))).toEqual(['chat']);
-    expect(pageAreasOff('/playground/search', offOf('managed-indexes', 'playground'))).toEqual(['managed-indexes', 'playground']);
+    expect(pageAreasOff('/playground/search', offOf('managed-indexes', 'playground'))).toEqual(['playground']);
+    expect(pageAreasOff('/playground/search', offOf('managed-indexes', 'search'))).toEqual(['managed-indexes', 'search']);
     expect(pageAreasOff('/playground/search', offOf('playground'))).toEqual(['playground']);
   });
 

@@ -51,7 +51,8 @@ const RULES: ReadonlyArray<readonly [RegExp, PageAreaRule | null]> = [
   ...ANALYTICS_SECTION_RULES,
   [under('/analytics'), { all: ['analytics'] }],
   // The Test pages: Playground, plus the area tested
-  [/^\/playground\/search$/, { all: ['managed-indexes', 'playground'] }],
+  // The index tab needs Managed indexes, the Experience Search tab needs Search: the page opens on either
+  [/^\/playground\/search$/, { all: ['playground'], anyOf: ['managed-indexes', 'search'] }],
   [/^\/playground\/unified-search$/, { all: ['search', 'playground'] }],
   [/^\/playground\/widget$/, { all: ['playground'], anyOf: ['search', 'chat'] }],
   [under('/playground'), { all: ['playground'] }],

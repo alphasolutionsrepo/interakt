@@ -34,7 +34,6 @@ const SAME: ReadonlyArray<readonly [string, string, string]> = [
   // the Test pages: Playground plus the area tested
   ['/playground', '/api/ai-service/chat', 'POST'],
   ['/playground/ai-service', '/api/ai-service/chat', 'POST'],
-  ['/playground/search', '/api/search/index/x', 'POST'],
   // core: always open, page and route alike
   ['/settings/features', '/api/settings/features', 'GET'],
   ['/analytics/settings', '/api/analytics/config', 'GET'],
@@ -77,6 +76,12 @@ describe('pages that differ from their route on purpose', () => {
     expect(routeArea('/api/v1/autocomplete', 'POST')!.areas).toEqual(['search']);
     // Its summaries follow AI summaries: the page shows them disabled with a note while it is off
     expect(routeArea('/api/v1/search/x/summarize', 'POST')!.areas).toEqual(['ai-summaries']);
+  });
+
+  it('needs Playground and one of Managed indexes or Search on the search Test page, whose tabs call the managed-index routes and the search experience routes', () => {
+    expect(pageAreaRule('/playground/search')).toEqual({ all: ['playground'], anyOf: ['managed-indexes', 'search'] });
+    expect(sorted(routeArea('/api/search/index/x', 'POST')!.areas)).toEqual(['managed-indexes', 'playground']);
+    expect(routeArea('/api/v1/search/x/search', 'POST')!.areas).toEqual(['search']);
   });
 
   it('needs Playground and one of Search or Chat on the widget page, which calls the public routes of either', () => {
