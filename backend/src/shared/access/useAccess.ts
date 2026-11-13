@@ -26,6 +26,10 @@ export interface MyAccess {
   permissions: Permission[];
   /** The feature areas that are on for the installation (feature-switches) */
   areas: Area[];
+  /** Areas the deployment setting turns off, which can't be turned on in Settings → Features (absent from an older server) */
+  pinnedOff?: Area[];
+  /** Areas an Admin switched off (absent from an older server) */
+  switchedOff?: Area[];
 }
 
 export const accessKeys = { mine: ['access', 'mine'] as const };

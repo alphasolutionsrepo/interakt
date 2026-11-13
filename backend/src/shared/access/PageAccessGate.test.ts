@@ -60,6 +60,33 @@ describe('PageAccessGate', () => {
     expect(gate('/experiences')).toContain('Search and Chat are turned off for this installation.');
   });
 
+  it('names Search and Chat, not Playground, when Playground is on but what it needs is off', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOffBecause({ switchedOff: ['search', 'chat'], off: ['playground'] });
+    const html = gate('/playground/widget');
+    expect(html).toContain('Search and Chat are turned off for this installation.');
+    expect(html).not.toContain('Playground');
+    expect(html).toContain('href="/settings/features"');
+  });
+
+  it('says the deployment setting turned a pinned area off, with no button to turn it on', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOffBecause({ pinnedOff: ['chat'] });
+    const html = gate('/tools');
+    expect(html).toContain('Chat: Turned off for this installation by its deployment settings.');
+    expect(html).not.toContain('/settings/features');
+    expect(html).not.toContain('Turn it on');
+  });
+
+  it('keeps the button only for what an Admin can turn on when some areas are pinned and some are not', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOffBecause({ pinnedOff: ['chat'], switchedOff: ['search'] });
+    const html = gate('/experiences');
+    expect(html).toContain('Search is turned off for this installation.');
+    expect(html).toContain('Chat: Turned off for this installation by its deployment settings.');
+    expect(html).toContain('href="/settings/features"');
+  });
+
   it('keeps core pages open when areas are off, and shows nothing while loading', () => {
     uiAccess.hold('data-sources:view');
     uiAccess.areasOff('chat', 'search');

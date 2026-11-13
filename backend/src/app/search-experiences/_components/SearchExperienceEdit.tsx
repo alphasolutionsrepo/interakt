@@ -63,7 +63,7 @@ import {
  SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
 import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
 import { ExperienceSourcesCard } from './ExperienceSources';
-import { SummaryAreaGuard } from './SummaryAreaGuard';
+import { SummaryAreaGuard, useSummaryAreaOff } from './SummaryAreaGuard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -459,6 +459,9 @@ export function AiTab({
   setSummaryInstructionsOpen,
   onOpenSummaryGenerator,
 }: AiTabProps) {
+  // With AI summaries off the toggle is disabled with the rest, so the instructions stay open to be read
+  const summariesOff = useSummaryAreaOff();
+  const instructionsOpen = summaryInstructionsOpen || summariesOff;
   return (
           <SummaryAreaGuard>
           <Card className="border-border/60 shadow-sm rounded-2xl">
@@ -583,7 +586,7 @@ export function AiTab({
                     </div>
 
                     {/* Custom Instructions Section - Collapsible */}
-                    <Collapsible open={summaryInstructionsOpen} onOpenChange={setSummaryInstructionsOpen}>
+                    <Collapsible open={instructionsOpen} onOpenChange={setSummaryInstructionsOpen}>
                       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                         <div className="flex items-center justify-between">
                           <CollapsibleTrigger asChild>
@@ -600,7 +603,7 @@ export function AiTab({
                                 </div>
                                 <p className="text-xs text-muted-foreground">Optional summary behavior customization</p>
                               </div>
-                              {summaryInstructionsOpen ? (
+                              {instructionsOpen ? (
                                 <ChevronUp className="size-4 text-muted-foreground ml-2" />
                               ) : (
                                 <ChevronDown className="size-4 text-muted-foreground ml-2" />

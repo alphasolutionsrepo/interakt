@@ -34,6 +34,18 @@ describe('GET /api/me/access areas', () => {
     expect(body.data.permissions).toEqual(['tools:view']);
   });
 
+  it('says why areas are off: pinned by the deployment setting, or switched off by an Admin', async () => {
+    mocks.list.mockResolvedValue([
+      { id: 'search', on: true, switchedOn: true, pinnedOff: false },
+      { id: 'chat', on: false, switchedOn: true, pinnedOff: true },
+      { id: 'analytics', on: false, switchedOn: false, pinnedOff: false },
+      { id: 'playground', on: true, switchedOn: true, pinnedOff: false },
+    ]);
+    const { data } = await (await handleGetMyAccess()).json();
+    expect(data.pinnedOff).toEqual(['chat']);
+    expect(data.switchedOff).toEqual(['analytics']);
+  });
+
   it('still answers who the caller is, without areas, when the switches cannot be read (the UI then shows everything)', async () => {
     mocks.list.mockRejectedValue(new Error('db down'));
     const response = await handleGetMyAccess();
@@ -45,6 +57,8 @@ describe('GET /api/me/access areas', () => {
       permissions: ['tools:view'],
     });
     expect('areas' in data).toBe(false);
+    expect('pinnedOff' in data).toBe(false);
+    expect('switchedOff' in data).toBe(false);
     expect(mocks.logError).toHaveBeenCalledTimes(1);
   });
 

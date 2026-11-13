@@ -19,6 +19,7 @@ const held = new Set<Permission>();
 let admin = false;
 let loading = false;
 const areasOffSet = new Set<Area>();
+let reasons: { pinnedOff?: Area[]; switchedOff?: Area[] } = {};
 
 export const uiAccess = {
   /** Render as a user holding exactly these permissions (not an Admin) */
@@ -28,6 +29,16 @@ export const uiAccess = {
     admin = false;
     loading = false;
     areasOffSet.clear();
+    reasons = {};
+  },
+  /**
+   * Turn areas off the way the server reports why: `switchedOff` by an Admin, `pinnedOff` by the
+   * deployment setting. `off` (everything else) is off only because what it needs is off.
+   * Without this, areasOff answers as an older server does: no reasons.
+   */
+  areasOffBecause({ switchedOff = [], pinnedOff = [], off = [] }: { switchedOff?: Area[]; pinnedOff?: Area[]; off?: Area[] }) {
+    [...switchedOff, ...pinnedOff, ...off].forEach((a) => areasOffSet.add(a));
+    reasons = { pinnedOff, switchedOff };
   },
   /** Turn these feature areas off (after hold / asAdmin, which turn every area back on) */
   areasOff(...areas: Area[]) {
@@ -46,6 +57,7 @@ export function uiAccessLoading() {
   admin = false;
   loading = true;
   areasOffSet.clear();
+  reasons = {};
 }
 
 const can = (p: Permission) => held.has(p);
@@ -59,6 +71,7 @@ export const useAccessModule = {
       role: { id: 'role', name: admin ? 'Admin' : 'Test role', isAdmin: admin },
       permissions: [...held],
       areas: AREA_IDS.filter((a) => !areasOffSet.has(a)),
+      ...reasons,
     },
     isLoading: loading,
     errorStatus: null,

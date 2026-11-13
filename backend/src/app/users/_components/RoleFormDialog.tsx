@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { effectivePermissions, PERMISSION_GROUPS, type Permission } from '@/features/access/permissions';
 import type { CreateRoleInput } from '@/features/access/roles.validations';
+import type { Area } from '@/features/feature-switches/areas';
 import { AreaOffNote, areaLabel } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { useInlineError } from '@/shared/activity/useInlineError';
@@ -93,6 +94,21 @@ export function RoleFormDialog({ open, onOpenChange, role, onSubmit, isSubmittin
 }
 
 /**
+ * Why a ticked permission grants nothing yet: "needs 2 more permissions to take effect", and
+ * the ones in a turned-off area apart. With nothing left to tick there is no count of "more":
+ * "needs 3 permissions in Chat to take effect, turned off for this installation".
+ */
+export function unmetNote(needs: { tickable: readonly unknown[]; blocked: readonly unknown[]; blockedAreas: readonly Area[] }, label: (area: Area) => string): string {
+  const plural = (n: number) => (n === 1 ? 'permission' : 'permissions');
+  const t = needs.tickable.length;
+  const b = needs.blocked.length;
+  const areas = needs.blockedAreas.map(label).join(' and ');
+  if (b === 0) return `needs ${t} more ${plural(t)} to take effect`;
+  if (t === 0) return `needs ${b} ${plural(b)} in ${areas} to take effect, turned off for this installation`;
+  return `needs ${t} more ${plural(t)} to take effect, and ${b} in ${areas}, turned off for this installation`;
+}
+
+/**
  * The permission checkboxes. A permission whose feature area is off stays listed and keeps its
  * ticked state, but can't be changed; its group says why. Saving sends every ticked permission
  * as it is, so nothing of an off area is dropped or added.
@@ -126,10 +142,7 @@ export function RolePermissionFields({ permissions, onToggle }: { permissions: R
                   {included && <span className="text-muted-foreground"> (included by another permission)</span>}
                   {needs && (
                     <span className="text-destructive">
-                      {' '}(needs {needs.tickable.length} more {needs.tickable.length === 1 ? 'permission' : 'permissions'} to take effect
-                      {needs.blocked.length > 0 &&
-                        `${needs.tickable.length > 0 ? ', and ' : ': '}${needs.blocked.length} in ${needs.blockedAreas.map(areaLabel).join(' and ')}, turned off for this installation`}
-                      )
+                      {' '}({unmetNote(needs, areaLabel)})
                     </span>
                   )}
                 </span>

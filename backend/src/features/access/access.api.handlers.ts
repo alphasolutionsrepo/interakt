@@ -27,7 +27,9 @@ type IdContext = { params: Promise<{ id: string }> };
 
 /**
  * GET /api/me/access: what the signed-in user may do (drives the admin UI), and `areas`: the
- * feature areas that are on for the installation (feature-switches), so the UI hides the rest.
+ * feature areas that are on for the installation (feature-switches), so the UI hides the rest;
+ * `pinnedOff` (the deployment setting turns them off) and `switchedOff` (an Admin did), so the UI
+ * can name why an area is off. An area on neither list is off only because what it needs is off.
  * If the switches can't be read the answer still carries the role and permissions but no
  * `areas` (never a guessed list): the UI then shows every area, and the server still refuses
  * a switched-off route itself. A failed permission lookup answers 500.
@@ -37,8 +39,13 @@ export async function handleGetMyAccess() {
     const { access, response } = await checkAccess(SIGNED_IN);
     if (response) return response;
     let areas: string[] | undefined;
+    let pinnedOff: string[] | undefined;
+    let switchedOff: string[] | undefined;
     try {
-      areas = (await listFeatureSwitches()).filter((s) => s.on).map((s) => s.id);
+      const switches = await listFeatureSwitches();
+      areas = switches.filter((s) => s.on).map((s) => s.id);
+      pinnedOff = switches.filter((s) => s.pinnedOff === true).map((s) => s.id);
+      switchedOff = switches.filter((s) => s.switchedOn === false).map((s) => s.id);
     } catch (error) {
       logger.error('Could not read the feature switches; answering without areas', { error });
     }
@@ -46,7 +53,7 @@ export async function handleGetMyAccess() {
       userId: access.userId,
       role: { id: access.roleId, name: access.roleName, isAdmin: access.isAdmin },
       permissions: [...access.permissions],
-      ...(areas ? { areas } : {}),
+      ...(areas ? { areas, pinnedOff, switchedOff } : {}),
     });
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'getMyAccess' });

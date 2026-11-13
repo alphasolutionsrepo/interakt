@@ -15,7 +15,8 @@ import type { ReactNode } from 'react';
 
 import { useAccess } from './useAccess';
 
-import { AREAS, TURNED_OFF_MESSAGE, type Area } from '@/features/feature-switches/areas';
+import { AREAS, PINNED_OFF_MESSAGE, TURNED_OFF_MESSAGE, type Area } from '@/features/feature-switches/areas';
+import { offCauses, type OffCauses, type OffReasons } from '@/features/feature-switches/off-causes';
 
 export const FEATURES_SETTINGS_HREF = '/settings/features';
 
@@ -36,19 +37,44 @@ export function areaOffText(area: Area): string {
 export function areasOffText(areas: readonly Area[]): string {
   if (areas.length === 0) return TURNED_OFF_MESSAGE;
   if (areas.length === 1) return areaOffText(areas[0]);
+  return `${labelList(areas)} are turned off for this installation.`;
+}
+
+/** "Chat", "Search and Chat", "Playground, Search and Chat" */
+function labelList(areas: readonly Area[]): string {
   const labels = areas.map(areaLabel);
-  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]} are turned off for this installation.`;
+  return labels.length < 2 ? labels.join('') : `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * What to tell about off areas once their root causes are known: the switched-off ones in the
+ * usual sentence, the ones the deployment setting pins off with its own message (they can't be
+ * turned on in Settings → Features).
+ */
+export function offCausesText({ pinned, switchable }: OffCauses): string {
+  const parts: string[] = [];
+  if (switchable.length > 0 || pinned.length === 0) parts.push(areasOffText(switchable));
+  if (pinned.length > 0) parts.push(`${labelList(pinned)}: ${PINNED_OFF_MESSAGE}`);
+  return parts.join(' ');
+}
+
+/** The sentence for off areas: names what is really off (see offCauses), not an area that only lacks what it needs. */
+export function offAreasText(areas: readonly Area[], areaOn: (area: Area) => boolean, reasons?: OffReasons): string {
+  return offCausesText(offCauses(areas, areaOn, reasons));
 }
 
 export function AreaOffNote({ area, detail, className }: { area: Area; detail?: ReactNode; className?: string }) {
-  const { isAdmin } = useAccess();
+  const { isAdmin, areaOn, access } = useAccess();
+  const causes = offCauses([area], areaOn, access);
+  // Nothing to turn on in Settings → Features when the deployment setting pins every cause off
+  const canTurnOn = isAdmin && (causes.switchable.length > 0 || causes.pinned.length === 0);
   return (
     <p role="note" className={`flex items-start gap-2 text-sm text-muted-foreground ${className ?? ''}`}>
       <PowerOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <span>
-        {areaOffText(area)}
+        {offCausesText(causes)}
         {detail ? <> {detail}</> : null}
-        {isAdmin ? (
+        {canTurnOn ? (
           <>
             {' '}
             <Link href={FEATURES_SETTINGS_HREF} className="underline underline-offset-2 hover:text-foreground">

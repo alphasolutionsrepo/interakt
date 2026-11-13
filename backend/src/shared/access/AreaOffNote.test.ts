@@ -41,3 +41,24 @@ describe('AreaOffNote', () => {
     expect(html).not.toContain('/settings/features');
   });
 });
+
+describe('AreaOffNote root cause', () => {
+  const dependent = () => renderToStaticMarkup(createElement(AreaOffNote, { area: 'playground', detail: 'Its widget can\'t be previewed.' }));
+
+  it('names what the area needs when it is on but everything it needs is off', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOffBecause({ switchedOff: ['search', 'chat'], off: ['playground'] });
+    const html = dependent();
+    expect(html).toContain('Search and Chat are turned off for this installation.');
+    expect(html).not.toContain('Playground is');
+    expect(html).toContain('href="/settings/features"');
+  });
+
+  it('says a pinned area is turned off by the deployment setting, with no link', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOffBecause({ pinnedOff: ['search', 'chat'], off: ['playground'] });
+    const html = dependent();
+    expect(html).toContain('Search and Chat: Turned off for this installation by its deployment settings.');
+    expect(html).not.toContain('/settings/features');
+  });
+});

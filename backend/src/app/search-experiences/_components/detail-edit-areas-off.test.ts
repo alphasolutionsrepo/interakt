@@ -39,12 +39,12 @@ vi.mock('../_lib/hooks', () => ({
 const detail = () => renderToStaticMarkup(createElement(SearchExperienceDetail, { id: 'e1' }));
 
 const noop = () => {};
-const aiTab = () =>
+const aiTab = (instructions?: string) =>
   renderToStaticMarkup(createElement(AiTab, {
     formData: {
       aiConfig: {
         enabled: true, providerId: null, modelId: null,
-        summary: { enabled: true, maxResultsForContext: 12, maxTokens: 700 },
+        summary: { enabled: true, maxResultsForContext: 12, maxTokens: 700, customInstructions: instructions },
         queryUnderstanding: { enabled: false, minWords: 3 },
       },
     },
@@ -82,6 +82,19 @@ describe('the search experience edit page’s AI tab', () => {
     expect(html).toContain('AI summaries is turned off for this installation.');
     expect(html).toContain('value="12"');
     expect(html).toContain('value="700"');
+  });
+
+  it('shows saved custom instructions, read-only, though their section is collapsed, when AI summaries is off', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('ai-summaries');
+    const html = aiTab('Answer in a friendly tone');
+    expect(html).toContain('Answer in a friendly tone');
+    expect(html).toContain('<fieldset disabled');
+  });
+
+  it('keeps the custom instructions collapsed with AI summaries on', () => {
+    uiAccess.asAdmin();
+    expect(aiTab('Answer in a friendly tone')).not.toContain('Answer in a friendly tone');
   });
 
   it('is plain and editable with AI summaries on', () => {

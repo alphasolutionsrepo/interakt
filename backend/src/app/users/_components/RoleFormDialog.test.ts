@@ -9,7 +9,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { RolePermissionFields } from './RoleFormDialog';
+import { RolePermissionFields, unmetNote } from './RoleFormDialog';
 
 import { uiAccess } from '@/shared/test/ui-access-stub';
 
@@ -36,6 +36,23 @@ describe('RolePermissionFields', () => {
     expect(html).toContain('Chat is turned off for this installation.');
     expect(html).toContain('Roles keep these permissions, and they apply again when Chat is on.');
     expect(html).toContain('href="/settings/features"');
+  });
+
+  it('words an unmet need that only a turned-off area blocks without a count of "more"', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('chat');
+    const all = ['setup:run', 'ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit', 'search-experiences:edit', 'data-sources:edit'];
+    const html = render(all);
+    expect(html).toContain('needs 3 permissions in Chat to take effect, turned off for this installation');
+    expect(html).not.toContain('needs 0 more');
+    // With some still to tick, the count stays
+    expect(render(['setup:run'])).toContain('needs 6 more permissions to take effect, and 3 in Chat, turned off for this installation');
+  });
+
+  it('words the three shapes of unmet need', () => {
+    const label = () => 'Chat';
+    expect(unmetNote({ tickable: [1], blocked: [], blockedAreas: [] }, label)).toBe('needs 1 more permission to take effect');
+    expect(unmetNote({ tickable: [], blocked: [1], blockedAreas: ['chat'] }, label)).toBe('needs 1 permission in Chat to take effect, turned off for this installation');
   });
 
   it('leaves permissions of areas that are on, and core ones, switchable', () => {

@@ -10,11 +10,12 @@ import { useEffect, type ReactNode } from 'react';
 
 import { accessState } from './access-state';
 import type { ActionGate } from './ActionControls';
-import { areasOffText } from './AreaOffNote';
+import { FEATURES_SETTINGS_HREF, offCausesText } from './AreaOffNote';
 import { useAccess } from './useAccess';
 
 import { Button } from '@/components/ui/button';
 import { canOpenPage } from '@/features/access/page-permissions';
+import { offCauses } from '@/features/feature-switches/off-causes';
 import { pageAreasOff, pageAreasOn } from '@/features/feature-switches/page-areas';
 
 
@@ -35,7 +36,7 @@ function Panel({ icon, title, text, action }: { icon: ReactNode; title: string; 
  */
 export function PageAccessGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { can, areaOn, isAdmin, isLoading, errorStatus, retry } = useAccess();
+  const { can, areaOn, isAdmin, isLoading, errorStatus, retry, access } = useAccess();
   const state = accessState({
     isLoading,
     errorStatus,
@@ -60,12 +61,15 @@ export function PageAccessGate({ children }: { children: ReactNode }) {
     );
   }
   if (state === 'off') {
+    // Name what is really off (not an area that only lacks what it needs); the button only for what can be turned on
+    const causes = offCauses(pageAreasOff(pathname, areaOn), areaOn, access);
+    const canTurnOn = isAdmin && (causes.switchable.length > 0 || causes.pinned.length === 0);
     return (
       <Panel
         icon={<Lock className="size-6 text-muted-foreground" />}
         title="This page is turned off"
-        text={areasOffText(pageAreasOff(pathname, areaOn))}
-        action={isAdmin ? <Button variant="outline" asChild><Link href="/settings/features">Turn it on in Settings → Features</Link></Button> : undefined}
+        text={offCausesText(causes)}
+        action={canTurnOn ? <Button variant="outline" asChild><Link href={FEATURES_SETTINGS_HREF}>Turn it on in Settings → Features</Link></Button> : undefined}
       />
     );
   }
