@@ -118,3 +118,11 @@ export function sectionAvailable(section: AnalyticsSection, areaOn: (area: Area)
 export function hiddenSectionAreas(areaOn: (area: Area) => boolean): Area[] {
   return (['search', 'chat'] as const).filter((a) => !areaOn(a));
 }
+
+/** The off areas that keep one section hidden: every needed area that is off, or all the alternatives when none is on */
+export function offAreasFor(section: AnalyticsSection, areaOn: (area: Area) => boolean): Area[] {
+  const { all = [], anyOf } = section.needs ?? {};
+  const off = all.filter((a) => !areaOn(a));
+  if (anyOf && !anyOf.some(areaOn)) off.push(...anyOf);
+  return off;
+}

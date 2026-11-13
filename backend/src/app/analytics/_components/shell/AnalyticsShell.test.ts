@@ -53,6 +53,20 @@ describe('AnalyticsShell on a section whose area is off', () => {
     expect(html).not.toContain('SECTION CONTENT');
   });
 
+  it('names both areas on Traces when Search and Chat are both off, and one when only one is', () => {
+    path.current = '/analytics/traces';
+    uiAccess.areasOff('search', 'chat');
+    const html = render();
+    // One note of the section's own per off area (the workspace-wide note above it says something else)
+    expect(html.split('Traces is hidden').length - 1).toBe(2);
+    expect(html).toContain(areaOffText('search'));
+    expect(html).toContain(areaOffText('chat'));
+    expect(html).not.toContain('SECTION CONTENT');
+    uiAccess.asAdmin();
+    uiAccess.areasOff('search');
+    expect(render()).toContain('SECTION CONTENT');
+  });
+
   it('shows the content while access is still loading', () => {
     uiAccessLoading();
     const html = render();

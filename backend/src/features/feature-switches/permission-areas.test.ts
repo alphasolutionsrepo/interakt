@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Area } from './areas';
-import { permissionArea, permissionShown } from './permission-areas';
+import { permissionArea } from './permission-areas';
 
 import { ALL_PERMISSIONS, type Permission } from '@/features/access/permissions';
 
@@ -57,12 +57,5 @@ describe('which area a permission belongs to', () => {
     // A new permission has no entry (tsc and the next line fail) until its area is decided here
     expect([...ALL_PERMISSIONS].sort()).toEqual(Object.keys(EXPECTED).sort());
     for (const p of ALL_PERMISSIONS) expect(permissionArea(p), p).toBe(EXPECTED[p]);
-  });
-
-  it('shows a permission unless its area is off', () => {
-    const off = (a: Area) => a !== 'chat';
-    expect(permissionShown('tools:view', off)).toBe(false);
-    expect(permissionShown('search-experiences:view', off)).toBe(true);
-    expect(permissionShown('users:manage', () => false)).toBe(true);
   });
 });

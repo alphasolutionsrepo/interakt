@@ -49,3 +49,29 @@ describe('Settings → Features page', () => {
     expect(html).not.toContain('Also switch');
   });
 });
+
+describe('Settings → Features page access', () => {
+  const ONLY_ADMIN = 'Only an Admin can turn features on or off.';
+  const switches = (html: string) => html.match(/<button[^>]*role="switch"[^>]*>/g) ?? [];
+  beforeEach(() => {
+    state.features = { isLoading: false, isError: false, data: rows };
+  });
+
+  it('shows a non-Admin every switch disabled, with the reason', () => {
+    uiAccess.hold();
+    const html = render();
+    const found = switches(html);
+    expect(found).toHaveLength(rows.length);
+    for (const s of found) expect(s).toMatch(/ disabled(=|\s|>)/);
+    expect(html).toContain(ONLY_ADMIN);
+  });
+
+  it('lets an Admin use every switch, with no reason shown', () => {
+    uiAccess.asAdmin();
+    const html = render();
+    const found = switches(html);
+    expect(found).toHaveLength(rows.length);
+    for (const s of found) expect(s).not.toMatch(/ disabled(=|\s|>)/);
+    expect(html).not.toContain(ONLY_ADMIN);
+  });
+});

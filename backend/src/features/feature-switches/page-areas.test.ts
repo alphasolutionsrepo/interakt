@@ -44,6 +44,22 @@ describe('which areas a page needs', () => {
     expect(pageAreasOn('/analytics/settings', offOf('analytics'))).toBe(true);
   });
 
+  it('needs the section\'s own area as well as Analytics on each analytics section', () => {
+    expect(pageAreasOn('/analytics/search', offOf('search'))).toBe(false);
+    expect(pageAreasOn('/analytics/search/x', offOf('search'))).toBe(false);
+    expect(pageAreasOn('/analytics/search', offOf('chat'))).toBe(true);
+    for (const p of ['/analytics/conversations', '/analytics/ai']) {
+      expect(pageAreasOn(p, offOf('chat'))).toBe(false);
+      expect(pageAreasOn(p, offOf('search'))).toBe(true);
+      expect(pageAreasOn(p, offOf('analytics'))).toBe(false);
+    }
+    expect(pageAreasOn('/analytics/traces', offOf('search'))).toBe(true);
+    expect(pageAreasOn('/analytics/traces', offOf('chat'))).toBe(true);
+    expect(pageAreasOn('/analytics/traces', offOf('search', 'chat'))).toBe(false);
+    expect(pageAreasOn('/analytics/overview', offOf('search', 'chat'))).toBe(true);
+    expect(pageAreasOn('/analytics/settings', offOf('search', 'chat', 'analytics'))).toBe(true);
+  });
+
   it('needs Playground, and the area tested, for the Test pages', () => {
     expect(pageAreasOn('/playground', offOf('playground'))).toBe(false);
     expect(pageAreasOn('/playground/ai-service', offOf('playground'))).toBe(false);

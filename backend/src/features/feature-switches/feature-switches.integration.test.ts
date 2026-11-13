@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FEATURES_OFF_ENV, PINNED_OFF_MESSAGE, TURNED_OFF_CODE, TURNED_OFF_MESSAGE } from './areas';
 import { clearFeatureSwitchCache, isAreaOn } from './feature-switches.service';
 
+import * as meAccessRoute from '@/app/api/me/access/route';
 import * as homeRoute from '@/app/api/dashboard/home/route';
 import * as homeTipsRoute from '@/app/api/dashboard/home/tips/route';
 import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
@@ -707,5 +708,21 @@ describe('who switches areas, and when it applies', () => {
     await switchAreas({ chat: true });
     expect(await isAreaOn('analytics')).toBe(false);
     expect(await isAreaOn('chat')).toBe(true);
+  });
+});
+
+describe('GET /api/me/access areas', () => {
+  it('leaves a switched-off area out for an Admin and lists it again once back on', async () => {
+    const areasOf = async () => ((await call(meAccessRoute.GET, 'GET', '/api/me/access')).body?.data as { areas: string[] }).areas;
+    const everything = ['search', 'chat', 'managed-indexes', 'analytics', 'playground', 'ai-summaries'];
+    expect(await areasOf()).toEqual(expect.arrayContaining(everything));
+
+    await switchAreas({ chat: false });
+    const off = await areasOf();
+    expect(off).not.toContain('chat');
+    expect(off).toEqual(expect.arrayContaining(everything.filter((a) => a !== 'chat')));
+
+    await switchAreas({ chat: true });
+    expect(await areasOf()).toContain('chat');
   });
 });

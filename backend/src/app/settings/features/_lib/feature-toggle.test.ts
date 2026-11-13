@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { FeatureRow } from './feature-rows';
-import { bodyForChoice, decideToggle, featureKeys, invalidateAfterSave, saveErrorText } from './feature-toggle';
+import { answerDialog, bodyForChoice, decideToggle, dialogText, featureKeys, invalidateAfterSave, saveErrorText } from './feature-toggle';
 
 import type { Area } from '@/features/feature-switches/areas';
 
@@ -62,5 +62,40 @@ describe('after a save', () => {
   it('shows the server message on failure, a fallback otherwise', () => {
     expect(saveErrorText(new Error('Only an Admin can do that'))).toBe('Only an Admin can do that');
     expect(saveErrorText('boom')).toBe('Could not save the change');
+  });
+});
+
+const labels: Partial<Record<string, string>> = { search: 'Search', chat: 'Chat', 'ai-summaries': 'AI summaries', playground: 'Playground' };
+const labelOf = (id: Area) => labels[id] ?? id;
+
+describe('dialogText', () => {
+  it('names the area being switched off and lists the dependents by label', () => {
+    const t = dialogText({ id: 'chat', dependents: ['ai-summaries' as Area, 'playground' as Area] }, labelOf);
+    expect(t.title).toBe('Also switch AI summaries and Playground off?');
+    expect(t.description).toContain('AI summaries and Playground need Chat. You can switch Chat off and leave them as they are;');
+    expect(t.description).toContain('switch Chat off');
+    expect(t.description).toContain('when Chat is on again');
+    expect(t.description).not.toContain('Search');
+    expect(t.onlyLabel).toBe('Chat only');
+  });
+});
+
+describe('answerDialog', () => {
+  const asking = { id: 'search' as Area, dependents: ['ai-summaries' as Area] };
+  it('saves the area alone for "only"', () => {
+    const save = vi.fn();
+    answerDialog(asking, 'only', save);
+    expect(save).toHaveBeenCalledExactlyOnceWith({ areas: { search: false } });
+  });
+  it('saves the area and its dependents for "both"', () => {
+    const save = vi.fn();
+    answerDialog(asking, 'both', save);
+    expect(save).toHaveBeenCalledExactlyOnceWith({ areas: { search: false, 'ai-summaries': false } });
+  });
+  it('saves nothing for Cancel, or when nothing is asked', () => {
+    const save = vi.fn();
+    answerDialog(asking, 'cancel', save);
+    answerDialog(null, 'both', save);
+    expect(save).not.toHaveBeenCalled();
   });
 });

@@ -15,6 +15,8 @@
 
 import type { Area } from './areas';
 
+import { ANALYTICS_SECTIONS } from '@/app/analytics/_lib/sections';
+
 export type PageAreaRule = {
   /** Every one of these must be on */
   all?: readonly Area[];
@@ -25,6 +27,13 @@ export type PageAreaRule = {
 const ID = '[^/]+';
 /** The path and everything under it */
 const under = (path: string) => new RegExp(`^${path}(/.*)?$`);
+
+/** The analytics sections that need more than Analytics itself (Search, Conversations, AI & cost, Traces), from the same table the section nav reads */
+const ANALYTICS_SECTION_RULES: ReadonlyArray<readonly [RegExp, PageAreaRule]> = ANALYTICS_SECTIONS.flatMap((s) =>
+  s.needs
+    ? [[under(s.href), { all: ['analytics', ...(s.needs.all ?? [])], ...(s.needs.anyOf && { anyOf: s.needs.anyOf }) }] as const]
+    : [],
+);
 
 const RULES: ReadonlyArray<readonly [RegExp, PageAreaRule | null]> = [
   // The experiences hub and the create page serve search and chat alike
@@ -39,6 +48,7 @@ const RULES: ReadonlyArray<readonly [RegExp, PageAreaRule | null]> = [
   [under('/prompt-templates'), { all: ['chat'] }],
   [under('/search-indexes'), { all: ['managed-indexes'] }],
   [new RegExp(`^/analytics/settings(/${ID})*$`), null],
+  ...ANALYTICS_SECTION_RULES,
   [under('/analytics'), { all: ['analytics'] }],
   // The Test pages: Playground, plus the area tested
   [/^\/playground\/search$/, { all: ['managed-indexes', 'playground'] }],

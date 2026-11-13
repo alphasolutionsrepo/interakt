@@ -131,3 +131,13 @@ describe('home with feature areas off', () => {
     expect(seen.cards).toEqual([{ id: 'idx', href: '/search-indexes/abc' }]);
   });
 });
+
+describe('home links to analytics sections whose area is off', () => {
+  it('drops a card linking to /analytics/conversations with Chat off, keeps it with Chat on', () => {
+    const withCards = { ...data, cards: [{ id: 'conv', href: '/analytics/conversations' }, { id: 'srch', href: '/analytics/search' }] } as unknown as HomeData;
+    const can = holding('analytics:view');
+    const chatOff = (a: Area) => a !== 'chat';
+    expect(homeDataForRole(withCards, can, { areaOn: chatOff }).cards.map((c) => c.id)).toEqual(['srch']);
+    expect(homeDataForRole(withCards, can, { areaOn: () => true }).cards.map((c) => c.id)).toEqual(['conv', 'srch']);
+  });
+});

@@ -43,6 +43,17 @@ export function effectiveHelpMode(remembered: HelpMode, askOn: boolean): HelpMod
 }
 
 /** The drawer's one-line description. */
+/** The empty-state hint, trigger label and tooltip: they mention asking only while Ask AI is on. */
+export function noHelpHint(askOn: boolean): string {
+  return askOn ? 'Search the docs or ask a question above, or' : 'Search the docs above, or';
+}
+export function helpTriggerLabel(askOn: boolean): string {
+  return askOn ? 'Help, search and ask' : 'Help and search';
+}
+export function helpTriggerTooltip(askOn: boolean): string {
+  return askOn ? 'Help, search & ask' : 'Help & search';
+}
+
 export function helpDescription(askOn: boolean): string {
   return askOn ? 'Search the docs, or ask the Help Assistant.' : 'Search the docs.';
 }
@@ -333,7 +344,7 @@ export function HelpButton() {
             <BookOpen className="size-8 opacity-50" />
             <p className="font-medium text-foreground">No help for this screen yet</p>
             <p className="max-w-xs text-xs">
-              Search the docs or ask a question above, or{' '}
+              {noHelpHint(askOn)}{' '}
               <Link href="/docs" onClick={closeDrawer} className="font-medium text-primary hover:underline">
                 browse the full docs
               </Link>
@@ -366,14 +377,14 @@ export function HelpButton() {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Help, search and ask"
+              aria-label={helpTriggerLabel(askOn)}
               className="text-muted-foreground hover:text-foreground"
             >
               <HelpCircle className="size-5" />
             </Button>
           </SheetTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Help, search &amp; ask · {shortcut}</TooltipContent>
+        <TooltipContent side="bottom">{helpTriggerTooltip(askOn)} · {shortcut}</TooltipContent>
       </Tooltip>
 
       <SheetContent

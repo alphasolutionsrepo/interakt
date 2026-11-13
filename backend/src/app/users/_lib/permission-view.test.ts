@@ -51,22 +51,48 @@ describe('rolePermissionsToSave', () => {
 
 describe('permissionCount', () => {
   it('counts every held permission, off areas included, out of the real total', () => {
-    expect(permissionCount({ isBuiltIn: false, permissions: ['tools:view'] }).total).toBe(ALL_PERMISSIONS.length);
-    expect(permissionCount({ isBuiltIn: true, permissions: [] }).held).toBe(ALL_PERMISSIONS.length);
-    expect(permissionCount({ isBuiltIn: false, permissions: ['tools:view'] }).held).toBeGreaterThanOrEqual(1);
+    expect(permissionCount({ isBuiltIn: false, permissions: ['tools:view'] })).toEqual({ held: 1, total: ALL_PERMISSIONS.length });
+  });
+
+  it('counts what a permission implies, once', () => {
+    // tools:edit brings tools:view; search-indexes:view is held already
+    expect(permissionCount({ isBuiltIn: false, permissions: ['search-indexes:view', 'tools:edit'] }).held).toBe(3);
+  });
+
+  it('gives a built-in role everything, whatever its stored list', () => {
+    expect(permissionCount({ isBuiltIn: true, permissions: [] })).toEqual({ held: ALL_PERMISSIONS.length, total: ALL_PERMISSIONS.length });
   });
 });
 
 describe('unmetNeeds', () => {
   it('splits what a ticked permission still needs into tickable and in a turned-off area', () => {
-    const needs = unmetNeeds(['setup:run'], 'setup:run', off('chat'));
-    expect(needs.missing.length).toBeGreaterThan(0);
-    expect(needs.blockedAreas).toContain('chat');
-    expect(needs.tickable.length + needs.blocked.length).toBe(needs.missing.length);
-    expect(needs.blocked.every((p) => ['tools:', 'prompts:', 'ai-experiences:'].some((x) => p.startsWith(x)))).toBe(true);
+    expect(unmetNeeds(['setup:run'], 'setup:run', off('chat'))).toEqual({
+      missing: [
+        'ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit',
+        'search-experiences:edit', 'ai-experiences:edit', 'tools:edit', 'data-sources:edit', 'prompts:edit',
+      ],
+      tickable: ['ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit', 'search-experiences:edit', 'data-sources:edit'],
+      blocked: ['ai-experiences:edit', 'tools:edit', 'prompts:edit'],
+      blockedAreas: ['chat'],
+    });
   });
 
-  it('has nothing blocked when every area is on', () => {
-    expect(unmetNeeds(['setup:run'], 'setup:run', () => true).blocked).toEqual([]);
+  it('drops what the role already holds from the needs', () => {
+    const needs = unmetNeeds(['setup:run', 'tools:edit', 'settings:manage'], 'setup:run', off('chat'));
+    expect(needs.missing).not.toContain('tools:edit');
+    expect(needs.missing).not.toContain('settings:manage');
+    expect(needs.blocked).toEqual(['ai-experiences:edit', 'prompts:edit']);
+  });
+
+  it('has nothing blocked when every area is on, all of it tickable', () => {
+    const needs = unmetNeeds(['setup:run'], 'setup:run', () => true);
+    expect(needs.blocked).toEqual([]);
+    expect(needs.blockedAreas).toEqual([]);
+    expect(needs.tickable).toEqual(needs.missing);
+    expect(needs.missing).toHaveLength(9);
+  });
+
+  it('needs nothing for a permission that requires nothing', () => {
+    expect(unmetNeeds([], 'tools:view', () => true)).toEqual({ missing: [], tickable: [], blocked: [], blockedAreas: [] });
   });
 });

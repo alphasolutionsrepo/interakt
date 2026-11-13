@@ -36,11 +36,14 @@ export function rowState(
   return { checked: row.switchedOn, locked: false, reason: null, needs: needsUnmet ? needsLabel(row, areas) : null };
 }
 
-/** Areas switched on that need only the one being switched off: the Admin is asked about them. */
+/**
+ * Areas switched on that need only the one being switched off: the Admin is asked about them.
+ * Not ones the deployment pins off: the Admin cannot change those.
+ */
 export function dependentsToAsk(id: Area, next: boolean, areas: readonly FeatureRow[]): Area[] {
   if (next) return [];
   return areas
-    .filter((a) => a.switchedOn && a.needsAnyOf.length === 1 && a.needsAnyOf[0] === id)
+    .filter((a) => a.switchedOn && !a.pinnedOff && a.needsAnyOf.length === 1 && a.needsAnyOf[0] === id)
     .map((a) => a.id);
 }
 

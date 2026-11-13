@@ -67,6 +67,10 @@ describe('Search off', () => {
     expect(dependentsToAsk('chat', false, [chat, playground])).toEqual([]);
   });
 
+  it('does not ask about a dependent the deployment pins off', () => {
+    expect(dependentsToAsk('search', false, [search, { ...ai, pinnedOff: true }])).toEqual([]);
+  });
+
   it('sends one body, with or without AI summaries', () => {
     expect(updateBody('search', false, ['ai-summaries'])).toEqual({ areas: { search: false, 'ai-summaries': false } });
     expect(updateBody('search', false, [])).toEqual({ areas: { search: false } });

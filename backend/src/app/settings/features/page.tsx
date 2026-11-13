@@ -6,7 +6,7 @@ import { RefreshCw, Settings2, ToggleRight } from 'lucide-react';
 import { useState } from 'react';
 
 import { FeatureRowItem } from './_components/FeatureRowItem';
-import { bodyForChoice, decideToggle, type Asking, type DialogChoice } from './_lib/feature-toggle';
+import { answerDialog, decideToggle, dialogText, type Asking, type DialogChoice } from './_lib/feature-toggle';
 import { useFeatures, useUpdateFeatures } from './_lib/hooks/useFeatureSwitches';
 
 import {
@@ -21,11 +21,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AREAS, type Area } from '@/features/feature-switches/areas';
+import type { Area } from '@/features/feature-switches/areas';
+import { areaLabel } from '@/shared/access/AreaOffNote';
 import { errorText } from '@/shared/api/api-error';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-
-const labelOf = (id: Area) => AREAS.find((a) => a.id === id)?.label ?? id;
 
 export default function FeaturesPage() {
   const { data: areas, isLoading, isError, error, refetch } = useFeatures();
@@ -39,12 +38,11 @@ export default function FeaturesPage() {
   };
 
   const answer = (choice: DialogChoice) => {
-    const body = bodyForChoice(asking, choice);
-    if (body) update.mutate(body);
+    answerDialog(asking, choice, update.mutate);
     setAsking(null);
   };
 
-  const dependentNames = asking?.dependents.map(labelOf).join(' and ') ?? '';
+  const text = asking ? dialogText(asking, areaLabel) : null;
 
   return (
     <div className="flex-1 space-y-8 p-6 lg:p-8">
@@ -90,15 +88,12 @@ export default function FeaturesPage() {
       <AlertDialog open={asking !== null} onOpenChange={(open) => !open && setAsking(null)}>
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Also switch {dependentNames} off?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {dependentNames} needs Search. You can switch Search off and leave {dependentNames} as it is; it comes back
-              when Search is on again.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{text?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{text?.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction className="rounded-xl" onClick={() => answer('only')}>Search only</AlertDialogAction>
+            <AlertDialogAction className="rounded-xl" onClick={() => answer('only')}>{text?.onlyLabel}</AlertDialogAction>
             <AlertDialogAction className="rounded-xl" onClick={() => answer('both')}>
               Switch both off
             </AlertDialogAction>

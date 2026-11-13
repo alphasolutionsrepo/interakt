@@ -29,7 +29,7 @@ const SAME: ReadonlyArray<readonly [string, string, string]> = [
   ['/search-indexes', '/api/search-indexes/x/documents', 'GET'],
   ['/search-indexes/x/upload', '/api/search-indexes/x/documents', 'POST'],
   // analytics
-  ['/analytics/search', '/api/analytics/search/overview', 'GET'],
+  ['/analytics/overview', '/api/analytics/search/overview', 'GET'],
   ['/analytics/chat', '/api/analytics/chat', 'POST'],
   // the Test pages: Playground plus the area tested
   ['/playground', '/api/ai-service/chat', 'POST'],
@@ -83,5 +83,13 @@ describe('pages that differ from their route on purpose', () => {
     expect(pageAreaRule('/playground/widget')).toEqual({ all: ['playground'], anyOf: ['search', 'chat'] });
     expect(routeArea('/api/v1/search/x', 'POST')!.areas).toEqual(['search']);
     expect(routeArea('/api/v1/ai-experiences/x/chat', 'POST')!.areas).toEqual(['chat']);
+  });
+
+  it('needs the section\'s own area besides Analytics on the analytics sections, whose API routes are gated by Analytics alone', () => {
+    expect(pageAreaRule('/analytics/search')).toEqual({ all: ['analytics', 'search'] });
+    expect(pageAreaRule('/analytics/conversations')).toEqual({ all: ['analytics', 'chat'] });
+    expect(pageAreaRule('/analytics/ai')).toEqual({ all: ['analytics', 'chat'] });
+    expect(pageAreaRule('/analytics/traces')).toEqual({ all: ['analytics'], anyOf: ['search', 'chat'] });
+    expect(routeArea('/api/analytics/search/overview', 'GET')!.areas).toEqual(['analytics']);
   });
 });

@@ -34,6 +34,26 @@ export function bodyForChoice(asking: Asking | null, choice: DialogChoice): Upda
   return updateBody(asking.id, false, choice === 'both' ? asking.dependents : []);
 }
 
+/** Runs the dialog's answer: saves the body for "only"/"both", nothing for Cancel. */
+export function answerDialog(asking: Asking | null, choice: DialogChoice, save: (body: UpdateBody) => void): void {
+  const body = bodyForChoice(asking, choice);
+  if (body) save(body);
+}
+
+/** The dialog's words, naming the area actually being switched off and its dependents. */
+export function dialogText(asking: Asking, labelOf: (id: Area) => string) {
+  const area = labelOf(asking.id);
+  const dependents = asking.dependents.map(labelOf).join(' and ');
+  const several = asking.dependents.length > 1;
+  return {
+    title: `Also switch ${dependents} off?`,
+    description: several
+      ? `${dependents} need ${area}. You can switch ${area} off and leave them as they are; they come back when ${area} is on again.`
+      : `${dependents} needs ${area}. You can switch ${area} off and leave ${dependents} as it is; it comes back when ${area} is on again.`,
+    onlyLabel: `${area} only`,
+  };
+}
+
 /** Query keys to refresh after a save: the list itself, and the menu (it follows what is on). */
 export function keysToInvalidate() {
   return [featureKeys.all, accessKeys.mine];
