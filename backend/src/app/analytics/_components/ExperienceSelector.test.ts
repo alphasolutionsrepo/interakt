@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ExperienceSelector } from './ExperienceSelector';
 
-import { uiAccess } from '@/shared/test/ui-access-stub';
+import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
 
 vi.mock('react', async (importOriginal) => ({ ...(await importOriginal<typeof import('react')>()), useEffect: (fn: () => void) => void fn() }));
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
@@ -23,8 +23,9 @@ const experiences = [
   { id: 'c1', name: 'Support chat', slug: 'support', type: 'ai', isActive: true },
   { id: 's1', name: 'Site search', slug: 'site', type: 'search', isActive: true },
 ];
+const queryEnabled = vi.hoisted(() => ({ last: undefined as boolean | undefined }));
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: { experiences, complete: true, errors: [] }, isLoading: false }),
+  useQuery: ({ enabled }: { enabled?: boolean }) => (queryEnabled.last = enabled, { data: { experiences, complete: true, errors: [] }, isLoading: false }),
 }));
 
 const setExperience = vi.fn();
@@ -58,5 +59,24 @@ describe('ExperienceSelector and selectionChange', () => {
     selected = { experienceId: 's1' };
     render();
     expect(setExperience).toHaveBeenCalledExactlyOnceWith('s1', 'Site search', 'search');
+  });
+});
+
+describe('ExperienceSelector request', () => {
+  it('asks for the experience list with Analytics on', () => {
+    render();
+    expect(queryEnabled.last).toBe(true);
+  });
+
+  it('does not ask for it with Analytics off, where the server refuses it', () => {
+    uiAccess.areasOff('analytics');
+    render();
+    expect(queryEnabled.last).toBe(false);
+  });
+
+  it('does not ask for it while access is loading', () => {
+    uiAccessLoading();
+    render();
+    expect(queryEnabled.last).toBe(false);
   });
 });

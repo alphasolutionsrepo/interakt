@@ -19,25 +19,34 @@ import { checkAccess, SIGNED_IN } from './route-guard';
 import { listFeatureSwitches } from '@/features/feature-switches/feature-switches.service';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+
+const logger = createLogger('access-handlers');
 
 type IdContext = { params: Promise<{ id: string }> };
 
 /**
  * GET /api/me/access: what the signed-in user may do (drives the admin UI), and `areas`: the
  * feature areas that are on for the installation (feature-switches), so the UI hides the rest.
- * If the switches can't be read the route answers its error, like every other route does
- * (never a guessed list); the UI then treats the lookup as unavailable and hides nothing.
+ * If the switches can't be read the answer still carries the role and permissions but no
+ * `areas` (never a guessed list): the UI then shows every area, and the server still refuses
+ * a switched-off route itself. A failed permission lookup answers 500.
  */
 export async function handleGetMyAccess() {
   try {
     const { access, response } = await checkAccess(SIGNED_IN);
     if (response) return response;
-    const areas = (await listFeatureSwitches()).filter((s) => s.on).map((s) => s.id);
+    let areas: string[] | undefined;
+    try {
+      areas = (await listFeatureSwitches()).filter((s) => s.on).map((s) => s.id);
+    } catch (error) {
+      logger.error('Could not read the feature switches; answering without areas', { error });
+    }
     return apiResponse.success({
       userId: access.userId,
       role: { id: access.roleId, name: access.roleName, isAdmin: access.isAdmin },
       permissions: [...access.permissions],
-      areas,
+      ...(areas ? { areas } : {}),
     });
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'getMyAccess' });

@@ -725,4 +725,13 @@ describe('GET /api/me/access areas', () => {
     await switchAreas({ chat: true });
     expect(await areasOf()).toContain('chat');
   });
+
+  it('still answers the permissions, without areas, when the switches cannot be read', async () => {
+    clearFeatureSwitchCache();
+    readFails = true;
+    const res = await call(meAccessRoute.GET, 'GET', '/api/me/access');
+    expect(res.status).toBe(200);
+    expect(res.body?.data).toMatchObject({ permissions: expect.any(Array), role: { isAdmin: true } });
+    expect(res.body?.data).not.toHaveProperty('areas');
+  });
 });

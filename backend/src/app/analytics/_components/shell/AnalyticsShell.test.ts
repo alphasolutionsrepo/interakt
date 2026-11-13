@@ -20,10 +20,10 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ getQueryCache: () => ({ getAll: () => [], subscribe: () => () => {} }), invalidateQueries: () => {} }),
 }));
 vi.mock('../../_lib/AnalyticsContext', () => ({ useAnalyticsContext: () => ({ experienceType: undefined }) }));
-vi.mock('../../_lib/AskPanelContext', () => ({ useAskPanel: () => ({ canAsk: false, isOpen: false, toggle: () => {} }) }));
-vi.mock('../ExperienceSelector', () => ({ ExperienceSelector: () => null }));
-vi.mock('../PeriodPicker', () => ({ PeriodPicker: () => null }));
-vi.mock('./AskPanel', () => ({ AskPanel: () => null }));
+vi.mock('../../_lib/AskPanelContext', () => ({ useAskPanel: () => ({ canAsk: true, isOpen: false, toggle: () => {} }) }));
+vi.mock('../ExperienceSelector', () => ({ ExperienceSelector: () => createElement('i', null, 'EXPERIENCE SELECTOR') }));
+vi.mock('../PeriodPicker', () => ({ PeriodPicker: () => createElement('i', null, 'PERIOD PICKER') }));
+vi.mock('./AskPanel', () => ({ AskPanel: () => createElement('i', null, 'ASK PANEL') }));
 
 const render = () => renderToStaticMarkup(createElement(AnalyticsShell, null, createElement('div', null, 'SECTION CONTENT')));
 
@@ -72,5 +72,47 @@ describe('AnalyticsShell on a section whose area is off', () => {
     const html = render();
     expect(html).toContain('SECTION CONTENT');
     expect(html).not.toContain('turned off for this installation.</span>');
+  });
+});
+
+describe('AnalyticsShell with Analytics off', () => {
+  beforeEach(() => {
+    path.current = '/analytics/settings';
+    uiAccess.asAdmin();
+    uiAccess.areasOff('analytics');
+  });
+
+  it('keeps the settings page, with the Analytics off note and what stays available', () => {
+    const html = render();
+    expect(html).toContain('SECTION CONTENT');
+    expect(html).toContain(areaOffText('analytics'));
+    expect(html).toContain('Collection and retention settings stay available.');
+  });
+
+  it('leaves out every part that calls analytics: selector, period, section row, Ask', () => {
+    const html = render();
+    for (const part of ['EXPERIENCE SELECTOR', 'PERIOD PICKER', 'ASK PANEL', 'Analytics sections', 'Refresh analytics'])
+      expect(html).not.toContain(part);
+  });
+
+  it('shows the note alone, without the page, on any other section', () => {
+    path.current = '/analytics/overview';
+    const html = render();
+    expect(html).toContain(areaOffText('analytics'));
+    expect(html).not.toContain('SECTION CONTENT');
+    expect(html).not.toContain('EXPERIENCE SELECTOR');
+  });
+
+  it('still shows the selector, section row and Ask with Analytics on', () => {
+    uiAccess.asAdmin();
+    const html = render();
+    expect(html).toContain('EXPERIENCE SELECTOR');
+    expect(html).toContain('ASK PANEL');
+    expect(html).toContain('Analytics sections');
+  });
+
+  it('does not show the off note while access is loading', () => {
+    uiAccessLoading();
+    expect(render()).not.toContain(areaOffText('analytics'));
   });
 });

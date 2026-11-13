@@ -78,6 +78,23 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
   if (pathname.startsWith('/analytics/chat')) return <>{children}</>;
 
   const section = sectionForPath(pathname);
+
+  // Analytics off: only the settings page stays open (collection and retention). Everything
+  // around it that calls analytics endpoints, which the server refuses, is left out.
+  if (!accessLoading && !areaOn('analytics')) {
+    const keepsSettings = section.href === '/analytics/settings';
+    return (
+      <div className="min-w-0 space-y-6 p-6 lg:p-8">
+        <header>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Analytics</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{keepsSettings ? section.label : 'Analytics'}</h1>
+        </header>
+        <AreaOffNote area="analytics" detail={keepsSettings ? 'Collection and retention settings stay available.' : undefined} />
+        {keepsSettings && children}
+      </div>
+    );
+  }
+
   const isSearchExperience = experienceType === 'search';
   // The Overview has the conversation inline, so it needs no drawer
   const showAskDrawer = section.href !== '/analytics/overview';

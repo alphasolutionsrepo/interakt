@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DocsSearchResults } from './DocsSearchResults';
 import { HelpButton, ModeSwitch, effectiveHelpMode, helpDescription, helpTriggerTooltip, noHelpHint } from './HelpButton';
 
-import { uiAccess } from '@/shared/test/ui-access-stub';
+import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 vi.mock('next/navigation', () => ({ usePathname: () => '/', useRouter: () => ({ push: () => {} }) }));
@@ -40,6 +40,32 @@ describe('the help drawer modes', () => {
     const html = modes();
     expect(html).not.toContain('Ask AI');
     expect(html).not.toContain('radiogroup');
+  });
+});
+
+describe('the help drawer while access is loading', () => {
+  const trigger = () => renderToStaticMarkup(createElement(HelpButton));
+
+  it('renders no mode switch, in neither state', () => {
+    uiAccessLoading();
+    expect(modes()).toBe('');
+  });
+
+  it('says nothing about asking on the trigger until access has loaded', () => {
+    uiAccessLoading();
+    const html = trigger();
+    expect(html).toContain('aria-label="Help"');
+    expect(html).not.toMatch(/ask/i);
+  });
+
+  it('shows the Ask wording once loaded with the Help assistant on, and not with it off', () => {
+    uiAccess.asAdmin();
+    expect(trigger()).toContain('aria-label="Help, search and ask"');
+    expect(modes()).toContain('radiogroup');
+    uiAccess.asAdmin();
+    uiAccess.areasOff('help-assistant');
+    expect(trigger()).toContain('aria-label="Help and search"');
+    expect(modes()).toBe('');
   });
 });
 

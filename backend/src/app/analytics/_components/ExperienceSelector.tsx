@@ -23,8 +23,10 @@ import { useAccess } from '@/shared/access/useAccess';
 // DATA FETCHING
 // ============================================================================
 
-function useExperiences() {
+/** `enabled` false while access loads or Analytics is off: the server refuses the list then */
+function useExperiences(enabled: boolean) {
   return useQuery({
+    enabled,
     queryKey: ['analytics-experiences'],
     queryFn: loadExperienceOptions,
     staleTime: 60000,
@@ -41,8 +43,8 @@ interface ExperienceSelectorProps {
 
 export function ExperienceSelector({ compact = false }: ExperienceSelectorProps) {
   const { experienceId, experienceName, experienceType, setExperience, keepWhenMissing } = useAnalyticsContext();
-  const { data, isLoading } = useExperiences();
   const { areaOn, isLoading: accessLoading } = useAccess();
+  const { data, isLoading } = useExperiences(!accessLoading && areaOn('analytics'));
   const allExperiences = useMemo(() => data?.experiences ?? [], [data]);
   // Only types whose area is on: a chat experience is hidden with Chat off (its data is kept)
   const experiences = useMemo(() => experiencesWithAreaOn(allExperiences, areaOn), [allExperiences, areaOn]);
@@ -79,7 +81,7 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
     }
   };
 
-  if (isLoading) {
+  if (isLoading || accessLoading) {
     return (
       <div className={compact ? 'w-[140px] h-8 rounded-lg bg-muted animate-pulse' : 'w-[200px] h-9 rounded-xl bg-muted animate-pulse'} />
     );

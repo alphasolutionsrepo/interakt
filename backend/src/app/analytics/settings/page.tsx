@@ -104,23 +104,28 @@ const TRACKING: Array<{ key: string; label: string; env: string }> = [
  * Settings: when insights refresh, what analytics records, and clearing data.
  */
 export default function AnalyticsSettingsPage() {
+  // With Analytics off only collection and the schedule stay: insights and data live behind analytics routes
+  const { areaOn, isLoading } = useAccess();
+  const analyticsOff = !isLoading && !areaOn('analytics');
   return (
     <div className="grid items-start gap-6 @3xl:grid-cols-2">
       <div className="space-y-6">
-        <InsightsCard />
-        <DataCard />
+        <InsightsCard analyticsOff={analyticsOff} />
+        {!analyticsOff && <DataCard />}
       </div>
       <TrackingCard />
     </div>
   );
 }
 
-function InsightsCard() {
+function InsightsCard({ analyticsOff }: { analyticsOff: boolean }) {
+  // Nothing is asked while access loads, so a request the server would refuse is never sent
+  const { isLoading: accessLoading } = useAccess();
   const { experienceId, experienceName } = useAnalyticsContext();
   const queryClient = useQueryClient();
   const canSeeSchedule = useAccess().can('settings:view');
   const schedule = useInsightsSchedule(canSeeSchedule);
-  const status = useProcessingStatus(experienceId);
+  const status = useProcessingStatus(experienceId, !accessLoading && !analyticsOff);
   const onDone = useCallback(() => {
     status.refetch();
     queryClient.invalidateQueries({ queryKey: ['analytics', 'insights'] });
@@ -182,6 +187,7 @@ function InsightsCard() {
               )}
             </dd>
           </div>
+          {!analyticsOff && (
           <div className="flex flex-wrap justify-between gap-2">
             <dt className="text-muted-foreground">Last refresh ({experienceId ? experienceName : 'all experiences'})</dt>
             <dd>
@@ -196,6 +202,7 @@ function InsightsCard() {
               )}
             </dd>
           </div>
+          )}
         </dl>
         {scheduleError && <p className="text-sm text-destructive">{scheduleError}</p>}
         <div className="flex flex-wrap gap-2">
@@ -212,9 +219,11 @@ function InsightsCard() {
               Schedule nightly refresh (02:00 UTC)
             </ActionButton>
           )}
-          <ActionButton action="analytics.refresh" icon={RefreshCw} iconClassName="mr-2 size-3.5" variant="outline" size="sm" className="rounded-xl" onClick={refresh} disabled={isRunning}>
-            Refresh now
-          </ActionButton>
+          {!analyticsOff && (
+            <ActionButton action="analytics.refresh" icon={RefreshCw} iconClassName="mr-2 size-3.5" variant="outline" size="sm" className="rounded-xl" onClick={refresh} disabled={isRunning}>
+              Refresh now
+            </ActionButton>
+          )}
           {/* Background Jobs needs settings:view: no link for a role that can't open it */}
           <AccessLink href="/jobs" className="px-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
             Change the schedule in Background Jobs

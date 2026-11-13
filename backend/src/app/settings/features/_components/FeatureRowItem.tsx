@@ -6,6 +6,7 @@ import { rowState, type FeatureRow } from '../_lib/feature-rows';
 
 import type { Area } from '@/features/feature-switches/areas';
 import { ActionSwitch, useAdminGate, type ActionGate } from '@/shared/access/ActionControls';
+import { AccessLink } from '@/shared/access/Can';
 
 interface Props {
   area: FeatureRow;
@@ -27,6 +28,12 @@ export function FeatureRowItem({ area, areas, onToggle, busy }: Props) {
         <p className="text-sm text-muted-foreground">{area.description}</p>
         {shownReason && <p className="text-sm text-muted-foreground">{shownReason}</p>}
         {needs && <p className="text-sm text-muted-foreground">{needs}</p>}
+        {/* The menu hides Analytics while it is off, but its settings page stays open */}
+        {area.id === 'analytics' && !area.on && (
+          <AccessLink href="/analytics/settings" className="inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">
+            Analytics settings (collection and retention) stay available
+          </AccessLink>
+        )}
       </div>
       <ActionSwitch
         gate={gate}

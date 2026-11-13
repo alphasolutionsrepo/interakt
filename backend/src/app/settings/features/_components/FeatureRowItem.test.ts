@@ -59,4 +59,33 @@ describe('FeatureRowItem', () => {
     expect(html).toContain('Only an Admin can turn features on or off.');
     expect(html).toContain('Needs Search');
   });
+
+  describe('the Analytics settings link', () => {
+    const analytics = { id: 'analytics' as const, label: 'Analytics', on: false, switchedOn: false };
+    const LINK = 'href="/analytics/settings"';
+
+    it('is offered under Analytics when it is off, to someone who can open the page', () => {
+      uiAccess.asAdmin();
+      uiAccess.areasOff('analytics');
+      const html = render(analytics);
+      expect(html).toContain(LINK);
+      expect(html).toContain('Analytics settings (collection and retention) stay available');
+    });
+
+    it('is not shown when Analytics is on', () => {
+      uiAccess.asAdmin();
+      expect(render({ ...analytics, on: true, switchedOn: true })).not.toContain(LINK);
+    });
+
+    it('is not shown under other features that are off', () => {
+      uiAccess.asAdmin();
+      expect(render({ on: false, switchedOn: false })).not.toContain(LINK);
+    });
+
+    it('is not shown to someone who cannot open the page', () => {
+      uiAccess.hold('settings:manage');
+      uiAccess.areasOff('analytics');
+      expect(render(analytics)).not.toContain(LINK);
+    });
+  });
 });

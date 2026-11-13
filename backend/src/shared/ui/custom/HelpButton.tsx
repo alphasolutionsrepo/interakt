@@ -47,10 +47,13 @@ export function effectiveHelpMode(remembered: HelpMode, askOn: boolean): HelpMod
 export function noHelpHint(askOn: boolean): string {
   return askOn ? 'Search the docs or ask a question above, or' : 'Search the docs above, or';
 }
-export function helpTriggerLabel(askOn: boolean): string {
+// null = access not loaded yet: say neither, so the label doesn't change once it has
+export function helpTriggerLabel(askOn: boolean | null): string {
+  if (askOn === null) return 'Help';
   return askOn ? 'Help, search and ask' : 'Help and search';
 }
-export function helpTriggerTooltip(askOn: boolean): string {
+export function helpTriggerTooltip(askOn: boolean | null): string {
+  if (askOn === null) return 'Help';
   return askOn ? 'Help, search & ask' : 'Help & search';
 }
 
@@ -73,8 +76,10 @@ export function HelpButton() {
 
   const [open, setOpen] = useState(false);
   // With the Help assistant off only the docs search is left, whatever mode was remembered
-  const { areaOn } = useAccess();
+  const { areaOn, isLoading: accessLoading } = useAccess();
   const askOn = areaOn('help-assistant');
+  // Until access has loaded the answer is unknown: nothing about asking is shown, then it appears once
+  const askKnown: boolean | null = accessLoading ? null : askOn;
   const [savedMode, setModeState] = useState<HelpMode>('search');
   const mode = effectiveHelpMode(savedMode, askOn);
   const [text, setText] = useState('');
@@ -377,14 +382,14 @@ export function HelpButton() {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={helpTriggerLabel(askOn)}
+              aria-label={helpTriggerLabel(askKnown)}
               className="text-muted-foreground hover:text-foreground"
             >
               <HelpCircle className="size-5" />
             </Button>
           </SheetTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{helpTriggerTooltip(askOn)} · {shortcut}</TooltipContent>
+        <TooltipContent side="bottom">{helpTriggerTooltip(askKnown)} · {shortcut}</TooltipContent>
       </Tooltip>
 
       <SheetContent
@@ -508,7 +513,7 @@ export function ModeSwitch({
   onChange: (mode: HelpMode, options?: { keepFocus?: boolean }) => void;
 }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const { areaOn } = useAccess();
+  const { areaOn, isLoading } = useAccess();
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
@@ -519,8 +524,9 @@ export function ModeSwitch({
     refs.current[next]?.focus();
   };
 
-  // Search alone needs no switch: the Help assistant is off for this installation
-  if (!areaOn('help-assistant')) return null;
+  // No switch while access is loading (neither state, so it doesn't flicker in), and none when
+  // Search alone is left: the Help assistant is off for this installation
+  if (isLoading || !areaOn('help-assistant')) return null;
 
   return (
     <div role="radiogroup" aria-label="Mode" className="inline-flex self-start rounded-lg bg-muted p-0.5 text-sm">
