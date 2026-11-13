@@ -12,7 +12,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { lookupErrorStatus } from './access-state';
+import { areaOnFor, lookupErrorStatus } from './access-state';
 
 import type { Permission } from '@/features/access/permissions';
 import { allowsAction, type UiActionId } from '@/features/access/ui-actions';
@@ -34,19 +34,7 @@ export interface MyAccess {
 
 export const accessKeys = { mine: ['access', 'mine'] as const };
 
-/**
- * Whether an area is on, for the hook's areaOn. False while loading (nothing flashes in and
- * disappears); every area on when the lookup failed (the sidebar's "unavailable, show
- * everything": the server still refuses an area that is off); an answer without a list (an
- * older server) counts as everything on.
- */
-export function areaOnFor(input: { isLoading: boolean; errorStatus: number | null; areas: readonly Area[] | undefined }) {
-  return (area: Area): boolean => {
-    if (input.isLoading) return false;
-    if (input.errorStatus !== null) return true;
-    return input.areas ? input.areas.includes(area) : true;
-  };
-}
+export { areaOnFor };
 
 /**
  * How the access query refreshes: it counts as fresh for a minute (no refetch when a component

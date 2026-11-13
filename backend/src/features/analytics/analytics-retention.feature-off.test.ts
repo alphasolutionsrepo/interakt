@@ -74,10 +74,16 @@ describe('analytics retention cleanup and the Analytics switch', () => {
     expect(await rowCount()).toBe(1);
   });
 
-  it('does not depend on reading the switches', async () => {
+  it('never reads the switches during a run (on or off), so the schedule cannot depend on them', async () => {
     await insertRows();
-    vi.spyOn(featureSwitchesService, 'isAreaOn').mockRejectedValue(new Error('settings unavailable'));
-    await runRetentionCleanup();
-    expect(await rowCount()).toBe(1);
+    const spies = Object.entries(featureSwitchesService)
+      .filter(([, fn]) => typeof fn === 'function')
+      .map(([name]) => vi.spyOn(featureSwitchesService as never, name as never));
+    expect(spies.length).toBeGreaterThan(0);
+    for (const off of [true, false]) {
+      if (off) featureSwitchesStub.off.add('analytics'); else featureSwitchesStub.off.clear();
+      await runRetentionCleanup();
+    }
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
   });
 });

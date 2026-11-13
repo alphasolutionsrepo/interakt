@@ -39,4 +39,12 @@ describe('an MCP connection page with Playground off', () => {
     expect(controlState(html, { text: 'Sync' })).toBe('open');
     expect(html).toContain('Playground is turned off for this installation.');
   });
+
+  it('leaves Test usable, with no Playground note, while Playground is on', () => {
+    uiAccess.asAdmin();
+    const html = page();
+    expect(controlState(html, { text: 'Test' })).toBe('open');
+    expect(controlState(html, { text: 'Sync' })).toBe('open');
+    expect(html).not.toContain('Playground is turned off');
+  });
 });

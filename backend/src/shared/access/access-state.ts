@@ -13,6 +13,7 @@
  *  - allowed / denied: from the page's permissions
  */
 
+import type { Area } from '@/features/feature-switches/areas';
 import { ApiError } from '@/shared/api/api-error';
 
 export type AccessState = 'loading' | 'signed-out' | 'unavailable' | 'off' | 'allowed' | 'denied';
@@ -34,4 +35,18 @@ export function lookupErrorStatus(error: unknown, haveAccess: boolean): number |
   if (!error) return null;
   const status = error instanceof ApiError ? error.status : 0;
   return status === 401 || !haveAccess ? status : null;
+}
+
+/**
+ * Whether an area is on, for the hook's areaOn. False while loading (nothing flashes in and
+ * disappears); every area on when the lookup failed (the sidebar's "unavailable, show
+ * everything": the server still refuses an area that is off); an answer without a list (an
+ * older server) counts as everything on.
+ */
+export function areaOnFor(input: { isLoading: boolean; errorStatus: number | null; areas: readonly Area[] | undefined }) {
+  return (area: Area): boolean => {
+    if (input.isLoading) return false;
+    if (input.errorStatus !== null) return true;
+    return input.areas ? input.areas.includes(area) : true;
+  };
 }

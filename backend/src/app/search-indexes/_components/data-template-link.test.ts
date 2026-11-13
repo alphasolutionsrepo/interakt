@@ -1,10 +1,6 @@
 // src/app/search-indexes/_components/data-template-link.test.ts
 
-/**
- * A search index's page links to its data template ("View") only while /data-templates can be
- * opened. No rule closes that page today, so the page check is stubbed to answer yes or no:
- * the test pins that the link follows the check, not what the rules say.
- */
+/** A search index's page names its data template; no page exists for it, so there is no link. */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
@@ -19,19 +15,6 @@ vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: () => {} }), useParams: () => ({ id: 'i' }), usePathname: () => '/', useSearchParams: () => new URLSearchParams(),
 }));
-
-const opened: string[] = [];
-let dataTemplatesOpen = true;
-vi.mock('@/features/access/page-permissions', async (importOriginal) => {
-  const real = await importOriginal<typeof import('@/features/access/page-permissions')>();
-  return {
-    ...real,
-    canOpenPage: (path: string, ...rest: [never, never]) => {
-      if (path === '/data-templates') { opened.push(path); return dataTemplatesOpen; }
-      return real.canOpenPage(path, ...rest);
-    },
-  };
-});
 
 vi.mock('../_lib/hooks/useSearchIndexes', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../_lib/hooks/useSearchIndexes')>()),
@@ -60,23 +43,14 @@ vi.mock('../_lib/hooks/useSearchIndexFields', async (importOriginal) => ({
 
 const detail = () =>
   renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(SearchIndexDetailPage as never)));
-/** The "View" button next to the data template name */
-const hasViewButton = (html: string) => />\s*View\s*</.test(html.replace(/<!-- -->/g, ''));
 
-describe("a search index's data template link", () => {
-  beforeEach(() => { opened.length = 0; dataTemplatesOpen = true; uiAccess.asAdmin(); });
+describe("a search index's data template", () => {
+  beforeEach(() => { uiAccess.asAdmin(); });
 
-  it('shows View next to the template name while /data-templates can be opened', () => {
+  it('shows the template name and links nowhere (there is no data-templates page)', () => {
     const html = detail();
     expect(html).toContain('Articles');
-    expect(hasViewButton(html)).toBe(true);
-    expect(opened).toContain('/data-templates');
-  });
-
-  it('keeps the name but hides View when /data-templates cannot be opened', () => {
-    dataTemplatesOpen = false;
-    const html = detail();
-    expect(html).toContain('Articles');
-    expect(hasViewButton(html)).toBe(false);
+    expect(html).not.toContain('/data-templates');
+    expect(html.replace(/<!-- -->/g, '')).not.toMatch(/>\s*View\s*</);
   });
 });

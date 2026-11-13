@@ -14,6 +14,7 @@
 import { ALL_PERMISSIONS, type Permission } from '@/features/access/permissions';
 import { allowsAction, type UiActionId } from '@/features/access/ui-actions';
 import { AREA_IDS, type Area } from '@/features/feature-switches/areas';
+import { areaOnFor } from '@/shared/access/access-state';
 
 const held = new Set<Permission>();
 let admin = false;
@@ -77,7 +78,8 @@ export const useAccessModule = {
     errorStatus: null,
     retry: () => {},
     can,
-    areaOn: (area: Area) => !loading && !areasOffSet.has(area),
+    // The real rule, fed the same answer /api/me/access would give
+    areaOn: areaOnFor({ isLoading: loading, errorStatus: null, areas: loading ? undefined : AREA_IDS.filter((a) => !areasOffSet.has(a)) }),
     canDo: (action: UiActionId) => allowsAction(can, action),
     isAdmin: admin,
   }),
