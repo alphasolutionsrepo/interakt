@@ -157,14 +157,15 @@ export async function refuseSessionIfPlaygroundOff(experience: { isBuiltIn?: boo
  * with the Help assistant on.
  */
 export async function refuseHelpIfOff(): Promise<NextResponse | null> {
-  const off = await refuseUnlessOn(['help-assistant']);
-  if (!off) return null;
+  // Sign-in first: a caller without a credential gets the route's own answer whatever the
+  // switches say, and an unreadable switch store (a 500) is not something to tell them
   try {
     const { response } = await checkAccess(SIGNED_IN);
-    return response ? null : off;
+    if (response) return null;
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'checkHelpAccess' });
   }
+  return refuseUnlessOn(['help-assistant']);
 }
 
 /** Marks a route wrapped by publicApiRoute (a test checks every /api/v1 route is). */

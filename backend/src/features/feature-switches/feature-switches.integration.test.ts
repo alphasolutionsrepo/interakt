@@ -608,6 +608,23 @@ describe('when the switches cannot be read', () => {
     expect((await documents('not-a-key')).status).toBe(401);
   });
 
+  it('answers the missing built-in help the same to an anonymous caller as with the switches readable, without reading them, and 500 to someone signed in', async () => {
+    const help = () => call(slugChatRoute.POST, 'POST', '/api/v1/ai-experiences/help-assistant/chat', { params: { slug: 'help-assistant' }, body: { message: 'hi' } });
+    readFails = false;
+    as(null);
+    const whenReadable = await help();
+    clearFeatureSwitchCache();
+    readFails = true;
+    reads = 0;
+    const anonymous = await help();
+    expect(anonymous.status).toBe(whenReadable.status);
+    expect(anonymous.body).toMatchObject({ code: 'NOT_FOUND' });
+    // Nothing about the switches is asked of a caller without a sign-in
+    expect(reads).toBe(0);
+    as(admin);
+    expect((await help()).status).toBe(500);
+  });
+
   it('uses the last known switches when they were read before', async () => {
     readFails = false;
     await switchAreas({ chat: false });

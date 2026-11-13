@@ -22,6 +22,8 @@ vi.mock('@/features/global-settings', () => ({
 
 import { clearFeatureSwitchCache, isAreaOn, setFeatureSwitches } from './feature-switches.service';
 
+import { getStoredFeaturesOff } from '@/features/global-settings';
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   db.reads = 0; db.fails = false; db.failAfterSave = false; db.value = []; db.saved = null;
@@ -62,6 +64,23 @@ describe('feature switch cache', () => {
     const before = db.reads;
     await Promise.all(Array.from({ length: 10 }, () => isAreaOn('chat')));
     expect(db.reads - before).toBe(1);
+  });
+
+  it('keeps a save that finished while an older read was still under way', async () => {
+    await isAreaOn('chat');
+    vi.advanceTimersByTime(6_000);
+    // The next read is held open and will answer with the old (empty) list
+    let finishOldRead: (off: string[]) => void = () => {};
+    vi.mocked(getStoredFeaturesOff).mockImplementationOnce(() => new Promise<string[]>((resolve) => { finishOldRead = resolve; }));
+    const oldRead = isAreaOn('chat');
+    // A save completes meanwhile (its own fresh read sees the store as it was)
+    await setFeatureSwitches({ chat: false });
+    expect(db.saved).toEqual(['chat']);
+    finishOldRead([]);
+    await oldRead;
+    expect(await isAreaOn('chat')).toBe(false);
+    vi.advanceTimersByTime(1_000);
+    expect(await isAreaOn('chat')).toBe(false);
   });
 
   it('throws when nothing was read before and the read fails', async () => {

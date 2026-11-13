@@ -52,7 +52,10 @@ async function readStored(): Promise<ReadonlySet<Area>> {
  */
 async function storedOff(): Promise<ReadonlySet<Area>> {
   if (stored && Date.now() - stored.at < CACHE_MS) return stored.off;
-  reading ??= readStored().finally(() => { reading = null; });
+  if (!reading) {
+    const read: Promise<ReadonlySet<Area>> = readStored().finally(() => { if (reading === read) reading = null; });
+    reading = read;
+  }
   return reading;
 }
 
@@ -136,6 +139,9 @@ export async function setFeatureSwitches(changes: Partial<Record<Area, boolean>>
   await saveFeaturesOff(AREA_IDS.filter((a) => off.has(a)));
   // What was just saved is the latest known state: keep it as the cache (and the fallback
   // for a failed read), rather than clearing it
+  // and it wins over any read that started before it: that read may carry the old list
+  generation++;
+  reading = null;
   stored = { off, at: Date.now() };
   // Start-up skips the docs search while the Help assistant is off: build it once back on
   if (!helpWasOn && on('help-assistant', new Set([...pins, ...off]))) startDocsSearchBuild();
