@@ -41,12 +41,29 @@ describe('RolePermissionFields', () => {
   it('words an unmet need that only a turned-off area blocks without a count of "more"', () => {
     uiAccess.asAdmin();
     uiAccess.areasOff('chat');
-    const all = ['setup:run', 'ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit', 'search-experiences:edit', 'data-sources:edit'];
+    const all = ['setup:run', 'ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit', 'search-experiences:edit', 'data-sources:edit', 'prompts:edit'];
     const html = render(all);
-    expect(html).toContain('needs 3 permissions in Chat to take effect, turned off for this installation');
+    expect(html).toContain('needs 2 permissions in Chat to take effect, turned off for this installation');
     expect(html).not.toContain('needs 0 more');
     // With some still to tick, the count stays
-    expect(render(['setup:run'])).toContain('needs 6 more permissions to take effect, and 3 in Chat, turned off for this installation');
+    expect(render(['setup:run'])).toContain('needs 7 more permissions to take effect, and 2 in Chat, turned off for this installation');
+  });
+
+  it('keeps prompts:* enabled with Chat off and Managed indexes on, and disables it with both off, naming both', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('chat');
+    const VIEW = 'View prompt templates, knowledge base and domain knowledge';
+    const EDIT = 'Edit prompt templates, knowledge base and domain knowledge';
+    const chatOff = render(['prompts:view']);
+    expect(box(chatOff, VIEW)).toEqual({ checked: true, disabled: false });
+    expect(box(chatOff, EDIT)).toEqual({ checked: false, disabled: false });
+
+    uiAccess.areasOff('chat', 'managed-indexes');
+    const bothOff = render(['prompts:view']);
+    expect(box(bothOff, VIEW)).toEqual({ checked: true, disabled: true });
+    expect(box(bothOff, EDIT)).toEqual({ checked: false, disabled: true });
+    expect(bothOff).toContain('Chat and Managed indexes are turned off for this installation.');
+    expect(bothOff).toContain('apply again when Chat or Managed indexes is on.');
   });
 
   it('words the three shapes of unmet need', () => {

@@ -63,9 +63,14 @@ export function offAreasText(areas: readonly Area[], areaOn: (area: Area) => boo
   return offCausesText(offCauses(areas, areaOn, reasons));
 }
 
-export function AreaOffNote({ area, detail, className }: { area: Area; detail?: ReactNode; className?: string }) {
+/** "Roles keep these permissions, and they apply again when Chat (or Managed indexes) is on." */
+export function rolesKeepDetail(areas: readonly Area[]): string {
+  return `Roles keep these permissions, and they apply again when ${areas.map(areaLabel).join(' or ')} is on.`;
+}
+
+export function AreaOffNote({ area, areas, detail, className }: { area?: Area; areas?: readonly Area[]; detail?: ReactNode; className?: string }) {
   const { isAdmin, areaOn, access } = useAccess();
-  const causes = offCauses([area], areaOn, access);
+  const causes = offCauses(areas ?? (area ? [area] : []), areaOn, access);
   // Nothing to turn on in Settings → Features when the deployment setting pins every cause off
   const canTurnOn = isAdmin && (causes.switchable.length > 0 || causes.pinned.length === 0);
   return (

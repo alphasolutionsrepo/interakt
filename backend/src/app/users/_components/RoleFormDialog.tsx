@@ -21,7 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { effectivePermissions, PERMISSION_GROUPS, type Permission } from '@/features/access/permissions';
 import type { CreateRoleInput } from '@/features/access/roles.validations';
 import type { Area } from '@/features/feature-switches/areas';
-import { AreaOffNote, areaLabel } from '@/shared/access/AreaOffNote';
+import { AreaOffNote, areaLabel, rolesKeepDetail } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { useInlineError } from '@/shared/activity/useInlineError';
 import { DialogFormFooter } from '@/shared/ui/custom/DialogFormFooter';
@@ -122,8 +122,8 @@ export function RolePermissionFields({ permissions, onToggle }: { permissions: R
       {viewGroups(PERMISSION_GROUPS, areaOn, permissions).map((group) => (
         <fieldset key={group.id} className="space-y-2">
           <legend className="text-sm font-semibold">{group.label}</legend>
-          {group.offAreas.map((area) => (
-            <AreaOffNote key={area} area={area} detail={`Roles keep these permissions, and they apply again when ${areaLabel(area)} is on.`} />
+          {group.offNotes.map((areas) => (
+            <AreaOffNote key={areas.join(',')} areas={areas} detail={rolesKeepDetail(areas)} />
           ))}
           {group.rows.map((p) => {
             const ticked = p.held;

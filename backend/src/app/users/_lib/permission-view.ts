@@ -14,7 +14,7 @@ import {
   type Permission,
 } from '@/features/access/permissions';
 import type { Area } from '@/features/feature-switches/areas';
-import { permissionArea } from '@/features/feature-switches/permission-areas';
+import { offPermissionAreas } from '@/features/feature-switches/permission-areas';
 
 export interface PermissionRow {
   id: Permission;
@@ -22,15 +22,16 @@ export interface PermissionRow {
   held: boolean;
   /** Its area is off, so it can't be changed here (the role keeps it as it is) */
   disabled: boolean;
-  disabledArea: Area | null;
+  /** The areas that are all off for this permission (it needs only one of them on); empty when enabled */
+  disabledAreas: readonly Area[];
 }
 
 export interface PermissionGroupView {
   id: string;
   label: string;
   rows: PermissionRow[];
-  /** Off areas that have a permission in this group: one note each */
-  offAreas: Area[];
+  /** One note per distinct set of off areas that has a permission in this group */
+  offNotes: Area[][];
 }
 
 interface GroupLike {
@@ -46,12 +47,12 @@ export function viewGroups(
 ): PermissionGroupView[] {
   return groups.map((group) => {
     const rows = group.permissions.map((p): PermissionRow => {
-      const area = permissionArea(p.id);
-      const disabledArea = area !== null && !areaOn(area) ? area : null;
-      return { id: p.id, label: p.label, held: held.has(p.id), disabled: disabledArea !== null, disabledArea };
+      const disabledAreas = offPermissionAreas(p.id, areaOn);
+      return { id: p.id, label: p.label, held: held.has(p.id), disabled: disabledAreas.length > 0, disabledAreas };
     });
-    const offAreas = [...new Set(rows.map((r) => r.disabledArea).filter((a): a is Area => a !== null))];
-    return { id: group.id, label: group.label, rows, offAreas };
+    const offNotes = new Map<string, Area[]>();
+    for (const r of rows) if (r.disabled) offNotes.set(r.disabledAreas.join(','), [...r.disabledAreas]);
+    return { id: group.id, label: group.label, rows, offNotes: [...offNotes.values()] };
   });
 }
 
@@ -74,11 +75,8 @@ export function permissionCount(role: { isBuiltIn: boolean; permissions: readonl
 export function unmetNeeds(stored: readonly string[], permission: Permission, areaOn: (area: Area) => boolean) {
   const has = new Set(effectivePermissions(stored.filter(isPermission)));
   const missing = (REQUIRED_WITH[permission] ?? []).filter((p) => !has.has(p));
-  const isBlocked = (p: Permission) => {
-    const area = permissionArea(p);
-    return area !== null && !areaOn(area);
-  };
+  const isBlocked = (p: Permission) => offPermissionAreas(p, areaOn).length > 0;
   const blocked = missing.filter(isBlocked);
-  const blockedAreas = [...new Set(blocked.map((p) => permissionArea(p)).filter((a): a is Area => a !== null))];
+  const blockedAreas = [...new Set(blocked.flatMap((p) => offPermissionAreas(p, areaOn)))];
   return { missing, tickable: missing.filter((p) => !isBlocked(p)), blocked, blockedAreas };
 }

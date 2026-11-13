@@ -17,10 +17,20 @@ describe('viewGroups', () => {
 
   it('disables a row whose area is off, naming the area, and leaves the rest enabled', () => {
     const rows = viewGroups(PERMISSION_GROUPS, off('chat'), new Set()).flatMap((g) => g.rows);
-    expect(rows.find((r) => r.id === 'tools:view')).toMatchObject({ disabled: true, disabledArea: 'chat' });
-    expect(rows.find((r) => r.id === 'ai-experiences:view')).toMatchObject({ disabled: true, disabledArea: 'chat' });
-    expect(rows.find((r) => r.id === 'search-experiences:view')).toMatchObject({ disabled: false, disabledArea: null });
-    expect(rows.find((r) => r.id === 'users:manage')).toMatchObject({ disabled: false, disabledArea: null });
+    expect(rows.find((r) => r.id === 'tools:view')).toMatchObject({ disabled: true, disabledAreas: ['chat'] });
+    expect(rows.find((r) => r.id === 'ai-experiences:view')).toMatchObject({ disabled: true, disabledAreas: ['chat'] });
+    expect(rows.find((r) => r.id === 'search-experiences:view')).toMatchObject({ disabled: false, disabledAreas: [] });
+    expect(rows.find((r) => r.id === 'users:manage')).toMatchObject({ disabled: false, disabledAreas: [] });
+  });
+
+  it('keeps prompts:* enabled with Chat off while Managed indexes is on, and disables it with both off', () => {
+    const find = (areaOn: (a: Area) => boolean) =>
+      viewGroups(PERMISSION_GROUPS, areaOn, new Set()).flatMap((g) => g.rows).filter((r) => r.id.startsWith('prompts:'));
+    expect(find(off('chat')).map((r) => r.disabled)).toEqual([false, false]);
+    expect(find(off('managed-indexes')).map((r) => r.disabled)).toEqual([false, false]);
+    for (const r of find(off('chat', 'managed-indexes'))) expect(r).toMatchObject({ disabled: true, disabledAreas: ['chat', 'managed-indexes'] });
+    const groups = viewGroups(PERMISSION_GROUPS, off('chat', 'managed-indexes'), new Set());
+    expect(groups.find((g) => g.rows.some((r) => r.id === 'prompts:view'))?.offNotes).toContainEqual(['chat', 'managed-indexes']);
   });
 
   it('keeps the held state of a disabled row', () => {
@@ -31,15 +41,15 @@ describe('viewGroups', () => {
   it('notes each off area once per group that has one of its permissions', () => {
     const groups = viewGroups(PERMISSION_GROUPS, off('chat', 'search'), new Set());
     for (const g of groups) {
-      const areas = g.rows.map((r) => r.disabledArea).filter((a) => a !== null);
-      expect(g.offAreas).toEqual([...new Set(areas)]);
+      const sets = g.rows.filter((r) => r.disabled).map((r) => r.disabledAreas.join(','));
+      expect(g.offNotes.map((n) => n.join(','))).toEqual([...new Set(sets)]);
     }
-    expect(groups.some((g) => g.offAreas.includes('chat'))).toBe(true);
+    expect(groups.some((g) => g.offNotes.some((n) => n.includes('chat')))).toBe(true);
   });
 
   it('has no notes and no disabled rows when every area is on', () => {
     const groups = viewGroups(PERMISSION_GROUPS, () => true, new Set());
-    expect(groups.every((g) => g.offAreas.length === 0 && g.rows.every((r) => !r.disabled))).toBe(true);
+    expect(groups.every((g) => g.offNotes.length === 0 && g.rows.every((r) => !r.disabled))).toBe(true);
   });
 });
 
@@ -71,8 +81,9 @@ describe('unmetNeeds', () => {
         'ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit',
         'search-experiences:edit', 'ai-experiences:edit', 'tools:edit', 'data-sources:edit', 'prompts:edit',
       ],
-      tickable: ['ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit', 'search-experiences:edit', 'data-sources:edit'],
-      blocked: ['ai-experiences:edit', 'tools:edit', 'prompts:edit'],
+      // prompts:edit stays tickable: Managed indexes is on, and it still does something there
+      tickable: ['ai-providers:manage', 'settings:manage', 'search-indexes:edit', 'documents:edit', 'search-experiences:edit', 'data-sources:edit', 'prompts:edit'],
+      blocked: ['ai-experiences:edit', 'tools:edit'],
       blockedAreas: ['chat'],
     });
   });
@@ -81,7 +92,13 @@ describe('unmetNeeds', () => {
     const needs = unmetNeeds(['setup:run', 'tools:edit', 'settings:manage'], 'setup:run', off('chat'));
     expect(needs.missing).not.toContain('tools:edit');
     expect(needs.missing).not.toContain('settings:manage');
-    expect(needs.blocked).toEqual(['ai-experiences:edit', 'prompts:edit']);
+    expect(needs.blocked).toEqual(['ai-experiences:edit']);
+  });
+
+  it('blocks prompts:edit only when both Chat and Managed indexes are off, naming both', () => {
+    const needs = unmetNeeds(['setup:run'], 'setup:run', off('chat', 'managed-indexes'));
+    expect(needs.blocked).toContain('prompts:edit');
+    expect(needs.blockedAreas).toEqual(expect.arrayContaining(['chat', 'managed-indexes']));
   });
 
   it('has nothing blocked when every area is on, all of it tickable', () => {

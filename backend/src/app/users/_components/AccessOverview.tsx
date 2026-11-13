@@ -13,7 +13,7 @@ import {
   type Permission,
 } from '@/features/access/permissions';
 import type { Area } from '@/features/feature-switches/areas';
-import { AreaOffNote, areaLabel } from '@/shared/access/AreaOffNote';
+import { AreaOffNote, areaLabel, rolesKeepDetail } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 
 /**
@@ -114,10 +114,10 @@ export function AccessOverview({
                   <span className="sticky left-3">{group.label}</span>
                 </th>
               </tr>
-              {group.offAreas.map((area) => (
-                <tr key={area}>
+              {group.offNotes.map((areas) => (
+                <tr key={areas.join(',')}>
                   <td colSpan={roles.length + 1} className="px-3 py-2">
-                    <AreaOffNote area={area} detail={`Roles keep these permissions, and they apply again when ${areaLabel(area)} is on.`} />
+                    <AreaOffNote areas={areas} detail={rolesKeepDetail(areas)} />
                   </td>
                 </tr>
               ))}
