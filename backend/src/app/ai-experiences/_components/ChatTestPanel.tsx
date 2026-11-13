@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { ActionButton, useActionGate, type ActionGate } from '@/shared/access/ActionControls';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
@@ -395,7 +396,10 @@ export function ChatTestPanel({ experienceSlug, experienceName, isBuiltIn = fals
   const [isStreaming, setIsStreaming] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const sendGate = chatSendGate(useActionGate('ai-experiences.test-chat'), isBuiltIn);
+  const permissionGate = chatSendGate(useActionGate('ai-experiences.test-chat'), isBuiltIn);
+  // Playground off locks Send with the reason, except on the built-in help (the help assistant is its own area)
+  const areaGate = useAreaGate(permissionGate, 'playground');
+  const sendGate = isBuiltIn ? permissionGate : areaGate;
   const currentAssistantIdRef = useRef<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Buffer preset data until text content starts streaming (so grid + text appear together)

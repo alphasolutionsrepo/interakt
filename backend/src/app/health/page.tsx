@@ -11,7 +11,6 @@ import {
   XCircle,
   FlaskConical,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
 
 import { HealthStatsBar, ServiceStatusCard } from './_components';
@@ -19,7 +18,7 @@ import { useSystemHealth } from './_lib/hooks/useHealth';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useCanOpenPage } from '@/shared/access/Can';
+import { AccessLink } from '@/shared/access/Can';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
 // ============================================================================
@@ -66,7 +65,6 @@ function HealthPageSkeleton() {
 // ============================================================================
 
 export default function HealthPage() {
-  const canOpen = useCanOpenPage();
   const [autoRefresh, setAutoRefresh] = useState(true);
   const { data: health, isLoading, isError, error, refetch } = useSystemHealth(
     autoRefresh ? { refetchInterval: 30000 } : undefined
@@ -151,18 +149,12 @@ export default function HealthPage() {
         }
         actions={
           <>
-            {canOpen('/playground') && (
-              <Button
-                variant="outline"
-                asChild
-                className="rounded-xl"
-              >
-                <Link href="/playground">
-                  <FlaskConical className="mr-2 size-4" />
-                  Test Queries
-                </Link>
-              </Button>
-            )}
+            <Button variant="outline" asChild className="rounded-xl">
+              <AccessLink href="/playground">
+                <FlaskConical className="mr-2 size-4" />
+                Test Queries
+              </AccessLink>
+            </Button>
             <Button
               variant={autoRefresh ? 'default' : 'outline'}
               onClick={() => setAutoRefresh(!autoRefresh)}

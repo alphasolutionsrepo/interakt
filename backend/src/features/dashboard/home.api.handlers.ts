@@ -8,12 +8,13 @@ import { z } from 'zod';
 import { CHECKLIST_ID, getHomeData, homeDataForRole, invalidateHomeCache, TIP_ID } from './home.service';
 
 import type { Permission } from '@/features/access/permissions';
-import { can } from '@/features/access/user-access';
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
-import { isAreaOn } from '@/features/feature-switches/feature-switches.service';
-import { turnedOff } from '@/features/feature-switches/gate';
+import { can } from '@/features/access/user-access';
 import { dismissTip } from '@/features/analytics/analytics-insights.service';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';
+import { AREA_IDS, type Area } from '@/features/feature-switches/areas';
+import { isAreaOn } from '@/features/feature-switches/feature-switches.service';
+import { turnedOff } from '@/features/feature-switches/gate';
 import { apiResponse } from '@/shared/api/response';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
@@ -25,9 +26,11 @@ export async function handleGetHome(request: NextRequest) {
     const { access, response } = await checkAccess(SIGNED_IN);
     if (response) return response;
     // With Analytics off the home page shows no analytics figures, cards or tips, whoever asks
-    const analyticsOn = await isAreaOn('analytics');
+    const on = new Set((await Promise.all(AREA_IDS.map(async (a) => ((await isAreaOn(a)) ? a : null)))).filter((a) => a !== null));
+    const areaOn = (area: Area) => on.has(area);
+    const analyticsOn = areaOn('analytics');
     const holds = (p: Permission) => can(access, p) && (analyticsOn || !p.startsWith('analytics:'));
-    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz), holds, { analyticsOn }) });
+    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz), holds, { analyticsOn, areaOn }) });
   } catch (error) {
     return apiResponse.error('Failed to load the home page', 500, { operation: 'getHome', err: error });
   }

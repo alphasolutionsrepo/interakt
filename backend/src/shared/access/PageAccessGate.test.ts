@@ -7,12 +7,59 @@
 
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LockedPage } from './PageAccessGate';
+import { LockedPage, PageAccessGate } from './PageAccessGate';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
+import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
+
+const nav = vi.hoisted(() => ({ path: '/' }));
+vi.mock('next/navigation', () => ({ usePathname: () => nav.path }));
 vi.mock('next-auth/react', () => ({ signOut: () => {} }));
+vi.mock('./useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
+
+const gate = (path: string) => {
+  nav.path = path;
+  return renderToStaticMarkup(createElement(PageAccessGate, null, 'PAGE'));
+};
+
+describe('PageAccessGate', () => {
+  beforeEach(() => { uiAccess.hold(); nav.path = '/'; });
+
+  it('shows the page to a role that can open it', () => {
+    uiAccess.hold('tools:view');
+    expect(gate('/tools')).toBe('PAGE');
+  });
+
+  it('says why, with no link, to a role without the permission', () => {
+    expect(gate('/tools')).toContain('You don&#x27;t have access to this page');
+  });
+
+  it('says the feature is off, ahead of the permission, and offers an Admin the way to turn it on', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('chat');
+    const html = gate('/tools');
+    expect(html).toContain('This feature is turned off for this installation.');
+    expect(html).toMatch(/<a[^>]*href="\/settings\/features"[^>]*>Turn it on in Settings → Features<\/a>/);
+    expect(html).not.toContain('PAGE');
+  });
+
+  it('says it is off, without the link, to a non-Admin', () => {
+    uiAccess.hold('tools:view');
+    uiAccess.areasOff('chat');
+    const html = gate('/tools');
+    expect(html).toContain('This feature is turned off for this installation.');
+    expect(html).not.toContain('/settings/features');
+  });
+
+  it('keeps core pages open when areas are off, and shows nothing while loading', () => {
+    uiAccess.hold('data-sources:view');
+    uiAccess.areasOff('chat', 'search');
+    expect(gate('/data-sources')).toBe('PAGE');
+    uiAccessLoading();
+    expect(gate('/tools')).toBe('');
+  });
+});
 
 describe('LockedPage', () => {
   it('shows nothing while access loads', () => {

@@ -1,5 +1,6 @@
 // app/analytics/_lib/experience-options.ts
 
+import type { Area } from '@/features/feature-switches/areas';
 import { handleApiResponse } from '@/shared/api/api-error';
 
 export interface ExperienceOption {
@@ -30,4 +31,12 @@ export async function loadExperienceOptions(): Promise<ExperienceOptions> {
   } catch (error) {
     return { experiences: [], complete: false, errors: [error] };
   }
+}
+
+/** The area an experience of each type belongs to */
+export const EXPERIENCE_TYPE_AREA: Record<ExperienceOption['type'], Area> = { ai: 'chat', search: 'search' };
+
+/** Only the experiences whose area is on (chat experiences need Chat, search ones Search) */
+export function experiencesWithAreaOn(experiences: ExperienceOption[], areaOn: (area: Area) => boolean): ExperienceOption[] {
+  return experiences.filter((e) => areaOn(EXPERIENCE_TYPE_AREA[e.type]));
 }

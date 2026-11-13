@@ -45,6 +45,32 @@ describe('which permission opens which page', () => {
   });
 });
 
+describe('pages of an area that is off', () => {
+  const chatOff = (a: string) => a !== 'chat';
+
+  it('closes the page for everyone, an Admin included, when its area is off', () => {
+    expect(canOpenPage('/tools', () => true, chatOff)).toBe(false);
+    expect(canOpenPage('/tools', () => true, () => true)).toBe(true);
+    expect(canOpenPage('/data-sources', () => true, () => false)).toBe(true);
+  });
+
+  it('keeps the two-argument call working: no areas given, only the permission decides', () => {
+    expect(canOpenPage('/tools', () => true)).toBe(true);
+    expect(canOpenPage('/tools', () => false)).toBe(false);
+  });
+
+  it('opens the Features settings page with settings:view', () => {
+    expect(permissionsForPage('/settings/features')).toEqual(['settings:view']);
+  });
+
+  it('drops the sidebar items of an area that is off', () => {
+    const seen = urls(visibleSidebarGroups(sidebarGroups, (url) => canOpenPage(url, () => true, chatOff)));
+    for (const gone of ['/tools', '/mcp-connections', '/prompt-templates']) expect(seen).not.toContain(gone);
+    expect(seen).toContain('/search-indexes');
+    expect(seen).toContain('/settings/features');
+  });
+});
+
 describe('the sidebar a role sees', () => {
   it('shows a Viewer no admin, test or create pages', () => {
     const seen = urls(visibleSidebarGroups(sidebarGroups, (url) => canOpenPage(url, holding(VIEWER_DEFAULT_PERMISSIONS))));

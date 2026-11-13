@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { AccessLink } from '@/shared/access/Can';
 
+import { AreaOffNote } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -125,7 +126,8 @@ interface SearchExperienceDetailProps {
 export function SearchExperienceDetail({ id, basePath = '/search-experiences', listPath }: SearchExperienceDetailProps) {
   const listHref = listPath ?? basePath;
   const router = useRouter();
-  const canEdit = useAccess().can('search-experiences:edit');
+  const { can, areaOn, isLoading: accessLoading } = useAccess();
+  const canEdit = can('search-experiences:edit');
 
   // State
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -251,6 +253,9 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
                 <Brain className={`size-6 ${aiConfig.summary.enabled ? 'text-violet-500' : 'text-muted-foreground'}`} />
               </div>
             </div>
+            {!accessLoading && !areaOn('ai-summaries') && (
+              <AreaOffNote area="ai-summaries" className="mt-3 text-xs" detail="The experience keeps its summary settings, and they apply again when AI summaries is on." />
+            )}
           </CardContent>
         </Card>
 

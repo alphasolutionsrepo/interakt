@@ -11,6 +11,7 @@ import { ArrowDown, ArrowUp, CornerDownLeft, FileText, Hash, Sparkles } from 'lu
 import { useEffect, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
+import { useAccess } from '@/shared/access/useAccess';
 import type { DocsSearchHit } from '@/shared/help/docs-search';
 import type { DocsSearchState } from '@/shared/help/useDocsSearch';
 
@@ -41,6 +42,9 @@ export function DocsSearchResults({
   onAsk,
 }: DocsSearchResultsProps) {
   const q = query.trim();
+  // With the Help assistant off there is nothing to hand the question to
+  const { areaOn } = useAccess();
+  const canAsk = areaOn('help-assistant');
   const listRef = useRef<HTMLDivElement>(null);
 
   // Keep the highlighted row in view while moving with the arrow keys.
@@ -88,6 +92,7 @@ export function DocsSearchResults({
           <p className="px-3 py-6 text-center text-sm text-destructive">Search failed. Try again in a moment.</p>
         )}
 
+        {canAsk && (
         <button
           type="button"
           role="option"
@@ -107,6 +112,7 @@ export function DocsSearchResults({
             Ask AI about <span className="font-medium">&ldquo;{q}&rdquo;</span> instead
           </span>
         </button>
+        )}
       </div>
 
       <footer className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-2 text-[11px] text-muted-foreground">

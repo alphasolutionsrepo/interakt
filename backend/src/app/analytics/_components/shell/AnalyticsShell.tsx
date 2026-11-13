@@ -15,15 +15,18 @@ import { useEffect, useState } from 'react';
 
 import { useAnalyticsContext } from '../../_lib/AnalyticsContext';
 import { useAskPanel } from '../../_lib/AskPanelContext';
-import { sectionForPath } from '../../_lib/sections';
+import { sectionAvailable, sectionForPath } from '../../_lib/sections';
 import { ExperienceSelector } from '../ExperienceSelector';
 import { PeriodPicker } from '../PeriodPicker';
 import { formatTimeAgo } from '../viz';
 
 import { AskPanel } from './AskPanel';
+import { HiddenSectionsNote } from './HiddenSectionsNote';
 import { SectionNav } from './SectionNav';
 
 import { cn } from '@/lib/utils';
+import { AreaOffNote } from '@/shared/access/AreaOffNote';
+import { useAccess } from '@/shared/access/useAccess';
 import { Button } from '@/shared/ui/components/button';
 
 /**
@@ -68,6 +71,7 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const { experienceType } = useAnalyticsContext();
   const askPanel = useAskPanel();
+  const { areaOn, isLoading: accessLoading } = useAccess();
   const refreshing = useIsFetching({ queryKey: ['analytics'] }) + useIsFetching({ queryKey: ['telemetry'] }) > 0;
 
   // The full chat page is the Ask panel's history and has its own layout
@@ -125,8 +129,15 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <SectionNav className="-mt-2" />
+        <HiddenSectionsNote />
 
-        {section.chatOnly && isSearchExperience ? (
+        {!accessLoading && !sectionAvailable(section, areaOn) ? (
+          // Opened by a link or bookmark while its area is off: say so instead of an empty page
+          <AreaOffNote
+            area={section.chatOnly ? 'chat' : areaOn('search') ? 'chat' : 'search'}
+            detail={`${section.label} is hidden; its data is kept.`}
+          />
+        ) : section.chatOnly && isSearchExperience ? (
           <p className="rounded-xl bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
             {section.label} covers chat experiences. Choose a chat experience, or All experiences, to see it.
           </p>

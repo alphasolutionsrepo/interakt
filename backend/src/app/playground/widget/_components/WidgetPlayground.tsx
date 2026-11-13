@@ -22,7 +22,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { AreaOffNote, areaOffText } from '@/shared/access/AreaOffNote';
+import { useAccess } from '@/shared/access/useAccess';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
+import { initialWidgetKind, WIDGET_KIND_AREA } from '@/app/playground/_lib/area-gate';
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
 import {
   useSearchExperiences,
@@ -333,9 +336,11 @@ const DEFAULT_LAUNCHER: Record<WidgetKind, Launcher> = {
 // ============================================================================
 
 export function WidgetPlayground() {
-  const [kind, setKind] = useState<WidgetKind>('chat');
+  const { areaOn } = useAccess();
+  // Opens on a kind whose area is on; the other stays visible, disabled with the reason
+  const [kind, setKind] = useState<WidgetKind>(() => initialWidgetKind(areaOn));
   const [selectedId, setSelectedId] = useState<string>('');
-  const [launcher, setLauncher] = useState<Launcher>(DEFAULT_LAUNCHER.chat);
+  const [launcher, setLauncher] = useState<Launcher>(() => DEFAULT_LAUNCHER[initialWidgetKind(areaOn)]);
   const [device, setDevice] = useState<Device>('desktop');
   const [applied, setApplied] = useState<AppliedSpec | null>(null);
 
@@ -437,12 +442,15 @@ export function WidgetPlayground() {
           </label>
           <ToggleGroup
             options={[
-              { value: 'chat', label: 'Chat', icon: MessageCircle },
-              { value: 'search', label: 'Search', icon: SearchIcon },
+              { value: 'chat', label: 'Chat', icon: MessageCircle, offReason: areaOn(WIDGET_KIND_AREA.chat) ? undefined : areaOffText(WIDGET_KIND_AREA.chat) },
+              { value: 'search', label: 'Search', icon: SearchIcon, offReason: areaOn(WIDGET_KIND_AREA.search) ? undefined : areaOffText(WIDGET_KIND_AREA.search) },
             ]}
             value={kind}
             onChange={(v) => handleKindChange(v as WidgetKind)}
           />
+          {(['chat', 'search'] as const).filter((k) => !areaOn(WIDGET_KIND_AREA[k])).map((k) => (
+            <AreaOffNote key={k} area={WIDGET_KIND_AREA[k]} detail="Its widget can't be previewed." className="pt-1" />
+          ))}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr_1fr_auto] lg:items-end">
@@ -631,7 +639,7 @@ function ToggleGroup({
   value,
   onChange,
 }: {
-  options: Array<{ value: string; label: string; icon: React.ComponentType<{ className?: string }> }>;
+  options: Array<{ value: string; label: string; icon: React.ComponentType<{ className?: string }>; /** Why it can't be chosen (its area is off) */ offReason?: string }>;
   value: string;
   onChange: (v: string) => void;
 }) {
@@ -645,11 +653,13 @@ function ToggleGroup({
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
+            disabled={!!opt.offReason}
+            title={opt.offReason}
             className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-all ${
               active
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
-            }`}
+            } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground`}
           >
             <Icon className="size-3.5" />
             {opt.label}

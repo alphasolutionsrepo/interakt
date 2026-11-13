@@ -30,7 +30,8 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from '@/components/ui/collapsible';
-import { ActionButton } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/app/playground/_lib/area-gate';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton } from '@/shared/ui/custom/skeletons';
 
@@ -50,6 +51,8 @@ export default function McpConnectionDetailPage({ params }: PageProps) {
   } = useMcpConnection(id);
 
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
+  // Test calls the server for real: the permission, and the Playground area on (locked with the reason when off)
+  const testGate = useAreaGate(useActionGate('mcp.test'), 'playground');
 
   if (isLoading) {
     return (
@@ -103,7 +106,7 @@ export default function McpConnectionDetailPage({ params }: PageProps) {
         actions={
           <div className="flex gap-2">
             <ActionButton
-              action="mcp.test"
+              gate={testGate}
               icon={isTesting ? Loader2 : Activity}
               iconClassName={isTesting ? 'mr-1.5 size-4 animate-spin' : 'mr-1.5 size-4'}
               variant="outline"

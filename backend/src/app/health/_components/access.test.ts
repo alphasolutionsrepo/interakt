@@ -45,3 +45,13 @@ describe('System Health', () => {
     expect(html).toContain('href="/playground/ai-service"');
   });
 });
+
+describe('System Health with Playground off', () => {
+  it('leaves out the playground links', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('playground');
+    const html = page();
+    expect(html).not.toContain('Test Queries');
+    expect(html).not.toContain('/playground/ai-service');
+  });
+});

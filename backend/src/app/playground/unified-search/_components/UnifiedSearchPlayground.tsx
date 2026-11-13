@@ -40,6 +40,8 @@ import { toast } from 'sonner';
 
 import { SearchPanel } from './SearchPanel';
 import { SummaryPanel } from './SummaryPanel';
+import { AreaOffNote, areaOffText } from '@/shared/access/AreaOffNote';
+import { useAccess } from '@/shared/access/useAccess';
 import { handleApiResponse } from '@/shared/api/api-error';
 
 // ============================================================================
@@ -110,6 +112,7 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
   const [trace, setTrace] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
+  const summariesOn = useAccess().areaOn('ai-summaries');
 
   // Fetch search experiences
   const {
@@ -149,18 +152,18 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
 
   // Filter available features based on experience config
   const availableFeatures = useMemo(() => {
-    if (!selectedOption) return FEATURES;
+    // The AI summary card stays, disabled with the reason, when AI summaries are off
     return FEATURES.map((f) => ({
       ...f,
-      disabled: f.requiresAI && !selectedOption.aiEnabled,
+      disabled: f.requiresAI && (!summariesOn || (!!selectedOption && !selectedOption.aiEnabled)),
     }));
-  }, [selectedOption]);
+  }, [selectedOption, summariesOn]);
 
   // Handle feature select
   const handleFeatureSelect = (tab: PlaygroundTab) => {
     const feature = availableFeatures.find((f) => f.id === tab);
     if (feature?.disabled) {
-      toast.error('AI Summary is not enabled for this experience');
+      toast.error(summariesOn ? 'AI Summary is not enabled for this experience' : areaOffText('ai-summaries'));
       return;
     }
     setActiveTab(tab);
@@ -497,7 +500,7 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
                         </div>
                         {isDisabled && (
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                            Not enabled
+                            {feature.requiresAI && !summariesOn ? 'Turned off' : 'Not enabled'}
                           </Badge>
                         )}
                       </div>
@@ -506,6 +509,8 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
                 );
               })}
             </div>
+
+            {!summariesOn && <AreaOffNote area="ai-summaries" detail="AI summaries can't be tested here." className="justify-center" />}
 
             {/* Selected experience info */}
             {selectedOption && (

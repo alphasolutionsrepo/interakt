@@ -38,6 +38,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ActionButton } from '@/shared/access/ActionControls';
+import { AccessLink, useCanOpenPage } from '@/shared/access/Can';
 import { reportActionError } from '@/shared/activity/report';
 import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
@@ -112,6 +113,7 @@ function ConfigDisplay({ type, config }: { type: string; config: Record<string, 
 export default function DataSourceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const canOpenPage = useCanOpenPage();
   const { dataSource, isLoading, isError, updateDataSource, deleteDataSource, isUpdating, isDeleting } = useDataSource(id);
   const { isChecking: isHealthChecking, refresh: refreshHealth } = useHealthCheck(id);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -367,7 +369,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
                   </p>
                   <div className="space-y-1.5">
                     {scaffoldResult.created.map((t) => (
-                      <Link key={t.id} href={`/tools/${t.id}`}
+                      <AccessLink key={t.id} href={`/tools/${t.id}`} plain="div"
                         className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors group">
                         <div className="flex items-center gap-2.5">
                           <Check className="size-4 text-emerald-500" />
@@ -377,7 +379,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
                           </div>
                         </div>
                         <ExternalLink className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </Link>
+                      </AccessLink>
                     ))}
                   </div>
                 </div>
@@ -395,9 +397,11 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
                   ))}
                 </div>
               )}
-              <Button variant="outline" className="rounded-xl" onClick={() => router.push('/tools')}>
-                <Wrench className="size-4 mr-2" />View All Tools
-              </Button>
+              {canOpenPage('/tools') && (
+                <Button variant="outline" className="rounded-xl" onClick={() => router.push('/tools')}>
+                  <Wrench className="size-4 mr-2" />View All Tools
+                </Button>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-between p-4 bg-violet-500/5 rounded-xl border border-violet-500/20">

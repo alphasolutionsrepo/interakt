@@ -14,6 +14,8 @@ import { useAccess } from './useAccess';
 
 import { Button } from '@/components/ui/button';
 import { canOpenPage } from '@/features/access/page-permissions';
+import { TURNED_OFF_MESSAGE } from '@/features/feature-switches/areas';
+import { pageAreasOn } from '@/features/feature-switches/page-areas';
 
 
 function Panel({ icon, title, text, action }: { icon: ReactNode; title: string; text: string; action?: ReactNode }) {
@@ -33,8 +35,13 @@ function Panel({ icon, title, text, action }: { icon: ReactNode; title: string; 
  */
 export function PageAccessGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { can, isLoading, errorStatus, retry } = useAccess();
-  const state = accessState({ isLoading, errorStatus, canOpen: canOpenPage(pathname, can) });
+  const { can, areaOn, isAdmin, isLoading, errorStatus, retry } = useAccess();
+  const state = accessState({
+    isLoading,
+    errorStatus,
+    canOpen: canOpenPage(pathname, can),
+    areaOn: pageAreasOn(pathname, areaOn),
+  });
 
   useEffect(() => {
     if (state === 'signed-out') void signOut({ callbackUrl: '/login' });
@@ -49,6 +56,16 @@ export function PageAccessGate({ children }: { children: ReactNode }) {
         title="Couldn't check your access"
         text="The server didn't answer. Try again in a moment."
         action={<Button variant="outline" onClick={retry}>Try again</Button>}
+      />
+    );
+  }
+  if (state === 'off') {
+    return (
+      <Panel
+        icon={<Lock className="size-6 text-muted-foreground" />}
+        title="This page is turned off"
+        text={TURNED_OFF_MESSAGE}
+        action={isAdmin ? <Button variant="outline" asChild><Link href="/settings/features">Turn it on in Settings → Features</Link></Button> : undefined}
       />
     );
   }

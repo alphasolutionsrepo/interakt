@@ -6,6 +6,7 @@ import type { AIExperienceWithTools } from '@/app/ai-experiences/_lib/api-client
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
 import { useSearchExperiences } from '@/app/search-experiences/_lib/hooks';
 import type { Permission } from '@/features/access/permissions';
+import type { Area } from '@/features/feature-switches/areas';
 import type { SearchExperienceSummary } from '@/features/search-experience/search-experience.types';
 import { useAccess } from '@/shared/access/useAccess';
 
@@ -24,12 +25,13 @@ export interface UseUnifiedExperiencesParams {
 
 /**
  * Which lists the hub loads: every kind the user may view, whatever the tab, because the counts
- * at the top cover both kinds. A list the server would refuse is never requested.
+ * at the top cover both kinds. A list the server would refuse is never requested: one the user
+ * may not view, or whose feature area is off (Chat for chat experiences, Search for search ones).
  */
-export function listsToLoad(can: (p: Permission) => boolean) {
+export function listsToLoad(can: (p: Permission) => boolean, areaOn: (a: Area) => boolean) {
   return {
-    skipAI: !can('ai-experiences:view'),
-    skipSearch: !can('search-experiences:view'),
+    skipAI: !can('ai-experiences:view') || !areaOn('chat'),
+    skipSearch: !can('search-experiences:view') || !areaOn('search'),
   };
 }
 
@@ -57,10 +59,10 @@ export function hubMetrics(ai: KindCounts, search: KindCounts) {
   };
 }
 
-/** The hub's type tabs a user may use: one per kind they can view, and "All" when they can view both. */
-export function viewableTypes(can: (p: Permission) => boolean): Array<'all' | 'ai' | 'search'> {
-  const ai = can('ai-experiences:view');
-  const search = can('search-experiences:view');
+/** The hub's type tabs a user may use: one per kind they can view whose area is on, and "All" when both. */
+export function viewableTypes(can: (p: Permission) => boolean, areaOn: (a: Area) => boolean): Array<'all' | 'ai' | 'search'> {
+  const ai = can('ai-experiences:view') && areaOn('chat');
+  const search = can('search-experiences:view') && areaOn('search');
   return [...(ai && search ? ['all' as const] : []), ...(ai ? ['ai' as const] : []), ...(search ? ['search' as const] : [])];
 }
 
@@ -68,8 +70,8 @@ export function useUnifiedExperiences(params: UseUnifiedExperiencesParams) {
   const { typeFilter, page = 1, pageSize = 12 } = params;
 
   // While access is loading neither list is requested
-  const { can, isLoading: accessLoading } = useAccess();
-  const { skipAI, skipSearch } = listsToLoad(can);
+  const { can, areaOn, isLoading: accessLoading } = useAccess();
+  const { skipAI, skipSearch } = listsToLoad(can, areaOn);
   const ai = useAIExperiences(listParamsFor('ai', params), { enabled: !skipAI });
   const search_ = useSearchExperiences(listParamsFor('search', params), { enabled: !skipSearch });
 

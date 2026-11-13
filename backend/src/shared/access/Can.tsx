@@ -19,6 +19,7 @@ import { useAccess } from './useAccess';
 import { canOpenPage } from '@/features/access/page-permissions';
 import { holdsAny, type Permission } from '@/features/access/permissions';
 import type { UiActionId } from '@/features/access/ui-actions';
+import type { Area } from '@/features/feature-switches/areas';
 
 interface CanProps {
   children: ReactNode;
@@ -27,19 +28,23 @@ interface CanProps {
   action?: UiActionId;
   /** Or a permission (any one, when a list), for a section that isn't one API call */
   permission?: Permission | readonly Permission[];
+  /** A feature area (feature-switches): the section shows only while it is on, with or without a rule above */
+  area?: Area;
 }
 
 /** Renders its children only for a user who may take the action or holds the permission; `fallback` otherwise. */
-export function Can({ children, fallback = null, ...rule }: CanProps) {
-  const { can, canDo, isLoading } = useAccess();
+export function Can({ children, fallback = null, area, ...rule }: CanProps) {
+  const { can, canDo, areaOn, isLoading } = useAccess();
   // Neither the section nor its fallback while loading: a "no permission" note must not flash
   if (isLoading) return null;
-  const allowed = rule.action ? canDo(rule.action) : !!rule.permission && holdsAny(can, rule.permission);
+  const hasRule = !!rule.action || !!rule.permission;
+  const ruleAllows = rule.action ? canDo(rule.action) : !!rule.permission && holdsAny(can, rule.permission);
+  const allowed = (hasRule ? ruleAllows : area !== undefined) && (area === undefined || areaOn(area));
   return <>{allowed ? children : fallback}</>;
 }
 
 /**
- * A link that hides itself when the page it points to is closed to the role (page-permissions.ts),
+ * A link that hides itself when the page it points to is closed to the role (page-permissions.ts) or its area is off,
  * so nobody follows a link to "You don't have access to this page". `fallback` renders instead;
  * `plain` keeps the content (a name, a card) as an ordinary span or div, without hover styles.
  */
@@ -53,8 +58,8 @@ export function AccessLink({ fallback = null, plain, ...props }: ComponentProps<
   return <Tag className={className}>{props.children as ReactNode}</Tag>;
 }
 
-/** Whether the user can open a page (query and hash ignored), for a link AccessLink can't wrap. */
+/** Whether the user can open a page (query and hash ignored; its feature areas on), for a link AccessLink can't wrap. */
 export function useCanOpenPage(): (href: string) => boolean {
-  const { can } = useAccess();
-  return (href) => canOpenPage(href.split(/[?#]/)[0], can);
+  const { can, areaOn } = useAccess();
+  return (href) => canOpenPage(href.split(/[?#]/)[0], can, areaOn);
 }

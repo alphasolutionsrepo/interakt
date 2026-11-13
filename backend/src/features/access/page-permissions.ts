@@ -7,9 +7,15 @@
  *
  * Most specific first. A page that matches no rule needs only a session (dashboard, docs,
  * health). Each rule lists the permissions of which any one is enough.
+ *
+ * A page of a feature area that is off (feature-switches/page-areas.ts) is closed to everyone:
+ * pass `areaOn` (useAccess) to canOpenPage to apply that too.
  */
 
 import type { Permission } from './permissions';
+
+import type { Area } from '@/features/feature-switches/areas';
+import { pageAreasOn } from '@/features/feature-switches/page-areas';
 
 const ID = '[^/]+';
 
@@ -50,7 +56,12 @@ export function permissionsForPage(pathname: string): readonly Permission[] {
   return PAGE_RULES.find(([pattern]) => pattern.test(path))?.[1] ?? [];
 }
 
-export function canOpenPage(pathname: string, can: (p: Permission) => boolean): boolean {
+/**
+ * Whether the user can open a page. With `areaOn` the page's feature areas must be on as well
+ * (an Admin too); without it only the permission counts.
+ */
+export function canOpenPage(pathname: string, can: (p: Permission) => boolean, areaOn?: (area: Area) => boolean): boolean {
+  if (areaOn && !pageAreasOn(pathname, areaOn)) return false;
   const needed = permissionsForPage(pathname);
   return needed.length === 0 || needed.some(can);
 }

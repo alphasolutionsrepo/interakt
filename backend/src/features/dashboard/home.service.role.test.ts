@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { homeDataForRole, type HomeData } from './home.service';
 
 import type { Permission } from '@/features/access/permissions';
+import type { Area } from '@/features/feature-switches/areas';
 
 const holding = (...list: Permission[]) => (p: Permission) => list.includes(p);
 
@@ -85,5 +86,48 @@ describe('home links a role can follow', () => {
     expect(seen.cards.map((c) => c.id)).toEqual(['c']);
     expect(seen.tips).toEqual([]); // the tip leads to AI providers
     expect(seen.experiences.map((e) => e.id)).toEqual(['e']);
+  });
+});
+
+describe('home with feature areas off', () => {
+  const everything = holding(
+    'analytics:view', 'analytics:ask', 'search-indexes:view', 'search-indexes:edit', 'settings:view', 'ai-providers:view',
+    'search-experiences:view', 'search-experiences:edit', 'ai-experiences:view', 'ai-experiences:edit', 'playground:use',
+  );
+  const off = (...areas: Area[]) => (a: Area) => !areas.includes(a);
+  const full = {
+    ...data,
+    checklist: [
+      { id: 'provider', href: '/ai-providers', done: false },
+      { id: 'content', href: '/search-indexes/create', done: false },
+      { id: 'experience', href: '/experiences/create', done: false },
+    ],
+  } as unknown as HomeData;
+
+  it('keeps everything while every area is on', () => {
+    expect(homeDataForRole(data, everything, { areaOn: off() })).toEqual(data);
+  });
+
+  it('drops the pages of Managed indexes from tasks, recent changes, cards and the checklist', () => {
+    const seen = homeDataForRole(full, everything, { areaOn: off('managed-indexes') });
+    expect(seen.tasks.map((t) => t.id)).toEqual(['failed-turns', 'failed-jobs', 'health:es']);
+    expect(seen.recent.map((r) => r.id)).toEqual(['job']);
+    expect(seen.cards.map((c) => c.id)).toEqual(['c']);
+    expect(seen.checklist?.map((c) => c.id)).toEqual(['provider', 'experience']);
+  });
+
+  it('drops the experiences of an area that is off, and the experience step only when both are off', () => {
+    expect(homeDataForRole(full, everything, { areaOn: off('chat') }).experiences.map((e) => e.id)).toEqual(['e']);
+    expect(homeDataForRole(full, everything, { areaOn: off('search') }).experiences.map((e) => e.id)).toEqual(['a']);
+    expect(homeDataForRole(full, everything, { areaOn: off('search') }).checklist?.map((c) => c.id)).toContain('experience');
+    const both = homeDataForRole(full, everything, { areaOn: off('search', 'chat') });
+    expect(both.experiences).toEqual([]);
+    expect(both.checklist?.map((c) => c.id)).toEqual(['provider', 'content']);
+  });
+
+  it('drops tips and analytics tasks with Analytics off', () => {
+    const seen = homeDataForRole(data, everything, { areaOn: off('analytics') });
+    expect(seen.tasks.map((t) => t.id)).toEqual(['reindex', 'failed-jobs', 'health:es']);
+    expect(seen.cards).toEqual([{ id: 'idx', href: '/search-indexes/abc' }]);
   });
 });

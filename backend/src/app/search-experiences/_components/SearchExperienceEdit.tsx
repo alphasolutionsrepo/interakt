@@ -63,6 +63,7 @@ import {
  SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
 import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
 import { ExperienceSourcesCard } from './ExperienceSources';
+import { SummaryAreaGuard } from './SummaryAreaGuard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -1345,6 +1346,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
 
         {/* AI Tab */}
         <TabsContent value="ai" className="space-y-6">
+          <SummaryAreaGuard>
           <Card className="border-border/60 shadow-sm rounded-2xl">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl">
@@ -1601,6 +1603,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
 
             </>
           )}
+          </SummaryAreaGuard>
         </TabsContent>
 
         {/* Display Tab */}

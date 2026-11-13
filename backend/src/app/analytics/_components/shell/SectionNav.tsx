@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { useAnalyticsContext } from '../../_lib/AnalyticsContext';
-import { ANALYTICS_SECTIONS } from '../../_lib/sections';
+import { visibleSections } from '../../_lib/sections';
 
 import { canOpenPage } from '@/features/access/page-permissions';
 import { cn } from '@/lib/utils';
@@ -21,9 +21,9 @@ export function SectionNav({ className }: { className?: string }) {
   const pathname = usePathname();
   const { experienceType } = useAnalyticsContext();
 
-  const { can } = useAccess();
-  // Sections the role can open (Settings needs analytics:manage)
-  const sections = ANALYTICS_SECTIONS.filter((s) => !(s.chatOnly && experienceType === 'search') && canOpenPage(s.href, can));
+  const { can, areaOn } = useAccess();
+  // Sections the role can open (Settings needs analytics:manage) and whose areas are on
+  const sections = visibleSections(areaOn).filter((s) => !(s.chatOnly && experienceType === 'search') && canOpenPage(s.href, can, areaOn));
 
   return (
     // Scrolls sideways on narrow screens. The bottom line is painted under the tabs (not a

@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useAccess } from '@/shared/access/useAccess';
 import { DocBody } from '@/shared/help/DocBody';
 import type { DocsSearchHit } from '@/shared/help/docs-search';
 import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
@@ -50,7 +51,11 @@ export function HelpButton() {
   const onDocsSite = pathname === '/docs' || pathname.startsWith('/docs/');
 
   const [open, setOpen] = useState(false);
-  const [mode, setModeState] = useState<HelpMode>('search');
+  // With the Help assistant off only the docs search is left, whatever mode was remembered
+  const { areaOn } = useAccess();
+  const askOn = areaOn('help-assistant');
+  const [savedMode, setModeState] = useState<HelpMode>('search');
+  const mode: HelpMode = askOn ? savedMode : 'search';
   const [text, setText] = useState('');
   const [group, setGroup] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
@@ -249,7 +254,8 @@ export function HelpButton() {
       return;
     }
     if (!showResults) return;
-    const rows = search.hits.length + 1; // hits + the Ask row
+    const rows = search.hits.length + (askOn ? 1 : 0); // hits + the Ask row
+    if (rows === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelected((s) => (s + 1) % rows);
@@ -260,7 +266,7 @@ export function HelpButton() {
       e.preventDefault();
       const hit = search.hits[selected];
       if (hit) openHit(hit);
-      else askInstead(text.trim());
+      else if (askOn) askInstead(text.trim());
     }
   };
 
@@ -379,7 +385,7 @@ export function HelpButton() {
         <SheetHeader className="gap-3 border-b border-border/60 p-4">
           <div>
             <SheetTitle>Help</SheetTitle>
-            <SheetDescription>Search the docs, or ask the Help Assistant.</SheetDescription>
+            <SheetDescription>{askOn ? 'Search the docs, or ask the Help Assistant.' : 'Search the docs.'}</SheetDescription>
           </div>
 
           <ModeSwitch mode={mode} onChange={setMode} />
@@ -473,7 +479,7 @@ const MODES: Array<{ value: HelpMode; label: string; Icon: typeof Search }> = [
  * checked option (one tab stop for the group), arrow keys move between options
  * and select them, and a click selects and moves to the box.
  */
-function ModeSwitch({
+export function ModeSwitch({
   mode,
   onChange,
 }: {
@@ -481,6 +487,7 @@ function ModeSwitch({
   onChange: (mode: HelpMode, options?: { keepFocus?: boolean }) => void;
 }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const { areaOn } = useAccess();
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
@@ -490,6 +497,9 @@ function ModeSwitch({
     onChange(MODES[next].value, { keepFocus: true });
     refs.current[next]?.focus();
   };
+
+  // Search alone needs no switch: the Help assistant is off for this installation
+  if (!areaOn('help-assistant')) return null;
 
   return (
     <div role="radiogroup" aria-label="Mode" className="inline-flex self-start rounded-lg bg-muted p-0.5 text-sm">

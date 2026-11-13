@@ -20,7 +20,6 @@ import {
   FileText,
   CheckCircle2,
   Circle,
-  ArrowRight,
   Cpu,
   Cloud,
   KeyRound,
@@ -29,6 +28,7 @@ import {
 import { useEffect, useState } from 'react';
 
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
+import { NextStep } from './_components/NextStep';
 import { loadDemoStatus, resetDemo, startDemoSeed, type DemoStatus, type ProviderView, type SeedResult } from './_lib/demo-setup-api';
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -51,7 +51,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { StepProgress } from '@/components/ui/steps-progress';
+import { AreaOffNote } from '@/shared/access/AreaOffNote';
 import { AccessLink } from '@/shared/access/Can';
+import { useAccess } from '@/shared/access/useAccess';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
 import { DEMO_SEED_STEPS, type DemoStepId, type SeedProgressEvent } from '@/shared/seeders/demo/demo-steps';
@@ -70,7 +72,13 @@ const STEP_ICON: Record<DemoStepId, LucideIcon> = {
   warmup: Activity,
 };
 
+/** The areas the demo data is built on: it seeds a managed index, a search experience and a chat experience */
+const DEMO_AREAS = ['search', 'chat', 'managed-indexes'] as const;
+const DEMO_NEEDS = 'Demo data needs Search, Chat and Managed indexes.';
+
 export default function SetupDemoPage() {
+  const { areaOn } = useAccess();
+  const firstDemoAreaOff = DEMO_AREAS.find((a) => !areaOn(a));
   const [status, setStatus] = useState<DemoStatus | null>(null);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -261,8 +269,12 @@ export default function SetupDemoPage() {
       </div>
 
       {/* -------------------------------------------------- Documentation assistant */}
-      <DocsAssistantCard />
+      {areaOn('help-assistant') ? <DocsAssistantCard /> : <AreaOffNote area="help-assistant" />}
 
+      {firstDemoAreaOff ? (
+        <AreaOffNote area={firstDemoAreaOff} detail={DEMO_NEEDS} />
+      ) : (
+      <>
       {/* -------------------------------------------------------- Demo data (optional) */}
       <div className="pt-2">
         <h2 className="text-lg font-semibold tracking-tight">
@@ -724,35 +736,8 @@ export default function SetupDemoPage() {
           </CardContent>
         </Card>
       )}
+      </>
+      )}
     </div>
-  );
-}
-
-function NextStep({
-  href,
-  icon: Icon,
-  title,
-  desc,
-}: {
-  href: string;
-  icon: LucideIcon;
-  title: string;
-  desc: string;
-}) {
-  // A next step the role can't open isn't offered
-  return (
-    <AccessLink
-      href={href}
-      className="group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:border-primary/50 hover:bg-accent"
-    >
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1 text-sm font-medium">
-          {title}
-          <ArrowRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
-        </p>
-        <p className="text-xs text-muted-foreground">{desc}</p>
-      </div>
-    </AccessLink>
   );
 }
