@@ -31,19 +31,6 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 
-import { createLogger } from '@/shared/logger/logger';
-import { failureLevel } from '@/shared/errors/to-app-error';
-import { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
-import * as aiService from '@/features/ai-service';
-import * as searchIndexService from '@/features/search-index/search-index.service';
-import * as searchService from '@/features/search/search.service';
-import { validateFilters } from '@/features/pipeline/v2/param-validation';
-import type { FieldConstraint } from '@/features/pipeline/v2/parameter-context.types';
-import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
-import type {
-    SearchExperienceAIConfig,
-    SearchExperienceQueryUnderstandingConfig,
-} from '@/db/schema/search-experience.schema';
 import { constraintCache, interpretationCache, rewriteCache } from './query-interpreter.cache';
 import {
     INTERPRETER_SCHEMA,
@@ -55,6 +42,19 @@ import {
 } from './query-interpreter.core';
 import { REWRITE_SCHEMA, buildRewritePrompt, parseRewrite, shouldRewrite } from './query-rewriter.core';
 import { DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
+import type {
+    SearchExperienceAIConfig,
+    SearchExperienceQueryUnderstandingConfig,
+} from '@/db/schema/search-experience.schema';
+import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
+import * as aiService from '@/features/ai-service';
+import { validateFilters } from '@/features/pipeline/v2/param-validation';
+import type { FieldConstraint } from '@/features/pipeline/v2/parameter-context.types';
+import * as searchService from '@/features/search/search.service';
+import * as searchIndexService from '@/features/search-index/search-index.service';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
+import { failureLevel } from '@/shared/errors/to-app-error';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('query-interpreter');
 
@@ -564,10 +564,9 @@ export async function rewriteQueryForExternalSearch(options: {
         }
 
         const outcome = rewritten === query.trim() ? 'unchanged' : 'rewritten';
+        // The visitor's words stay out of the application log: the trace keeps them at the Full detail level
         logger.info('Query rewritten for external search', {
             experienceId,
-            originalQuery: query,
-            rewrittenQuery: rewritten,
             outcome,
             durationMs: Date.now() - startedAt,
         });

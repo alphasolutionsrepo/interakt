@@ -1,17 +1,5 @@
 'use client';
 
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   ChevronLeft,
   Save,
@@ -50,32 +38,44 @@ import { toast } from 'sonner';
 import { useSearchExperience, useSlugAvailability } from '../_lib/hooks';
 import { useAvailableDisplayFields } from '../_lib/hooks/useAvailableDisplayFields';
 
-import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
-import {
-  MULTI_INDEX_STRATEGY_INFO,
-  RESULT_MERGE_STRATEGY_INFO,
-  DISPLAY_FIELD_ROLE_INFO,
-  DEFAULT_QUERY_UNDERSTANDING_CONFIG,
-  timeoutMsFromSeconds,
-  timeoutSecondsFromMs,
-  type MultiIndexStrategy,
-  type ResultMergeStrategy,
-  type UpdateSearchExperienceDTO,
-  type DisplayFieldRole,
- SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
 import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
 import { ExperienceSourcesCard } from './ExperienceSources';
 import { SummaryAreaGuard, useSummaryAreaOff } from './SummaryAreaGuard';
+import { TimeLimitInput } from './TimeLimitInput';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  MULTI_INDEX_STRATEGY_INFO,
+  RESULT_MERGE_STRATEGY_INFO,
+  DISPLAY_FIELD_ROLE_INFO,
+  DEFAULT_QUERY_UNDERSTANDING_CONFIG,
+  type MultiIndexStrategy,
+  type ResultMergeStrategy,
+  type UpdateSearchExperienceDTO,
+  type DisplayFieldRole,
+ SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
 import { builtInGateFor } from '@/shared/access/ActionControls';
 import { LockedPage } from '@/shared/access/PageAccessGate';
 import { useAccess } from '@/shared/access/useAccess';
 import { errorText } from '@/shared/api/api-error';
+import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 
 // ============================================================================
 // ICON MAP FOR DISPLAY FIELD ROLES
@@ -700,15 +700,10 @@ export function AiTab({
                       <Label htmlFor="queryUnderstandingTimeLimit" className="text-sm font-semibold">
                         Time Limit (seconds)
                       </Label>
-                      <Input
+                      <TimeLimitInput
                         id="queryUnderstandingTimeLimit"
-                        type="number"
-                        min={0.5}
-                        max={10}
-                        step={0.5}
-                        value={timeoutSecondsFromMs(formData.aiConfig.queryUnderstanding?.timeoutMs)}
-                        onChange={(e) => updateQueryUnderstandingConfig('timeoutMs', timeoutMsFromSeconds(e.target.value))}
-                        className="max-w-[12rem]"
+                        timeoutMs={formData.aiConfig.queryUnderstanding?.timeoutMs}
+                        onChange={(ms) => updateQueryUnderstandingConfig('timeoutMs', ms)}
                       />
                       <p className="text-xs text-muted-foreground">
                         When the limit is reached, search goes on with the visitor&apos;s own words.

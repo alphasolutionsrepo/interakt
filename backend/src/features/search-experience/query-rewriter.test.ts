@@ -71,6 +71,13 @@ describe('rewriteQueryForExternalSearch', () => {
         expect(logs.some((l) => l.message === 'Query rewritten for external search')).toBe(true);
     });
 
+    it('keeps the visitor\'s words and the rewrite out of the application log', async () => {
+        await rewrite(aiConfig());
+        const text = JSON.stringify(logs);
+        expect(text).not.toContain(QUESTION);
+        expect(text).not.toContain('apply financial aid transfer student');
+    });
+
     it('reports unchanged when the phrase already reads like search terms', async () => {
         modelReplies(JSON.stringify({ query: 'transfer student financial aid' }));
         const result = await rewrite(aiConfig(), 'transfer student financial aid');

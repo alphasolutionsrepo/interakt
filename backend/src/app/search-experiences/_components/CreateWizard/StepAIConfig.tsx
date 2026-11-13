@@ -9,26 +9,31 @@
 
 'use client';
 
-import { useCallback, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Button } from '@/components/ui/button';
 import {
   Brain,
   Sparkles,
   Wand2,
 } from 'lucide-react';
-import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
+import { useCallback, useState } from 'react';
+
 import { SummaryAreaGuard } from '../SummaryAreaGuard';
+import { TimeLimitInput } from '../TimeLimitInput';
+
 import { CustomInstructionsGenerator } from './CustomInstructionsGenerator';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import {
-  timeoutMsFromSeconds,
-  timeoutSecondsFromMs,
   type WizardFormData,
 } from '@/features/search-experience/search-experience.client';
+import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
+
+
+
 
 // ============================================================================
 // TYPES
@@ -279,15 +284,10 @@ export function StepAIConfig({
 
                 <div className="space-y-2">
                   <Label htmlFor="queryUnderstandingTimeLimit">Time Limit (seconds)</Label>
-                  <Input
+                  <TimeLimitInput
                     id="queryUnderstandingTimeLimit"
-                    type="number"
-                    min={0.5}
-                    max={10}
-                    step={0.5}
-                    value={timeoutSecondsFromMs(aiConfig.queryUnderstanding.timeoutMs)}
-                    onChange={(e) => updateQueryUnderstandingConfig('timeoutMs', timeoutMsFromSeconds(e.target.value))}
-                    className="max-w-[12rem]"
+                    timeoutMs={aiConfig.queryUnderstanding.timeoutMs}
+                    onChange={(ms) => updateQueryUnderstandingConfig('timeoutMs', ms)}
                   />
                   <p className="text-xs text-muted-foreground">
                     When the limit is reached, search goes on with the visitor&apos;s own words.
