@@ -129,6 +129,8 @@ export interface AIProviderModelResponse {
   description: string | null;
   modelType: AIModelType;
   dimensions: number | null;
+  /** The model returns shorter vectors when asked; only such models are sent a vector size */
+  canShortenVectors: boolean;
   capabilities: AIModelCapabilities;
   isAvailable: boolean;
   isDiscovered: boolean;

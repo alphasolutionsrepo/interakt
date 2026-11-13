@@ -27,7 +27,7 @@ import type {
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
 import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal, wasAborted } from './types';
-import { withoutUnsupportedReasoning } from './reasoning-fallback';
+import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -250,6 +250,8 @@ interface OpenAIEmbeddingRequest {
     model: string;
     input: string | string[];
     encoding_format?: 'float' | 'base64';
+    /** Shortens the vector (text-embedding-3 and compatible servers) */
+    dimensions?: number;
 }
 
 interface OpenAIEmbeddingResponse {
@@ -585,13 +587,14 @@ export class OpenAIAdapter implements AIProviderAdapter {
             model: config.modelKey,
             input: request.texts,
             encoding_format: 'float',
+            ...(request.dimensions && { dimensions: request.dimensions }),
         };
 
-        const response = await this.makeRequest<OpenAIEmbeddingResponse>(
+        const response = await withoutUnsupportedDimensions<OpenAIEmbeddingRequest, OpenAIEmbeddingResponse>(config.baseUrl, openaiRequest, (answer) => answer.data[0]?.embedding.length ?? 0, (body) => this.makeRequest<OpenAIEmbeddingResponse>(
             `${config.baseUrl}/embeddings`,
-            openaiRequest,
+            body,
             config
-        );
+        ));
 
         // Sort by index to ensure order matches input
         const sortedData = [...response.data].sort((a, b) => a.index - b.index);
