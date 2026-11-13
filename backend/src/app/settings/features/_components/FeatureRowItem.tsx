@@ -16,9 +16,9 @@ interface Props {
 
 export function FeatureRowItem({ area, areas, onToggle, busy }: Props) {
   const adminGate = useAdminGate('turn features on or off');
-  const { checked, reason } = rowState(area, areas);
-  const gate: ActionGate = reason ? { state: 'locked', reason } : adminGate;
-  const shownReason = reason ?? (adminGate.state === 'locked' ? adminGate.reason : null);
+  const { checked, locked, reason, needs } = rowState(area, areas);
+  const gate: ActionGate = locked && reason ? { state: 'locked', reason } : adminGate;
+  const shownReason = locked ? reason : adminGate.state === 'locked' ? adminGate.reason : null;
 
   return (
     <div className="flex items-start justify-between gap-6 p-5">
@@ -26,6 +26,7 @@ export function FeatureRowItem({ area, areas, onToggle, busy }: Props) {
         <p className="font-medium">{area.label}</p>
         <p className="text-sm text-muted-foreground">{area.description}</p>
         {shownReason && <p className="text-sm text-muted-foreground">{shownReason}</p>}
+        {needs && <p className="text-sm text-muted-foreground">{needs}</p>}
       </div>
       <ActionSwitch
         gate={gate}

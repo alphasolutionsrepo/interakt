@@ -27,8 +27,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { DemoRemoveCard } from './_components/DemoRemoveCard';
 import { DocsAssistantCard } from './_components/DocsAssistantCard';
 import { NextStep } from './_components/NextStep';
+import { demoCardView } from './_lib/demo-card';
 import { loadDemoStatus, resetDemo, startDemoSeed, type DemoStatus, type ProviderView, type SeedResult } from './_lib/demo-setup-api';
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -80,6 +82,7 @@ export default function SetupDemoPage() {
   const { areaOn } = useAccess();
   const firstDemoAreaOff = DEMO_AREAS.find((a) => !areaOn(a));
   const [status, setStatus] = useState<DemoStatus | null>(null);
+  const cardView = demoCardView({ seeded: !!status?.seeded, areasNeededOn: !firstDemoAreaOff });
   const [selectedProvider, setSelectedProvider] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [chatModel, setChatModel] = useState('');
@@ -272,7 +275,10 @@ export default function SetupDemoPage() {
       {areaOn('help-assistant') ? <DocsAssistantCard /> : <AreaOffNote area="help-assistant" />}
 
       {firstDemoAreaOff ? (
-        <AreaOffNote area={firstDemoAreaOff} detail={DEMO_NEEDS} />
+        <>
+          <AreaOffNote area={firstDemoAreaOff} detail={DEMO_NEEDS} />
+          {cardView === 'remove' && status && <DemoRemoveCard provider={status.seededProvider} busy={busy} onReset={() => run('reset')} />}
+        </>
       ) : (
       <>
       {/* -------------------------------------------------------- Demo data (optional) */}
@@ -663,6 +669,9 @@ export default function SetupDemoPage() {
         </CardContent>
       </Card>
 
+      </>
+      )}
+
       {/* --------------------------------------------------------------------- Error */}
       {error && (
         <Alert variant="destructive">
@@ -735,8 +744,6 @@ export default function SetupDemoPage() {
             )}
           </CardContent>
         </Card>
-      )}
-      </>
       )}
     </div>
   );

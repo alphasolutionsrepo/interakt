@@ -37,6 +37,16 @@ import { useDocsSearch } from '@/shared/help/useDocsSearch';
 /** The last mode used, remembered for the browser session. */
 const MODE_KEY = 'interakt.help.mode';
 
+/** With the Help assistant off only the docs search is left, whatever mode was remembered. */
+export function effectiveHelpMode(remembered: HelpMode, askOn: boolean): HelpMode {
+  return askOn ? remembered : 'search';
+}
+
+/** The drawer's one-line description. */
+export function helpDescription(askOn: boolean): string {
+  return askOn ? 'Search the docs, or ask the Help Assistant.' : 'Search the docs.';
+}
+
 interface DocState {
   title: string;
   content: string | null;
@@ -55,7 +65,7 @@ export function HelpButton() {
   const { areaOn } = useAccess();
   const askOn = areaOn('help-assistant');
   const [savedMode, setModeState] = useState<HelpMode>('search');
-  const mode: HelpMode = askOn ? savedMode : 'search';
+  const mode = effectiveHelpMode(savedMode, askOn);
   const [text, setText] = useState('');
   const [group, setGroup] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
@@ -385,7 +395,7 @@ export function HelpButton() {
         <SheetHeader className="gap-3 border-b border-border/60 p-4">
           <div>
             <SheetTitle>Help</SheetTitle>
-            <SheetDescription>{askOn ? 'Search the docs, or ask the Help Assistant.' : 'Search the docs.'}</SheetDescription>
+            <SheetDescription>{helpDescription(askOn)}</SheetDescription>
           </div>
 
           <ModeSwitch mode={mode} onChange={setMode} />

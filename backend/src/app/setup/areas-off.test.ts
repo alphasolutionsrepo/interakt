@@ -11,6 +11,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import { DemoRemoveCard } from './_components/DemoRemoveCard';
 import { NextStep } from './_components/NextStep';
 import SetupDemoPage from './page';
 
@@ -51,6 +52,25 @@ describe('the demo data card', () => {
     const html = page();
     expect(html).toContain('Demo data needs Search, Chat and Managed indexes.');
     expect(html).not.toContain(FEATURES);
+  });
+});
+
+describe('the demo remove card (an area is off but demo data exists)', () => {
+  const card = (over = {}) => renderToStaticMarkup(createElement(DemoRemoveCard, { provider: 'ollama', busy: null, onReset: () => {}, ...over }));
+
+  it('offers Reset, not setting up', () => {
+    uiAccess.asAdmin();
+    const html = card();
+    expect(html).toContain('Demo configured');
+    expect(html).toContain('Reset');
+    expect(html).not.toContain('Set up demo');
+    expect(html).not.toContain('Force re-seed');
+    expect(html).not.toContain('disabled=""');
+  });
+
+  it('disables Reset while something runs', () => {
+    uiAccess.asAdmin();
+    expect(card({ busy: 'reset' })).toContain('disabled=""');
   });
 });
 

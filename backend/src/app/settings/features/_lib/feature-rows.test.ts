@@ -36,20 +36,26 @@ describe('rowState', () => {
 
   it('locks a pinned-off area off, with the deployment reason', () => {
     const pinned = row({ id: 'chat', on: false, switchedOn: true, pinnedOff: true });
-    expect(rowState(pinned, [pinned])).toEqual({ checked: false, reason: PINNED_OFF_MESSAGE });
+    expect(rowState(pinned, [pinned])).toEqual({ checked: false, locked: true, reason: PINNED_OFF_MESSAGE, needs: null });
   });
 
-  it('locks an area whose needs are off, keeping the choice', () => {
+  it('does not lock an area whose needs are off: it keeps the choice and says what it needs', () => {
     const off = row({ id: 'search', label: 'Search', on: false, switchedOn: false });
     const dependent = row({ id: 'ai-summaries', on: false, switchedOn: true, needsAnyOf: ['search'] });
-    expect(rowState(dependent, [off, dependent])).toEqual({ checked: true, reason: 'Needs Search' });
+    expect(rowState(dependent, [off, dependent])).toEqual({ checked: true, locked: false, reason: null, needs: 'Needs Search' });
+  });
+
+  it('says what a switched-off area needs too, so switching it on is no surprise', () => {
+    const off = row({ id: 'search', label: 'Search', on: false, switchedOn: false });
+    const dependent = row({ id: 'ai-summaries', on: false, switchedOn: false, needsAnyOf: ['search'] });
+    expect(rowState(dependent, [off, dependent])).toMatchObject({ checked: false, locked: false, needs: 'Needs Search' });
   });
 
   it('stays free when one of its needs is on, or nothing needs to be on', () => {
     const pg = row({ id: 'playground', needsAnyOf: ['search', 'chat'] });
     const searchOff = row({ id: 'search', on: false, switchedOn: false });
-    expect(rowState(pg, [searchOff, chat, pg]).reason).toBeNull();
-    expect(rowState(search, [search]).reason).toBeNull();
+    expect(rowState(pg, [searchOff, chat, pg]).needs).toBeNull();
+    expect(rowState(search, [search]).needs).toBeNull();
   });
 });
 

@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DocsSearchResults } from './DocsSearchResults';
-import { ModeSwitch } from './HelpButton';
+import { ModeSwitch, effectiveHelpMode, helpDescription } from './HelpButton';
 
 import { uiAccess } from '@/shared/test/ui-access-stub';
 
@@ -55,5 +55,22 @@ describe('the docs search results', () => {
     const html = results();
     expect(html).not.toContain('Ask AI about');
     expect(html).toContain('No docs match');
+  });
+});
+
+describe('the help drawer’s own mode decision', () => {
+  it('forces Search when the Help assistant is off, even if Ask AI was remembered', () => {
+    expect(effectiveHelpMode('ask', false)).toBe('search');
+    expect(effectiveHelpMode('search', false)).toBe('search');
+  });
+
+  it('keeps the remembered mode while the Help assistant is on', () => {
+    expect(effectiveHelpMode('ask', true)).toBe('ask');
+    expect(effectiveHelpMode('search', true)).toBe('search');
+  });
+
+  it('describes only the docs search when the Help assistant is off', () => {
+    expect(helpDescription(false)).toBe('Search the docs.');
+    expect(helpDescription(true)).toBe('Search the docs, or ask the Help Assistant.');
   });
 });

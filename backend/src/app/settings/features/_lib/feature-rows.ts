@@ -22,15 +22,18 @@ export function needsLabel(row: FeatureRow, areas: readonly FeatureRow[]): strin
 }
 
 /**
- * The switch shows what the Admin chose. It is locked (with the reason) when the deployment
- * turns the area off, or when it is switched on but nothing it needs is on; it keeps its
- * choice and comes back with its needs.
+ * The switch shows what the Admin chose. Only the deployment pinning the area off locks it
+ * (`locked`, with `reason`). What an area needs is information (`needs`), never a lock: an
+ * Admin can always switch an area off, and can switch it on before its need is on, when it
+ * stays inactive until then.
  */
-export function rowState(row: FeatureRow, areas: readonly FeatureRow[]): { checked: boolean; reason: string | null } {
-  if (row.pinnedOff) return { checked: false, reason: PINNED_OFF_MESSAGE };
-  const needsUnmet =
-    row.switchedOn && row.needsAnyOf.length > 0 && !row.needsAnyOf.some((id) => areas.find((a) => a.id === id)?.on);
-  return { checked: row.switchedOn, reason: needsUnmet ? needsLabel(row, areas) : null };
+export function rowState(
+  row: FeatureRow,
+  areas: readonly FeatureRow[],
+): { checked: boolean; locked: boolean; reason: string | null; needs: string | null } {
+  if (row.pinnedOff) return { checked: false, locked: true, reason: PINNED_OFF_MESSAGE, needs: null };
+  const needsUnmet = row.needsAnyOf.length > 0 && !row.needsAnyOf.some((id) => areas.find((a) => a.id === id)?.on);
+  return { checked: row.switchedOn, locked: false, reason: null, needs: needsUnmet ? needsLabel(row, areas) : null };
 }
 
 /** Areas switched on that need only the one being switched off: the Admin is asked about them. */

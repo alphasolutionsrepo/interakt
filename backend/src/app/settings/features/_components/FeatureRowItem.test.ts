@@ -39,4 +39,24 @@ describe('FeatureRowItem', () => {
     expect(html).toContain(PINNED_OFF_MESSAGE);
     expect(html).toContain('aria-checked="false"');
   });
+
+  it('lets an Admin switch off an area that is on but whose need is off, and says what it needs', () => {
+    uiAccess.asAdmin();
+    const search = { ...base, id: 'search' as const, label: 'Search', on: false, switchedOn: false };
+    const ai = { ...base, id: 'ai-summaries' as const, label: 'AI summaries', on: false, switchedOn: true, needsAnyOf: ['search' as const] };
+    const html = renderToStaticMarkup(createElement(FeatureRowItem, { area: ai, areas: [search, ai], onToggle: () => {} }));
+    expect(html).not.toContain('disabled=""');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain('Needs Search');
+  });
+
+  it('still locks that row for a non-Admin', () => {
+    uiAccess.hold('settings:manage');
+    const search = { ...base, id: 'search' as const, label: 'Search', on: false, switchedOn: false };
+    const ai = { ...base, id: 'ai-summaries' as const, label: 'AI summaries', on: false, switchedOn: true, needsAnyOf: ['search' as const] };
+    const html = renderToStaticMarkup(createElement(FeatureRowItem, { area: ai, areas: [search, ai], onToggle: () => {} }));
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('Only an Admin can turn features on or off.');
+    expect(html).toContain('Needs Search');
+  });
 });

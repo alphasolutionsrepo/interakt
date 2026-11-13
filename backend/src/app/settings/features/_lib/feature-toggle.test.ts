@@ -30,6 +30,17 @@ describe('decideToggle', () => {
   });
 });
 
+describe('decideToggle with needs off', () => {
+  const noSearch = [row('search', { on: false, switchedOn: false }), row('ai-summaries' as Area, { on: false, needsAnyOf: ['search'] })];
+  it('saves switching a dependent area off while its need is off', () => {
+    expect(decideToggle(noSearch, 'ai-summaries' as Area, false)).toEqual({ save: { areas: { 'ai-summaries': false } } });
+  });
+  it('saves switching a dependent area on while its need is off', () => {
+    const r = [noSearch[0], row('ai-summaries' as Area, { on: false, switchedOn: false, needsAnyOf: ['search'] })];
+    expect(decideToggle(r, 'ai-summaries' as Area, true)).toEqual({ save: { areas: { 'ai-summaries': true } } });
+  });
+});
+
 describe('bodyForChoice', () => {
   const asking = { id: 'search' as Area, dependents: ['ai-summaries' as Area] };
   it('saves nothing on Cancel', () => expect(bodyForChoice(asking, 'cancel')).toBeNull());

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { Area } from './areas';
 import { permissionArea, permissionShown } from './permission-areas';
 
-import { ALL_PERMISSIONS } from '@/features/access/permissions';
+import { ALL_PERMISSIONS, type Permission } from '@/features/access/permissions';
 
 describe('which area a permission belongs to', () => {
   it('maps each permission to its area', () => {
@@ -26,8 +26,37 @@ describe('which area a permission belongs to', () => {
     }
   });
 
-  it('knows an area (or none) for every permission', () => {
-    for (const p of ALL_PERMISSIONS) expect(permissionArea(p)).not.toBeUndefined();
+  it('lists the exact area (or none) of every permission', () => {
+    const EXPECTED: Record<Permission, Area | null> = {
+      'search-experiences:view': 'search',
+      'search-experiences:edit': 'search',
+      'ai-experiences:view': 'chat',
+      'ai-experiences:edit': 'chat',
+      'search-indexes:view': 'managed-indexes',
+      'search-indexes:edit': 'managed-indexes',
+      'documents:edit': 'managed-indexes',
+      'data-sources:view': null,
+      'data-sources:edit': null,
+      'tools:view': 'chat',
+      'tools:edit': 'chat',
+      'prompts:view': 'chat',
+      'prompts:edit': 'chat',
+      'ai-providers:view': null,
+      'ai-providers:manage': null,
+      'playground:use': 'playground',
+      'analytics:view': 'analytics',
+      'analytics:ask': 'analytics',
+      'analytics:manage': 'analytics',
+      'settings:view': null,
+      'settings:manage': null,
+      'jobs:run': null,
+      'secrets:manage': null,
+      'users:manage': null,
+      'setup:run': null,
+    };
+    // A new permission has no entry (tsc and the next line fail) until its area is decided here
+    expect([...ALL_PERMISSIONS].sort()).toEqual(Object.keys(EXPECTED).sort());
+    for (const p of ALL_PERMISSIONS) expect(permissionArea(p), p).toBe(EXPECTED[p]);
   });
 
   it('shows a permission unless its area is off', () => {
