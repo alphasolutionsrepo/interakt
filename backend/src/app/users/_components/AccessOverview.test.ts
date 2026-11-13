@@ -140,3 +140,50 @@ describe('a ticked permission that grants nothing yet', () => {
     expect(first).toBe('ai-providers:manage');
   });
 });
+
+describe('with a feature area turned off', () => {
+  const html = (admin: boolean) => {
+    if (admin) uiAccess.asAdmin(); else uiAccess.hold('users:manage');
+    uiAccess.areasOff('chat');
+    return renderToStaticMarkup(createElement(AccessOverview, { roles: ROLES, editable: admin, onChange: () => {} }));
+  };
+
+  it('keeps its permissions listed but disabled, with the value each role holds', () => {
+    const out = html(true);
+    expect(switches(out)).toHaveLength(ALL_PERMISSIONS.length * ROLES.length);
+    // Editor holds tools:edit by default; Tester doesn't
+    expect(cell(out, 'Create, edit and delete tools and MCP connections: Editor')).toEqual([expect.any(String), true, true]);
+    expect(cell(out, 'View tools and MCP connections: Tester')).toEqual([expect.any(String), false, true]);
+    // a permission of an area that is on stays switchable
+    expect(cell(out, 'Manage secrets and ingestion keys: Editor')?.[2]).toBe(false);
+  });
+
+  it('notes the area once in each group that has its permissions, with a link for an Admin only', () => {
+    const out = html(true);
+    expect(out).toContain('Chat is turned off for this installation.');
+    expect(out).toContain('Roles keep these permissions, and they apply again when Chat is on.');
+    expect(out).toContain('href="/settings/features"');
+    expect(html(false)).not.toContain('href="/settings/features"');
+  });
+
+  it('shows no note and no disabled switch when every area is on', () => {
+    uiAccess.asAdmin();
+    const out = grid(true);
+    expect(out).not.toContain('turned off');
+    expect(cell(out, 'View tools and MCP connections: Tester')?.[2]).toBe(false);
+  });
+
+  it('never tells anyone to tick a permission they cannot', () => {
+    const stored = ['setup:run'];
+    const text = unmetTitle(stored, 'setup:run', (a) => a !== 'chat');
+    expect(text).toContain('Create, edit and delete tools and MCP connections');
+    expect(text).toContain('Chat is turned off for this installation');
+    expect(text.split('Also needs')[0]).not.toContain('tools and MCP connections');
+  });
+});
+
+describe('toggled with an area off', () => {
+  it('keeps a held permission of the off area when another one is switched', () => {
+    expect(toggled(role({ permissions: ['tools:view', 'prompts:view'] }), 'playground:use', true)).toEqual(['tools:view', 'prompts:view', 'playground:use']);
+  });
+});

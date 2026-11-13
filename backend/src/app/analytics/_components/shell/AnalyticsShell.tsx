@@ -21,9 +21,12 @@ import { PeriodPicker } from '../PeriodPicker';
 import { formatTimeAgo } from '../viz';
 
 import { AskPanel } from './AskPanel';
+import { HiddenSectionsNote } from './HiddenSectionsNote';
 import { SectionNav } from './SectionNav';
 
 import { cn } from '@/lib/utils';
+import { AreaOffNote } from '@/shared/access/AreaOffNote';
+import { useAccess } from '@/shared/access/useAccess';
 import { Button } from '@/shared/ui/components/button';
 
 /**
@@ -68,12 +71,30 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const { experienceType } = useAnalyticsContext();
   const askPanel = useAskPanel();
+  const { areaOn, isLoading: accessLoading } = useAccess();
   const refreshing = useIsFetching({ queryKey: ['analytics'] }) + useIsFetching({ queryKey: ['telemetry'] }) > 0;
 
   // The full chat page is the Ask panel's history and has its own layout
   if (pathname.startsWith('/analytics/chat')) return <>{children}</>;
 
   const section = sectionForPath(pathname);
+
+  // Analytics off: only the settings page stays open (collection and retention). Everything
+  // around it that calls analytics endpoints, which the server refuses, is left out.
+  if (!accessLoading && !areaOn('analytics')) {
+    const keepsSettings = section.href === '/analytics/settings';
+    return (
+      <div className="min-w-0 space-y-6 p-6 lg:p-8">
+        <header>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Analytics</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{keepsSettings ? section.label : 'Analytics'}</h1>
+        </header>
+        <AreaOffNote area="analytics" detail={keepsSettings ? 'Collection and retention settings stay available.' : undefined} />
+        {keepsSettings && children}
+      </div>
+    );
+  }
+
   const isSearchExperience = experienceType === 'search';
   // The Overview has the conversation inline, so it needs no drawer
   const showAskDrawer = section.href !== '/analytics/overview';
@@ -125,6 +146,7 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <SectionNav className="-mt-2" />
+        <HiddenSectionsNote />
 
         {section.chatOnly && isSearchExperience ? (
           <p className="rounded-xl bg-muted/50 px-4 py-3 text-sm text-muted-foreground">

@@ -16,6 +16,8 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 import { useAnalyticsChat } from './hooks/useAnalyticsChat';
 import { sectionForPath } from './sections';
 
+import type { Permission } from '@/features/access/permissions';
+import type { Area } from '@/features/feature-switches/areas';
 import { useAccess } from '@/shared/access/useAccess';
 
 type AnalyticsChat = ReturnType<typeof useAnalyticsChat>;
@@ -34,6 +36,11 @@ interface AskPanelState {
   canAsk: boolean;
 }
 
+/** Asking needs the permission and Analytics on (the Ask routes are refused with it off) */
+export function canAskAnalytics(can: (p: Permission) => boolean, areaOn: (a: Area) => boolean): boolean {
+  return can('analytics:ask') && areaOn('analytics');
+}
+
 const AskPanelContext = createContext<AskPanelState | null>(null);
 
 export function AskPanelProvider({ children }: { children: React.ReactNode }) {
@@ -41,7 +48,8 @@ export function AskPanelProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const chat = useAnalyticsChat();
   const { send } = chat;
-  const canAsk = useAccess().can('analytics:ask');
+  const { can, areaOn } = useAccess();
+  const canAsk = canAskAnalytics(can, areaOn);
   // Questions name the analytics section they were asked from; elsewhere (the full chat, the home page) none
   const inSection = pathname.startsWith('/analytics/') && !pathname.startsWith('/analytics/chat');
   const pageSection = inSection ? sectionForPath(pathname).label : undefined;

@@ -7,6 +7,8 @@ import { Suspense, useState, type ReactNode } from 'react';
 
 import { CreateWizard as AICreateWizard } from '@/app/ai-experiences/_components/CreateWizard/CreateWizard';
 import { CreateWizard as SearchCreateWizard } from '@/app/search-experiences/_components/CreateWizard/CreateWizard';
+import { AreaOffNote } from '@/shared/access/AreaOffNote';
+import { useAccess } from '@/shared/access/useAccess';
 import { useActionGate, withLockHint, type ActionGate } from '@/shared/access/ActionControls';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
@@ -24,11 +26,12 @@ function CreateExperienceContent() {
   const searchParams = useSearchParams();
   const preselected = searchParams.get('type') as ExperienceType;
   const [chosenType, setSelectedType] = useState<ExperienceType>(preselected);
+  const { areaOn } = useAccess();
   const aiGate = useActionGate('ai-experiences.create');
   const searchGate = useActionGate('search-experiences.create');
   // A link straight to a kind this user can't create shows the choice instead of a wizard the
   // server would refuse at the end
-  const allowedKind = (t: ExperienceType) => (t === 'ai' ? aiGate : searchGate).state === 'allowed';
+  const allowedKind = (t: ExperienceType) => (t === 'ai' ? aiGate : searchGate).state === 'allowed' && areaOn(t === 'ai' ? 'chat' : 'search');
   const selectedType: ExperienceType = chosenType && allowedKind(chosenType) ? chosenType : null;
 
   if (selectedType === 'ai') {
@@ -111,7 +114,7 @@ function CreateExperienceContent() {
       />
 
       <div className="grid md:grid-cols-2 gap-6 max-w-3xl">
-        <KindCard
+        {areaOn('chat') ? <KindCard
           gate={aiGate}
           onSelect={() => setSelectedType('ai')}
           icon={<Bot className="size-7 text-indigo-500" />}
@@ -120,8 +123,8 @@ function CreateExperienceContent() {
           linkClassName="text-indigo-600 dark:text-indigo-400"
           title="AI Experience"
           text="Build conversational AI assistants powered by tools and configurable pipelines. Great for chatbots, support agents, and interactive Q&A."
-        />
-        <KindCard
+        /> : <AreaOffNote area="chat" className="rounded-2xl border border-dashed border-border/60 p-8" />}
+        {areaOn('search') ? <KindCard
           gate={searchGate}
           onSelect={() => setSelectedType('search')}
           icon={<Compass className="size-7 text-violet-500" />}
@@ -130,7 +133,7 @@ function CreateExperienceContent() {
           linkClassName="text-violet-600 dark:text-violet-400"
           title="Search Experience"
           text="Create search interfaces with multi-index support, AI summaries, and configurable result displays. Ideal for product search and knowledge bases."
-        />
+        /> : <AreaOffNote area="search" className="rounded-2xl border border-dashed border-border/60 p-8" />}
       </div>
     </div>
   );

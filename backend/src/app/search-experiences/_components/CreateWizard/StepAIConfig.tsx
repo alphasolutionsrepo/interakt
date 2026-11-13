@@ -22,6 +22,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
+import { SummaryAreaGuard } from '../SummaryAreaGuard';
 import { CustomInstructionsGenerator } from './CustomInstructionsGenerator';
 import {
   type WizardFormData,
@@ -95,6 +96,7 @@ export function StepAIConfig({
   );
 
   return (
+    <SummaryAreaGuard>
     <div className="space-y-6">
       {/* AI Master Toggle */}
       <Card className="border-border/60 rounded-2xl">
@@ -311,5 +313,6 @@ export function StepAIConfig({
         </>
       )}
     </div>
+    </SummaryAreaGuard>
   );
 }

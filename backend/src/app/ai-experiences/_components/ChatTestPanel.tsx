@@ -3,6 +3,7 @@
 import { Bot, ChevronDown, ChevronUp, ImageIcon, Loader2, MessageSquare, Send, Sparkles, Trash2, Wrench } from 'lucide-react';
 import { useRef, useState } from 'react';
 
+import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -395,7 +396,10 @@ export function ChatTestPanel({ experienceSlug, experienceName, isBuiltIn = fals
   const [isStreaming, setIsStreaming] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const sendGate = chatSendGate(useActionGate('ai-experiences.test-chat'), isBuiltIn);
+  const permissionGate = chatSendGate(useActionGate('ai-experiences.test-chat'), isBuiltIn);
+  // Send needs its area on: Playground for any experience, but the built-in help is the Help
+  // assistant's (the server checks only that one for it, gate.ts refuseSessionIfPlaygroundOff)
+  const sendGate = useAreaGate(permissionGate, isBuiltIn ? 'help-assistant' : 'playground');
   const currentAssistantIdRef = useRef<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Buffer preset data until text content starts streaming (so grid + text appear together)

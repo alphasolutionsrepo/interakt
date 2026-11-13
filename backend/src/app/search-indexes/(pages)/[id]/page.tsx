@@ -61,6 +61,7 @@ import {
   type VectorSimilarity,
 } from '@/features/search-index';
 import { ActionButton } from '@/shared/access/ActionControls';
+import { useCanOpenPage } from '@/shared/access/Can';
 import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
@@ -246,6 +247,7 @@ function DetailPageSkeleton() {
 export default function SearchIndexDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const canOpenPage = useCanOpenPage();
   const indexId = params.id as string;
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -664,7 +666,7 @@ export default function SearchIndexDetailPage() {
                 <Badge variant="secondary" className="rounded-lg">
                   {searchIndex.dataTemplate?.name || 'Unknown'}
                 </Badge>
-                {searchIndex.dataTemplate?.id && (
+                {searchIndex.dataTemplate?.id && canOpenPage('/data-templates') && (
                   <Button
                     variant="ghost"
                     size="sm"

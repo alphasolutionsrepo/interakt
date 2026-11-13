@@ -1,10 +1,10 @@
 // src/features/analytics/analytics-retention.feature-off.test.ts
 
 /**
- * With the Analytics area turned off the retention cleanup deletes nothing, so stored analytics
- * survive a long switch-off. Switched back on, old rows are deleted again. If the switches can't
- * be read, the cleanup is skipped too (a DELETE can't be undone). Real Postgres (PGlite with the
- * analytics migrations); the switch is the shared stub.
+ * The retention cleanup keeps its schedule whatever the Analytics switch says: with Analytics off
+ * nothing new is recorded, but data past its retention period is still deleted (privacy: switching
+ * collection off must not keep old visitor data longer). Real Postgres (PGlite with the analytics
+ * migrations); the switch is the shared stub.
  */
 
 import { sql } from 'drizzle-orm';
@@ -61,31 +61,22 @@ afterAll(async () => {
 });
 
 describe('analytics retention cleanup and the Analytics switch', () => {
-  it('deletes nothing while the Analytics area is off', async () => {
+  it('deletes rows past their retention while the Analytics area is off', async () => {
     await insertRows();
     featureSwitchesStub.off.add('analytics');
     await runRetentionCleanup();
-    expect(await rowCount()).toBe(2);
+    expect(await rowCount()).toBe(1);
   });
 
-  it('deletes rows past their retention once Analytics is on', async () => {
+  it('deletes rows past their retention with Analytics on', async () => {
     await insertRows();
     await runRetentionCleanup();
     expect(await rowCount()).toBe(1);
   });
 
-  it('deletes nothing when the switches cannot be read', async () => {
+  it('does not depend on reading the switches', async () => {
     await insertRows();
     vi.spyOn(featureSwitchesService, 'isAreaOn').mockRejectedValue(new Error('settings unavailable'));
-    await runRetentionCleanup();
-    expect(await rowCount()).toBe(2);
-  });
-
-  it('checks the switch on every run, so a switch-off after start-up is respected', async () => {
-    await insertRows();
-    featureSwitchesStub.off.add('analytics');
-    await runRetentionCleanup();
-    featureSwitchesStub.off.delete('analytics');
     await runRetentionCleanup();
     expect(await rowCount()).toBe(1);
   });

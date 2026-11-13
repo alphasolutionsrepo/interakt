@@ -108,3 +108,31 @@ describe('analytics settings', () => {
     expect(html).toContain('href="/jobs"');
   });
 });
+
+describe('analytics settings with Analytics off', () => {
+  const asked = (key: unknown[]) => !notAsked.includes(JSON.stringify(key));
+
+  it('asks nothing the server refuses and keeps what needs it in view, locked (page.test.ts checks the locks)', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('analytics');
+    notAsked.length = 0;
+    const html = settings();
+    expect(notAsked).toContain(JSON.stringify(['analytics', 'processing-status']));
+    // The tracking settings (core) and the job schedule (core) are still asked
+    expect(asked(['analytics', 'settings', 'config'])).toBe(true);
+    expect(asked(['analytics', 'settings', 'schedule'])).toBe(true);
+    expect(html).toContain('What analytics records');
+    expect(html).toContain('Refresh now');
+    expect(html).toContain('Clear all analytics data');
+    expect(html).toContain('Analytics is turned off for this installation.');
+  });
+
+  it('asks for the status with Analytics on', () => {
+    uiAccess.asAdmin();
+    notAsked.length = 0;
+    const html = settings();
+    expect(notAsked).not.toContain(JSON.stringify(['analytics', 'processing-status']));
+    expect(html).toContain('Refresh now');
+    expect(html).toContain('Clear all analytics data');
+  });
+});

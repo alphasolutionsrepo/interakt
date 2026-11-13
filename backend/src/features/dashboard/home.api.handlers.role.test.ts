@@ -14,7 +14,7 @@ vi.mock('./home.service', async (importOriginal) => ({
   // The aggregate the page shows (it reads both databases); the role filter is the real one
   getHomeData: async (_tz: string, analyticsOn: boolean) => (builtWithAnalytics.push(analyticsOn), {
     generatedAt: 'now', period: {}, live: { requestsLast5Min: 7 }, health: null, checklist: null,
-    metrics: [{ id: 'searches' }], tasks: [], cards: [{ id: 'c', href: '/analytics' }],
+    metrics: [{ id: 'searches' }], tasks: [{ id: 'reindex', href: '/search-indexes' }, { id: 'jobs', href: '/jobs' }], cards: [{ id: 'c', href: '/analytics' }],
     tips: [{ id: 'tip:x', action: { label: 'Look', href: '/analytics' } }], experiences: [], recent: [],
   }),
 }));
@@ -25,7 +25,7 @@ import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 
 const get = async () => {
   const res = await GET(new NextRequest('http://localhost/api/dashboard/home?tz=UTC'));
-  return { status: res.status, data: ((await res.json()) as { data: { metrics: unknown[]; cards: unknown[]; tips: unknown[] } }).data };
+  return { status: res.status, data: ((await res.json()) as { data: { metrics: unknown[]; cards: unknown[]; tips: unknown[]; tasks: Array<{ id: string }> } }).data };
 };
 
 afterEach(() => {
@@ -53,5 +53,13 @@ describe('the home page by role', () => {
     await get();
 
     expect(builtWithAnalytics).toEqual([true, false]);
+  });
+});
+
+describe('the home page with a feature area off', () => {
+  it("leaves out tasks that open a page of an area that is off, for an Admin too", async () => {
+    expect((await get()).data.tasks.map((t) => t.id)).toEqual(['reindex', 'jobs']);
+    featureSwitchesStub.off = new Set(['managed-indexes']);
+    expect((await get()).data.tasks.map((t) => t.id)).toEqual(['jobs']);
   });
 });

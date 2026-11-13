@@ -2,6 +2,7 @@
 
 'use client';
 
+import { unmetNeeds, viewGroups } from '../_lib/permission-view';
 import type { RoleResponse } from '../_lib/roles-api';
 
 import { Switch } from '@/components/ui/switch';
@@ -9,9 +10,11 @@ import {
   effectivePermissions,
   isPermission,
   PERMISSION_GROUPS,
-  REQUIRED_WITH,
   type Permission,
 } from '@/features/access/permissions';
+import type { Area } from '@/features/feature-switches/areas';
+import { AreaOffNote, areaLabel, rolesKeepDetail } from '@/shared/access/AreaOffNote';
+import { useAccess } from '@/shared/access/useAccess';
 
 /**
  * How one permission stands in one role:
@@ -37,20 +40,29 @@ export function toggled(role: Pick<RoleResponse, 'permissions'>, permission: Per
   return on ? [...kept, permission] : kept;
 }
 
-const cellTitle = (state: CellState, permission: Permission, role: RoleResponse): string | undefined => {
+const cellTitle = (state: CellState, permission: Permission, role: RoleResponse, areaOn: (area: Area) => boolean): string | undefined => {
   if (role.isBuiltIn) return 'Admin holds every permission';
   if (state === 'included') return 'Included by another permission this role has';
-  if (state === 'unmet') return unmetTitle(role.permissions, permission);
+  if (state === 'unmet') return unmetTitle(role.permissions, permission, areaOn);
   return undefined;
 };
 
 const LABELS = new Map<string, string>(PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => [p.id, p.label] as const)));
 
-/** Why a ticked permission grants nothing yet: the companions this role still lacks, by name. */
-export function unmetTitle(stored: readonly string[], permission: Permission): string {
-  const has = new Set(effectivePermissions(stored.filter(isPermission)));
-  const missing = (REQUIRED_WITH[permission] ?? []).filter((p) => !has.has(p)).map((p) => LABELS.get(p) ?? p);
-  return `Takes effect only once this role also has: ${missing.join('; ')}`;
+/**
+ * Why a ticked permission grants nothing yet: the companions this role still lacks, by name.
+ * Companions in a turned-off area are named apart, since nobody can switch them on for now.
+ */
+export function unmetTitle(stored: readonly string[], permission: Permission, areaOn: (area: Area) => boolean = () => true): string {
+  const { tickable, blocked, blockedAreas } = unmetNeeds(stored, permission, areaOn);
+  const names = (list: readonly Permission[]) => list.map((p) => LABELS.get(p) ?? p).join('; ');
+  const parts: string[] = [];
+  if (tickable.length > 0) parts.push(`Takes effect only once this role also has: ${names(tickable)}`);
+  if (blocked.length > 0) {
+    const areas = blockedAreas.map(areaLabel).join(' and ');
+    parts.push(`${parts.length > 0 ? 'Also needs' : 'Takes effect only once this role also has'}: ${names(blocked)} (${areas} ${blockedAreas.length > 1 ? 'are' : 'is'} turned off for this installation, so ${blocked.length > 1 ? 'these' : 'this'} can't be switched on now)`);
+  }
+  return parts.join('. ');
 }
 
 /**
@@ -73,6 +85,8 @@ export function AccessOverview({
   saving?: boolean;
   onChange: (role: RoleResponse, permissions: Permission[]) => void;
 }) {
+  const { areaOn } = useAccess();
+  const groups = viewGroups(PERMISSION_GROUPS, areaOn, new Set());
   return (
     <section className="space-y-3" aria-labelledby="access-overview-heading">
       <div>
@@ -93,21 +107,28 @@ export function AccessOverview({
               ))}
             </tr>
           </thead>
-          {PERMISSION_GROUPS.map((group) => (
+          {groups.map((group) => (
             <tbody key={group.id} className="border-b border-border/60 last:border-b-0">
               <tr>
                 <th scope="rowgroup" colSpan={roles.length + 1} className="bg-muted/40 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <span className="sticky left-3">{group.label}</span>
                 </th>
               </tr>
-              {group.permissions.map((p) => (
+              {group.offNotes.map((areas) => (
+                <tr key={areas.join(',')}>
+                  <td colSpan={roles.length + 1} className="px-3 py-2">
+                    <AreaOffNote areas={areas} detail={rolesKeepDetail(areas)} />
+                  </td>
+                </tr>
+              ))}
+              {group.rows.map((p) => (
                 <tr key={p.id}>
                   <th scope="row" className="sticky left-0 z-10 min-w-[18rem] bg-background p-3 text-left font-normal">{p.label}</th>
                   {roles.map((role) => {
                     const state = cellState(role, p.id);
-                    const fixed = role.isBuiltIn || state === 'included';
+                    const fixed = role.isBuiltIn || state === 'included' || p.disabled;
                     return (
-                      <td key={role.id} className="p-3 text-center" title={cellTitle(state, p.id, role)}>
+                      <td key={role.id} className="p-3 text-center" title={cellTitle(state, p.id, role, areaOn)}>
                         <Switch
                           checked={state !== 'off'}
                           disabled={!editable || fixed || saving}

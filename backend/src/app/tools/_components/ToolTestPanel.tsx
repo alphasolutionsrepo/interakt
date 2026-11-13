@@ -14,6 +14,7 @@ import { useState } from 'react';
 
 import { toolsApi, type ToolTestResult } from '../_lib/api-client';
 
+import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
@@ -57,7 +58,8 @@ export function ToolTestPanel({ toolId, isActive, executorType, operation }: {
   }
 
   // A test run calls the tool for real: playground:use
-  const runGate = useActionGate('tools.test');
+  // and the Playground area on (every Test button is locked with the reason when it is off)
+  const runGate = useAreaGate(useActionGate('tools.test'), 'playground');
   const canRun = isActive && !running && (() => {
     if (!isActive) return false;
     if (operation === 'inspect') return true;

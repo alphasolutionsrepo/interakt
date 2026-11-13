@@ -6,6 +6,7 @@ import { Lock, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { useRoles } from '../_lib/hooks/useRoles';
+import { permissionCount } from '../_lib/permission-view';
 import type { RoleResponse } from '../_lib/roles-api';
 
 import { AccessOverview } from './AccessOverview';
@@ -13,14 +14,11 @@ import { RoleFormDialog } from './RoleFormDialog';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { effectivePermissions, PERMISSION_GROUPS, type Permission } from '@/features/access/permissions';
 import { ActionButton, useAdminGate } from '@/shared/access/ActionControls';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 
-
-const PERMISSION_COUNT = PERMISSION_GROUPS.reduce((n, g) => n + g.permissions.length, 0);
 
 /**
  * The Roles tab: every role, how many users hold it, and the Access overview. Only an Admin
@@ -72,7 +70,7 @@ export function RolesPanel() {
               {role.description && <p className="text-sm text-muted-foreground">{role.description}</p>}
             </div>
             <span className="text-sm text-muted-foreground whitespace-nowrap">
-              {role.isBuiltIn ? PERMISSION_COUNT : effectivePermissions(role.permissions as Permission[]).length} of {PERMISSION_COUNT} permissions
+              {permissionCount(role).held} of {permissionCount(role).total} permissions
             </span>
             <span className="text-sm text-muted-foreground whitespace-nowrap">
               {role.userCount} {role.userCount === 1 ? 'user' : 'users'}

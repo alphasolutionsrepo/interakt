@@ -26,15 +26,45 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useAccess } from '@/shared/access/useAccess';
 import { DocBody } from '@/shared/help/DocBody';
 import type { DocsSearchHit } from '@/shared/help/docs-search';
-import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
 import { resolveHelpForPath } from '@/shared/help/help-content';
 import { OPEN_HELP_EVENT, type HelpMode, type OpenHelpDetail } from '@/shared/help/help-events';
+import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
 import { useDocsSearch } from '@/shared/help/useDocsSearch';
 
 /** The last mode used, remembered for the browser session. */
 const MODE_KEY = 'interakt.help.mode';
+
+/** With the Help assistant off only the docs search is left, whatever mode was remembered. */
+export function effectiveHelpMode(remembered: HelpMode, askOn: boolean): HelpMode {
+  return askOn ? remembered : 'search';
+}
+
+/** Whether the docs-search route may be called: it is refused with the Help assistant off (still loading: try it). */
+export function docsSearchRoutable(askKnown: boolean | null): boolean {
+  return askKnown !== false;
+}
+
+/** The empty-state hint, trigger label and tooltip: they mention asking only while Ask AI is on. */
+export function noHelpHint(askOn: boolean): string {
+  return askOn ? 'Search the docs or ask a question above, or' : 'Search the docs above, or';
+}
+// null = access not loaded yet: say neither, so the label doesn't change once it has
+export function helpTriggerLabel(askOn: boolean | null): string {
+  if (askOn === null) return 'Help';
+  return askOn ? 'Help, search and ask' : 'Help and search';
+}
+export function helpTriggerTooltip(askOn: boolean | null): string {
+  if (askOn === null) return 'Help';
+  return askOn ? 'Help, search & ask' : 'Help & search';
+}
+
+/** The drawer's one-line description. */
+export function helpDescription(askOn: boolean): string {
+  return askOn ? 'Search the docs, or ask the Help Assistant.' : 'Search the docs.';
+}
 
 interface DocState {
   title: string;
@@ -50,7 +80,13 @@ export function HelpButton() {
   const onDocsSite = pathname === '/docs' || pathname.startsWith('/docs/');
 
   const [open, setOpen] = useState(false);
-  const [mode, setModeState] = useState<HelpMode>('search');
+  // With the Help assistant off only the docs search is left, whatever mode was remembered
+  const { areaOn, isLoading: accessLoading } = useAccess();
+  const askOn = areaOn('help-assistant');
+  // Until access has loaded the answer is unknown: nothing about asking is shown, then it appears once
+  const askKnown: boolean | null = accessLoading ? null : askOn;
+  const [savedMode, setModeState] = useState<HelpMode>('search');
+  const mode = effectiveHelpMode(savedMode, askOn);
   const [text, setText] = useState('');
   const [group, setGroup] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
@@ -60,7 +96,8 @@ export function HelpButton() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const chat = useHelpChat();
-  const search = useDocsSearch(mode === 'search' ? text : '', group);
+  // Help assistant off: the server refuses the docs search, so go straight to title matching (loading still tries it)
+  const search = useDocsSearch(mode === 'search' ? text : '', group, docsSearchRoutable(askKnown));
   const showResults = mode === 'search' && !!text.trim() && !showingHit;
 
   // ---- Docs shown in the drawer: a stack, so internal links can go Back ----
@@ -249,7 +286,8 @@ export function HelpButton() {
       return;
     }
     if (!showResults) return;
-    const rows = search.hits.length + 1; // hits + the Ask row
+    const rows = search.hits.length + (askOn ? 1 : 0); // hits + the Ask row
+    if (rows === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelected((s) => (s + 1) % rows);
@@ -260,7 +298,7 @@ export function HelpButton() {
       e.preventDefault();
       const hit = search.hits[selected];
       if (hit) openHit(hit);
-      else askInstead(text.trim());
+      else if (askOn) askInstead(text.trim());
     }
   };
 
@@ -317,7 +355,7 @@ export function HelpButton() {
             <BookOpen className="size-8 opacity-50" />
             <p className="font-medium text-foreground">No help for this screen yet</p>
             <p className="max-w-xs text-xs">
-              Search the docs or ask a question above, or{' '}
+              {noHelpHint(askOn)}{' '}
               <Link href="/docs" onClick={closeDrawer} className="font-medium text-primary hover:underline">
                 browse the full docs
               </Link>
@@ -350,14 +388,14 @@ export function HelpButton() {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Help, search and ask"
+              aria-label={helpTriggerLabel(askKnown)}
               className="text-muted-foreground hover:text-foreground"
             >
               <HelpCircle className="size-5" />
             </Button>
           </SheetTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Help, search &amp; ask · {shortcut}</TooltipContent>
+        <TooltipContent side="bottom">{helpTriggerTooltip(askKnown)} · {shortcut}</TooltipContent>
       </Tooltip>
 
       <SheetContent
@@ -379,7 +417,7 @@ export function HelpButton() {
         <SheetHeader className="gap-3 border-b border-border/60 p-4">
           <div>
             <SheetTitle>Help</SheetTitle>
-            <SheetDescription>Search the docs, or ask the Help Assistant.</SheetDescription>
+            <SheetDescription>{helpDescription(askOn)}</SheetDescription>
           </div>
 
           <ModeSwitch mode={mode} onChange={setMode} />
@@ -473,7 +511,7 @@ const MODES: Array<{ value: HelpMode; label: string; Icon: typeof Search }> = [
  * checked option (one tab stop for the group), arrow keys move between options
  * and select them, and a click selects and moves to the box.
  */
-function ModeSwitch({
+export function ModeSwitch({
   mode,
   onChange,
 }: {
@@ -481,6 +519,7 @@ function ModeSwitch({
   onChange: (mode: HelpMode, options?: { keepFocus?: boolean }) => void;
 }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const { areaOn, isLoading } = useAccess();
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
@@ -490,6 +529,10 @@ function ModeSwitch({
     onChange(MODES[next].value, { keepFocus: true });
     refs.current[next]?.focus();
   };
+
+  // No switch while access is loading (neither state, so it doesn't flicker in), and none when
+  // Search alone is left: the Help assistant is off for this installation
+  if (isLoading || !areaOn('help-assistant')) return null;
 
   return (
     <div role="radiogroup" aria-label="Mode" className="inline-flex self-start rounded-lg bg-muted p-0.5 text-sm">

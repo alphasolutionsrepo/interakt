@@ -14,10 +14,11 @@ import { clearAnalyticsData, INSIGHTS_QUEUE, loadInsightsSchedule } from '../_li
 import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
 
 import { jobsApi } from '@/app/jobs/_lib/api-client';
-import { ActionButton } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/app/playground/_lib/area-gate';
+import { noPermissionTo } from '@/features/access/ui-actions';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 import { AccessLink } from '@/shared/access/Can';
 import { useAccess } from '@/shared/access/useAccess';
-import { noPermissionTo } from '@/features/access/ui-actions';
 import { reportActionError } from '@/shared/activity/report';
 import { errorText } from '@/shared/api/api-error';
 import {
@@ -30,7 +31,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/shared/ui/components/alert-dialog';
-import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
 
@@ -104,10 +104,14 @@ const TRACKING: Array<{ key: string; label: string; env: string }> = [
  * Settings: when insights refresh, what analytics records, and clearing data.
  */
 export default function AnalyticsSettingsPage() {
+  // With Analytics off, collection, the schedule and clearing data stay usable; Refresh now lives behind
+  // analytics routes, so it stays in view but locked with the reason
+  const { areaOn, isLoading } = useAccess();
+  const analyticsOff = !isLoading && !areaOn('analytics');
   return (
     <div className="grid items-start gap-6 @3xl:grid-cols-2">
       <div className="space-y-6">
-        <InsightsCard />
+        <InsightsCard analyticsOff={analyticsOff} />
         <DataCard />
       </div>
       <TrackingCard />
@@ -115,17 +119,20 @@ export default function AnalyticsSettingsPage() {
   );
 }
 
-function InsightsCard() {
+function InsightsCard({ analyticsOff }: { analyticsOff: boolean }) {
+  // Nothing is asked while access loads, so a request the server would refuse is never sent
+  const { isLoading: accessLoading } = useAccess();
   const { experienceId, experienceName } = useAnalyticsContext();
   const queryClient = useQueryClient();
   const canSeeSchedule = useAccess().can('settings:view');
   const schedule = useInsightsSchedule(canSeeSchedule);
-  const status = useProcessingStatus(experienceId);
+  const status = useProcessingStatus(experienceId, !accessLoading && !analyticsOff);
   const onDone = useCallback(() => {
     status.refetch();
     queryClient.invalidateQueries({ queryKey: ['analytics', 'insights'] });
   }, [status, queryClient]);
   const { refresh, isProcessing } = useRefreshInsights(experienceId, onDone);
+  const refreshGate = useAreaGate(useActionGate('analytics.refresh'), 'analytics');
   const isRunning = isProcessing || status.data?.currentRun?.status === 'running';
   const lastRun = status.data?.lastRun;
   const [scheduling, setScheduling] = useState(false);
@@ -182,6 +189,7 @@ function InsightsCard() {
               )}
             </dd>
           </div>
+          {!analyticsOff && (
           <div className="flex flex-wrap justify-between gap-2">
             <dt className="text-muted-foreground">Last refresh ({experienceId ? experienceName : 'all experiences'})</dt>
             <dd>
@@ -196,6 +204,7 @@ function InsightsCard() {
               )}
             </dd>
           </div>
+          )}
         </dl>
         {scheduleError && <p className="text-sm text-destructive">{scheduleError}</p>}
         <div className="flex flex-wrap gap-2">
@@ -212,7 +221,7 @@ function InsightsCard() {
               Schedule nightly refresh (02:00 UTC)
             </ActionButton>
           )}
-          <ActionButton action="analytics.refresh" icon={RefreshCw} iconClassName="mr-2 size-3.5" variant="outline" size="sm" className="rounded-xl" onClick={refresh} disabled={isRunning}>
+          <ActionButton gate={refreshGate} icon={RefreshCw} iconClassName="mr-2 size-3.5" variant="outline" size="sm" className="rounded-xl" onClick={refresh} disabled={isRunning}>
             Refresh now
           </ActionButton>
           {/* Background Jobs needs settings:view: no link for a role that can't open it */}
@@ -312,26 +321,30 @@ function DataCard() {
         </p>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
-        <Button
+        <ActionButton
+          action="analytics.clear-data"
+          icon={isClearing ? Loader2 : Trash2}
+          iconClassName={isClearing ? 'mr-2 size-3.5 animate-spin' : 'mr-2 size-3.5'}
           variant="outline"
           size="sm"
           className="rounded-xl text-destructive hover:bg-destructive/10"
           onClick={() => setConfirm(true)}
           disabled={isClearing}
         >
-          {isClearing ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Trash2 className="mr-2 size-3.5" />}
           {experienceId ? `Clear data for ${experienceName}` : 'Clear all analytics data'}
-        </Button>
-        <Button
+        </ActionButton>
+        <ActionButton
+          action="analytics.clear-data"
+          icon={deleteTraces.isPending ? Loader2 : Trash2}
+          iconClassName={deleteTraces.isPending ? 'mr-2 size-3.5 animate-spin' : 'mr-2 size-3.5'}
           variant="ghost"
           size="sm"
           className="rounded-xl text-destructive hover:bg-destructive/10"
           onClick={() => setConfirmTraces(true)}
           disabled={deleteTraces.isPending}
         >
-          {deleteTraces.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Trash2 className="mr-2 size-3.5" />}
           Clear only traces, for every experience
-        </Button>
+        </ActionButton>
       </CardContent>
 
       <AlertDialog open={confirmTraces} onOpenChange={setConfirmTraces}>

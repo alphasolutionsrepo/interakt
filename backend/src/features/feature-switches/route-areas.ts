@@ -89,6 +89,11 @@ const RULES: readonly Rule[] = [
   // Collection and retention settings stay reachable, so an Admin can change them while off
   { pattern: under('analytics/config'), area: 'core' },
   { pattern: under('telemetry/config'), area: 'core' },
+  // Erasing recorded data stays possible while off (retention keeps deleting old rows too)
+  { pattern: re('analytics/data'), methods: ['DELETE'], area: 'core' },
+  { pattern: re('telemetry/traces'), methods: ['DELETE'], area: 'core' },
+  { pattern: re(`telemetry/traces/${ID}`), methods: ['DELETE'], area: 'core' },
+  { pattern: re(`analytics/chat/sessions/${ID}`), methods: ['DELETE'], area: 'core' },
   // The Search report needs Search on as well, AI & cost needs Chat (as the pages do). All
   // must be on, so Traces (Search or Chat) can't be written here; its data comes from
   // /analytics/dashboard, which stays with Analytics alone.

@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo, useState } from 'react';
 import {
   MessageCircle,
   Sparkles,
@@ -13,6 +12,15 @@ import {
   Lock,
   Loader2,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+
+import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
+import { initialWidgetKind, settledChoice, WIDGET_KIND_AREA } from '@/app/playground/_lib/area-gate';
+import {
+  useSearchExperiences,
+  useSearchExperience,
+} from '@/app/search-experiences/_lib/hooks';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -21,13 +29,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import { AreaOffNote, offAreasText } from '@/shared/access/AreaOffNote';
+import { useAccess } from '@/shared/access/useAccess';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
-import {
-  useSearchExperiences,
-  useSearchExperience,
-} from '@/app/search-experiences/_lib/hooks';
 
 // ============================================================================
 // CONFIG
@@ -333,19 +337,27 @@ const DEFAULT_LAUNCHER: Record<WidgetKind, Launcher> = {
 // ============================================================================
 
 export function WidgetPlayground() {
-  const [kind, setKind] = useState<WidgetKind>('chat');
+  const { areaOn, access } = useAccess();
+  // Shows a kind whose area is on (also once access has loaded, or after a switch change); the
+  // other stays visible, disabled with the reason
+  const [pickedKind, setPickedKind] = useState<WidgetKind | null>(null);
+  const kind = settledChoice(pickedKind, WIDGET_KIND_AREA, areaOn, initialWidgetKind);
   const [selectedId, setSelectedId] = useState<string>('');
-  const [launcher, setLauncher] = useState<Launcher>(DEFAULT_LAUNCHER.chat);
+  const [pickedLauncher, setLauncher] = useState<Launcher | null>(null);
+  const launcher = pickedLauncher ?? DEFAULT_LAUNCHER[kind];
   const [device, setDevice] = useState<Device>('desktop');
   const [applied, setApplied] = useState<AppliedSpec | null>(null);
 
-  const aiList = useAIExperiences({ pageSize: 100, isActive: true });
-  const searchList = useSearchExperiences({ pageSize: 100, isActive: true });
+  // An off kind's routes are refused by the server: don't ask for its list
+  const chatOn = areaOn(WIDGET_KIND_AREA.chat);
+  const searchOn = areaOn(WIDGET_KIND_AREA.search);
+  const aiList = useAIExperiences({ pageSize: 100, isActive: true }, { enabled: chatOn });
+  const searchList = useSearchExperiences({ pageSize: 100, isActive: true }, { enabled: searchOn });
 
   // Search list summaries don't include accessToken — fetch the full record
   // when an experience is picked so we can init the widget with it.
   const selectedSearchDetail = useSearchExperience(
-    kind === 'search' && selectedId ? selectedId : undefined,
+    kind === 'search' && searchOn && selectedId ? selectedId : undefined,
   );
 
   const isLoadingList = kind === 'chat' ? aiList.isLoading : searchList.isLoading;
@@ -365,9 +377,9 @@ export function WidgetPlayground() {
 
   function handleKindChange(next: WidgetKind) {
     if (next === kind) return;
-    setKind(next);
+    setPickedKind(next);
     setSelectedId('');
-    setLauncher(DEFAULT_LAUNCHER[next]);
+    setLauncher(null);
   }
 
   function handleApply() {
@@ -437,12 +449,15 @@ export function WidgetPlayground() {
           </label>
           <ToggleGroup
             options={[
-              { value: 'chat', label: 'Chat', icon: MessageCircle },
-              { value: 'search', label: 'Search', icon: SearchIcon },
+              { value: 'chat', label: 'Chat', icon: MessageCircle, offReason: areaOn(WIDGET_KIND_AREA.chat) ? undefined : offAreasText([WIDGET_KIND_AREA.chat], areaOn, access) },
+              { value: 'search', label: 'Search', icon: SearchIcon, offReason: areaOn(WIDGET_KIND_AREA.search) ? undefined : offAreasText([WIDGET_KIND_AREA.search], areaOn, access) },
             ]}
             value={kind}
             onChange={(v) => handleKindChange(v as WidgetKind)}
           />
+          {(['chat', 'search'] as const).filter((k) => !areaOn(WIDGET_KIND_AREA[k])).map((k) => (
+            <AreaOffNote key={k} area={WIDGET_KIND_AREA[k]} detail="Its widget can't be previewed." className="pt-1" />
+          ))}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr_1fr_auto] lg:items-end">
@@ -631,7 +646,7 @@ function ToggleGroup({
   value,
   onChange,
 }: {
-  options: Array<{ value: string; label: string; icon: React.ComponentType<{ className?: string }> }>;
+  options: Array<{ value: string; label: string; icon: React.ComponentType<{ className?: string }>; /** Why it can't be chosen (its area is off) */ offReason?: string }>;
   value: string;
   onChange: (v: string) => void;
 }) {
@@ -645,11 +660,13 @@ function ToggleGroup({
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
+            disabled={!!opt.offReason}
+            title={opt.offReason}
             className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-all ${
               active
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
-            }`}
+            } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground`}
           >
             <Icon className="size-3.5" />
             {opt.label}
