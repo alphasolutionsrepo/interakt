@@ -208,7 +208,7 @@ describe('an area switched off', () => {
     await switchAreas({ 'managed-indexes': false });
     as(null);
     expect(await call(documentsRoute.GET, 'GET', `/api/search-indexes/${created.id}/documents`, key)).toMatchObject(turnedOff);
-  });
+  }, 30_000); // creates a row and a key, then switches an area: over the 5s default on the slower CI runner
 
   it('says "turned off", not "not found", for the Help assistant that was switched off before it was ever built', async () => {
     const help = () => call(slugChatRoute.POST, 'POST', '/api/v1/ai-experiences/help-assistant/chat', { params: { slug: 'help-assistant' }, body: { message: 'hi' } });
