@@ -24,6 +24,7 @@ import { dataSources } from '@/db/schema/data-sources.schema';
 import { searchExperienceIndexes, searchExperiences } from '@/db/schema/search-experience.schema';
 import { searchIndex } from '@/db/schema/search-index.schema';
 import { tools } from '@/db/schema/tools.schema';
+import { withRateLimit, type RateLimitConfig } from '@/shared/api/rate-limit';
 import { apiResponse } from '@/shared/api/response';
 
 const TABLES = {
@@ -142,10 +143,22 @@ export function forBuiltInChange<A extends [NextRequestLike, { params: Promise<{
 
 type NextRequestLike = Request;
 
-/** forBuiltInChange for the index document routes, which servers also call with an ingestion key. */
+/**
+ * forBuiltInChange for the index document routes, which servers also call with an ingestion key.
+ * A rate limit, when given, runs before the access checks, so every caller is counted and answered alike
+ * (a wrong key gets the same limit headers, and 429, whether Managed indexes is on or off).
+ */
 export function forBuiltInDocumentChange<A extends [NextRequestLike, { params: Promise<{ id: string }> }, ...unknown[]]>(
   rule: AccessRule,
   handler: (...args: A) => Response | Promise<Response>,
+  rateLimit?: RateLimitConfig,
 ) {
-  return forBuiltInChange('search-index', rule, handler, { ingestionKey: true });
+  const route = forBuiltInChange('search-index', rule, handler, { ingestionKey: true });
+  if (!rateLimit) return route;
+  const limited = withRateLimit(route as never, rateLimit) as typeof route;
+  // The route checks (routes.access.test) read the access markers off the exported handler
+  for (const marker of Object.getOwnPropertySymbols(route)) {
+    Object.defineProperty(limited, marker, { value: (route as unknown as Record<symbol, unknown>)[marker] });
+  }
+  return limited;
 }
