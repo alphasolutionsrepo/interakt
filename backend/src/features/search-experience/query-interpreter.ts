@@ -41,7 +41,7 @@ import {
     type InterpretedFilter,
 } from './query-interpreter.core';
 import { REWRITE_SCHEMA, buildRewritePrompt, parseRewrite, shouldRewrite } from './query-rewriter.core';
-import { DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
+import { DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS, MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
 import type {
     SearchExperienceAIConfig,
     SearchExperienceQueryUnderstandingConfig,
@@ -108,28 +108,39 @@ export function resolveTimeoutMs(config?: SearchExperienceQueryUnderstandingConf
 }
 
 /**
- * Run a step with a time limit. Past it, the signal aborts the model call and this
- * rejects with QueryStepTimeoutError at once, even if the provider ignores the signal.
+ * Run a step with this caller's own time limit. Past it, this rejects with
+ * QueryStepTimeoutError at once. It never aborts anything: a model call shared through
+ * the cache keeps running for the other callers that joined it.
  */
-async function withTimeLimit<T>(timeoutMs: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    const controller = new AbortController();
+async function withTimeLimit<T>(timeoutMs: number, run: () => Promise<T>): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const limit = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-            reject(new QueryStepTimeoutError(timeoutMs));
-            controller.abort();
-        }, timeoutMs);
+        timer = setTimeout(() => reject(new QueryStepTimeoutError(timeoutMs)), timeoutMs);
     });
     try {
-        return await Promise.race([run(controller.signal), limit]);
+        return await Promise.race([run(), limit]);
     } finally {
         clearTimeout(timer);
     }
 }
 
 /**
- * Settle when the signal aborts, even if the provider ignores it. The cache keeps an
- * in-flight call for others to join; one that never settles would hold its key.
+ * Start a model call that callers share through the cache. It is owned by the cache
+ * entry, not by whoever started it: its signal aborts only at the longest limit any
+ * experience can set, so a hung provider cannot hold the cache key forever. It settles
+ * then even if the provider ignores the signal, which keeps the failure out of the cache.
+ */
+function startSharedCall<T>(start: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    const backstop = setTimeout(
+        () => controller.abort(new QueryStepTimeoutError(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS)),
+        MAX_QUERY_UNDERSTANDING_TIMEOUT_MS,
+    );
+    return settleOnAbort(controller.signal, start(controller.signal)).finally(() => clearTimeout(backstop));
+}
+
+/**
+ * Settle when the signal aborts, even if the provider ignores it.
  */
 function settleOnAbort<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -375,7 +386,7 @@ export async function interpretQuery(
     const timeoutMs = resolveTimeoutMs(config);
     try {
         // Field loading counts toward the limit too: the search waits for all of it
-        const result = await withTimeLimit(timeoutMs, signal => interpretWithModel(options, config, signal));
+        const result = await withTimeLimit(timeoutMs, () => interpretWithModel(options, config));
 
         if (!result) {
             return passthrough(query, startedAt);
@@ -407,7 +418,6 @@ export async function interpretQuery(
 async function interpretWithModel(
     options: InterpretQueryOptions,
     config: SearchExperienceQueryUnderstandingConfig,
-    signal: AbortSignal,
 ): Promise<QueryInterpretation | null> {
     const { query, searchIndexId } = options;
     const constraints = await loadFieldConstraints(searchIndexId);
@@ -423,7 +433,7 @@ async function interpretWithModel(
     return interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
         const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
 
-        const completion = await settleOnAbort(signal, aiService.chat(
+        const completion = await startSharedCall(signal => aiService.chat(
             [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: query },
@@ -524,9 +534,9 @@ export async function rewriteQueryForExternalSearch(options: {
         }
 
         // A null result (nothing usable) is not kept: the cache treats null as a miss
-        const rewritten = await withTimeLimit(timeoutMs, signal =>
+        const rewritten = await withTimeLimit(timeoutMs, () =>
             rewriteCache.getOrSet<string | null>(cacheKey, async () => {
-                const completion = await settleOnAbort(signal, aiService.chat(
+                const completion = await startSharedCall(signal => aiService.chat(
                     [
                         { role: 'system', content: buildRewritePrompt(config.customInstructions) },
                         { role: 'user', content: query },

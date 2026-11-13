@@ -47,6 +47,7 @@ import * as searchService from '@/features/search/search.service';
 import { SearchError } from '@/features/search/search.types';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
+import { MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 
 const QUERY = 'waterproof jackets under 200';
@@ -191,7 +192,7 @@ describe('a model call past the time limit', () => {
         return { ...config, queryUnderstanding: { ...config.queryUnderstanding!, timeoutMs: 500 } };
     };
 
-    it("searches with the raw query and the client's filters, aborting the call, within the limit", async () => {
+    it("searches with the raw query and the client's filters within the limit, leaving the shared call running", async () => {
         let signal: AbortSignal | undefined;
         vi.mocked(aiService.chat).mockImplementation((_messages, options) => {
             signal = options?.signal;
@@ -213,24 +214,66 @@ describe('a model call past the time limit', () => {
         expect(Date.now() - startedAt).toBeLessThan(1500);
         expect(result.query).toBe(QUERY);
         expect(result.filters).toEqual([{ field: 'brand', operator: 'eq', value: 'x' }]);
-        expect(signal?.aborted).toBe(true);
+        expect(signal?.aborted).toBe(false);
         expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', message: 'Query interpretation timed out; searching with the raw query' })]);
     });
 
-    it('does not keep the timed-out call: the next search asks again', async () => {
-        const searchIndexId = freshIndexId();
-        vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise(() => {}));
+    it('does not keep a call the provider never ends: the backstop releases it and the next search asks again', async () => {
+        vi.useFakeTimers();
+        try {
+            const searchIndexId = freshIndexId();
+            vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise(() => {}));
+            const ask = () => applyQueryInterpretation({
+                query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: slowConfig(), experienceId: 'exp-1',
+            });
 
-        const first = await applyQueryInterpretation({
-            query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: slowConfig(), experienceId: 'exp-1',
-        });
-        const second = await applyQueryInterpretation({
-            query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: slowConfig(), experienceId: 'exp-1',
-        });
+            const first = ask();
+            await vi.advanceTimersByTimeAsync(500);
+            expect((await first).query).toBe(QUERY);
+            await vi.advanceTimersByTimeAsync(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS);
 
-        expect(first.query).toBe(QUERY);
-        expect(second.query).toBe('waterproof jackets');
-        expect(aiService.chat).toHaveBeenCalledTimes(2);
+            expect((await ask()).query).toBe('waterproof jackets');
+            expect(aiService.chat).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('times out only the caller whose limit passed; a joiner with a longer limit gets the answer from the one call', async () => {
+        vi.useFakeTimers();
+        try {
+            const searchIndexId = freshIndexId();
+            let answer: () => void = () => {};
+            vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise((resolve) => {
+                answer = () => resolve({ message: { content: JSON.stringify({ query: 'waterproof jackets', filters: [] }) } } as unknown as Awaited<ReturnType<typeof aiService.chat>>);
+            }));
+            const ask = (timeoutMs: number) => {
+                const config = aiConfig();
+                return applyQueryInterpretation({
+                    query: QUERY,
+                    clientFilters: [{ field: 'brand', operator: 'eq', value: 'x' }],
+                    searchIndexId,
+                    aiConfig: { ...config, queryUnderstanding: { ...config.queryUnderstanding!, timeoutMs } },
+                    experienceId: 'exp-1',
+                });
+            };
+            logs.length = 0;
+            const short = ask(500);
+            const long = ask(4000);
+
+            await vi.advanceTimersByTimeAsync(500);
+            const shortResult = await short;
+            expect(shortResult.query).toBe(QUERY);
+            expect(shortResult.filters).toEqual([{ field: 'brand', operator: 'eq', value: 'x' }]);
+
+            await vi.advanceTimersByTimeAsync(1000);
+            answer();
+            expect((await long).query).toBe('waterproof jackets');
+            expect(aiService.chat).toHaveBeenCalledTimes(1);
+            expect(logs.filter((l) => l.message === 'Query interpretation failed; searching with the raw query')).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 

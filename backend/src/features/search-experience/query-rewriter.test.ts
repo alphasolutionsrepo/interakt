@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resolveTimeoutMs, rewriteQueryForExternalSearch } from './query-interpreter';
+import { MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
 
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 import * as aiService from '@/features/ai-service';
@@ -116,7 +117,7 @@ describe('rewriteQueryForExternalSearch', () => {
         expect(await rewrite(aiConfig())).toMatchObject({ query: QUESTION, outcome: 'failed' });
     });
 
-    it('gives up at the time limit, aborting the model call', async () => {
+    it('gives up at the time limit, leaving the shared model call running', async () => {
         let signal: AbortSignal | undefined;
         vi.mocked(aiService.chat).mockImplementation((_messages, options) => {
             signal = options?.signal;
@@ -130,7 +131,8 @@ describe('rewriteQueryForExternalSearch', () => {
 
         expect(result).toMatchObject({ query: QUESTION, outcome: 'timed_out' });
         expect(Date.now() - startedAt).toBeLessThan(1500);
-        expect(signal?.aborted).toBe(true);
+        // Others may have joined the call: only the backstop at the longest limit aborts it
+        expect(signal?.aborted).toBe(false);
         expect(logs.some((l) => l.level === 'warn' && l.message === 'Query rewrite timed out; searching with the raw query')).toBe(true);
     });
 
@@ -169,12 +171,80 @@ describe('rewriteQueryForExternalSearch', () => {
         expect(aiService.chat).toHaveBeenCalledTimes(3);
     });
 
-    it('does not keep a timed-out call, even one the provider never ends', async () => {
-        const experienceId = freshExperience();
-        vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise(() => {}));
-        expect((await rewrite(aiConfig({ timeoutMs: 500 }), QUESTION, experienceId)).outcome).toBe('timed_out');
-        expect((await rewrite(aiConfig({ timeoutMs: 500 }), QUESTION, experienceId)).outcome).toBe('rewritten');
-        expect(aiService.chat).toHaveBeenCalledTimes(2);
+    it('does not keep a call the provider never ends: the backstop releases it and the next search asks again', async () => {
+        vi.useFakeTimers();
+        try {
+            const experienceId = freshExperience();
+            let signal: AbortSignal | undefined;
+            vi.mocked(aiService.chat).mockImplementationOnce((_messages, options) => {
+                signal = options?.signal;
+                return new Promise(() => {});
+            });
+            const first = rewrite(aiConfig({ timeoutMs: 500 }), QUESTION, experienceId);
+            await vi.advanceTimersByTimeAsync(500);
+            expect((await first).outcome).toBe('timed_out');
+            expect(signal?.aborted).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS);
+            expect(signal?.aborted).toBe(true);
+
+            expect((await rewrite(aiConfig({ timeoutMs: 500 }), QUESTION, experienceId)).outcome).toBe('rewritten');
+            expect(aiService.chat).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    describe('callers sharing one model call', () => {
+        const slowAnswer = () => {
+            let answer: (content: string) => void = () => {};
+            vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise((resolve) => {
+                answer = (content) => resolve({ message: { content } } as unknown as Awaited<ReturnType<typeof aiService.chat>>);
+            }));
+            return (content: string) => answer(content);
+        };
+
+        it('times out the caller with the shorter limit on its own; the other gets the answer, from one model call', async () => {
+            vi.useFakeTimers();
+            try {
+                const experienceId = freshExperience();
+                const answer = slowAnswer();
+                const short = rewrite(aiConfig({ timeoutMs: 500 }), QUESTION, experienceId);
+                const long = rewrite(aiConfig({ timeoutMs: 4000 }), QUESTION, experienceId);
+
+                await vi.advanceTimersByTimeAsync(500);
+                expect(await short).toMatchObject({ query: QUESTION, outcome: 'timed_out' });
+
+                await vi.advanceTimersByTimeAsync(1000);
+                answer(JSON.stringify({ query: 'apply financial aid transfer student' }));
+                expect(await long).toMatchObject({ query: 'apply financial aid transfer student', outcome: 'rewritten' });
+                expect(aiService.chat).toHaveBeenCalledTimes(1);
+                expect(logs.filter((l) => l.message.startsWith('Query rewrite failed'))).toEqual([]);
+
+                // The answer that arrived after the first caller gave up is kept
+                expect((await rewrite(aiConfig(), QUESTION, experienceId)).outcome).toBe('rewritten');
+                expect(aiService.chat).toHaveBeenCalledTimes(1);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('times out a joiner at its own limit, not failed, when the first caller left earlier', async () => {
+            vi.useFakeTimers();
+            try {
+                const experienceId = freshExperience();
+                slowAnswer();
+                const first = rewrite(aiConfig({ timeoutMs: 500 }), QUESTION, experienceId);
+                const joiner = rewrite(aiConfig({ timeoutMs: 2000 }), QUESTION, experienceId);
+
+                await vi.advanceTimersByTimeAsync(500);
+                expect((await first).outcome).toBe('timed_out');
+                await vi.advanceTimersByTimeAsync(1500);
+                expect(await joiner).toMatchObject({ query: QUESTION, outcome: 'timed_out' });
+            } finally {
+                vi.useRealTimers();
+            }
+        });
     });
 });
 
