@@ -1,7 +1,7 @@
 // src/features/tools/tools.repository.ts
 
 import { eq, desc, asc, like, and, sql, count, getTableColumns } from 'drizzle-orm';
-import { tools, aiExperienceTools } from '@/db/schema';
+import { tools, aiExperienceTools, aiExperiences } from '@/db/schema';
 import { db } from '@/db/index';
 import { createLogger } from '@/shared/logger/logger';
 import type { ListToolsQuery } from './tools.types';
@@ -182,6 +182,21 @@ export async function getToolExperienceCount(toolId: string): Promise<number> {
     return result?.total || 0;
   } catch (error) {
     logger.error('Failed to get tool experience count', error as Error, { toolId });
+    throw error;
+  }
+}
+
+/** The chat experiences that use a tool, by name. */
+export async function getToolExperiences(toolId: string) {
+  try {
+    return await db
+      .select({ id: aiExperiences.id, name: aiExperiences.name, slug: aiExperiences.slug, isActive: aiExperiences.isActive })
+      .from(aiExperienceTools)
+      .innerJoin(aiExperiences, eq(aiExperiences.id, aiExperienceTools.aiExperienceId))
+      .where(eq(aiExperienceTools.toolId, toolId))
+      .orderBy(asc(aiExperiences.name));
+  } catch (error) {
+    logger.error('Failed to get tool experiences', error as Error, { toolId });
     throw error;
   }
 }

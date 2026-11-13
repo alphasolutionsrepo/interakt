@@ -392,6 +392,10 @@ export async function getToolExperienceCount(toolId: string) {
   return repository.getToolExperienceCount(toolId);
 }
 
+export async function getToolExperiences(toolId: string) {
+  return repository.getToolExperiences(toolId);
+}
+
 /** The lists that have something in them, so an empty suggestion stores nothing. */
 const NO_SUGGESTION = { nameFields: [], codeFields: [] };
 
