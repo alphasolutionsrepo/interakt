@@ -9,7 +9,7 @@ export {
     updateGlobalSettings,
     invalidateCache,
     getStoredFeaturesOff,
-    saveFeaturesOff,
+    updateFeaturesOff,
     type HybridSearchDefaults,
     type SearchTimeoutConfig,
     type GlobalSearchConfig,

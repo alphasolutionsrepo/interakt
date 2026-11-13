@@ -10,7 +10,7 @@
 import 'server-only';
 
 import { db } from '@/db/index';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
     globalSearchSettings,
     DEFAULT_GLOBAL_SETTINGS,
@@ -19,6 +19,7 @@ import {
     validateGlobalSettings,
     type GlobalSearchSettings
 } from '@/db/schema/global-search-settings.schema';
+import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('global-settings-service');
@@ -194,40 +195,15 @@ export async function updateGlobalSettings(
         throw new Error(`Invalid settings: ${validation.errors.join(', ')}`);
     }
 
-    // Check if settings exist
-    const existing = await db.query.globalSearchSettings.findFirst() as GlobalSearchSettings | undefined;
-
-    let result: GlobalSearchSettings;
-
-    if (existing) {
-        // Update existing
-        const [updated] = await db
-            .update(globalSearchSettings)
-            .set({
-                ...updateData,
-                updatedAt: new Date(),
-            })
-            .where(eq(globalSearchSettings.id, existing.id))
-            .returning();
-
-        result = updated;
-        logger.info('Updated global search settings', { id: existing.id });
-    } else {
-        // Create new with defaults + overrides
-        const [created] = await db
-            .insert(globalSearchSettings)
-            .values({
-                searchTimeout: updateData.searchTimeout ?? DEFAULT_GLOBAL_SETTINGS.searchTimeout,
-                rrfRankConstant: updateData.rrfRankConstant ?? DEFAULT_GLOBAL_SETTINGS.rrfRankConstant,
-                rrfWindowSize: updateData.rrfWindowSize ?? DEFAULT_GLOBAL_SETTINGS.rrfWindowSize,
-                lexicalWeight: updateData.lexicalWeight ?? DEFAULT_GLOBAL_SETTINGS.lexicalWeight,
-                semanticWeight: updateData.semanticWeight ?? DEFAULT_GLOBAL_SETTINGS.semanticWeight,
-            })
-            .returning();
-
-        result = created;
-        logger.info('Created global search settings', { id: created.id });
-    }
+    // Update the settings row, or create it with defaults + overrides
+    const { row: result, created } = await writeSettingsRow(db, updateData, {
+        searchTimeout: updateData.searchTimeout ?? DEFAULT_GLOBAL_SETTINGS.searchTimeout,
+        rrfRankConstant: updateData.rrfRankConstant ?? DEFAULT_GLOBAL_SETTINGS.rrfRankConstant,
+        rrfWindowSize: updateData.rrfWindowSize ?? DEFAULT_GLOBAL_SETTINGS.rrfWindowSize,
+        lexicalWeight: updateData.lexicalWeight ?? DEFAULT_GLOBAL_SETTINGS.lexicalWeight,
+        semanticWeight: updateData.semanticWeight ?? DEFAULT_GLOBAL_SETTINGS.semanticWeight,
+    });
+    logger.info(created ? 'Created global search settings' : 'Updated global search settings', { id: result.id });
 
     // Invalidate cache
     invalidateCache();
@@ -271,32 +247,93 @@ export async function getGlobalSettingsForApi(): Promise<GlobalSettingsResponse>
 // FEATURE SWITCHES
 // ============================================================================
 
-/**
- * The areas an Admin turned off, as stored (features/feature-switches reads them through its
- * own short cache, so this reads the database each time). A failed read throws.
- */
-export async function getStoredFeaturesOff(): Promise<string[]> {
-    const row = await db.query.globalSearchSettings.findFirst({ columns: { featuresOff: true } });
-    return row?.featuresOff ?? [];
+/** Postgres undefined_column (42703), as thrown by the driver or wrapped by drizzle. */
+function isMissingColumn(error: unknown): boolean {
+    for (let e: unknown = error, depth = 0; e && depth < 5; depth++) {
+        if ((e as { code?: unknown }).code === '42703') return true;
+        e = (e as { cause?: unknown }).cause;
+    }
+    return false;
 }
 
-/** Store the areas turned off (the settings row is created when there is none yet). */
-export async function saveFeaturesOff(featuresOff: string[]): Promise<void> {
-    const existing = await db.query.globalSearchSettings.findFirst({ columns: { id: true } });
-    if (existing) {
-        await db.update(globalSearchSettings)
-            .set({ featuresOff, updatedAt: new Date() })
-            .where(eq(globalSearchSettings.id, existing.id));
-    } else {
-        await db.insert(globalSearchSettings).values({ featuresOff });
+let warnedMissingColumn = false;
+
+/**
+ * The areas an Admin turned off, as stored (features/feature-switches reads them through its
+ * own short cache, so this reads the database each time). A database the update hasn't run
+ * on yet (no column) means nothing is switched off. Any other failed read throws.
+ */
+export async function getStoredFeaturesOff(): Promise<string[]> {
+    try {
+        const row = await db.query.globalSearchSettings.findFirst({ columns: { featuresOff: true } });
+        return row?.featuresOff ?? [];
+    } catch (error) {
+        if (!isMissingColumn(error)) throw error;
+        if (!warnedMissingColumn) {
+            warnedMissingColumn = true;
+            logger.warn('The features_off column is missing: the database update (migration) has not run. Every area is treated as on.');
+        }
+        return [];
     }
-    invalidateCache();
-    logger.info('Saved feature switches', { featuresOff });
+}
+
+/**
+ * Change the stored list under a lock, so two saves at once can't lose a change: `change`
+ * gets the list as stored and returns the new one. Creates the settings row when there is
+ * none. Returns the list before and after. Fails with a 503 when the database update that
+ * adds the column hasn't run.
+ */
+export async function updateFeaturesOff(
+    change: (current: string[]) => string[],
+): Promise<{ before: string[]; after: string[] }> {
+    try {
+        const result = await db.transaction(async (tx) => {
+            // Held to the end of the transaction; also covers the first save, when there is no row to lock
+            await tx.execute(sql`select pg_advisory_xact_lock(${FEATURES_OFF_LOCK})`);
+            const row = await tx.query.globalSearchSettings.findFirst({ columns: { featuresOff: true } });
+            const before = row?.featuresOff ?? [];
+            const after = change([...before]);
+            await writeSettingsRow(tx, { featuresOff: after }, { featuresOff: after });
+            return { before, after };
+        });
+        invalidateCache();
+        logger.info('Saved feature switches', { featuresOff: result.after });
+        return result;
+    } catch (error) {
+        if (!isMissingColumn(error)) throw error;
+        throw new AppError("The database update for feature switches hasn't run yet, so they can't be saved. Run the database update and try again.", {
+            code: 'DATABASE_UPDATE_PENDING', status: 503, ourSide: true, cause: error,
+        });
+    }
 }
 
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+// Arbitrary key for the advisory lock that serializes feature switch saves
+const FEATURES_OFF_LOCK = 4_071_113;
+
+type SettingsExecutor = Pick<typeof db, 'query' | 'update' | 'insert'>;
+
+/** Update the settings row, or insert one (with insertValues) when there is none yet. */
+async function writeSettingsRow(
+    executor: SettingsExecutor,
+    changes: Partial<GlobalSearchSettings>,
+    insertValues: Partial<GlobalSearchSettings>,
+): Promise<{ row: GlobalSearchSettings; created: boolean }> {
+    const existing = await executor.query.globalSearchSettings.findFirst({ columns: { id: true } });
+    if (existing) {
+        const [updated] = await executor
+            .update(globalSearchSettings)
+            .set({ ...changes, updatedAt: new Date() })
+            .where(eq(globalSearchSettings.id, existing.id))
+            .returning();
+        return { row: updated, created: false };
+    }
+    const [created] = await executor.insert(globalSearchSettings).values(insertValues).returning();
+    return { row: created, created: true };
+}
 
 function createDefaultSettings(): GlobalSearchSettings {
     return {

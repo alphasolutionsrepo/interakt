@@ -41,7 +41,7 @@ export async function handleUpdateFeatureSwitches(request: NextRequest) {
     if (!access.isAdmin) throw new AccessDeniedError('Only an Admin can turn features on or off.');
     const parsed = updateSchema.safeParse(await readJsonBody(request));
     if (!parsed.success) return apiResponse.validationError(parsed.error);
-    return apiResponse.success({ areas: await setFeatureSwitches(parsed.data.areas as Partial<Record<Area, boolean>>) });
+    return apiResponse.success({ areas: await setFeatureSwitches(parsed.data.areas as Partial<Record<Area, boolean>>, access.userId) });
   } catch (error) {
     return apiResponse.error(error, 500, { operation: 'updateFeatureSwitches' });
   }

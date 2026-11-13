@@ -17,7 +17,13 @@ vi.mock('@/features/global-settings', () => ({
     if (db.fails) throw new Error('database down');
     return db.value;
   }),
-  saveFeaturesOff: vi.fn(async (off: string[]) => { db.saved = off; db.value = off; if (db.failAfterSave) db.fails = true; }),
+  updateFeaturesOff: vi.fn(async (change: (current: string[]) => string[]) => {
+    const before = db.value;
+    const after = change([...before]);
+    db.saved = after; db.value = after;
+    if (db.failAfterSave) db.fails = true;
+    return { before, after };
+  }),
 }));
 
 import { clearFeatureSwitchCache, isAreaOn, setFeatureSwitches } from './feature-switches.service';
