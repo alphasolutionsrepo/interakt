@@ -25,6 +25,19 @@ describe('areaGateFor', () => {
     });
   });
 
+  it('names the root cause: Search and Chat, not Playground, when only they are switched off', () => {
+    const areaOn = offFor('search', 'chat', 'playground', 'ai-summaries');
+    expect(areaGateFor({ state: 'allowed' }, 'playground', areaOn, { switchedOff: ['search', 'chat'], pinnedOff: [] })).toEqual({
+      state: 'locked', reason: 'Search and Chat are turned off for this installation.',
+    });
+  });
+
+  it('says a pinned area is turned off by the deployment setting', () => {
+    const reason = areaGateFor({ state: 'allowed' }, 'playground', offFor('playground'), { switchedOff: [], pinnedOff: ['playground'] });
+    expect(reason).toMatchObject({ state: 'locked' });
+    expect((reason as { reason: string }).reason).toMatch(/^Playground: .*deployment/);
+  });
+
   it('keeps loading as loading', () => {
     expect(areaGateFor({ state: 'loading' }, 'playground', offFor('playground'))).toEqual({ state: 'loading' });
   });

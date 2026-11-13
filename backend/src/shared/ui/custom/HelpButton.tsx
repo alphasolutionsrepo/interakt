@@ -29,9 +29,9 @@ import { cn } from '@/lib/utils';
 import { useAccess } from '@/shared/access/useAccess';
 import { DocBody } from '@/shared/help/DocBody';
 import type { DocsSearchHit } from '@/shared/help/docs-search';
-import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
 import { resolveHelpForPath } from '@/shared/help/help-content';
 import { OPEN_HELP_EVENT, type HelpMode, type OpenHelpDetail } from '@/shared/help/help-events';
+import { helpDocError, loadHelpDoc } from '@/shared/help/load-help-doc';
 import { useDocsSearch } from '@/shared/help/useDocsSearch';
 
 /** The last mode used, remembered for the browser session. */

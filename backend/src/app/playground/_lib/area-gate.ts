@@ -9,20 +9,25 @@
 'use client';
 
 import type { Area } from '@/features/feature-switches/areas';
+import type { OffReasons } from '@/features/feature-switches/off-causes';
 import type { ActionGate } from '@/shared/access/ActionControls';
-import { areaOffText } from '@/shared/access/AreaOffNote';
+import { offAreasText } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 
-/** The gate, or locked with "<Area> is turned off for this installation." when one of `areas` is off. Still loading stays loading. */
-export function areaGateFor(gate: ActionGate, areas: Area | readonly Area[], areaOn: (area: Area) => boolean): ActionGate {
+/**
+ * The gate, or locked with the reason when one of `areas` is off ("Search and Chat are turned off
+ * for this installation.": the root cause, as the area note says it). Still loading stays loading.
+ */
+export function areaGateFor(gate: ActionGate, areas: Area | readonly Area[], areaOn: (area: Area) => boolean, reasons?: OffReasons): ActionGate {
   if (gate.state === 'loading') return gate;
   const off = ([] as Area[]).concat(areas).find((a) => !areaOn(a));
-  return off ? { state: 'locked', reason: areaOffText(off) } : gate;
+  return off ? { state: 'locked', reason: offAreasText([off], areaOn, reasons) } : gate;
 }
 
 /** `areaGateFor` with the signed-in user's areas. */
 export function useAreaGate(gate: ActionGate, areas: Area | readonly Area[]): ActionGate {
-  return areaGateFor(gate, areas, useAccess().areaOn);
+  const { areaOn, access } = useAccess();
+  return areaGateFor(gate, areas, areaOn, access);
 }
 
 /** The widget kinds the widget playground can render, and the area each needs. */

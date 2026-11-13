@@ -9,20 +9,7 @@
  * Card-based selection with smooth transitions to feature panels.
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { useQuery } from '@tanstack/react-query';
 import {
   Search,
   Sparkles,
@@ -34,13 +21,27 @@ import {
   Key,
   Check,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 
 import { SearchPanel } from './SearchPanel';
 import { SummaryPanel } from './SummaryPanel';
-import { AreaOffNote, areaOffText } from '@/shared/access/AreaOffNote';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
+import { AreaOffNote, offAreasText } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { handleApiResponse } from '@/shared/api/api-error';
 
@@ -112,7 +113,7 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
   const [trace, setTrace] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
-  const { areaOn, isLoading: accessLoading } = useAccess();
+  const { areaOn, access, isLoading: accessLoading } = useAccess();
   const summariesOn = areaOn('ai-summaries');
   // This tab is open with Search off (its page needs Managed indexes): the experience routes are
   // refused then, so nothing is asked of them
@@ -169,7 +170,7 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
   const handleFeatureSelect = (tab: PlaygroundTab) => {
     const feature = availableFeatures.find((f) => f.id === tab);
     if (feature?.disabled) {
-      toast.error(summariesOn ? 'AI Summary is not enabled for this experience' : areaOffText('ai-summaries'));
+      toast.error(summariesOn ? 'AI Summary is not enabled for this experience' : offAreasText(['ai-summaries'], areaOn, access));
       return;
     }
     setActiveTab(tab);

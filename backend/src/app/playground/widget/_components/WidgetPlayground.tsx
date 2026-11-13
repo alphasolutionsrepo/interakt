@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo, useState } from 'react';
 import {
   MessageCircle,
   Sparkles,
@@ -13,6 +12,15 @@ import {
   Lock,
   Loader2,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+
+import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
+import { initialWidgetKind, WIDGET_KIND_AREA } from '@/app/playground/_lib/area-gate';
+import {
+  useSearchExperiences,
+  useSearchExperience,
+} from '@/app/search-experiences/_lib/hooks';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -21,16 +29,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { AreaOffNote, areaOffText } from '@/shared/access/AreaOffNote';
+import { AreaOffNote, offAreasText } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
-import { initialWidgetKind, WIDGET_KIND_AREA } from '@/app/playground/_lib/area-gate';
-import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
-import {
-  useSearchExperiences,
-  useSearchExperience,
-} from '@/app/search-experiences/_lib/hooks';
 
 // ============================================================================
 // CONFIG
@@ -336,7 +337,7 @@ const DEFAULT_LAUNCHER: Record<WidgetKind, Launcher> = {
 // ============================================================================
 
 export function WidgetPlayground() {
-  const { areaOn } = useAccess();
+  const { areaOn, access } = useAccess();
   // Opens on a kind whose area is on; the other stays visible, disabled with the reason
   const [kind, setKind] = useState<WidgetKind>(() => initialWidgetKind(areaOn));
   const [selectedId, setSelectedId] = useState<string>('');
@@ -445,8 +446,8 @@ export function WidgetPlayground() {
           </label>
           <ToggleGroup
             options={[
-              { value: 'chat', label: 'Chat', icon: MessageCircle, offReason: areaOn(WIDGET_KIND_AREA.chat) ? undefined : areaOffText(WIDGET_KIND_AREA.chat) },
-              { value: 'search', label: 'Search', icon: SearchIcon, offReason: areaOn(WIDGET_KIND_AREA.search) ? undefined : areaOffText(WIDGET_KIND_AREA.search) },
+              { value: 'chat', label: 'Chat', icon: MessageCircle, offReason: areaOn(WIDGET_KIND_AREA.chat) ? undefined : offAreasText([WIDGET_KIND_AREA.chat], areaOn, access) },
+              { value: 'search', label: 'Search', icon: SearchIcon, offReason: areaOn(WIDGET_KIND_AREA.search) ? undefined : offAreasText([WIDGET_KIND_AREA.search], areaOn, access) },
             ]}
             value={kind}
             onChange={(v) => handleKindChange(v as WidgetKind)}
