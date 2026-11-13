@@ -12,15 +12,6 @@
 
 import 'server-only';
 
-import type { DataSourceField, DataSourceSchema } from '@/db/schema/data-sources.schema';
-import * as dataSourceService from '@/features/data-source/data-source.service';
-import * as searchService from '@/features/search/search.service';
-import type { FacetResult, FacetType, SearchHit, SearchRequest, SearchResponse, SortClause } from '@/features/search/search.types';
-import { SEARCH_DEFAULTS, SearchError } from '@/features/search/search.types';
-import * as searchIndexService from '@/features/search-index/search-index.service';
-import { createLogger } from '@/shared/logger/logger';
-import { failureLevel } from '@/shared/errors/to-app-error';
-import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
 import { externalFacetableFields, searchExternalSourceForExperience } from './external-source-search';
 import {
   applyQueryInterpretation,
@@ -34,6 +25,16 @@ import type {
   SearchExperienceIndex,
   SearchExperienceWithIndexes,
 } from './search-experience.types';
+
+import type { DataSourceField, DataSourceSchema } from '@/db/schema/data-sources.schema';
+import * as dataSourceService from '@/features/data-source/data-source.service';
+import * as searchService from '@/features/search/search.service';
+import type { FacetResult, FacetType, SearchHit, SearchRequest, SearchResponse, SortClause } from '@/features/search/search.types';
+import { SEARCH_DEFAULTS, SearchError } from '@/features/search/search.types';
+import * as searchIndexService from '@/features/search-index/search-index.service';
+import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
+import { failureLevel } from '@/shared/errors/to-app-error';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('experience-search');
 
@@ -329,7 +330,12 @@ async function rewriteForExternal(
   const aiConfig = experience.aiConfig;
   if (!aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled) return undefined;
 
-  return withSpan({ name: 'search_experience.query_rewrite', experienceId: experience.id }, async (span) => {
+  // A failed or timed-out rewrite falls back to the visitor's words, but the step itself ends in error
+  const errorFor = (r: QueryRewrite) =>
+    r.outcome === 'failed' ? 'Query rewrite failed; searched with the visitor\'s words'
+      : r.outcome === 'timed_out' ? 'Query rewrite reached its time limit; searched with the visitor\'s words'
+        : undefined;
+  return withSpan({ name: 'search_experience.query_rewrite', experienceId: experience.id, errorFor }, async (span) => {
     const rewrite = await rewriteQueryForExternalSearch({ query, aiConfig, experienceId: experience.id });
     span.setAttribute(ATTR.QUERY_REWRITE_OUTCOME, rewrite.outcome);
     span.setAttribute(ATTR.QUERY_REWRITE_DURATION_MS, rewrite.durationMs);

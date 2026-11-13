@@ -22,15 +22,18 @@ import { ATTR } from '@/features/telemetry';
 import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 import { type LogLine } from '@/shared/test/log-recorder';
 
-type Step = { name: string; attributes: Record<string, unknown> };
+type Step = { name: string; attributes: Record<string, unknown>; error?: string };
 const telemetry = vi.hoisted(() => ({ steps: [] as Step[], content: false }));
 vi.mock('@/features/telemetry', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/telemetry')>()),
   shouldLogContent: () => telemetry.content,
-  withSpan: async (opts: { name: string; attributes?: Record<string, unknown> }, fn: (span: unknown) => Promise<unknown>) => {
+  withSpan: async (opts: { name: string; attributes?: Record<string, unknown>; errorFor?: (r: unknown) => string | undefined }, fn: (span: unknown) => Promise<unknown>) => {
     const step: Step = { name: opts.name, attributes: { ...opts.attributes } };
     telemetry.steps.push(step);
-    return fn({ setAttribute: (key: string, value: unknown) => { step.attributes[key] = value; } });
+    const result = await fn({ setAttribute: (key: string, value: unknown) => { step.attributes[key] = value; } });
+    // What the real withSpan would set as the step's error status
+    step.error = opts.errorFor?.(result);
+    return result;
   },
 }));
 
@@ -150,7 +153,16 @@ describe('an experience with a managed index and an external source', () => {
     expect(Date.now() - startedAt).toBeLessThan(1500);
     expect(externalRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
     expect(managedRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
-    expect(telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite')?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe('timed_out');
+    const step = telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite');
+    expect(step?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe('timed_out');
+    // The step ends in error even though the search carried on
+    expect(step?.error).toMatch(/time limit/);
+  });
+
+  it('ends the step in error when the rewrite fails, and OK when it works', async () => {
+    vi.mocked(aiService.chat).mockRejectedValue(new Error('model down'));
+    await search(experience({}, 'external'));
+    expect(telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite')?.error).toMatch(/failed/);
   });
 });
 
@@ -164,6 +176,7 @@ describe('the query rewrite trace step', () => {
       [ATTR.QUERY_REWRITE_OUTCOME]: 'rewritten',
       [ATTR.QUERY_REWRITE_DURATION_MS]: expect.any(Number),
     });
+    expect(step?.error).toBeUndefined();
   });
 
   it('records the visitor’s words and the search terms at full', async () => {
