@@ -63,6 +63,7 @@ import {
  SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
 import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
 import { ExperienceSourcesCard } from './ExperienceSources';
+import { SummaryAreaGuard, useSummaryAreaOff } from './SummaryAreaGuard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -419,6 +420,303 @@ function DisplayConfigTab({ experience, displayConfig, onDisplayConfigChange }: 
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ============================================================================
+// AI TAB
+// ============================================================================
+
+type AiFormData = { aiConfig: NonNullable<UpdateSearchExperienceDTO['aiConfig']> };
+
+interface AiTabProps {
+  formData: AiFormData;
+  experience: { indexes?: unknown[] } | null | undefined;
+  updateAIConfig<K extends keyof AiFormData['aiConfig']>(field: K, value: AiFormData['aiConfig'][K]): void;
+  updateSummaryConfig<K extends keyof AiFormData['aiConfig']['summary']>(
+    field: K,
+    value: AiFormData['aiConfig']['summary'][K],
+  ): void;
+  updateQueryUnderstandingConfig<K extends keyof NonNullable<AiFormData['aiConfig']['queryUnderstanding']>>(
+    field: K,
+    value: NonNullable<AiFormData['aiConfig']['queryUnderstanding']>[K],
+  ): void;
+  onProviderModelChange: (v: { providerId: string | null; modelId: number | null }) => void;
+  summaryInstructionsOpen: boolean;
+  setSummaryInstructionsOpen: (open: boolean) => void;
+  onOpenSummaryGenerator: () => void;
+}
+
+/** The AI tab's body, inside the guard that disables it (values kept) while AI summaries is off. */
+export function AiTab({
+  formData,
+  experience,
+  updateAIConfig,
+  updateSummaryConfig,
+  updateQueryUnderstandingConfig,
+  onProviderModelChange,
+  summaryInstructionsOpen,
+  setSummaryInstructionsOpen,
+  onOpenSummaryGenerator,
+}: AiTabProps) {
+  // With AI summaries off the toggle is disabled with the rest, so the instructions stay open to be read
+  const summariesOff = useSummaryAreaOff();
+  const instructionsOpen = summaryInstructionsOpen || summariesOff;
+  return (
+          <SummaryAreaGuard>
+          <Card className="border-border/60 shadow-sm rounded-2xl">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-violet-500/15 shadow-sm">
+                    <Brain className="size-5 text-violet-500" />
+                  </div>
+                  <div>
+                    <Label className="text-base font-medium">Enable AI Features</Label>
+                    <p className="text-sm text-muted-foreground">AI summaries</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={formData.aiConfig.enabled}
+                  onCheckedChange={(checked) => updateAIConfig('enabled', checked)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {formData.aiConfig.enabled && (
+            <>
+              <Card className="border-border/60 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 font-semibold">
+                    <Brain className="h-4 w-4 text-violet-500" />
+                    AI Provider &amp; Model
+                  </CardTitle>
+                  <CardDescription>
+                    The model that writes summaries. Select a specific provider and model, or leave as system default.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ProviderModelSelect
+                    providerId={formData.aiConfig.providerId}
+                    modelId={formData.aiConfig.modelId}
+                    onChange={onProviderModelChange}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/60 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2 font-semibold">
+                      <Brain className="h-4 w-4 text-violet-500" />
+                      AI Summary
+                    </CardTitle>
+                    <Switch
+                      checked={formData.aiConfig.summary.enabled}
+                      onCheckedChange={(checked) => updateSummaryConfig('enabled', checked)}
+                    />
+                  </div>
+                </CardHeader>
+                {formData.aiConfig.summary.enabled && (
+                  <CardContent className="space-y-6">
+                    {/* Parameters Section */}
+                    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/15">
+                          <Layers className="size-4 text-blue-500" />
+                        </div>
+                        <div>
+                          <Label className="text-sm font-semibold">Summary Parameters</Label>
+                          <p className="text-xs text-muted-foreground">Control summary generation limits</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Search Results</Label>
+                            <span className="text-xs text-muted-foreground/60">context</span>
+                          </div>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={50}
+                            value={formData.aiConfig.summary.maxResultsForContext}
+                            onChange={(e) => updateSummaryConfig('maxResultsForContext', parseInt(e.target.value) || 10)}
+                            className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
+                          />
+                        </div>
+                        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Max Tokens</Label>
+                            <span className="text-xs text-muted-foreground/60">response</span>
+                          </div>
+                          <Input
+                            type="number"
+                            min={50}
+                            max={4000}
+                            value={formData.aiConfig.summary.maxTokens || 500}
+                            onChange={(e) => updateSummaryConfig('maxTokens', parseInt(e.target.value) || 500)}
+                            className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
+                          />
+                        </div>
+                        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Page Text</Label>
+                            <span className="text-xs text-muted-foreground/60">chars / result</span>
+                          </div>
+                          <Input
+                            type="number"
+                            min={200}
+                            max={8000}
+                            step={100}
+                            placeholder="500"
+                            value={formData.aiConfig.summary.contextCharsPerResult ?? ''}
+                            onChange={(e) => updateSummaryConfig('contextCharsPerResult', e.target.value ? parseInt(e.target.value) : undefined)}
+                            className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Page Text: how much of each result&apos;s longer text the summary reads, picked by relevance to the
+                        query (the opening plus matching passages). Empty reads the first 500 characters. More text gives
+                        richer answers but takes longer to read, especially on local models.
+                      </p>
+                    </div>
+
+                    {/* Custom Instructions Section - Collapsible */}
+                    <Collapsible open={instructionsOpen} onOpenChange={setSummaryInstructionsOpen}>
+                      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <CollapsibleTrigger asChild>
+                            <button type="button" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
+                              <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/15">
+                                <Brain className="size-4 text-violet-500" />
+                              </div>
+                              <div className="text-left">
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-sm font-semibold cursor-pointer">Custom Instructions</Label>
+                                  {formData.aiConfig.summary.customInstructions && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">configured</Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">Optional summary behavior customization</p>
+                              </div>
+                              {instructionsOpen ? (
+                                <ChevronUp className="size-4 text-muted-foreground ml-2" />
+                              ) : (
+                                <ChevronDown className="size-4 text-muted-foreground ml-2" />
+                              )}
+                            </button>
+                          </CollapsibleTrigger>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onOpenSummaryGenerator()}
+                            disabled={!experience?.indexes?.length}
+                            className="gap-1.5 text-xs"
+                          >
+                            <Sparkles className="size-3.5" />
+                            Generate with AI
+                          </Button>
+                        </div>
+                        <CollapsibleContent className="space-y-3">
+                          <Textarea
+                            value={formData.aiConfig.summary.customInstructions || ''}
+                            onChange={(e) => updateSummaryConfig('customInstructions', e.target.value || undefined)}
+                            placeholder="Add custom instructions for summary generation (e.g., tone, focus areas)..."
+                            rows={4}
+                            className="rounded-lg border-border/50 bg-background focus:bg-background"
+                          />
+                        </CollapsibleContent>
+                      </div>
+                    </Collapsible>
+                  </CardContent>
+                )}
+              </Card>
+
+              <Card className="border-border/60 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2 font-semibold">
+                      <Wand2 className="h-4 w-4 text-amber-500" />
+                      Query Understanding
+                    </CardTitle>
+                    <Switch
+                      checked={formData.aiConfig.queryUnderstanding?.enabled ?? false}
+                      onCheckedChange={(checked) => updateQueryUnderstandingConfig('enabled', checked)}
+                    />
+                  </div>
+                  <CardDescription>
+                    Turn phrases like &quot;under $200&quot; or a product code into real filters
+                    before searching. Adds an LLM call to every search, so it is off by default.
+                  </CardDescription>
+                </CardHeader>
+                {formData.aiConfig.queryUnderstanding?.enabled && (
+                  <CardContent className="space-y-6">
+                    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/15">
+                          <Layers className="size-4 text-amber-500" />
+                        </div>
+                        <div>
+                          <Label className="text-sm font-semibold">Interpretation Threshold</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Shorter queries skip interpretation entirely
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2 max-w-[16rem]">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Minimum Words
+                          </Label>
+                          <span className="text-xs text-muted-foreground/60">per query</span>
+                        </div>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={formData.aiConfig.queryUnderstanding?.minWords ?? 3}
+                          onChange={(e) =>
+                            updateQueryUnderstandingConfig('minWords', parseInt(e.target.value) || 3)
+                          }
+                          className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        A one- or two-word lookup has no filters to find and should not pay for an
+                        LLM round trip.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Custom Instructions (Optional)</Label>
+                      <Textarea
+                        value={formData.aiConfig.queryUnderstanding?.customInstructions || ''}
+                        onChange={(e) =>
+                          updateQueryUnderstandingConfig('customInstructions', e.target.value || undefined)
+                        }
+                        placeholder={'e.g. Product codes, SKUs and item numbers map to the "sku" field using the eq operator.'}
+                        rows={4}
+                        className="rounded-lg border-border/50 bg-background focus:bg-background"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Added to the core interpreter instructions, which are written around product
+                        attributes. Use this to describe fields it would not otherwise recognise,
+                        such as identifiers or domain-specific codes.
+                      </p>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+
+            </>
+          )}
+          </SummaryAreaGuard>
   );
 }
 
@@ -1345,262 +1643,21 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
 
         {/* AI Tab */}
         <TabsContent value="ai" className="space-y-6">
-          <Card className="border-border/60 shadow-sm rounded-2xl">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-violet-500/15 shadow-sm">
-                    <Brain className="size-5 text-violet-500" />
-                  </div>
-                  <div>
-                    <Label className="text-base font-medium">Enable AI Features</Label>
-                    <p className="text-sm text-muted-foreground">AI summaries</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={formData.aiConfig.enabled}
-                  onCheckedChange={(checked) => updateAIConfig('enabled', checked)}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {formData.aiConfig.enabled && (
-            <>
-              <Card className="border-border/60 shadow-sm rounded-2xl">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2 font-semibold">
-                    <Brain className="h-4 w-4 text-violet-500" />
-                    AI Provider &amp; Model
-                  </CardTitle>
-                  <CardDescription>
-                    The model that writes summaries. Select a specific provider and model, or leave as system default.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ProviderModelSelect
-                    providerId={formData.aiConfig.providerId}
-                    modelId={formData.aiConfig.modelId}
-                    onChange={(v) =>
-                      setFormData((prev) =>
-                        prev ? { ...prev, aiConfig: { ...prev.aiConfig, providerId: v.providerId, modelId: v.modelId } } : null
-                      )
-                    }
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/60 shadow-sm rounded-2xl">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2 font-semibold">
-                      <Brain className="h-4 w-4 text-violet-500" />
-                      AI Summary
-                    </CardTitle>
-                    <Switch
-                      checked={formData.aiConfig.summary.enabled}
-                      onCheckedChange={(checked) => updateSummaryConfig('enabled', checked)}
-                    />
-                  </div>
-                </CardHeader>
-                {formData.aiConfig.summary.enabled && (
-                  <CardContent className="space-y-6">
-                    {/* Parameters Section */}
-                    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/15">
-                          <Layers className="size-4 text-blue-500" />
-                        </div>
-                        <div>
-                          <Label className="text-sm font-semibold">Summary Parameters</Label>
-                          <p className="text-xs text-muted-foreground">Control summary generation limits</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Search Results</Label>
-                            <span className="text-xs text-muted-foreground/60">context</span>
-                          </div>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={50}
-                            value={formData.aiConfig.summary.maxResultsForContext}
-                            onChange={(e) => updateSummaryConfig('maxResultsForContext', parseInt(e.target.value) || 10)}
-                            className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
-                          />
-                        </div>
-                        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Max Tokens</Label>
-                            <span className="text-xs text-muted-foreground/60">response</span>
-                          </div>
-                          <Input
-                            type="number"
-                            min={50}
-                            max={4000}
-                            value={formData.aiConfig.summary.maxTokens || 500}
-                            onChange={(e) => updateSummaryConfig('maxTokens', parseInt(e.target.value) || 500)}
-                            className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
-                          />
-                        </div>
-                        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Page Text</Label>
-                            <span className="text-xs text-muted-foreground/60">chars / result</span>
-                          </div>
-                          <Input
-                            type="number"
-                            min={200}
-                            max={8000}
-                            step={100}
-                            placeholder="500"
-                            value={formData.aiConfig.summary.contextCharsPerResult ?? ''}
-                            onChange={(e) => updateSummaryConfig('contextCharsPerResult', e.target.value ? parseInt(e.target.value) : undefined)}
-                            className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
-                          />
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Page Text: how much of each result&apos;s longer text the summary reads, picked by relevance to the
-                        query (the opening plus matching passages). Empty reads the first 500 characters. More text gives
-                        richer answers but takes longer to read, especially on local models.
-                      </p>
-                    </div>
-
-                    {/* Custom Instructions Section - Collapsible */}
-                    <Collapsible open={summaryInstructionsOpen} onOpenChange={setSummaryInstructionsOpen}>
-                      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <CollapsibleTrigger asChild>
-                            <button type="button" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
-                              <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/15">
-                                <Brain className="size-4 text-violet-500" />
-                              </div>
-                              <div className="text-left">
-                                <div className="flex items-center gap-2">
-                                  <Label className="text-sm font-semibold cursor-pointer">Custom Instructions</Label>
-                                  {formData.aiConfig.summary.customInstructions && (
-                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">configured</Badge>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground">Optional summary behavior customization</p>
-                              </div>
-                              {summaryInstructionsOpen ? (
-                                <ChevronUp className="size-4 text-muted-foreground ml-2" />
-                              ) : (
-                                <ChevronDown className="size-4 text-muted-foreground ml-2" />
-                              )}
-                            </button>
-                          </CollapsibleTrigger>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowSummaryGenerator(true)}
-                            disabled={!experience?.indexes?.length}
-                            className="gap-1.5 text-xs"
-                          >
-                            <Sparkles className="size-3.5" />
-                            Generate with AI
-                          </Button>
-                        </div>
-                        <CollapsibleContent className="space-y-3">
-                          <Textarea
-                            value={formData.aiConfig.summary.customInstructions || ''}
-                            onChange={(e) => updateSummaryConfig('customInstructions', e.target.value || undefined)}
-                            placeholder="Add custom instructions for summary generation (e.g., tone, focus areas)..."
-                            rows={4}
-                            className="rounded-lg border-border/50 bg-background focus:bg-background"
-                          />
-                        </CollapsibleContent>
-                      </div>
-                    </Collapsible>
-                  </CardContent>
-                )}
-              </Card>
-
-              <Card className="border-border/60 shadow-sm rounded-2xl">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2 font-semibold">
-                      <Wand2 className="h-4 w-4 text-amber-500" />
-                      Query Understanding
-                    </CardTitle>
-                    <Switch
-                      checked={formData.aiConfig.queryUnderstanding?.enabled ?? false}
-                      onCheckedChange={(checked) => updateQueryUnderstandingConfig('enabled', checked)}
-                    />
-                  </div>
-                  <CardDescription>
-                    Turn phrases like &quot;under $200&quot; or a product code into real filters
-                    before searching. Adds an LLM call to every search, so it is off by default.
-                  </CardDescription>
-                </CardHeader>
-                {formData.aiConfig.queryUnderstanding?.enabled && (
-                  <CardContent className="space-y-6">
-                    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/15">
-                          <Layers className="size-4 text-amber-500" />
-                        </div>
-                        <div>
-                          <Label className="text-sm font-semibold">Interpretation Threshold</Label>
-                          <p className="text-xs text-muted-foreground">
-                            Shorter queries skip interpretation entirely
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2 max-w-[16rem]">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Minimum Words
-                          </Label>
-                          <span className="text-xs text-muted-foreground/60">per query</span>
-                        </div>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={20}
-                          value={formData.aiConfig.queryUnderstanding?.minWords ?? 3}
-                          onChange={(e) =>
-                            updateQueryUnderstandingConfig('minWords', parseInt(e.target.value) || 3)
-                          }
-                          className="h-9 rounded-md border-0 bg-muted/50 font-mono text-lg font-semibold"
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        A one- or two-word lookup has no filters to find and should not pay for an
-                        LLM round trip.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm font-semibold">Custom Instructions (Optional)</Label>
-                      <Textarea
-                        value={formData.aiConfig.queryUnderstanding?.customInstructions || ''}
-                        onChange={(e) =>
-                          updateQueryUnderstandingConfig('customInstructions', e.target.value || undefined)
-                        }
-                        placeholder={'e.g. Product codes, SKUs and item numbers map to the "sku" field using the eq operator.'}
-                        rows={4}
-                        className="rounded-lg border-border/50 bg-background focus:bg-background"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Added to the core interpreter instructions, which are written around product
-                        attributes. Use this to describe fields it would not otherwise recognise,
-                        such as identifiers or domain-specific codes.
-                      </p>
-                    </div>
-                  </CardContent>
-                )}
-              </Card>
-
-            </>
-          )}
+          <AiTab
+            formData={formData}
+            experience={experience}
+            updateAIConfig={updateAIConfig}
+            updateSummaryConfig={updateSummaryConfig}
+            updateQueryUnderstandingConfig={updateQueryUnderstandingConfig}
+            onProviderModelChange={(v) =>
+              setFormData((prev) =>
+                prev ? { ...prev, aiConfig: { ...prev.aiConfig, providerId: v.providerId, modelId: v.modelId } } : null
+              )
+            }
+            summaryInstructionsOpen={summaryInstructionsOpen}
+            setSummaryInstructionsOpen={setSummaryInstructionsOpen}
+            onOpenSummaryGenerator={() => setShowSummaryGenerator(true)}
+          />
         </TabsContent>
 
         {/* Display Tab */}

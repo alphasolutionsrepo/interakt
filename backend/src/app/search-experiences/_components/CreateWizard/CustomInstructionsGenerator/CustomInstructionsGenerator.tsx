@@ -17,6 +17,7 @@ import { useState } from 'react';
 
 import { searchExperiencesApi } from '../../../_lib/api-client';
 
+import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +30,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ActionButton } from '@/shared/access/ActionControls';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 import { reportActionError } from '@/shared/activity/report';
 import { errorText } from '@/shared/api/api-error';
 
@@ -77,6 +78,8 @@ export function CustomInstructionsGenerator({
   const [additionalContext, setAdditionalContext] = useState('');
   const [generatedInstructions, setGeneratedInstructions] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(false);
+  // Generating needs the permission and AI summaries on (locked with the reason, not hidden)
+  const generateGate = useAreaGate(useActionGate('search-experiences.generate-instructions'), 'ai-summaries');
 
   // Reset state when dialog opens
   React.useEffect(() => {
@@ -259,7 +262,7 @@ export function CustomInstructionsGenerator({
                 Cancel
               </Button>
               <ActionButton
-                action="search-experiences.generate-instructions"
+                gate={generateGate}
                 icon={generateMutation.isPending ? Loader2 : Sparkles}
                 iconClassName={generateMutation.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
                 onClick={handleGenerate}
@@ -272,7 +275,7 @@ export function CustomInstructionsGenerator({
           ) : (
             <>
               <ActionButton
-                action="search-experiences.generate-instructions"
+                gate={generateGate}
                 icon={RefreshCw}
                 iconClassName="h-4 w-4"
                 variant="outline"

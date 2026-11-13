@@ -19,6 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { ActionButton, useAnyActionGate } from '@/shared/access/ActionControls';
+import { AreaOffNote } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
@@ -337,7 +338,8 @@ function ExperiencesContent() {
   const [chosenType, setTypeFilter] = useState<TypeFilter>(initialType);
   // Only the kinds this user can view: a link to ?type=ai for someone who can't view chat
   // experiences shows what they can see instead
-  const types = viewableTypes(useAccess().can);
+  const { can, areaOn, isLoading: accessLoading } = useAccess();
+  const types = viewableTypes(can, areaOn);
   const createGate = useAnyActionGate(['search-experiences.create', 'ai-experiences.create'], 'create experiences');
   const typeFilter: TypeFilter = types.includes(chosenType) ? chosenType : (types[0] ?? 'all');
   const [deleteTarget, setDeleteTarget] = useState<UnifiedExperience | null>(null);
@@ -401,14 +403,18 @@ function ExperiencesContent() {
         }
       />
 
+      {/* A kind whose feature area is off: one note, and its card and tab are gone */}
+      {!accessLoading && !areaOn('chat') && <AreaOffNote area="chat" />}
+      {!accessLoading && !areaOn('search') && <AreaOffNote area="search" />}
+
       {/* Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard label="Total" value={metrics.total} icon={<Activity className="size-5 text-blue-500" />} iconBg="bg-blue-500/10" />
         <MetricCard label="Active" value={metrics.active} icon={<CircleCheck className="size-5 text-emerald-500" />} iconBg="bg-emerald-500/10"
           trend={metrics.total > 0 ? `${Math.round((metrics.active / metrics.total) * 100)}%` : undefined}
           trendColor="bg-emerald-500/10 text-emerald-600" />
-        <MetricCard label="AI Experiences" value={metrics.aiCount} icon={<Bot className="size-5 text-amber-600" />} iconBg="bg-amber-50 dark:bg-amber-500/10" />
-        <MetricCard label="Search Experiences" value={metrics.searchCount} icon={<Search className="size-5 text-teal-600" />} iconBg="bg-teal-500/10" />
+        {areaOn('chat') && <MetricCard label="AI Experiences" value={metrics.aiCount} icon={<Bot className="size-5 text-amber-600" />} iconBg="bg-amber-50 dark:bg-amber-500/10" />}
+        {areaOn('search') && <MetricCard label="Search Experiences" value={metrics.searchCount} icon={<Search className="size-5 text-teal-600" />} iconBg="bg-teal-500/10" />}
       </div>
 
       {/* Type Tabs + Filters */}

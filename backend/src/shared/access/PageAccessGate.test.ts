@@ -7,12 +7,94 @@
 
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LockedPage } from './PageAccessGate';
+import { LockedPage, PageAccessGate } from './PageAccessGate';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
+import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
+
+const nav = vi.hoisted(() => ({ path: '/' }));
+vi.mock('next/navigation', () => ({ usePathname: () => nav.path }));
 vi.mock('next-auth/react', () => ({ signOut: () => {} }));
+vi.mock('./useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
+
+const gate = (path: string) => {
+  nav.path = path;
+  return renderToStaticMarkup(createElement(PageAccessGate, null, 'PAGE'));
+};
+
+describe('PageAccessGate', () => {
+  beforeEach(() => { uiAccess.hold(); nav.path = '/'; });
+
+  it('shows the page to a role that can open it', () => {
+    uiAccess.hold('tools:view');
+    expect(gate('/tools')).toBe('PAGE');
+  });
+
+  it('says why, with no link, to a role without the permission', () => {
+    expect(gate('/tools')).toContain('You don&#x27;t have access to this page');
+  });
+
+  it('names the area that is off, ahead of the permission, and offers an Admin the way to turn it on', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('chat');
+    const html = gate('/tools');
+    expect(html).toContain('Chat is turned off for this installation.');
+    expect(html).toMatch(/<a[^>]*href="\/settings\/features"[^>]*>Turn it on in Settings → Features<\/a>/);
+    expect(html).not.toContain('PAGE');
+  });
+
+  it('says it is off, without the link, to a non-Admin', () => {
+    uiAccess.hold('tools:view');
+    uiAccess.areasOff('chat');
+    const html = gate('/tools');
+    expect(html).toContain('Chat is turned off for this installation.');
+    expect(html).not.toContain('/settings/features');
+  });
+
+  it('names every area that keeps the page closed, and only those', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('managed-indexes', 'search', 'playground', 'analytics');
+    expect(gate('/playground/search')).toContain('Playground, Managed indexes and Search are turned off for this installation.');
+    uiAccess.areasOff('chat');
+    expect(gate('/experiences')).toContain('Search and Chat are turned off for this installation.');
+  });
+
+  it('names Search and Chat, not Playground, when Playground is on but what it needs is off', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOffBecause({ switchedOff: ['search', 'chat'], off: ['playground'] });
+    const html = gate('/playground/widget');
+    expect(html).toContain('Search and Chat are turned off for this installation.');
+    expect(html).not.toContain('Playground');
+    expect(html).toContain('href="/settings/features"');
+  });
+
+  it('says the deployment setting turned a pinned area off, with no button to turn it on', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOffBecause({ pinnedOff: ['chat'] });
+    const html = gate('/tools');
+    expect(html).toContain('Chat: Turned off for this installation by its deployment settings.');
+    expect(html).not.toContain('/settings/features');
+    expect(html).not.toContain('Turn it on');
+  });
+
+  it('keeps the button only for what an Admin can turn on when some areas are pinned and some are not', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOffBecause({ pinnedOff: ['chat'], switchedOff: ['search'] });
+    const html = gate('/experiences');
+    expect(html).toContain('Search is turned off for this installation.');
+    expect(html).toContain('Chat: Turned off for this installation by its deployment settings.');
+    expect(html).toContain('href="/settings/features"');
+  });
+
+  it('keeps core pages open when areas are off, and shows nothing while loading', () => {
+    uiAccess.hold('data-sources:view');
+    uiAccess.areasOff('chat', 'search');
+    expect(gate('/data-sources')).toBe('PAGE');
+    uiAccessLoading();
+    expect(gate('/tools')).toBe('');
+  });
+});
 
 describe('LockedPage', () => {
   it('shows nothing while access loads', () => {

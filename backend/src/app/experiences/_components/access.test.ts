@@ -29,13 +29,14 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/app/ai-experiences/_components/CreateWizard/CreateWizard', () => ({ CreateWizard: () => 'AI WIZARD' }));
 vi.mock('@/app/search-experiences/_components/CreateWizard/CreateWizard', () => ({ CreateWizard: () => 'SEARCH WIZARD' }));
 
+const allOn = () => true;
 const holding = (...held: Permission[]) => (p: Permission) => held.includes(p);
 
 describe('the experiences hub', () => {
   it('requests only the lists a user may view, on every tab (the counts cover both kinds)', () => {
-    expect(listsToLoad(holding('search-experiences:view'))).toEqual({ skipAI: true, skipSearch: false });
-    expect(listsToLoad(holding('ai-experiences:view', 'search-experiences:view'))).toEqual({ skipAI: false, skipSearch: false });
-    expect(listsToLoad(holding())).toEqual({ skipAI: true, skipSearch: true });
+    expect(listsToLoad(holding('search-experiences:view'), allOn)).toEqual({ skipAI: true, skipSearch: false });
+    expect(listsToLoad(holding('ai-experiences:view', 'search-experiences:view'), allOn)).toEqual({ skipAI: false, skipSearch: false });
+    expect(listsToLoad(holding(), allOn)).toEqual({ skipAI: true, skipSearch: true });
   });
 
   it("asks for the tab's page for the kind it shows, and one row with the same filters of the other for its count", () => {
@@ -46,9 +47,9 @@ describe('the experiences hub', () => {
   });
 
   it('offers a tab per kind the user can view, and All only with both', () => {
-    expect(viewableTypes(holding('ai-experiences:view', 'search-experiences:view'))).toEqual(['all', 'ai', 'search']);
-    expect(viewableTypes(holding('search-experiences:view'))).toEqual(['search']);
-    expect(viewableTypes(holding('ai-experiences:view'))).toEqual(['ai']);
+    expect(viewableTypes(holding('ai-experiences:view', 'search-experiences:view'), allOn)).toEqual(['all', 'ai', 'search']);
+    expect(viewableTypes(holding('search-experiences:view'), allOn)).toEqual(['search']);
+    expect(viewableTypes(holding('ai-experiences:view'), allOn)).toEqual(['ai']);
   });
 });
 

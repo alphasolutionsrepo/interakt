@@ -121,7 +121,7 @@ Clearing caches doesn't affect search results, indexed documents, or user data. 
 
 ## Feature switches
 
-An installation can turn off the areas of Interakt it doesn't use. An area that is off is gone for everyone, Admins included: its admin and public API routes answer `404` with "This feature is turned off for this installation.", so a widget treats it as absent, and its background work doesn't run. Its data is kept: turn it back on and everything is as it was. Analytics data stays while Analytics is off (the retention cleanup pauses), and with Chat off an Admin can still view and delete a user's stored memories.
+An installation can turn off the areas of Interakt it doesn't use. An area that is off is gone for everyone, Admins included: its admin and public API routes answer `404` with "This feature is turned off for this installation.", so a widget treats it as absent, and its background work doesn't run. Its data is kept: turn it back on and everything is as it was. Analytics is the exception that keeps its schedule: while it is off nothing new is recorded, the retention cleanup still deletes data older than its retention period, and an Admin can still clear analytics data and traces in Analytics → Settings. With Chat off an Admin can still view and delete a user's stored memories.
 
 | Area | What it covers |
 | --- | --- |

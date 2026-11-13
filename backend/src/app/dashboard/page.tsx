@@ -27,6 +27,7 @@ import { AnalyticsProvider } from '@/app/analytics/_lib/AnalyticsContext';
 import { AskPanelProvider } from '@/app/analytics/_lib/AskPanelContext';
 import type { Period } from '@/app/analytics/_lib/period';
 import { HOME_SECTION } from '@/app/analytics/_lib/sections';
+import { useAccess } from '@/shared/access/useAccess';
 import { Button } from '@/shared/ui/components/button';
 
 /** The home page asks about the same 7 days the strip shows */
@@ -39,11 +40,13 @@ function greeting(hour: number): string {
 }
 
 export default function HomePage() {
+  const { areaOn } = useAccess();
   return (
     <AnalyticsProvider fixedPeriod={LAST_7_DAYS}>
       <AskPanelProvider>
         <Home />
-        <AskPanel section={HOME_SECTION} overlay />
+        {/* The drawer answers from analytics: not mounted with Analytics off */}
+        {areaOn('analytics') && <AskPanel section={HOME_SECTION} overlay />}
       </AskPanelProvider>
     </AnalyticsProvider>
   );

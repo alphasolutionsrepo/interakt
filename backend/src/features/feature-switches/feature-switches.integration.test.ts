@@ -18,36 +18,38 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FEATURES_OFF_ENV, PINNED_OFF_MESSAGE, TURNED_OFF_CODE, TURNED_OFF_MESSAGE } from './areas';
 import { clearFeatureSwitchCache, isAreaOn } from './feature-switches.service';
 
+import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
+import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
+import * as analyticsDataRoute from '@/app/api/analytics/data/route';
+import * as analyticsStatusRoute from '@/app/api/analytics/status/route';
 import * as homeRoute from '@/app/api/dashboard/home/route';
 import * as homeTipsRoute from '@/app/api/dashboard/home/tips/route';
-import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
-import * as analyticsStatusRoute from '@/app/api/analytics/status/route';
-import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
+import * as meAccessRoute from '@/app/api/me/access/route';
+import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import * as indexFieldsRoute from '@/app/api/search-indexes/[id]/fields/route';
 import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
+import * as cacheStatsRoute from '@/app/api/search-indexes/cache/stats/route';
 import * as indexesRoute from '@/app/api/search-indexes/route';
-import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import * as settingsRoute from '@/app/api/settings/features/route';
 import * as userMemoryRoute from '@/app/api/user-memories/[id]/route';
 import * as userMemoriesRoute from '@/app/api/user-memories/route';
 import * as slugChatRoute from '@/app/api/v1/ai-experiences/[slug]/chat/route';
-import * as widgetConfigRoute from '@/app/api/v1/ai-experiences/widget-config/route';
-import * as embedSnippetRoute from '@/app/api/v1/embed-snippet/route';
-import * as searchRoute from '@/app/api/v1/search/route';
 import * as tokenChatRoute from '@/app/api/v1/ai-experiences/chat/route';
+import * as widgetConfigRoute from '@/app/api/v1/ai-experiences/widget-config/route';
 import * as autocompleteRoute from '@/app/api/v1/autocomplete/route';
 import * as publicDocumentRoute from '@/app/api/v1/documents/[documentId]/route';
-import * as cacheStatsRoute from '@/app/api/search-indexes/cache/stats/route';
+import * as embedSnippetRoute from '@/app/api/v1/embed-snippet/route';
 import * as slugSearchRoute from '@/app/api/v1/search/[slug]/search/route';
 import * as slugSummarizeRoute from '@/app/api/v1/search/[slug]/summarize/route';
+import * as searchRoute from '@/app/api/v1/search/route';
 import * as summarizeRoute from '@/app/api/v1/summarize/route';
 import { analyticsHiddenFindings } from '@/db/analytics-schema';
 import { aiExperiences } from '@/db/schema/ai-experience.schema';
 import { globalSearchSettings } from '@/db/schema/global-search-settings.schema';
 import { roles } from '@/db/schema/roles.schema';
-import { searchIndex } from '@/db/schema/search-index.schema';
-import { searchIndexFields } from '@/db/schema/search-index-fields.schema';
 import { searchExperiences } from '@/db/schema/search-experience.schema';
+import { searchIndexFields } from '@/db/schema/search-index-fields.schema';
+import { searchIndex } from '@/db/schema/search-index.schema';
 import { userMemories } from '@/db/schema/user-memories.schema';
 import { user } from '@/db/schema/users.schema';
 import { ADMIN_ROLE_ID } from '@/features/access/permissions';
@@ -411,6 +413,15 @@ describe('an area switched off', () => {
     expect((await call(analyticsConfigRoute.GET, 'GET', '/api/analytics/config')).status).toBe(200);
   });
 
+  it('lets an Admin erase analytics data with Analytics off', async () => {
+    await switchAreas({ analytics: false });
+    // An invalid scope reaches the handler's own check (400), so the area gate let it through;
+    // nothing is deleted
+    const res = await call(analyticsDataRoute.DELETE, 'DELETE', '/api/analytics/data', { body: { scope: 'nope' } });
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error ?? JSON.stringify(res.body))).toMatch(/Invalid scope/);
+  });
+
   it('shows no analytics on the home page with Analytics off, and refuses dismissing an analytics tip', async () => {
     const home = async () => (await call(homeRoute.GET, 'GET', '/api/dashboard/home?tz=UTC')).body?.data as { analytics: boolean; metrics: unknown[]; cards: unknown[]; tips: unknown[]; checklist: unknown };
     expect(await home()).toMatchObject({ analytics: true, metrics: [{ id: 'requests' }], checklist: [{ id: 'experience' }, { id: 'traffic' }] });
@@ -707,5 +718,30 @@ describe('who switches areas, and when it applies', () => {
     await switchAreas({ chat: true });
     expect(await isAreaOn('analytics')).toBe(false);
     expect(await isAreaOn('chat')).toBe(true);
+  });
+});
+
+describe('GET /api/me/access areas', () => {
+  it('leaves a switched-off area out for an Admin and lists it again once back on', async () => {
+    const areasOf = async () => ((await call(meAccessRoute.GET, 'GET', '/api/me/access')).body?.data as { areas: string[] }).areas;
+    const everything = ['search', 'chat', 'managed-indexes', 'analytics', 'playground', 'ai-summaries'];
+    expect(await areasOf()).toEqual(expect.arrayContaining(everything));
+
+    await switchAreas({ chat: false });
+    const off = await areasOf();
+    expect(off).not.toContain('chat');
+    expect(off).toEqual(expect.arrayContaining(everything.filter((a) => a !== 'chat')));
+
+    await switchAreas({ chat: true });
+    expect(await areasOf()).toContain('chat');
+  });
+
+  it('still answers the permissions, without areas, when the switches cannot be read', async () => {
+    clearFeatureSwitchCache();
+    readFails = true;
+    const res = await call(meAccessRoute.GET, 'GET', '/api/me/access');
+    expect(res.status).toBe(200);
+    expect(res.body?.data).toMatchObject({ permissions: expect.any(Array), role: { isAdmin: true } });
+    expect(res.body?.data).not.toHaveProperty('areas');
   });
 });

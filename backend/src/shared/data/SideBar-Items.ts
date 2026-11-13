@@ -26,6 +26,7 @@ import {
     MessageCircle,
     Clock,
     HeartPulse,
+    ToggleRight,
     type LucideIcon,
 } from "lucide-react";
 
@@ -243,6 +244,11 @@ export const sidebarGroups: SidebarGroupDef[] = [
                         title: "sidebar.items.searchSettings",
                         url: "/settings/search",
                         icon: SlidersHorizontal,
+                    },
+                    {
+                        title: "sidebar.items.features",
+                        url: "/settings/features",
+                        icon: ToggleRight,
                     },
                     {
                         title: "sidebar.items.cacheManagement",

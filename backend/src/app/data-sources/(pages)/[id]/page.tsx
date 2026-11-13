@@ -16,29 +16,24 @@ import {
   RefreshCw,
   Loader2,
   Wrench,
-  Sparkles,
-  ExternalLink,
-  Check,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { use, useEffect, useState } from 'react';
-import { toast } from 'sonner';
 
+import { CreateToolsPanel } from '../../_components/CreateToolsPanel';
 import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../_components/DataSourceTypeChip';
 import { HealthStatusChip } from '../../_components/HealthStatusChip';
+import { ScaffoldResult } from '../../_components/ScaffoldResult';
 import { SchemaFieldsEditor } from '../../_components/SchemaFieldsEditor';
 import type { DataSourceType } from '../../_lib/api-client';
 import { useDataSource } from '../../_lib/hooks/useDataSources';
 import { useHealthCheck } from '../../_lib/hooks/useHealthCheck';
 
-import { toolsApi } from '@/app/tools/_lib/api-client';
 import type { ScaffoldToolsResponse } from '@/app/tools/_lib/api-client';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ActionButton } from '@/shared/access/ActionControls';
-import { reportActionError } from '@/shared/activity/report';
 import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
@@ -115,7 +110,6 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
   const { dataSource, isLoading, isError, updateDataSource, deleteDataSource, isUpdating, isDeleting } = useDataSource(id);
   const { isChecking: isHealthChecking, refresh: refreshHealth } = useHealthCheck(id);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [isScaffolding, setIsScaffolding] = useState(false);
   const [schemaOpen, setSchemaOpen] = useState(false);
   const [scaffoldResult, setScaffoldResult] = useState<ScaffoldToolsResponse | null>(null);
 
@@ -358,82 +352,9 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
         </CardHeader>
         <CardContent>
           {scaffoldResult ? (
-            <div className="space-y-4">
-              {scaffoldResult.created.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="size-3" />
-                    Created {scaffoldResult.created.length} tool{scaffoldResult.created.length !== 1 ? 's' : ''}
-                  </p>
-                  <div className="space-y-1.5">
-                    {scaffoldResult.created.map((t) => (
-                      <Link key={t.id} href={`/tools/${t.id}`}
-                        className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors group">
-                        <div className="flex items-center gap-2.5">
-                          <Check className="size-4 text-emerald-500" />
-                          <div>
-                            <p className="text-sm font-medium">{t.name}</p>
-                            <p className="text-xs text-muted-foreground font-mono">{t.operation}</p>
-                          </div>
-                        </div>
-                        <ExternalLink className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {scaffoldResult.skipped.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Skipped ({scaffoldResult.skipped.length})
-                  </p>
-                  {scaffoldResult.skipped.map((s, i) => (
-                    <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-lg bg-muted/30 text-sm">
-                      <Badge variant="outline" className="rounded text-[10px] font-mono">{s.operation}</Badge>
-                      <span className="text-xs text-muted-foreground">{s.reason}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Button variant="outline" className="rounded-xl" onClick={() => router.push('/tools')}>
-                <Wrench className="size-4 mr-2" />View All Tools
-              </Button>
-            </div>
+            <ScaffoldResult result={scaffoldResult} onViewAll={() => router.push('/tools')} />
           ) : (
-            <div className="flex items-center justify-between p-4 bg-violet-500/5 rounded-xl border border-violet-500/20">
-              <div>
-                <p className="font-medium text-sm">Create tools automatically</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Generates one tool per supported operation with AI descriptions based on the field schema.
-                </p>
-              </div>
-              <ActionButton
-                action="tools.scaffold"
-                builtIn={dataSource.isBuiltIn}
-                icon={isScaffolding ? Loader2 : Sparkles}
-                iconClassName={isScaffolding ? 'size-4 mr-2 animate-spin' : 'size-4 mr-2'}
-                className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white"
-                onClick={async () => {
-                  setIsScaffolding(true);
-                  try {
-                    const result = await toolsApi.scaffoldTools(id);
-                    setScaffoldResult(result);
-                    if (result.created.length > 0) {
-                      toast.success(`Created ${result.created.length} tool${result.created.length !== 1 ? 's' : ''}`);
-                    } else {
-                      toast.info('All tools already exist for this data source.');
-                    }
-                  } catch (err) {
-                    reportActionError('Create tools', err);
-                  } finally {
-                    setIsScaffolding(false);
-                  }
-                }}
-                disabled={isScaffolding}
-              >
-                {isScaffolding ? 'Creating...' : 'Create Tools'}
-              </ActionButton>
-            </div>
+            <CreateToolsPanel dataSourceId={id} isBuiltIn={dataSource.isBuiltIn} onCreated={setScaffoldResult} />
           )}
         </CardContent>
       </Card>

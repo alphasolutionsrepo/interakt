@@ -20,6 +20,18 @@ describe('what the page gate and the sidebar show', () => {
     expect(accessState({ isLoading: false, errorStatus: 0, canOpen: false })).toBe('unavailable'); // network
   });
 
+  it('says "off" for a page of an area that is turned off, before asking about permissions', () => {
+    expect(accessState({ isLoading: false, errorStatus: null, canOpen: false, areaOn: false })).toBe('off');
+    expect(accessState({ isLoading: false, errorStatus: null, canOpen: true, areaOn: false })).toBe('off');
+    expect(accessState({ isLoading: false, errorStatus: null, canOpen: false, areaOn: true })).toBe('denied');
+  });
+
+  it('keeps loading, signed-out and unavailable ahead of off', () => {
+    expect(accessState({ isLoading: true, canOpen: true, areaOn: false })).toBe('loading');
+    expect(accessState({ isLoading: false, errorStatus: 401, canOpen: true, areaOn: false })).toBe('signed-out');
+    expect(accessState({ isLoading: false, errorStatus: 500, canOpen: true, areaOn: false })).toBe('unavailable');
+  });
+
   it('follows the role once access is known', () => {
     expect(accessState({ isLoading: false, errorStatus: null, canOpen: true })).toBe('allowed');
     expect(accessState({ isLoading: false, errorStatus: null, canOpen: false })).toBe('denied');

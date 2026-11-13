@@ -44,6 +44,17 @@ describe('Can', () => {
     expect(renderToStaticMarkup(createElement(Can, { action: 'ai-providers.add', fallback: 'no', children: 'yes' }))).toBe('no');
   });
 
+  it('shows a section only while its area is on', () => {
+    uiAccess.hold('tools:edit');
+    const inArea = () => renderToStaticMarkup(createElement(Can, { permission: 'tools:edit', area: 'chat', fallback: 'no', children: 'yes' }));
+    expect(inArea()).toBe('yes');
+    uiAccess.areasOff('chat');
+    expect(inArea()).toBe('no');
+    // An area alone, without a permission rule
+    expect(renderToStaticMarkup(createElement(Can, { area: 'chat', fallback: 'no', children: 'yes' }))).toBe('no');
+    expect(renderToStaticMarkup(createElement(Can, { area: 'search', fallback: 'no', children: 'yes' }))).toBe('yes');
+  });
+
   it('shows neither the section nor its fallback while access is loading', () => {
     uiAccessLoading();
     expect(can('settings:view')).toBe('');
@@ -72,6 +83,14 @@ describe('AccessLink', () => {
     uiAccess.hold('search-indexes:view');
     expect(link('/search-indexes/abc?tab=documents#top')).toContain('href=');
     expect(link('/search-indexes/abc/edit?from=list')).toBe('plain');
+  });
+
+  it('hides a link to a page of an area that is off, for an Admin too', () => {
+    uiAccess.asAdmin();
+    expect(link('/tools')).toContain('href="/tools"');
+    uiAccess.areasOff('chat');
+    expect(link('/tools')).toBe('plain');
+    expect(link('/data-sources')).toContain('href=');
   });
 
   it('always links to pages that need only a session', () => {

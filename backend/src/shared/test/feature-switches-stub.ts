@@ -2,8 +2,8 @@
 
 /**
  * For tests about something other than feature switches: every area is on, while the real
- * gates (route guard, public route wrapper, token checks) still ask. Stubs the one answer
- * they ask, isAreaOn:
+ * gates (route guard, public route wrapper, token checks) still ask. Stubs the answers
+ * they ask, isAreaOn and listFeatureSwitches (id and on only):
  *
  *   vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
  *
@@ -12,7 +12,7 @@
  * features/feature-switches/*.test.ts.
  */
 
-import type { Area } from '@/features/feature-switches/areas';
+import { AREA_IDS, type Area } from '@/features/feature-switches/areas';
 
 export const featureSwitchesStub: { off: Set<Area>; reset(): void } = {
   off: new Set(),
@@ -23,4 +23,5 @@ export const featureSwitchesStub: { off: Set<Area>; reset(): void } = {
 
 export const featureSwitchesService = {
   isAreaOn: async (area: Area) => !featureSwitchesStub.off.has(area),
+  listFeatureSwitches: async () => AREA_IDS.map((id) => ({ id, on: !featureSwitchesStub.off.has(id) })),
 };

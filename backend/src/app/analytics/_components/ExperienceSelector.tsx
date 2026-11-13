@@ -2,8 +2,15 @@
 
 'use client';
 
-import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Bot, Search, Layers } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+
+import { useAnalyticsContext } from '../_lib/AnalyticsContext';
+import { EXPERIENCE_TYPE_AREA, experiencesWithAreaOn, selectionChange, loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
+
+import { useAccess } from '@/shared/access/useAccess';
+import { errorText } from '@/shared/api/api-error';
 import {
   Select,
   SelectContent,
@@ -13,17 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/select';
-import { Bot, Search, Layers } from 'lucide-react';
-import { useAnalyticsContext } from '../_lib/AnalyticsContext';
-import { loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
-import { errorText } from '@/shared/api/api-error';
 
 // ============================================================================
 // DATA FETCHING
 // ============================================================================
 
-function useExperiences() {
+/** `enabled` false while access loads or Analytics is off: the server refuses the list then */
+function useExperiences(enabled: boolean) {
   return useQuery({
+    enabled,
     queryKey: ['analytics-experiences'],
     queryFn: loadExperienceOptions,
     staleTime: 60000,
@@ -40,8 +45,17 @@ interface ExperienceSelectorProps {
 
 export function ExperienceSelector({ compact = false }: ExperienceSelectorProps) {
   const { experienceId, experienceName, experienceType, setExperience, keepWhenMissing } = useAnalyticsContext();
-  const { data, isLoading } = useExperiences();
-  const experiences = data?.experiences ?? [];
+  const { areaOn, isLoading: accessLoading } = useAccess();
+  const { data, isLoading } = useExperiences(!accessLoading && areaOn('analytics'));
+  const allExperiences = useMemo(() => data?.experiences ?? [], [data]);
+  // Only types whose area is on: a chat experience is hidden with Chat off (its data is kept)
+  // areaOn is a new function every render, so the memo depends on the two answers it gives here
+  const aiOn = areaOn(EXPERIENCE_TYPE_AREA.ai);
+  const searchOn = areaOn(EXPERIENCE_TYPE_AREA.search);
+  const experiences = useMemo(
+    () => experiencesWithAreaOn(allExperiences, (area) => (area === EXPERIENCE_TYPE_AREA.ai ? aiOn : area === EXPERIENCE_TYPE_AREA.search ? searchOn : true)),
+    [allExperiences, aiOn, searchOn],
+  );
 
   const aiExperiences = experiences.filter((e) => e.type === 'ai');
   const searchExperiences = experiences.filter((e) => e.type === 'search');
@@ -49,19 +63,20 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
   // A selection restored from the URL only carries the ID — fill in name and type,
   // or fall back to All Experiences if it no longer exists.
   useEffect(() => {
-    if (isLoading || !experienceId) return;
-    const exp = experiences.find((e) => e.id === experienceId);
-    if (!exp) {
-      // Only drop the selection when we know the full list; a failed fetch is not "deleted"
-      // A saved conversation about a since-deleted experience keeps its scope (shown as deleted)
-      if (data?.complete && !keepWhenMissing) setExperience(undefined);
-    } else if (exp.name !== experienceName || exp.type !== experienceType) {
-      setExperience(exp.id, exp.name, exp.type);
-    }
-  }, [isLoading, data, experiences, experienceId, experienceName, experienceType, keepWhenMissing, setExperience]);
+    const change = selectionChange({
+      selected: { id: experienceId, name: experienceName, type: experienceType },
+      experiences: allExperiences,
+      areaOn,
+      loading: isLoading || accessLoading,
+      complete: !!data?.complete,
+      keepWhenMissing,
+    });
+    if (change.kind === 'reset') setExperience(undefined);
+    else if (change.kind === 'fill') setExperience(change.id, change.name, change.type);
+  }, [isLoading, accessLoading, data, allExperiences, areaOn, experienceId, experienceName, experienceType, keepWhenMissing, setExperience]);
 
   // Selected experience that is not in the list (deleted, or the list is still incomplete)
-  const missingSelection = !!experienceId && !experiences.some((e) => e.id === experienceId);
+  const missingSelection = !!experienceId && !allExperiences.some((e) => e.id === experienceId);
 
   const renderLabel = (exp: ExperienceOption) => (exp.isActive ? exp.name : `${exp.name} (inactive)`);
 
@@ -74,7 +89,7 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
     }
   };
 
-  if (isLoading) {
+  if (isLoading || accessLoading) {
     return (
       <div className={compact ? 'w-[140px] h-8 rounded-lg bg-muted animate-pulse' : 'w-[200px] h-9 rounded-xl bg-muted animate-pulse'} />
     );

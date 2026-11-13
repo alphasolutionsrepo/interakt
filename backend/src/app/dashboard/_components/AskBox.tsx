@@ -14,10 +14,12 @@ import { useState } from 'react';
 import { ChatHistoryButton } from '@/app/analytics/_components/shell/ChatHistoryButton';
 import { useAskPanel } from '@/app/analytics/_lib/AskPanelContext';
 import { HOME_SECTION } from '@/app/analytics/_lib/sections';
+import { useAccess } from '@/shared/access/useAccess';
 import { Button } from '@/shared/ui/components/button';
 
 export function AskBox() {
   const askPanel = useAskPanel();
+  const { areaOn } = useAccess();
   const [text, setText] = useState('');
 
   const submit = (question: string) => {
@@ -27,7 +29,8 @@ export function AskBox() {
     setText('');
   };
 
-  if (!askPanel.canAsk) return null;
+  // The Ask drawer answers from analytics: nothing to ask with Analytics off
+  if (!askPanel.canAsk || !areaOn('analytics')) return null;
 
   return (
     <div className="space-y-3">

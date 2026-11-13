@@ -8,17 +8,20 @@
  *  - signed-out:  the server no longer accepts the session (deactivated or deleted): sign in again
  *  - unavailable: the lookup failed (server or database down): say so and offer a retry, never
  *                 "no access", and keep the full sidebar (the server still checks every request)
+ *  - off:         the page's feature area is turned off (for everyone, an Admin too); said before
+ *                 "denied", as no permission would help
  *  - allowed / denied: from the page's permissions
  */
 
 import { ApiError } from '@/shared/api/api-error';
 
-export type AccessState = 'loading' | 'signed-out' | 'unavailable' | 'allowed' | 'denied';
+export type AccessState = 'loading' | 'signed-out' | 'unavailable' | 'off' | 'allowed' | 'denied';
 
-export function accessState(input: { isLoading: boolean; errorStatus?: number | null; canOpen: boolean }): AccessState {
+export function accessState(input: { isLoading: boolean; errorStatus?: number | null; canOpen: boolean; areaOn?: boolean }): AccessState {
   if (input.isLoading) return 'loading';
   if (input.errorStatus === 401) return 'signed-out';
   if (input.errorStatus !== undefined && input.errorStatus !== null) return 'unavailable';
+  if (input.areaOn === false) return 'off';
   return input.canOpen ? 'allowed' : 'denied';
 }
 

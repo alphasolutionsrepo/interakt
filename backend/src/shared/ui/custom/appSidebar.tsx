@@ -114,14 +114,14 @@ function computeOpenStates(currentPath: string) {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
-  const { can, isLoading: accessLoading, errorStatus } = useAccess()
+  const { can, areaOn, isLoading: accessLoading, errorStatus } = useAccess()
   // Nothing until access is known, so no item flashes in and then disappears. If the lookup
   // failed, the full sidebar: the server still checks every request, and the page says why.
   const accessView = accessState({ isLoading: accessLoading, errorStatus, canOpen: true })
   const visibleGroups =
     accessView === 'loading' || accessView === 'signed-out' ? []
       : accessView === 'unavailable' ? sidebarGroups
-        : visibleSidebarGroups(sidebarGroups, (url) => canOpenPage(url, can))
+        : visibleSidebarGroups(sidebarGroups, (url) => canOpenPage(url, can, areaOn))
   const { t } = useTranslation()
   const { state } = useSidebar()
   const isCollapsed = state === "collapsed"

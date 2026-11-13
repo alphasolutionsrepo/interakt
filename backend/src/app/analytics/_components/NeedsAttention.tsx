@@ -47,8 +47,10 @@ const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 /** How many findings show before "Show all" */
 const VISIBLE = 4;
 
-export function useProcessingStatus(experienceId: string | undefined) {
+/** `enabled` false: the request isn't sent (Analytics is off, so the server would refuse it) */
+export function useProcessingStatus(experienceId: string | undefined, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ['analytics', 'processing-status', experienceId],
     queryFn: () =>
       fetchAnalytics<{

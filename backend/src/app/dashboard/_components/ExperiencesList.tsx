@@ -93,9 +93,10 @@ export function ExperiencesList({ experiences, loading, showActivity = true }: {
                     {e.volume > 0 ? pluralize(e.volume, e.type === 'ai' ? 'conversation' : 'search', e.type === 'ai' ? 'conversations' : 'searches') : 'No activity'}
                   </span>
                   <Button variant="ghost" size="icon" className="size-8" asChild>
-                    <Link href={e.analyticsHref} aria-label={`Analytics for ${e.name}`} title="Analytics">
+                    {/* Gone with Analytics off, as for a role that can't open it */}
+                    <AccessLink href={e.analyticsHref} aria-label={`Analytics for ${e.name}`} title="Analytics">
                       <BarChart3 className="size-4" />
-                    </Link>
+                    </AccessLink>
                   </Button>
                 </span>
                 )}

@@ -9,12 +9,12 @@
  * calls a model, so the page stays fast. The result is cached for a minute.
  */
 
-import { canOpenPage } from '@/features/access/page-permissions';
-import type { Permission } from '@/features/access/permissions';
 import 'server-only';
 
 import { eq, sql } from 'drizzle-orm';
 
+import { canOpenPage } from '@/features/access/page-permissions';
+import type { Permission } from '@/features/access/permissions';
 import { getExperienceSummaries, type ExperienceSummary } from '@/features/analytics/analytics-experience-summary.service';
 import { countRecentRequests, getTurnsByDay } from '@/features/analytics/analytics-failed-turns.service';
 import { getProactiveInsights, getStoredInsight, listDismissedTips } from '@/features/analytics/analytics-insights.service';
@@ -25,6 +25,7 @@ import {
   getSearchTypeBreakdown,
   getZeroResultQueries,
 } from '@/features/analytics/analytics-query.service';
+import type { Area } from '@/features/feature-switches/areas';
 import type { HealthCheckOutput } from '@/features/jobs/handlers/health-check.handler';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -930,7 +931,8 @@ export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
 // ============================================================================
 
 /**
- * The home page as a role sees it. Tasks, recent changes, getting-started steps, cards, tips and
+ * The home page as a role sees it (`areaOn`: the feature areas that are on; a page of an area that
+ * is off is closed to everyone, so an experience of an off type, whose page is under that area, is not listed). Tasks, recent changes, getting-started steps, cards, tips and
  * experiences that link to a page the role can't open go; the checklist's Ask step (the Ask
  * box on the page) needs analytics:ask. The checklist goes once every step the role sees is
  * done, as it does for everyone once all are; with Analytics off there is no traffic step. Without analytics:view, the traffic figures, insight cards and tips
@@ -940,9 +942,9 @@ export const TIP_ID = /^tip:[a-z_]+(?::[0-9a-f-]{36})?$/;
 export function homeDataForRole(
   data: HomeData,
   can: (permission: Permission) => boolean,
-  { analyticsOn = true }: { analyticsOn?: boolean } = {},
+  { analyticsOn = true, areaOn }: { analyticsOn?: boolean; areaOn?: (area: Area) => boolean } = {},
 ): HomeData {
-  const opens = (href: string) => href.startsWith('#') || canOpenPage(href.split(/[?#]/)[0], can);
+  const opens = (href: string) => href.startsWith('#') || canOpenPage(href.split(/[?#]/)[0], can, areaOn);
   const steps = data.checklist
     // With Analytics off no traffic is recorded, so the traffic step could never be done
     ?.filter((step) => analyticsOn || step.id !== 'traffic')
