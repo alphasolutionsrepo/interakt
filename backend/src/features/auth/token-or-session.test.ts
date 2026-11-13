@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const authMock = vi.fn();
+vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 vi.mock('./auth.api.handlers', () => ({ auth: () => authMock() }));
 vi.mock('@/shared/logger/logger', () => ({
@@ -13,7 +14,10 @@ vi.mock('@/shared/logger/logger', () => ({
 import { type ExperienceAccess } from './public-access';
 import { authenticateTokenOrSession } from './token-or-session';
 
+import { TURNED_OFF_CODE } from '@/features/feature-switches/areas';
 import { rateLimiter } from '@/shared/api/rate-limit';
+import { accessStub } from '@/shared/test/access-stub';
+import { featureSwitchesService, featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 
 function request(headers: Record<string, string>): NextRequest {
   return new NextRequest('http://interakt.test/api/v1/search', { headers });
@@ -27,6 +31,8 @@ describe('authenticateTokenOrSession', () => {
   beforeEach(() => {
     authMock.mockReset();
     rateLimiter.clear();
+    featureSwitchesStub.reset();
+    vi.restoreAllMocks();
   });
 
   it('treats the experience token as real traffic, in either header', async () => {
@@ -44,6 +50,21 @@ describe('authenticateTokenOrSession', () => {
 
     // A visitor can send the marker but not the login
     authMock.mockResolvedValue(null);
+    expect(await authenticateTokenOrSession(request(playground), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
+  });
+
+  it('records the marked token caller as live traffic while Playground is off, or the switches cannot be read', async () => {
+    authMock.mockResolvedValue({ user: { id: 'u' } });
+    const playground = { 'X-Access-Token': 't1', 'X-Interakt-Test': '1' };
+    featureSwitchesStub.off.add('playground');
+    expect(await authenticateTokenOrSession(request(playground), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
+
+    featureSwitchesStub.reset();
+    const isAreaOn = featureSwitchesService.isAreaOn;
+    vi.spyOn(featureSwitchesService, 'isAreaOn').mockImplementation(async (area) => {
+      if (area === 'playground') throw new Error('database down');
+      return isAreaOn(area);
+    });
     expect(await authenticateTokenOrSession(request(playground), experience())).toEqual({ caller: 'api', analyticsSource: 'api' });
   });
 
@@ -80,5 +101,41 @@ describe('authenticateTokenOrSession', () => {
     for (let i = 0; i < 3; i++) {
       expect(await authenticateTokenOrSession(request({ Origin: 'https://other.example' }), settings)).toMatchObject({ caller: 'admin' });
     }
+  });
+
+  describe("with the experience's area off", () => {
+    // What a caller gets, as the route answers it (no `refused`: the route's 401)
+    const answer = async (headers: Record<string, string>) => {
+      const result = await authenticateTokenOrSession(request(headers), experience());
+      const body = (await result.refused?.json()) as { code?: string } | undefined;
+      return { caller: result.caller, status: result.refused?.status ?? (result.caller ? 200 : 401), code: body?.code };
+    };
+
+    beforeEach(() => accessStub.reset());
+
+    it('answers a caller with no token and no session, or a wrong token, exactly as with it on', async () => {
+      authMock.mockResolvedValue(null);
+      const on = [await answer({}), await answer({ 'X-Access-Token': 'wrong' })];
+      featureSwitchesStub.off.add('search');
+      expect([await answer({}), await answer({ 'X-Access-Token': 'wrong' })]).toEqual(on);
+      expect(on.map((a) => a.status)).toEqual([401, 401]);
+    });
+
+    it('answers a role without the playground permission 403, as with it on', async () => {
+      authMock.mockResolvedValue({ user: { id: 'u' } });
+      accessStub.access = { userId: 'u', roleId: 'r', roleName: 'Nothing', isAdmin: false, permissions: new Set() };
+      const on = await answer({});
+      featureSwitchesStub.off.add('search');
+      expect(await answer({})).toEqual(on);
+      expect(on).toMatchObject({ status: 403, code: 'FORBIDDEN' });
+    });
+
+    it('tells a caller with the right token, or an Admin session, that it is turned off', async () => {
+      featureSwitchesStub.off.add('search');
+      authMock.mockResolvedValue(null);
+      expect(await answer({ 'X-Access-Token': 't1' })).toMatchObject({ status: 404, code: TURNED_OFF_CODE });
+      authMock.mockResolvedValue({ user: { id: 'u' } });
+      expect(await answer({})).toMatchObject({ status: 404, code: TURNED_OFF_CODE });
+    });
   });
 });

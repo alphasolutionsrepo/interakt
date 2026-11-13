@@ -20,13 +20,17 @@ import {
   readAccessToken,
   type AccessCheckOptions,
 } from '@/features/auth/public-access';
+import { refuseExperienceIfOff } from '@/features/feature-switches/gate';
 import { apiResponse } from '@/shared/api/response';
 
 export type AIAccessResult =
   | { experience: AIExperienceWithTools; response?: undefined }
   | { experience?: undefined; response: NextResponse };
 
-/** The AI experience the request's token belongs to, or the response to send (401, 403 or 429). */
+/**
+ * The AI experience the request's token belongs to, or the response to send (401, 403 or 429,
+ * or 404 when its area is turned off for this installation).
+ */
 export async function authenticateAIAccessToken(
   request: NextRequest,
   options: AccessCheckOptions = {},
@@ -43,6 +47,8 @@ export async function authenticateAIAccessToken(
   if (!experience.isActive) {
     return { response: apiResponse.forbidden('AI Experience is not active') };
   }
+  const off = await refuseExperienceIfOff(request, experience);
+  if (off) return { response: off };
 
   const refused = checkPublicAccess(request, aiExperienceAccess(experience), options);
   return refused ? { response: refused } : { experience };

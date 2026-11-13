@@ -21,7 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { publicOrigin } from '@/features/auth/public-access';
 import { buildEmbedSnippet, DEFAULT_CONTAINER_ID, GLOBAL_NAME } from '@/features/embed/build-snippet';
 import { authenticateEmbedRequest } from '@/features/embed/embed-access';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 
 const BUNDLE_PATH = '/embed/v1/widgets.js';
 
@@ -70,4 +70,4 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }
 
-export const GET = publicRoute(get);
+export const GET = publicApiRoute(get);

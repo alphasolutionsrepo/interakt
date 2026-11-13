@@ -20,7 +20,7 @@ import { auth } from '@/features/auth/auth.api.handlers';
 import { readAccessToken } from '@/features/auth/public-access';
 import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
 import { chatEventStream } from '@/features/pipeline/chat-event-stream';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 
@@ -58,4 +58,4 @@ async function post(request: NextRequest) {
   }
 }
 
-export const POST = publicRoute(post);
+export const POST = publicApiRoute(post);

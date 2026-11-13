@@ -16,6 +16,7 @@ import { accessStub } from '@/shared/test/access-stub';
 
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
+vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('server-only', () => ({}));
 const seeder = vi.hoisted(() => ({
   seedDocs: vi.fn(async () => ({ skipped: true, documents: 0 })),

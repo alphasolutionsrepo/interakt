@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { authenticateAIAccessToken } from '@/features/ai-experience/access-token.middleware';
-import { publicRoute } from '@/shared/api/public-route';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 
 async function get(request: NextRequest) {
   // ── Authenticate (token, allowed origins) ──────────────────────────────────
@@ -56,4 +56,4 @@ export async function OPTIONS() {
 }
 
 
-export const GET = publicRoute(get);
+export const GET = publicApiRoute(get);

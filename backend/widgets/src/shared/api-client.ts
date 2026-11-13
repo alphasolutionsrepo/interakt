@@ -4,12 +4,27 @@ import type {
   WidgetConfigResponse,
 } from './types';
 
+/** The code of the 404 an installation sends for an area that is switched off */
+export const TURNED_OFF_CODE = 'FEATURE_OFF';
+
 export class ApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  readonly code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
+  }
+}
+
+/** The server's own message and code for a failed answer, when it sent them */
+async function readRefusal(response: Response): Promise<{ error?: string; code?: string }> {
+  try {
+    const body = await response.json();
+    return { error: typeof body?.error === 'string' ? body.error : undefined, code: typeof body?.code === 'string' ? body.code : undefined };
+  } catch {
+    return {};
   }
 }
 
@@ -61,9 +76,11 @@ export async function fetchWidgetConfig(
   );
 
   if (!response.ok) {
+    const { code } = await readRefusal(response);
     throw new ApiError(
       `Failed to fetch widget config (HTTP ${response.status})`,
       response.status,
+      code,
     );
   }
   const body = await response.json();
@@ -98,10 +115,9 @@ export async function performSearch(
   });
 
   if (!response.ok) {
-    throw new ApiError(
-      `Search failed (HTTP ${response.status})`,
-      response.status,
-    );
+    // A switched-off area says so; any other failure keeps the plain message
+    const { error, code } = await readRefusal(response);
+    throw new ApiError(code === TURNED_OFF_CODE && error ? error : `Search failed (HTTP ${response.status})`, response.status, code);
   }
   const body = await response.json();
   // Public API wraps the payload as { success, data }.
@@ -248,14 +264,8 @@ export async function* streamChat(
   });
 
   if (!response.ok) {
-    let errMsg = `Chat request failed (HTTP ${response.status})`;
-    try {
-      const err = await response.json();
-      if (err?.error) errMsg = err.error;
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(errMsg, response.status);
+    const { error, code } = await readRefusal(response);
+    throw new ApiError(error ?? `Chat request failed (HTTP ${response.status})`, response.status, code);
   }
 
   const reader = response.body?.getReader();

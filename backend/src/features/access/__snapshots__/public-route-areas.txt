@@ -1,0 +1,10 @@
+POST   /api/v1/ai-experiences/[slug]/chat  chat
+POST   /api/v1/ai-experiences/chat  chat
+GET    /api/v1/ai-experiences/widget-config  chat
+POST   /api/v1/autocomplete  search
+GET    /api/v1/documents/[documentId]  search
+GET    /api/v1/embed-snippet  search | chat
+POST   /api/v1/search  search
+POST   /api/v1/search/[slug]/search  search
+POST   /api/v1/search/[slug]/summarize  ai-summaries
+POST   /api/v1/summarize  ai-summaries

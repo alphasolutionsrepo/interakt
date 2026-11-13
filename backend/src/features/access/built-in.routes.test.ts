@@ -84,22 +84,26 @@ async function rows(isBuiltIn: boolean): Promise<Ids> {
 }
 
 type Route = (r: NextRequest, c: { params: Promise<{ id: string }> }) => Promise<Response>;
-const CHANGES: Array<[string, unknown, keyof Ids, string]> = [
-  ['update a chat experience', chatOne.PUT, 'chat', 'chat:update'],
-  ['delete a chat experience', chatOne.DELETE, 'chat', 'chat:delete'],
-  ['regenerate a chat token', chatToken.POST, 'chat', 'chat:token'],
-  ['attach a tool to a chat experience', chatTools.POST, 'chat', 'chat:tool'],
-  ['add an index to a search experience', searchIndexes.POST, 'search', 'search:index'],
-  ['update a tool', toolOne.PUT, 'tool', 'tool:update'],
-  ['delete a tool', toolOne.DELETE, 'tool', 'tool:delete'],
-  ['update a data source', dataSourceOne.PUT, 'dataSource', 'data-source:update'],
-  ['delete a data source', dataSourceOne.DELETE, 'dataSource', 'data-source:delete'],
-  ['update an index', indexOne.PUT, 'index', 'index:update'],
-  ['delete an index', indexOne.DELETE, 'index', 'index:delete'],
-  ['add documents to an index', indexDocuments.POST, 'index', 'index:documents'],
+/** [name, handler, row kind, recorded change, the handler's real path with {id} for the id param] */
+const CHANGES: Array<[string, unknown, keyof Ids, string, string]> = [
+  ['update a chat experience', chatOne.PUT, 'chat', 'chat:update', '/api/ai-experiences/{id}'],
+  ['delete a chat experience', chatOne.DELETE, 'chat', 'chat:delete', '/api/ai-experiences/{id}'],
+  ['regenerate a chat token', chatToken.POST, 'chat', 'chat:token', '/api/ai-experiences/{id}/regenerate-token'],
+  ['attach a tool to a chat experience', chatTools.POST, 'chat', 'chat:tool', '/api/ai-experiences/{id}/tools'],
+  ['add an index to a search experience', searchIndexes.POST, 'search', 'search:index', '/api/search-experiences/{id}/indexes'],
+  ['update a tool', toolOne.PUT, 'tool', 'tool:update', '/api/tools/{id}'],
+  ['delete a tool', toolOne.DELETE, 'tool', 'tool:delete', '/api/tools/{id}'],
+  ['update a data source', dataSourceOne.PUT, 'dataSource', 'data-source:update', '/api/data-sources/{id}'],
+  ['delete a data source', dataSourceOne.DELETE, 'dataSource', 'data-source:delete', '/api/data-sources/{id}'],
+  ['update an index', indexOne.PUT, 'index', 'index:update', '/api/search-indexes/{id}'],
+  ['delete an index', indexOne.DELETE, 'index', 'index:delete', '/api/search-indexes/{id}'],
+  ['add documents to an index', indexDocuments.POST, 'index', 'index:documents', '/api/search-indexes/{id}/documents'],
 ];
+/** The route's real path (the gate refuses a path no rule covers) */
+const pathOf = (fn: unknown, id: string) => (CHANGES.find((c) => c[1] === fn)![4]).replace('{id}', id);
+const method = (fn: unknown) => (fn === chatOne.DELETE || fn === toolOne.DELETE || fn === dataSourceOne.DELETE || fn === indexOne.DELETE ? 'DELETE' : fn === chatOne.PUT || fn === toolOne.PUT || fn === dataSourceOne.PUT || fn === indexOne.PUT ? 'PUT' : 'POST');
 const call = (fn: unknown, id: string, headers: Record<string, string> = {}) =>
-  (fn as Route)(new NextRequest('http://localhost/api/x', { method: 'POST', body: '{}', headers }), { params: Promise.resolve({ id }) });
+  (fn as Route)(new NextRequest(`http://localhost${pathOf(fn, id)}`, { method: method(fn), body: '{}', headers }), { params: Promise.resolve({ id }) });
 const asEditor = () => {
   accessStub.access = { ...accessStub.access!, isAdmin: false, roleName: 'Editor', permissions: new Set(EDITOR_DEFAULT_PERMISSIONS) };
 };

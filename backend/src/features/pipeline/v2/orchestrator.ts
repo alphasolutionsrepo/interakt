@@ -807,6 +807,9 @@ function triggerPostTurnTasks(
         },
       },
       async (span) => {
+        // User memories belong to Chat: with Chat turned off (the built-in help still chats), none are made
+        const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
+        if (!(await isAreaOn('chat'))) return;
         const { extractMemoriesFromSession } = await import('@/features/user-memories/memory-extraction.service');
         const result = await extractMemoriesFromSession(sessionId, userId, experience.id, {
           providerId: providerId ?? undefined,

@@ -7,7 +7,9 @@
 
 import { DOCS_SEARCH_SLUG } from './help-content';
 
-import { handleApiResponse } from '@/shared/api/api-error';
+import { TURNED_OFF_CODE } from '@/features/feature-switches/areas';
+
+import { ApiError, handleApiResponse } from '@/shared/api/api-error';
 
 export interface DocsSearchHit {
   id: string;
@@ -31,8 +33,12 @@ export interface DocsSearchResponse {
   tookMs: number;
 }
 
-/** Thrown when docs search isn't available (not built yet, or the engine is down). */
-export class DocsSearchUnavailableError extends Error {}
+/** Thrown when docs search isn't available (not built yet, the engine is down, or the Help assistant is switched off). */
+export class DocsSearchUnavailableError extends Error {
+  constructor(message: string, readonly turnedOff = false) {
+    super(message);
+  }
+}
 
 interface RawHit {
   id: string;
@@ -122,8 +128,12 @@ export async function searchDocs(
     throw new DocsSearchUnavailableError((e as Error).message);
   }
 
-  // 404: not built yet. 5xx: engine down or index not ready.
-  if (res.status === 404 || res.status >= 500) throw new DocsSearchUnavailableError(`HTTP ${res.status}`);
+  // 404: switched off for this installation (its own code) or not built yet. 5xx: engine down or index not ready.
+  if (res.status === 404) {
+    const refusal = await handleApiResponse(res, 'Search failed').then(() => null, (e: unknown) => e);
+    throw new DocsSearchUnavailableError('HTTP 404', refusal instanceof ApiError && refusal.code === TURNED_OFF_CODE);
+  }
+  if (res.status >= 500) throw new DocsSearchUnavailableError(`HTTP ${res.status}`);
   const data = await handleApiResponse<RawResults | undefined>(res, 'Search failed');
   if (!data) throw new Error(`Search failed (HTTP ${res.status})`);
 

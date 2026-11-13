@@ -15,6 +15,8 @@ import 'server-only';
 import type { NextRequest, NextResponse } from 'next/server';
 
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
+import { isAreaOn } from '@/features/feature-switches/feature-switches.service';
+import { refuseExperienceIfOff, refuseSessionIfPlaygroundOff } from '@/features/feature-switches/gate';
 
 import { auth } from './auth.api.handlers';
 import { checkPublicAccess, readAccessToken, type ExperienceAccess } from './public-access';
@@ -28,7 +30,9 @@ export type ExperienceCaller = 'api' | 'admin';
 /**
  * `caller` is null when the request may not go ahead. `refused` then holds the 403 or
  * 429 response for a token caller outside the experience's settings; without it, the
- * request had neither a matching token nor a session and the route answers 401.
+ * request had neither a matching token nor a session and the route answers 401. An experience
+ * whose area is turned off is refused (404) only once the token or the session is accepted, so
+ * a caller with neither gets the same 401 or 403 as with the area on.
  */
 export type TokenOrSessionResult =
   | { caller: ExperienceCaller; analyticsSource: 'api' | 'admin_test'; refused?: undefined }
@@ -40,6 +44,9 @@ export async function authenticateTokenOrSession(
 ): Promise<TokenOrSessionResult> {
   const token = readAccessToken(request);
   if (token && experience.accessToken && token === experience.accessToken) {
+    // The token is the experience's: the caller may learn its area is off
+    const off = await refuseExperienceIfOff(request, experience);
+    if (off) return { caller: null, refused: off };
     const refused = checkPublicAccess(request, experience);
     if (refused) return { caller: null, refused };
     return { caller: 'api', analyticsSource: await analyticsSourceOfTokenCaller(request) };
@@ -49,7 +56,13 @@ export async function authenticateTokenOrSession(
   // built-in help (set up by the docs setup) is for everyone signed in. No session: 401.
   const { response } = await checkAccess(experience.isBuiltIn ? SIGNED_IN : 'playground:use');
   if (response) return response.status === 401 ? { caller: null } : { caller: null, refused: response };
+  // Signed in, with the role the route needs: now the area may be told
+  const off = await refuseExperienceIfOff(request, experience);
+  if (off) return { caller: null, refused: off };
   // The playground: an admin testing the experience gets errors explained in full
+  // The Test pages call these routes with the session: Playground off stops them
+  const playgroundOff = await refuseSessionIfPlaygroundOff(experience);
+  if (playgroundOff) return { caller: null, refused: playgroundOff };
   markAdminCaller();
   return { caller: 'admin', analyticsSource: 'admin_test' };
 }
@@ -61,7 +74,7 @@ export async function authenticateTokenOrSession(
  * login: only both together make it a test, and only for a user whose role may use the
  * playgrounds. A visitor can send the marker but not the
  * login, and a signed-in admin using a live widget sends the login but not the marker;
- * both are live traffic.
+ * both are live traffic. So is any of it while Playground is turned off.
  */
 export async function markIfAdminTest(request: NextRequest): Promise<boolean> {
   if (request.headers.get(TEST_MARKER_HEADER) !== '1') return false;
@@ -71,6 +84,9 @@ export async function markIfAdminTest(request: NextRequest): Promise<boolean> {
   // If that can't be checked, the request is live traffic (plain errors, counted as 'api').
   const allowed = await checkAccess('playground:use').then((r) => !r.response, () => false);
   if (!allowed) return false;
+  // With Playground off there is no testing: the token makes it a live call
+  const playgroundOn = await isAreaOn('playground').catch(() => false);
+  if (!playgroundOn) return false;
   markAdminCaller();
   return true;
 }

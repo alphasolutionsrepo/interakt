@@ -268,6 +268,33 @@ export async function getGlobalSettingsForApi(): Promise<GlobalSettingsResponse>
 }
 
 // ============================================================================
+// FEATURE SWITCHES
+// ============================================================================
+
+/**
+ * The areas an Admin turned off, as stored (features/feature-switches reads them through its
+ * own short cache, so this reads the database each time). A failed read throws.
+ */
+export async function getStoredFeaturesOff(): Promise<string[]> {
+    const row = await db.query.globalSearchSettings.findFirst({ columns: { featuresOff: true } });
+    return row?.featuresOff ?? [];
+}
+
+/** Store the areas turned off (the settings row is created when there is none yet). */
+export async function saveFeaturesOff(featuresOff: string[]): Promise<void> {
+    const existing = await db.query.globalSearchSettings.findFirst({ columns: { id: true } });
+    if (existing) {
+        await db.update(globalSearchSettings)
+            .set({ featuresOff, updatedAt: new Date() })
+            .where(eq(globalSearchSettings.id, existing.id));
+    } else {
+        await db.insert(globalSearchSettings).values({ featuresOff });
+    }
+    invalidateCache();
+    logger.info('Saved feature switches', { featuresOff });
+}
+
+// ============================================================================
 // HELPERS
 // ============================================================================
 
@@ -281,5 +308,6 @@ function createDefaultSettings(): GlobalSearchSettings {
         rrfWindowSize: DEFAULT_GLOBAL_SETTINGS.rrfWindowSize,
         lexicalWeight: DEFAULT_GLOBAL_SETTINGS.lexicalWeight,
         semanticWeight: DEFAULT_GLOBAL_SETTINGS.semanticWeight,
+        featuresOff: [],
     };
 }

@@ -14,6 +14,7 @@ import {
     pgTable,
     uuid,
     integer,
+    jsonb,
     timestamp
 } from 'drizzle-orm/pg-core';
 
@@ -80,6 +81,16 @@ export const globalSearchSettings = pgTable('global_search_settings', {
      * Stored as integer (multiplied by 10) for precision: 10 = 1.0
      */
     semanticWeight: integer('semantic_weight').default(10).notNull(),
+
+    // ============================================================================
+    // FEATURE SWITCHES
+    // ============================================================================
+    /**
+     * The areas an Admin turned off for this installation (ids from
+     * features/feature-switches/areas.ts). Empty: everything is on. Turning an area off
+     * keeps its data. The deployment setting INTERAKT_FEATURES_OFF turns areas off on top.
+     */
+    featuresOff: jsonb('features_off').$type<string[]>().default([]).notNull(),
 });
 
 // ============================================================================

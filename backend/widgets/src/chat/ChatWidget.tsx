@@ -17,6 +17,7 @@ import {
   fetchWidgetConfig,
   streamChat,
   ApiError,
+  TURNED_OFF_CODE,
 } from '../shared/api-client';
 import { PresetRenderer } from './PresetRenderer';
 import widgetCss from '../styles/widget.css?raw';
@@ -69,6 +70,14 @@ export const ChatDropinUI = {
         serverConfig.value = cfg;
       })
       .catch((err) => {
+        // The experience's area is switched off for this installation: the widget is absent,
+        // not a launcher that fails when used
+        if (err instanceof ApiError && err.code === TURNED_OFF_CODE) {
+          // Only this instance, and only if it is still the registered one: a re-init in the
+          // same container may have replaced it, and the replacement must stay
+          if (instances.get(config.containerId) === instance) instance.destroy();
+          return;
+        }
         console.warn(
           '[Interakt] Could not load widget config, using defaults.',
           err instanceof Error ? err.message : err,

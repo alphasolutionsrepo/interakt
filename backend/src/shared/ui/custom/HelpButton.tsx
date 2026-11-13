@@ -449,8 +449,8 @@ export function HelpButton() {
           ) : (
             docPane()
           )
-        ) : chat.notReady ? (
-          <AssistantNotReady />
+        ) : chat.notReady || chat.turnedOff ? (
+          <AssistantNotReady turnedOff={chat.turnedOff} />
         ) : chat.messages.length > 0 ? (
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
             <HelpConversation messages={chat.messages} onSourceClick={closeDrawer} />

@@ -13,6 +13,9 @@
  * SIGNED_IN gates routes any active user may call (the dashboard, help, their own profile);
  * the handler still checks ownership where it acts on a user's own data.
  *
+ * Then the feature switches: a route whose area is turned off for this installation answers
+ * 404 "turned off", to an Admin too (features/feature-switches).
+ *
  * The rule is attached to the returned function so a test can read it for every route.
  */
 
@@ -27,8 +30,12 @@ import { can, type UserAccess } from './user-access';
 import type { Permission } from './permissions';
 
 import { auth } from '@/features/auth/auth.api.handlers';
-import { hasBearerCredentials } from '@/features/ingestion-keys/ingestion-key.middleware';
+import { refuseIfRouteOff } from '@/features/feature-switches/gate';
+import { authenticateIngestionKey, hasBearerCredentials } from '@/features/ingestion-keys/ingestion-key.middleware';
 import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+
+const logger = createLogger('route-guard');
 
 
 export const SIGNED_IN = 'signed-in' as const;
@@ -86,6 +93,8 @@ export function withPermission<A extends unknown[]>(rule: AccessRule, handler: H
       return apiResponse.error(error, 500, { operation: 'checkAccess' });
     }
     if (checked.response) return checked.response;
+    const off = await refuseIfRouteOff(args[0]);
+    if (off) return off;
     return requestAccess.run(checked.access, () => handler(...args));
   };
   Object.defineProperty(guarded, ACCESS_RULE, { value: rule });
@@ -96,15 +105,39 @@ export function withPermission<A extends unknown[]>(rule: AccessRule, handler: H
  * For the search index document routes, which servers also call with an ingestion key: a
  * request with a Bearer credential goes to the handler, which authenticates the key itself
  * (resolveDocumentActor) and rejects an invalid one. Any other request needs a session whose
- * role holds `rule`. Mirrors the middleware's exemption for the same subtree.
+ * role holds `rule`. Mirrors the middleware's exemption for the same subtree. Either way the
+ * route's area must be on.
+ *
+ * With the area off (or the switches unreadable), only a key that is live for the route's index
+ * is told so; any other key goes on to the handler, which refuses it exactly as with the area on
+ * (every handler authenticates the key before doing anything), so a caller without a valid key
+ * can't learn which areas are off.
  */
 export function withPermissionOrIngestionKey<A extends [NextRequest, ...unknown[]]>(
   rule: AccessRule,
   handler: Handler<A>,
 ): Handler<A> {
   const sessionGuarded = withPermission(rule, handler);
-  const guarded = async (...args: A): Promise<Response> =>
-    hasBearerCredentials(args[0]) ? handler(...args) : sessionGuarded(...args);
+  const guarded = async (...args: A): Promise<Response> => {
+    if (!hasBearerCredentials(args[0])) return sessionGuarded(...args);
+    const off = await refuseIfRouteOff(args[0]);
+    if (!off) return handler(...args);
+    let liveKey: boolean;
+    try {
+      const params = (await (args[1] as { params?: Promise<{ id?: string }> } | undefined)?.params) ?? {};
+      liveKey = (await authenticateIngestionKey(args[0], { searchIndexId: params.id ?? '' })).success;
+    } catch (error) {
+      return apiResponse.error(error, 500, { operation: 'checkIngestionKey' });
+    }
+    if (liveKey) return off;
+    const answer = await handler(...args);
+    if (answer.status < 400) {
+      // The handler took a key this check did not: never let it through while the area is off
+      logger.error('A document route accepted an ingestion key the area check refused', { status: answer.status });
+      return off;
+    }
+    return answer;
+  };
   Object.defineProperty(guarded, ACCESS_RULE, { value: rule });
   Object.defineProperty(guarded, INGESTION_KEY_ALLOWED, { value: true });
   return guarded;

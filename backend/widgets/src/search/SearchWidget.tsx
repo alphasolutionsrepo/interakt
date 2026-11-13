@@ -20,6 +20,7 @@ import {
   performAutocomplete,
   streamSummarize,
   ApiError,
+  TURNED_OFF_CODE,
 } from '../shared/api-client';
 import widgetCss from '../styles/widget.css?raw';
 import { parseSummary, citedNumbers, labelCitation, type InlineRun } from './summary-format';
@@ -52,7 +53,15 @@ export const SearchDropinUI = {
     });
     host.applyCssVars(theme.cssVars);
 
-    render(<SearchApp config={config} apiBaseUrl={apiBaseUrl} />, host.mount);
+    // The experience's area is switched off for this installation: the widget removes itself
+    // from the host page, through the same destroy path as an explicit teardown
+    // (only this instance, and only if it is still the registered one: a re-init in the same
+    // container may have replaced it, and the replacement must stay)
+    const removeSelf = () => {
+      if (instances.get(config.containerId) === instance) instance.destroy();
+    };
+
+    render(<SearchApp config={config} apiBaseUrl={apiBaseUrl} onTurnedOff={removeSelf} />, host.mount);
 
     const instance: InitializedWidget = {
       destroy() {
@@ -77,9 +86,11 @@ export const SearchDropinUI = {
 interface SearchAppProps {
   config: SearchConfig;
   apiBaseUrl: string;
+  /** Called when the server answers that the Search area is switched off. */
+  onTurnedOff: () => void;
 }
 
-function SearchApp({ config, apiBaseUrl }: SearchAppProps) {
+function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   const isInline = config.mode === 'inline';
   const open = useSignal<boolean>(isInline);
   const query = useSignal('');
@@ -213,6 +224,10 @@ function SearchApp({ config, apiBaseUrl }: SearchAppProps) {
         void runSummary(q, results.value);
       }
     } catch (err) {
+      if (err instanceof ApiError && err.code === TURNED_OFF_CODE) {
+        onTurnedOff();
+        return;
+      }
       errorMsg.value =
         err instanceof ApiError ? err.message : 'Search failed. Please try again.';
       results.value = [];

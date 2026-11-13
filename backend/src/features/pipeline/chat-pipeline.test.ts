@@ -40,11 +40,14 @@ vi.mock('@/features/sessions/sessions.service', () => ({
   shouldSummarize: vi.fn().mockReturnValue(true),
 }));
 vi.mock('@/features/sessions/summarization.service', () => ({ summarizeSession: mocks.summarizeSession }));
+vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/user-memories/memory-extraction.service', () => ({ extractMemoriesFromSession: mocks.extractMemoriesFromSession }));
 
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 
 import { runChatPipeline } from './chat-pipeline';
+
+import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 
 import type { AIExperienceWithTools } from '@/features/ai-experience/ai-experience.types';
 import type { ChatResult } from '@/features/ai-service/ai-service.types';
@@ -136,6 +139,7 @@ describe('runChatPipeline model choice', () => {
     mocks.getSessionWithWindow.mockResolvedValue(null);
     mocks.extractMemoriesFromSession.mockResolvedValue({ stored: 0, extracted: 0 });
     mocks.summarizeSession.mockResolvedValue({ performed: false });
+    featureSwitchesStub.reset();
   });
 
   it("uses the experience's model to plan, fill in the search and answer", async () => {
@@ -189,6 +193,22 @@ describe('runChatPipeline model choice', () => {
       expect(mocks.extractMemoriesFromSession).toHaveBeenCalledWith('session-1', 'user-1', 'exp-1', EXPERIENCE_MODEL);
       expect(mocks.summarizeSession).toHaveBeenCalledWith('session-1', 6, EXPERIENCE_MODEL);
     });
+  });
+
+  it('makes no user memories with Chat turned off (the built-in help still chats)', async () => {
+    featureSwitchesStub.off = new Set(['chat']);
+    mocks.getSessionWithWindow.mockResolvedValue({
+      session: { id: 'session-1', status: 'active', userContext: { userId: 'user-1' }, messageCount: 40 },
+      messages: [],
+    });
+    scriptSearchTurn();
+
+    await runChatPipeline({ experience: makeExperience(), message: 'Search for red shoes', sessionId: 'session-1', onEvent: vi.fn() });
+
+    // The summary still runs after the turn; by then memory extraction would have been called
+    await vi.waitFor(() => expect(mocks.summarizeSession).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.extractMemoriesFromSession).not.toHaveBeenCalled();
   });
 
   it.each(['greeting', 'general', 'off_topic'] as const)(

@@ -174,6 +174,13 @@ describe('docs search', () => {
     await expect(searchDocs('linen')).rejects.toBeInstanceOf(DocsSearchUnavailableError);
   });
 
+  it('tells a switched-off Help assistant (its own 404 code) from docs search that is not built yet', async () => {
+    answerWith(() => new Response(JSON.stringify({ success: false, code: 'FEATURE_OFF', error: 'This feature is turned off for this installation.' }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
+    await expect(searchDocs('linen')).rejects.toMatchObject({ turnedOff: true });
+    answerWith(() => apiErrorResponse(404));
+    await expect(searchDocs('linen')).rejects.toMatchObject({ turnedOff: false });
+  });
+
   it('lists the docs, and explains a gateway error page', async () => {
     answerWith(gatewayErrorPage);
     await expectGatewayError(loadDocList());

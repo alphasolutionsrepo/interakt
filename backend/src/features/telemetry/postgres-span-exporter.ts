@@ -107,6 +107,13 @@ export class PostgresSpanExporter implements SpanExporter {
   // ==========================================================================
 
   private async writeSpans(spans: ReadableSpan[]): Promise<void> {
+    // Analytics off: no traces are recorded (if the switches can't be read, they are)
+    try {
+      const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
+      if (!(await isAreaOn('analytics'))) return;
+    } catch {
+      // Keep recording
+    }
     const { analyticsDB } = await import('@/db/index');
     if (!analyticsDB) {
       logger.warn('Analytics DB not configured, dropping spans', { count: spans.length });

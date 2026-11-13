@@ -14,6 +14,7 @@ import type { EmbedBrandingConfig, Widget } from './build-snippet';
 
 import { getAIExperienceByAccessToken } from '@/features/ai-experience/ai-experience.service';
 import { readAccessToken } from '@/features/auth/public-access';
+import { refuseExperienceIfOff } from '@/features/feature-switches/gate';
 import {
   ForbiddenError,
   getSearchExperienceByAccessToken,
@@ -28,25 +29,27 @@ export interface EmbedExperience {
   embedConfig: EmbedBrandingConfig;
 }
 
-async function findExperience(accessToken: string): Promise<Omit<EmbedExperience, 'accessToken'> | null> {
+type Found = Omit<EmbedExperience, 'accessToken'> & { isBuiltIn: boolean };
+
+async function findExperience(accessToken: string): Promise<Found | null> {
   const ai = await getAIExperienceByAccessToken(accessToken);
   if (ai) {
     if (!ai.isActive) return null;
     const embed = (ai.accessConfig as { embedConfig?: EmbedBrandingConfig } | null)?.embedConfig ?? {};
-    return { widget: 'chat', name: ai.name, embedConfig: embed };
+    return { widget: 'chat', name: ai.name, embedConfig: embed, isBuiltIn: ai.isBuiltIn === true };
   }
 
   try {
     const search = await getSearchExperienceByAccessToken(accessToken);
     // Search experiences don't carry an embedConfig today — snippet stays minimal.
-    return { widget: 'search', name: search.name, embedConfig: {} };
+    return { widget: 'search', name: search.name, embedConfig: {}, isBuiltIn: search.isBuiltIn === true };
   } catch (err) {
     if (err instanceof UnauthorizedError || err instanceof ForbiddenError) return null;
     throw err;
   }
 }
 
-/** The experience to build the snippet for, or the 401 to send. */
+/** The experience to build the snippet for, or the 401 to send (404 when its kind is turned off). */
 export async function authenticateEmbedRequest(
   request: NextRequest,
 ): Promise<{ experience: EmbedExperience; response?: undefined } | { experience?: undefined; response: NextResponse }> {
@@ -59,6 +62,9 @@ export async function authenticateEmbedRequest(
   if (!found) {
     return { response: NextResponse.json({ error: 'Invalid or inactive access token' }, { status: 401 }) };
   }
+  const { isBuiltIn, ...experience } = found;
+  const off = await refuseExperienceIfOff(request, { isBuiltIn }, experience.widget === 'chat' ? 'chat' : 'search');
+  if (off) return { response: off };
 
-  return { experience: { accessToken, ...found } };
+  return { experience: { accessToken, ...experience } };
 }

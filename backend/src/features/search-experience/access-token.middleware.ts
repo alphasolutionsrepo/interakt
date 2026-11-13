@@ -20,6 +20,7 @@ import {
   readAccessToken,
   searchExperienceAccess,
 } from '@/features/auth/public-access';
+import { refuseExperienceIfOff } from '@/features/feature-switches/gate';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -105,13 +106,17 @@ export async function authenticateAccessToken(
       throw error;
     }
 
-    // 3. The experience's allowed origins and rate limits
+    // 3. Its area must be on for this installation (search, or AI summaries on the summarize route)
+    const off = await refuseExperienceIfOff(request, experience);
+    if (off) return { success: false, response: off };
+
+    // 4. The experience's allowed origins and rate limits
     const refused = checkPublicAccess(request, searchExperienceAccess(experience));
     if (refused) {
       return { success: false, response: refused };
     }
 
-    // 4. Log successful authentication
+    // 5. Log successful authentication
     logger.debug('Access token authenticated', {
       experienceId: experience.id,
       experienceName: experience.name,

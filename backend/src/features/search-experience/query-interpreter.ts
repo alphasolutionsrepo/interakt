@@ -226,6 +226,12 @@ export async function applyQueryInterpretation(options: {
         return { query, filters: clientFilters };
     }
 
+    // Query understanding is part of AI summaries: with that off, search runs as plain search
+    const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
+    if (!(await isAreaOn('ai-summaries'))) {
+        return { query, filters: clientFilters };
+    }
+
     const interpretation = await interpretQuery({
         query,
         searchIndexId,

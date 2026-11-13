@@ -67,6 +67,19 @@ describe('home links a role can follow', () => {
     expect(homeDataForRole(withSteps, holding('search-experiences:view', 'analytics:view', 'analytics:ask')).checklist?.map((c) => c.id)).toEqual(['traffic', 'ask']);
   });
 
+  it('drops the traffic step with Analytics off (no traffic is recorded), and the list once the rest is done', () => {
+    const steps = [
+      { id: 'experience', href: '/experiences/create', done: true },
+      { id: 'traffic', href: '/experiences/search/e', done: false },
+    ];
+    const withSteps = { ...data, checklist: steps } as unknown as HomeData;
+    const role = holding('search-experiences:view', 'search-experiences:edit', 'analytics:view');
+    expect(homeDataForRole(withSteps, role).checklist?.map((c) => c.id)).toEqual(['experience', 'traffic']);
+    expect(homeDataForRole(withSteps, role, { analyticsOn: false }).checklist).toBeNull();
+    const notDone = { ...data, checklist: [{ ...steps[0], done: false }, steps[1]] } as unknown as HomeData;
+    expect(homeDataForRole(notDone, role, { analyticsOn: false }).checklist?.map((c) => c.id)).toEqual(['experience']);
+  });
+
   it("drops cards and tips whose action opens a page the role can't open", () => {
     const seen = homeDataForRole(data, holding('analytics:view', 'search-experiences:view'));
     expect(seen.cards.map((c) => c.id)).toEqual(['c']);

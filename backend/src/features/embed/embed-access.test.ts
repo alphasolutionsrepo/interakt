@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getSearchExperienceByAccessToken: vi.fn(),
 }));
 
+vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/shared/logger/logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));

@@ -18,7 +18,8 @@ import { allowsAction, UI_ACTIONS } from './ui-actions';
 const SNAPSHOT = join(__dirname, '__snapshots__', 'route-permissions.txt');
 
 const rows = readFileSync(SNAPSHOT, 'utf8').split('\n').filter(Boolean).map((line) => {
-  const [method, path, ...rest] = line.trim().split(/\s+/);
+  // The [area] at the end is the route's feature switch; it isn't part of the rule
+  const [method, path, ...rest] = line.replace(/\s+\[[^\]]+\]$/, '').trim().split(/\s+/);
   const builtIn = rest.at(-1) === '+built-in';
   return { route: `${method} ${path}`, rule: (builtIn ? rest.slice(0, -1) : rest).join(' '), builtIn };
 });

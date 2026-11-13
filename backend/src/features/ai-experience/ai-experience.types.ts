@@ -58,7 +58,7 @@ export interface AIExperienceWithTools {
   sessionConfig: SessionConfig;
   accessToken: string;
   accessConfig: AccessConfig;
-  /** Part of the built-in help: only an Admin changes it */
+  /** Part of the built-in help (set up by the docs setup); it belongs to the Help assistant, and only an Admin changes it. */
   isBuiltIn: boolean;
   observabilityConfig: ObservabilityConfig;
   providerId: string | null;

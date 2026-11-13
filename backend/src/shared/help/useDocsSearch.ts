@@ -27,9 +27,11 @@ export interface DocsSearchState {
   tookMs: number | null;
   /** True when results are title matches only (full-text search unavailable). */
   fallback: boolean;
+  /** The fallback is because the Help assistant is switched off, not because the search is still being set up */
+  turnedOff: boolean;
 }
 
-const IDLE: DocsSearchState = { status: 'idle', hits: [], groups: [], tookMs: null, fallback: false };
+const IDLE: DocsSearchState = { status: 'idle', hits: [], groups: [], tookMs: null, fallback: false, turnedOff: false };
 
 export function useDocsSearch(query: string, group: string | null): DocsSearchState {
   const [state, setState] = useState<DocsSearchState>(IDLE);
@@ -60,6 +62,7 @@ export function useDocsSearch(query: string, group: string | null): DocsSearchSt
           groups: all.groups,
           tookMs: shown.tookMs,
           fallback: false,
+          turnedOff: false,
         });
       } catch (e) {
         if (signal.aborted) return;
@@ -77,6 +80,7 @@ export function useDocsSearch(query: string, group: string | null): DocsSearchSt
             groups: [...new Set(all.map((hit) => hit.group))],
             tookMs: null,
             fallback: true,
+            turnedOff: e.turnedOff,
           });
         } catch {
           if (!signal.aborted) setState({ ...IDLE, status: 'error' });
