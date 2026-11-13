@@ -16,13 +16,12 @@ import {
   RefreshCw,
   Loader2,
   Wrench,
-  Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { use, useEffect, useState } from 'react';
-import { toast } from 'sonner';
 
+import { CreateToolsPanel } from '../../_components/CreateToolsPanel';
 import { DataSourceTypeChip, DS_TYPE_CONFIG } from '../../_components/DataSourceTypeChip';
 import { HealthStatusChip } from '../../_components/HealthStatusChip';
 import { ScaffoldResult } from '../../_components/ScaffoldResult';
@@ -31,12 +30,10 @@ import type { DataSourceType } from '../../_lib/api-client';
 import { useDataSource } from '../../_lib/hooks/useDataSources';
 import { useHealthCheck } from '../../_lib/hooks/useHealthCheck';
 
-import { toolsApi } from '@/app/tools/_lib/api-client';
 import type { ScaffoldToolsResponse } from '@/app/tools/_lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ActionButton } from '@/shared/access/ActionControls';
-import { reportActionError } from '@/shared/activity/report';
 import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
@@ -113,7 +110,6 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
   const { dataSource, isLoading, isError, updateDataSource, deleteDataSource, isUpdating, isDeleting } = useDataSource(id);
   const { isChecking: isHealthChecking, refresh: refreshHealth } = useHealthCheck(id);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [isScaffolding, setIsScaffolding] = useState(false);
   const [schemaOpen, setSchemaOpen] = useState(false);
   const [scaffoldResult, setScaffoldResult] = useState<ScaffoldToolsResponse | null>(null);
 
@@ -358,40 +354,7 @@ export default function DataSourceDetailPage({ params }: { params: Promise<{ id:
           {scaffoldResult ? (
             <ScaffoldResult result={scaffoldResult} onViewAll={() => router.push('/tools')} />
           ) : (
-            <div className="flex items-center justify-between p-4 bg-violet-500/5 rounded-xl border border-violet-500/20">
-              <div>
-                <p className="font-medium text-sm">Create tools automatically</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Generates one tool per supported operation with AI descriptions based on the field schema.
-                </p>
-              </div>
-              <ActionButton
-                action="tools.scaffold"
-                builtIn={dataSource.isBuiltIn}
-                icon={isScaffolding ? Loader2 : Sparkles}
-                iconClassName={isScaffolding ? 'size-4 mr-2 animate-spin' : 'size-4 mr-2'}
-                className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white"
-                onClick={async () => {
-                  setIsScaffolding(true);
-                  try {
-                    const result = await toolsApi.scaffoldTools(id);
-                    setScaffoldResult(result);
-                    if (result.created.length > 0) {
-                      toast.success(`Created ${result.created.length} tool${result.created.length !== 1 ? 's' : ''}`);
-                    } else {
-                      toast.info('All tools already exist for this data source.');
-                    }
-                  } catch (err) {
-                    reportActionError('Create tools', err);
-                  } finally {
-                    setIsScaffolding(false);
-                  }
-                }}
-                disabled={isScaffolding}
-              >
-                {isScaffolding ? 'Creating...' : 'Create Tools'}
-              </ActionButton>
-            </div>
+            <CreateToolsPanel dataSourceId={id} isBuiltIn={dataSource.isBuiltIn} onCreated={setScaffoldResult} />
           )}
         </CardContent>
       </Card>
