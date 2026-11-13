@@ -8,7 +8,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getStoredFeaturesOff, updateFeaturesOff, updateGlobalSettings } from './global-settings.service';
+import { getGlobalSettings, getStoredFeaturesOff, invalidateCache, updateFeaturesOff, updateGlobalSettings } from './global-settings.service';
 
 import { globalSearchSettings } from '@/db/schema/global-search-settings.schema';
 import { clearFeatureSwitchCache, setFeatureSwitches } from '@/features/feature-switches/feature-switches.service';
@@ -64,7 +64,8 @@ describe('saving feature switches', () => {
 describe('the settings row', () => {
   it('is created with defaults and then updated by the general settings save', async () => {
     const created = await updateGlobalSettings({ searchTimeout: 1234 });
-    expect(created).toMatchObject({ searchTimeout: 1234, featuresOff: [] });
+    expect(created).toMatchObject({ searchTimeout: 1234 });
+    expect(await stored()).toEqual([]);
     const updated = await updateGlobalSettings({ rrfWindowSize: 77 });
     expect(updated).toMatchObject({ id: created.id, searchTimeout: 1234, rrfWindowSize: 77 });
     expect(await testDb.db.select().from(globalSearchSettings)).toHaveLength(1);
@@ -89,6 +90,22 @@ describe('code deployed before its migration', () => {
     const warnings = logs.filter((l) => l.level === 'warn');
     expect(warnings).toHaveLength(1);
     expect(warnings[0].message).toMatch(/migration.*has not run/);
+  });
+
+  it('reads the stored general settings, without errors', async () => {
+    await testDb.db.execute(sql`INSERT INTO global_search_settings (search_timeout) VALUES (1234)`);
+    invalidateCache();
+    expect(await getGlobalSettings()).toMatchObject({ searchTimeout: 1234 });
+    expect(logs.filter((l) => l.level === 'error')).toEqual([]);
+  });
+
+  it('saves the general settings', async () => {
+    const created = await updateGlobalSettings({ searchTimeout: 1234 });
+    expect(created).toMatchObject({ searchTimeout: 1234 });
+    const updated = await updateGlobalSettings({ rrfWindowSize: 77 });
+    expect(updated).toMatchObject({ id: created.id, searchTimeout: 1234, rrfWindowSize: 77 });
+    invalidateCache();
+    expect(await getGlobalSettings()).toMatchObject({ searchTimeout: 1234, rrfWindowSize: 77 });
   });
 
   it('refuses a save with a clear 503', async () => {

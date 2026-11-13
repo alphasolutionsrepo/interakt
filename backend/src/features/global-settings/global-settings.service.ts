@@ -10,7 +10,8 @@
 import 'server-only';
 
 import { db } from '@/db/index';
-import { eq, sql } from 'drizzle-orm';
+import { eq, getTableColumns, sql } from 'drizzle-orm';
+import { pgTable, uuid } from 'drizzle-orm/pg-core';
 import {
     globalSearchSettings,
     DEFAULT_GLOBAL_SETTINGS,
@@ -57,7 +58,15 @@ export interface GlobalSearchConfig {
 // CACHED SETTINGS
 // ============================================================================
 
-let cachedSettings: GlobalSearchSettings | null = null;
+/**
+ * The general settings: every column but the feature switches (read and saved on their own),
+ * so these keep working on a database the switches' migration hasn't run on yet.
+ */
+export type GeneralSearchSettings = Omit<GlobalSearchSettings, 'featuresOff'>;
+const { featuresOff: _featuresOff, ...generalColumns } = getTableColumns(globalSearchSettings);
+const generalColumnNames = Object.fromEntries(Object.keys(generalColumns).map((k) => [k, true])) as { [K in keyof typeof generalColumns]: true };
+
+let cachedSettings: GeneralSearchSettings | null = null;
 let cacheTimestamp: number = 0;
 const CACHE_TTL_MS = 60000; // 1 minute cache
 
@@ -68,7 +77,7 @@ const CACHE_TTL_MS = 60000; // 1 minute cache
 /**
  * Get global search settings from database or cache
  */
-export async function getGlobalSettings(): Promise<GlobalSearchSettings> {
+export async function getGlobalSettings(): Promise<GeneralSearchSettings> {
     // Check cache
     const now = Date.now();
     if (cachedSettings && (now - cacheTimestamp) < CACHE_TTL_MS) {
@@ -76,7 +85,7 @@ export async function getGlobalSettings(): Promise<GlobalSearchSettings> {
     }
 
     try {
-        const settings = await db.query.globalSearchSettings.findFirst() as GlobalSearchSettings | undefined;
+        const settings = await db.query.globalSearchSettings.findFirst({ columns: generalColumnNames });
 
         if (settings) {
             cachedSettings = settings;
@@ -169,7 +178,7 @@ export interface UpdateGlobalSettingsInput {
  */
 export async function updateGlobalSettings(
     input: UpdateGlobalSettingsInput
-): Promise<GlobalSearchSettings> {
+): Promise<GeneralSearchSettings> {
     // Convert decimal weights to stored integers
     const updateData: Partial<GlobalSearchSettings> = {};
 
@@ -195,14 +204,13 @@ export async function updateGlobalSettings(
         throw new Error(`Invalid settings: ${validation.errors.join(', ')}`);
     }
 
-    // Update the settings row, or create it with defaults + overrides
-    const { row: result, created } = await writeSettingsRow(db, updateData, {
-        searchTimeout: updateData.searchTimeout ?? DEFAULT_GLOBAL_SETTINGS.searchTimeout,
-        rrfRankConstant: updateData.rrfRankConstant ?? DEFAULT_GLOBAL_SETTINGS.rrfRankConstant,
-        rrfWindowSize: updateData.rrfWindowSize ?? DEFAULT_GLOBAL_SETTINGS.rrfWindowSize,
-        lexicalWeight: updateData.lexicalWeight ?? DEFAULT_GLOBAL_SETTINGS.lexicalWeight,
-        semanticWeight: updateData.semanticWeight ?? DEFAULT_GLOBAL_SETTINGS.semanticWeight,
-    });
+    // Update the settings row, created with the defaults when there is none
+    const { id, created } = await settingsRow(db);
+    const [result] = await db
+        .update(globalSearchSettings)
+        .set({ ...updateData, updatedAt: new Date() })
+        .where(eq(globalSearchSettings.id, id))
+        .returning(generalColumns);
     logger.info(created ? 'Created global search settings' : 'Updated global search settings', { id: result.id });
 
     // Invalidate cache
@@ -293,7 +301,8 @@ export async function updateFeaturesOff(
             const row = await tx.query.globalSearchSettings.findFirst({ columns: { featuresOff: true } });
             const before = row?.featuresOff ?? [];
             const after = change([...before]);
-            await writeSettingsRow(tx, { featuresOff: after }, { featuresOff: after });
+            const { id } = await settingsRow(tx);
+            await tx.update(globalSearchSettings).set({ featuresOff: after, updatedAt: new Date() }).where(eq(globalSearchSettings.id, id));
             return { before, after };
         });
         invalidateCache();
@@ -314,28 +323,21 @@ export async function updateFeaturesOff(
 // Arbitrary key for the advisory lock that serializes feature switch saves
 const FEATURES_OFF_LOCK = 4_071_113;
 
-type SettingsExecutor = Pick<typeof db, 'query' | 'update' | 'insert'>;
+type SettingsExecutor = Pick<typeof db, 'query' | 'insert'>;
 
-/** Update the settings row, or insert one (with insertValues) when there is none yet. */
-async function writeSettingsRow(
-    executor: SettingsExecutor,
-    changes: Partial<GlobalSearchSettings>,
-    insertValues: Partial<GlobalSearchSettings>,
-): Promise<{ row: GlobalSearchSettings; created: boolean }> {
+// The settings table seen through its id alone: an insert names no other column, so it works
+// whichever migrations have run (the others take their defaults)
+const settingsRowIds = pgTable('global_search_settings', { id: uuid('id').primaryKey().defaultRandom() });
+
+/** The id of the settings row, creating it with the column defaults when there is none. */
+async function settingsRow(executor: SettingsExecutor): Promise<{ id: string; created: boolean }> {
     const existing = await executor.query.globalSearchSettings.findFirst({ columns: { id: true } });
-    if (existing) {
-        const [updated] = await executor
-            .update(globalSearchSettings)
-            .set({ ...changes, updatedAt: new Date() })
-            .where(eq(globalSearchSettings.id, existing.id))
-            .returning();
-        return { row: updated, created: false };
-    }
-    const [created] = await executor.insert(globalSearchSettings).values(insertValues).returning();
-    return { row: created, created: true };
+    if (existing) return { id: existing.id, created: false };
+    const [inserted] = await executor.insert(settingsRowIds).values({}).returning();
+    return { id: inserted.id, created: true };
 }
 
-function createDefaultSettings(): GlobalSearchSettings {
+function createDefaultSettings(): GeneralSearchSettings {
     return {
         id: 'default',
         createdAt: new Date(),
@@ -345,6 +347,5 @@ function createDefaultSettings(): GlobalSearchSettings {
         rrfWindowSize: DEFAULT_GLOBAL_SETTINGS.rrfWindowSize,
         lexicalWeight: DEFAULT_GLOBAL_SETTINGS.lexicalWeight,
         semanticWeight: DEFAULT_GLOBAL_SETTINGS.semanticWeight,
-        featuresOff: [],
     };
 }
