@@ -22,7 +22,12 @@ import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
 import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
 import { externalFacetableFields, searchExternalSourceForExperience } from './external-source-search';
-import { applyQueryInterpretation, type QueryInterpretation } from './query-interpreter';
+import {
+  applyQueryInterpretation,
+  rewriteQueryForExternalSearch,
+  type QueryInterpretation,
+  type QueryRewrite,
+} from './query-interpreter';
 import type {
   PublicSearchRequest,
   SearchExperienceExternalSourceWithDetails,
@@ -109,19 +114,22 @@ export async function executeExperienceSearch(
       }
 
       const externalFields = await loadExternalFields(external);
-      const { request, interpretation } = await buildSearchRequest(
+      const { request, interpretation, externalQuery } = await buildSearchRequest(
         publicRequest,
         experience,
         indexes,
+        external.length > 0,
         externalFields,
         options
       );
 
       // Query understanding infers filters from the managed index's fields; an external
-      // engine gets what the visitor sent instead.
-      const externalRequest: SearchRequest = interpretation?.interpreted
-        ? { ...request, query: publicRequest.query, filters: publicRequest.filters as SearchRequest['filters'] }
-        : request;
+      // engine gets the visitor's filters and, when rewritten, search terms for the query.
+      const externalRequest: SearchRequest = {
+        ...request,
+        query: externalQuery,
+        filters: publicRequest.filters as SearchRequest['filters'],
+      };
 
       const hitOrigins = new WeakMap<SearchHit, HitOrigin>();
       const failedSources: HitOrigin[] = [];
@@ -244,20 +252,25 @@ async function buildSearchRequest(
   publicRequest: PublicSearchRequest,
   experience: SearchExperienceWithIndexes,
   indexes: Array<SearchExperienceIndex & { searchIndex: { id: string; name: string; displayName: string } }>,
+  hasExternal: boolean,
   externalFields: Map<string, DataSourceField[]>,
   options: ExperienceSearchOptions
-): Promise<{ request: SearchRequest; interpretation?: QueryInterpretation }> {
+): Promise<{ request: SearchRequest; interpretation?: QueryInterpretation; externalQuery: string }> {
   const searchConfig = experience.searchConfig;
 
-  // Natural-language understanding: turn "men's t-shirts below $110" into a clean
-  // query plus real filters before searching. No-op unless the experience opts in.
-  const interpreted = await applyQueryInterpretation({
-    query: publicRequest.query,
-    clientFilters: publicRequest.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
-    searchIndexId: indexes[0]?.searchIndex?.id,
-    aiConfig: experience.aiConfig,
-    experienceId: experience.id,
-  });
+  // Natural-language understanding, both no-ops unless the experience opts in: managed
+  // indexes get "men's t-shirts below $110" as a clean query plus real filters; external
+  // sources get the question as search terms. The two model calls run side by side.
+  const [interpreted, rewrite] = await Promise.all([
+    applyQueryInterpretation({
+      query: publicRequest.query,
+      clientFilters: publicRequest.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
+      searchIndexId: indexes[0]?.searchIndex?.id,
+      aiConfig: experience.aiConfig,
+      experienceId: experience.id,
+    }),
+    hasExternal ? rewriteForExternal(publicRequest.query, experience) : undefined,
+  ]);
 
   const filters = interpreted.filters as SearchRequest['filters'];
 
@@ -302,7 +315,31 @@ async function buildSearchRequest(
       : undefined,
   };
 
-  return { request, interpretation: interpreted.interpretation };
+  return { request, interpretation: interpreted.interpretation, externalQuery: rewrite?.query ?? publicRequest.query };
+}
+
+/**
+ * Rewrite the query into search terms for external sources, as its own trace step. No
+ * step when query understanding is off: there is nothing to report.
+ */
+async function rewriteForExternal(
+  query: string,
+  experience: SearchExperienceWithIndexes
+): Promise<QueryRewrite | undefined> {
+  const aiConfig = experience.aiConfig;
+  if (!aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled) return undefined;
+
+  return withSpan({ name: 'search_experience.query_rewrite', experienceId: experience.id }, async (span) => {
+    const rewrite = await rewriteQueryForExternalSearch({ query, aiConfig, experienceId: experience.id });
+    span.setAttribute(ATTR.QUERY_REWRITE_OUTCOME, rewrite.outcome);
+    span.setAttribute(ATTR.QUERY_REWRITE_DURATION_MS, rewrite.durationMs);
+    // What the visitor typed and the terms made from it are content: recorded only at 'full'
+    if (shouldLogContent(experience.id)) {
+      span.setAttribute(ATTR.QUERY_REWRITE_ORIGINAL, rewrite.originalQuery);
+      span.setAttribute(ATTR.QUERY_REWRITE_REWRITTEN, rewrite.query);
+    }
+    return rewrite;
+  });
 }
 
 /**

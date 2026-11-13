@@ -25,6 +25,8 @@ import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 import { SummaryAreaGuard } from '../SummaryAreaGuard';
 import { CustomInstructionsGenerator } from './CustomInstructionsGenerator';
 import {
+  timeoutMsFromSeconds,
+  timeoutSecondsFromMs,
   type WizardFormData,
 } from '@/features/search-experience/search-experience.client';
 
@@ -244,7 +246,8 @@ export function StepAIConfig({
                   </CardTitle>
                   <CardDescription>
                     Turn phrases like &quot;under $200&quot; or a product code into real filters
-                    before searching. Adds an LLM call to every search, so it is off by default.
+                    before searching. For external indexes, it rewrites the visitor&apos;s question
+                    into search terms. Adds an LLM call to every search, so it is off by default.
                   </CardDescription>
                 </div>
                 <Switch
@@ -275,6 +278,23 @@ export function StepAIConfig({
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="queryUnderstandingTimeLimit">Time Limit (seconds)</Label>
+                  <Input
+                    id="queryUnderstandingTimeLimit"
+                    type="number"
+                    min={0.5}
+                    max={10}
+                    step={0.5}
+                    value={timeoutSecondsFromMs(aiConfig.queryUnderstanding.timeoutMs)}
+                    onChange={(e) => updateQueryUnderstandingConfig('timeoutMs', timeoutMsFromSeconds(e.target.value))}
+                    className="max-w-[12rem]"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    When the limit is reached, search goes on with the visitor&apos;s own words.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="queryUnderstandingCustomInstructions">
                     Custom Instructions (Optional)
                   </Label>
@@ -290,7 +310,8 @@ export function StepAIConfig({
                   <p className="text-xs text-muted-foreground">
                     Added to the core interpreter instructions, which are written around product
                     attributes. Use this to describe fields it would not otherwise recognise, such
-                    as identifiers or domain-specific codes.
+                    as identifiers or domain-specific codes. They also guide the search terms
+                    written for external indexes.
                   </p>
                 </div>
               </CardContent>

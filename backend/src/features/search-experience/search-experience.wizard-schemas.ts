@@ -13,6 +13,8 @@ import {
   DEFAULT_QUERY_UNDERSTANDING_CONFIG,
   DEFAULT_TOOLS_CONFIG,
   DEFAULT_AUTOCOMPLETE_CONFIG,
+  MIN_QUERY_UNDERSTANDING_TIMEOUT_MS,
+  MAX_QUERY_UNDERSTANDING_TIMEOUT_MS,
 } from './search-experience.types';
 
 // ============================================================================
@@ -116,6 +118,7 @@ export const wizardStep3Schema = z.object({
       enabled: z.boolean(),
       minWords: z.number().int().min(1).max(20),
       customInstructions: z.string().max(5000).optional(),
+      timeoutMs: z.number().int().min(MIN_QUERY_UNDERSTANDING_TIMEOUT_MS).max(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS).optional(),
     }),
   }),
   toolsConfig: z.object({
@@ -223,6 +226,7 @@ export interface WizardFormData {
       enabled: boolean;
       minWords: number;
       customInstructions?: string;
+      timeoutMs?: number;
     };
   };
   toolsConfig: {

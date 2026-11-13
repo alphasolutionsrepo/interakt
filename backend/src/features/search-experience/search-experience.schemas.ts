@@ -12,6 +12,8 @@ import {
   DEFAULT_AI_CONFIG,
   DEFAULT_TOOLS_CONFIG,
   DEFAULT_AUTOCOMPLETE_CONFIG,
+  MIN_QUERY_UNDERSTANDING_TIMEOUT_MS,
+  MAX_QUERY_UNDERSTANDING_TIMEOUT_MS,
 } from './search-experience.types';
 
 // ============================================================================
@@ -107,6 +109,8 @@ export const queryUnderstandingConfigSchema = z.object({
   enabled: z.boolean().default(false),
   minWords: z.number().int().min(1).max(20).default(3),
   customInstructions: z.string().max(5000).optional(),
+  // Absent on older experiences; the interpreter then uses the default
+  timeoutMs: z.number().int().min(MIN_QUERY_UNDERSTANDING_TIMEOUT_MS).max(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS).optional(),
 });
 
 export const aiConfigSchema = z.object({

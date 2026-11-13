@@ -55,6 +55,11 @@ export const ATTR = {
   SEARCH_ES_TOOK_MS: 'alpha.search.es_took_ms',
   SEARCH_SOURCE_COUNT: 'alpha.search.source_count', // indexes + external indexes searched
   SEARCH_FAILED_SOURCES: 'alpha.search.failed_sources', // sources that failed while others answered
+  // Query understanding's rewrite of the visitor's words into search terms for external sources
+  QUERY_REWRITE_OUTCOME: 'alpha.search.query_rewrite.outcome', // 'rewritten' | 'unchanged' | 'skipped' | 'failed' | 'timed_out'
+  QUERY_REWRITE_DURATION_MS: 'alpha.search.query_rewrite.duration_ms',
+  QUERY_REWRITE_ORIGINAL: 'alpha.search.query_rewrite.original',
+  QUERY_REWRITE_REWRITTEN: 'alpha.search.query_rewrite.rewritten',
   DATA_SOURCE_ID: 'alpha.data_source.id',
   DATA_SOURCE_NAME: 'alpha.data_source.name',
 
@@ -121,6 +126,8 @@ export const ATTR = {
 export const CONTENT_ATTRIBUTES: ReadonlySet<string> = new Set([
   ATTR.CHAT_USER_MESSAGE,
   ATTR.SEARCH_QUERY,
+  ATTR.QUERY_REWRITE_ORIGINAL,
+  ATTR.QUERY_REWRITE_REWRITTEN,
   ATTR.TOOL_INPUT_PARAMS,
   ATTR.V2_PLAN_REASONING,
   'alpha.v2.plan.actions',

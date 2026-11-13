@@ -185,6 +185,55 @@ describe('a model call that fails', () => {
     });
 });
 
+describe('a model call past the time limit', () => {
+    const slowConfig = (): SearchExperienceAIConfig => {
+        const config = aiConfig();
+        return { ...config, queryUnderstanding: { ...config.queryUnderstanding!, timeoutMs: 500 } };
+    };
+
+    it("searches with the raw query and the client's filters, aborting the call, within the limit", async () => {
+        let signal: AbortSignal | undefined;
+        vi.mocked(aiService.chat).mockImplementation((_messages, options) => {
+            signal = options?.signal;
+            return new Promise((_resolve, reject) => {
+                options?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+            });
+        });
+        logs.length = 0;
+
+        const startedAt = Date.now();
+        const result = await applyQueryInterpretation({
+            query: QUERY,
+            clientFilters: [{ field: 'brand', operator: 'eq', value: 'x' }],
+            searchIndexId: freshIndexId(),
+            aiConfig: slowConfig(),
+            experienceId: 'exp-1',
+        });
+
+        expect(Date.now() - startedAt).toBeLessThan(1500);
+        expect(result.query).toBe(QUERY);
+        expect(result.filters).toEqual([{ field: 'brand', operator: 'eq', value: 'x' }]);
+        expect(signal?.aborted).toBe(true);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', message: 'Query interpretation timed out; searching with the raw query' })]);
+    });
+
+    it('does not keep the timed-out call: the next search asks again', async () => {
+        const searchIndexId = freshIndexId();
+        vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise(() => {}));
+
+        const first = await applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: slowConfig(), experienceId: 'exp-1',
+        });
+        const second = await applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: slowConfig(), experienceId: 'exp-1',
+        });
+
+        expect(first.query).toBe(QUERY);
+        expect(second.query).toBe('waterproof jackets');
+        expect(aiService.chat).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe('interpretation cache', () => {
     it('reuses the interpretation for an identical query and config', async () => {
         const searchIndexId = freshIndexId();

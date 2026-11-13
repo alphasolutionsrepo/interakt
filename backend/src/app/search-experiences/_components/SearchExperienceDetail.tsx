@@ -42,6 +42,7 @@ import {
   MULTI_INDEX_STRATEGY_INFO,
   RESULT_MERGE_STRATEGY_INFO,
   INDEX_ROLE_INFO,
+  timeoutSecondsFromMs,
   type MultiIndexStrategy,
   type ResultMergeStrategy,
   type IndexRole,
@@ -330,7 +331,7 @@ export function SearchExperienceDetail({ id, basePath = '/search-experiences', l
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Query Understanding</p>
                 <p className="text-sm font-semibold mt-1">
                   {aiConfig.queryUnderstanding?.enabled
-                    ? `Enabled · min ${aiConfig.queryUnderstanding.minWords} words`
+                    ? `Enabled · min ${aiConfig.queryUnderstanding.minWords} words · ${timeoutSecondsFromMs(aiConfig.queryUnderstanding.timeoutMs)} s time limit`
                     : 'Disabled'}
                 </p>
               </div>
