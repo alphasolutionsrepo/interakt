@@ -299,7 +299,10 @@ function flushSoon(): void {
   }
 }
 
-/** False while the Analytics area is turned off; if the switches can't be read, collection goes on. */
+/**
+ * False while the Analytics area is turned off. If the switches can't be read, collection goes
+ * on, unless the deployment setting turns Analytics off (that needs no read).
+ */
 async function collectionAllowed(): Promise<boolean> {
   const mine = ++switchReads;
   let answer = true;
