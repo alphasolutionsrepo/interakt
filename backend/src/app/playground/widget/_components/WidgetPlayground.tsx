@@ -15,7 +15,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
-import { initialWidgetKind, settledChoice, WIDGET_KIND_AREA } from '@/app/playground/_lib/area-gate';
+import { initialWidgetKind, pickFor, previewIfOn, settledChoice, WIDGET_KIND_AREA, type KindPick } from '@/app/playground/_lib/area-gate';
 import {
   useSearchExperiences,
   useSearchExperience,
@@ -342,11 +342,16 @@ export function WidgetPlayground() {
   // other stays visible, disabled with the reason
   const [pickedKind, setPickedKind] = useState<WidgetKind | null>(null);
   const kind = settledChoice(pickedKind, WIDGET_KIND_AREA, areaOn, initialWidgetKind);
-  const [selectedId, setSelectedId] = useState<string>('');
-  const [pickedLauncher, setLauncher] = useState<Launcher | null>(null);
-  const launcher = pickedLauncher ?? DEFAULT_LAUNCHER[kind];
+  // Picks remember their kind: once the shown kind settles on another one they no longer count
+  const [selection, setSelection] = useState<KindPick<string> | null>(null);
+  const selectedId = pickFor(selection, kind) ?? '';
+  const setSelectedId = (id: string) => setSelection({ kind, value: id });
+  const [pickedLauncher, setPickedLauncher] = useState<KindPick<Launcher> | null>(null);
+  const launcher = pickFor(pickedLauncher, kind) ?? DEFAULT_LAUNCHER[kind];
   const [device, setDevice] = useState<Device>('desktop');
-  const [applied, setApplied] = useState<AppliedSpec | null>(null);
+  const [appliedSpec, setApplied] = useState<AppliedSpec | null>(null);
+  // A preview of a kind that is off is not kept
+  const applied = previewIfOn(appliedSpec, areaOn);
 
   // An off kind's routes are refused by the server: don't ask for its list
   const chatOn = areaOn(WIDGET_KIND_AREA.chat);
@@ -360,8 +365,10 @@ export function WidgetPlayground() {
     kind === 'search' && searchOn && selectedId ? selectedId : undefined,
   );
 
-  const isLoadingList = kind === 'chat' ? aiList.isLoading : searchList.isLoading;
-  const experiences = kind === 'chat' ? aiList.experiences : searchList.experiences;
+  // Never the list of a kind that is off: it may still be cached from before the switch
+  const kindOn = areaOn(WIDGET_KIND_AREA[kind]);
+  const isLoadingList = kindOn && (kind === 'chat' ? aiList.isLoading : searchList.isLoading);
+  const experiences = !kindOn ? [] : kind === 'chat' ? aiList.experiences : searchList.experiences;
 
   const selectedExperience = experiences.find((e) => e.id === selectedId);
 
@@ -378,8 +385,8 @@ export function WidgetPlayground() {
   function handleKindChange(next: WidgetKind) {
     if (next === kind) return;
     setPickedKind(next);
-    setSelectedId('');
-    setLauncher(null);
+    setSelection(null);
+    setPickedLauncher(null);
   }
 
   function handleApply() {
@@ -427,6 +434,7 @@ export function WidgetPlayground() {
   const iframeDoc = applied ? buildIframeDoc(applied, origin) : null;
 
   const applyDisabled =
+    !kindOn ||
     !selectedExperience ||
     (kind === 'search' && (selectedSearchDetail.isLoading || !selectedSearchDetail.experience));
 
@@ -465,7 +473,7 @@ export function WidgetPlayground() {
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {kind === 'chat' ? 'AI Experience' : 'Search Experience'}
             </label>
-            <Select value={selectedId} onValueChange={setSelectedId} disabled={isLoadingList}>
+            <Select value={selectedId} onValueChange={setSelectedId} disabled={isLoadingList || !kindOn}>
               <SelectTrigger className="h-11 rounded-xl">
                 <SelectValue placeholder={isLoadingList ? 'Loading…' : 'Choose an experience'} />
               </SelectTrigger>
@@ -500,7 +508,7 @@ export function WidgetPlayground() {
             <ToggleGroup
               options={LAUNCHER_OPTIONS[kind]}
               value={launcher}
-              onChange={(v) => setLauncher(v as Launcher)}
+              onChange={(v) => setPickedLauncher({ kind, value: v as Launcher })}
             />
           </div>
 

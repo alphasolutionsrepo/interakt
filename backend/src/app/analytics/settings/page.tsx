@@ -112,7 +112,7 @@ export default function AnalyticsSettingsPage() {
     <div className="grid items-start gap-6 @3xl:grid-cols-2">
       <div className="space-y-6">
         <InsightsCard analyticsOff={analyticsOff} />
-        <DataCard />
+        <DataCard analyticsOff={analyticsOff} />
       </div>
       <TrackingCard />
     </div>
@@ -288,8 +288,12 @@ function TrackingCard() {
   );
 }
 
-function DataCard() {
-  const { experienceId, experienceName } = useAnalyticsContext();
+function DataCard({ analyticsOff }: { analyticsOff: boolean }) {
+  // With Analytics off the shell hides the experience picker, so a remembered pick can't be seen or
+  // reset: clearing then covers every experience, and the labels say so
+  const picked = useAnalyticsContext();
+  const experienceId = analyticsOff ? undefined : picked.experienceId;
+  const experienceName = analyticsOff ? undefined : picked.experienceName;
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const [confirmTraces, setConfirmTraces] = useState(false);

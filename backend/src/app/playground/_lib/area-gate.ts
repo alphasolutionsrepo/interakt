@@ -49,6 +49,22 @@ export function settledChoice<T extends string>(
   return picked !== null && areaOn(areaOf[picked]) ? picked : fallback(areaOn);
 }
 
+/** A pick that remembers which widget kind it was made for (an experience, a launcher). */
+export interface KindPick<V> {
+  kind: WidgetKind;
+  value: V;
+}
+
+/** The pick, only while it belongs to the kind now shown: after the shown kind settles elsewhere it is void. */
+export function pickFor<V>(pick: KindPick<V> | null, kind: WidgetKind): V | undefined {
+  return pick && pick.kind === kind ? pick.value : undefined;
+}
+
+/** The applied preview, unless its kind's area is off (the off kind's widget can't be previewed). */
+export function previewIfOn<T extends { kind: WidgetKind }>(applied: T | null, areaOn: (area: Area) => boolean): T | null {
+  return applied && areaOn(WIDGET_KIND_AREA[applied.kind]) ? applied : null;
+}
+
 export function initialWidgetKind(areaOn: (area: Area) => boolean): WidgetKind {
   return areaOn('chat') || !areaOn('search') ? 'chat' : 'search';
 }

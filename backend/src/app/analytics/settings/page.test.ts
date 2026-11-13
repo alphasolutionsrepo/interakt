@@ -19,7 +19,8 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: undefined, isLoading: false, isError: false, refetch: () => {} }),
   useQueryClient: () => ({ invalidateQueries: () => {} }),
 }));
-vi.mock('../_lib/AnalyticsContext', () => ({ useAnalyticsContext: () => ({ experienceId: undefined, experienceName: undefined }) }));
+const picked = vi.hoisted(() => ({ experienceId: undefined as string | undefined, experienceName: undefined as string | undefined }));
+vi.mock('../_lib/AnalyticsContext', () => ({ useAnalyticsContext: () => picked }));
 vi.mock('../_components/NeedsAttention', () => ({
   useProcessingStatus: () => ({ data: undefined, isError: false, refetch: () => {} }),
   useRefreshInsights: () => ({ refresh: () => {}, isProcessing: false }),
@@ -59,6 +60,20 @@ describe('Analytics settings with Analytics off', () => {
     const html = render();
     expect(buttonState(html, 'Clear all analytics data', 'clear analytics data').disabled).toBe(true);
     expect(html).toContain('clear analytics data');
+  });
+
+  it('scopes clearing to every experience, and says so, when a stale experience is still selected', () => {
+    Object.assign(picked, { experienceId: 'exp-1', experienceName: 'Help centre' });
+    try {
+      uiAccess.areasOff('analytics');
+      const off = render();
+      expect(off).toContain('Clear all analytics data');
+      expect(off).not.toContain('Help centre');
+      uiAccess.asAdmin();
+      expect(render()).toContain('Clear data for Help centre');
+    } finally {
+      Object.assign(picked, { experienceId: undefined, experienceName: undefined });
+    }
   });
 
   it('keeps Refresh now, locked with the reason', () => {

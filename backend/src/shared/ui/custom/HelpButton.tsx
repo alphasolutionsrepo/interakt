@@ -37,9 +37,12 @@ import { useDocsSearch } from '@/shared/help/useDocsSearch';
 /** The last mode used, remembered for the browser session. */
 const MODE_KEY = 'interakt.help.mode';
 
-/** With the Help assistant off only the docs search is left, whatever mode was remembered. */
-export function effectiveHelpMode(remembered: HelpMode, askOn: boolean): HelpMode {
-  return askOn ? remembered : 'search';
+/**
+ * With the Help assistant off only the docs search is left, whatever mode was remembered. While
+ * that is not known yet (null) the remembered mode stays, so the drawer doesn't flip once access loads.
+ */
+export function effectiveHelpMode(remembered: HelpMode, askOn: boolean | null): HelpMode {
+  return askOn === false ? 'search' : remembered;
 }
 
 /** Whether the docs-search route may be called: it is refused with the Help assistant off (still loading: try it). */
@@ -86,7 +89,7 @@ export function HelpButton() {
   // Until access has loaded the answer is unknown: nothing about asking is shown, then it appears once
   const askKnown: boolean | null = accessLoading ? null : askOn;
   const [savedMode, setModeState] = useState<HelpMode>('search');
-  const mode = effectiveHelpMode(savedMode, askOn);
+  const mode = effectiveHelpMode(savedMode, askKnown);
   const [text, setText] = useState('');
   const [group, setGroup] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
