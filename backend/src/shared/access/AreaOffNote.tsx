@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 
 import { useAccess } from './useAccess';
 
-import { AREAS, type Area } from '@/features/feature-switches/areas';
+import { AREAS, TURNED_OFF_MESSAGE, type Area } from '@/features/feature-switches/areas';
 
 export const FEATURES_SETTINGS_HREF = '/settings/features';
 
@@ -27,6 +27,17 @@ export function areaLabel(area: Area): string {
 /** "Chat is turned off for this installation." */
 export function areaOffText(area: Area): string {
   return `${areaLabel(area)} is turned off for this installation.`;
+}
+
+/**
+ * The same sentence for several areas: "Managed indexes and Playground are turned off for this
+ * installation." With none known it falls back to the generic message.
+ */
+export function areasOffText(areas: readonly Area[]): string {
+  if (areas.length === 0) return TURNED_OFF_MESSAGE;
+  if (areas.length === 1) return areaOffText(areas[0]);
+  const labels = areas.map(areaLabel);
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]} are turned off for this installation.`;
 }
 
 export function AreaOffNote({ area, detail, className }: { area: Area; detail?: ReactNode; className?: string }) {

@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AreaOffNote, areaOffText } from './AreaOffNote';
+import { AreaOffNote, areaOffText, areasOffText } from './AreaOffNote';
 
 import { uiAccess } from '@/shared/test/ui-access-stub';
 
@@ -17,6 +17,13 @@ const note = () => renderToStaticMarkup(createElement(AreaOffNote, { area: 'chat
 describe('AreaOffNote', () => {
   it('names the area by its label', () => {
     expect(areaOffText('ai-summaries')).toBe('AI summaries is turned off for this installation.');
+  });
+
+  it('names several areas in one sentence, and falls back to the generic message with none', () => {
+    expect(areasOffText(['chat'])).toBe('Chat is turned off for this installation.');
+    expect(areasOffText(['managed-indexes', 'playground'])).toBe('Managed indexes and Playground are turned off for this installation.');
+    expect(areasOffText(['playground', 'search', 'chat'])).toBe('Playground, Search and Chat are turned off for this installation.');
+    expect(areasOffText([])).toBe('This feature is turned off for this installation.');
   });
 
   it('links an Admin to Settings → Features', () => {

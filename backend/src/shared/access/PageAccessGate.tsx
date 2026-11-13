@@ -10,12 +10,12 @@ import { useEffect, type ReactNode } from 'react';
 
 import { accessState } from './access-state';
 import type { ActionGate } from './ActionControls';
+import { areasOffText } from './AreaOffNote';
 import { useAccess } from './useAccess';
 
 import { Button } from '@/components/ui/button';
 import { canOpenPage } from '@/features/access/page-permissions';
-import { TURNED_OFF_MESSAGE } from '@/features/feature-switches/areas';
-import { pageAreasOn } from '@/features/feature-switches/page-areas';
+import { pageAreasOff, pageAreasOn } from '@/features/feature-switches/page-areas';
 
 
 function Panel({ icon, title, text, action }: { icon: ReactNode; title: string; text: string; action?: ReactNode }) {
@@ -64,7 +64,7 @@ export function PageAccessGate({ children }: { children: ReactNode }) {
       <Panel
         icon={<Lock className="size-6 text-muted-foreground" />}
         title="This page is turned off"
-        text={TURNED_OFF_MESSAGE}
+        text={areasOffText(pageAreasOff(pathname, areaOn))}
         action={isAdmin ? <Button variant="outline" asChild><Link href="/settings/features">Turn it on in Settings → Features</Link></Button> : undefined}
       />
     );

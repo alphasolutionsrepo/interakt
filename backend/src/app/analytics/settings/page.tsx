@@ -14,10 +14,11 @@ import { clearAnalyticsData, INSIGHTS_QUEUE, loadInsightsSchedule } from '../_li
 import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
 
 import { jobsApi } from '@/app/jobs/_lib/api-client';
-import { ActionButton } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/app/playground/_lib/area-gate';
+import { noPermissionTo } from '@/features/access/ui-actions';
+import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
 import { AccessLink } from '@/shared/access/Can';
 import { useAccess } from '@/shared/access/useAccess';
-import { noPermissionTo } from '@/features/access/ui-actions';
 import { reportActionError } from '@/shared/activity/report';
 import { errorText } from '@/shared/api/api-error';
 import {
@@ -30,7 +31,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/shared/ui/components/alert-dialog';
-import { Button } from '@/shared/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/components/card';
 import { Skeleton } from '@/shared/ui/components/skeleton';
 
@@ -104,14 +104,15 @@ const TRACKING: Array<{ key: string; label: string; env: string }> = [
  * Settings: when insights refresh, what analytics records, and clearing data.
  */
 export default function AnalyticsSettingsPage() {
-  // With Analytics off only collection and the schedule stay: insights and data live behind analytics routes
+  // With Analytics off, collection and the schedule stay usable; actions on insights and data live behind
+  // analytics routes, so they stay in view but locked with the reason
   const { areaOn, isLoading } = useAccess();
   const analyticsOff = !isLoading && !areaOn('analytics');
   return (
     <div className="grid items-start gap-6 @3xl:grid-cols-2">
       <div className="space-y-6">
         <InsightsCard analyticsOff={analyticsOff} />
-        {!analyticsOff && <DataCard />}
+        <DataCard />
       </div>
       <TrackingCard />
     </div>
@@ -131,6 +132,7 @@ function InsightsCard({ analyticsOff }: { analyticsOff: boolean }) {
     queryClient.invalidateQueries({ queryKey: ['analytics', 'insights'] });
   }, [status, queryClient]);
   const { refresh, isProcessing } = useRefreshInsights(experienceId, onDone);
+  const refreshGate = useAreaGate(useActionGate('analytics.refresh'), 'analytics');
   const isRunning = isProcessing || status.data?.currentRun?.status === 'running';
   const lastRun = status.data?.lastRun;
   const [scheduling, setScheduling] = useState(false);
@@ -219,11 +221,9 @@ function InsightsCard({ analyticsOff }: { analyticsOff: boolean }) {
               Schedule nightly refresh (02:00 UTC)
             </ActionButton>
           )}
-          {!analyticsOff && (
-            <ActionButton action="analytics.refresh" icon={RefreshCw} iconClassName="mr-2 size-3.5" variant="outline" size="sm" className="rounded-xl" onClick={refresh} disabled={isRunning}>
-              Refresh now
-            </ActionButton>
-          )}
+          <ActionButton gate={refreshGate} icon={RefreshCw} iconClassName="mr-2 size-3.5" variant="outline" size="sm" className="rounded-xl" onClick={refresh} disabled={isRunning}>
+            Refresh now
+          </ActionButton>
           {/* Background Jobs needs settings:view: no link for a role that can't open it */}
           <AccessLink href="/jobs" className="px-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
             Change the schedule in Background Jobs
@@ -295,6 +295,8 @@ function DataCard() {
   const [confirmTraces, setConfirmTraces] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const deleteTraces = useDeleteAllSpans();
+  // Clearing goes through analytics routes: with Analytics off the buttons stay, locked with the reason
+  const clearGate = useAreaGate({ state: useAccess().isLoading ? 'loading' : 'allowed' }, 'analytics');
 
   const clearData = async () => {
     setIsClearing(true);
@@ -321,26 +323,30 @@ function DataCard() {
         </p>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
-        <Button
+        <ActionButton
+          gate={clearGate}
+          icon={isClearing ? Loader2 : Trash2}
+          iconClassName={isClearing ? 'mr-2 size-3.5 animate-spin' : 'mr-2 size-3.5'}
           variant="outline"
           size="sm"
           className="rounded-xl text-destructive hover:bg-destructive/10"
           onClick={() => setConfirm(true)}
           disabled={isClearing}
         >
-          {isClearing ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Trash2 className="mr-2 size-3.5" />}
           {experienceId ? `Clear data for ${experienceName}` : 'Clear all analytics data'}
-        </Button>
-        <Button
+        </ActionButton>
+        <ActionButton
+          gate={clearGate}
+          icon={deleteTraces.isPending ? Loader2 : Trash2}
+          iconClassName={deleteTraces.isPending ? 'mr-2 size-3.5 animate-spin' : 'mr-2 size-3.5'}
           variant="ghost"
           size="sm"
           className="rounded-xl text-destructive hover:bg-destructive/10"
           onClick={() => setConfirmTraces(true)}
           disabled={deleteTraces.isPending}
         >
-          {deleteTraces.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Trash2 className="mr-2 size-3.5" />}
           Clear only traces, for every experience
-        </Button>
+        </ActionButton>
       </CardContent>
 
       <AlertDialog open={confirmTraces} onOpenChange={setConfirmTraces}>

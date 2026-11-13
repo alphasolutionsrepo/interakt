@@ -112,7 +112,7 @@ describe('analytics settings', () => {
 describe('analytics settings with Analytics off', () => {
   const asked = (key: unknown[]) => !notAsked.includes(JSON.stringify(key));
 
-  it('asks nothing the server refuses and hides what needs it', () => {
+  it('asks nothing the server refuses and keeps what needs it in view, locked (page.test.ts checks the locks)', () => {
     uiAccess.asAdmin();
     uiAccess.areasOff('analytics');
     notAsked.length = 0;
@@ -122,8 +122,9 @@ describe('analytics settings with Analytics off', () => {
     expect(asked(['analytics', 'settings', 'config'])).toBe(true);
     expect(asked(['analytics', 'settings', 'schedule'])).toBe(true);
     expect(html).toContain('What analytics records');
-    expect(html).not.toContain('Refresh now');
-    expect(html).not.toContain('Clear all analytics data');
+    expect(html).toContain('Refresh now');
+    expect(html).toContain('Clear all analytics data');
+    expect(html).toContain('Analytics is turned off for this installation.');
   });
 
   it('asks for the status with Analytics on', () => {

@@ -69,3 +69,15 @@ export function pageAreasOn(pathname: string, areaOn: (area: Area) => boolean): 
   if (!rule) return true;
   return (rule.all ?? []).every(areaOn) && (!rule.anyOf || rule.anyOf.some(areaOn));
 }
+
+/**
+ * The areas that keep this page closed, so the gate can name them: every `all` area that is off,
+ * then the `anyOf` areas when none of them is on. Empty when the page is open.
+ */
+export function pageAreasOff(pathname: string, areaOn: (area: Area) => boolean): Area[] {
+  const rule = pageAreaRule(pathname);
+  if (!rule) return [];
+  const off = (rule.all ?? []).filter((a) => !areaOn(a));
+  if (rule.anyOf && !rule.anyOf.some(areaOn)) off.push(...rule.anyOf.filter((a) => !off.includes(a)));
+  return off;
+}

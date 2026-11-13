@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Area } from './areas';
-import { pageAreasOn, pageAreaRule } from './page-areas';
+import { pageAreasOff, pageAreasOn, pageAreaRule } from './page-areas';
 
 const offOf = (...off: Area[]) => (a: Area) => !off.includes(a);
 const allOn = offOf();
@@ -83,5 +83,31 @@ describe('which areas a page needs', () => {
   it('does not let a look-alike path borrow a rule and ignores a trailing slash', () => {
     expect(pageAreasOn('/toolsmith', offOf('chat'))).toBe(true);
     expect(pageAreasOn('/tools/', offOf('chat'))).toBe(false);
+  });
+});
+
+describe('which areas keep a page closed', () => {
+  it('names nothing for an open page or a core page', () => {
+    expect(pageAreasOff('/tools', allOn)).toEqual([]);
+    expect(pageAreasOff('/data-sources', offOf('chat', 'search'))).toEqual([]);
+  });
+
+  it('names each required area that is off', () => {
+    expect(pageAreasOff('/tools', offOf('chat'))).toEqual(['chat']);
+    expect(pageAreasOff('/playground/search', offOf('managed-indexes', 'playground'))).toEqual(['managed-indexes', 'playground']);
+    expect(pageAreasOff('/playground/search', offOf('playground'))).toEqual(['playground']);
+  });
+
+  it('names the either-or areas only when none of them is on', () => {
+    expect(pageAreasOff('/experiences', offOf('chat'))).toEqual([]);
+    expect(pageAreasOff('/experiences', offOf('search', 'chat'))).toEqual(['search', 'chat']);
+    expect(pageAreasOff('/playground/widget', offOf('playground', 'search', 'chat'))).toEqual(['playground', 'search', 'chat']);
+  });
+
+  it('agrees with pageAreasOn on every page it closes', () => {
+    const off = offOf('chat', 'managed-indexes', 'playground');
+    for (const p of ['/tools', '/search-indexes/x', '/playground', '/playground/search', '/experiences', '/analytics/overview', '/users']) {
+      expect(pageAreasOff(p, off).length === 0).toBe(pageAreasOn(p, off));
+    }
   });
 });

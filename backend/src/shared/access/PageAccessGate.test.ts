@@ -35,11 +35,11 @@ describe('PageAccessGate', () => {
     expect(gate('/tools')).toContain('You don&#x27;t have access to this page');
   });
 
-  it('says the feature is off, ahead of the permission, and offers an Admin the way to turn it on', () => {
+  it('names the area that is off, ahead of the permission, and offers an Admin the way to turn it on', () => {
     uiAccess.asAdmin();
     uiAccess.areasOff('chat');
     const html = gate('/tools');
-    expect(html).toContain('This feature is turned off for this installation.');
+    expect(html).toContain('Chat is turned off for this installation.');
     expect(html).toMatch(/<a[^>]*href="\/settings\/features"[^>]*>Turn it on in Settings → Features<\/a>/);
     expect(html).not.toContain('PAGE');
   });
@@ -48,8 +48,16 @@ describe('PageAccessGate', () => {
     uiAccess.hold('tools:view');
     uiAccess.areasOff('chat');
     const html = gate('/tools');
-    expect(html).toContain('This feature is turned off for this installation.');
+    expect(html).toContain('Chat is turned off for this installation.');
     expect(html).not.toContain('/settings/features');
+  });
+
+  it('names every area that keeps the page closed, and only those', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('managed-indexes', 'playground', 'analytics');
+    expect(gate('/playground/search')).toContain('Managed indexes and Playground are turned off for this installation.');
+    uiAccess.areasOff('search', 'chat');
+    expect(gate('/experiences')).toContain('Search and Chat are turned off for this installation.');
   });
 
   it('keeps core pages open when areas are off, and shows nothing while loading', () => {
