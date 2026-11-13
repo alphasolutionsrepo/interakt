@@ -281,7 +281,7 @@ export async function setupTopicGateEmbeddings(
 
   // 4. Embed all terms (both clusters in a single batch for efficiency)
   const allTerms = [...expandedTerms, ...generalTerms];
-  const allVectors = await embedBatch(allTerms, { feature: 'topic_gate' });
+  const allVectors = await embedBatch(allTerms, { feature: 'topic_gate', keepModelSize: true });
 
   // 5. Split vectors back into domain and general, filtering out failures
   const domainVectors = allVectors.slice(0, expandedTerms.length);
@@ -386,7 +386,7 @@ export async function evaluateDualCluster(
     }
 
     // 2. Embed user message
-    const messageVector = await embed(userMessage, { feature: 'topic_gate' });
+    const messageVector = await embed(userMessage, { feature: 'topic_gate', keepModelSize: true });
     if (!messageVector) {
       logger.warn('Failed to embed user message, classifying as domain (fail-open)', {
         experienceId,

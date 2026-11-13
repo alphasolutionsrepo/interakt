@@ -278,8 +278,15 @@
     {
       "idx": 39,
       "version": "7",
-      "when": 1794435133441,
-      "tag": "0039_feature_switches",
+      "when": 1794436033662,
+      "tag": "0039_model_can_shorten_vectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794581018463,
+      "tag": "0040_feature_switches",
       "breakpoints": true
     }
   ]

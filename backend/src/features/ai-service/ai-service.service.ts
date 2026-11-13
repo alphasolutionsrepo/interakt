@@ -170,6 +170,8 @@ async function resolveProviderConfig(
         maxRetries: options?.maxRetries ?? AI_SERVICE_DEFAULTS.maxRetries,
         settings: provider.settings as Record<string, unknown>,
         capabilities: model.capabilities as Record<string, unknown> ?? {},
+        dimensions: model.dimensions ?? undefined,
+        canShortenVectors: model.canShortenVectors === true,
     };
 }
 
@@ -768,6 +770,12 @@ export async function generateEmbeddings(
         const adapter = getAdapter(config.providerKey);
         const adapterConfig = toAdapterConfig(config);
 
+        // The size wanted: the caller's, else the one registered for the model. It is sent to
+        // the provider only for a model marked able to shorten its vectors; any other keeps
+        // its own size, and a wrong one is reported below.
+        const expectedDimensions = options?.dimensions ?? config.dimensions;
+        const requestedDimensions = config.canShortenVectors ? expectedDimensions : undefined;
+
         // Use batch processor for large requests
         if (texts.length > batchSize) {
             logger.info('Processing embeddings in batches', {
@@ -784,7 +792,10 @@ export async function generateEmbeddings(
             batchSize,
             embeddingFn: async (batch) => {
                 const response = await withResilience(
-                    () => adapter.generateEmbeddings({ texts: batch }, adapterConfig),
+                    () => adapter.generateEmbeddings(
+                        { texts: batch, ...(requestedDimensions && { dimensions: requestedDimensions }) },
+                        adapterConfig
+                    ),
                     {
                         providerId: config!.providerId,
                         providerKey: config!.providerKey,
@@ -808,9 +819,9 @@ export async function generateEmbeddings(
         const dimensions = batchResult.embeddings[0]?.length ?? 0;
 
         // Validate dimensions if expected
-        if (options?.dimensions && dimensions !== options.dimensions) {
+        if (expectedDimensions && dimensions !== expectedDimensions) {
             logger.warn('Embedding dimensions mismatch', {
-                expected: options.dimensions,
+                expected: expectedDimensions,
                 actual: dimensions,
             });
         }

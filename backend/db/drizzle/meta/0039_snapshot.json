@@ -1,5 +1,5 @@
 {
-  "id": "9e491439-9dea-4627-a857-e0f22190ac30",
+  "id": "35540a9d-a924-4c69-91f4-c9ccd477cdaa",
   "prevId": "f8208acd-4da5-42a9-8d1c-7d5ebf58e768",
   "version": "7",
   "dialect": "postgresql",
@@ -1392,6 +1392,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "can_shorten_vectors": {
+          "name": "can_shorten_vectors",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "capabilities": {
           "name": "capabilities",
           "type": "json",
@@ -2358,13 +2365,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 10
-        },
-        "features_off": {
-          "name": "features_off",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
         }
       },
       "indexes": {},

@@ -134,6 +134,19 @@ describe('a search the engine refused', () => {
 });
 
 
+describe('a semantic search query embedding', () => {
+  it("asks for the index's vector size, so a model with longer vectors still fits the index", async () => {
+    const { generateEmbedding } = await import('@/features/ai-service');
+    vi.mocked(generateEmbedding).mockResolvedValueOnce([0.1, 0.2, 0.3]);
+    vi.mocked(getSearchIndexById).mockResolvedValueOnce({ id: 'idx', name: 'products', isActive: true, status: 'active', aiProviderId: 'p', aiModelId: 'm' } as never);
+
+    await searchById('idx', { query: 'shirt', searchType: 'semantic' });
+
+    // 3 is the embedding size of the mocked index context above
+    expect(generateEmbedding).toHaveBeenLastCalledWith('shirt', expect.objectContaining({ dimensions: 3, feature: 'search_query' }));
+  });
+});
+
 describe('a provider that is rate limiting, as the caller is told', () => {
   const rateLimited = () => Object.assign(new Error('429 Too Many Requests'), { name: 'AdapterError', providerKey: 'openai', statusCode: 429 });
 

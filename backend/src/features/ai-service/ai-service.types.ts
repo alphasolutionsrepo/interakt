@@ -65,6 +65,10 @@ export interface ResolvedProviderConfig {
     settings: Record<string, unknown>;
     /** Model capabilities for adapter-specific behavior */
     capabilities?: Record<string, unknown>;
+    /** The vector size registered for an embedding model */
+    dimensions?: number;
+    /** The model returns shorter vectors when asked; only such models are sent a vector size */
+    canShortenVectors?: boolean;
 }
 
 // ============================================================================
@@ -317,7 +321,11 @@ export interface ChatStreamChunk {
 export interface EmbeddingOptions extends AIServiceOptions {
     /** What the embedding is for: every embedding call names one */
     feature: AIFeature;
-    /** Expected dimensions (for validation) */
+    /**
+     * The vector size wanted. Sent to the provider when the model can shorten its vectors
+     * (the model's registered size when this is left out), and the size that comes back
+     * is checked against it.
+     */
     dimensions?: number;
     /** Batch size for processing (default: 100) */
     batchSize?: number;
@@ -328,6 +336,8 @@ export interface EmbeddingRequest {
     texts: string[];
     /** Model to use (resolved from options) */
     model?: string;
+    /** Vector size the caller needs; sent to providers that can shorten vectors */
+    dimensions?: number;
 }
 
 export interface EmbeddingResult {
