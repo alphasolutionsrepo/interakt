@@ -109,7 +109,7 @@ function ConfigDisplay({ tool }: { tool: { executorType: string; operation: stri
 export default function ToolDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { tool, isLoading, isError, updateTool, deleteTool, isUpdating, isDeleting, experiences } = useTool(id);
+  const { tool, isLoading, isError, updateTool, deleteTool, isUpdating, isDeleting, experiences, experienceCount, experiencesHidden, usageKnown, usageFailed } = useTool(id);
   const { status: lookupFields } = useLookupFields(tool?.operation === 'lookup' ? id : undefined, tool?.dataSourceId);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [schemaOpen, setSchemaOpen] = useState(false);
@@ -216,7 +216,7 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
               </Badge>
             ),
           },
-          { label: 'Used In', value: <span className="text-2xl font-bold">{experiences.length}</span> },
+          { label: 'Used In', value: <span className="text-2xl font-bold">{usageKnown ? experienceCount : '—'}</span> },
           { label: 'Created', value: <span className="text-sm font-medium">{format(new Date(tool.createdAt), 'MMM d, yyyy')}</span> },
         ].map(({ label, value }, i) => (
           <Card key={i} className="border-border/60 shadow-sm rounded-2xl">
@@ -301,13 +301,18 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
       <ToolTestPanel toolId={id} isActive={tool.isActive} executorType={tool.executorType} operation={tool.operation} />
 
       {/* Used in AI Experiences */}
-      {experiences.length > 0 && (
+      {experienceCount > 0 && (
         <Card className="border-border/60 shadow-sm rounded-2xl">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">Used in AI Experiences</CardTitle>
-            <CardDescription>{experiences.length} experience{experiences.length !== 1 ? 's' : ''} use this tool.</CardDescription>
+            {!experiencesHidden && <CardDescription>{experienceCount} experience{experienceCount !== 1 ? 's' : ''} use this tool.</CardDescription>}
           </CardHeader>
           <CardContent className="space-y-2">
+            {experiencesHidden && (
+              <p className="text-sm text-muted-foreground">
+                Used in {experienceCount} chat experience{experienceCount !== 1 ? 's' : ''}. Your role can&apos;t view chat experiences.
+              </p>
+            )}
             {experiences.map((exp) => (
               <div key={exp.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
                 <div className="flex items-center gap-3">
@@ -330,13 +335,15 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
       {/* Danger Zone */}
       <DangerZone
         thing="tool"
-        detail={experiences.length > 0
-          ? `This tool is used by ${experiences.length} experience${experiences.length !== 1 ? 's' : ''}. Remove it from all experiences first.`
-          : 'Permanently deletes this tool. This action cannot be undone.'}
+        detail={!usageKnown
+          ? (usageFailed ? "Couldn't check where this tool is used. Reload the page to try again." : 'Checking where this tool is used…')
+          : experienceCount > 0
+            ? `This tool is used by ${experienceCount} experience${experienceCount !== 1 ? 's' : ''}. Remove it from all experiences first.`
+            : 'Permanently deletes this tool. This action cannot be undone.'}
         action="tools.delete"
         builtIn={tool.isBuiltIn}
         onDelete={() => setDeleteOpen(true)}
-        disabled={experiences.length > 0}
+        disabled={!usageKnown || experienceCount > 0}
       />
 
       <DeleteConfirmDialog

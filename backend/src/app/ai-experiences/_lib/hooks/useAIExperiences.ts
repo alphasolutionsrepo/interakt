@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
+import { invalidateToolUsage } from '@/app/tools/_lib/hooks/useTools';
+
 import { aiExperiencesApi } from '../api-client';
 import type {
   CreateAIExperiencePayload,
@@ -52,6 +54,7 @@ export function useAIExperiences(params?: ListAIExperiencesParams, { enabled = t
     mutationFn: (id: string) => aiExperiencesApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.lists() });
+      invalidateToolUsage(queryClient);
       toast.success('AI Experience deleted');
     },
     meta: { label: 'Delete experience' },
@@ -87,6 +90,7 @@ export function useAIExperience(id: string | undefined) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.detail(id!) });
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.lists() });
+      invalidateToolUsage(queryClient);
       toast.success('Experience updated');
     },
     meta: { label: 'Update experience' },
@@ -96,6 +100,7 @@ export function useAIExperience(id: string | undefined) {
     mutationFn: () => aiExperiencesApi.delete(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.lists() });
+      invalidateToolUsage(queryClient);
       toast.success('Experience deleted');
     },
     meta: { label: 'Delete experience' },
@@ -114,6 +119,7 @@ export function useAIExperience(id: string | undefined) {
     mutationFn: (data: AssignToolPayload) => aiExperiencesApi.assignTool(id!, data),
     onSuccess: async () => {
       await queryClient.refetchQueries({ queryKey: aiExperienceKeys.detail(id!), exact: true });
+      invalidateToolUsage(queryClient);
       toast.success('Tool assigned');
     },
     meta: { label: 'Assign tool' },
@@ -132,6 +138,7 @@ export function useAIExperience(id: string | undefined) {
     mutationFn: (toolId: string) => aiExperiencesApi.removeTool(id!, toolId),
     onSuccess: async () => {
       await queryClient.refetchQueries({ queryKey: aiExperienceKeys.detail(id!), exact: true });
+      invalidateToolUsage(queryClient);
       toast.success('Tool removed');
     },
     meta: { label: 'Remove tool' },
@@ -170,6 +177,7 @@ export function useCreateAIExperience() {
     mutationFn: (data: CreateAIExperiencePayload) => aiExperiencesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiExperienceKeys.lists() });
+      invalidateToolUsage(queryClient);
     },
     meta: { label: 'Create experience' },
   });
