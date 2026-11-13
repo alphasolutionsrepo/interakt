@@ -936,13 +936,13 @@ describe('a picker route whose answer the cut does not know', () => {
 
   it('refuses a success answer without rows, or that is not JSON, instead of sending it uncut', async () => {
     as(await makeUser(await makeRole(`Chat pickers odd ${n}`, ['ai-experiences:edit'])));
-    expect((await call(route(() => NextResponse.json({ success: true, secret: 'x' })), 'GET', '/api/x')).status).toBe(500);
-    expect((await call(route(() => new Response('plain secret', { status: 200 })), 'GET', '/api/x')).status).toBe(500);
+    expect((await call(route(() => NextResponse.json({ success: true, secret: 'x' })), 'GET', '/api/tools')).status).toBe(500);
+    expect((await call(route(() => new Response('plain secret', { status: 200 })), 'GET', '/api/tools')).status).toBe(500);
   });
 
   it('passes an error answer and an empty answer on as they are', async () => {
     as(await makeUser(await makeRole(`Chat pickers err ${n}`, ['ai-experiences:edit'])));
-    expect((await call(route(() => NextResponse.json({ success: false, error: 'nope' }, { status: 404 })), 'GET', '/api/x')).status).toBe(404);
-    expect((await call(route(() => new Response(null, { status: 204 })), 'GET', '/api/x')).status).toBe(204);
+    expect((await call(route(() => NextResponse.json({ success: false, error: 'nope' }, { status: 404 })), 'GET', '/api/tools')).status).toBe(404);
+    expect((await call(route(() => new Response(null, { status: 204 })), 'GET', '/api/tools')).status).toBe(204);
   });
 });

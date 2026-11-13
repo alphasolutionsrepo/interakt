@@ -62,7 +62,7 @@ async function cardsOn(tab: Tab, filters: { search?: string; isActive?: boolean 
     if (q?.pageSize) url.set('pageSize', String(q.pageSize));
     if (q?.search) url.set('search', q.search);
     if (q?.isActive !== undefined) url.set('isActive', String(q.isActive));
-    const res = await (route.GET as (r: NextRequest) => Promise<Response>)(new NextRequest(`http://localhost/api/x?${url}`));
+    const res = await (route.GET as (r: NextRequest) => Promise<Response>)(new NextRequest(`http://localhost/api/${kind === 'ai' ? 'ai-experiences' : 'search-experiences'}?${url}`));
     return (await res.json()).pagination.counts as Counts;
   };
   return hubMetrics(await ask(aiList, 'ai'), await ask(searchList, 'search'));
@@ -122,7 +122,8 @@ describe('a search term with a wildcard character', () => {
 
 describe('the length of the search term', () => {
   const ask = (route: { GET: unknown }, search: string) =>
-    (route.GET as (r: NextRequest) => Promise<Response>)(new NextRequest(`http://localhost/api/x?search=${search}`));
+    (route.GET as (r: NextRequest) => Promise<Response>)(
+      new NextRequest(`http://localhost/api/${route === aiList ? 'ai-experiences' : 'search-experiences'}?search=${search}`));
 
   it('is limited to 255 characters on both lists, so the hub never gets an answer from one kind and a refusal from the other', async () => {
     for (const route of [aiList, searchList]) {

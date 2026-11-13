@@ -8,7 +8,7 @@
  * An area is on when neither turns it off and, if it needs another area, one of those is on.
  *
  * isAreaOn is the one answer every gate asks (gate.ts). The stored state is read with a short
- * cache that a save clears, so a change applies to the next request in this process and
+ * cache that a save refreshes, so a change applies to the next request in this process and
  * within CACHE_MS on the others.
  */
 
@@ -25,22 +25,35 @@ const logger = createLogger('feature-switches');
 const CACHE_MS = 5_000;
 
 let stored: { off: ReadonlySet<Area>; at: number } | null = null;
+let reading: Promise<ReadonlySet<Area>> | null = null;
+// Bumped by a reset, so a read that started before it doesn't write its answer back
+let generation = 0;
+
+async function readStored(): Promise<ReadonlySet<Area>> {
+  const mine = generation;
+  try {
+    const off = new Set((await getStoredFeaturesOff()).filter(isArea));
+    if (mine === generation) stored = { off, at: Date.now() };
+    return off;
+  } catch (error) {
+    if (!stored) throw error;
+    // Keep serving the last known switches for another CACHE_MS before the database is tried
+    // again, and log once per window rather than once per request
+    stored = { off: stored.off, at: Date.now() };
+    logger.error('Could not read the feature switches; using the last known ones', error instanceof Error ? error : new Error(String(error)));
+    return stored.off;
+  }
+}
 
 /**
  * The areas an Admin turned off. A failed read uses the last known answer; with none, it
  * throws, and the gate answers the request as an error (as when the role lookup fails).
+ * Requests that arrive while a read is under way share it.
  */
 async function storedOff(): Promise<ReadonlySet<Area>> {
   if (stored && Date.now() - stored.at < CACHE_MS) return stored.off;
-  try {
-    const off = new Set((await getStoredFeaturesOff()).filter(isArea));
-    stored = { off, at: Date.now() };
-    return off;
-  } catch (error) {
-    if (!stored) throw error;
-    logger.error('Could not read the feature switches; using the last known ones', error instanceof Error ? error : new Error(String(error)));
-    return stored.off;
-  }
+  reading ??= readStored().finally(() => { reading = null; });
+  return reading;
 }
 
 let pinned: { raw: string; off: ReadonlySet<Area> } | null = null;
@@ -121,7 +134,9 @@ export async function setFeatureSwitches(changes: Partial<Record<Area, boolean>>
     else off.add(area);
   }
   await saveFeaturesOff(AREA_IDS.filter((a) => off.has(a)));
-  clearFeatureSwitchCache();
+  // What was just saved is the latest known state: keep it as the cache (and the fallback
+  // for a failed read), rather than clearing it
+  stored = { off, at: Date.now() };
   // Start-up skips the docs search while the Help assistant is off: build it once back on
   if (!helpWasOn && on('help-assistant', new Set([...pins, ...off]))) startDocsSearchBuild();
   return listFeatureSwitches();
@@ -138,7 +153,9 @@ function startDocsSearchBuild(): void {
     .finally(() => { docsBuild = null; });
 }
 
-/** Forget the cached stored state: the next check reads it again. */
+/** Forget everything cached, the last known switches too (for tests): the next check reads the database. */
 export function clearFeatureSwitchCache(): void {
+  generation++;
   stored = null;
+  reading = null;
 }

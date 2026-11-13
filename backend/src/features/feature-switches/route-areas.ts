@@ -11,9 +11,10 @@
  *
  * Public experience routes (`experience: true`) serve whichever experience the token or slug
  * names. A built-in help experience belongs to the Help assistant, so it keeps working when
- * Search or Chat is off; for any other the route's own area applies. The token checks decide
- * once they know the experience; the public route wrapper only refuses up front when neither
- * could be on.
+ * Search or Chat is off; for any other the route's own area applies. The token and session
+ * checks decide once they know the experience and have accepted the caller.
+ *
+ * A path no rule covers is refused (gate.ts).
  */
 
 import type { Area } from './areas';
@@ -71,7 +72,6 @@ const RULES: readonly Rule[] = [
   { pattern: under('mcp-connections'), area: 'chat' },
   { pattern: under('prompt-templates'), area: 'chat' },
   { pattern: under('knowledge-base'), area: 'chat' },
-  { pattern: under('user-memories'), area: 'chat' },
 
   // ── Managed indexes (domain knowledge and ingestion keys included) ───────────
   // The index pickers of search experiences and the data-source wizard read the index list and
@@ -95,14 +95,14 @@ const RULES: readonly Rule[] = [
   // ── Help assistant ───────────────────────────────────────────────────────────
   { pattern: re('admin/setup-docs'), area: 'help-assistant' },
 
-  // Dismissing a tip: core, as hiding the setup checklist is; the handler refuses the analytics
-  // tips with Analytics off (the rule can't see which tip the body names)
   // ── Always on ────────────────────────────────────────────────────────────────
   { pattern: under('admin'), area: 'core' }, // setup and the demo
   { pattern: under('ai-providers'), area: 'core' },
   { pattern: under('ai-provider-models'), area: 'core' },
   { pattern: under('system-defaults'), area: 'core' },
   { pattern: under('data-sources'), area: 'core' },
+  // Dismissing a tip: core, as hiding the setup checklist is; the handler refuses the analytics
+  // tips with Analytics off (the rule can't see which tip the body names)
   { pattern: under('dashboard'), area: 'core' },
   { pattern: under('health'), area: 'core' },
   { pattern: under('help'), area: 'core' }, // the docs pages
@@ -112,6 +112,9 @@ const RULES: readonly Rule[] = [
   { pattern: under('users'), area: 'core' },
   { pattern: under('secrets'), area: 'core' },
   { pattern: under('settings'), area: 'core' },
+  // Stored user memories are still recalled into the Help assistant's prompts with Chat off,
+  // so an Admin must always be able to see and delete them
+  { pattern: under('user-memories'), area: 'core' },
 ];
 
 /** The area of an API route by its path (/api/...) and method, or undefined for a route no rule covers. */

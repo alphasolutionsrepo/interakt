@@ -12,21 +12,58 @@
  *     would hit its own (unstubbed) dependencies and answer differently.
  *  3. Only the search index document routes accept an ingestion key in place of a session.
  *  4. Every route belongs to a feature area or is core (always on), recorded in the same table,
- *     and answers 404 "turned off" when its area is off, to an Admin too. The public /api/v1
- *     routes all go through the feature switch check as well.
+ *     and answers 404 "turned off" when its area is off, to an Admin too. Every public /api/v1
+ *     route checks its area once it knows the caller: with the area off, a caller with the
+ *     experience's token is told "turned off", and a caller without a valid credential gets
+ *     exactly what it gets with the area on (it can't learn which areas are off).
  */
 
 import fs from 'fs';
 import path from 'path';
 
 import { NextRequest } from 'next/server';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
 // A handler that gets past the gate finds no database, so it can't change anything
 vi.mock('@/db/index', () => ({ get db() { throw new Error('no database in this test'); } }));
+
+// For the public routes: one AI and one search experience, found by the token 'tok' or any slug
+const PUBLIC_TOKEN = 'tok';
+const experiences = vi.hoisted(() => ({
+  on: false,
+  ai: { id: 'ai1', name: 'A', slug: 'x', accessToken: 'tok', isActive: true, isBuiltIn: false, accessConfig: {}, personaConfig: {} },
+  search: { id: 'se1', name: 'S', slug: 'x', accessToken: 'tok', isActive: true, isBuiltIn: false, allowedOrigins: [], aiConfig: { enabled: true, summary: { enabled: true } }, indexes: [] },
+}));
+vi.mock('@/features/ai-experience/ai-experience.service', async (original) => {
+  const real = await original<typeof import('@/features/ai-experience/ai-experience.service')>();
+  return {
+    ...real,
+    getAIExperienceBySlug: async (slug: string) => (experiences.on ? experiences.ai : real.getAIExperienceBySlug(slug)),
+    getAIExperienceByAccessToken: async (token: string) => (experiences.on ? (token === experiences.ai.accessToken ? experiences.ai : null) : real.getAIExperienceByAccessToken(token)),
+  };
+});
+vi.mock('@/features/search-experience/search-experience.service', async (original) => {
+  const real = await original<typeof import('@/features/search-experience/search-experience.service')>();
+  return {
+    ...real,
+    getSearchExperienceByAccessToken: async (token: string) => {
+      if (!experiences.on) return real.getSearchExperienceByAccessToken(token);
+      if (token !== experiences.search.accessToken) throw new real.UnauthorizedError('Invalid access token');
+      return experiences.search;
+    },
+  };
+});
+vi.mock('@/features/search-experience/search-experience.repository', async (original) => {
+  const real = await original<typeof import('@/features/search-experience/search-experience.repository')>();
+  return {
+    ...real,
+    getSearchExperienceBySlug: async (slug: string) => (experiences.on ? experiences.search : real.getSearchExperienceBySlug(slug)),
+    getSearchExperienceWithIndexes: async (id: string) => (experiences.on ? experiences.search : real.getSearchExperienceWithIndexes(id)),
+  };
+});
 
 import { GUARDS_BUILT_IN } from './built-in';
 import { AI_MODEL_READERS, type Permission } from './permissions';
@@ -240,16 +277,57 @@ describe('every admin API route is gated', () => {
     await expect(table + '\n').toMatchFileSnapshot('./__snapshots__/public-route-areas.txt');
   });
 
-  it('runs every public /api/v1 route through the feature switch check', async () => {
-    expect(publicRoutes.filter((r) => !isFeatureGated(r.fn)).map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
-    // Off, with the Help assistant (whose built-in experiences use the same routes) off too
-    const wrong: string[] = [];
-    for (const r of publicRoutes) {
-      featureSwitchesStub.off = new Set([...(areaOf(r)?.areas ?? []), 'help-assistant']);
-      const res = await call(r);
+  describe('every public /api/v1 route checks its area once it knows the caller', () => {
+    // A body every public route accepts, so none stops at validation before the caller is known
+    const BODY = JSON.stringify({ message: 'hi', query: 'q', results: [] });
+    const callPublic = async (r: RouteMethod, headers: Record<string, string>) => {
+      const res = await r.fn(
+        new NextRequest(`http://localhost/api/${r.route.replace(/\[[^\]]+\]/g, 'x')}`, {
+          method: r.method,
+          headers: { 'Content-Type': 'application/json', ...headers },
+          ...(r.method !== 'GET' && { body: BODY }),
+        }),
+        { params: Promise.resolve(new Proxy({}, { get: () => 'x' })) },
+      );
       const body = (await res.json().catch(() => ({}))) as { code?: string };
-      if (res.status !== 404 || body.code !== TURNED_OFF_CODE) wrong.push(`${r.method} /api/${r.route} -> ${res.status}`);
-    }
-    expect(wrong).toEqual([]);
+      return { status: res.status, code: body.code };
+    };
+    const offFor = (r: RouteMethod) => new Set(areaOf(r)?.areas ?? []);
+
+    beforeAll(() => { experiences.on = true; });
+    afterAll(() => { experiences.on = false; });
+
+    it('wraps every one in the public route wrapper (which refuses one that never asks)', () => {
+      expect(publicRoutes.filter((r) => !isFeatureGated(r.fn)).map((r) => `${r.method} /api/${r.route}`)).toEqual([]);
+    });
+
+    it("tells a caller with the experience's token that the area is off", async () => {
+      accessStub.session = null;
+      const wrong: string[] = [];
+      for (const r of publicRoutes) {
+        featureSwitchesStub.off = offFor(r);
+        const res = await callPublic(r, { 'X-Access-Token': PUBLIC_TOKEN });
+        if (res.status !== 404 || res.code !== TURNED_OFF_CODE) wrong.push(`${r.method} /api/${r.route} -> ${res.status} ${res.code}`);
+      }
+      expect(wrong).toEqual([]);
+    });
+
+    it('answers a caller without a valid credential exactly as with the area on', async () => {
+      const wrong: string[] = [];
+      for (const r of publicRoutes) {
+        for (const headers of [{}, { 'X-Access-Token': 'not-the-token' }, { Authorization: 'Bearer not-the-token' }]) {
+          accessStub.session = null;
+          featureSwitchesStub.off = new Set();
+          const on = await callPublic(r, headers);
+          // The Help assistant too: its built-in experiences use the same routes
+          featureSwitchesStub.off = new Set([...offFor(r), 'help-assistant']);
+          const off = await callPublic(r, headers);
+          const label = `${r.method} /api/${r.route} ${JSON.stringify(headers)}`;
+          if (on.status !== off.status || on.code !== off.code) wrong.push(`${label}: on ${on.status} ${on.code}, off ${off.status} ${off.code}`);
+          else if (![400, 401, 403].includes(off.status)) wrong.push(`${label}: ${off.status} ${off.code}`);
+        }
+      }
+      expect(wrong).toEqual([]);
+    });
   });
 });

@@ -29,7 +29,7 @@ export const AREAS = [
   {
     id: 'chat',
     label: 'Chat',
-    description: 'Chat experiences and the chat widget, with tools, MCP connections, prompt templates, user memories and the knowledge base.',
+    description: 'Chat experiences and the chat widget, with tools, MCP connections, prompt templates, making user memories and the knowledge base. Stored memories stay reachable for an Admin.',
   },
   {
     id: 'managed-indexes',

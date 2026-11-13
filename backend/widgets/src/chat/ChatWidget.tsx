@@ -73,7 +73,9 @@ export const ChatDropinUI = {
         // The experience's area is switched off for this installation: the widget is absent,
         // not a launcher that fails when used
         if (err instanceof ApiError && err.code === TURNED_OFF_CODE) {
-          instances.get(config.containerId)?.destroy();
+          // Only this instance, and only if it is still the registered one: a re-init in the
+          // same container may have replaced it, and the replacement must stay
+          if (instances.get(config.containerId) === instance) instance.destroy();
           return;
         }
         console.warn(

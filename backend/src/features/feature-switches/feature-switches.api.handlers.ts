@@ -37,6 +37,7 @@ export async function handleUpdateFeatureSwitches(request: NextRequest) {
   try {
     const { access, response } = await checkAccess('settings:manage');
     if (response) return response;
+    // The route guard only checks settings:manage, which other roles can hold; switching is Admin only.
     if (!access.isAdmin) throw new AccessDeniedError('Only an Admin can turn features on or off.');
     const parsed = updateSchema.safeParse(await readJsonBody(request));
     if (!parsed.success) return apiResponse.validationError(parsed.error);

@@ -121,13 +121,13 @@ Clearing caches doesn't affect search results, indexed documents, or user data. 
 
 ## Feature switches
 
-An installation can turn off the areas of Interakt it doesn't use. An area that is off is gone for everyone, Admins included: its admin and public API routes answer `404` with "This feature is turned off for this installation.", so a widget treats it as absent, and its background work doesn't run. Its data is kept: turn it back on and everything is as it was.
+An installation can turn off the areas of Interakt it doesn't use. An area that is off is gone for everyone, Admins included: its admin and public API routes answer `404` with "This feature is turned off for this installation.", so a widget treats it as absent, and its background work doesn't run. Its data is kept: turn it back on and everything is as it was. Analytics data stays while Analytics is off (the retention cleanup pauses), and with Chat off an Admin can still view and delete a user's stored memories.
 
 | Area | What it covers |
 | --- | --- |
 | **Search** | Search experiences, public search, autocomplete, documents and the search widget. |
 | **AI summaries** | Summaries and query understanding on search experiences, and the summarize routes. Works while Search is on. |
-| **Chat** | Chat experiences and the chat widget, with tools, MCP connections, prompt templates, user memories and the knowledge base. |
+| **Chat** | Chat experiences and the chat widget, with tools, MCP connections, prompt templates and the knowledge base. User memories stay available, so an Admin can view and delete them. |
 | **Managed indexes** | Indexes Interakt hosts, their documents and uploads, ingestion keys, domain knowledge and the search provider health. |
 | **Analytics** | Analytics pages, Ask, traces and the nightly insights job. |
 | **Playground** | The Test pages and every Test button elsewhere. Works while Search or Chat is on. |
@@ -143,7 +143,7 @@ Anyone signed in can read which areas are on with `GET /api/settings/features`. 
 { "areas": { "chat": false, "playground": false } }
 ```
 
-Areas you don't name keep their state. A change applies to the next request.
+Areas you don't name keep their state. A change applies at once on the server that saved it, and other servers pick it up within about 5 seconds.
 
 ### Turning areas off for the deployment
 

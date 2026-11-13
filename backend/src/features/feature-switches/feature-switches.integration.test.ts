@@ -28,6 +28,8 @@ import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
 import * as indexesRoute from '@/app/api/search-indexes/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import * as settingsRoute from '@/app/api/settings/features/route';
+import * as userMemoryRoute from '@/app/api/user-memories/[id]/route';
+import * as userMemoriesRoute from '@/app/api/user-memories/route';
 import * as slugChatRoute from '@/app/api/v1/ai-experiences/[slug]/chat/route';
 import * as widgetConfigRoute from '@/app/api/v1/ai-experiences/widget-config/route';
 import * as embedSnippetRoute from '@/app/api/v1/embed-snippet/route';
@@ -46,11 +48,13 @@ import { roles } from '@/db/schema/roles.schema';
 import { searchIndex } from '@/db/schema/search-index.schema';
 import { searchIndexFields } from '@/db/schema/search-index-fields.schema';
 import { searchExperiences } from '@/db/schema/search-experience.schema';
+import { userMemories } from '@/db/schema/user-memories.schema';
 import { user } from '@/db/schema/users.schema';
 import { ADMIN_ROLE_ID } from '@/features/access/permissions';
 import * as aiService from '@/features/ai-service';
 import { aiExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
+import { createIngestionKey } from '@/features/ingestion-keys';
 import { applyQueryInterpretation } from '@/features/search-experience/query-interpreter';
 import { createAnalyticsTestDb, type AnalyticsTestDb } from '@/shared/test/analytics-test-db';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
@@ -193,16 +197,17 @@ describe('an area switched off', () => {
       .toMatchObject(turnedOff);
   });
 
-  it('answers a server writing documents with an ingestion key 404', async () => {
+  it('answers a server writing documents with a live ingestion key 404', async () => {
+    const [created] = await testDb.db.insert(searchIndex).values({ name: `ingest-${++n}`, displayName: 'Ingest', searchType: 'lexical' }).returning();
+    const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write'], searchIndexIds: [created.id] });
     as(null);
-    const index = '00000000-0000-4000-8000-0000000000aa';
-    const key = { headers: { Authorization: 'Bearer not-a-key' }, params: { id: index } };
-    // On, the handler checks the key (and refuses this one)
-    expect((await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, key)).status).toBe(401);
+    const key = { headers: { Authorization: `Bearer ${plaintextKey}` }, params: { id: created.id } };
+    // On, the handler takes the key (this index has no documents to list here)
+    expect((await call(documentsRoute.GET, 'GET', `/api/search-indexes/${created.id}/documents`, key)).body).not.toMatchObject({ code: TURNED_OFF_CODE });
     as(admin);
     await switchAreas({ 'managed-indexes': false });
     as(null);
-    expect(await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, key)).toMatchObject(turnedOff);
+    expect(await call(documentsRoute.GET, 'GET', `/api/search-indexes/${created.id}/documents`, key)).toMatchObject(turnedOff);
   });
 
   it('says "turned off", not "not found", for the Help assistant that was switched off before it was ever built', async () => {
@@ -443,7 +448,7 @@ describe('an area switched off', () => {
     await switchAreas({ chat: true, 'help-assistant': false });
     const refused = await authenticateTokenOrSession(req(), builtIn);
     expect(refused).toMatchObject({ caller: null, refused: { status: 404 } });
-    // Both off: the public route refuses before looking the experience up
+    // Both off: the signed-in caller is told it is turned off
     await switchAreas({ chat: false });
     expect(await call(slugChatRoute.POST, 'POST', `/api/v1/ai-experiences/${chat.slug}/chat`, { params: { slug: chat.slug }, body: { message: 'hi' } }))
       .toMatchObject(turnedOff);
@@ -462,6 +467,113 @@ describe('an area switched off', () => {
   });
 });
 
+describe('an area switched off, to a caller without a valid credential', () => {
+  // Access tokens are UUIDs: a well-formed token no experience has
+  const WRONG = '00000000-0000-4000-8000-00000000dead';
+  // The answer with the area on and with it off must be the same: status and error code. Only a
+  // caller with a valid credential learns the area is off.
+  type Answer = { status: number; body: Record<string, unknown> | null };
+  const shape = (r: Answer) => ({ status: r.status, code: r.body?.code });
+  async function sameOnAndOff(area: Record<string, boolean>, ...calls: Array<() => Promise<Answer>>) {
+    const on = [];
+    for (const c of calls) on.push(shape(await c()));
+    for (const s of on) expect(s.status === 401 || s.status === 403 || s.status === 404).toBe(true);
+    const caller = session;
+    as(admin);
+    await switchAreas(area);
+    session = caller;
+    const off = [];
+    for (const c of calls) off.push(shape(await c()));
+    expect(off).toEqual(on);
+    for (const s of off) expect(s.code).not.toBe(TURNED_OFF_CODE);
+  }
+
+  it('answers a token route the same, and turns off only for the right token', async () => {
+    const widgetConfig = (headers: Record<string, string>) => () => call(widgetConfigRoute.GET, 'GET', '/api/v1/ai-experiences/widget-config', { headers });
+    const tokenChat = (headers: Record<string, string>) => () => call(tokenChatRoute.POST, 'POST', '/api/v1/ai-experiences/chat', { headers, body: { message: 'hi' } });
+    const publicSearch = (headers: Record<string, string>) => () => call(searchRoute.POST, 'POST', '/api/v1/search', { headers, body: { query: 'q' } });
+    const publicDocument = (headers: Record<string, string>) => () => call(publicDocumentRoute.GET, 'GET', '/api/v1/documents/d1', { headers, params: { documentId: 'd1' } });
+    as(null);
+    await sameOnAndOff({ chat: false, search: false, 'help-assistant': false },
+      widgetConfig({}), widgetConfig({ 'X-Access-Token': WRONG }),
+      tokenChat({}), tokenChat({ 'X-Access-Token': WRONG }),
+      publicSearch({}), publicSearch({ 'X-Access-Token': WRONG }),
+      publicDocument({ 'X-Access-Token': WRONG }));
+    as(null);
+    expect(await widgetConfig({ 'X-Access-Token': chat.accessToken })()).toMatchObject(turnedOff);
+    expect(await publicSearch({ 'X-Access-Token': search.accessToken })()).toMatchObject(turnedOff);
+  });
+
+  it('answers a slug route the same without a session or the playground permission, and turns off for an Admin', async () => {
+    const [noPlayground] = await testDb.db.insert(roles).values({ name: `No playground ${++n}`, permissions: ['analytics:view'] }).returning();
+    const outsider = await makeUser(noPlayground.id);
+    const slug = (await testDb.db.select().from(searchExperiences).where(eq(searchExperiences.id, search.id)))[0].slug;
+    const slugChat = (who: string | null, headers: Record<string, string> = {}) => async () => {
+      as(who);
+      return call(slugChatRoute.POST, 'POST', `/api/v1/ai-experiences/${chat.slug}/chat`, { params: { slug: chat.slug }, headers, body: { message: 'hi' } });
+    };
+    const slugSearch = (who: string | null) => async () => {
+      as(who);
+      return call(slugSearchRoute.POST, 'POST', `/api/v1/search/${slug}/search`, { params: { slug }, body: { query: 'q' } });
+    };
+    await sameOnAndOff({ chat: false, search: false, 'help-assistant': false },
+      slugChat(null), slugChat(null, { 'X-Access-Token': WRONG }), slugChat(outsider),
+      slugSearch(null), slugSearch(outsider));
+    expect(await slugChat(admin)()).toMatchObject(turnedOff);
+    expect(await slugSearch(admin)()).toMatchObject(turnedOff);
+    expect(await slugChat(null, { 'X-Access-Token': chat.accessToken })()).toMatchObject(turnedOff);
+  });
+
+  it('answers the help routes the same without a session, when the Help assistant was never built', async () => {
+    const help = (who: string | null) => async () => {
+      as(who);
+      return call(slugChatRoute.POST, 'POST', '/api/v1/ai-experiences/help-assistant/chat', { params: { slug: 'help-assistant' }, body: { message: 'hi' } });
+    };
+    const docs = (who: string | null) => async () => {
+      as(who);
+      return call(slugSearchRoute.POST, 'POST', '/api/v1/search/interakt-docs/search', { params: { slug: 'interakt-docs' }, body: { query: 'q' } });
+    };
+    await sameOnAndOff({ 'help-assistant': false }, help(null), docs(null));
+    expect(await help(admin)()).toMatchObject(turnedOff);
+    expect(await docs(admin)()).toMatchObject(turnedOff);
+  });
+
+  it('answers the embed snippet the same without the right token', async () => {
+    const snippet = (headers: Record<string, string>) => () => call(embedSnippetRoute.GET, 'GET', '/api/v1/embed-snippet', { headers });
+    as(null);
+    await sameOnAndOff({ chat: false, search: false, 'help-assistant': false }, snippet({}), snippet({ 'X-Access-Token': WRONG }));
+    as(null);
+    expect(await snippet({ 'X-Access-Token': chat.accessToken })()).toMatchObject(turnedOff);
+  });
+
+  it('answers document routes the same for a wrong ingestion key, and turns off for a live one', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `keys-${++n}`, displayName: 'Keys', searchType: 'lexical' }).returning();
+    const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write'], searchIndexIds: [index.id] });
+    const [other] = await testDb.db.insert(searchIndex).values({ name: `other-${++n}`, displayName: 'Other', searchType: 'lexical' }).returning();
+    const documents = (key: string, id = index.id) => async () => {
+      as(null);
+      return call(documentsRoute.GET, 'GET', `/api/search-indexes/${id}/documents`, { headers: { Authorization: `Bearer ${key}` }, params: { id } });
+    };
+    // A malformed key, a real key's prefix with the wrong secret, and a live key for another index
+    await sameOnAndOff({ 'managed-indexes': false }, documents('not-a-key'), documents(`${plaintextKey.slice(0, -4)}AAAA`), documents(plaintextKey, other.id));
+    expect(await documents(plaintextKey)()).toMatchObject(turnedOff);
+  });
+});
+
+describe('user memories', () => {
+  it('stay reachable for an Admin with Chat off: the Help assistant can still recall them', async () => {
+    const [memory] = await testDb.db.insert(userMemories).values({ userId: 'visitor-1', aiExperienceId: chat.id, content: 'Prefers trains' }).returning();
+    await switchAreas({ chat: false });
+    const listed = await call(userMemoriesRoute.GET, 'GET', `/api/user-memories?userId=visitor-1&experienceId=${chat.id}`);
+    expect(listed.status).toBe(200);
+    expect(JSON.stringify(listed.body)).toContain(memory.id);
+    expect((await call(userMemoryRoute.DELETE, 'DELETE', `/api/user-memories/${memory.id}`, { params: { id: memory.id } })).status).toBe(200);
+    await testDb.db.insert(userMemories).values({ userId: 'visitor-1', aiExperienceId: chat.id, content: 'Lives in Aarhus' });
+    expect((await call(userMemoriesRoute.DELETE, 'DELETE', `/api/user-memories?userId=visitor-1&experienceId=${chat.id}`)).status).toBe(200);
+    expect(await testDb.db.select().from(userMemories).where(eq(userMemories.userId, 'visitor-1'))).toEqual([]);
+  });
+});
+
 describe('when the switches cannot be read', () => {
   const sessionRequest = () => new NextRequest('http://localhost/api/v1/ai-experiences/x/chat', { method: 'POST' });
 
@@ -475,7 +587,7 @@ describe('when the switches cannot be read', () => {
     expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(500);
   });
 
-  it('answers a public route 500, with the token and before anything else', async () => {
+  it('answers a public route 500 to a caller with the token', async () => {
     const res = await call(widgetConfigRoute.GET, 'GET', '/api/v1/ai-experiences/widget-config', { headers: { Authorization: `Bearer ${chat.accessToken}` } });
     expect(res.status).toBe(500);
   });
@@ -487,11 +599,13 @@ describe('when the switches cannot be read', () => {
     expect(await authenticateTokenOrSession(sessionRequest(), builtIn)).toMatchObject({ caller: null, refused: { status: 500 } });
   });
 
-  it('answers document writes with an ingestion key 500', async () => {
+  it('answers document writes with a live ingestion key 500, and a wrong key 401 as ever', async () => {
+    const [created] = await testDb.db.insert(searchIndex).values({ name: `ingest-${++n}`, displayName: 'Ingest', searchType: 'lexical' }).returning();
+    const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write'], searchIndexIds: [created.id] });
     as(null);
-    const index = '00000000-0000-4000-8000-0000000000aa';
-    const res = await call(documentsRoute.GET, 'GET', `/api/search-indexes/${index}/documents`, { headers: { Authorization: 'Bearer not-a-key' }, params: { id: index } });
-    expect(res.status).toBe(500);
+    const documents = (key: string) => call(documentsRoute.GET, 'GET', `/api/search-indexes/${created.id}/documents`, { headers: { Authorization: `Bearer ${key}` }, params: { id: created.id } });
+    expect((await documents(plaintextKey)).status).toBe(500);
+    expect((await documents('not-a-key')).status).toBe(401);
   });
 
   it('uses the last known switches when they were read before', async () => {

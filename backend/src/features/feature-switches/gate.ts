@@ -1,25 +1,33 @@
 // src/features/feature-switches/gate.ts
 
 /**
- * The one server check for feature switches, asked everywhere a request comes in:
+ * The one server check for feature switches, asked everywhere a request comes in, always once
+ * the caller is known, so a caller without a valid credential gets the same answer (401, 403)
+ * whether an area is on or off and can't learn which areas are off:
  *  - admin routes: withPermission (route-guard.ts), after the session and role check;
- *  - server-to-server document writes with an ingestion key: withPermissionOrIngestionKey;
- *  - public /api/v1 routes: publicApiRoute up front, then the access-token checks once they
- *    know which experience is asked for (a built-in help experience is the Help assistant's),
- *    and the embed snippet by the experience's kind;
+ *  - server-to-server document writes with an ingestion key: withPermissionOrIngestionKey, which
+ *    says "turned off" only to a live key for the index;
+ *  - public /api/v1 routes: the access-token checks once the token or session is accepted (a
+ *    built-in help experience is the Help assistant's), and the embed snippet by the
+ *    experience's kind. publicApiRoute wraps every one, and refuses a route that answered
+ *    without asking while its area is off (a net; routes.access.test.ts checks each route asks);
  *  - a dashboard session on a public experience route (the Test pages): Playground too.
  * A route whose area is off answers 404 "turned off" (to an Admin too), so a widget treats
- * the area as absent. Which area a route belongs to is route-areas.ts.
+ * the area as absent. Which area a route belongs to is route-areas.ts; a path no rule covers
+ * is refused with a plain 404 (fail closed) and logged.
  */
 
 import 'server-only';
+
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 import type { NextResponse } from 'next/server';
 
 import { TURNED_OFF_CODE, TURNED_OFF_MESSAGE, type Area } from './areas';
 import { isAreaOn } from './feature-switches.service';
-import { routeArea } from './route-areas';
+import { routeArea, type RouteArea } from './route-areas';
 
+import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
 import { publicRoute } from '@/shared/api/public-route';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
@@ -29,10 +37,15 @@ export function turnedOff(): NextResponse {
   return apiResponse.error(new AppError(TURNED_OFF_MESSAGE, { code: TURNED_OFF_CODE, status: 404 }), 404, { operation: 'featureTurnedOff' });
 }
 
-/** null when every area is on; else the 404, or the error when the switches couldn't be read. */
 const logger = createLogger('feature-switches');
 
+/** Set by publicApiRoute for one request: whether the route asked for its area. */
+const publicCheck = new AsyncLocalStorage<{ asked: boolean }>();
+
+/** null when every area is on; else the 404, or the error when the switches couldn't be read. */
 async function refuseUnlessOn(areas: readonly Area[], anyOf = false): Promise<NextResponse | null> {
+  const asked = publicCheck.getStore();
+  if (asked) asked.asked = true;
   try {
     for (const area of areas) {
       const isOn = await isAreaOn(area);
@@ -63,30 +76,45 @@ function routeOf(request: unknown): { pathname: string; method: string } | null 
   return { pathname: pathname.replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1'), method };
 }
 
+/**
+ * A path no rule covers is refused (fail closed). Every route on disk has a rule
+ * (features/access/routes.access.test.ts), so this is a path shape the table doesn't model: a
+ * plain "not found", not "turned off", since no area is known to be off (a widget would take
+ * "turned off" for its area gone, and an Admin would look for a switch that isn't there).
+ */
+function noRule(route: { pathname: string; method: string }): NextResponse {
+  logger.warn('No feature area for this route; the request is refused', { pathname: route.pathname, method: route.method });
+  return apiResponse.notFound();
+}
+
+type Route = { pathname: string; method: string };
+type Found = { route: Route; area: RouteArea } | { route: Route; area?: undefined } | null;
+
+/** The route and its area; null when there is no request to read (a handler called directly). */
+function areaOf(request: unknown): Found {
+  const route = routeOf(request);
+  return route && { route, area: routeArea(route.pathname, route.method) };
+}
+
 /** For admin routes and ingestion: the 404 to send when the route's area is off, or null. */
 export async function refuseIfRouteOff(request: unknown): Promise<NextResponse | null> {
-  const route = routeOf(request);
-  const area = route && routeArea(route.pathname, route.method);
-  if (!area) {
-    // Every route has a rule (features/access/routes.access.test.ts); a path shape no rule
-    // models is let through, and said so
-    if (route) logger.warn('No feature area for this route; the request is not checked', { pathname: route.pathname, method: route.method });
-    return null;
-  }
-  return refuseUnlessOn(area.areas);
+  const found = areaOf(request);
+  if (!found) return null;
+  if (!found.area) return noRule(found.route);
+  return refuseUnlessOn(found.area.areas);
 }
 
 /**
- * For public routes, before anything else: the 404 when nothing the route serves can be on.
- * An experience route stays open while the Help assistant is on (its built-in experiences
- * use the same routes); the token check then decides for the experience asked for.
+ * For a public route that answered without asking (publicApiRoute): the 404 when nothing the
+ * route serves can be on. An experience route stays open while the Help assistant is on (its
+ * built-in experiences use the same routes).
  */
 async function refusePublicIfOff(request: unknown): Promise<NextResponse | null> {
-  const route = routeOf(request);
-  const area = route && routeArea(route.pathname, route.method);
-  if (!area) return null;
-  if (!area.experience) return refuseUnlessOn(area.areas);
-  return refuseUnlessOn([...area.areas, 'help-assistant'], true);
+  const found = areaOf(request);
+  if (!found) return null;
+  if (!found.area) return noRule(found.route);
+  if (!found.area.experience) return refuseUnlessOn(found.area.areas);
+  return refuseUnlessOn([...found.area.areas, 'help-assistant'], true);
 }
 
 /**
@@ -103,10 +131,10 @@ export async function refuseExperienceIfOff(
   if (experience.isBuiltIn) areas = ['help-assistant'];
   else if (kind) areas = [kind];
   else {
-    const route = routeOf(request);
-    const area = route && routeArea(route.pathname, route.method);
-    if (!area) return null;
-    areas = area.areas;
+    const found = areaOf(request);
+    if (!found) return null;
+    if (!found.area) return noRule(found.route);
+    areas = found.area.areas;
   }
   return refuseUnlessOn(areas);
 }
@@ -124,23 +152,43 @@ export async function refuseSessionIfPlaygroundOff(experience: { isBuiltIn?: boo
 
 /**
  * For a built-in help experience that doesn't exist yet: the 404 "turned off" when the Help
- * assistant is off, so the drawer says so instead of "not set up", or null.
+ * assistant is off, so the drawer says so instead of "not set up", or null. Only to someone
+ * signed in (the built-in help is theirs); anyone else gets the route's own "not found", as
+ * with the Help assistant on.
  */
 export async function refuseHelpIfOff(): Promise<NextResponse | null> {
-  return refuseUnlessOn(['help-assistant']);
+  const off = await refuseUnlessOn(['help-assistant']);
+  if (!off) return null;
+  try {
+    const { response } = await checkAccess(SIGNED_IN);
+    return response ? null : off;
+  } catch (error) {
+    return apiResponse.error(error, 500, { operation: 'checkHelpAccess' });
+  }
 }
 
 /** Marks a route wrapped by publicApiRoute (a test checks every /api/v1 route is). */
 export const FEATURE_GATED = Symbol.for('interakt.featureGated');
 
 /**
- * publicRoute (visitor-safe errors) with the feature switch check in front. Every /api/v1
- * route uses this.
+ * publicRoute (visitor-safe errors) for every /api/v1 route. The route asks for its area once
+ * it knows the caller (the token and session checks above); asking first would tell a caller
+ * without a valid credential which areas are off. A route that answers without having asked is
+ * a bug: it is logged, and refused while its area is off (fail closed).
  */
 export function publicApiRoute<A extends unknown[], R extends Response>(
   handler: (...args: A) => Promise<R>,
 ): (...args: A) => Promise<R | NextResponse> {
-  const route = publicRoute(async (...args: A): Promise<R | NextResponse> => (await refusePublicIfOff(args[0])) ?? handler(...args));
+  const route = publicRoute((...args: A): Promise<R | NextResponse> => {
+    const asked = { asked: false };
+    return publicCheck.run(asked, async () => {
+      const response = await handler(...args);
+      if (asked.asked || response.status >= 400) return response;
+      const found = areaOf(args[0]);
+      logger.error('A public route answered without checking its feature area', found ? { pathname: found.route.pathname, method: found.route.method } : {});
+      return (await refusePublicIfOff(args[0])) ?? response;
+    });
+  });
   Object.defineProperty(route, FEATURE_GATED, { value: true });
   return route;
 }

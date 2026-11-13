@@ -55,7 +55,11 @@ export const SearchDropinUI = {
 
     // The experience's area is switched off for this installation: the widget removes itself
     // from the host page, through the same destroy path as an explicit teardown
-    const removeSelf = () => instances.get(config.containerId)?.destroy();
+    // (only this instance, and only if it is still the registered one: a re-init in the same
+    // container may have replaced it, and the replacement must stay)
+    const removeSelf = () => {
+      if (instances.get(config.containerId) === instance) instance.destroy();
+    };
 
     render(<SearchApp config={config} apiBaseUrl={apiBaseUrl} onTurnedOff={removeSelf} />, host.mount);
 

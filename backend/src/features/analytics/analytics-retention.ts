@@ -90,6 +90,22 @@ let lastCleanupResults: RetentionResult[] = [];
 // ============================================================================
 
 /**
+ * True only while the Analytics area is on. Checked on every run (the switch can change while the
+ * server is up). An area's data is kept while it is off, so old rows must not age out then.
+ * If the switches can't be read we skip: a delete can't be undone, a skipped run just waits a day.
+ */
+async function cleanupAllowed(): Promise<boolean> {
+  try {
+    const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
+    if (await isAreaOn('analytics')) return true;
+    logger.info('Analytics is switched off, skipping retention cleanup (data is kept)');
+  } catch (error) {
+    logger.warn('Could not read the feature switches, skipping retention cleanup', { error: String(error) });
+  }
+  return false;
+}
+
+/**
  * Run retention cleanup across all analytics tables.
  * Deletes records older than each table's configured retention period.
  *
@@ -100,6 +116,8 @@ export async function runRetentionCleanup(): Promise<RetentionResult[]> {
     logger.info('Retention cleanup already in progress, skipping');
     return [];
   }
+
+  if (!(await cleanupAllowed())) return [];
 
   isRunning = true;
   const startTime = Date.now();

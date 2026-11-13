@@ -49,4 +49,24 @@ describe('chat widget when its area is switched off', () => {
     expect(host).not.toBeNull();
     expect(host?.shadowRoot?.querySelector('.ik-launcher')).not.toBeNull();
   });
+
+  it('a late FEATURE_OFF for a replaced instance leaves the new widget in place', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let releaseOld!: () => void;
+    const oldAnswer = new Promise<Response>((resolve) => {
+      releaseOld = () => resolve(json({ success: false, code: 'FEATURE_OFF', error: 'off' }, 404));
+    });
+    const initWith = (answer: Promise<Response> | Response) => {
+      vi.stubGlobal('fetch', vi.fn(async () => answer));
+      ChatDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test' } as Parameters<typeof ChatDropinUI.init>[0]);
+    };
+    initWith(oldAnswer);
+    initWith(json({}, 200));
+    await flush();
+    releaseOld();
+    await flush();
+    const host = document.querySelector('[data-interakt-widget]');
+    expect(host).not.toBeNull();
+    expect(host?.shadowRoot?.querySelector('.ik-launcher')).not.toBeNull();
+  });
 });

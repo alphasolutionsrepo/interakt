@@ -51,4 +51,27 @@ describe('search widget when its area is switched off', () => {
     expect(host).not.toBeNull();
     expect(host?.shadowRoot?.textContent).toContain('Search failed');
   });
+
+  it('a late FEATURE_OFF for a replaced instance leaves the new widget in place', async () => {
+    let releaseOld!: () => void;
+    const oldAnswer = new Promise<Response>((resolve) => {
+      releaseOld = () => resolve(json({ success: false, code: 'FEATURE_OFF', error: 'off' }, 404));
+    });
+    const initAndType = (answer: Promise<Response> | Response) => {
+      vi.stubGlobal('fetch', vi.fn(async () => (answer instanceof Promise ? answer : answer.clone())));
+      SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'inline' } as Parameters<typeof SearchDropinUI.init>[0]);
+      const input = document.querySelector('[data-interakt-widget]')?.shadowRoot?.querySelector('input') as HTMLInputElement;
+      input.value = 'shoes';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    initAndType(oldAnswer); // its search call stays pending
+    await flush(300);
+    initAndType(json({ success: false, error: 'Not found' }, 404)); // replacement: a plain failure, stays on
+    await flush(300);
+    releaseOld();
+    await flush(50);
+    const host = document.querySelector('[data-interakt-widget]');
+    expect(host).not.toBeNull();
+    expect(host?.shadowRoot?.querySelector('input')).not.toBeNull();
+  });
 });
