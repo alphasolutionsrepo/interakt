@@ -8,10 +8,10 @@
 
 'use client';
 
+import type { Area } from '@/features/feature-switches/areas';
 import type { ActionGate } from '@/shared/access/ActionControls';
 import { areaOffText } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
-import type { Area } from '@/features/feature-switches/areas';
 
 /** The gate, or locked with "<Area> is turned off for this installation." when one of `areas` is off. Still loading stays loading. */
 export function areaGateFor(gate: ActionGate, areas: Area | readonly Area[], areaOn: (area: Area) => boolean): ActionGate {

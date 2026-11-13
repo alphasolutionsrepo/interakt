@@ -9,13 +9,12 @@
  * calls a model, so the page stays fast. The result is cached for a minute.
  */
 
-import { canOpenPage } from '@/features/access/page-permissions';
-import type { Area } from '@/features/feature-switches/areas';
-import type { Permission } from '@/features/access/permissions';
 import 'server-only';
 
 import { eq, sql } from 'drizzle-orm';
 
+import { canOpenPage } from '@/features/access/page-permissions';
+import type { Permission } from '@/features/access/permissions';
 import { getExperienceSummaries, type ExperienceSummary } from '@/features/analytics/analytics-experience-summary.service';
 import { countRecentRequests, getTurnsByDay } from '@/features/analytics/analytics-failed-turns.service';
 import { getProactiveInsights, getStoredInsight, listDismissedTips } from '@/features/analytics/analytics-insights.service';
@@ -26,6 +25,7 @@ import {
   getSearchTypeBreakdown,
   getZeroResultQueries,
 } from '@/features/analytics/analytics-query.service';
+import type { Area } from '@/features/feature-switches/areas';
 import type { HealthCheckOutput } from '@/features/jobs/handlers/health-check.handler';
 import { createLogger } from '@/shared/logger/logger';
 

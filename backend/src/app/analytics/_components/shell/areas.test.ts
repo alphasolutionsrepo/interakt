@@ -9,9 +9,10 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import { canAskAnalytics } from '../../_lib/AskPanelContext';
+
 import { HiddenSectionsNote } from './HiddenSectionsNote';
 import { SectionNav } from './SectionNav';
-import { canAskAnalytics } from '../../_lib/AskPanelContext';
 
 import { textOf } from '@/shared/test/rendered-controls';
 import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';

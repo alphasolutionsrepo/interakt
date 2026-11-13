@@ -1,6 +1,6 @@
 // src/app/analytics/_components/shell/AnalyticsShell.test.ts
 
-/** Opening a section of an off area by link or bookmark shows the off note, not the content. */
+/** The shell's own off states; a section of an off area is closed by PageAccessGate before the shell renders. */
 
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AnalyticsShell } from './AnalyticsShell';
 
+import type { Area } from '@/features/feature-switches/areas';
+import { pageAreasOn } from '@/features/feature-switches/page-areas';
 import { areaOffText } from '@/shared/access/AreaOffNote';
 import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
 
@@ -37,33 +39,20 @@ describe('AnalyticsShell on a section whose area is off', () => {
     expect(render()).toContain('SECTION CONTENT');
   });
 
-  it('shows the Chat off note instead of Conversations with Chat off', () => {
+  it('leaves closing a section of an off area to the page gate, which wraps the shell', () => {
+    // The shell renders its content as is; PageAccessGate (AppShell) never lets these pages render
+    const cases: Array<[string, Area[], boolean]> = [
+      ['/analytics/conversations', ['chat'], false],
+      ['/analytics/ai', ['chat'], false],
+      ['/analytics/search', ['search'], false],
+      ['/analytics/traces', ['search', 'chat'], false],
+      ['/analytics/traces', ['search'], true],
+    ];
+    for (const [href, off, open] of cases) {
+      expect(pageAreasOn(href, (a) => !off.includes(a))).toBe(open);
+    }
+    path.current = '/analytics/conversations';
     uiAccess.areasOff('chat');
-    const html = render();
-    expect(html).toContain(areaOffText('chat'));
-    expect(html).toContain('Chat is turned off for this installation.');
-    expect(html).not.toContain('SECTION CONTENT');
-  });
-
-  it('shows the Search off note instead of Search with Search off', () => {
-    path.current = '/analytics/search';
-    uiAccess.areasOff('search');
-    const html = render();
-    expect(html).toContain(areaOffText('search'));
-    expect(html).not.toContain('SECTION CONTENT');
-  });
-
-  it('names both areas on Traces when Search and Chat are both off, and one when only one is', () => {
-    path.current = '/analytics/traces';
-    uiAccess.areasOff('search', 'chat');
-    const html = render();
-    // One note of the section's own per off area (the workspace-wide note above it says something else)
-    expect(html.split('Traces is hidden').length - 1).toBe(2);
-    expect(html).toContain(areaOffText('search'));
-    expect(html).toContain(areaOffText('chat'));
-    expect(html).not.toContain('SECTION CONTENT');
-    uiAccess.asAdmin();
-    uiAccess.areasOff('search');
     expect(render()).toContain('SECTION CONTENT');
   });
 

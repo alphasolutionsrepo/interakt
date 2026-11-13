@@ -24,8 +24,8 @@ export interface MyAccess {
   userId: string;
   role: { id: string; name: string; isAdmin: boolean };
   permissions: Permission[];
-  /** The feature areas that are on for the installation (feature-switches) */
-  areas: Area[];
+  /** The feature areas that are on for the installation (feature-switches); absent from an older server, or when the switches could not be read: the UI then treats every area as on */
+  areas?: Area[];
   /** Areas the deployment setting turns off, which can't be turned on in Settings → Features (absent from an older server) */
   pinnedOff?: Area[];
   /** Areas an Admin switched off (absent from an older server) */
@@ -48,13 +48,22 @@ export function areaOnFor(input: { isLoading: boolean; errorStatus: number | nul
   };
 }
 
+/**
+ * How the access query refreshes: it counts as fresh for a minute (no refetch when a component
+ * mounts), but focusing the browser tab always refetches, fresh or not. So another admin's
+ * feature switch change shows when a user returns to the tab, and in a tab left in view it
+ * shows after the next mount once a minute has passed.
+ */
+export const accessQueryOptions = {
+  staleTime: 60_000,
+  refetchOnWindowFocus: 'always',
+} as const;
+
 export function useAccess() {
   const query = useQuery({
     queryKey: accessKeys.mine,
     queryFn: async () => handleApiResponse<MyAccess>(await fetch('/api/me/access')),
-    staleTime: 60_000,
-    // So another user sees a feature switch change soon, not only after the stale time passes
-    refetchOnWindowFocus: true,
+    ...accessQueryOptions,
     // A 401 means the session is no longer accepted; retrying won't change that
     retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2,
   });

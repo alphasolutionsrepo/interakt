@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { areaOnFor } from './useAccess';
+import { accessQueryOptions, areaOnFor } from './useAccess';
 
 describe('areaOn', () => {
   it('is false for every area while loading', () => {
@@ -24,5 +24,12 @@ describe('areaOn', () => {
 
   it('treats a server that sends no list (an older one) as everything on', () => {
     expect(areaOnFor({ isLoading: false, errorStatus: null, areas: undefined })('chat')).toBe(true);
+  });
+});
+
+describe('the access query', () => {
+  it('refetches on every window focus, even within the stale time, so a switch change shows on return', () => {
+    expect(accessQueryOptions.refetchOnWindowFocus).toBe('always');
+    expect(accessQueryOptions.staleTime).toBe(60_000);
   });
 });

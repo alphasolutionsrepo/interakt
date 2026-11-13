@@ -1,6 +1,6 @@
 // src/features/dashboard/home.api.handlers.areas.test.ts
 
-/** GET /api/dashboard/home: every feature area is read for the role filter, and a failed read is a 500. */
+/** GET /api/dashboard/home: every feature area is read for the role filter, and a failed read counts every area as on. */
 
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -56,10 +56,12 @@ describe('the home page and the feature areas', () => {
     expect((await get()).body.data!.tasks.map((t) => t.id)).toEqual(['chat-task', 'jobs']);
   });
 
-  it('answers 500 and no partial data when a switch cannot be read', async () => {
+  it('builds the page with every area on, and answers 200, when the switches cannot be read', async () => {
+    vi.spyOn(featureSwitchesService, 'listFeatureSwitches').mockRejectedValue(new Error('db down'));
     vi.spyOn(featureSwitchesService, 'isAreaOn').mockRejectedValue(new Error('db down'));
     const { status, body } = await get();
-    expect(status).toBe(500);
-    expect(body.data).toBeUndefined();
+    expect(status).toBe(200);
+    expect(body.data!.tasks.map((t) => t.id)).toEqual(['reindex', 'chat-task', 'jobs']);
+    expect(body.data!.experiences.map((e) => e.id)).toEqual(['e', 'a']);
   });
 });

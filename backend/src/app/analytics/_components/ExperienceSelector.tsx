@@ -2,8 +2,15 @@
 
 'use client';
 
-import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Bot, Search, Layers } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+
+import { useAnalyticsContext } from '../_lib/AnalyticsContext';
+import { EXPERIENCE_TYPE_AREA, experiencesWithAreaOn, selectionChange, loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
+
+import { useAccess } from '@/shared/access/useAccess';
+import { errorText } from '@/shared/api/api-error';
 import {
   Select,
   SelectContent,
@@ -13,11 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/select';
-import { Bot, Search, Layers } from 'lucide-react';
-import { useAnalyticsContext } from '../_lib/AnalyticsContext';
-import { experiencesWithAreaOn, selectionChange, loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
-import { errorText } from '@/shared/api/api-error';
-import { useAccess } from '@/shared/access/useAccess';
 
 // ============================================================================
 // DATA FETCHING
@@ -47,7 +49,13 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
   const { data, isLoading } = useExperiences(!accessLoading && areaOn('analytics'));
   const allExperiences = useMemo(() => data?.experiences ?? [], [data]);
   // Only types whose area is on: a chat experience is hidden with Chat off (its data is kept)
-  const experiences = useMemo(() => experiencesWithAreaOn(allExperiences, areaOn), [allExperiences, areaOn]);
+  // areaOn is a new function every render, so the memo depends on the two answers it gives here
+  const aiOn = areaOn(EXPERIENCE_TYPE_AREA.ai);
+  const searchOn = areaOn(EXPERIENCE_TYPE_AREA.search);
+  const experiences = useMemo(
+    () => experiencesWithAreaOn(allExperiences, (area) => (area === EXPERIENCE_TYPE_AREA.ai ? aiOn : area === EXPERIENCE_TYPE_AREA.search ? searchOn : true)),
+    [allExperiences, aiOn, searchOn],
+  );
 
   const aiExperiences = experiences.filter((e) => e.type === 'ai');
   const searchExperiences = experiences.filter((e) => e.type === 'search');

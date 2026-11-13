@@ -15,7 +15,7 @@ import { useEffect, useState } from 'react';
 
 import { useAnalyticsContext } from '../../_lib/AnalyticsContext';
 import { useAskPanel } from '../../_lib/AskPanelContext';
-import { offAreasFor, sectionAvailable, sectionForPath } from '../../_lib/sections';
+import { sectionForPath } from '../../_lib/sections';
 import { ExperienceSelector } from '../ExperienceSelector';
 import { PeriodPicker } from '../PeriodPicker';
 import { formatTimeAgo } from '../viz';
@@ -148,14 +148,7 @@ export function AnalyticsShell({ children }: { children: React.ReactNode }) {
         <SectionNav className="-mt-2" />
         <HiddenSectionsNote />
 
-        {!accessLoading && !sectionAvailable(section, areaOn) ? (
-          // Opened by a link or bookmark while its area is off: say so instead of an empty page
-          <div className="space-y-1">
-            {offAreasFor(section, areaOn).map((area) => (
-              <AreaOffNote key={area} area={area} detail={`${section.label} is hidden; its data is kept.`} />
-            ))}
-          </div>
-        ) : section.chatOnly && isSearchExperience ? (
+        {section.chatOnly && isSearchExperience ? (
           <p className="rounded-xl bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
             {section.label} covers chat experiences. Choose a chat experience, or All experiences, to see it.
           </p>

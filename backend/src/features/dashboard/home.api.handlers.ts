@@ -13,10 +13,27 @@ import { can } from '@/features/access/user-access';
 import { dismissTip } from '@/features/analytics/analytics-insights.service';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';
 import { AREA_IDS, type Area } from '@/features/feature-switches/areas';
-import { isAreaOn } from '@/features/feature-switches/feature-switches.service';
+import { isAreaOn, listFeatureSwitches } from '@/features/feature-switches/feature-switches.service';
 import { turnedOff } from '@/features/feature-switches/gate';
 import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
+
+const logger = createLogger('home-handlers');
+
+/**
+ * The areas that are on, read once. If the switches can't be read every area counts as on (like
+ * GET /api/me/access, which then sends no list): the server still refuses a switched-off
+ * route itself, so a failed read must not take the home page down.
+ */
+async function areasOn(): Promise<ReadonlySet<Area>> {
+  try {
+    return new Set((await listFeatureSwitches()).filter((s) => s.on).map((s) => s.id));
+  } catch (error) {
+    logger.error('Could not read the feature switches; building the home page with every area on', { error });
+    return new Set(AREA_IDS);
+  }
+}
 
 /** GET /api/dashboard/home?tz=Europe/Copenhagen — everything the home page shows */
 export async function handleGetHome(request: NextRequest) {
@@ -26,7 +43,7 @@ export async function handleGetHome(request: NextRequest) {
     const { access, response } = await checkAccess(SIGNED_IN);
     if (response) return response;
     // With Analytics off the home page shows no analytics figures, cards or tips, whoever asks
-    const on = new Set((await Promise.all(AREA_IDS.map(async (a) => ((await isAreaOn(a)) ? a : null)))).filter((a) => a !== null));
+    const on = await areasOn();
     const areaOn = (area: Area) => on.has(area);
     const analyticsOn = areaOn('analytics');
     const holds = (p: Permission) => can(access, p) && (analyticsOn || !p.startsWith('analytics:'));

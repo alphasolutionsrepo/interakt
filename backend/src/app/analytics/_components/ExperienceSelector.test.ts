@@ -16,7 +16,15 @@ import { ExperienceSelector } from './ExperienceSelector';
 
 import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
 
-vi.mock('react', async (importOriginal) => ({ ...(await importOriginal<typeof import('react')>()), useEffect: (fn: () => void) => void fn() }));
+const memoDeps = vi.hoisted(() => ({ seen: [] as unknown[][] }));
+vi.mock('react', async (importOriginal) => {
+  const react = await importOriginal<typeof import('react')>();
+  return {
+    ...react,
+    useEffect: (fn: () => void) => void fn(),
+    useMemo: <T>(fn: () => T, deps: unknown[]) => (memoDeps.seen.push(deps), react.useMemo(fn, deps)),
+  };
+});
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
 
 const experiences = [
@@ -38,6 +46,7 @@ const render = () => renderToStaticMarkup(createElement(ExperienceSelector));
 
 beforeEach(() => {
   setExperience.mockClear();
+  memoDeps.seen = [];
   uiAccess.asAdmin();
 });
 
@@ -78,5 +87,13 @@ describe('ExperienceSelector request', () => {
     uiAccessLoading();
     render();
     expect(queryEnabled.last).toBe(false);
+  });
+});
+
+describe('ExperienceSelector memo', () => {
+  it('never depends on a function, which is new every render and would defeat the memo', () => {
+    render();
+    expect(memoDeps.seen.length).toBeGreaterThan(0);
+    for (const deps of memoDeps.seen) expect(deps.filter((d) => typeof d === 'function')).toEqual([]);
   });
 });
