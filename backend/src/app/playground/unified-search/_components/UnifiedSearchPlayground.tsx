@@ -112,7 +112,12 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
   const [trace, setTrace] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
-  const summariesOn = useAccess().areaOn('ai-summaries');
+  const { areaOn, isLoading: accessLoading } = useAccess();
+  const summariesOn = areaOn('ai-summaries');
+  // This tab is open with Search off (its page needs Managed indexes): the experience routes are
+  // refused then, so nothing is asked of them
+  const searchOn = areaOn('search');
+  const searchOff = !accessLoading && !searchOn;
 
   // Fetch search experiences
   const {
@@ -126,6 +131,7 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
       const response = await fetch('/api/search-experiences?pageSize=100&isActive=true');
       return handleApiResponse<SearchExperienceOption[]>(response);
     },
+    enabled: searchOn,
   });
 
   // Fetch selected experience details (for access token)
@@ -135,7 +141,7 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
       const response = await fetch(`/api/search-experiences/${selectedExperienceId}`);
       return handleApiResponse<{ accessToken?: string }>(response);
     },
-    enabled: !!selectedExperienceId,
+    enabled: !!selectedExperienceId && searchOn,
   });
 
   // Auto-select first experience
@@ -510,7 +516,8 @@ export function UnifiedSearchPlayground({ hideHeader = false }: { hideHeader?: b
               })}
             </div>
 
-            {!summariesOn && <AreaOffNote area="ai-summaries" detail="AI summaries can't be tested here." className="justify-center" />}
+            {searchOff && <AreaOffNote area="search" detail="Search experiences can't be tested here." className="justify-center" />}
+            {!summariesOn && !searchOff && <AreaOffNote area="ai-summaries" detail="AI summaries can't be tested here." className="justify-center" />}
 
             {/* Selected experience info */}
             {selectedOption && (

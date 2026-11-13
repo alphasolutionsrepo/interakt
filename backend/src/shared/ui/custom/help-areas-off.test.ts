@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DocsSearchResults } from './DocsSearchResults';
-import { HelpButton, ModeSwitch, effectiveHelpMode, helpDescription, helpTriggerTooltip, noHelpHint } from './HelpButton';
+import { HelpButton, ModeSwitch, docsSearchRoutable, effectiveHelpMode, helpDescription, helpTriggerTooltip, noHelpHint } from './HelpButton';
 
 import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
 
@@ -122,5 +122,13 @@ describe('the help button and drawer wording', () => {
     expect(noHelpHint(false).toLowerCase()).not.toContain('ask');
     expect(helpTriggerTooltip(true)).toContain('ask');
     expect(noHelpHint(true)).toContain('ask a question');
+  });
+});
+
+describe('the docs search route', () => {
+  it('is not called with the Help assistant off, and is while on or still loading', () => {
+    expect(docsSearchRoutable(false)).toBe(false);
+    expect(docsSearchRoutable(true)).toBe(true);
+    expect(docsSearchRoutable(null)).toBe(true);
   });
 });

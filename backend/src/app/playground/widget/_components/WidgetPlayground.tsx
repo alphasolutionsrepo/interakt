@@ -344,13 +344,16 @@ export function WidgetPlayground() {
   const [device, setDevice] = useState<Device>('desktop');
   const [applied, setApplied] = useState<AppliedSpec | null>(null);
 
-  const aiList = useAIExperiences({ pageSize: 100, isActive: true });
-  const searchList = useSearchExperiences({ pageSize: 100, isActive: true });
+  // An off kind's routes are refused by the server: don't ask for its list
+  const chatOn = areaOn(WIDGET_KIND_AREA.chat);
+  const searchOn = areaOn(WIDGET_KIND_AREA.search);
+  const aiList = useAIExperiences({ pageSize: 100, isActive: true }, { enabled: chatOn });
+  const searchList = useSearchExperiences({ pageSize: 100, isActive: true }, { enabled: searchOn });
 
   // Search list summaries don't include accessToken — fetch the full record
   // when an experience is picked so we can init the widget with it.
   const selectedSearchDetail = useSearchExperience(
-    kind === 'search' && selectedId ? selectedId : undefined,
+    kind === 'search' && searchOn && selectedId ? selectedId : undefined,
   );
 
   const isLoadingList = kind === 'chat' ? aiList.isLoading : searchList.isLoading;

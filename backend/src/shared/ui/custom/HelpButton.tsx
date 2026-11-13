@@ -42,7 +42,11 @@ export function effectiveHelpMode(remembered: HelpMode, askOn: boolean): HelpMod
   return askOn ? remembered : 'search';
 }
 
-/** The drawer's one-line description. */
+/** Whether the docs-search route may be called: it is refused with the Help assistant off (still loading: try it). */
+export function docsSearchRoutable(askKnown: boolean | null): boolean {
+  return askKnown !== false;
+}
+
 /** The empty-state hint, trigger label and tooltip: they mention asking only while Ask AI is on. */
 export function noHelpHint(askOn: boolean): string {
   return askOn ? 'Search the docs or ask a question above, or' : 'Search the docs above, or';
@@ -57,6 +61,7 @@ export function helpTriggerTooltip(askOn: boolean | null): string {
   return askOn ? 'Help, search & ask' : 'Help & search';
 }
 
+/** The drawer's one-line description. */
 export function helpDescription(askOn: boolean): string {
   return askOn ? 'Search the docs, or ask the Help Assistant.' : 'Search the docs.';
 }
@@ -91,7 +96,8 @@ export function HelpButton() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const chat = useHelpChat();
-  const search = useDocsSearch(mode === 'search' ? text : '', group);
+  // Help assistant off: the server refuses the docs search, so go straight to title matching (loading still tries it)
+  const search = useDocsSearch(mode === 'search' ? text : '', group, docsSearchRoutable(askKnown));
   const showResults = mode === 'search' && !!text.trim() && !showingHit;
 
   // ---- Docs shown in the drawer: a stack, so internal links can go Back ----

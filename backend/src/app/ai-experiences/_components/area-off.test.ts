@@ -38,3 +38,13 @@ describe('the test chat panel with Playground off', () => {
     expect(controlState(panel(true), send)).toBe('disabled');
   });
 });
+
+describe('the built-in help chat with the Help assistant off', () => {
+  it('locks Send with the reason: the server refuses the help experience then', () => {
+    uiAccess.hold('ai-experiences:view');
+    uiAccess.areasOff('help-assistant');
+    const html = panel(true);
+    expect(controlState(html, send)).toBe('locked');
+    expect(html).toContain('Help assistant is turned off for this installation.');
+  });
+});

@@ -16,17 +16,30 @@ import { textOf } from '@/shared/test/rendered-controls';
 import { uiAccess } from '@/shared/test/ui-access-stub';
 
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
+// What each query / hook was asked (`enabled`), so "no request" is checkable without a DOM
+const asked = vi.hoisted(() => ({ queries: {} as Record<string, unknown>, hooks: {} as Record<string, unknown> }));
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }: { queryKey: unknown[] }) => ({
-    data: queryKey[0] === 'search-experiences'
-      ? [{ id: 'e1', name: 'Shop', slug: 'shop', isActive: true, aiEnabled: true, indexCount: 1 }]
-      : undefined,
-    isLoading: false, error: null, refetch: () => {},
-  }),
+  useQuery: ({ queryKey, enabled }: { queryKey: unknown[]; enabled?: boolean }) => {
+    asked.queries[String(queryKey[0]) + ':' + String(queryKey[1])] = enabled;
+    return {
+      data: queryKey[0] === 'search-experiences'
+        ? [{ id: 'e1', name: 'Shop', slug: 'shop', isActive: true, aiEnabled: true, indexCount: 1 }]
+        : undefined,
+      isLoading: false, error: null, refetch: () => {},
+    };
+  },
 }));
-vi.mock('@/app/ai-experiences/_lib/hooks/useAIExperiences', () => ({ useAIExperiences: () => ({ experiences: [], isLoading: false }) }));
+vi.mock('@/app/ai-experiences/_lib/hooks/useAIExperiences', () => ({
+  useAIExperiences: (_p: unknown, o?: { enabled?: boolean }) => {
+    asked.hooks.ai = o?.enabled;
+    return { experiences: [], isLoading: false };
+  },
+}));
 vi.mock('@/app/search-experiences/_lib/hooks', () => ({
-  useSearchExperiences: () => ({ experiences: [], isLoading: false }),
+  useSearchExperiences: (_p: unknown, o?: { enabled?: boolean }) => {
+    asked.hooks.search = o?.enabled;
+    return { experiences: [], isLoading: false };
+  },
   useSearchExperience: () => ({ experience: undefined, isLoading: false }),
 }));
 
@@ -64,5 +77,32 @@ describe('widget playground', () => {
   it('has no note with both on', () => {
     uiAccess.asAdmin();
     expect(widget()).not.toContain('turned off for this installation');
+  });
+});
+
+describe('requests with an area off', () => {
+  it('the widget playground asks only for the lists of kinds that are on', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('chat');
+    widget();
+    expect(asked.hooks).toEqual({ ai: false, search: true });
+    uiAccess.asAdmin();
+    uiAccess.areasOff('search');
+    widget();
+    expect(asked.hooks).toEqual({ ai: true, search: false });
+    uiAccess.asAdmin();
+    widget();
+    expect(asked.hooks).toEqual({ ai: true, search: true });
+  });
+
+  it('the experience search tab asks for no experience routes with Search off, and says so', () => {
+    uiAccess.asAdmin();
+    uiAccess.areasOff('search');
+    const html = unified();
+    expect(asked.queries['search-experiences:playground']).toBe(false);
+    expect(textOf(html)).toContain('Search is turned off for this installation.');
+    uiAccess.asAdmin();
+    unified();
+    expect(asked.queries['search-experiences:playground']).toBe(true);
   });
 });

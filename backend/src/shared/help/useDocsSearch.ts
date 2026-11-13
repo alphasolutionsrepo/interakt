@@ -33,7 +33,54 @@ export interface DocsSearchState {
 
 const IDLE: DocsSearchState = { status: 'idle', hits: [], groups: [], tookMs: null, fallback: false, turnedOff: false };
 
-export function useDocsSearch(query: string, group: string | null): DocsSearchState {
+/**
+ * One search: the docs search, or title matching when that is unavailable. With `searchOn`
+ * false (the Help assistant is off, so the server refuses the docs search) the search route
+ * is not called at all and the title matching answers. Null when the search was aborted.
+ */
+export async function runDocsSearch(
+  q: string,
+  group: string | null,
+  signal: AbortSignal,
+  searchOn = true,
+): Promise<DocsSearchState | null> {
+  const titleMatches = async (turnedOff: boolean): Promise<DocsSearchState> => {
+    const docs = await loadDocList();
+    const all = filterDocList(docs, q);
+    return {
+      status: 'ready',
+      hits: group ? filterDocList(docs, q, group) : all,
+      groups: [...new Set(all.map((hit) => hit.group))],
+      tookMs: null,
+      fallback: true,
+      turnedOff,
+    };
+  };
+
+  try {
+    if (!searchOn) return signal.aborted ? null : await titleMatches(true);
+    // With a group selected, a second unfiltered request keeps every
+    // chip visible, so the user can switch groups.
+    const [all, filtered] = await Promise.all([
+      searchDocs(q, { signal }),
+      group ? searchDocs(q, { group, signal }) : Promise.resolve(null),
+    ]);
+    const shown = filtered ?? all;
+    return { status: 'ready', hits: shown.hits, groups: all.groups, tookMs: shown.tookMs, fallback: false, turnedOff: false };
+  } catch (e) {
+    if (signal.aborted) return null;
+    if (!searchOn || !(e instanceof DocsSearchUnavailableError)) return { ...IDLE, status: 'error' };
+    try {
+      const state = await titleMatches(e.turnedOff);
+      return signal.aborted ? null : state;
+    } catch {
+      return signal.aborted ? null : { ...IDLE, status: 'error' };
+    }
+  }
+}
+
+/** `searchOn` false: skip the docs-search route (Help assistant off) and match titles only. */
+export function useDocsSearch(query: string, group: string | null, searchOn = true): DocsSearchState {
   const [state, setState] = useState<DocsSearchState>(IDLE);
 
   useEffect(() => {
@@ -48,51 +95,15 @@ export function useDocsSearch(query: string, group: string | null): DocsSearchSt
     const { signal } = controller;
 
     const timer = setTimeout(async () => {
-      try {
-        // With a group selected, a second unfiltered request keeps every
-        // chip visible, so the user can switch groups.
-        const [all, filtered] = await Promise.all([
-          searchDocs(q, { signal }),
-          group ? searchDocs(q, { group, signal }) : Promise.resolve(null),
-        ]);
-        const shown = filtered ?? all;
-        setState({
-          status: 'ready',
-          hits: shown.hits,
-          groups: all.groups,
-          tookMs: shown.tookMs,
-          fallback: false,
-          turnedOff: false,
-        });
-      } catch (e) {
-        if (signal.aborted) return;
-        if (!(e instanceof DocsSearchUnavailableError)) {
-          setState({ ...IDLE, status: 'error' });
-          return;
-        }
-        try {
-          const docs = await loadDocList();
-          if (signal.aborted) return;
-          const all = filterDocList(docs, q);
-          setState({
-            status: 'ready',
-            hits: group ? filterDocList(docs, q, group) : all,
-            groups: [...new Set(all.map((hit) => hit.group))],
-            tookMs: null,
-            fallback: true,
-            turnedOff: e.turnedOff,
-          });
-        } catch {
-          if (!signal.aborted) setState({ ...IDLE, status: 'error' });
-        }
-      }
+      const next = await runDocsSearch(q, group, signal, searchOn);
+      if (next && !signal.aborted) setState(next);
     }, DEBOUNCE_MS);
 
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, group]);
+  }, [query, group, searchOn]);
 
   return state;
 }

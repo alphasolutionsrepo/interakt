@@ -397,9 +397,9 @@ export function ChatTestPanel({ experienceSlug, experienceName, isBuiltIn = fals
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const permissionGate = chatSendGate(useActionGate('ai-experiences.test-chat'), isBuiltIn);
-  // Playground off locks Send with the reason, except on the built-in help (the help assistant is its own area)
-  const areaGate = useAreaGate(permissionGate, 'playground');
-  const sendGate = isBuiltIn ? permissionGate : areaGate;
+  // Send needs its area on: Playground for any experience, but the built-in help is the Help
+  // assistant's (the server checks only that one for it, gate.ts refuseSessionIfPlaygroundOff)
+  const sendGate = useAreaGate(permissionGate, isBuiltIn ? 'help-assistant' : 'playground');
   const currentAssistantIdRef = useRef<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Buffer preset data until text content starts streaming (so grid + text appear together)
