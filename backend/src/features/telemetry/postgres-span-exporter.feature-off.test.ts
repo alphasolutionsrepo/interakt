@@ -5,7 +5,7 @@
  * real exporter on real Postgres (PGlite with the analytics migrations).
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAnalyticsTestDb, type AnalyticsTestDb } from '@/shared/test/analytics-test-db';
 
@@ -21,6 +21,7 @@ vi.mock('@/features/feature-switches/feature-switches.service', async () => (awa
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 
 import { otelSpans } from '@/db/analytics-schema/otel-spans.schema';
+import * as featureSwitches from '@/features/feature-switches/feature-switches.service';
 import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 
 import { PostgresSpanExporter } from './postgres-span-exporter';
@@ -28,7 +29,11 @@ import { PostgresSpanExporter } from './postgres-span-exporter';
 beforeAll(async () => {
   testDb = await createAnalyticsTestDb();
 });
-beforeEach(() => featureSwitchesStub.reset());
+beforeEach(async () => {
+  featureSwitchesStub.reset();
+  await testDb.db.delete(otelSpans);
+});
+afterEach(() => vi.restoreAllMocks());
 afterAll(async () => {
   await testDb.close();
 });
@@ -58,6 +63,12 @@ describe('traces with the Analytics area off', () => {
     expect(await testDb.db.select().from(otelSpans)).toHaveLength(0);
 
     featureSwitchesStub.reset();
+    await exportSpan();
+    expect(await testDb.db.select().from(otelSpans)).toHaveLength(1);
+  });
+
+  it('are still stored when the switch cannot be read', async () => {
+    vi.spyOn(featureSwitches, 'isAreaOn').mockRejectedValue(new Error('switch store unavailable'));
     await exportSpan();
     expect(await testDb.db.select().from(otelSpans)).toHaveLength(1);
   });
