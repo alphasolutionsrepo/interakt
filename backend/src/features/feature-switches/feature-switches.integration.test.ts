@@ -650,6 +650,23 @@ describe('an area switched off, to a caller without a valid credential', () => {
     expect(await deleteByFilter('ik_0badc0de_nope')).toEqual(on);
   });
 
+  it('limits the single-document writes (PUT, PATCH, DELETE) on their own count: 300 a minute', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `single-${++n}`, displayName: 'Single', searchType: 'lexical' }).returning();
+    for (const method of ['PUT', 'PATCH', 'DELETE'] as const) {
+      rateLimiter.clear();
+      const send = async () => {
+        as(null);
+        const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/d1`, {
+          method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ik_0badc0de_nope' }, body: method === 'DELETE' ? undefined : '{}',
+        });
+        const res = await (documentRoute[method] as unknown as Route)(req, { params: Promise.resolve({ id: index.id, documentId: 'd1' }) });
+        return res.status;
+      };
+      for (let i = 0; i < 300; i++) expect(await send()).toBe(401);
+      expect(await send()).toBe(429);
+    }
+  });
+
   it("doesn't let requests with a forged key spend a real key's rate limit", async () => {
     const [index] = await testDb.db.insert(searchIndex).values({ name: `forged-${++n}`, displayName: 'Forged', searchType: 'lexical' }).returning();
     const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write'], searchIndexIds: [index.id] });

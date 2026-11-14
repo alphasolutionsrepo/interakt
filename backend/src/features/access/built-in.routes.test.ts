@@ -20,6 +20,18 @@ let testDb: AppTestDb;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
+// The real key check, made to fail for one test (a database outage)
+const keyCheck = vi.hoisted(() => ({ fails: false }));
+vi.mock('@/features/ingestion-keys/ingestion-key.middleware', async (original) => {
+  const real = await original<typeof import('@/features/ingestion-keys/ingestion-key.middleware')>();
+  return {
+    ...real,
+    authenticateIngestionKey: async (...args: Parameters<typeof real.authenticateIngestionKey>) => {
+      if (keyCheck.fails) throw new Error('database down');
+      return real.authenticateIngestionKey(...args);
+    },
+  };
+});
 
 const { changed, record } = vi.hoisted(() => {
   const changed: string[] = [];
@@ -157,6 +169,14 @@ describe('changing what the built-in help is made of', () => {
     expect((await call(indexDocuments.POST, builtIn.index, { Authorization: `Bearer ${plaintextKey}` })).status).toBe(403);
     // A wrong key gets the key check's refusal, as on any other index, before the built-in one
     expect((await call(indexDocuments.POST, builtIn.index, { Authorization: 'Bearer ik_0badc0de_nope' })).status).toBe(401);
+    expect(changed).toEqual([]);
+    // A failed key lookup is an error, and still changes nothing
+    keyCheck.fails = true;
+    try {
+      expect((await call(indexDocuments.POST, builtIn.index, { Authorization: `Bearer ${plaintextKey}` })).status).toBe(500);
+    } finally {
+      keyCheck.fails = false;
+    }
     expect(changed).toEqual([]);
     const key = { Authorization: 'Bearer ik_test' };
     expect((await call(indexDocuments.POST, other.index, key)).status).toBe(200);
