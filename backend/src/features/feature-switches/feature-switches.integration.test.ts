@@ -657,6 +657,22 @@ describe('an area switched off, to a caller without a valid credential', () => {
     expect((await deleteByFilter(plaintextKey)).status).toBe(429);
   });
 
+  it('counts a signed-in caller the permission check refuses, with the same limit headers', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `viewer-${++n}`, displayName: 'Viewer', searchType: 'lexical' }).returning();
+    const viewer = await makeUser(VIEWER);
+    const deleteByFilter = async () => {
+      as(viewer);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    rateLimiter.clear();
+    for (let i = 0; i < 20; i++) expect(await deleteByFilter()).toEqual({ status: 403, limit: '20' });
+    expect((await deleteByFilter()).status).toBe(429);
+  });
+
   it('limits a signed-in caller on the document writes by address, as before', async () => {
     const [index] = await testDb.db.insert(searchIndex).values({ name: `session-${++n}`, displayName: 'Session', searchType: 'lexical' }).returning();
     const deleteByFilter = async () => {
@@ -702,6 +718,14 @@ describe('when the switches cannot be read', () => {
 
   it('answers an admin route 500, like a failed role lookup', async () => {
     expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(500);
+  });
+
+  it('answers "turned off" for a route that needs an area the deployment setting turns off, without reading them', async () => {
+    // The Search report needs Analytics and Search; Search is turned off for good
+    process.env[FEATURES_OFF_ENV] = 'search';
+    const before = reads;
+    expect(await call(analyticsSearchTrendsRoute.GET, 'GET', '/api/analytics/search/trends')).toMatchObject(turnedOff);
+    expect(reads).toBe(before);
   });
 
   it('answers a public route 500 to a caller with the token', async () => {

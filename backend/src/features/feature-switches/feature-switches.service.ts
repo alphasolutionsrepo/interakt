@@ -84,11 +84,17 @@ async function allOff(): Promise<ReadonlySet<Area>> {
   return new Set([...pinnedOff(), ...(await storedOff())]);
 }
 
+/**
+ * Off by the deployment setting alone (the area, or everything it needs). Needs no database
+ * read, so it holds while the stored switches can't be read.
+ */
+export function offByDeployment(area: Area): boolean {
+  return !on(area, pinnedOff());
+}
+
 /** Whether this area is on for the installation now. */
 export async function isAreaOn(area: Area): Promise<boolean> {
-  // Off by the deployment setting alone needs no database read, so it holds while the
-  // stored switches can't be read
-  if (!on(area, pinnedOff())) return false;
+  if (offByDeployment(area)) return false;
   return on(area, await allOff());
 }
 

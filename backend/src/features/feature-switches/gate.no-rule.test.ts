@@ -13,7 +13,7 @@ const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), de
 vi.mock('@/shared/logger/logger', () => ({ createLogger: () => log }));
 vi.mock('server-only', () => ({}));
 const off = vi.hoisted(() => new Set<string>());
-vi.mock('./feature-switches.service', () => ({ isAreaOn: async (area: string) => !off.has(area) }));
+vi.mock('./feature-switches.service', () => ({ isAreaOn: async (area: string) => !off.has(area), offByDeployment: () => false }));
 
 import { TURNED_OFF_CODE } from './areas';
 import { publicApiRoute, refuseExperienceIfOff, refuseIfRouteOff } from './gate';
