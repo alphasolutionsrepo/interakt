@@ -629,6 +629,27 @@ describe('an area switched off, to a caller without a valid credential', () => {
     expect(last.status).toBe(429);
   });
 
+  it('answers a wrong key on a built-in index the same with the area on and off, and tells a live key it is built in', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `builtin-${++n}`, displayName: 'Built in', searchType: 'lexical', isBuiltIn: true }).returning();
+    const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write', 'delete'], searchIndexIds: [index.id] });
+    const deleteByFilter = async (key: string) => {
+      as(null);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: '{}',
+      });
+      const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    rateLimiter.clear();
+    const on = await deleteByFilter('ik_0badc0de_nope');
+    expect(on).toEqual({ status: 401, limit: '20' });
+    // A live key may change nothing built in
+    expect((await deleteByFilter(plaintextKey)).status).toBe(403);
+    as(admin);
+    await switchAreas({ 'managed-indexes': false });
+    expect(await deleteByFilter('ik_0badc0de_nope')).toEqual(on);
+  });
+
   it("doesn't let requests with a forged key spend a real key's rate limit", async () => {
     const [index] = await testDb.db.insert(searchIndex).values({ name: `forged-${++n}`, displayName: 'Forged', searchType: 'lexical' }).returning();
     const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write'], searchIndexIds: [index.id] });

@@ -24,6 +24,7 @@ import { dataSources } from '@/db/schema/data-sources.schema';
 import { searchExperienceIndexes, searchExperiences } from '@/db/schema/search-experience.schema';
 import { searchIndex } from '@/db/schema/search-index.schema';
 import { tools } from '@/db/schema/tools.schema';
+import { authenticateIngestionKey, hasBearerCredentials } from '@/features/ingestion-keys/ingestion-key.middleware';
 import { withRateLimit, type RateLimitConfig } from '@/shared/api/rate-limit';
 import { apiResponse } from '@/shared/api/response';
 
@@ -130,7 +131,19 @@ export function forBuiltInChange<A extends [NextRequestLike, { params: Promise<{
         // Can't tell (database down): answer and log it like any API error, change nothing
         return apiResponse.error(error, 500, { operation: 'checkBuiltIn' });
       }
-      if (builtIn) return apiResponse.forbidden(REFUSAL);
+      if (builtIn) {
+        // A key is checked first, so a wrong one gets the key check's refusal, as on any other
+        // index (and with Managed indexes off); a live key may change nothing built in
+        if (options.ingestionKey && hasBearerCredentials(args[0] as never)) {
+          try {
+            const auth = await authenticateIngestionKey(args[0] as never, { searchIndexId: id });
+            if (!auth.success) return auth.response;
+          } catch (error) {
+            return apiResponse.error(error, 500, { operation: 'checkBuiltInIngestionKey' });
+          }
+        }
+        return apiResponse.forbidden(REFUSAL);
+      }
     }
     return handler(...args);
   };
