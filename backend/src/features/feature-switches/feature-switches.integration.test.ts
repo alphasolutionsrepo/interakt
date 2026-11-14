@@ -650,6 +650,23 @@ describe('an area switched off, to a caller without a valid credential', () => {
     expect(await deleteByFilter('ik_0badc0de_nope')).toEqual(on);
   });
 
+  it('limits the uploads on their own count: 30 a minute, 60 for bulk', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `uploads-${++n}`, displayName: 'Uploads', searchType: 'lexical' }).returning();
+    for (const [route, path, limit] of [[documentsRoute.POST, '', 30], [bulkDocumentsRoute.POST, '/bulk', 60]] as const) {
+      rateLimiter.clear();
+      const send = async () => {
+        as(null);
+        const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents${path}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ik_0badc0de_nope' }, body: '{}',
+        });
+        const res = await (route as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+        return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+      };
+      for (let i = 0; i < limit; i++) expect(await send()).toEqual({ status: 401, limit: String(limit) });
+      expect((await send()).status).toBe(429);
+    }
+  });
+
   it('limits the single-document writes (PUT, PATCH, DELETE) on their own count: 300 a minute', async () => {
     const [index] = await testDb.db.insert(searchIndex).values({ name: `single-${++n}`, displayName: 'Single', searchType: 'lexical' }).returning();
     for (const method of ['PUT', 'PATCH', 'DELETE'] as const) {

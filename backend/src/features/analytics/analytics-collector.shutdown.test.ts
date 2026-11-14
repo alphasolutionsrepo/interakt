@@ -8,8 +8,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 let testDb: AnalyticsTestDb;
+// The analytics database refuses every write for one test (an outage)
+let down = false;
 vi.mock('@/db/index', () => ({
   get analyticsDB() {
+    if (down) return { insert: () => { throw new Error('analytics database down'); } };
     return testDb.db;
   },
   db: {},
@@ -31,16 +34,33 @@ afterAll(async () => {
 });
 
 describe('stopping the analytics collector', () => {
-  it('stores the events still queued', async () => {
-    trackSearch({
-      requestId: crypto.randomUUID(), triggerType: 'ai_tool', searchType: 'lexical', indexIds: ['idx'],
-      queryText: 'queued at shutdown', totalResults: 1, resultsReturned: 1, durationMs: 5, success: true,
-    });
-    expect(getQueueStats()).toMatchObject({ searchEvents: 1 });
+  it('stores every event still queued, more than one batch', async () => {
+    // 250 events: two and a half batches of 100
+    for (let i = 0; i < 250; i++) {
+      trackSearch({
+        requestId: crypto.randomUUID(), triggerType: 'ai_tool', searchType: 'lexical', indexIds: ['idx'],
+        queryText: `queued at shutdown ${i}`, totalResults: 1, resultsReturned: 1, durationMs: 5, success: true,
+      });
+    }
+    expect(getQueueStats()).toMatchObject({ searchEvents: 250 });
 
     await stopAnalyticsCollector();
 
     expect(getQueueStats()).toMatchObject({ searchEvents: 0 });
-    expect((await testDb.db.select({ q: searchEvents.queryText }).from(searchEvents)).map((r) => r.q)).toEqual(['queued at shutdown']);
+    expect(await testDb.db.select({ q: searchEvents.queryText }).from(searchEvents)).toHaveLength(250);
+  });
+
+  it('returns when the events cannot be stored, leaving them queued', async () => {
+    trackSearch({
+      requestId: crypto.randomUUID(), triggerType: 'ai_tool', searchType: 'lexical', indexIds: ['idx'],
+      queryText: 'never stored', totalResults: 1, resultsReturned: 1, durationMs: 5, success: true,
+    });
+    down = true;
+    try {
+      await stopAnalyticsCollector();
+    } finally {
+      down = false;
+    }
+    expect(getQueueStats()).toMatchObject({ searchEvents: 1 });
   });
 });

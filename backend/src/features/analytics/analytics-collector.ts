@@ -335,6 +335,11 @@ function analyticsAreaOn(): boolean {
   return analyticsOn;
 }
 
+function queuedCount(): number {
+  const { searchEvents, aiEvents, toolEvents, clickEvents } = getQueueStats();
+  return searchEvents + aiEvents + toolEvents + clickEvents;
+}
+
 /**
  * Flush all event queues. Once shutting down, only the final drain (stopAnalyticsCollector) runs.
  */
@@ -697,8 +702,16 @@ export async function stopAnalyticsCollector(): Promise<void> {
   logger.info('Draining analytics queues...', { stats: getQueueStats() });
 
   try {
-    await flushAll({ drain: true });
-    logger.info('Analytics collector stopped, all queues drained');
+    // Each flush writes one batch per queue: repeat while the queues shrink (a write that keeps
+    // failing leaves its events queued rather than looping)
+    let left = queuedCount();
+    while (left > 0) {
+      await flushAll({ drain: true });
+      const now = queuedCount();
+      if (now >= left) break;
+      left = now;
+    }
+    logger.info(left > 0 ? 'Analytics collector stopped; some queued events could not be stored' : 'Analytics collector stopped, all queues drained', { left });
   } catch (error) {
     logger.error('Error draining analytics queues', error as Error);
   }
