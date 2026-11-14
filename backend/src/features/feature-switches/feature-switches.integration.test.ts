@@ -628,6 +628,31 @@ describe('an area switched off, to a caller without a valid credential', () => {
     for (let i = 0; i < 20; i++) last = await writes[2]();
     expect(last.status).toBe(429);
   });
+
+  it("doesn't let requests with a forged key spend a real key's rate limit", async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `forged-${++n}`, displayName: 'Forged', searchType: 'lexical' }).returning();
+    const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write'], searchIndexIds: [index.id] });
+    // The real key's public prefix with a made-up secret
+    const [marker, prefix] = plaintextKey.split('_');
+    const forged = `${marker}_${prefix}_madeUpSecret`;
+    const deleteByFilter = async (key: string) => {
+      as(null);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: '{}',
+      });
+      const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    rateLimiter.clear();
+    // delete-by-filter allows 20 a minute: the forged key uses up its own allowance
+    for (let i = 0; i < 20; i++) expect((await deleteByFilter(forged)).status).toBe(401);
+    expect((await deleteByFilter(forged)).status).toBe(429);
+    // The real key still has all of its own; it gets past the limiter and the key check
+    const real = await deleteByFilter(plaintextKey);
+    expect(real.status).not.toBe(429);
+    expect(real.status).not.toBe(401);
+    expect(real.limit).toBe('20');
+  });
 });
 
 describe('user memories', () => {

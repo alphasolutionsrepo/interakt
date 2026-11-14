@@ -15,6 +15,8 @@
 
 import 'server-only';
 
+import { createHash } from 'crypto';
+
 import type { NextRequest, NextResponse } from 'next/server';
 import { clientIp } from '@/shared/api/client-ip';
 import { apiResponse } from '@/shared/api/response';
@@ -52,9 +54,10 @@ function extractBearer(request: NextRequest): string | null {
 /**
  * Rate-limit identity for a request.
  *
- * Uses the presented key's public prefix, which identifies the caller without a
- * database lookup (keyFn is synchronous) and cannot be forged without the real
- * key.
+ * A request with a key is counted by the key as presented: its public prefix and a hash of
+ * the whole key, with no database lookup (keyFn is synchronous). The prefix alone is public,
+ * so requests with a made-up secret would otherwise spend the real key's allowance; with the
+ * hash they only spend their own.
  *
  * Session requests fall back to the client IP — the admin UI is low-volume, and
  * resolving a session is async.
@@ -64,7 +67,8 @@ export function ingestionRateLimitKey(request: NextRequest): string {
     const parsed = presented ? parseKey(presented) : null;
 
     if (parsed) {
-        return `key:${parsed.keyPrefix}`;
+        const fingerprint = createHash('sha256').update(presented!).digest('hex').slice(0, 16);
+        return `key:${parsed.keyPrefix}:${fingerprint}`;
     }
 
     return `ip:${clientIp(request)}`;

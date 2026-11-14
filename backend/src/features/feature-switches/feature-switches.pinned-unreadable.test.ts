@@ -86,6 +86,11 @@ describe('an area turned off by the deployment setting, with the switches unread
     expect(store.reads).toBe(0);
   });
 
+  it('leaves the other areas to the stored switches: unreadable, they are an error as before', async () => {
+    await expect(isAreaOn('chat')).rejects.toThrow('main database down');
+    expect(store.reads).toBe(1);
+  });
+
   it('records no analytics events', async () => {
     await forceFlush(); // reads the switch
     trackSearch({

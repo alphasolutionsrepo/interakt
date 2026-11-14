@@ -18,9 +18,15 @@ function request(headers: Record<string, string>): NextRequest {
 }
 
 describe('ingestionRateLimitKey', () => {
-    it("counts a request with an ingestion key by the key's public prefix", () => {
-        const withKey = { Authorization: 'Bearer ik_abc12345_thesecret', 'X-Forwarded-For': '9.9.9.9' };
-        expect(ingestionRateLimitKey(request(withKey))).toBe('key:ik_abc12345');
+    it('counts a request with an ingestion key by the key as presented, not its public prefix alone', () => {
+        const withKey = (secret: string) => request({ Authorization: `Bearer ik_abc12345_${secret}`, 'X-Forwarded-For': '9.9.9.9' });
+        const real = ingestionRateLimitKey(withKey('thesecret'));
+        expect(real).toMatch(/^key:ik_abc12345:[0-9a-f]{16}$/);
+        // The same key always counts the same; a made-up secret on the same prefix doesn't
+        expect(ingestionRateLimitKey(withKey('thesecret'))).toBe(real);
+        expect(ingestionRateLimitKey(withKey('madeup'))).not.toBe(real);
+        // The secret itself is not in the identity
+        expect(real).not.toContain('thesecret');
     });
 
     it('counts other requests by the address the proxy added', () => {
