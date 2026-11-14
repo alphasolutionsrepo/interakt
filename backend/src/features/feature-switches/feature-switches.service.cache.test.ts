@@ -38,6 +38,18 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); });
 
+describe('the deployment setting with the stored switches readable', () => {
+  it('turns its areas off on top of what an Admin turned off, and leaves the rest on', async () => {
+    process.env.INTERAKT_FEATURES_OFF = 'chat';
+    db.value = ['analytics'];
+    expect(await isAreaOn('chat')).toBe(false);
+    expect(await isAreaOn('analytics')).toBe(false);
+    expect(await isAreaOn('search')).toBe(true);
+    // Playground needs Search or Chat: Search is still on
+    expect(await isAreaOn('playground')).toBe(true);
+  });
+});
+
 describe('feature switch cache', () => {
   it('uses the saved state when reads fail after a save', async () => {
     expect(await isAreaOn('analytics')).toBe(true);

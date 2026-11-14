@@ -652,6 +652,28 @@ describe('an area switched off, to a caller without a valid credential', () => {
     expect(real.status).not.toBe(429);
     expect(real.status).not.toBe(401);
     expect(real.limit).toBe('20');
+    // and is limited on its own count: 20 a minute
+    for (let i = 1; i < 20; i++) expect((await deleteByFilter(plaintextKey)).status).not.toBe(429);
+    expect((await deleteByFilter(plaintextKey)).status).toBe(429);
+  });
+
+  it('limits a signed-in caller on the document writes by address, as before', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `session-${++n}`, displayName: 'Session', searchType: 'lexical' }).returning();
+    const deleteByFilter = async () => {
+      as(admin);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    rateLimiter.clear();
+    for (let i = 0; i < 20; i++) {
+      const res = await deleteByFilter();
+      expect(res.status).not.toBe(429);
+      expect(res.limit).toBe('20');
+    }
+    expect((await deleteByFilter()).status).toBe(429);
   });
 });
 
