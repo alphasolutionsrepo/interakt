@@ -336,10 +336,10 @@ function analyticsAreaOn(): boolean {
 }
 
 /**
- * Flush all event queues
+ * Flush all event queues. Once shutting down, only the final drain (stopAnalyticsCollector) runs.
  */
-async function flushAll(): Promise<void> {
-  if (isShuttingDown) {
+async function flushAll({ drain = false } = {}): Promise<void> {
+  if (isShuttingDown && !drain) {
     logger.debug('flushAll skipped - shutting down');
     return;
   }
@@ -697,7 +697,7 @@ export async function stopAnalyticsCollector(): Promise<void> {
   logger.info('Draining analytics queues...', { stats: getQueueStats() });
 
   try {
-    await flushAll();
+    await flushAll({ drain: true });
     logger.info('Analytics collector stopped, all queues drained');
   } catch (error) {
     logger.error('Error draining analytics queues', error as Error);
