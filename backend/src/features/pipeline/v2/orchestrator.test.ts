@@ -1,4 +1,4 @@
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { describe, it, expect, vi } from 'vitest';
 
@@ -10,6 +10,12 @@ vi.mock('@/features/telemetry/telemetry.config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/telemetry/telemetry.config')>()),
   isTelemetryEnabled: () => telemetry.on,
 }));
+
+// The Chat switch, asked before a signed-in visitor's memories are extracted
+const areas = vi.hoisted(() => ({ isAreaOn: vi.fn() }));
+vi.mock('@/features/feature-switches/feature-switches.service', () => areas);
+const extraction = vi.hoisted(() => ({ extractMemoriesFromSession: vi.fn() }));
+vi.mock('@/features/user-memories/memory-extraction.service', () => extraction);
 
 // Every pipeline phase reaches resolveTemplate() (a DB query); unit tests are
 // DB-free, so force the deterministic inline-prompt fallback (null template).
@@ -366,6 +372,55 @@ describe('V2 Pipeline Orchestrator', () => {
       }
       expect(log.error).toHaveBeenCalledOnce();
       expect(log.error).toHaveBeenCalledWith('V2 turn failed after it timed out', expect.objectContaining({ cause: down }), { experienceId: 'exp-1', sessionId: 'session-1' });
+    });
+  });
+
+  describe('memory extraction after a turn, for a signed-in visitor', () => {
+    /** Runs a turn for a signed-in visitor, traced, and returns the finished extraction span. */
+    async function runSignedIn() {
+      const deps = makeDeps();
+      deps.contextAssembly.sessionLoader.getSessionWithWindow = vi.fn().mockResolvedValue({
+        session: { id: 'session-1', summary: null, facts: null, pipelineState: null, userContext: { userId: 'user-1' }, messageCount: 0, status: 'active' },
+        messages: [],
+      });
+      vi.clearAllMocks();
+      telemetry.on = true;
+      exporter.reset();
+      try {
+        const result = await runV2Pipeline(makeInput(), deps);
+        await vi.waitFor(() => expect(exporter.getFinishedSpans().map((s) => s.name)).toContain('pipeline.post.episodic_memory_extraction'));
+        return { result, span: exporter.getFinishedSpans().find((s) => s.name === 'pipeline.post.episodic_memory_extraction')! };
+      } finally {
+        telemetry.on = false;
+      }
+    }
+
+    it('runs with Chat on and records what it stored', async () => {
+      areas.isAreaOn.mockResolvedValue(true);
+      extraction.extractMemoriesFromSession.mockResolvedValue({ stored: 2, extracted: 3 });
+      const { span } = await runSignedIn();
+      expect(extraction.extractMemoriesFromSession).toHaveBeenCalledOnce();
+      expect(span.attributes['alpha.memory.stored']).toBe(2);
+      expect(span.attributes['alpha.memory.skipped']).toBeUndefined();
+    });
+
+    it('is skipped with Chat off, and the span says so rather than looking like a run', async () => {
+      areas.isAreaOn.mockResolvedValue(false);
+      const { span } = await runSignedIn();
+      expect(extraction.extractMemoriesFromSession).not.toHaveBeenCalled();
+      expect(span.attributes['alpha.memory.skipped']).toBe(true);
+      expect(span.attributes['alpha.memory.skip_reason']).toBe('chat_off');
+      expect(span.attributes['alpha.memory.stored']).toBeUndefined();
+    });
+
+    it('is not run when the Chat switch cannot be read: the span fails, it is logged, the answer is unaffected', async () => {
+      const down = new Error('switches unreadable');
+      areas.isAreaOn.mockRejectedValue(down);
+      const { result, span } = await runSignedIn();
+      expect(extraction.extractMemoriesFromSession).not.toHaveBeenCalled();
+      expect(result.responseText).toBe('I found some red shoes for you!');
+      expect(span.status.code).toBe(SpanStatusCode.ERROR);
+      await vi.waitFor(() => expect(log.error).toHaveBeenCalledWith('Async memory extraction failed', down, { sessionId: 'session-1', userId: 'user-1' }));
     });
   });
 });

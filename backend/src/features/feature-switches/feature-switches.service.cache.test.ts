@@ -17,7 +17,13 @@ vi.mock('@/features/global-settings', () => ({
     if (db.fails) throw new Error('database down');
     return db.value;
   }),
-  saveFeaturesOff: vi.fn(async (off: string[]) => { db.saved = off; db.value = off; if (db.failAfterSave) db.fails = true; }),
+  updateFeaturesOff: vi.fn(async (change: (current: string[]) => string[]) => {
+    const before = db.value;
+    const after = change([...before]);
+    db.saved = after; db.value = after;
+    if (db.failAfterSave) db.fails = true;
+    return { before, after };
+  }),
 }));
 
 import { clearFeatureSwitchCache, isAreaOn, setFeatureSwitches } from './feature-switches.service';
@@ -31,6 +37,18 @@ beforeEach(() => {
   clearFeatureSwitchCache();
 });
 afterEach(() => { vi.useRealTimers(); });
+
+describe('the deployment setting with the stored switches readable', () => {
+  it('turns its areas off on top of what an Admin turned off, and leaves the rest on', async () => {
+    process.env.INTERAKT_FEATURES_OFF = 'chat';
+    db.value = ['analytics'];
+    expect(await isAreaOn('chat')).toBe(false);
+    expect(await isAreaOn('analytics')).toBe(false);
+    expect(await isAreaOn('search')).toBe(true);
+    // Playground needs Search or Chat: Search is still on
+    expect(await isAreaOn('playground')).toBe(true);
+  });
+});
 
 describe('feature switch cache', () => {
   it('uses the saved state when reads fail after a save', async () => {

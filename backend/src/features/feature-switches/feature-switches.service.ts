@@ -16,7 +16,7 @@ import 'server-only';
 
 import { AREAS, AREA_IDS, FEATURES_OFF_ENV, isArea, needsOf, PINNED_OFF_MESSAGE, type Area } from './areas';
 
-import { getStoredFeaturesOff, saveFeaturesOff } from '@/features/global-settings';
+import { getStoredFeaturesOff, updateFeaturesOff } from '@/features/global-settings';
 import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -84,8 +84,17 @@ async function allOff(): Promise<ReadonlySet<Area>> {
   return new Set([...pinnedOff(), ...(await storedOff())]);
 }
 
+/**
+ * Off by the deployment setting alone (the area, or everything it needs). Needs no database
+ * read, so it holds while the stored switches can't be read.
+ */
+export function offByDeployment(area: Area): boolean {
+  return !on(area, pinnedOff());
+}
+
 /** Whether this area is on for the installation now. */
 export async function isAreaOn(area: Area): Promise<boolean> {
+  if (offByDeployment(area)) return false;
   return on(area, await allOff());
 }
 
@@ -123,20 +132,33 @@ export async function listFeatureSwitches(): Promise<FeatureSwitch[]> {
  * Switch areas on or off (the ones not named keep their state). Turning on an area the
  * deployment setting turns off is refused. Data is never touched.
  */
-export async function setFeatureSwitches(changes: Partial<Record<Area, boolean>>): Promise<FeatureSwitch[]> {
+export async function setFeatureSwitches(
+  changes: Partial<Record<Area, boolean>>,
+  actingUserId?: string,
+): Promise<FeatureSwitch[]> {
   const pins = pinnedOff();
   const pinnedOn = (Object.keys(changes) as Area[]).filter((a) => changes[a] === true && pins.has(a));
   if (pinnedOn.length) {
     throw new AppError(`${pinnedOn.join(', ')}: ${PINNED_OFF_MESSAGE}`, { code: 'FEATURE_PINNED_OFF', status: 409 });
   }
-  // Read fresh, so a save doesn't undo another Admin's change still in the cache
-  const off = new Set((await getStoredFeaturesOff()).filter(isArea));
-  const helpWasOn = on('help-assistant', new Set([...pins, ...off]));
-  for (const [area, wanted] of Object.entries(changes) as Array<[Area, boolean]>) {
-    if (wanted) off.delete(area);
-    else off.add(area);
-  }
-  await saveFeaturesOff(AREA_IDS.filter((a) => off.has(a)));
+  // Read and write under one lock, so a save doesn't undo another Admin's change
+  const { before, after } = await updateFeaturesOff((current) => {
+    const next = new Set(current.filter(isArea));
+    for (const [area, wanted] of Object.entries(changes) as Array<[Area, boolean]>) {
+      if (wanted) next.delete(area);
+      else next.add(area);
+    }
+    return AREA_IDS.filter((a) => next.has(a));
+  });
+  const off = new Set(after.filter(isArea));
+  const helpWasOn = on('help-assistant', new Set([...pins, ...before.filter(isArea)]));
+  const areas = Object.keys(changes) as Area[];
+  logger.info('Feature switches changed', {
+    userId: actingUserId,
+    switchedOn: areas.filter((a) => changes[a] === true),
+    switchedOff: areas.filter((a) => changes[a] === false),
+    featuresOff: after,
+  });
   // What was just saved is the latest known state: keep it as the cache (and the fallback
   // for a failed read), rather than clearing it
   // and it wins over any read that started before it: that read may carry the old list

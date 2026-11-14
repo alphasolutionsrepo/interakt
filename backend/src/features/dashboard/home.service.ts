@@ -193,11 +193,14 @@ const globalHome = globalThis as typeof globalThis & { __interaktHomeCache?: Map
 globalHome.__interaktHomeCache ??= new Map<string, CacheEntry>();
 const cache = globalHome.__interaktHomeCache;
 
-function rebuild(timeZone: string): CacheEntry {
-  const entry: CacheEntry = { at: Date.now(), data: buildHomeData(timeZone, new Date()) };
+// The page is built differently with Analytics off (no analytics queries), so each is cached on its own
+const cacheKey = (timeZone: string, analyticsOn: boolean) => `${timeZone}|${analyticsOn ? 'analytics' : 'no-analytics'}`;
+
+function rebuild(timeZone: string, analyticsOn: boolean): CacheEntry {
+  const entry: CacheEntry = { at: Date.now(), data: buildHomeData(timeZone, new Date(), analyticsOn) };
   // A failed read isn't kept
   entry.data.catch(() => {
-    if (cache.get(timeZone) === entry) cache.delete(timeZone);
+    if (cache.get(cacheKey(timeZone, analyticsOn)) === entry) cache.delete(cacheKey(timeZone, analyticsOn));
   });
   return entry;
 }
@@ -212,16 +215,17 @@ export function invalidateHomeCache(): void {
  * the page has been built: data older than a minute is returned straight away
  * and refreshed in the background.
  */
-export function getHomeData(timeZone: string): Promise<HomeData> {
-  const hit = cache.get(timeZone);
+export function getHomeData(timeZone: string, analyticsOn = true): Promise<HomeData> {
+  const key = cacheKey(timeZone, analyticsOn);
+  const hit = cache.get(key);
   const age = hit ? Date.now() - hit.at : Infinity;
   if (hit && age < FRESH_MS) return hit.data;
   if (hit && age < STALE_MS) {
     if (!hit.refreshing) {
       hit.refreshing = true;
-      const next = rebuild(timeZone);
+      const next = rebuild(timeZone, analyticsOn);
       next.data
-        .then(() => cache.set(timeZone, next))
+        .then(() => cache.set(key, next))
         .catch((error) => logger.warn('Home page refresh failed; keeping the last one', { error: String(error) }))
         .finally(() => {
           hit.refreshing = false;
@@ -229,19 +233,26 @@ export function getHomeData(timeZone: string): Promise<HomeData> {
     }
     return hit.data;
   }
-  const entry = rebuild(timeZone);
-  cache.set(timeZone, entry);
+  const entry = rebuild(timeZone, analyticsOn);
+  cache.set(key, entry);
   return entry.data;
 }
 
-async function buildHomeData(timeZone: string, now: Date): Promise<HomeData> {
+async function buildHomeData(timeZone: string, now: Date, analyticsOn: boolean): Promise<HomeData> {
   const started = Date.now();
-  const data = await assembleHomeData(timeZone, now);
+  const data = await assembleHomeData(timeZone, now, analyticsOn);
   logger.info('Home page built', { timeZone, durationMs: Date.now() - started });
   return data;
 }
 
-async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> {
+/** The query's answer, or `none` without running it (Analytics off: no analytics query runs) */
+function whenOn<T>(on: boolean, query: () => Promise<T>, none: NoInfer<T>): Promise<T> {
+  return on ? query() : Promise.resolve(none);
+}
+
+const NO_OVERVIEW = { totalSearches: 0, zeroResultRate: 0 };
+
+async function assembleHomeData(timeZone: string, now: Date, analyticsOn: boolean): Promise<HomeData> {
   const { current, previous, days, previousDays } = lastSevenDays(timeZone, now);
 
   const [
@@ -263,23 +274,23 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
     usage,
     recentJobs,
   ] = await Promise.all([
-    getOverviewMetrics('custom', undefined, current),
-    getOverviewMetrics('custom', undefined, previous),
-    getSearchTrends('custom', undefined, current, timeZone),
-    getSearchTrends('custom', undefined, previous, timeZone),
-    getTurnsByDay(current, timeZone),
-    getTurnsByDay(previous, timeZone),
+    analyticsOn ? getOverviewMetrics('custom', undefined, current) : NO_OVERVIEW,
+    analyticsOn ? getOverviewMetrics('custom', undefined, previous) : NO_OVERVIEW,
+    whenOn(analyticsOn, () => getSearchTrends('custom', undefined, current, timeZone), []),
+    whenOn(analyticsOn, () => getSearchTrends('custom', undefined, previous, timeZone), []),
+    whenOn(analyticsOn, () => getTurnsByDay(current, timeZone), []),
+    whenOn(analyticsOn, () => getTurnsByDay(previous, timeZone), []),
     // Visitors' and the assistant's: both are content gaps (internal lookups are left out)
-    getZeroResultQueries('custom', undefined, 100, current, 'all'),
-    getSearchTypeBreakdown('custom', undefined, current),
-    getProactiveInsights('7d'),
-    getExperienceSummaries('custom', current),
-    countRecentRequests(5),
+    whenOn(analyticsOn, () => getZeroResultQueries('custom', undefined, 100, current, 'all'), []),
+    whenOn(analyticsOn, () => getSearchTypeBreakdown('custom', undefined, current), { lexical: 0, semantic: 0, hybrid: 0 }),
+    analyticsOn ? getProactiveInsights('7d') : { status: 'off' as const },
+    whenOn(analyticsOn, () => getExperienceSummaries('custom', current), []),
+    whenOn(analyticsOn, () => countRecentRequests(5), 0),
     readSetup(),
     countFailedJobs(current.from),
     listDismissedTips(),
     readHealth(now),
-    readUsage(),
+    whenOn(analyticsOn, readUsage, { anyTraffic: false, askedAQuestion: false }),
     readRecentJobs(new Date(now.getTime() - 14 * DAY_MS)),
   ]);
 
@@ -480,8 +491,9 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
   }
 
   // ── Tips that apply to this install ──────────────────────────────────
-  const tips = buildTips({ setup, summaries, zeroQueries, searchTypes, now, dismissed }).filter((t) => !dismissed.has(t.id));
-  const guardrailTip = await offTopicTip(setup, summaries, dismissed);
+  // (with Analytics off there are no figures to base them on; the page shows none)
+  const tips = analyticsOn ? buildTips({ setup, summaries, zeroQueries, searchTypes, now, dismissed }).filter((t) => !dismissed.has(t.id)) : [];
+  const guardrailTip = analyticsOn ? await offTopicTip(setup, summaries, dismissed) : null;
   if (guardrailTip) tips.splice(1, 0, guardrailTip);
 
   // ── Experiences, busiest first ───────────────────────────────────────

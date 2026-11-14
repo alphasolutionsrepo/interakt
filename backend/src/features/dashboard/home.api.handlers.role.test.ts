@@ -8,10 +8,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
+const builtWithAnalytics = vi.hoisted(() => [] as boolean[]);
 vi.mock('./home.service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./home.service')>()),
   // The aggregate the page shows (it reads both databases); the role filter is the real one
-  getHomeData: async () => ({
+  getHomeData: async (_tz: string, analyticsOn: boolean) => (builtWithAnalytics.push(analyticsOn), {
     generatedAt: 'now', period: {}, live: { requestsLast5Min: 7 }, health: null, checklist: null,
     metrics: [{ id: 'searches' }], tasks: [{ id: 'reindex', href: '/search-indexes' }, { id: 'jobs', href: '/jobs' }], cards: [{ id: 'c', href: '/analytics' }],
     tips: [{ id: 'tip:x', action: { label: 'Look', href: '/analytics' } }], experiences: [], recent: [],
@@ -30,6 +31,7 @@ const get = async () => {
 afterEach(() => {
   accessStub.reset();
   featureSwitchesStub.reset();
+  builtWithAnalytics.length = 0;
 });
 
 describe('the home page by role', () => {
@@ -43,6 +45,14 @@ describe('the home page by role', () => {
     const { status, data } = await get();
     expect(status).toBe(200);
     expect(data).toMatchObject({ metrics: [], cards: [], tips: [] });
+  });
+
+  it('asks for the page without analytics queries while Analytics is off, and with them while it is on', async () => {
+    await get();
+    featureSwitchesStub.off.add('analytics');
+    await get();
+
+    expect(builtWithAnalytics).toEqual([true, false]);
   });
 });
 

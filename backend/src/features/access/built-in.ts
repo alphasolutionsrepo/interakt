@@ -24,6 +24,8 @@ import { dataSources } from '@/db/schema/data-sources.schema';
 import { searchExperienceIndexes, searchExperiences } from '@/db/schema/search-experience.schema';
 import { searchIndex } from '@/db/schema/search-index.schema';
 import { tools } from '@/db/schema/tools.schema';
+import { authenticateIngestionKey, hasBearerCredentials } from '@/features/ingestion-keys/ingestion-key.middleware';
+import { withRateLimit, type RateLimitConfig } from '@/shared/api/rate-limit';
 import { apiResponse } from '@/shared/api/response';
 
 const TABLES = {
@@ -129,7 +131,19 @@ export function forBuiltInChange<A extends [NextRequestLike, { params: Promise<{
         // Can't tell (database down): answer and log it like any API error, change nothing
         return apiResponse.error(error, 500, { operation: 'checkBuiltIn' });
       }
-      if (builtIn) return apiResponse.forbidden(REFUSAL);
+      if (builtIn) {
+        // A key is checked first, so a wrong one gets the key check's refusal, as on any other
+        // index (and with Managed indexes off); a live key may change nothing built in
+        if (options.ingestionKey && hasBearerCredentials(args[0] as never)) {
+          try {
+            const auth = await authenticateIngestionKey(args[0] as never, { searchIndexId: id });
+            if (!auth.success) return auth.response;
+          } catch (error) {
+            return apiResponse.error(error, 500, { operation: 'checkBuiltInIngestionKey' });
+          }
+        }
+        return apiResponse.forbidden(REFUSAL);
+      }
     }
     return handler(...args);
   };
@@ -142,10 +156,22 @@ export function forBuiltInChange<A extends [NextRequestLike, { params: Promise<{
 
 type NextRequestLike = Request;
 
-/** forBuiltInChange for the index document routes, which servers also call with an ingestion key. */
+/**
+ * forBuiltInChange for the index document routes, which servers also call with an ingestion key.
+ * A rate limit, when given, runs before the access checks, so every caller is counted and answered alike
+ * (a wrong key gets the same limit headers, and 429, whether Managed indexes is on or off).
+ */
 export function forBuiltInDocumentChange<A extends [NextRequestLike, { params: Promise<{ id: string }> }, ...unknown[]]>(
   rule: AccessRule,
   handler: (...args: A) => Response | Promise<Response>,
+  rateLimit?: RateLimitConfig,
 ) {
-  return forBuiltInChange('search-index', rule, handler, { ingestionKey: true });
+  const route = forBuiltInChange('search-index', rule, handler, { ingestionKey: true });
+  if (!rateLimit) return route;
+  const limited = withRateLimit(route as never, rateLimit) as typeof route;
+  // The route checks (routes.access.test) read the access markers off the exported handler
+  for (const marker of Object.getOwnPropertySymbols(route)) {
+    Object.defineProperty(limited, marker, { value: (route as unknown as Record<symbol, unknown>)[marker] });
+  }
+  return limited;
 }

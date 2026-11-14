@@ -29,7 +29,16 @@ export async function refreshInsightsWorker(
 ) {
   // Analytics turned off for this installation: nothing to refresh (its data is kept)
   const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
-  if (!(await isAreaOn('analytics'))) {
+  let analyticsOn: boolean;
+  try {
+    analyticsOn = await isAreaOn('analytics');
+  } catch (err) {
+    // The queue has no retries (retryLimit 0, see job-registry), so failing the job would only
+    // mark it failed for good. Skip this run, as for an off switch; the next night's covers it.
+    logger.warn('Insights refresh skipped: could not read the feature switches', { jobs: jobs.length, err });
+    return jobs.map((job) => ({ jobId: job.id, skipped: 'The feature switches could not be read; the next scheduled run will try again.' }));
+  }
+  if (!analyticsOn) {
     logger.info('Insights refresh skipped: Analytics is turned off', { jobs: jobs.length });
     return jobs.map((job) => ({ jobId: job.id, skipped: 'Analytics is turned off for this installation.' }));
   }

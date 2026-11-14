@@ -138,4 +138,37 @@ describe('authenticateTokenOrSession', () => {
       expect(await answer({})).toMatchObject({ status: 404, code: TURNED_OFF_CODE });
     });
   });
+
+  describe('Playground off, for a session (the Test pages)', () => {
+    beforeEach(() => accessStub.reset());
+
+    it('refuses an admin session "turned off" even though the experience area is on', async () => {
+      featureSwitchesStub.off.add('playground');
+      authMock.mockResolvedValue({ user: { id: 'u' } });
+      const result = await authenticateTokenOrSession(request({}), experience());
+      expect(result.caller).toBeNull();
+      expect(result.refused?.status).toBe(404);
+      expect(await result.refused?.json()).toMatchObject({ code: TURNED_OFF_CODE });
+    });
+
+    it('does not refuse the same call with Playground on, nor the token caller with it off', async () => {
+      authMock.mockResolvedValue({ user: { id: 'u' } });
+      expect(await authenticateTokenOrSession(request({}), experience())).toMatchObject({ caller: 'admin' });
+      featureSwitchesStub.off.add('playground');
+      expect(await authenticateTokenOrSession(request({ 'X-Access-Token': 't1' }), experience())).toMatchObject({ caller: 'api' });
+    });
+
+    it('does not apply to the built-in help, which is the Help assistant\'s', async () => {
+      featureSwitchesStub.off.add('playground');
+      authMock.mockResolvedValue({ user: { id: 'u' } });
+      const help = { ...experience(), isBuiltIn: true };
+      expect(await authenticateTokenOrSession(request({}), help)).toMatchObject({ caller: 'admin' });
+    });
+
+    it('answers a caller with no session 401, not "turned off"', async () => {
+      featureSwitchesStub.off.add('playground');
+      authMock.mockResolvedValue(null);
+      expect(await authenticateTokenOrSession(request({}), experience())).toEqual({ caller: null });
+    });
+  });
 });

@@ -19,12 +19,17 @@ import { FEATURES_OFF_ENV, PINNED_OFF_MESSAGE, TURNED_OFF_CODE, TURNED_OFF_MESSA
 import { clearFeatureSwitchCache, isAreaOn } from './feature-switches.service';
 
 import * as aiExperiencesRoute from '@/app/api/ai-experiences/route';
+import * as analyticsAiUsageRoute from '@/app/api/analytics/ai/usage/route';
 import * as analyticsConfigRoute from '@/app/api/analytics/config/route';
 import * as analyticsDataRoute from '@/app/api/analytics/data/route';
+import * as analyticsSearchTrendsRoute from '@/app/api/analytics/search/trends/route';
 import * as analyticsStatusRoute from '@/app/api/analytics/status/route';
 import * as homeRoute from '@/app/api/dashboard/home/route';
 import * as homeTipsRoute from '@/app/api/dashboard/home/tips/route';
 import * as meAccessRoute from '@/app/api/me/access/route';
+import * as documentRoute from '@/app/api/search-indexes/[id]/documents/[documentId]/route';
+import * as bulkDocumentsRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
+import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/delete-by-filter/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import * as indexFieldsRoute from '@/app/api/search-indexes/[id]/fields/route';
 import * as allIndexesRoute from '@/app/api/search-indexes/all/route';
@@ -58,6 +63,7 @@ import { aiExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { createIngestionKey } from '@/features/ingestion-keys';
 import { applyQueryInterpretation } from '@/features/search-experience/query-interpreter';
+import { rateLimiter } from '@/shared/api/rate-limit';
 import { createAnalyticsTestDb, type AnalyticsTestDb } from '@/shared/test/analytics-test-db';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
@@ -413,6 +419,22 @@ describe('an area switched off', () => {
     expect((await call(analyticsConfigRoute.GET, 'GET', '/api/analytics/config')).status).toBe(200);
   });
 
+  it('refuses the Search report with Search off and AI & cost with Chat off, as their pages are, and keeps the rest of Analytics', async () => {
+    const trends = () => call(analyticsSearchTrendsRoute.GET, 'GET', '/api/analytics/search/trends?timeRange=7d');
+    const usage = () => call(analyticsAiUsageRoute.GET, 'GET', '/api/analytics/ai/usage?timeRange=7d');
+    expect(await trends()).not.toMatchObject(turnedOff);
+    expect(await usage()).not.toMatchObject(turnedOff);
+
+    await switchAreas({ search: false });
+    expect(await trends()).toMatchObject(turnedOff);
+    expect(await usage()).not.toMatchObject(turnedOff);
+    expect(await call(analyticsStatusRoute.GET, 'GET', '/api/analytics/status')).not.toMatchObject(turnedOff);
+
+    await switchAreas({ search: true, chat: false });
+    expect(await trends()).not.toMatchObject(turnedOff);
+    expect(await usage()).toMatchObject(turnedOff);
+  });
+
   it('lets an Admin erase analytics data with Analytics off', async () => {
     await switchAreas({ analytics: false });
     // An invalid scope reaches the handler's own check (400), so the area gate let it through;
@@ -569,6 +591,161 @@ describe('an area switched off, to a caller without a valid credential', () => {
     await sameOnAndOff({ 'managed-indexes': false }, documents('not-a-key'), documents(`${plaintextKey.slice(0, -4)}AAAA`), documents(plaintextKey, other.id));
     expect(await documents(plaintextKey)()).toMatchObject(turnedOff);
   });
+
+  it('answers the rate-limited document writes the same for a wrong ingestion key, rate limit included', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `limits-${++n}`, displayName: 'Limits', searchType: 'lexical' }).returning();
+    const id = index.id;
+    const write = (fn: unknown, method: string, path: string, params: Record<string, string> = { id }) => async () => {
+      as(null);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${id}/documents${path}`, {
+        method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer not-a-key' }, body: method === 'DELETE' ? undefined : '{}',
+      });
+      const res = await (fn as Route)(req, { params: Promise.resolve(params) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    const writes = [
+      write(documentsRoute.POST, 'POST', ''),
+      write(bulkDocumentsRoute.POST, 'POST', '/bulk'),
+      write(deleteByFilterRoute.POST, 'POST', '/delete-by-filter'),
+      write(documentRoute.PUT, 'PUT', '/d1', { id, documentId: 'd1' }),
+      write(documentRoute.PATCH, 'PATCH', '/d1', { id, documentId: 'd1' }),
+      write(documentRoute.DELETE, 'DELETE', '/d1', { id, documentId: 'd1' }),
+    ];
+    rateLimiter.clear();
+    const on = [];
+    for (const w of writes) on.push(await w());
+    for (const a of on) expect(a).toMatchObject({ status: 401, limit: expect.any(String) });
+
+    as(admin);
+    await switchAreas({ 'managed-indexes': false });
+    rateLimiter.clear();
+    const off = [];
+    for (const w of writes) off.push(await w());
+    expect(off).toEqual(on);
+
+    // The limiter still counts with the area off: delete-by-filter allows 20 a minute
+    let last = off[2];
+    for (let i = 0; i < 20; i++) last = await writes[2]();
+    expect(last.status).toBe(429);
+  });
+
+  it('answers a wrong key on a built-in index the same with the area on and off, and tells a live key it is built in', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `builtin-${++n}`, displayName: 'Built in', searchType: 'lexical', isBuiltIn: true }).returning();
+    const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write', 'delete'], searchIndexIds: [index.id] });
+    const deleteByFilter = async (key: string) => {
+      as(null);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: '{}',
+      });
+      const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    rateLimiter.clear();
+    const on = await deleteByFilter('ik_0badc0de_nope');
+    expect(on).toEqual({ status: 401, limit: '20' });
+    // A live key may change nothing built in
+    expect((await deleteByFilter(plaintextKey)).status).toBe(403);
+    as(admin);
+    await switchAreas({ 'managed-indexes': false });
+    expect(await deleteByFilter('ik_0badc0de_nope')).toEqual(on);
+  });
+
+  it('limits the uploads on their own count: 30 a minute, 60 for bulk', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `uploads-${++n}`, displayName: 'Uploads', searchType: 'lexical' }).returning();
+    for (const [route, path, limit] of [[documentsRoute.POST, '', 30], [bulkDocumentsRoute.POST, '/bulk', 60]] as const) {
+      rateLimiter.clear();
+      const send = async () => {
+        as(null);
+        const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents${path}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ik_0badc0de_nope' }, body: '{}',
+        });
+        const res = await (route as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+        return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+      };
+      for (let i = 0; i < limit; i++) expect(await send()).toEqual({ status: 401, limit: String(limit) });
+      expect((await send()).status).toBe(429);
+    }
+  });
+
+  it('limits the single-document writes (PUT, PATCH, DELETE) on their own count: 300 a minute', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `single-${++n}`, displayName: 'Single', searchType: 'lexical' }).returning();
+    for (const method of ['PUT', 'PATCH', 'DELETE'] as const) {
+      rateLimiter.clear();
+      const send = async () => {
+        as(null);
+        const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/d1`, {
+          method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ik_0badc0de_nope' }, body: method === 'DELETE' ? undefined : '{}',
+        });
+        const res = await (documentRoute[method] as unknown as Route)(req, { params: Promise.resolve({ id: index.id, documentId: 'd1' }) });
+        return res.status;
+      };
+      for (let i = 0; i < 300; i++) expect(await send()).toBe(401);
+      expect(await send()).toBe(429);
+    }
+  });
+
+  it("doesn't let requests with a forged key spend a real key's rate limit", async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `forged-${++n}`, displayName: 'Forged', searchType: 'lexical' }).returning();
+    const { plaintextKey } = await createIngestionKey({ name: 'k', operations: ['write'], searchIndexIds: [index.id] });
+    // The real key's public prefix with a made-up secret
+    const [marker, prefix] = plaintextKey.split('_');
+    const forged = `${marker}_${prefix}_madeUpSecret`;
+    const deleteByFilter = async (key: string) => {
+      as(null);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: '{}',
+      });
+      const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    rateLimiter.clear();
+    // delete-by-filter allows 20 a minute: the forged key uses up its own allowance
+    for (let i = 0; i < 20; i++) expect((await deleteByFilter(forged)).status).toBe(401);
+    expect((await deleteByFilter(forged)).status).toBe(429);
+    // The real key still has all of its own; it gets past the limiter and the key check
+    const real = await deleteByFilter(plaintextKey);
+    expect(real.status).not.toBe(429);
+    expect(real.status).not.toBe(401);
+    expect(real.limit).toBe('20');
+    // and is limited on its own count: 20 a minute
+    for (let i = 1; i < 20; i++) expect((await deleteByFilter(plaintextKey)).status).not.toBe(429);
+    expect((await deleteByFilter(plaintextKey)).status).toBe(429);
+  });
+
+  it('counts a signed-in caller the permission check refuses, with the same limit headers', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `viewer-${++n}`, displayName: 'Viewer', searchType: 'lexical' }).returning();
+    const viewer = await makeUser(VIEWER);
+    const deleteByFilter = async () => {
+      as(viewer);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    rateLimiter.clear();
+    for (let i = 0; i < 20; i++) expect(await deleteByFilter()).toEqual({ status: 403, limit: '20' });
+    expect((await deleteByFilter()).status).toBe(429);
+  });
+
+  it('limits a signed-in caller on the document writes by address, as before', async () => {
+    const [index] = await testDb.db.insert(searchIndex).values({ name: `session-${++n}`, displayName: 'Session', searchType: 'lexical' }).returning();
+    const deleteByFilter = async () => {
+      as(admin);
+      const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
+      return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
+    };
+    rateLimiter.clear();
+    for (let i = 0; i < 20; i++) {
+      const res = await deleteByFilter();
+      expect(res.status).not.toBe(429);
+      expect(res.limit).toBe('20');
+    }
+    expect((await deleteByFilter()).status).toBe(429);
+  });
 });
 
 describe('user memories', () => {
@@ -596,6 +773,14 @@ describe('when the switches cannot be read', () => {
 
   it('answers an admin route 500, like a failed role lookup', async () => {
     expect((await call(aiExperiencesRoute.GET, 'GET', '/api/ai-experiences')).status).toBe(500);
+  });
+
+  it('answers "turned off" for a route that needs an area the deployment setting turns off, without reading them', async () => {
+    // The Search report needs Analytics and Search; Search is turned off for good
+    process.env[FEATURES_OFF_ENV] = 'search';
+    const before = reads;
+    expect(await call(analyticsSearchTrendsRoute.GET, 'GET', '/api/analytics/search/trends')).toMatchObject(turnedOff);
+    expect(reads).toBe(before);
   });
 
   it('answers a public route 500 to a caller with the token', async () => {
