@@ -473,9 +473,9 @@ function clientAddressMessage(setup: ClientAddressSetup): string {
     case 'invalid-setting':
       return `CLIENT_IP_SOURCE isn't a value Interakt understands, so no client address is trusted. Set it to forwarded-for:<proxies>, header:<name> or none. ${shared}`;
     case 'short-list':
-      return `Requests are arriving with fewer X-Forwarded-For entries than the proxies CLIENT_IP_SOURCE expects in front (${proxies}). Check how many proxies are in front and set forwarded-for to that number. ${shared}`;
+      return `In the last hour, ${setup.untrustedRequests} requests had no client address Interakt can trust: the latest arrived with fewer X-Forwarded-For entries than the proxies CLIENT_IP_SOURCE expects in front (${proxies}). Check how many proxies are in front and set forwarded-for to that number. ${shared}`;
     case 'not-an-address':
-      return `The place CLIENT_IP_SOURCE (${setup.source}) points to holds something that isn't an IP address. Check that the setting matches what is in front of Interakt. ${shared}`;
+      return `In the last hour, ${setup.untrustedRequests} requests had no client address Interakt can trust: in the latest, the place CLIENT_IP_SOURCE (${setup.source}) points to held something that isn't an IP address. Check that the setting matches what is in front of Interakt. ${shared}`;
     default:
       return setup.trustedRequests > 0
         ? `Client addresses are read from what is in front of Interakt (${setup.source}).`
@@ -485,7 +485,7 @@ function clientAddressMessage(setup: ClientAddressSetup): string {
 
 /**
  * Check how client addresses are read, for per-client rate limits (CLIENT_IP_SOURCE).
- * Degraded when the setting is none or not valid, or when requests in the last day showed
+ * Degraded when the setting is none or not valid, or when requests in the last hour showed
  * the proxies in front don't match it. What this server saw only: no network calls.
  */
 export async function checkClientAddressHealth(): Promise<ServiceHealth> {

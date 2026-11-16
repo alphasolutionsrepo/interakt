@@ -676,6 +676,20 @@ export function healthTasks(problems: HomeHealth['problems']): HomeTask[] {
   }));
 }
 
+/** The home page's health from a health-check job's stored output; null when it has none */
+export function healthFromJob(output: HealthCheckOutput | null, completedOn: Date | string, now: Date): HomeHealth | null {
+  if (!output?.status) return null;
+  const checkedAt = new Date(output.checkedAt ?? completedOn);
+  return {
+    status: output.status,
+    checkedAt: checkedAt.toISOString(),
+    stale: now.getTime() - checkedAt.getTime() > 30 * 60_000,
+    problems: (output.services ?? [])
+      .filter((s): s is HomeHealth['problems'][number] => s.status !== 'healthy')
+      .map((s) => ({ name: s.name, status: s.status, ...(s.message ? { message: s.message } : {}), ...(s.task ? { task: s.task } : {}) })),
+  };
+}
+
 /** The latest scheduled health check, read from the job's output */
 async function readHealth(now: Date): Promise<HomeHealth | null> {
   try {
@@ -687,16 +701,7 @@ async function readHealth(now: Date): Promise<HomeHealth | null> {
       LIMIT 1
     `)) as unknown as Array<{ output: HealthCheckOutput | null; completed_on: Date | string }>;
     const row = rows[0];
-    if (!row?.output?.status) return null;
-    const checkedAt = new Date(row.output.checkedAt ?? row.completed_on);
-    return {
-      status: row.output.status,
-      checkedAt: checkedAt.toISOString(),
-      stale: now.getTime() - checkedAt.getTime() > 30 * 60_000,
-      problems: (row.output.services ?? [])
-        .filter((s): s is HomeHealth['problems'][number] => s.status !== 'healthy')
-        .map((s) => ({ name: s.name, status: s.status, ...(s.message ? { message: s.message } : {}), ...(s.task ? { task: s.task } : {}) })),
-    };
+    return row ? healthFromJob(row.output, row.completed_on, now) : null;
   } catch (error) {
     // No jobs engine means no job table, and so no health on the home page
     logger.warn('Health not read', { error: String(error) });

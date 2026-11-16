@@ -233,6 +233,22 @@ describe.each(ROUTES)('$name', (route) => {
   });
 });
 
+describe('searches with no trusted client address', () => {
+  // As a request with no proxy entry: no X-Forwarded-For at all
+  const unaddressed = () => searchByToken(new NextRequest('http://interakt.test/api/v1/search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'X-Access-Token': 'search-token', Origin: SHOP },
+    body: JSON.stringify({ query: 'jeans' }),
+  }));
+
+  it('share one count at ten times the per-minute limit, apart from visitors with an address', async () => {
+    // searchPerMinute is 2, so 20 together
+    for (let i = 0; i < 20; i++) expect(await settle(await unaddressed())).toBe(200);
+    expect(await settle(await unaddressed())).toBe(429);
+    expect(await settle(await searchByToken(req('/api/v1/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans' })))).toBe(200);
+  });
+});
+
 describe("the admin's widget preview", () => {
   it("works on Interakt's own address even when the experience allows only its shop", async () => {
     const own = { 'X-Access-Token': 'chat-token', Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin' };

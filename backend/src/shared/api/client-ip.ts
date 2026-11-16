@@ -127,18 +127,39 @@ export function clientIp(request: Pick<NextRequest, 'headers'>): string | null {
 /** What requests showed about the setup: too few X-Forwarded-For entries, or no IP where one should be */
 type SeenProblem = 'short-list' | 'not-an-address';
 
-/** A problem seen this long ago or longer no longer counts */
-const PROBLEM_WINDOW_MS = 24 * 60 * 60_000;
+/** What requests showed is judged over this last stretch of time, so a fixed setup clears itself */
+const WINDOW_MS = 60 * 60_000;
+const BUCKET_MS = 5 * 60_000;
+/** Requests without a trusted address must be at least this many, and this share, to count as a problem */
+const MIN_PROBLEM_REQUESTS = 5;
+const MIN_PROBLEM_SHARE = 0.1;
 
-const counts = { trusted: 0, untrusted: 0 };
-let lastProblem: { kind: SeenProblem; at: number } | null = null;
+interface Bucket { start: number; trusted: number; untrusted: number }
+interface SeenState { buckets: Bucket[]; lastProblem: { kind: SeenProblem; at: number } | null }
+
+// Kept on globalThis: Next.js bundles the scheduled jobs apart from the routes, and each bundle
+// gets its own copy of this module, so a module-level value would not be seen by the health job.
+const STATE_KEY = Symbol.for('interakt.client-address-setup');
+function state(): SeenState {
+  const holder = globalThis as unknown as Record<symbol, SeenState | undefined>;
+  return (holder[STATE_KEY] ??= { buckets: [], lastProblem: null });
+}
 
 function seen(address: string | null, problem: SeenProblem): string | null {
+  const now = Date.now();
+  const { buckets } = state();
+  const start = now - (now % BUCKET_MS);
+  let bucket = buckets[buckets.length - 1];
+  if (!bucket || bucket.start !== start) {
+    bucket = { start, trusted: 0, untrusted: 0 };
+    buckets.push(bucket);
+    while (buckets.length > 0 && buckets[0].start <= now - WINDOW_MS - BUCKET_MS) buckets.shift();
+  }
   if (address) {
-    counts.trusted++;
+    bucket.trusted++;
   } else {
-    counts.untrusted++;
-    lastProblem = { kind: problem, at: Date.now() };
+    bucket.untrusted++;
+    state().lastProblem = { kind: problem, at: now };
   }
   return address;
 }
@@ -146,32 +167,49 @@ function seen(address: string | null, problem: SeenProblem): string | null {
 export interface ClientAddressSetup {
   /** The setting in use, e.g. forwarded-for:1 (the setting itself when it isn't valid is not shown) */
   source: string;
-  /** What is wrong, if anything: a setting, or what requests in the last day showed */
+  /** What is wrong, if anything: a setting, or what requests in the last hour showed */
   problem: null | 'none' | 'invalid-setting' | SeenProblem;
-  /** Requests with and without a trusted address since this server started */
+  /** Requests in the last hour that needed an address, with and without a trusted one */
   trustedRequests: number;
   untrustedRequests: number;
-  /** When requests last showed the problem */
+  /** When a request last arrived without a trusted address */
   problemSeenAt?: string;
 }
 
-/** How this server reads client addresses, and whether requests show it is set up right. */
+/**
+ * How this server reads client addresses, and whether requests show it is set up right: a
+ * problem when, in the last hour, at least 5 requests and 10% of those that needed an address
+ * had no trusted one (a stray request that went around the proxy doesn't count).
+ */
 export function clientAddressSetup(now: number = Date.now()): ClientAddressSetup {
   const from = source();
-  const base = { trustedRequests: counts.trusted, untrustedRequests: counts.untrusted };
+  const { buckets, lastProblem } = state();
+  let trusted = 0;
+  let untrusted = 0;
+  for (const bucket of buckets) {
+    if (bucket.start > now - WINDOW_MS) {
+      trusted += bucket.trusted;
+      untrusted += bucket.untrusted;
+    }
+  }
+  const base = {
+    trustedRequests: trusted,
+    untrustedRequests: untrusted,
+    ...(lastProblem && untrusted > 0 ? { problemSeenAt: new Date(lastProblem.at).toISOString() } : {}),
+  };
   if (from.kind === 'none') return { ...base, source: 'none', problem: from.invalid ? 'invalid-setting' : 'none' };
   const described = from.kind === 'header' ? `header:${from.name}` : `forwarded-for:${from.hops}`;
-  if (lastProblem && now - lastProblem.at < PROBLEM_WINDOW_MS) {
-    return { ...base, source: described, problem: lastProblem.kind, problemSeenAt: new Date(lastProblem.at).toISOString() };
-  }
-  return { ...base, source: described, problem: null };
+  const problem = lastProblem && untrusted >= MIN_PROBLEM_REQUESTS && untrusted >= MIN_PROBLEM_SHARE * (trusted + untrusted)
+    ? lastProblem.kind
+    : null;
+  return { ...base, source: described, problem };
 }
 
 /** Forget the requests seen (for tests). */
 export function resetClientAddressSetup(): void {
-  counts.trusted = 0;
-  counts.untrusted = 0;
-  lastProblem = null;
+  const current = state();
+  current.buckets = [];
+  current.lastProblem = null;
 }
 
 /**

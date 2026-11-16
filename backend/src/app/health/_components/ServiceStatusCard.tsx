@@ -55,7 +55,7 @@ const SERVICE_MONITORING_INFO: Record<string, { what: string; how: string; thres
   'Client addresses': {
     what: 'Where client addresses for per-client rate limits come from (CLIENT_IP_SOURCE)',
     how: 'Reads the setting, and what requests to this server showed about the proxies in front. No network calls.',
-    thresholds: 'Healthy: requests match the setting | Degraded: setting is none or not valid, or requests in the last day did not match it',
+    thresholds: 'Healthy: requests match the setting | Degraded: setting is none or not valid, or in the last hour at least 5 requests (and 10% of them) had no trusted address',
   },
 };
 

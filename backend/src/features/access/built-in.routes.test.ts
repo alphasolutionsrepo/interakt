@@ -74,6 +74,7 @@ import * as indexDocuments from '@/app/api/search-indexes/[id]/documents/route';
 import * as indexOne from '@/app/api/search-indexes/[id]/route';
 import * as toolOne from '@/app/api/tools/[id]/route';
 import { createIngestionKey } from '@/features/ingestion-keys';
+import { rateLimiter } from '@/shared/api/rate-limit';
 import { accessStub } from '@/shared/test/access-stub';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
@@ -181,6 +182,15 @@ describe('changing what the built-in help is made of', () => {
     const key = { Authorization: 'Bearer ik_test' };
     expect((await call(indexDocuments.POST, other.index, key)).status).toBe(200);
     expect(changed).toEqual(['index:documents']);
+  });
+
+  it('counts signed-in document writes without a trusted address together, at ten times the route limit', async () => {
+    rateLimiter.clear();
+    const unaddressed = await call(indexDocuments.POST, other.index);
+    expect(unaddressed.status).toBe(200);
+    expect(unaddressed.headers.get('X-RateLimit-Limit')).toBe('300');
+    const addressed = await call(indexDocuments.POST, other.index, { 'X-Forwarded-For': '9.9.9.9' });
+    expect(addressed.headers.get('X-RateLimit-Limit')).toBe('30');
   });
 
   it("leaves an id that can't name a row to the route", async () => {
