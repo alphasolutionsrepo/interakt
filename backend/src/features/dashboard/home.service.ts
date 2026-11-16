@@ -101,7 +101,7 @@ export interface HomeHealth {
   checkedAt: string;
   /** No check in over 30 minutes: the jobs engine may be off */
   stale: boolean;
-  problems: Array<{ name: string; status: 'degraded' | 'unhealthy'; message?: string }>;
+  problems: Array<{ name: string; status: 'degraded' | 'unhealthy'; message?: string; task?: string }>;
 }
 
 /** Setup steps a new installation goes through; shown until all are done */
@@ -193,11 +193,14 @@ const globalHome = globalThis as typeof globalThis & { __interaktHomeCache?: Map
 globalHome.__interaktHomeCache ??= new Map<string, CacheEntry>();
 const cache = globalHome.__interaktHomeCache;
 
-function rebuild(timeZone: string): CacheEntry {
-  const entry: CacheEntry = { at: Date.now(), data: buildHomeData(timeZone, new Date()) };
+// The page is built differently with Analytics off (no analytics queries), so each is cached on its own
+const cacheKey = (timeZone: string, analyticsOn: boolean) => `${timeZone}|${analyticsOn ? 'analytics' : 'no-analytics'}`;
+
+function rebuild(timeZone: string, analyticsOn: boolean): CacheEntry {
+  const entry: CacheEntry = { at: Date.now(), data: buildHomeData(timeZone, new Date(), analyticsOn) };
   // A failed read isn't kept
   entry.data.catch(() => {
-    if (cache.get(timeZone) === entry) cache.delete(timeZone);
+    if (cache.get(cacheKey(timeZone, analyticsOn)) === entry) cache.delete(cacheKey(timeZone, analyticsOn));
   });
   return entry;
 }
@@ -212,16 +215,17 @@ export function invalidateHomeCache(): void {
  * the page has been built: data older than a minute is returned straight away
  * and refreshed in the background.
  */
-export function getHomeData(timeZone: string): Promise<HomeData> {
-  const hit = cache.get(timeZone);
+export function getHomeData(timeZone: string, analyticsOn = true): Promise<HomeData> {
+  const key = cacheKey(timeZone, analyticsOn);
+  const hit = cache.get(key);
   const age = hit ? Date.now() - hit.at : Infinity;
   if (hit && age < FRESH_MS) return hit.data;
   if (hit && age < STALE_MS) {
     if (!hit.refreshing) {
       hit.refreshing = true;
-      const next = rebuild(timeZone);
+      const next = rebuild(timeZone, analyticsOn);
       next.data
-        .then(() => cache.set(timeZone, next))
+        .then(() => cache.set(key, next))
         .catch((error) => logger.warn('Home page refresh failed; keeping the last one', { error: String(error) }))
         .finally(() => {
           hit.refreshing = false;
@@ -229,19 +233,26 @@ export function getHomeData(timeZone: string): Promise<HomeData> {
     }
     return hit.data;
   }
-  const entry = rebuild(timeZone);
-  cache.set(timeZone, entry);
+  const entry = rebuild(timeZone, analyticsOn);
+  cache.set(key, entry);
   return entry.data;
 }
 
-async function buildHomeData(timeZone: string, now: Date): Promise<HomeData> {
+async function buildHomeData(timeZone: string, now: Date, analyticsOn: boolean): Promise<HomeData> {
   const started = Date.now();
-  const data = await assembleHomeData(timeZone, now);
+  const data = await assembleHomeData(timeZone, now, analyticsOn);
   logger.info('Home page built', { timeZone, durationMs: Date.now() - started });
   return data;
 }
 
-async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> {
+/** The query's answer, or `none` without running it (Analytics off: no analytics query runs) */
+function whenOn<T>(on: boolean, query: () => Promise<T>, none: NoInfer<T>): Promise<T> {
+  return on ? query() : Promise.resolve(none);
+}
+
+const NO_OVERVIEW = { totalSearches: 0, zeroResultRate: 0 };
+
+async function assembleHomeData(timeZone: string, now: Date, analyticsOn: boolean): Promise<HomeData> {
   const { current, previous, days, previousDays } = lastSevenDays(timeZone, now);
 
   const [
@@ -263,23 +274,23 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
     usage,
     recentJobs,
   ] = await Promise.all([
-    getOverviewMetrics('custom', undefined, current),
-    getOverviewMetrics('custom', undefined, previous),
-    getSearchTrends('custom', undefined, current, timeZone),
-    getSearchTrends('custom', undefined, previous, timeZone),
-    getTurnsByDay(current, timeZone),
-    getTurnsByDay(previous, timeZone),
+    analyticsOn ? getOverviewMetrics('custom', undefined, current) : NO_OVERVIEW,
+    analyticsOn ? getOverviewMetrics('custom', undefined, previous) : NO_OVERVIEW,
+    whenOn(analyticsOn, () => getSearchTrends('custom', undefined, current, timeZone), []),
+    whenOn(analyticsOn, () => getSearchTrends('custom', undefined, previous, timeZone), []),
+    whenOn(analyticsOn, () => getTurnsByDay(current, timeZone), []),
+    whenOn(analyticsOn, () => getTurnsByDay(previous, timeZone), []),
     // Visitors' and the assistant's: both are content gaps (internal lookups are left out)
-    getZeroResultQueries('custom', undefined, 100, current, 'all'),
-    getSearchTypeBreakdown('custom', undefined, current),
-    getProactiveInsights('7d'),
-    getExperienceSummaries('custom', current),
-    countRecentRequests(5),
+    whenOn(analyticsOn, () => getZeroResultQueries('custom', undefined, 100, current, 'all'), []),
+    whenOn(analyticsOn, () => getSearchTypeBreakdown('custom', undefined, current), { lexical: 0, semantic: 0, hybrid: 0 }),
+    analyticsOn ? getProactiveInsights('7d') : { status: 'off' as const },
+    whenOn(analyticsOn, () => getExperienceSummaries('custom', current), []),
+    whenOn(analyticsOn, () => countRecentRequests(5), 0),
     readSetup(),
     countFailedJobs(current.from),
     listDismissedTips(),
     readHealth(now),
-    readUsage(),
+    whenOn(analyticsOn, readUsage, { anyTraffic: false, askedAQuestion: false }),
     readRecentJobs(new Date(now.getTime() - 14 * DAY_MS)),
   ]);
 
@@ -360,17 +371,8 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
   ];
 
   // ── Tasks: what is broken or waiting, with how many ──────────────────
-  const tasks: HomeTask[] = [];
   // Services down come first: nothing else matters much while one is
-  for (const p of health?.problems ?? []) {
-    tasks.push({
-      id: `health:${p.name}`,
-      label: `${p.name} ${p.status === 'unhealthy' ? 'is down' : 'is degraded'}`,
-      count: 1,
-      href: '/health',
-      tone: p.status === 'unhealthy' ? 'critical' : 'warning',
-    });
-  }
+  const tasks: HomeTask[] = healthTasks(health?.problems ?? []);
   if (failedTotal > 0) {
     tasks.push({ id: 'failed-turns', label: 'Review failed conversation turns', count: failedTotal, href: '/analytics/traces?status=ERROR&range=7d', tone: 'critical' });
   }
@@ -480,8 +482,9 @@ async function assembleHomeData(timeZone: string, now: Date): Promise<HomeData> 
   }
 
   // ── Tips that apply to this install ──────────────────────────────────
-  const tips = buildTips({ setup, summaries, zeroQueries, searchTypes, now, dismissed }).filter((t) => !dismissed.has(t.id));
-  const guardrailTip = await offTopicTip(setup, summaries, dismissed);
+  // (with Analytics off there are no figures to base them on; the page shows none)
+  const tips = analyticsOn ? buildTips({ setup, summaries, zeroQueries, searchTypes, now, dismissed }).filter((t) => !dismissed.has(t.id)) : [];
+  const guardrailTip = analyticsOn ? await offTopicTip(setup, summaries, dismissed) : null;
   if (guardrailTip) tips.splice(1, 0, guardrailTip);
 
   // ── Experiences, busiest first ───────────────────────────────────────
@@ -662,6 +665,31 @@ async function countFailedJobs(since: Date): Promise<number> {
   }
 }
 
+/** A task per service the latest health check found degraded or down, in the check's own words when it has them */
+export function healthTasks(problems: HomeHealth['problems']): HomeTask[] {
+  return problems.map((p) => ({
+    id: `health:${p.name}`,
+    label: p.task ?? `${p.name} ${p.status === 'unhealthy' ? 'is down' : 'is degraded'}`,
+    count: 1,
+    href: '/health',
+    tone: p.status === 'unhealthy' ? 'critical' : 'warning',
+  }));
+}
+
+/** The home page's health from a health-check job's stored output; null when it has none */
+export function healthFromJob(output: HealthCheckOutput | null, completedOn: Date | string, now: Date): HomeHealth | null {
+  if (!output?.status) return null;
+  const checkedAt = new Date(output.checkedAt ?? completedOn);
+  return {
+    status: output.status,
+    checkedAt: checkedAt.toISOString(),
+    stale: now.getTime() - checkedAt.getTime() > 30 * 60_000,
+    problems: (output.services ?? [])
+      .filter((s): s is HomeHealth['problems'][number] => s.status !== 'healthy')
+      .map((s) => ({ name: s.name, status: s.status, ...(s.message ? { message: s.message } : {}), ...(s.task ? { task: s.task } : {}) })),
+  };
+}
+
 /** The latest scheduled health check, read from the job's output */
 async function readHealth(now: Date): Promise<HomeHealth | null> {
   try {
@@ -673,16 +701,7 @@ async function readHealth(now: Date): Promise<HomeHealth | null> {
       LIMIT 1
     `)) as unknown as Array<{ output: HealthCheckOutput | null; completed_on: Date | string }>;
     const row = rows[0];
-    if (!row?.output?.status) return null;
-    const checkedAt = new Date(row.output.checkedAt ?? row.completed_on);
-    return {
-      status: row.output.status,
-      checkedAt: checkedAt.toISOString(),
-      stale: now.getTime() - checkedAt.getTime() > 30 * 60_000,
-      problems: (row.output.services ?? [])
-        .filter((s): s is HomeHealth['problems'][number] => s.status !== 'healthy')
-        .map((s) => ({ name: s.name, status: s.status, ...(s.message ? { message: s.message } : {}) })),
-    };
+    return row ? healthFromJob(row.output, row.completed_on, now) : null;
   } catch (error) {
     // No jobs engine means no job table, and so no health on the home page
     logger.warn('Health not read', { error: String(error) });

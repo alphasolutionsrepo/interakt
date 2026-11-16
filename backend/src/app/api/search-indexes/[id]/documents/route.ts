@@ -12,7 +12,6 @@ import { forBuiltInDocumentChange } from '@/features/access/built-in';
 import { withPermissionOrIngestionKey } from '@/features/access/route-guard';
 import { handleListDocuments, handleIndexDocuments } from '@/features/document-indexing';
 import { ingestionRateLimitKey } from '@/features/ingestion-keys';
-import { withRateLimit } from '@/shared/api/rate-limit';
 
 // Route segment config for App Router
 // Note: Body size limit is configured in next.config.ts via serverActions.bodySizeLimit
@@ -31,8 +30,8 @@ export const GET = withPermissionOrIngestionKey('search-indexes:view', async fun
  * modest ceiling is plenty and keeps a misconfigured sink from hammering the
  * embedding provider.
  */
-export const POST = forBuiltInDocumentChange('documents:edit', withRateLimit(
+export const POST = forBuiltInDocumentChange('documents:edit',
     async (request: NextRequest, context: { params: Promise<{ id: string }> }) =>
         handleIndexDocuments(request, context),
     { maxRequests: 30, windowMs: 60_000, keyFn: ingestionRateLimitKey }
-));
+);

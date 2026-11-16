@@ -24,7 +24,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { NextResponse } from 'next/server';
 
 import { TURNED_OFF_CODE, TURNED_OFF_MESSAGE, type Area } from './areas';
-import { isAreaOn } from './feature-switches.service';
+import { isAreaOn, offByDeployment } from './feature-switches.service';
 import { routeArea, type RouteArea } from './route-areas';
 
 import { checkAccess, SIGNED_IN } from '@/features/access/route-guard';
@@ -46,6 +46,10 @@ const publicCheck = new AsyncLocalStorage<{ asked: boolean }>();
 async function refuseUnlessOn(areas: readonly Area[], anyOf = false): Promise<NextResponse | null> {
   const asked = publicCheck.getStore();
   if (asked) asked.asked = true;
+  // The deployment setting first: it needs no database read, so a route it turns off answers
+  // "turned off" even while the stored switches can't be read
+  const pinned = areas.map(offByDeployment);
+  if (anyOf ? areas.length > 0 && pinned.every(Boolean) : pinned.some(Boolean)) return turnedOff();
   try {
     for (const area of areas) {
       const isOn = await isAreaOn(area);

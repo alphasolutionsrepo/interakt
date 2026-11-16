@@ -94,6 +94,11 @@ const RULES: readonly Rule[] = [
   { pattern: re('telemetry/traces'), methods: ['DELETE'], area: 'core' },
   { pattern: re(`telemetry/traces/${ID}`), methods: ['DELETE'], area: 'core' },
   { pattern: re(`analytics/chat/sessions/${ID}`), methods: ['DELETE'], area: 'core' },
+  // The Search report needs Search on as well, AI & cost needs Chat (as the pages do). All
+  // must be on, so Traces (Search or Chat) can't be written here; its data comes from
+  // /analytics/dashboard, which stays with Analytics alone.
+  { pattern: under('analytics/search'), area: ['analytics', 'search'] },
+  { pattern: under('analytics/ai'), area: ['analytics', 'chat'] },
   { pattern: under('analytics'), area: 'analytics' },
   { pattern: under('telemetry'), area: 'analytics' },
 

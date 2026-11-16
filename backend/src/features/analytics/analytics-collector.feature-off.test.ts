@@ -9,6 +9,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAnalyticsTestDb, type AnalyticsTestDb } from '@/shared/test/analytics-test-db';
+import type { LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 
 let testDb: AnalyticsTestDb;
 vi.mock('@/db/index', () => ({
@@ -63,7 +67,10 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   clearQueues();
+  logs.length = 0;
   featureSwitchesStub.reset();
+  // The collector keeps the last answer of the switch: read it again, now that it is on
+  await forceFlush();
   await testDb.reset();
 });
 afterAll(async () => {
@@ -72,6 +79,25 @@ afterAll(async () => {
 });
 
 describe('analytics events with the Analytics area off', () => {
+  it('are not queued once the switch is known to be off', async () => {
+    featureSwitchesStub.off.add('analytics');
+    await forceFlush(); // reads the switch
+    record('never queued');
+
+    expect(getQueueStats()).toMatchObject({ searchEvents: 0, aiEvents: 0 });
+  });
+
+  it('queued while it was on are dropped at the flush, with one info line giving the count', async () => {
+    record('queued while on');
+    featureSwitchesStub.off.add('analytics');
+    await forceFlush();
+
+    expect(getQueueStats()).toMatchObject({ searchEvents: 0, aiEvents: 0 });
+    expect(logs.filter((l) => l.message.includes('dropped'))).toEqual([
+      expect.objectContaining({ level: 'info', context: { dropped: 2 } }),
+    ]);
+  });
+
   it('are not recorded, and what was queued is dropped', async () => {
     featureSwitchesStub.off.add('analytics');
     recordSearch('linen shirt');
@@ -86,9 +112,11 @@ describe('analytics events with the Analytics area off', () => {
 
   it('are recorded again once the area is back on', async () => {
     featureSwitchesStub.off.add('analytics');
+    await forceFlush();
     record('dropped');
     await forceFlush();
     featureSwitchesStub.reset();
+    await forceFlush(); // reads the switch
     await recordAndFlush('kept');
 
     expect((await testDb.db.select({ q: searchEvents.queryText }).from(searchEvents)).map((r) => r.q)).toEqual(['kept']);

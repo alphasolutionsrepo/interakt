@@ -54,7 +54,8 @@ const storeDown = () => new DrizzleQueryError('select "id" from "ai_sessions" wh
 function chatRequest(path: string, headers: Record<string, string>): NextRequest {
   return new NextRequest(`http://interakt.test${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
+    // As through the platform's proxy, which adds the caller's address
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.1.1.1', ...headers },
     body: JSON.stringify({ message: 'do you have jeans?', sessionId: 'b6f1c1de-0000-4000-8000-000000000001' }),
   });
 }

@@ -11,6 +11,8 @@ export interface ServiceHealth {
   message?: string;
   details?: Record<string, unknown>;
   lastChecked: string;
+  // Settings-only check with no network call; left out of the average response time
+  configOnly?: boolean;
 }
 
 export interface SystemHealth {

@@ -95,7 +95,16 @@ Loading the widget's settings and fetching the embed snippet aren't counted towa
 
 Exceeding a limit returns HTTP 429 with a `Retry-After` header. Your app should back off and retry. Limits are counted in memory on each server instance.
 
-A client is the address your proxy reports in `X-Forwarded-For`. Self-hosting behind more than one proxy, such as a CDN in front of a load balancer? Set `TRUSTED_PROXY_HOPS` to how many there are (default 1).
+A client is the address added by a proxy you run, never one the caller wrote itself. Set `CLIENT_IP_SOURCE` for what is in front of Interakt:
+
+| In front of Interakt | `CLIENT_IP_SOURCE` |
+|---|---|
+| One proxy, such as a hosting platform's ingress, nginx or Traefik | `forwarded-for:1` (the default) |
+| A CDN or gateway in front of that proxy | `forwarded-for:2` |
+| An edge that sends the client's address in a header of its own | `header:<name>`, such as `header:X-Azure-SocketIP` (Azure Front Door) or `header:CF-Connecting-IP` (Cloudflare) |
+| Nothing (not recommended for production: put a reverse proxy or gateway in front) | `none` |
+
+With a CDN or gateway in front, let the app accept traffic only from it (for Azure Front Door, check the `X-Azure-FDID` header); otherwise a caller can go around it and choose its own address. IPv6 clients are counted per /56 prefix, since one caller can use any address in its own prefix. Requests with no address Interakt can trust share one count, at 10 times the per-client limit, so the limit still holds without one caller using it up for everyone; the daily total applies as usual. `forwarded-for` on its own counts `TRUSTED_PROXY_HOPS` proxies (default 1). A setting Interakt doesn't understand falls back to that default, and **Health** shows it. When the setting is `none`, or in the last hour at least 5 requests (and a tenth of them) arrived without a trusted address (fewer `X-Forwarded-For` entries than proxies, the `header:` header missing, or something that isn't an IP address), **Health** shows *Client addresses* as degraded and the home page asks you to check it. When `CLIENT_IP_SOURCE` isn't set, `TRUSTED_PROXY_HOPS=<n>`, the earlier setting, still works as `forwarded-for:<n>`.
 
 Calling Interakt from your own server? Every request then comes from your server's address, so set the per-minute limit to cover your site's traffic.
 

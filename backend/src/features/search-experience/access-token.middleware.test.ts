@@ -29,7 +29,7 @@ const experience = {
 };
 
 function req(headers: Record<string, string>): NextRequest {
-  return new NextRequest('http://interakt.test/api/v1/search', { method: 'POST', headers });
+  return new NextRequest('http://interakt.test/api/v1/search', { method: 'POST', headers: { 'x-forwarded-for': '1.1.1.1', ...headers } });
 }
 
 describe('authenticateAccessToken', () => {

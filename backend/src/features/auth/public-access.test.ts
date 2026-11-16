@@ -120,11 +120,48 @@ describe('checkPublicAccess', () => {
     expect(checkPublicAccess(client, settings)).toBeNull();
   });
 
+  it('counts requests with no trusted address together at ten times the per-client limit; addressed clients keep their own count', () => {
+    const settings = access({ perMinute: 1 });
+    // No X-Forwarded-For at all (and an X-Real-IP a client can write is not trusted)
+    expect(checkPublicAccess(request({ 'X-Real-IP': '1.1.1.1' }), settings)).toBeNull();
+    for (let i = 1; i < 10; i++) expect(checkPublicAccess(request({}), settings)).toBeNull();
+    expect(checkPublicAccess(request({ 'X-Real-IP': '2.2.2.2' }), settings)?.status).toBe(429);
+    expect(checkPublicAccess(request({ 'X-Forwarded-For': '3.3.3.3' }), settings)).toBeNull();
+  });
+
+  it('applies the daily total to requests with no trusted address too, once their shared per-minute count lets them through', () => {
+    // Their shared count allows 10 a minute (ten times the per-client 1), so it is the daily total of 3 that ends this
+    const settings = access({ perMinute: 1, perDay: 3 });
+    for (let i = 0; i < 3; i++) expect(checkPublicAccess(request({}), settings)).toBeNull();
+
+    warn.mockClear();
+    expect(checkPublicAccess(request({}), settings)?.status).toBe(429);
+    expect(warn).toHaveBeenLastCalledWith('Daily total reached', expect.objectContaining({ scope: 'search:e1' }));
+    // Addressed clients are held to the same daily total
+    expect(checkPublicAccess(request({ 'X-Forwarded-For': '1.1.1.1' }), settings)?.status).toBe(429);
+  });
+
+  it('refuses requests with no trusted address at ten times the per-client limit, logging them as having no trusted address', () => {
+    const settings = access({ perMinute: 2 });
+    for (let i = 0; i < 20; i++) expect(checkPublicAccess(request({}), settings)).toBeNull();
+
+    warn.mockClear();
+    expect(checkPublicAccess(request({}), settings)?.status).toBe(429);
+    expect(warn).toHaveBeenLastCalledWith('Rate limit exceeded', { scope: 'search:e1', client: 'no-trusted-address', retryAfter: 60 });
+  });
+
   it('counts each client separately per minute', () => {
     const settings = access({ perMinute: 1 });
     expect(checkPublicAccess(request({ 'X-Forwarded-For': '1.1.1.1' }), settings)).toBeNull();
     expect(checkPublicAccess(request({ 'X-Forwarded-For': '2.2.2.2' }), settings)).toBeNull();
     expect(checkPublicAccess(request({ 'X-Forwarded-For': '1.1.1.1' }), settings)?.status).toBe(429);
+  });
+
+  it('counts IPv6 addresses in one /56 together, and a different /56 apart', () => {
+    const settings = access({ perMinute: 1 });
+    expect(checkPublicAccess(request({ 'X-Forwarded-For': '2001:db8:1:200::1' }), settings)).toBeNull();
+    expect(checkPublicAccess(request({ 'X-Forwarded-For': '2001:db8:1:2ff:abcd::9' }), settings)?.status).toBe(429);
+    expect(checkPublicAccess(request({ 'X-Forwarded-For': '2001:db8:1:300::1' }), settings)).toBeNull();
   });
 
   it('counts each experience separately', () => {
@@ -194,6 +231,23 @@ describe('checkPublicAccess', () => {
     checkPublicAccess(request({ 'X-Forwarded-For': '2.2.2.2' }), settings);
     checkPublicAccess(request({ 'X-Forwarded-For': '3.3.3.3' }), settings);
     expect(warn).toHaveBeenLastCalledWith('Daily total reached', expect.objectContaining({ scope: 'search:e1' }));
+  });
+
+  it('logs a label for the client, never its address, the same for one client and different for two', () => {
+    const settings = access({ perMinute: 1 });
+    const labelOf = (address: string) => {
+      warn.mockClear();
+      checkPublicAccess(request({ 'X-Forwarded-For': address }), settings);
+      checkPublicAccess(request({ 'X-Forwarded-For': address }), settings);
+      const context = warn.mock.calls.at(-1)![1] as { client: string };
+      expect(JSON.stringify(context)).not.toContain(address);
+      return context.client;
+    };
+    const first = labelOf('1.1.1.1');
+    expect(first).toMatch(/^[0-9a-f]{12}$/);
+    rateLimiter.clear();
+    expect(labelOf('1.1.1.1')).toBe(first);
+    expect(labelOf('2.2.2.2')).not.toBe(first);
   });
 
   it("counts requests from Interakt's own pages towards the limits", () => {

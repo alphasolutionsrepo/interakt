@@ -4,6 +4,7 @@
 
 import { CheckCircle2, AlertTriangle, XCircle, Clock } from 'lucide-react';
 import type { SystemHealth } from '../_lib/api-client';
+import { averageResponseTime } from '../_lib/services';
 
 interface HealthStatsBarProps {
   health: SystemHealth | undefined;
@@ -18,10 +19,7 @@ export function HealthStatsBar({ health }: HealthStatsBarProps) {
   const degradedCount = health.services.filter(s => s.status === 'degraded').length;
   const unhealthyCount = health.services.filter(s => s.status === 'unhealthy').length;
 
-  // Calculate average response time
-  const avgResponseTime = health.services.length > 0
-    ? Math.round(health.services.reduce((sum, s) => sum + s.responseTime, 0) / health.services.length)
-    : 0;
+  const avgResponseTime = averageResponseTime(health.services);
 
   const stats = [
     {

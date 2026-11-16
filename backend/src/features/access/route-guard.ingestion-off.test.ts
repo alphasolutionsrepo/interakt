@@ -2,9 +2,8 @@
 
 /**
  * The ingestion-key path of the document routes with Managed indexes off: only a key live for
- * the index is told "turned off"; any other goes to the handler, which refuses it as with the
- * area on. A handler that took a key the check refused is still never let through. (The real
- * keys and handlers are in features/feature-switches/feature-switches.integration.test.ts.)
+ * the index is told "turned off"; any other gets the key check's refusal, as with the area on,
+ * and the handler never runs while the area is off. (The real keys and handlers are in features/feature-switches/feature-switches.integration.test.ts.)
  */
 
 import { NextRequest } from 'next/server';
@@ -14,8 +13,6 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
-const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }));
-vi.mock('@/shared/logger/logger', () => ({ createLogger: () => log }));
 const key = vi.hoisted(() => ({ live: false, error: null as Error | null }));
 vi.mock('@/features/ingestion-keys/ingestion-key.middleware', async (original) => ({
   ...(await original<typeof import('@/features/ingestion-keys/ingestion-key.middleware')>()),
@@ -41,7 +38,6 @@ afterEach(() => {
   featureSwitchesStub.reset();
   key.live = false;
   key.error = null;
-  log.error.mockClear();
 });
 
 describe('a document route called with an ingestion key, Managed indexes off', () => {
@@ -55,18 +51,12 @@ describe('a document route called with an ingestion key, Managed indexes off', (
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("gives any other key the handler's own refusal", async () => {
+  it("gives any other key the key check's refusal, without running the handler", async () => {
     featureSwitchesStub.off.add('managed-indexes');
-    const res = await call(async () => new Response(null, { status: 401 }));
+    const handler = vi.fn(async () => new Response('ok'));
+    const res = await call(handler);
     expect(res.status).toBe(401);
-  });
-
-  it('never lets through a key the handler took but the check refused', async () => {
-    featureSwitchesStub.off.add('managed-indexes');
-    const res = await call(async () => new Response('ok', { status: 200 }));
-    expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ code: TURNED_OFF_CODE });
-    expect(log.error).toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it('answers a failed key lookup as an error', async () => {

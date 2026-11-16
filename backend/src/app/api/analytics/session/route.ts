@@ -50,7 +50,7 @@ export const POST = withPermission('analytics:manage', async function POST(reque
     // Get client info (privacy-respecting)
     const userAgent = request.headers.get('user-agent') || undefined;
     const ip = clientIp(request);
-    const ipHash = ip === 'unknown' ? undefined : hashIP(ip);
+    const ipHash = ip ? hashIP(ip) : undefined;
     const origin = request.headers.get('origin') || undefined;
 
     // Create or get session
