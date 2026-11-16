@@ -66,23 +66,6 @@ describe('rateLimiter limits', () => {
     }
   });
 
-  it('tells how many requests an identifier has in its window, and when the window ends', () => {
-    vi.useFakeTimers();
-    try {
-      expect(rateLimiter.count('c')).toBe(0);
-      expect(rateLimiter.retryAfter('c')).toBe(0);
-      rateLimiter.check('c', 5, 60_000);
-      rateLimiter.check('c', 5, 60_000);
-      vi.advanceTimersByTime(20_000);
-      expect(rateLimiter.count('c')).toBe(2);
-      expect(rateLimiter.retryAfter('c')).toBe(40);
-      vi.advanceTimersByTime(40_000);
-      expect(rateLimiter.count('c')).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it('when full, drops expired entries first, even with the regular sweep not due', () => {
     vi.useFakeTimers();
     try {

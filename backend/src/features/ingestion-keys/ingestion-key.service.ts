@@ -211,21 +211,16 @@ export function toSummary(key: IngestionKeyWithIndexes): IngestionKeySummary {
 }
 
 // ============================================================================
-// CREATE / LIST / REVOKE
-// ============================================================================
-
-/**
- * Mint a key. The plaintext is returned once and never stored.
- */
-// ============================================================================
 // KEY LOOKUP CACHE
 // ============================================================================
 
 /**
  * How long a key looked up by its prefix (or "no such key") is reused. A server sending the
- * same key, right or wrong, costs one database read per window. The secret is still checked
- * on every request, and revoked / expired are judged from the row at the time of use.
- * Creating or revoking a key drops its entry at once, on this server.
+ * same key, right or wrong, costs one database read per window. The secret is checked on every
+ * request; revoked and expired are judged from the cached row (expiry against the clock at use).
+ * Creating or revoking a key here drops its entry at once on this server. Other servers, and
+ * changes made outside this service (an index deleted, a row edited), are seen within this time:
+ * the cache is per process until the shared store replaces it.
  */
 export const KEY_LOOKUP_TTL_MS = 10_000;
 
@@ -240,6 +235,13 @@ export function clearKeyLookupCache(): Promise<void> {
     return keysByPrefix.clear();
 }
 
+// ============================================================================
+// CREATE / LIST / REVOKE
+// ============================================================================
+
+/**
+ * Mint a key. The plaintext is returned once and never stored.
+ */
 export async function createIngestionKey(input: {
     name: string;
     operations: IngestionOperation[];

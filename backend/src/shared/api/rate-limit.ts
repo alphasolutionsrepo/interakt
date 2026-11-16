@@ -137,19 +137,6 @@ export const rateLimiter = {
     return { allowed: true, remaining: maxRequests - 1 };
   },
 
-  /** How many requests the identifier has in its current window (0 when none). */
-  count(identifier: string): number {
-    const entry = store.get(identifier);
-    return entry && Date.now() - entry.windowStart < entry.windowMs ? entry.count : 0;
-  },
-
-  /** Seconds until the identifier's current window ends (0 when none). */
-  retryAfter(identifier: string): number {
-    const entry = store.get(identifier);
-    const now = Date.now();
-    return entry && now - entry.windowStart < entry.windowMs ? Math.ceil((entry.windowStart + entry.windowMs - now) / 1000) : 0;
-  },
-
   /** Change the most entries held (for testing); no argument restores the default. */
   setMaxEntries(max: number = MAX_ENTRIES): void {
     maxEntries = max;
