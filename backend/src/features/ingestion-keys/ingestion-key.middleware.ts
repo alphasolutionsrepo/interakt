@@ -62,17 +62,17 @@ function extractBearer(request: NextRequest): string | null {
  * Session requests fall back to the client IP — the admin UI is low-volume, and
  * resolving a session is async. Without a trusted address they share one count (clientKey).
  */
-export function ingestionRateLimitKey(request: NextRequest): string | ClientKey {
+export function ingestionRateLimitKey(request: NextRequest): ClientKey {
     const presented = extractBearer(request);
     const parsed = presented ? parseKey(presented) : null;
 
     if (parsed) {
         const fingerprint = createHash('sha256').update(presented!).digest('hex').slice(0, 16);
-        return `key:${parsed.keyPrefix}:${fingerprint}`;
+        return { key: `key:${parsed.keyPrefix}:${fingerprint}`, shared: false };
     }
 
     const client = clientKey(request);
-    return client.shared ? { ...client, key: `ip:${client.key}` } : `ip:${client.key}`;
+    return { ...client, key: `ip:${client.key}` };
 }
 
 /**

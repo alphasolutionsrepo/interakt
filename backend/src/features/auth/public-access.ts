@@ -19,7 +19,7 @@ import 'server-only';
 
 import type { NextRequest, NextResponse } from 'next/server';
 
-import { clientKey, limitFor } from '@/shared/api/client-ip';
+import { clientKey, clientLabel, limitFor } from '@/shared/api/client-ip';
 import { rateLimiter } from '@/shared/api/rate-limit';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
@@ -187,7 +187,7 @@ export function checkPublicAccess(
   }
 
   if (retryAfter) {
-    logger.warn(limit === 'daily' ? 'Daily total reached' : 'Rate limit exceeded', { scope, client: client.key, retryAfter });
+    logger.warn(limit === 'daily' ? 'Daily total reached' : 'Rate limit exceeded', { scope, client: clientLabel(client), retryAfter });
     return apiResponse.tooManyRequests(retryAfter);
   }
   return null;

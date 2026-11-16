@@ -32,6 +32,24 @@ describe('checkClientAddressHealth', () => {
     expect(health.task).toBeUndefined();
   });
 
+  it('says only what is true when a few requests (under the threshold) had no trusted address', async () => {
+    expect((await checkClientAddressHealth()).message).toBe('Client addresses are read from what is in front of Interakt (forwarded-for:1); no requests have needed one yet.');
+    for (let i = 0; i < 3; i++) clientIp(request({}));
+    const health = await checkClientAddressHealth();
+    expect(health.status).toBe('healthy');
+    expect(health.message).not.toMatch(/no requests have needed one yet/);
+    expect(health.message).toMatch(/3 of 3 requests in the last hour had no trusted address/);
+    clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
+    expect((await checkClientAddressHealth()).message).toMatch(/3 of 4 requests/);
+    resetClientAddressSetup();
+    clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
+    expect((await checkClientAddressHealth()).message).toBe('Client addresses are read from what is in front of Interakt (forwarded-for:1).');
+  });
+
+  it('is marked as a check of settings only', async () => {
+    expect((await checkClientAddressHealth()).configOnly).toBe(true);
+  });
+
   it('asks for attention, with counts, when requests keep arriving with no X-Forwarded-For at all', async () => {
     clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
     for (let i = 0; i < 5; i++) clientIp(request({}));
@@ -75,6 +93,10 @@ describe('checkClientAddressHealth', () => {
     const health = await checkClientAddressHealth();
     expect(health.status).toBe('degraded');
     expect(health.message).toMatch(/Not recommended for production/);
+    expect(health.message).not.toMatch(/those requests/);
+    expect(health.message).toMatch(/every request shares one rate-limit count at 10× the per-client limit/);
+    clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
+    expect((await checkClientAddressHealth()).details).toMatchObject({ requestsWithAddress: 0, requestsWithoutAddress: 1 });
   });
 
   it('asks for attention when the setting is not valid, without showing it', async () => {
@@ -82,7 +104,26 @@ describe('checkClientAddressHealth', () => {
     const health = await checkClientAddressHealth();
     expect(health.status).toBe('degraded');
     expect(health.message).toMatch(/isn't a value Interakt understands/);
+    expect(health.message).toMatch(/using forwarded-for:1 until it is fixed/);
     expect(JSON.stringify(health)).not.toContain('secret-looking-value');
+  });
+
+  it('names TRUSTED_PROXY_HOPS, not its value, when that setting is not valid', async () => {
+    vi.stubEnv('TRUSTED_PROXY_HOPS', 'secret-hops-value');
+    const health = await checkClientAddressHealth();
+    expect(health.status).toBe('degraded');
+    expect(health.message).toMatch(/TRUSTED_PROXY_HOPS/);
+    expect(health.message).toMatch(/using forwarded-for:1 until it is fixed/);
+    expect(health.message).not.toMatch(/CLIENT_IP_SOURCE/);
+    expect(JSON.stringify(health)).not.toContain('secret-hops-value');
+  });
+
+  it('says the header did not arrive when the header named in the setting is missing', async () => {
+    vi.stubEnv('CLIENT_IP_SOURCE', 'header:X-Azure-SocketIP');
+    for (let i = 0; i < 5; i++) clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
+    const health = await checkClientAddressHealth();
+    expect(health.status).toBe('degraded');
+    expect(health.message).toMatch(/X-Azure-SocketIP.*didn't arrive/);
   });
 
   it('stops asking once an hour has passed without the problem (a fixed setup clears itself)', async () => {
@@ -96,6 +137,23 @@ describe('checkClientAddressHealth', () => {
     const health = await checkClientAddressHealth();
     expect(health.status).toBe('healthy');
     expect(health.details).toMatchObject({ requestsWithAddress: 1, requestsWithoutAddress: 0 });
+  });
+
+  it('shows when the latest request without a trusted address arrived, and nothing when there were none', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T10:00:00Z'));
+    clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
+    expect((await checkClientAddressHealth()).details).not.toHaveProperty('problemLastSeen');
+    clientIp(request({}));
+    vi.setSystemTime(new Date('2026-01-01T10:07:30Z'));
+    clientIp(request({}));
+    vi.setSystemTime(new Date('2026-01-01T10:09:00Z'));
+    clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
+    expect((await checkClientAddressHealth()).details).toMatchObject({ problemLastSeen: '2026-01-01T10:07:30.000Z' });
+    // Once the untrusted requests are out of the hour, the time goes with them
+    vi.setSystemTime(new Date('2026-01-01T11:30:00Z'));
+    clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }));
+    expect((await checkClientAddressHealth()).details).not.toHaveProperty('problemLastSeen');
   });
 
   it('is seen by another copy of the module, as the scheduled health job bundled apart from the routes has', async () => {

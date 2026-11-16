@@ -44,9 +44,18 @@ describe('withRateLimit', () => {
     expect((await from('10.0.0.2, 6.6.6.6')).status).toBe(200);
   });
 
+  it('counts IPv6 addresses in one /56 together, and a different /56 apart', async () => {
+    const handler = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
+    const from = (forwardedFor: string) =>
+      handler(new NextRequest('http://interakt.test/api/x', { headers: { 'X-Forwarded-For': forwardedFor } }));
+    expect((await from('2001:db8:1:200::1')).status).toBe(200);
+    expect((await from('2001:db8:1:2ff:abcd::9')).status).toBe(429);
+    expect((await from('2001:db8:1:300::1')).status).toBe(200);
+  });
+
   it('counts by a key function that answers asynchronously', async () => {
     rateLimiter.clear();
-    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1, keyFn: async () => 'k' });
+    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1, keyFn: async () => ({ key: 'k', shared: false }) });
     const req = () => new NextRequest('http://localhost/api/x');
     expect((await limited(req())).status).toBe(200);
     expect((await limited(req())).status).toBe(429);
@@ -66,17 +75,6 @@ describe('withRateLimit', () => {
     expect(refused.headers.get('X-RateLimit-Limit')).toBe('10');
     // A client with a trusted address keeps its own count
     expect((await limited(new NextRequest('http://localhost/api/x', { headers: { 'X-Forwarded-For': '1.1.1.1' } }))).status).toBe(200);
-  });
-
-  it('leaves a request to the handler, uncounted and without headers, when the key function answers null', async () => {
-    rateLimiter.clear();
-    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1, keyFn: () => null });
-    const req = () => new NextRequest('http://localhost/api/x');
-    expect((await limited(req())).status).toBe(200);
-    const second = await limited(req());
-    expect(second.status).toBe(200);
-    expect(second.headers.get('X-RateLimit-Limit')).toBeNull();
-    expect(rateLimiter.size()).toBe(0);
   });
 
   it('refuses in the shared shape, with a request id, when to try again and the limit', async () => {

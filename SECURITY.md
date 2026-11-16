@@ -55,7 +55,9 @@ these are your responsibility to set correctly, not defaults to ship to producti
   With a CDN or gateway, accept traffic to the app only from it (for Azure Front Door, check
   `X-Azure-FDID`); otherwise a caller can skip it and choose its own address. Requests with no
   trusted address share one count at 10× the per-client limit, and Health shows when the
-  setting doesn't match what requests show.
+  setting doesn't match what requests show. `forwarded-for` alone counts `TRUSTED_PROXY_HOPS`
+  proxies (default 1), and a setting Interakt doesn't understand falls back to that default and
+  is shown on Health.
 - **Transport.** Terminate TLS in front of the app and never disable certificate validation
   (`NODE_TLS_REJECT_UNAUTHORIZED=0`) outside of local development.
 

@@ -35,13 +35,10 @@ export interface RateLimitConfig {
   windowMs?: number;
   /**
    * Who a request is counted as (default: its client address, see clientKey). A shared key is
-   * held to SHARED_LIMIT_FACTOR times maxRequests. null leaves the request to a limit applied
-   * elsewhere (it gets no limit headers here).
+   * held to SHARED_LIMIT_FACTOR times maxRequests.
    */
-  keyFn?: (request: NextRequest) => RateLimitKey | Promise<RateLimitKey>;
+  keyFn?: (request: NextRequest) => ClientKey | Promise<ClientKey>;
 }
-
-export type RateLimitKey = string | ClientKey | null;
 
 interface WindowEntry {
   count: number;
@@ -141,9 +138,7 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
 
   const wrapped = async (...args: Parameters<T>): Promise<NextResponse> => {
     const request = args[0] as NextRequest;
-    const counted = await keyFn(request);
-    if (counted === null) return handler(...args);
-    const key = typeof counted === 'string' ? { key: counted, shared: false } : counted;
+    const key = await keyFn(request);
     const limit = limitFor(key, maxRequests);
     const routeKey = `${request.method}:${request.nextUrl.pathname}:${key.key}`;
 
