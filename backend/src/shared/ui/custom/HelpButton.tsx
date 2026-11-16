@@ -420,7 +420,7 @@ export function HelpButton() {
         <SheetHeader className="gap-3 border-b border-border/60 p-4">
           <div>
             <SheetTitle>Help</SheetTitle>
-            <SheetDescription>{helpDescription(askOn)}</SheetDescription>
+            <SheetDescription>{helpDescription(askKnown ?? mode === 'ask')}</SheetDescription>
           </div>
 
           <ModeSwitch mode={mode} onChange={setMode} />
