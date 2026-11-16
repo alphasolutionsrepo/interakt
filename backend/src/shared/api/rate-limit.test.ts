@@ -44,9 +44,42 @@ describe('withRateLimit', () => {
     expect((await from('10.0.0.2, 6.6.6.6')).status).toBe(200);
   });
 
+  it('counts IPv6 addresses in one /56 together, and a different /56 apart', async () => {
+    const handler = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
+    const from = (forwardedFor: string) =>
+      handler(new NextRequest('http://interakt.test/api/x', { headers: { 'X-Forwarded-For': forwardedFor } }));
+    expect((await from('2001:db8:1:200::1')).status).toBe(200);
+    expect((await from('2001:db8:1:2ff:abcd::9')).status).toBe(429);
+    expect((await from('2001:db8:1:300::1')).status).toBe(200);
+  });
+
+  it('counts by a key function that answers asynchronously', async () => {
+    rateLimiter.clear();
+    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1, keyFn: async () => ({ key: 'k', shared: false }) });
+    const req = () => new NextRequest('http://localhost/api/x');
+    expect((await limited(req())).status).toBe(200);
+    expect((await limited(req())).status).toBe(429);
+  });
+
+  it('counts requests with no trusted address together, at ten times the limit, apart from addressed clients', async () => {
+    rateLimiter.clear();
+    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
+    const unaddressed = () => limited(new NextRequest('http://localhost/api/x'));
+    for (let i = 0; i < 10; i++) {
+      const response = await unaddressed();
+      expect(response.status).toBe(200);
+      expect(response.headers.get('X-RateLimit-Limit')).toBe('10');
+    }
+    const refused = await unaddressed();
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get('X-RateLimit-Limit')).toBe('10');
+    // A client with a trusted address keeps its own count
+    expect((await limited(new NextRequest('http://localhost/api/x', { headers: { 'X-Forwarded-For': '1.1.1.1' } }))).status).toBe(200);
+  });
+
   it('refuses in the shared shape, with a request id, when to try again and the limit', async () => {
     const handler = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
-    const ask = () => handler(new NextRequest('http://interakt.test/api/x'));
+    const ask = () => handler(new NextRequest('http://interakt.test/api/x', { headers: { 'X-Forwarded-For': '1.1.1.1' } }));
     await ask();
     const refused = await ask();
 

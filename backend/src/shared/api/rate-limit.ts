@@ -21,7 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { clientIp } from './client-ip';
+import { clientKey, limitFor, type ClientKey } from './client-ip';
 import { apiResponse } from './response';
 
 // ============================================================================
@@ -33,8 +33,11 @@ export interface RateLimitConfig {
   maxRequests?: number;
   /** Window duration in milliseconds (default: 60_000 = 1 minute) */
   windowMs?: number;
-  /** Function to extract identifier from request (default: IP address) */
-  keyFn?: (request: NextRequest) => string;
+  /**
+   * Who a request is counted as (default: its client address, see clientKey). A shared key is
+   * held to SHARED_LIMIT_FACTOR times maxRequests.
+   */
+  keyFn?: (request: NextRequest) => ClientKey | Promise<ClientKey>;
 }
 
 interface WindowEntry {
@@ -130,19 +133,20 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
   const {
     maxRequests = 60,
     windowMs = 60_000,
-    keyFn = clientIp,
+    keyFn = clientKey,
   } = config;
 
   const wrapped = async (...args: Parameters<T>): Promise<NextResponse> => {
     const request = args[0] as NextRequest;
-    const identifier = keyFn(request);
-    const routeKey = `${request.method}:${request.nextUrl.pathname}:${identifier}`;
+    const key = await keyFn(request);
+    const limit = limitFor(key, maxRequests);
+    const routeKey = `${request.method}:${request.nextUrl.pathname}:${key.key}`;
 
-    const result = rateLimiter.check(routeKey, maxRequests, windowMs);
+    const result = rateLimiter.check(routeKey, limit, windowMs);
 
     if (!result.allowed) {
       const refused = apiResponse.tooManyRequests(result.retryAfter ?? 60, 'Too many requests');
-      refused.headers.set('X-RateLimit-Limit', String(maxRequests));
+      refused.headers.set('X-RateLimit-Limit', String(limit));
       refused.headers.set('X-RateLimit-Remaining', '0');
       return refused;
     }
@@ -150,7 +154,7 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
     const response = await handler(...args);
 
     // Add rate limit headers to successful responses
-    response.headers.set('X-RateLimit-Limit', String(maxRequests));
+    response.headers.set('X-RateLimit-Limit', String(limit));
     response.headers.set('X-RateLimit-Remaining', String(result.remaining));
 
     return response;

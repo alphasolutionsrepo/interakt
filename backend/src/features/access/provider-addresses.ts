@@ -15,8 +15,8 @@ import { withoutFields } from './redact';
 import { checkAccess, SIGNED_IN, withPermission } from './route-guard';
 import { can } from './user-access';
 
-/** The fields that carry a provider's address (health adds the URL it tested). */
-const ADDRESS_FIELDS: ReadonlySet<string> = new Set(['baseUrl', 'endpointTested']);
+/** The fields that carry a provider's address (health adds the URL it tested, and the search engine's endpoint). */
+const ADDRESS_FIELDS: ReadonlySet<string> = new Set(['baseUrl', 'endpointTested', 'endpoint']);
 
 export function withoutProviderAddresses<T>(value: T): T {
   return withoutFields(value, ADDRESS_FIELDS);

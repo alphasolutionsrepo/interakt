@@ -90,7 +90,7 @@ describe('authenticateTokenOrSession', () => {
     expect(other.caller).toBeNull();
     expect(other.refused?.status).toBe(403);
 
-    const shop = { 'X-Access-Token': 't1', Origin: 'https://shop.example' };
+    const shop = { 'X-Access-Token': 't1', Origin: 'https://shop.example', 'X-Forwarded-For': '1.1.1.1' };
     expect(await authenticateTokenOrSession(request(shop), settings)).toMatchObject({ caller: 'api' });
     expect((await authenticateTokenOrSession(request(shop), settings)).refused?.status).toBe(429);
   });

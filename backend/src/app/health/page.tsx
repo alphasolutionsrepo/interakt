@@ -15,6 +15,7 @@ import { useState } from 'react';
 
 import { HealthStatsBar, ServiceStatusCard } from './_components';
 import { useSystemHealth } from './_lib/hooks/useHealth';
+import { groupServices } from './_lib/services';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -121,13 +122,9 @@ export default function HealthPage() {
     ? 'bg-amber-500/10'
     : 'bg-red-500/10';
 
-  // Categorize services - AI Providers first, then infrastructure
-  const primaryServices = health.services.filter(s =>
-    s.name === 'AI Providers'
-  );
-  const infrastructureServices = health.services.filter(s =>
-    s.name === 'Database (PostgreSQL)' || s.name === 'Elasticsearch'
-  );
+  // AI Providers first, then infrastructure, then config-only setup checks
+  const { primary: primaryServices, infrastructure: infrastructureServices, setup: setupServices } =
+    groupServices(health.services);
 
   return (
     <div className="flex-1 space-y-6 p-6 lg:p-8">
@@ -205,6 +202,22 @@ export default function HealthPage() {
           ))}
         </div>
       </div>
+
+      {/* Setup checks (settings only) */}
+      {setupServices.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold">Setup</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {setupServices.map((service, index) => (
+              <ServiceStatusCard
+                key={service.name}
+                service={service}
+                index={index + primaryServices.length + infrastructureServices.length}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

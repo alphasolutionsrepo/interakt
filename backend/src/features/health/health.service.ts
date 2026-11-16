@@ -9,6 +9,7 @@
 import { db } from '@/db/index';
 import { sql } from 'drizzle-orm';
 import { getDefaultSearchEngineProvider } from '@/features/search/providers';
+import { clientAddressSetup, SHARED_LIMIT_FACTOR, type ClientAddressSetup } from '@/shared/api/client-ip';
 import { createLogger } from '@/shared/logger/logger';
 import * as aiProvidersRepo from '@/features/ai-providers/ai-providers.repository';
 import { aiProvidersConfig, elasticsearchConfig, getProviderHealthConfig, type StatusPageResponse } from '@/config';
@@ -23,6 +24,10 @@ export interface ServiceHealth {
   responseTime: number;
   message?: string;
   details?: Record<string, unknown>;
+  /** A check of settings, not a live call: left out of the average response time */
+  configOnly?: boolean;
+  /** What the home page asks the admin to do when this isn't healthy (default: "<name> is degraded") */
+  task?: string;
   lastChecked: Date;
 }
 
@@ -87,6 +92,18 @@ export async function checkDatabaseHealth(): Promise<ServiceHealth> {
   }
 }
 
+/** Protocol and host of the engine in use (never credentials, path or query), or undefined when it has none. */
+function searchEndpoint(type: string): string | undefined {
+  const raw = type === 'elasticsearch' ? elasticsearchConfig.url : type === 'azure-ai-search' ? process.env.AZURE_SEARCH_ENDPOINT : undefined;
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Check Search Provider Health
  */
@@ -100,7 +117,8 @@ export async function checkElasticsearchHealth(): Promise<ServiceHealth> {
 
     // Determine status based on provider status AND query performance
     let status: HealthStatus = 'healthy';
-    let message = `Cluster: ${health.clusterStatus ?? 'unknown'}, Query: ${queryTime}ms`;
+    const isElasticsearch = provider.type === 'elasticsearch';
+    let message = isElasticsearch ? `Cluster: ${health.clusterStatus ?? 'unknown'}, Query: ${queryTime}ms` : `Query: ${queryTime}ms`;
 
     // Check provider connection first
     if (!health.connected) {
@@ -122,9 +140,7 @@ export async function checkElasticsearchHealth(): Promise<ServiceHealth> {
       message = `Performance degraded (${queryTime}ms)`;
     }
 
-    // Extract host from URL for display (safe - no credentials)
-    const esUrl = new URL(elasticsearchConfig.url);
-    const endpointDisplay = `${esUrl.protocol}//${esUrl.host}`;
+    const endpointDisplay = searchEndpoint(provider.type);
 
     return {
       name: `Search Provider (${provider.name})`,
@@ -133,15 +149,14 @@ export async function checkElasticsearchHealth(): Promise<ServiceHealth> {
       message,
       details: {
         providerType: provider.type,
-        clusterName: health.clusterName,
-        clusterStatus: health.clusterStatus,
-        endpoint: endpointDisplay,
+        // Cluster fields are Elasticsearch's; the address is the engine in use, left out when unknown
+        ...(isElasticsearch && { clusterName: health.clusterName, clusterStatus: health.clusterStatus }),
+        ...(endpointDisplay && { endpoint: endpointDisplay }),
         queryTimeMs: queryTime,
         healthyThreshold: '< 1000ms',
         degradedThreshold: '1000-2000ms',
         unhealthyThreshold: '> 2000ms',
-        numberOfNodes: health.numberOfNodes,
-        version: health.version,
+        ...(isElasticsearch && { numberOfNodes: health.numberOfNodes, version: health.version }),
         ...health.details,
       },
       lastChecked: new Date(),
@@ -460,6 +475,61 @@ export async function checkSystemUptime(): Promise<ServiceHealth> {
   }
 }
 
+/** The healthy text, true for every count: what the source is, and what requests have shown so far */
+function clientAddressHealthyMessage(setup: ClientAddressSetup): string {
+  const total = setup.trustedRequests + setup.untrustedRequests;
+  const base = `Client addresses are read from what is in front of Interakt (${setup.source})`;
+  if (total === 0) return `${base}; no requests have needed one yet.`;
+  if (setup.untrustedRequests > 0) return `${base}; ${setup.untrustedRequests} of ${total} requests in the last hour had no trusted address.`;
+  return `${base}.`;
+}
+
+/** What each client-address problem means, and what to do about it */
+function clientAddressMessage(setup: ClientAddressSetup): string {
+  const shared = `Until it is fixed, those requests share one rate-limit count at ${SHARED_LIMIT_FACTOR}× the per-client limit.`;
+  switch (setup.problem) {
+    case 'none':
+      return `CLIENT_IP_SOURCE is none: nothing is in front of Interakt, so client addresses aren't known. Not recommended for production: put a reverse proxy or gateway in front and set CLIENT_IP_SOURCE to match. Until then, every request shares one rate-limit count at ${SHARED_LIMIT_FACTOR}× the per-client limit.`;
+    case 'invalid-setting':
+      if (setup.invalid === 'hops') {
+        return `TRUSTED_PROXY_HOPS isn't a whole number from 1, so Interakt is using ${setup.source} until it is fixed. Set it to the number of proxies in front of Interakt.`;
+      }
+      return `CLIENT_IP_SOURCE isn't a value Interakt understands, so Interakt is using ${setup.source} until it is fixed. Set it to forwarded-for:<proxies>, header:<name> or none.`;
+    case 'short-list':
+      return `In the last hour, ${setup.untrustedRequests} requests had no client address Interakt can trust: the latest arrived with fewer X-Forwarded-For entries than the proxies CLIENT_IP_SOURCE expects in front (${setup.hops ?? 0}). Check how many proxies are in front and set forwarded-for to that number. ${shared}`;
+    case 'missing-header':
+      return `In the last hour, ${setup.untrustedRequests} requests had no client address Interakt can trust: in the latest, the header named in CLIENT_IP_SOURCE (${setup.source}) didn't arrive. Check that the edge sends it and that the setting matches what is in front of Interakt. ${shared}`;
+    case 'not-an-address':
+      return `In the last hour, ${setup.untrustedRequests} requests had no client address Interakt can trust: in the latest, the place CLIENT_IP_SOURCE (${setup.source}) points to held something that isn't an IP address. Check that the setting matches what is in front of Interakt. ${shared}`;
+    default:
+      return clientAddressHealthyMessage(setup);
+  }
+}
+
+/**
+ * Check how client addresses are read, for per-client rate limits (CLIENT_IP_SOURCE).
+ * Degraded when the setting is none or not valid, or when requests in the last hour showed
+ * the proxies in front don't match it. What this server saw only: no network calls.
+ */
+export async function checkClientAddressHealth(): Promise<ServiceHealth> {
+  const setup = clientAddressSetup();
+  return {
+    name: 'Client addresses',
+    status: setup.problem ? 'degraded' : 'healthy',
+    responseTime: 0,
+    configOnly: true,
+    message: clientAddressMessage(setup),
+    details: {
+      setting: setup.source,
+      requestsWithAddress: setup.trustedRequests,
+      requestsWithoutAddress: setup.untrustedRequests,
+      ...(setup.problemSeenAt ? { problemLastSeen: setup.problemSeenAt } : {}),
+    },
+    ...(setup.problem ? { task: 'Check how client addresses are read' } : {}),
+    lastChecked: new Date(),
+  };
+}
+
 // ============================================================================
 // Main Health Check
 // ============================================================================
@@ -472,19 +542,21 @@ export async function checkSystemHealth(): Promise<SystemHealth> {
 
   try {
     // Run all health checks in parallel
-    // Only check external dependencies (Database, Elasticsearch, AI Providers)
+    // External dependencies (Database, Elasticsearch, AI Providers) and the client-address setup
     // Exclude Memory and Uptime as they are not meaningful in serverless environments
     const [
       dbHealth,
       esHealth,
       aiHealth,
+      clientAddresses,
     ] = await Promise.all([
       checkDatabaseHealth(),
       checkElasticsearchHealth(),
       checkAIProvidersHealth(),
+      checkClientAddressHealth(),
     ]);
 
-    const services = [dbHealth, esHealth, aiHealth];
+    const services = [dbHealth, esHealth, aiHealth, clientAddresses];
 
     // Determine overall status
     const hasUnhealthy = services.some(s => s.status === 'unhealthy');

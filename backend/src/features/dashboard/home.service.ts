@@ -101,7 +101,7 @@ export interface HomeHealth {
   checkedAt: string;
   /** No check in over 30 minutes: the jobs engine may be off */
   stale: boolean;
-  problems: Array<{ name: string; status: 'degraded' | 'unhealthy'; message?: string }>;
+  problems: Array<{ name: string; status: 'degraded' | 'unhealthy'; message?: string; task?: string }>;
 }
 
 /** Setup steps a new installation goes through; shown until all are done */
@@ -371,17 +371,8 @@ async function assembleHomeData(timeZone: string, now: Date, analyticsOn: boolea
   ];
 
   // ── Tasks: what is broken or waiting, with how many ──────────────────
-  const tasks: HomeTask[] = [];
   // Services down come first: nothing else matters much while one is
-  for (const p of health?.problems ?? []) {
-    tasks.push({
-      id: `health:${p.name}`,
-      label: `${p.name} ${p.status === 'unhealthy' ? 'is down' : 'is degraded'}`,
-      count: 1,
-      href: '/health',
-      tone: p.status === 'unhealthy' ? 'critical' : 'warning',
-    });
-  }
+  const tasks: HomeTask[] = healthTasks(health?.problems ?? []);
   if (failedTotal > 0) {
     tasks.push({ id: 'failed-turns', label: 'Review failed conversation turns', count: failedTotal, href: '/analytics/traces?status=ERROR&range=7d', tone: 'critical' });
   }
@@ -674,6 +665,31 @@ async function countFailedJobs(since: Date): Promise<number> {
   }
 }
 
+/** A task per service the latest health check found degraded or down, in the check's own words when it has them */
+export function healthTasks(problems: HomeHealth['problems']): HomeTask[] {
+  return problems.map((p) => ({
+    id: `health:${p.name}`,
+    label: p.task ?? `${p.name} ${p.status === 'unhealthy' ? 'is down' : 'is degraded'}`,
+    count: 1,
+    href: '/health',
+    tone: p.status === 'unhealthy' ? 'critical' : 'warning',
+  }));
+}
+
+/** The home page's health from a health-check job's stored output; null when it has none */
+export function healthFromJob(output: HealthCheckOutput | null, completedOn: Date | string, now: Date): HomeHealth | null {
+  if (!output?.status) return null;
+  const checkedAt = new Date(output.checkedAt ?? completedOn);
+  return {
+    status: output.status,
+    checkedAt: checkedAt.toISOString(),
+    stale: now.getTime() - checkedAt.getTime() > 30 * 60_000,
+    problems: (output.services ?? [])
+      .filter((s): s is HomeHealth['problems'][number] => s.status !== 'healthy')
+      .map((s) => ({ name: s.name, status: s.status, ...(s.message ? { message: s.message } : {}), ...(s.task ? { task: s.task } : {}) })),
+  };
+}
+
 /** The latest scheduled health check, read from the job's output */
 async function readHealth(now: Date): Promise<HomeHealth | null> {
   try {
@@ -685,16 +701,7 @@ async function readHealth(now: Date): Promise<HomeHealth | null> {
       LIMIT 1
     `)) as unknown as Array<{ output: HealthCheckOutput | null; completed_on: Date | string }>;
     const row = rows[0];
-    if (!row?.output?.status) return null;
-    const checkedAt = new Date(row.output.checkedAt ?? row.completed_on);
-    return {
-      status: row.output.status,
-      checkedAt: checkedAt.toISOString(),
-      stale: now.getTime() - checkedAt.getTime() > 30 * 60_000,
-      problems: (row.output.services ?? [])
-        .filter((s): s is HomeHealth['problems'][number] => s.status !== 'healthy')
-        .map((s) => ({ name: s.name, status: s.status, ...(s.message ? { message: s.message } : {}) })),
-    };
+    return row ? healthFromJob(row.output, row.completed_on, now) : null;
   } catch (error) {
     // No jobs engine means no job table, and so no health on the home page
     logger.warn('Health not read', { error: String(error) });

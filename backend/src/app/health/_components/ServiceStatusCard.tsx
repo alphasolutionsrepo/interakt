@@ -3,10 +3,11 @@
 'use client';
 
 import { formatDistanceToNow } from 'date-fns';
-import { CheckCircle2, AlertTriangle, XCircle, Clock, Database, Search, Zap, Cpu, Activity, Info, ExternalLink, FlaskConical } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Clock, Database, Search, Zap, Cpu, Activity, Info, ExternalLink, FlaskConical, Network } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import type { ServiceHealth } from '../_lib/api-client';
+import { lookupByName, showsFullMessage } from '../_lib/services';
 
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -20,9 +21,11 @@ interface ServiceStatusCardProps {
 const SERVICE_ICONS: Record<string, React.ElementType> = {
   'Database (PostgreSQL)': Database,
   'Elasticsearch': Search,
+  'Search Provider': Search,
   'AI Providers': Zap,
   'Memory': Cpu,
   'Application': Activity,
+  'Client addresses': Network,
 };
 
 const SERVICE_MONITORING_INFO: Record<string, { what: string; how: string; thresholds: string }> = {
@@ -30,6 +33,11 @@ const SERVICE_MONITORING_INFO: Record<string, { what: string; how: string; thres
     what: 'PostgreSQL database connectivity and query performance',
     how: 'Executes a test query (SELECT 1) and measures response time',
     thresholds: 'Healthy: <500ms | Degraded: 500-1000ms | Unhealthy: >1000ms or connection failure',
+  },
+  'Search Provider': {
+    what: 'Search engine availability and API responsiveness',
+    how: 'Calls the active search provider health check and measures response time. For query testing, use the Playground.',
+    thresholds: 'Healthy: provider reports healthy and responds quickly | Degraded: provider reports a warning or responds slowly | Unhealthy: provider reports a failure or cannot be reached',
   },
   'Elasticsearch': {
     what: 'Elasticsearch cluster availability and API responsiveness',
@@ -51,12 +59,17 @@ const SERVICE_MONITORING_INFO: Record<string, { what: string; how: string; thres
     how: 'Reports process uptime and Node.js version',
     thresholds: 'Always healthy - informational only',
   },
+  'Client addresses': {
+    what: 'Where client addresses for per-client rate limits come from (CLIENT_IP_SOURCE)',
+    how: 'Reads the setting, and what requests to this server showed about the proxies in front. No network calls.',
+    thresholds: 'Healthy: requests match the setting | Degraded: setting is none or not valid, or in the last hour at least 5 requests (and 10% of them) had no trusted address',
+  },
 };
 
 export function ServiceStatusCard({ service, index = 0 }: ServiceStatusCardProps) {
   const [isVisible, setIsVisible] = useState(false);
-  const Icon = SERVICE_ICONS[service.name] || Activity;
-  const monitoringInfo = SERVICE_MONITORING_INFO[service.name];
+  const Icon = lookupByName(SERVICE_ICONS, service.name) || Activity;
+  const monitoringInfo = lookupByName(SERVICE_MONITORING_INFO, service.name);
 
   // Staggered animation entrance
   useEffect(() => {
@@ -93,6 +106,7 @@ export function ServiceStatusCard({ service, index = 0 }: ServiceStatusCardProps
 
   const config = statusConfig[service.status];
   const StatusIcon = config.icon;
+  const fullMessage = showsFullMessage(service);
 
   return (
     <div
@@ -135,11 +149,12 @@ export function ServiceStatusCard({ service, index = 0 }: ServiceStatusCardProps
                 </Tooltip>
               )}
             </div>
-            <p className="text-sm text-muted-foreground line-clamp-1 flex items-center gap-2">
-              <Badge variant="outline" className={`${config.badgeColor} text-xs px-2 py-0.5 font-semibold`}>
+            <p className={`text-sm text-muted-foreground flex gap-2 ${fullMessage ? 'items-start' : 'items-center line-clamp-1'}`}>
+              <Badge variant="outline" className={`${config.badgeColor} text-xs px-2 py-0.5 font-semibold shrink-0`}>
                 {config.label}
               </Badge>
-              <span className="truncate">{service.message}</span>
+              {/* Unhealthy messages say what to do, and a settings check's note matters, so they wrap in full */}
+              <span className={fullMessage ? 'break-words' : 'truncate'}>{service.message}</span>
             </p>
           </div>
 
@@ -157,13 +172,16 @@ export function ServiceStatusCard({ service, index = 0 }: ServiceStatusCardProps
 
       {/* Stats */}
       <div className="p-6 space-y-3.5">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground flex items-center gap-2.5">
-            <Clock className="size-5" />
-            <span className="font-medium">Response Time</span>
-          </span>
-          <span className="font-bold text-lg tabular-nums">{service.responseTime}ms</span>
-        </div>
+        {/* A check of settings only makes no request, so it has no response time */}
+        {!service.configOnly && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground flex items-center gap-2.5">
+              <Clock className="size-5" />
+              <span className="font-medium">Response Time</span>
+            </span>
+            <span className="font-bold text-lg tabular-nums">{service.responseTime}ms</span>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground flex items-center gap-2.5">

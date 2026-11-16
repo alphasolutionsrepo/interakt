@@ -46,9 +46,18 @@ these are your responsibility to set correctly, not defaults to ship to producti
   configurable CORS origins and rate limiting. Set explicit `allowedOrigins` on each
   experience; the rate limiter is in-memory by default and should be backed by a shared
   store (e.g. Redis) for multi-instance deployments.
-- **Proxies.** Run Interakt behind a proxy that adds the client's address to
-  `X-Forwarded-For`, and set `TRUSTED_PROXY_HOPS` to the number of such proxies (default 1).
-  Per-client rate limits use the address those proxies added.
+- **Client addresses.** Per-client rate limits use an address only a proxy you run could
+  have added. Set `CLIENT_IP_SOURCE` for what is in front of Interakt:
+  `forwarded-for:1` for one proxy such as a hosting platform's ingress (the default),
+  `forwarded-for:2` with a CDN or gateway in front of that, `header:<name>` for an edge that
+  sends the client's address in a header of its own (such as `X-Azure-SocketIP` or
+  `CF-Connecting-IP`), or `none` when nothing is in front (not recommended for production).
+  With a CDN or gateway, accept traffic to the app only from it (for Azure Front Door, check
+  `X-Azure-FDID`); otherwise a caller can skip it and choose its own address. Requests with no
+  trusted address share one count at 10× the per-client limit, and Health shows when the
+  setting doesn't match what requests show. `forwarded-for` alone counts `TRUSTED_PROXY_HOPS`
+  proxies (default 1), and a setting Interakt doesn't understand falls back to that default and
+  is shown on Health.
 - **Transport.** Terminate TLS in front of the app and never disable certificate validation
   (`NODE_TLS_REJECT_UNAUTHORIZED=0`) outside of local development.
 
