@@ -45,6 +45,11 @@ export function effectiveHelpMode(remembered: HelpMode, askOn: boolean | null): 
   return askOn === false ? 'search' : remembered;
 }
 
+/** Whether a question can be sent: not empty, no answer in flight, and only once access shows the Help assistant on. */
+export function canAsk(question: string, askKnown: boolean | null, busy: boolean): boolean {
+  return askKnown === true && !!question.trim() && !busy;
+}
+
 /** Whether the docs-search route may be called: it is refused with the Help assistant off (still loading: try it). */
 export function docsSearchRoutable(askKnown: boolean | null): boolean {
   return askKnown !== false;
@@ -262,11 +267,12 @@ export function HelpButton() {
 
   const ask = useCallback(
     (question: string) => {
-      if (!question.trim() || chatBusy) return;
+      // While access loads the remembered Ask mode stays on screen, but nothing is sent until it's known
+      if (!canAsk(question, askKnown, chatBusy)) return;
       void sendChat(question);
       setText('');
     },
-    [chatBusy, sendChat],
+    [askKnown, chatBusy, sendChat],
   );
 
   /** "Ask AI about … instead" — the user's explicit hand-off from Search. */
@@ -465,7 +471,7 @@ export function HelpButton() {
                 type="button"
                 size="icon"
                 className="size-7 shrink-0"
-                disabled={!text.trim() || chat.busy}
+                disabled={!canAsk(text, askKnown, chat.busy)}
                 onClick={() => ask(text)}
                 aria-label="Ask"
               >
