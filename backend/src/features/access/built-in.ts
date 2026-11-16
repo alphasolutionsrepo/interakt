@@ -159,7 +159,8 @@ type NextRequestLike = Request;
 /**
  * forBuiltInChange for the index document routes, which servers also call with an ingestion key.
  * A rate limit, when given, runs before the access checks, so every caller is counted and answered alike
- * (a wrong key gets the same limit headers, and 429, whether Managed indexes is on or off).
+ * whether Managed indexes is on or off: a live key on its own count, a wrong key by the
+ * failed-check limit per address (ingestion-key.middleware.ts), a session by its address.
  */
 export function forBuiltInDocumentChange<A extends [NextRequestLike, { params: Promise<{ id: string }> }, ...unknown[]]>(
   rule: AccessRule,
