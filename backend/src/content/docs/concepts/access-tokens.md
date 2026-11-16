@@ -102,9 +102,9 @@ A client is the address added by a proxy you run, never one the caller wrote its
 | One proxy, such as a hosting platform's ingress, nginx or Traefik | `forwarded-for:1` (the default) |
 | A CDN or gateway in front of that proxy | `forwarded-for:2` |
 | An edge that sends the client's address in a header of its own | `header:<name>`, such as `header:X-Azure-SocketIP` (Azure Front Door) or `header:CF-Connecting-IP` (Cloudflare) |
-| Nothing | `none` |
+| Nothing (not recommended for production: put a reverse proxy or gateway in front) | `none` |
 
-With a CDN or gateway in front, let the app accept traffic only from it (for Azure Front Door, check the `X-Azure-FDID` header); otherwise a caller can go around it and choose its own address. When a request has no address Interakt can trust, the per-minute limit for each client steps aside for it rather than count every such caller as one; the daily total still applies. `TRUSTED_PROXY_HOPS=<n>`, the earlier setting, still works as `forwarded-for:<n>`.
+With a CDN or gateway in front, let the app accept traffic only from it (for Azure Front Door, check the `X-Azure-FDID` header); otherwise a caller can go around it and choose its own address. Requests with no address Interakt can trust share one count, at 10 times the per-client limit, so the limit still holds without one caller using it up for everyone; the daily total applies as usual. When the setting is `none` or not valid, or recent requests don't match it (no `X-Forwarded-For`, or fewer entries than proxies), **Health** shows *Client addresses* as degraded and the home page asks you to check it. `TRUSTED_PROXY_HOPS=<n>`, the earlier setting, still works as `forwarded-for:<n>`.
 
 Calling Interakt from your own server? Every request then comes from your server's address, so set the per-minute limit to cover your site's traffic.
 

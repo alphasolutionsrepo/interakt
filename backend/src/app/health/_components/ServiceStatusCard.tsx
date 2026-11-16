@@ -3,7 +3,7 @@
 'use client';
 
 import { formatDistanceToNow } from 'date-fns';
-import { CheckCircle2, AlertTriangle, XCircle, Clock, Database, Search, Zap, Cpu, Activity, Info, ExternalLink, FlaskConical } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Clock, Database, Search, Zap, Cpu, Activity, Info, ExternalLink, FlaskConical, Network } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import type { ServiceHealth } from '../_lib/api-client';
@@ -23,6 +23,7 @@ const SERVICE_ICONS: Record<string, React.ElementType> = {
   'AI Providers': Zap,
   'Memory': Cpu,
   'Application': Activity,
+  'Client addresses': Network,
 };
 
 const SERVICE_MONITORING_INFO: Record<string, { what: string; how: string; thresholds: string }> = {
@@ -50,6 +51,11 @@ const SERVICE_MONITORING_INFO: Record<string, { what: string; how: string; thres
     what: 'Application uptime and system information',
     how: 'Reports process uptime and Node.js version',
     thresholds: 'Always healthy - informational only',
+  },
+  'Client addresses': {
+    what: 'Where client addresses for per-client rate limits come from (CLIENT_IP_SOURCE)',
+    how: 'Reads the setting, and what requests to this server showed about the proxies in front. No network calls.',
+    thresholds: 'Healthy: requests match the setting | Degraded: setting is none or not valid, or requests in the last day did not match it',
   },
 };
 

@@ -120,10 +120,17 @@ describe('checkPublicAccess', () => {
     expect(checkPublicAccess(client, settings)).toBeNull();
   });
 
-  it("doesn't count every client as one when there is no trusted address: the per-client limit steps aside, the daily total still applies", () => {
-    const settings = access({ perMinute: 1, perDay: 3 });
+  it('counts requests with no trusted address together at ten times the per-client limit; addressed clients keep their own count', () => {
+    const settings = access({ perMinute: 1 });
     // No X-Forwarded-For at all (and an X-Real-IP a client can write is not trusted)
     expect(checkPublicAccess(request({ 'X-Real-IP': '1.1.1.1' }), settings)).toBeNull();
+    for (let i = 1; i < 10; i++) expect(checkPublicAccess(request({}), settings)).toBeNull();
+    expect(checkPublicAccess(request({ 'X-Real-IP': '2.2.2.2' }), settings)?.status).toBe(429);
+    expect(checkPublicAccess(request({ 'X-Forwarded-For': '3.3.3.3' }), settings)).toBeNull();
+  });
+
+  it('applies the daily total to requests with no trusted address too', () => {
+    const settings = access({ perMinute: 10, perDay: 2 });
     expect(checkPublicAccess(request({}), settings)).toBeNull();
     expect(checkPublicAccess(request({}), settings)).toBeNull();
     expect(checkPublicAccess(request({}), settings)?.status).toBe(429);

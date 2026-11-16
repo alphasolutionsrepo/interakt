@@ -9,6 +9,7 @@
 import { db } from '@/db/index';
 import { sql } from 'drizzle-orm';
 import { getDefaultSearchEngineProvider } from '@/features/search/providers';
+import { clientAddressSetup, SHARED_LIMIT_FACTOR, type ClientAddressSetup } from '@/shared/api/client-ip';
 import { createLogger } from '@/shared/logger/logger';
 import * as aiProvidersRepo from '@/features/ai-providers/ai-providers.repository';
 import { aiProvidersConfig, elasticsearchConfig, getProviderHealthConfig, type StatusPageResponse } from '@/config';
@@ -23,6 +24,8 @@ export interface ServiceHealth {
   responseTime: number;
   message?: string;
   details?: Record<string, unknown>;
+  /** What the home page asks the admin to do when this isn't healthy (default: "<name> is degraded") */
+  task?: string;
   lastChecked: Date;
 }
 
@@ -460,6 +463,49 @@ export async function checkSystemUptime(): Promise<ServiceHealth> {
   }
 }
 
+/** What each client-address problem means, and what to do about it */
+function clientAddressMessage(setup: ClientAddressSetup): string {
+  const shared = `Until it is fixed, those requests share one rate-limit count at ${SHARED_LIMIT_FACTOR}× the per-client limit.`;
+  const proxies = setup.source.startsWith('forwarded-for:') ? Number(setup.source.split(':')[1]) : 0;
+  switch (setup.problem) {
+    case 'none':
+      return `CLIENT_IP_SOURCE is none: nothing is in front of Interakt, so client addresses aren't known. Not recommended for production: put a reverse proxy or gateway in front and set CLIENT_IP_SOURCE to match. ${shared}`;
+    case 'invalid-setting':
+      return `CLIENT_IP_SOURCE isn't a value Interakt understands, so no client address is trusted. Set it to forwarded-for:<proxies>, header:<name> or none. ${shared}`;
+    case 'short-list':
+      return `Requests are arriving with fewer X-Forwarded-For entries than the proxies CLIENT_IP_SOURCE expects in front (${proxies}). Check how many proxies are in front and set forwarded-for to that number. ${shared}`;
+    case 'not-an-address':
+      return `The place CLIENT_IP_SOURCE (${setup.source}) points to holds something that isn't an IP address. Check that the setting matches what is in front of Interakt. ${shared}`;
+    default:
+      return setup.trustedRequests > 0
+        ? `Client addresses are read from what is in front of Interakt (${setup.source}).`
+        : `Client addresses will be read from what is in front of Interakt (${setup.source}); no requests have needed one yet.`;
+  }
+}
+
+/**
+ * Check how client addresses are read, for per-client rate limits (CLIENT_IP_SOURCE).
+ * Degraded when the setting is none or not valid, or when requests in the last day showed
+ * the proxies in front don't match it. What this server saw only: no network calls.
+ */
+export async function checkClientAddressHealth(): Promise<ServiceHealth> {
+  const setup = clientAddressSetup();
+  return {
+    name: 'Client addresses',
+    status: setup.problem ? 'degraded' : 'healthy',
+    responseTime: 0,
+    message: clientAddressMessage(setup),
+    details: {
+      setting: setup.source,
+      requestsWithAddress: setup.trustedRequests,
+      requestsWithoutAddress: setup.untrustedRequests,
+      ...(setup.problemSeenAt ? { problemLastSeen: setup.problemSeenAt } : {}),
+    },
+    ...(setup.problem ? { task: 'Check how client addresses are read' } : {}),
+    lastChecked: new Date(),
+  };
+}
+
 // ============================================================================
 // Main Health Check
 // ============================================================================
@@ -472,19 +518,21 @@ export async function checkSystemHealth(): Promise<SystemHealth> {
 
   try {
     // Run all health checks in parallel
-    // Only check external dependencies (Database, Elasticsearch, AI Providers)
+    // External dependencies (Database, Elasticsearch, AI Providers) and the client-address setup
     // Exclude Memory and Uptime as they are not meaningful in serverless environments
     const [
       dbHealth,
       esHealth,
       aiHealth,
+      clientAddresses,
     ] = await Promise.all([
       checkDatabaseHealth(),
       checkElasticsearchHealth(),
       checkAIProvidersHealth(),
+      checkClientAddressHealth(),
     ]);
 
-    const services = [dbHealth, esHealth, aiHealth];
+    const services = [dbHealth, esHealth, aiHealth, clientAddresses];
 
     // Determine overall status
     const hasUnhealthy = services.some(s => s.status === 'unhealthy');

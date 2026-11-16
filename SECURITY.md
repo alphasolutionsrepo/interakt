@@ -51,9 +51,11 @@ these are your responsibility to set correctly, not defaults to ship to producti
   `forwarded-for:1` for one proxy such as a hosting platform's ingress (the default),
   `forwarded-for:2` with a CDN or gateway in front of that, `header:<name>` for an edge that
   sends the client's address in a header of its own (such as `X-Azure-SocketIP` or
-  `CF-Connecting-IP`), or `none` when nothing is in front. With a CDN or gateway, accept
-  traffic to the app only from it (for Azure Front Door, check `X-Azure-FDID`); otherwise a
-  caller can skip it and choose its own address.
+  `CF-Connecting-IP`), or `none` when nothing is in front (not recommended for production).
+  With a CDN or gateway, accept traffic to the app only from it (for Azure Front Door, check
+  `X-Azure-FDID`); otherwise a caller can skip it and choose its own address. Requests with no
+  trusted address share one count at 10× the per-client limit, and Health shows when the
+  setting doesn't match what requests show.
 - **Transport.** Terminate TLS in front of the app and never disable certificate validation
   (`NODE_TLS_REJECT_UNAUTHORIZED=0`) outside of local development.
 

@@ -18,7 +18,7 @@ import 'server-only';
 import { createHash } from 'crypto';
 
 import type { NextRequest, NextResponse } from 'next/server';
-import { clientIp } from '@/shared/api/client-ip';
+import { clientKey, type ClientKey } from '@/shared/api/client-ip';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { parseKey, verifyIngestionKey } from './ingestion-key.service';
@@ -60,9 +60,9 @@ function extractBearer(request: NextRequest): string | null {
  * hash they only spend their own.
  *
  * Session requests fall back to the client IP — the admin UI is low-volume, and
- * resolving a session is async. With no trusted address they aren't counted here (null).
+ * resolving a session is async. Without a trusted address they share one count (clientKey).
  */
-export function ingestionRateLimitKey(request: NextRequest): string | null {
+export function ingestionRateLimitKey(request: NextRequest): string | ClientKey {
     const presented = extractBearer(request);
     const parsed = presented ? parseKey(presented) : null;
 
@@ -71,8 +71,8 @@ export function ingestionRateLimitKey(request: NextRequest): string | null {
         return `key:${parsed.keyPrefix}:${fingerprint}`;
     }
 
-    const address = clientIp(request);
-    return address ? `ip:${address}` : null;
+    const client = clientKey(request);
+    return client.shared ? { ...client, key: `ip:${client.key}` } : `ip:${client.key}`;
 }
 
 /**

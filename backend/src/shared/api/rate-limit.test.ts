@@ -52,10 +52,25 @@ describe('withRateLimit', () => {
     expect((await limited(req())).status).toBe(429);
   });
 
-  it('leaves a request with no trusted address to the handler, without counting it or adding headers', async () => {
+  it('counts requests with no trusted address together, at ten times the limit, apart from addressed clients', async () => {
     rateLimiter.clear();
-    const handler = vi.fn(async (_request: NextRequest) => NextResponse.json({ ok: true }));
-    const limited = withRateLimit(handler, { maxRequests: 1 });
+    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
+    const unaddressed = () => limited(new NextRequest('http://localhost/api/x'));
+    for (let i = 0; i < 10; i++) {
+      const response = await unaddressed();
+      expect(response.status).toBe(200);
+      expect(response.headers.get('X-RateLimit-Limit')).toBe('10');
+    }
+    const refused = await unaddressed();
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get('X-RateLimit-Limit')).toBe('10');
+    // A client with a trusted address keeps its own count
+    expect((await limited(new NextRequest('http://localhost/api/x', { headers: { 'X-Forwarded-For': '1.1.1.1' } }))).status).toBe(200);
+  });
+
+  it('leaves a request to the handler, uncounted and without headers, when the key function answers null', async () => {
+    rateLimiter.clear();
+    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1, keyFn: () => null });
     const req = () => new NextRequest('http://localhost/api/x');
     expect((await limited(req())).status).toBe(200);
     const second = await limited(req());

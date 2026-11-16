@@ -7,7 +7,7 @@ vi.mock('@/shared/logger/logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() }),
 }));
 
-import { clientIp, resetClientIpWarnings } from './client-ip';
+import { clientIp, clientKey, limitFor, resetClientIpWarnings } from './client-ip';
 
 function request(headers: Record<string, string> | Headers) {
   return { headers: headers instanceof Headers ? headers : new Headers(headers) };
@@ -59,11 +59,11 @@ describe('clientIp with the default source (one proxy, as on most hosting platfo
     expect(clientIp(request({ 'X-Client-IP': '[not-an-ip]:1' }))).toBeNull();
   });
 
-  it('warns once that no proxy seems to be in front when requests arrive without X-Forwarded-For', () => {
-    clientIp(request({}));
+  it('has no address, and warns once, when a request arrives without X-Forwarded-For (fewer entries than proxies)', () => {
+    expect(clientIp(request({}))).toBeNull();
     clientIp(request({}));
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toMatch(/CLIENT_IP_SOURCE/);
+    expect(warn.mock.calls[0][0]).toMatch(/fewer X-Forwarded-For entries/);
   });
 });
 
@@ -73,9 +73,12 @@ describe('clientIp with TRUSTED_PROXY_HOPS (the earlier setting, still honoured)
     expect(clientIp(request({ 'X-Forwarded-For': '1.1.1.1, 9.9.9.9, 10.0.0.1' }))).toBe('9.9.9.9');
   });
 
-  it('has no address when there are fewer entries than proxies (a proxy was skipped)', () => {
+  it('has no address, and warns once, when there are fewer entries than proxies (a proxy was skipped)', () => {
     vi.stubEnv('TRUSTED_PROXY_HOPS', '2');
     expect(clientIp(request({ 'X-Forwarded-For': '9.9.9.9' }))).toBeNull();
+    expect(clientIp(request({ 'X-Forwarded-For': '8.8.8.8' }))).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/fewer X-Forwarded-For entries/);
   });
 
   it('uses one proxy, and warns once, when it is not a whole number from 1', () => {
@@ -125,5 +128,29 @@ describe('clientIp with CLIENT_IP_SOURCE', () => {
     }
     expect(warn).toHaveBeenCalledTimes(5);
     expect(JSON.stringify(warn.mock.calls)).not.toContain('bad name');
+  });
+});
+
+describe('clientKey (what per-client rate limits count by)', () => {
+  it('is the trusted address, held to the per-client limit', () => {
+    const key = clientKey(request({ 'X-Forwarded-For': '1.1.1.1, 9.9.9.9' }));
+    expect(key).toEqual({ key: '9.9.9.9', shared: false });
+    expect(limitFor(key, 5)).toBe(5);
+  });
+
+  it('is one shared key at ten times the limit for every request without a trusted address', () => {
+    vi.stubEnv('CLIENT_IP_SOURCE', 'forwarded-for:2');
+    const missing = clientKey(request({}));
+    const short = clientKey(request({ 'X-Forwarded-For': '9.9.9.9' }));
+    const notAnAddress = clientKey(request({ 'X-Forwarded-For': 'evil, proxy' }));
+    expect(missing).toEqual({ key: 'no-trusted-address', shared: true });
+    expect(short).toEqual(missing);
+    expect(notAnAddress).toEqual(missing);
+    expect(limitFor(missing, 5)).toBe(50);
+  });
+
+  it('is shared with CLIENT_IP_SOURCE=none, whatever the client sends', () => {
+    vi.stubEnv('CLIENT_IP_SOURCE', 'none');
+    expect(clientKey(request({ 'X-Forwarded-For': '9.9.9.9' }))).toEqual({ key: 'no-trusted-address', shared: true });
   });
 });

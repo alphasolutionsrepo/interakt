@@ -18,8 +18,9 @@
  *   none             Nothing in front: every header is the client's own, so there is no
  *                    trusted address and nothing is decided by address.
  *
- * Answers null when there is no trusted address (missing, fewer entries than proxies, not
- * an IP address, or `none`); callers then leave the address out rather than share one value.
+ * clientIp answers null when there is no trusted address (missing, fewer entries than
+ * proxies, not an IP address, or `none`). Rate limits use clientKey instead: requests without
+ * a trusted address share one count at a higher limit, so a limit never switches off.
  */
 
 import { isIP } from 'node:net';
@@ -30,7 +31,10 @@ import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('client-ip');
 
-type Source = { kind: 'forwarded-for'; hops: number } | { kind: 'header'; name: string } | { kind: 'none' };
+type Source =
+  | { kind: 'forwarded-for'; hops: number }
+  | { kind: 'header'; name: string }
+  | { kind: 'none'; invalid?: true };
 
 // HTTP header names: letters, digits and a few symbols
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -77,7 +81,7 @@ function source(): Source {
       break;
   }
   warnOnce(`source:${setting}`, 'CLIENT_IP_SOURCE must be none, forwarded-for:<proxies> or header:<name>; no client address is trusted until it is fixed');
-  return { kind: 'none' };
+  return { kind: 'none', invalid: true };
 }
 
 // An address with the port some platforms add: 1.2.3.4:5678 or [2001:db8::1]:5678
@@ -99,18 +103,95 @@ function ipOrNull(value: string | undefined): string | null {
 export function clientIp(request: Pick<NextRequest, 'headers'>): string | null {
   const from = source();
   if (from.kind === 'none') return null;
-  if (from.kind === 'header') return ipOrNull(request.headers.get(from.name) ?? undefined);
+  if (from.kind === 'header') return seen(ipOrNull(request.headers.get(from.name) ?? undefined), 'not-an-address');
 
   // All X-Forwarded-For headers of the request read as one list (Headers joins them)
   const forwarded = (request.headers.get('x-forwarded-for') ?? '')
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
-  if (forwarded.length === 0) {
-    warnOnce('no-forwarded-for', 'A request arrived without X-Forwarded-For although CLIENT_IP_SOURCE expects a proxy in front; if nothing is in front, set CLIENT_IP_SOURCE=none');
-    return null;
+  // Fewer entries than proxies (none at all included): a proxy was skipped or isn't there, so
+  // the entry there isn't one we added. Next.js fills in an empty header with the connection's
+  // address, so a request reaching it directly usually has one entry.
+  if (forwarded.length < from.hops) {
+    warnOnce('short-forwarded-for', 'A request arrived with fewer X-Forwarded-For entries than the proxies CLIENT_IP_SOURCE expects in front; check how many proxies there are');
+    return seen(null, 'short-list');
   }
-  // Fewer entries than proxies: a proxy was skipped, so the entry there isn't one we added
-  if (forwarded.length < from.hops) return null;
-  return ipOrNull(forwarded[forwarded.length - from.hops]);
+  return seen(ipOrNull(forwarded[forwarded.length - from.hops]), 'not-an-address');
+}
+
+// ============================================================================
+// SETUP STATUS (shown to admins on Health and the home page)
+// ============================================================================
+
+/** What requests showed about the setup: too few X-Forwarded-For entries, or no IP where one should be */
+type SeenProblem = 'short-list' | 'not-an-address';
+
+/** A problem seen this long ago or longer no longer counts */
+const PROBLEM_WINDOW_MS = 24 * 60 * 60_000;
+
+const counts = { trusted: 0, untrusted: 0 };
+let lastProblem: { kind: SeenProblem; at: number } | null = null;
+
+function seen(address: string | null, problem: SeenProblem): string | null {
+  if (address) {
+    counts.trusted++;
+  } else {
+    counts.untrusted++;
+    lastProblem = { kind: problem, at: Date.now() };
+  }
+  return address;
+}
+
+export interface ClientAddressSetup {
+  /** The setting in use, e.g. forwarded-for:1 (the setting itself when it isn't valid is not shown) */
+  source: string;
+  /** What is wrong, if anything: a setting, or what requests in the last day showed */
+  problem: null | 'none' | 'invalid-setting' | SeenProblem;
+  /** Requests with and without a trusted address since this server started */
+  trustedRequests: number;
+  untrustedRequests: number;
+  /** When requests last showed the problem */
+  problemSeenAt?: string;
+}
+
+/** How this server reads client addresses, and whether requests show it is set up right. */
+export function clientAddressSetup(now: number = Date.now()): ClientAddressSetup {
+  const from = source();
+  const base = { trustedRequests: counts.trusted, untrustedRequests: counts.untrusted };
+  if (from.kind === 'none') return { ...base, source: 'none', problem: from.invalid ? 'invalid-setting' : 'none' };
+  const described = from.kind === 'header' ? `header:${from.name}` : `forwarded-for:${from.hops}`;
+  if (lastProblem && now - lastProblem.at < PROBLEM_WINDOW_MS) {
+    return { ...base, source: described, problem: lastProblem.kind, problemSeenAt: new Date(lastProblem.at).toISOString() };
+  }
+  return { ...base, source: described, problem: null };
+}
+
+/** Forget the requests seen (for tests). */
+export function resetClientAddressSetup(): void {
+  counts.trusted = 0;
+  counts.untrusted = 0;
+  lastProblem = null;
+}
+
+/**
+ * Requests without a trusted address share one count, at this many times the per-client limit:
+ * the limit still holds, and one caller can't use up the count for everyone at normal traffic.
+ */
+export const SHARED_LIMIT_FACTOR = 10;
+
+/** Who a request is counted as by a per-client limit; `shared` when it has no trusted address. */
+export interface ClientKey {
+  key: string;
+  shared: boolean;
+}
+
+export function clientKey(request: Pick<NextRequest, 'headers'>): ClientKey {
+  const address = clientIp(request);
+  return address ? { key: address, shared: false } : { key: 'no-trusted-address', shared: true };
+}
+
+/** The limit a key is held to: the per-client limit, or SHARED_LIMIT_FACTOR times it when shared. */
+export function limitFor({ shared }: ClientKey, perClient: number): number {
+  return shared ? perClient * SHARED_LIMIT_FACTOR : perClient;
 }

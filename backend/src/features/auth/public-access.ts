@@ -19,7 +19,7 @@ import 'server-only';
 
 import type { NextRequest, NextResponse } from 'next/server';
 
-import { clientIp } from '@/shared/api/client-ip';
+import { clientKey, limitFor } from '@/shared/api/client-ip';
 import { rateLimiter } from '@/shared/api/rate-limit';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
@@ -176,12 +176,10 @@ export function checkPublicAccess(
 
   if (options.setup) return null;
 
-  // No trusted address: the per-client limit can't tell clients apart, so it steps aside
-  // rather than count every client as one (the daily total still applies)
-  const client = clientIp(request);
-  let retryAfter: number | undefined;
+  // Requests without a trusted address share one count at a higher limit (see clientKey)
+  const client = clientKey(request);
+  let { retryAfter } = rateLimiter.check(`${scope}:${client.key}:minute`, limitFor(client, policy.perMinute), MINUTE);
   let limit = 'per-minute';
-  if (client) ({ retryAfter } = rateLimiter.check(`${scope}:${client}:minute`, policy.perMinute, MINUTE));
   // The daily total is checked only for requests the per-client limit lets through.
   if (!retryAfter && policy.perDay) {
     ({ retryAfter } = rateLimiter.check(`${scope}:day`, policy.perDay, DAY));
@@ -189,7 +187,7 @@ export function checkPublicAccess(
   }
 
   if (retryAfter) {
-    logger.warn(limit === 'daily' ? 'Daily total reached' : 'Rate limit exceeded', { scope, client, retryAfter });
+    logger.warn(limit === 'daily' ? 'Daily total reached' : 'Rate limit exceeded', { scope, client: client.key, retryAfter });
     return apiResponse.tooManyRequests(retryAfter);
   }
   return null;
