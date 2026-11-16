@@ -29,7 +29,8 @@ const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 let testDb: AppTestDb;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
-vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => null }));
+const signedIn = vi.hoisted(() => ({ session: null as { user: { id: string } } | null }));
+vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => signedIn.session }));
 
 import { createIngestionKey, revokeIngestionKey } from './ingestion-key.service';
 
@@ -38,6 +39,8 @@ import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/de
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import { globalSearchSettings } from '@/db/schema/global-search-settings.schema';
 import { searchIndex } from '@/db/schema/search-index.schema';
+import { user } from '@/db/schema/users.schema';
+import { ADMIN_ROLE_ID } from '@/features/access/permissions';
 import { clearFeatureSwitchCache } from '@/features/feature-switches/feature-switches.service';
 import { updateFeaturesOff } from '@/features/global-settings';
 import { clientLabel } from '@/shared/api/client-ip';
@@ -65,7 +68,7 @@ beforeEach(async () => {
 async function send(route: unknown, method: string, path: string, key: string, address: string | null, indexId = index.id): Promise<Answer> {
   const req = new NextRequest(`http://localhost/api/search-indexes/${indexId}/documents${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, ...(address && { 'X-Forwarded-For': address }) },
+    headers: { 'Content-Type': 'application/json', ...(key && { Authorization: `Bearer ${key}` }), ...(address && { 'X-Forwarded-For': address }) },
     ...(method === 'POST' && { body: '{"dryRun":true}' }),
   });
   const res = await (route as Route)(req, { params: Promise.resolve({ id: indexId }) });
@@ -243,6 +246,25 @@ describe('a real key', () => {
     lookups.count = 0;
     await deleteByFilter(realKey, '6.6.6.6');
     expect(lookups.count).toBe(1);
+  });
+});
+
+describe('a signed-in admin (no key)', () => {
+  it('is counted by address with the route limit, apart from the failed-check count', async () => {
+    const [admin] = await testDb.db.insert(user).values({ email: `rl${n}@x.test`, roleId: ADMIN_ROLE_ID, isActive: true, firstName: 'A' }).returning();
+    signedIn.session = { user: { id: admin.id } };
+    try {
+      for (let i = 0; i < 20; i++) {
+        const res = await deleteByFilter('', '6.6.6.1');
+        expect(res.status).not.toBe(429);
+        expect(res.limit).toBe('20');
+      }
+      expect((await deleteByFilter('', '6.6.6.1')).status).toBe(429);
+    } finally {
+      signedIn.session = null;
+    }
+    // The address has used no failed key checks
+    expect((await list('ik_0badc0de_nope', '6.6.6.1')).status).toBe(401);
   });
 });
 
