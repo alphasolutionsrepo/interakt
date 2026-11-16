@@ -44,6 +44,14 @@ describe('withRateLimit', () => {
     expect((await from('10.0.0.2, 6.6.6.6')).status).toBe(200);
   });
 
+  it('counts by a key function that answers asynchronously', async () => {
+    rateLimiter.clear();
+    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1, keyFn: async () => 'k' });
+    const req = () => new NextRequest('http://localhost/api/x');
+    expect((await limited(req())).status).toBe(200);
+    expect((await limited(req())).status).toBe(429);
+  });
+
   it('leaves a request with no trusted address to the handler, without counting it or adding headers', async () => {
     rateLimiter.clear();
     const handler = vi.fn(async (_request: NextRequest) => NextResponse.json({ ok: true }));

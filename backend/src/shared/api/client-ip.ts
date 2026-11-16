@@ -80,9 +80,20 @@ function source(): Source {
   return { kind: 'none' };
 }
 
+// An address with the port some platforms add: 1.2.3.4:5678 or [2001:db8::1]:5678
+const IPV4_WITH_PORT = /^(\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}$/;
+const BRACKETED_IPV6 = /^\[([^\]]+)\](?::\d{1,5})?$/;
+
+/** The IP address in an entry, without a port; null for anything else. */
 function ipOrNull(value: string | undefined): string | null {
-  const address = value?.trim();
-  return address && isIP(address) ? address : null;
+  const entry = value?.trim();
+  if (!entry) return null;
+  if (isIP(entry)) return entry;
+  const v4 = IPV4_WITH_PORT.exec(entry)?.[1];
+  if (v4 && isIP(v4) === 4) return v4;
+  const v6 = BRACKETED_IPV6.exec(entry)?.[1];
+  if (v6 && isIP(v6) === 6) return v6;
+  return null;
 }
 
 export function clientIp(request: Pick<NextRequest, 'headers'>): string | null {

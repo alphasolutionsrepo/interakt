@@ -48,6 +48,17 @@ describe('clientIp with the default source (one proxy, as on most hosting platfo
     expect(clientIp(request({ 'X-Forwarded-For': '2001:db8::1' }))).toBe('2001:db8::1');
   });
 
+  it('drops the port some platforms add to the address (ip:port, [ipv6]:port)', () => {
+    expect(clientIp(request({ 'X-Forwarded-For': '1.1.1.1, 9.9.9.9:54321' }))).toBe('9.9.9.9');
+    expect(clientIp(request({ 'X-Forwarded-For': '[2001:db8::1]:443' }))).toBe('2001:db8::1');
+    expect(clientIp(request({ 'X-Forwarded-For': '[2001:db8::1]' }))).toBe('2001:db8::1');
+    vi.stubEnv('CLIENT_IP_SOURCE', 'header:X-Client-IP');
+    expect(clientIp(request({ 'X-Client-IP': '9.9.9.9:1234' }))).toBe('9.9.9.9');
+    // Not an address with a port
+    expect(clientIp(request({ 'X-Client-IP': '9.9.9.9:port' }))).toBeNull();
+    expect(clientIp(request({ 'X-Client-IP': '[not-an-ip]:1' }))).toBeNull();
+  });
+
   it('warns once that no proxy seems to be in front when requests arrive without X-Forwarded-For', () => {
     clientIp(request({}));
     clientIp(request({}));
