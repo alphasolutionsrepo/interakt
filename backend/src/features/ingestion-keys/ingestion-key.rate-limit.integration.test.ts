@@ -15,21 +15,18 @@ import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const lookups = vi.hoisted(() => ({ count: 0, fails: false, running: 0, maxRunning: 0 }));
+const lookups = vi.hoisted(() => ({ count: 0, fails: false, hang: new Set<string>(), release: [] as (() => void)[] }));
 vi.mock('./ingestion-key.repository', async (original) => {
   const real = await original<typeof import('./ingestion-key.repository')>();
   return {
     ...real,
     getByPrefix: async (prefix: string) => {
       lookups.count++;
-      lookups.maxRunning = Math.max(lookups.maxRunning, ++lookups.running);
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 1));
-        if (lookups.fails) throw new Error('database down');
-        return await real.getByPrefix(prefix);
-      } finally {
-        lookups.running--;
-      }
+      // A lookup that hangs until the test releases it (a slow database)
+      if (lookups.hang.has(prefix)) await new Promise<void>((resolve) => lookups.release.push(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      if (lookups.fails) throw new Error('database down');
+      return real.getByPrefix(prefix);
     },
   };
 });
@@ -111,13 +108,31 @@ describe('failed key checks', () => {
     expect(lookups.count).toBe(1);
   });
 
-  it('hold for different wrong keys sent in parallel: at most 20 lookups run at once for a client', async () => {
-    lookups.maxRunning = 0;
+  it('hold for different wrong keys sent in parallel: 20 answered 401, the rest 429', async () => {
     const answers = await Promise.all(Array.from({ length: 30 }, (_, i) => list(`ik_${String(i).padStart(8, '0')}_nope`, '1.1.1.13')));
     const statuses = answers.map((a) => a.status);
     expect(statuses.filter((s) => s === 401)).toHaveLength(20);
     expect(statuses.filter((s) => s === 429)).toHaveLength(10);
-    expect(lookups.maxRunning).toBeLessThanOrEqual(20);
+  });
+
+  it("don't make a live key wait for other lookups from its address, even ones that hang", async () => {
+    const wrong = Array.from({ length: 25 }, (_, i) => `ik_${String(i).padStart(8, '0')}_nope`);
+    for (const key of wrong) lookups.hang.add(key.split('_').slice(0, 2).join('_'));
+    const stuck = wrong.map((key) => list(key, '1.1.1.14'));
+    try {
+      // Until at least 20 of them are inside a lookup that hangs
+      while (lookups.release.length < 20) await new Promise((resolve) => setTimeout(resolve, 5));
+      const live = await Promise.race([
+        deleteByFilter(realKey, '1.1.1.14'),
+        new Promise<'waited'>((resolve) => setTimeout(() => resolve('waited'), 500)),
+      ]);
+      expect(live).not.toBe('waited');
+      expect((live as Answer).status).not.toBe(429);
+    } finally {
+      lookups.hang.clear();
+      for (const release of lookups.release.splice(0)) release();
+      await Promise.all(stuck);
+    }
   });
 
   it("let a server's own parallel requests through: they wait for lookups, they aren't refused", async () => {

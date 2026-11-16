@@ -62,17 +62,18 @@ type Identity = IngestionAuthResult | { success: false; throttled: { retryAfter:
 // check and the handler (they all get the same request object)
 const identities = new WeakMap<object, Promise<Identity>>();
 
-// Key lookups in flight per client, so a burst of requests runs at most FAILED_KEY_CHECKS
-// lookups at once for one client (the rest wait their turn)
-const inFlight = new Map<string, Set<Promise<unknown>>>();
-
 /**
  * Which key the request presents, looked up once per request (see identifyIngestionKey for its
- * cache). A live key is never held back by its client's failed checks: it is counted on its own
- * limit. A failed check (no such key, wrong secret, revoked or expired) is counted per client;
- * past FAILED_KEY_CHECKS in the window it is answered 429 instead of 401. At most that many
- * lookups run at once for a client; requests past that wait for one to finish. Requests without
- * a trusted address share one count at a higher limit (see clientKey).
+ * cache). A live key is counted only on its own limit, so it is never held back by other
+ * requests from the same client. A failed check (no such key, wrong secret, revoked or expired)
+ * is counted per client; past FAILED_KEY_CHECKS in the window it is answered 429 instead of 401.
+ * Requests without a trusted address share one count at a higher limit (see clientKey).
+ *
+ * Every request is looked up as it arrives, with no per-client queue: a queue would make a live
+ * key wait behind other requests from its address, which is the outcome this design avoids. The
+ * load is kept down elsewhere: the same key sent again, or many times at once, costs one database
+ * read (the lookup cache); reads across all clients are bounded by the database connection pool;
+ * request volume is limited at the edge, in front of the app.
  */
 function identify(request: NextRequest, presented: string): Promise<Identity> {
     let identity = identities.get(request);
@@ -82,22 +83,7 @@ function identify(request: NextRequest, presented: string): Promise<Identity> {
             const failures = `ingestion-key-failures:${client.key}`;
             const maxRequests = limitFor(client, FAILED_KEY_CHECKS.maxRequests);
             const { windowMs } = FAILED_KEY_CHECKS;
-            for (;;) {
-                const running = inFlight.get(failures);
-                if (!running || running.size < maxRequests) break;
-                await Promise.race(running).catch(() => undefined);
-            }
-            const lookup = identifyIngestionKey(presented);
-            const running = inFlight.get(failures) ?? new Set<Promise<unknown>>();
-            inFlight.set(failures, running);
-            running.add(lookup);
-            let result: IngestionAuthResult;
-            try {
-                result = await lookup;
-            } finally {
-                running.delete(lookup);
-                if (running.size === 0) inFlight.delete(failures);
-            }
+            const result = await identifyIngestionKey(presented);
             if (isIngestionAuthFailure(result) || !isKeyLive(result.key)) {
                 const counted = rateLimiter.check(failures, maxRequests, windowMs);
                 if (!counted.allowed) return { success: false, throttled: { retryAfter: counted.retryAfter ?? 60 } };
