@@ -20,6 +20,7 @@ import type {
     IngestionOperation,
 } from './ingestion-key.types';
 
+import { memoryCacheStore } from '@/shared/cache/cache-store';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ingestion-key-service');
@@ -216,6 +217,29 @@ export function toSummary(key: IngestionKeyWithIndexes): IngestionKeySummary {
 /**
  * Mint a key. The plaintext is returned once and never stored.
  */
+// ============================================================================
+// KEY LOOKUP CACHE
+// ============================================================================
+
+/**
+ * How long a key looked up by its prefix (or "no such key") is reused. A server sending the
+ * same key, right or wrong, costs one database read per window. The secret is still checked
+ * on every request, and revoked / expired are judged from the row at the time of use.
+ * Creating or revoking a key drops its entry at once, on this server.
+ */
+export const KEY_LOOKUP_TTL_MS = 10_000;
+
+const keysByPrefix = memoryCacheStore<IngestionKeyWithIndexes | null>('ingestion-keys', { maxSize: 10_000 });
+
+function keyByPrefix(keyPrefix: string): Promise<IngestionKeyWithIndexes | null> {
+    return keysByPrefix.getOrSet(keyPrefix, () => repository.getByPrefix(keyPrefix), KEY_LOOKUP_TTL_MS);
+}
+
+/** Forget every cached key lookup (tests). */
+export function clearKeyLookupCache(): Promise<void> {
+    return keysByPrefix.clear();
+}
+
 export async function createIngestionKey(input: {
     name: string;
     operations: IngestionOperation[];
@@ -234,6 +258,8 @@ export async function createIngestionKey(input: {
         expiresAt: input.expiresAt,
         createdBy: input.createdBy,
     });
+    // A lookup of this prefix just before (cached as "no such key") must not refuse the new key
+    await keysByPrefix.delete(key.keyPrefix);
 
     return {
         key: toSummary(key),
@@ -257,7 +283,9 @@ export async function revokeIngestionKey(
     searchIndexId: string
 ): Promise<IngestionKeySummary | null> {
     const revoked = await repository.revoke(keyId, searchIndexId);
-    return revoked ? toSummary(revoked) : null;
+    if (!revoked) return null;
+    await keysByPrefix.delete(revoked.keyPrefix);
+    return toSummary(revoked);
 }
 
 // ============================================================================
@@ -266,7 +294,8 @@ export async function revokeIngestionKey(
 
 /**
  * Which key was presented: the stored key when the secret matches, whatever its state
- * (revoked, expired, scope are checked by evaluateKeyAccess). One database read.
+ * (revoked, expired, scope are checked by evaluateKeyAccess). At most one database read
+ * (see KEY_LOOKUP_TTL_MS).
  */
 export async function identifyIngestionKey(presented: string): Promise<IngestionAuthResult> {
     const parsed = parseKey(presented);
@@ -274,7 +303,7 @@ export async function identifyIngestionKey(presented: string): Promise<Ingestion
         return { success: false, reason: 'malformed' };
     }
 
-    const key = await repository.getByPrefix(parsed.keyPrefix);
+    const key = await keyByPrefix(parsed.keyPrefix);
     if (!key) {
         return { success: false, reason: 'unknown' };
     }

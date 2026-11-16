@@ -3,8 +3,8 @@
 /**
  * Rate limits for servers calling the document routes with an ingestion key, through the real
  * routes, gates and keys on a real Postgres (PGlite, all migrations):
- *  - failed key checks are counted per address across the document routes (reads included),
- *    and an address over the limit is refused before its key is looked up;
+ *  - failed key checks are counted per address across the document routes (reads included);
+ *    past the limit a wrong key gets 429, and a live key still goes through;
  *  - a real key is counted on its own, per route, whatever other callers send;
  *  - the answers are the same whether Managed indexes is on or off;
  *  - a request's key is looked up once, however many checks ask for it.
@@ -15,15 +15,21 @@ import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const lookups = vi.hoisted(() => ({ count: 0, fails: false }));
+const lookups = vi.hoisted(() => ({ count: 0, fails: false, running: 0, maxRunning: 0 }));
 vi.mock('./ingestion-key.repository', async (original) => {
   const real = await original<typeof import('./ingestion-key.repository')>();
   return {
     ...real,
     getByPrefix: async (prefix: string) => {
       lookups.count++;
-      if (lookups.fails) throw new Error('database down');
-      return real.getByPrefix(prefix);
+      lookups.maxRunning = Math.max(lookups.maxRunning, ++lookups.running);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        if (lookups.fails) throw new Error('database down');
+        return await real.getByPrefix(prefix);
+      } finally {
+        lookups.running--;
+      }
     },
   };
 });
@@ -37,7 +43,7 @@ vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
 const signedIn = vi.hoisted(() => ({ session: null as { user: { id: string } } | null }));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => signedIn.session }));
 
-import { createIngestionKey, revokeIngestionKey } from './ingestion-key.service';
+import { clearKeyLookupCache, createIngestionKey, revokeIngestionKey } from './ingestion-key.service';
 
 import * as documentRoute from '@/app/api/search-indexes/[id]/documents/[documentId]/route';
 import * as bulkRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
@@ -65,6 +71,7 @@ beforeAll(async () => { testDb = await createAppTestDb(); }, 60_000);
 afterAll(async () => { await testDb.close(); });
 beforeEach(async () => {
   rateLimiter.clear();
+  await clearKeyLookupCache();
   await testDb.db.delete(globalSearchSettings);
   clearFeatureSwitchCache();
   [index] = await testDb.db.insert(searchIndex).values({ name: `limits-${++n}`, displayName: 'Limits', searchType: 'lexical' }).returning();
@@ -95,13 +102,22 @@ describe('failed key checks', () => {
     expect(Number(refused.retryAfter)).toBeGreaterThan(0);
   });
 
-  it('hold for attempts sent in parallel: only 20 get a key lookup, the rest 429', async () => {
+  it('hold for the same wrong key sent in parallel: 20 answered 401, the rest 429, one database read', async () => {
     lookups.count = 0;
     const answers = await Promise.all(Array.from({ length: 30 }, () => list('ik_0badc0de_nope', '1.1.1.8')));
     const statuses = answers.map((a) => a.status).sort();
     expect(statuses.filter((s) => s === 401)).toHaveLength(20);
     expect(statuses.filter((s) => s === 429)).toHaveLength(10);
-    expect(lookups.count).toBe(20);
+    expect(lookups.count).toBe(1);
+  });
+
+  it('hold for different wrong keys sent in parallel: at most 20 lookups run at once for a client', async () => {
+    lookups.maxRunning = 0;
+    const answers = await Promise.all(Array.from({ length: 30 }, (_, i) => list(`ik_${String(i).padStart(8, '0')}_nope`, '1.1.1.13')));
+    const statuses = answers.map((a) => a.status);
+    expect(statuses.filter((s) => s === 401)).toHaveLength(20);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(10);
+    expect(lookups.maxRunning).toBeLessThanOrEqual(20);
   });
 
   it("let a server's own parallel requests through: they wait for lookups, they aren't refused", async () => {
@@ -133,13 +149,13 @@ describe('failed key checks', () => {
     lookups.fails = true;
     let answers: Answer[];
     try {
-      // One failure left: one lookup at a time, the rest wait for it
-      answers = await Promise.all(Array.from({ length: 10 }, () => list('ik_0badc0de_nope', '1.1.1.12')));
+      // Another key, the same one at once: one read, shared by all ten, which fails
+      answers = await Promise.all(Array.from({ length: 10 }, () => list('ik_0badf00d_nope', '1.1.1.12')));
     } finally {
       lookups.fails = false;
     }
     expect(answers.map((a) => a.status)).toEqual(Array(10).fill(500));
-    expect(lookups.count).toBe(10);
+    expect(lookups.count).toBe(1);
     // Nothing is left in flight: the next request is looked up and counted as usual
     expect((await list('ik_0badc0de_nope', '1.1.1.12')).status).toBe(401);
     expect((await list('ik_0badc0de_nope', '1.1.1.12')).status).toBe(429);
@@ -175,8 +191,8 @@ describe('failed key checks', () => {
   it('share one count at ten times the limit when there is no trusted address, apart from addressed clients', async () => {
     for (let i = 0; i < 200; i++) expect((await list('ik_0badc0de_nope', null)).status).toBe(401);
     expect((await list('ik_0badc0de_nope', null)).status).toBe(429);
-    // A real key without an address waits with them; one from an address is not held back
-    expect((await deleteByFilter(realKey, null)).status).toBe(429);
+    // A live key without an address still goes through; a wrong key from an address has its own count
+    expect((await deleteByFilter(realKey, null)).status).not.toBe(429);
     expect((await list('ik_0badc0de_nope', '1.1.1.7')).status).toBe(401);
   });
 
@@ -191,11 +207,13 @@ describe('failed key checks', () => {
     for (let i = 0; i < 25; i++) expect((await list(elsewhere, '1.1.1.5')).status).toBe(403);
   });
 
-  it('refuse an address over the limit before looking its key up', async () => {
+  it('hold back only wrong keys from an address over the limit: a live key from it goes through', async () => {
     for (let i = 0; i < 20; i++) await list('ik_0badc0de_nope', '1.1.1.2');
-    lookups.count = 0;
-    expect((await list(realKey, '1.1.1.2')).status).toBe(429);
-    expect(lookups.count).toBe(0);
+    expect((await list('ik_0badc0de_nope', '1.1.1.2')).status).toBe(429);
+    const live = await deleteByFilter(realKey, '1.1.1.2');
+    expect(live.status).not.toBe(429);
+    expect(live.limit).toBe('20');
+    expect((await list('ik_0badc0de_nope', '1.1.1.2')).status).toBe(429);
   });
 
   it("include a real key's prefix with a made-up secret, and don't hold the real key elsewhere", async () => {
@@ -325,6 +343,25 @@ describe('a key that is revoked or expired', () => {
     for (let i = 0; i < 10; i++) expect((await deleteByFilter(revoked, '8.8.8.8')).status).toBe(401);
     for (let i = 0; i < 10; i++) expect((await deleteByFilter(expired, '8.8.8.8')).status).toBe(401);
     expect((await deleteByFilter(revoked, '8.8.8.8')).status).toBe(429);
+  });
+
+  it('is refused at once when revoked or expired while its lookup is cached', async () => {
+    const { plaintextKey } = await createIngestionKey({ name: 's', operations: ['write', 'delete'], searchIndexIds: [index.id], expiresAt: new Date(Date.now() + 5_000) });
+    expect((await deleteByFilter(plaintextKey, '8.8.8.9')).status).not.toBe(401);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      // Past its expiry, inside the cache time: judged from the cached row at the time of use
+      vi.setSystemTime(Date.now() + 6_000);
+      lookups.count = 0;
+      expect((await deleteByFilter(plaintextKey, '8.8.8.9')).status).toBe(401);
+      expect(lookups.count).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+    const { plaintextKey: other, key: otherKey } = await createIngestionKey({ name: 't', operations: ['write', 'delete'], searchIndexIds: [index.id] });
+    expect((await deleteByFilter(other, '8.8.8.10')).status).not.toBe(401);
+    await revokeIngestionKey(otherKey.id, index.id);
+    expect((await deleteByFilter(other, '8.8.8.10')).status).toBe(401);
   });
 });
 

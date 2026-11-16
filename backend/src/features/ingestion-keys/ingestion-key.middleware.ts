@@ -62,17 +62,17 @@ type Identity = IngestionAuthResult | { success: false; throttled: { retryAfter:
 // check and the handler (they all get the same request object)
 const identities = new WeakMap<object, Promise<Identity>>();
 
-// Key lookups in flight per client (by failed-check count), so a burst can't run more lookups
-// than the client has failed checks left
+// Key lookups in flight per client, so a burst of requests runs at most FAILED_KEY_CHECKS
+// lookups at once for one client (the rest wait their turn)
 const inFlight = new Map<string, Set<Promise<unknown>>>();
 
 /**
- * Which key the request presents, looked up once per request. A client with FAILED_KEY_CHECKS
- * failures (no such key, wrong secret, revoked or expired) in the window is refused before its
- * key is looked up. At most as many lookups as it has failures left run at once; requests past
- * that wait for one to finish and check again, so a parallel burst of wrong keys can't get more
- * lookups than the limit, and a server's own parallel requests only wait. Requests without a
- * trusted address share one count at a higher limit (see clientKey).
+ * Which key the request presents, looked up once per request (see identifyIngestionKey for its
+ * cache). A live key is never held back by its client's failed checks: it is counted on its own
+ * limit. A failed check (no such key, wrong secret, revoked or expired) is counted per client;
+ * past FAILED_KEY_CHECKS in the window it is answered 429 instead of 401. At most that many
+ * lookups run at once for a client; requests past that wait for one to finish. Requests without
+ * a trusted address share one count at a higher limit (see clientKey).
  */
 function identify(request: NextRequest, presented: string): Promise<Identity> {
     let identity = identities.get(request);
@@ -83,10 +83,8 @@ function identify(request: NextRequest, presented: string): Promise<Identity> {
             const maxRequests = limitFor(client, FAILED_KEY_CHECKS.maxRequests);
             const { windowMs } = FAILED_KEY_CHECKS;
             for (;;) {
-                const left = maxRequests - rateLimiter.count(failures);
-                if (left <= 0) return { success: false, throttled: { retryAfter: rateLimiter.retryAfter(failures) || 60 } };
                 const running = inFlight.get(failures);
-                if (!running || running.size < left) break;
+                if (!running || running.size < maxRequests) break;
                 await Promise.race(running).catch(() => undefined);
             }
             const lookup = identifyIngestionKey(presented);
@@ -102,8 +100,9 @@ function identify(request: NextRequest, presented: string): Promise<Identity> {
             }
             if (isIngestionAuthFailure(result) || !isKeyLive(result.key)) {
                 const counted = rateLimiter.check(failures, maxRequests, windowMs);
+                if (!counted.allowed) return { success: false, throttled: { retryAfter: counted.retryAfter ?? 60 } };
                 // Once per window, when the client uses up its last failed check
-                if (counted.allowed && counted.remaining === 0) {
+                if (counted.remaining === 0) {
                     logger.warn('A client reached the failed ingestion key check limit', {
                         client: clientLabel(client),
                         limit: maxRequests,
