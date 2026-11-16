@@ -36,8 +36,11 @@ export interface RateLimitConfig {
   /**
    * Who a request is counted as (default: its client address, see clientKey). A shared key is
    * held to SHARED_LIMIT_FACTOR times maxRequests.
+   *
+   * null: this request is counted by a limit of its own elsewhere (the document routes'
+   * failed-key-check limit), so this one doesn't count it. It gets no limit headers here.
    */
-  keyFn?: (request: NextRequest) => ClientKey | Promise<ClientKey>;
+  keyFn?: (request: NextRequest) => ClientKey | null | Promise<ClientKey | null>;
 }
 
 interface WindowEntry {
@@ -53,10 +56,20 @@ interface WindowEntry {
 const store = new Map<string, WindowEntry>();
 let lastCleanup = Date.now();
 const CLEANUP_INTERVAL = 60_000; // 1 minute
+// Most entries held at once: past it, expired entries go first, then the short windows that
+// started first, and long ones (a daily total) only when nothing else is left
+const MAX_ENTRIES = 100_000;
+let maxEntries = MAX_ENTRIES;
+// Windows shorter than this are dropped before longer ones when the store is full
+const SHORT_WINDOW_MS = 60 * 60_000;
+// A full sweep when the store is full runs at most this often, so a flood can't make every new
+// entry scan the whole store
+const FULL_SWEEP_INTERVAL = 1_000;
+let lastFullSweep = 0;
 
-function cleanup(): void {
+function cleanup(force = false): void {
   const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL) return;
+  if (!force && now - lastCleanup < CLEANUP_INTERVAL) return;
 
   // Each entry goes once its own window is over (a minute, a day, …).
   for (const [key, entry] of store.entries()) {
@@ -65,6 +78,24 @@ function cleanup(): void {
     }
   }
   lastCleanup = now;
+}
+
+/** Make room for one more entry when the store is full. */
+function makeRoom(now: number): void {
+  if (now - lastFullSweep >= FULL_SWEEP_INTERVAL) {
+    lastFullSweep = now;
+    cleanup(true);
+  }
+  // Map keeps insertion order, and a new window goes to the end: among windows of one length,
+  // the first ones end soonest
+  for (const [key, entry] of store) {
+    if (store.size < maxEntries) return;
+    if (entry.windowMs < SHORT_WINDOW_MS || now - entry.windowStart >= entry.windowMs) store.delete(key);
+  }
+  for (const key of store.keys()) {
+    if (store.size < maxEntries) return;
+    store.delete(key);
+  }
 }
 
 // ============================================================================
@@ -95,8 +126,29 @@ export const rateLimiter = {
       return { allowed: true, remaining: maxRequests - entry.count };
     }
 
+    // A new window goes to the end, so the Map's order stays the order windows started
+    if (entry) store.delete(key);
+    if (store.size >= maxEntries) makeRoom(now);
     store.set(key, { count: 1, windowStart: now, windowMs });
     return { allowed: true, remaining: maxRequests - 1 };
+  },
+
+  /** How many requests the identifier has in its current window (0 when none). */
+  count(identifier: string): number {
+    const entry = store.get(identifier);
+    return entry && Date.now() - entry.windowStart < entry.windowMs ? entry.count : 0;
+  },
+
+  /** Seconds until the identifier's current window ends (0 when none). */
+  retryAfter(identifier: string): number {
+    const entry = store.get(identifier);
+    const now = Date.now();
+    return entry && now - entry.windowStart < entry.windowMs ? Math.ceil((entry.windowStart + entry.windowMs - now) / 1000) : 0;
+  },
+
+  /** Change the most entries held (for testing); no argument restores the default. */
+  setMaxEntries(max: number = MAX_ENTRIES): void {
+    maxEntries = max;
   },
 
   /** Reset a specific key (for testing) */
@@ -108,6 +160,7 @@ export const rateLimiter = {
   clear(): void {
     store.clear();
     lastCleanup = 0;
+    lastFullSweep = 0;
   },
 
   /** How many entries are held in memory (for testing) */
@@ -126,6 +179,8 @@ export const rateLimiter = {
  * @example
  * export const GET = withRateLimit(myHandler, { maxRequests: 30 });
  */
+let routes = 0;
+
 export function withRateLimit<T extends (...args: never[]) => Promise<NextResponse>>(
   handler: T,
   config: RateLimitConfig = {}
@@ -136,11 +191,16 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
     keyFn = clientKey,
   } = config;
 
+  // One count per wrapped handler (a route's method), not per URL: a route with an id in its
+  // path (a document, a span) would otherwise give each id its own allowance
+  const route = `route-${++routes}`;
+
   const wrapped = async (...args: Parameters<T>): Promise<NextResponse> => {
     const request = args[0] as NextRequest;
     const key = await keyFn(request);
+    if (key === null) return handler(...args);
     const limit = limitFor(key, maxRequests);
-    const routeKey = `${request.method}:${request.nextUrl.pathname}:${key.key}`;
+    const routeKey = `${route}:${key.key}`;
 
     const result = rateLimiter.check(routeKey, limit, windowMs);
 

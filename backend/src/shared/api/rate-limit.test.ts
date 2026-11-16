@@ -32,8 +32,106 @@ describe('rateLimiter', () => {
   });
 });
 
+describe('rateLimiter limits', () => {
+  beforeEach(() => rateLimiter.clear());
+  afterEach(() => rateLimiter.setMaxEntries());
+
+  it('holds at most its set number of entries, dropping the oldest first', () => {
+    rateLimiter.setMaxEntries(3);
+    for (const id of ['a', 'b', 'c', 'd', 'e']) rateLimiter.check(id, 5, 60_000);
+    expect(rateLimiter.size()).toBe(3);
+    // a and b went first: they start again; e still has its count
+    expect(rateLimiter.check('a', 5, 60_000)).toMatchObject({ remaining: 4 });
+    expect(rateLimiter.check('e', 5, 60_000)).toMatchObject({ remaining: 3 });
+  });
+
+  it('drops by when a window started: a counter whose window restarted is kept over older ones', () => {
+    vi.useFakeTimers();
+    try {
+      rateLimiter.setMaxEntries(3);
+      rateLimiter.check('a', 5, 1_000);
+      vi.advanceTimersByTime(500);
+      rateLimiter.check('b', 5, 60_000);
+      rateLimiter.check('c', 5, 60_000);
+      vi.advanceTimersByTime(600);
+      // a's window is over: it starts a new one, now the newest
+      rateLimiter.check('a', 5, 1_000);
+      rateLimiter.check('a', 5, 1_000);
+      rateLimiter.check('d', 5, 60_000);
+      // b went (the oldest window); a kept its new count
+      expect(rateLimiter.check('a', 5, 1_000)).toMatchObject({ remaining: 2 });
+      expect(rateLimiter.check('b', 5, 60_000)).toMatchObject({ remaining: 4 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tells how many requests an identifier has in its window, and when the window ends', () => {
+    vi.useFakeTimers();
+    try {
+      expect(rateLimiter.count('c')).toBe(0);
+      expect(rateLimiter.retryAfter('c')).toBe(0);
+      rateLimiter.check('c', 5, 60_000);
+      rateLimiter.check('c', 5, 60_000);
+      vi.advanceTimersByTime(20_000);
+      expect(rateLimiter.count('c')).toBe(2);
+      expect(rateLimiter.retryAfter('c')).toBe(40);
+      vi.advanceTimersByTime(40_000);
+      expect(rateLimiter.count('c')).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('when full, drops expired entries first, even with the regular sweep not due', () => {
+    vi.useFakeTimers();
+    try {
+      rateLimiter.setMaxEntries(3);
+      rateLimiter.check('day', 5, 24 * 60 * 60_000);
+      rateLimiter.check('short', 5, 1_000);
+      rateLimiter.check('m', 5, 60_000);
+      vi.advanceTimersByTime(2_000); // short is over; the once-a-minute sweep isn't due
+      rateLimiter.check('n', 5, 60_000);
+      // short went, not the daily total or the minute counters
+      expect(rateLimiter.size()).toBe(3);
+      expect(rateLimiter.check('day', 5, 24 * 60 * 60_000)).toMatchObject({ remaining: 3 });
+      expect(rateLimiter.check('m', 5, 60_000)).toMatchObject({ remaining: 3 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('when full of live counters, keeps a daily total and drops the short windows that started first', () => {
+    rateLimiter.setMaxEntries(3);
+    rateLimiter.check('day', 5, 24 * 60 * 60_000);
+    rateLimiter.check('day', 5, 24 * 60 * 60_000);
+    for (const id of ['a', 'b', 'c', 'd']) rateLimiter.check(id, 5, 60_000);
+    expect(rateLimiter.size()).toBe(3);
+    // the daily total kept its count through a flood of new keys
+    expect(rateLimiter.check('day', 5, 24 * 60 * 60_000)).toMatchObject({ remaining: 2 });
+    expect(rateLimiter.check('d', 5, 60_000)).toMatchObject({ remaining: 3 });
+  });
+
+  it('drops long windows too once nothing shorter is left', () => {
+    rateLimiter.setMaxEntries(2);
+    for (const id of ['x', 'y', 'z']) rateLimiter.check(id, 5, 24 * 60 * 60_000);
+    expect(rateLimiter.size()).toBe(2);
+    expect(rateLimiter.check('x', 5, 24 * 60 * 60_000)).toMatchObject({ remaining: 4 });
+  });
+});
+
 describe('withRateLimit', () => {
   beforeEach(() => rateLimiter.clear());
+
+  it('counts a route as one, whatever id is in its path, and keeps routes apart', async () => {
+    const one = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 2 });
+    const other = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 2 });
+    const at = (path: string) => new NextRequest(`http://interakt.test${path}`, { headers: { 'X-Forwarded-For': '1.1.1.1' } });
+    expect((await one(at('/api/docs/a'))).status).toBe(200);
+    expect((await one(at('/api/docs/b'))).status).toBe(200);
+    expect((await one(at('/api/docs/c'))).status).toBe(429);
+    expect((await other(at('/api/docs/a'))).status).toBe(200);
+  });
 
   it('counts each client by the address the proxy added', async () => {
     const handler = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
@@ -75,6 +173,17 @@ describe('withRateLimit', () => {
     expect(refused.headers.get('X-RateLimit-Limit')).toBe('10');
     // A client with a trusted address keeps its own count
     expect((await limited(new NextRequest('http://localhost/api/x', { headers: { 'X-Forwarded-For': '1.1.1.1' } }))).status).toBe(200);
+  });
+
+  it('leaves a request to the handler, uncounted and without headers, when the key function answers null', async () => {
+    rateLimiter.clear();
+    const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1, keyFn: () => null });
+    const req = () => new NextRequest('http://localhost/api/x');
+    expect((await limited(req())).status).toBe(200);
+    const second = await limited(req());
+    expect(second.status).toBe(200);
+    expect(second.headers.get('X-RateLimit-Limit')).toBeNull();
+    expect(rateLimiter.size()).toBe(0);
   });
 
   it('refuses in the shared shape, with a request id, when to try again and the limit', async () => {

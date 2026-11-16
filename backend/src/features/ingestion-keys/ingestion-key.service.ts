@@ -9,7 +9,7 @@
 import 'server-only';
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { createLogger } from '@/shared/logger/logger';
+
 import * as repository from './ingestion-key.repository';
 import { isIngestionAuthFailure } from './ingestion-key.types';
 import type {
@@ -19,6 +19,8 @@ import type {
     IngestionKeyWithIndexes,
     IngestionOperation,
 } from './ingestion-key.types';
+
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ingestion-key-service');
 
@@ -263,16 +265,10 @@ export async function revokeIngestionKey(
 // ============================================================================
 
 /**
- * Verify a presented key and check it may perform an operation on an index.
- *
- * The order matters: identity first (is this a real, live key?), then
- * authorization (may it act here?). The caller maps the former to 401 and the
- * latter to 403.
+ * Which key was presented: the stored key when the secret matches, whatever its state
+ * (revoked, expired, scope are checked by evaluateKeyAccess). One database read.
  */
-export async function verifyIngestionKey(
-    presented: string,
-    requirement: { searchIndexId: string; operation?: IngestionOperation }
-): Promise<IngestionAuthResult> {
+export async function identifyIngestionKey(presented: string): Promise<IngestionAuthResult> {
     const parsed = parseKey(presented);
     if (!parsed) {
         return { success: false, reason: 'malformed' };
@@ -288,6 +284,33 @@ export async function verifyIngestionKey(
         // is real but the secret wrong.
         return { success: false, reason: 'unknown' };
     }
+
+    return { success: true, key };
+}
+
+/** Whether an identified key can be used at all now (not revoked or expired). */
+export function isKeyLive(key: IngestionKeyWithIndexes, now: Date = new Date()): boolean {
+    return !isRevoked(key) && !isExpired(key, now);
+}
+
+/**
+ * Verify a presented key and check it may perform an operation on an index.
+ *
+ * The order matters: identity first (is this a real, live key?), then
+ * authorization (may it act here?). The caller maps the former to 401 and the
+ * latter to 403. `identified` is the result of identifyIngestionKey when the caller
+ * already has it.
+ */
+export async function verifyIngestionKey(
+    presented: string,
+    requirement: { searchIndexId: string; operation?: IngestionOperation },
+    identified?: IngestionAuthResult,
+): Promise<IngestionAuthResult> {
+    const identity = identified ?? await identifyIngestionKey(presented);
+    if (isIngestionAuthFailure(identity)) {
+        return identity;
+    }
+    const { key } = identity;
 
     const access = evaluateKeyAccess(key, requirement);
     if (isIngestionAuthFailure(access)) {
