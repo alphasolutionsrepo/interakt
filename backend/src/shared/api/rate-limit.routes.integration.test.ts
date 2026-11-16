@@ -21,6 +21,7 @@ vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => signedIn
 
 import * as healthRoute from '@/app/api/data-sources/[id]/health/route';
 import * as spanRoute from '@/app/api/telemetry/traces/[spanId]/route';
+import * as tracesRoute from '@/app/api/telemetry/traces/route';
 import * as traceRoute from '@/app/api/telemetry/traces/trace/[traceId]/route';
 import { user } from '@/db/schema/users.schema';
 import { ADMIN_ROLE_ID } from '@/features/access/permissions';
@@ -42,6 +43,7 @@ const paths = new Map<unknown, (id: string) => string>([
   [spanRoute.GET, (id) => `/api/telemetry/traces/${id}`],
   [spanRoute.DELETE, (id) => `/api/telemetry/traces/${id}`],
   [traceRoute.GET, (id) => `/api/telemetry/traces/trace/${id}`],
+  [tracesRoute.GET, () => '/api/telemetry/traces'],
   [healthRoute.POST, (id) => `/api/data-sources/${id}/health`],
 ]);
 const call = (route: unknown, method: string, params: Record<string, string>) =>
@@ -69,5 +71,12 @@ describe('the data-source health check', () => {
     for (let i = 0; i < 6; i++) expect((await call(healthRoute.POST, 'POST', { id: a })).status).toBe(404);
     expect((await call(healthRoute.POST, 'POST', { id: a })).status).toBe(429);
     expect((await call(healthRoute.POST, 'POST', { id: b })).status).toBe(404);
+  });
+});
+
+describe('the span list', () => {
+  it('counts once per route (60 a minute)', async () => {
+    for (let i = 0; i < 60; i++) expect((await call(tracesRoute.GET, 'GET', {})).status).not.toBe(429);
+    expect((await call(tracesRoute.GET, 'GET', {})).status).toBe(429);
   });
 });

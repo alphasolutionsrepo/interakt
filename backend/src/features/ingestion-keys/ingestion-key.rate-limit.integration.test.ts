@@ -40,6 +40,7 @@ vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => signedIn
 import { createIngestionKey, revokeIngestionKey } from './ingestion-key.service';
 
 import * as documentRoute from '@/app/api/search-indexes/[id]/documents/[documentId]/route';
+import * as bulkRoute from '@/app/api/search-indexes/[id]/documents/bulk/route';
 import * as deleteByFilterRoute from '@/app/api/search-indexes/[id]/documents/delete-by-filter/route';
 import * as documentsRoute from '@/app/api/search-indexes/[id]/documents/route';
 import { globalSearchSettings } from '@/db/schema/global-search-settings.schema';
@@ -237,6 +238,15 @@ describe('a real key', () => {
     const onOther = await send(deleteByFilterRoute.POST, 'POST', '/delete-by-filter', both, '5.5.7.1', other.id);
     expect(onOther.status).not.toBe(429);
     expect(onOther.limit).toBe('20');
+  });
+
+  it('is counted per index on bulk writes too (60 a minute)', async () => {
+    const [other] = await testDb.db.insert(searchIndex).values({ name: `limits-bulk-${n}`, displayName: 'Limits', searchType: 'lexical' }).returning();
+    const { plaintextKey: both } = await createIngestionKey({ name: 'k3', operations: ['write'], searchIndexIds: [index.id, other.id] });
+    const bulk = (indexId: string) => send(bulkRoute.POST, 'POST', '/bulk', both, '5.5.9.1', indexId);
+    for (let i = 0; i < 60; i++) expect((await bulk(index.id)).limit).toBe('60');
+    expect((await bulk(index.id)).status).toBe(429);
+    expect((await bulk(other.id)).status).not.toBe(429);
   });
 
   it('counts index ids outside its scope on one count of its own, apart from its indexes', async () => {
