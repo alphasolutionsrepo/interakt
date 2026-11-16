@@ -62,13 +62,13 @@ beforeEach(async () => {
   ({ plaintextKey: realKey } = await createIngestionKey({ name: 'k', operations: ['write', 'delete'], searchIndexIds: [index.id] }));
 });
 
-async function send(route: unknown, method: string, path: string, key: string, address: string | null): Promise<Answer> {
-  const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents${path}`, {
+async function send(route: unknown, method: string, path: string, key: string, address: string | null, indexId = index.id): Promise<Answer> {
+  const req = new NextRequest(`http://localhost/api/search-indexes/${indexId}/documents${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, ...(address && { 'X-Forwarded-For': address }) },
     ...(method === 'POST' && { body: '{"dryRun":true}' }),
   });
-  const res = await (route as Route)(req, { params: Promise.resolve({ id: index.id }) });
+  const res = await (route as Route)(req, { params: Promise.resolve({ id: indexId }) });
   return { status: res.status, limit: res.headers.get('X-RateLimit-Limit'), retryAfter: res.headers.get('Retry-After') };
 }
 const list = (key: string, address: string | null) => send(documentsRoute.GET, 'GET', '', key, address);
@@ -116,6 +116,24 @@ describe('failed key checks', () => {
       lookups.fails = false;
     }
     expect((await list('ik_0badc0de_nope', '1.1.1.10')).status).toBe(401);
+  });
+
+  it("let requests waiting on a lookup go on when that lookup fails, without counting it", async () => {
+    for (let i = 0; i < 19; i++) await list('ik_0badc0de_nope', '1.1.1.12');
+    lookups.count = 0;
+    lookups.fails = true;
+    let answers: Answer[];
+    try {
+      // One failure left: one lookup at a time, the rest wait for it
+      answers = await Promise.all(Array.from({ length: 10 }, () => list('ik_0badc0de_nope', '1.1.1.12')));
+    } finally {
+      lookups.fails = false;
+    }
+    expect(answers.map((a) => a.status)).toEqual(Array(10).fill(500));
+    expect(lookups.count).toBe(10);
+    // Nothing is left in flight: the next request is looked up and counted as usual
+    expect((await list('ik_0badc0de_nope', '1.1.1.12')).status).toBe(401);
+    expect((await list('ik_0badc0de_nope', '1.1.1.12')).status).toBe(429);
   });
 
   it('include a bearer that is not an ingestion key at all', async () => {
@@ -201,6 +219,16 @@ describe('a real key', () => {
       expect(res.limit).toBe('20');
     }
     expect((await deleteByFilter(realKey, '5.5.5.99')).status).toBe(429);
+  });
+
+  it('is counted separately on each of its indexes', async () => {
+    const [other] = await testDb.db.insert(searchIndex).values({ name: `limits-other-${n}`, displayName: 'Limits', searchType: 'lexical' }).returning();
+    const { plaintextKey: both } = await createIngestionKey({ name: 'k2', operations: ['write', 'delete'], searchIndexIds: [index.id, other.id] });
+    for (let i = 0; i < 20; i++) await deleteByFilter(both, '5.5.7.1');
+    expect((await deleteByFilter(both, '5.5.7.1')).status).toBe(429);
+    const onOther = await send(deleteByFilterRoute.POST, 'POST', '/delete-by-filter', both, '5.5.7.1', other.id);
+    expect(onOther.status).not.toBe(429);
+    expect(onOther.limit).toBe('20');
   });
 
   it('is counted separately on each route', async () => {

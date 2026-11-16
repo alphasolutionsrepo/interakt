@@ -191,8 +191,9 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
     keyFn = clientKey,
   } = config;
 
-  // One count per wrapped handler (a route's method), not per URL: a route with an id in its
-  // path (a document, a span) would otherwise give each id its own allowance
+  // One count per wrapped handler (a route's method) and the route's own [id] (a search index, a
+  // data source), not per URL: an id below it in the path (a document, a span) would otherwise
+  // give each of those its own allowance
   const route = `route-${++routes}`;
 
   const wrapped = async (...args: Parameters<T>): Promise<NextResponse> => {
@@ -200,7 +201,8 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
     const key = await keyFn(request);
     if (key === null) return handler(...args);
     const limit = limitFor(key, maxRequests);
-    const routeKey = `${route}:${key.key}`;
+    const { id } = (await (args[1] as { params?: Promise<{ id?: unknown }> } | undefined)?.params) ?? {};
+    const routeKey = typeof id === 'string' ? `${route}:${id}:${key.key}` : `${route}:${key.key}`;
 
     const result = rateLimiter.check(routeKey, limit, windowMs);
 

@@ -133,6 +133,24 @@ describe('withRateLimit', () => {
     expect((await other(at('/api/docs/a'))).status).toBe(200);
   });
 
+  it("counts each of the route's own [id] apart, and an id below it (a document) together", async () => {
+    type Ctx = { params: Promise<Record<string, string>> };
+    const health = withRateLimit(async (_request: NextRequest, _ctx: Ctx) => NextResponse.json({ ok: true }), { maxRequests: 2 });
+    const req = () => new NextRequest('http://interakt.test/api/x', { headers: { 'X-Forwarded-For': '1.1.1.2' } });
+    const ctx = (params: Record<string, string>): Ctx => ({ params: Promise.resolve(params) });
+    // Two data sources: each has its own allowance
+    expect((await health(req(), ctx({ id: 'source-a' }))).status).toBe(200);
+    expect((await health(req(), ctx({ id: 'source-a' }))).status).toBe(200);
+    expect((await health(req(), ctx({ id: 'source-a' }))).status).toBe(429);
+    expect((await health(req(), ctx({ id: 'source-b' }))).status).toBe(200);
+    // Documents in one index: one allowance, whatever the document id
+    const doc = withRateLimit(async (_request: NextRequest, _ctx: Ctx) => NextResponse.json({ ok: true }), { maxRequests: 2 });
+    expect((await doc(req(), ctx({ id: 'index-a', documentId: 'd1' }))).status).toBe(200);
+    expect((await doc(req(), ctx({ id: 'index-a', documentId: 'd2' }))).status).toBe(200);
+    expect((await doc(req(), ctx({ id: 'index-a', documentId: 'd3' }))).status).toBe(429);
+    expect((await doc(req(), ctx({ id: 'index-b', documentId: 'd1' }))).status).toBe(200);
+  });
+
   it('counts each client by the address the proxy added', async () => {
     const handler = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
     const from = (forwardedFor: string) =>
