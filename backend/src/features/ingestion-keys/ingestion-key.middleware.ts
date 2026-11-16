@@ -60,9 +60,9 @@ function extractBearer(request: NextRequest): string | null {
  * hash they only spend their own.
  *
  * Session requests fall back to the client IP — the admin UI is low-volume, and
- * resolving a session is async.
+ * resolving a session is async. With no trusted address they aren't counted here (null).
  */
-export function ingestionRateLimitKey(request: NextRequest): string {
+export function ingestionRateLimitKey(request: NextRequest): string | null {
     const presented = extractBearer(request);
     const parsed = presented ? parseKey(presented) : null;
 
@@ -71,7 +71,8 @@ export function ingestionRateLimitKey(request: NextRequest): string {
         return `key:${parsed.keyPrefix}:${fingerprint}`;
     }
 
-    return `ip:${clientIp(request)}`;
+    const address = clientIp(request);
+    return address ? `ip:${address}` : null;
 }
 
 /**

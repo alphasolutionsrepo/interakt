@@ -44,9 +44,21 @@ describe('withRateLimit', () => {
     expect((await from('10.0.0.2, 6.6.6.6')).status).toBe(200);
   });
 
+  it('leaves a request with no trusted address to the handler, without counting it or adding headers', async () => {
+    rateLimiter.clear();
+    const handler = vi.fn(async (_request: NextRequest) => NextResponse.json({ ok: true }));
+    const limited = withRateLimit(handler, { maxRequests: 1 });
+    const req = () => new NextRequest('http://localhost/api/x');
+    expect((await limited(req())).status).toBe(200);
+    const second = await limited(req());
+    expect(second.status).toBe(200);
+    expect(second.headers.get('X-RateLimit-Limit')).toBeNull();
+    expect(rateLimiter.size()).toBe(0);
+  });
+
   it('refuses in the shared shape, with a request id, when to try again and the limit', async () => {
     const handler = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1 });
-    const ask = () => handler(new NextRequest('http://interakt.test/api/x'));
+    const ask = () => handler(new NextRequest('http://interakt.test/api/x', { headers: { 'X-Forwarded-For': '1.1.1.1' } }));
     await ask();
     const refused = await ask();
 

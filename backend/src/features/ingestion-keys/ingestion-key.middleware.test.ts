@@ -32,5 +32,7 @@ describe('ingestionRateLimitKey', () => {
     it('counts other requests by the address the proxy added', () => {
         expect(ingestionRateLimitKey(request({ 'X-Forwarded-For': '10.0.0.1, 9.9.9.9' }))).toBe('ip:9.9.9.9');
         expect(ingestionRateLimitKey(request({ Authorization: 'Bearer not-a-key', 'X-Forwarded-For': '9.9.9.9' }))).toBe('ip:9.9.9.9');
+        // No trusted address: not counted here rather than every caller as one
+        expect(ingestionRateLimitKey(request({}))).toBeNull();
     });
 });

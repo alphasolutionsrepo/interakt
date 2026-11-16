@@ -176,9 +176,12 @@ export function checkPublicAccess(
 
   if (options.setup) return null;
 
+  // No trusted address: the per-client limit can't tell clients apart, so it steps aside
+  // rather than count every client as one (the daily total still applies)
   const client = clientIp(request);
-  let { retryAfter } = rateLimiter.check(`${scope}:${client}:minute`, policy.perMinute, MINUTE);
+  let retryAfter: number | undefined;
   let limit = 'per-minute';
+  if (client) ({ retryAfter } = rateLimiter.check(`${scope}:${client}:minute`, policy.perMinute, MINUTE));
   // The daily total is checked only for requests the per-client limit lets through.
   if (!retryAfter && policy.perDay) {
     ({ retryAfter } = rateLimiter.check(`${scope}:day`, policy.perDay, DAY));

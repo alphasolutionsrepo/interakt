@@ -95,7 +95,16 @@ Loading the widget's settings and fetching the embed snippet aren't counted towa
 
 Exceeding a limit returns HTTP 429 with a `Retry-After` header. Your app should back off and retry. Limits are counted in memory on each server instance.
 
-A client is the address your proxy reports in `X-Forwarded-For`. Self-hosting behind more than one proxy, such as a CDN in front of a load balancer? Set `TRUSTED_PROXY_HOPS` to how many there are (default 1).
+A client is the address added by a proxy you run, never one the caller wrote itself. Set `CLIENT_IP_SOURCE` for what is in front of Interakt:
+
+| In front of Interakt | `CLIENT_IP_SOURCE` |
+|---|---|
+| One proxy, such as a hosting platform's ingress, nginx or Traefik | `forwarded-for:1` (the default) |
+| A CDN or gateway in front of that proxy | `forwarded-for:2` |
+| An edge that sends the client's address in a header of its own | `header:<name>`, such as `header:X-Azure-SocketIP` (Azure Front Door) or `header:CF-Connecting-IP` (Cloudflare) |
+| Nothing | `none` |
+
+With a CDN or gateway in front, let the app accept traffic only from it (for Azure Front Door, check the `X-Azure-FDID` header); otherwise a caller can go around it and choose its own address. When a request has no address Interakt can trust, the per-minute limit for each client steps aside for it rather than count every such caller as one; the daily total still applies. `TRUSTED_PROXY_HOPS=<n>`, the earlier setting, still works as `forwarded-for:<n>`.
 
 Calling Interakt from your own server? Every request then comes from your server's address, so set the per-minute limit to cover your site's traffic.
 

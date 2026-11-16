@@ -33,8 +33,11 @@ export interface RateLimitConfig {
   maxRequests?: number;
   /** Window duration in milliseconds (default: 60_000 = 1 minute) */
   windowMs?: number;
-  /** Function to extract identifier from request (default: IP address) */
-  keyFn?: (request: NextRequest) => string;
+  /**
+   * Who a request is counted as (default: its IP address). null leaves the request to a limit
+   * applied elsewhere (it gets no limit headers here).
+   */
+  keyFn?: (request: NextRequest) => string | null | Promise<string | null>;
 }
 
 interface WindowEntry {
@@ -135,7 +138,8 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
 
   const wrapped = async (...args: Parameters<T>): Promise<NextResponse> => {
     const request = args[0] as NextRequest;
-    const identifier = keyFn(request);
+    const identifier = await keyFn(request);
+    if (identifier === null) return handler(...args);
     const routeKey = `${request.method}:${request.nextUrl.pathname}:${identifier}`;
 
     const result = rateLimiter.check(routeKey, maxRequests, windowMs);

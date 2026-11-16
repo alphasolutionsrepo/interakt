@@ -42,7 +42,8 @@ const down = () => new Error('connect ECONNREFUSED 10.0.0.5:5432');
 function chatRequest(path: string, headers: Record<string, string> = {}): NextRequest {
   return new NextRequest(`http://interakt.test${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
+    // As through the platform's proxy, which adds the caller's address
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.1.1.1', ...headers },
     body: JSON.stringify({ message: 'do you have jeans?' }),
   });
 }

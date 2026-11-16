@@ -106,7 +106,8 @@ interface Route {
 function req(path: string, method: string, headers: Record<string, string>, body?: unknown): NextRequest {
   return new NextRequest(`http://interakt.test${path}`, {
     method,
-    headers: { 'content-type': 'application/json', ...headers },
+    // As through the platform's proxy, which adds the caller's address
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.1.1.1', ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -829,7 +830,7 @@ describe('a document lookup that fails after the token is checked', () => {
 describe('a request whose body is not JSON', () => {
   const broken = (path: string) => new NextRequest(`http://interakt.test${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'X-Access-Token': 'search-token', Origin: SHOP },
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.1.1.1', 'X-Access-Token': 'search-token', Origin: SHOP },
     body: '{"query": "jea',
   });
 

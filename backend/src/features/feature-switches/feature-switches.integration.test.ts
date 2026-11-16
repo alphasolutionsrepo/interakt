@@ -129,7 +129,7 @@ type Route = (req: NextRequest, ctx: { params: Promise<Record<string, string>> }
 async function call(fn: unknown, method: string, url: string, opts: { body?: unknown; params?: Record<string, string>; headers?: Record<string, string> } = {}) {
   const req = new NextRequest(`http://localhost${url}`, {
     method,
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '1.1.1.1', ...opts.headers },
     ...(opts.body !== undefined && { body: JSON.stringify(opts.body) }),
   });
   const res = await (fn as Route)(req, { params: Promise.resolve(opts.params ?? {}) });
@@ -598,7 +598,7 @@ describe('an area switched off, to a caller without a valid credential', () => {
     const write = (fn: unknown, method: string, path: string, params: Record<string, string> = { id }) => async () => {
       as(null);
       const req = new NextRequest(`http://localhost/api/search-indexes/${id}/documents${path}`, {
-        method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer not-a-key' }, body: method === 'DELETE' ? undefined : '{}',
+        method, headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '1.1.1.1', Authorization: 'Bearer not-a-key' }, body: method === 'DELETE' ? undefined : '{}',
       });
       const res = await (fn as Route)(req, { params: Promise.resolve(params) });
       return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
@@ -635,7 +635,7 @@ describe('an area switched off, to a caller without a valid credential', () => {
     const deleteByFilter = async (key: string) => {
       as(null);
       const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: '{}',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '1.1.1.1', Authorization: `Bearer ${key}` }, body: '{}',
       });
       const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
       return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
@@ -657,7 +657,7 @@ describe('an area switched off, to a caller without a valid credential', () => {
       const send = async () => {
         as(null);
         const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents${path}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ik_0badc0de_nope' }, body: '{}',
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '1.1.1.1', Authorization: 'Bearer ik_0badc0de_nope' }, body: '{}',
         });
         const res = await (route as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
         return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
@@ -674,7 +674,7 @@ describe('an area switched off, to a caller without a valid credential', () => {
       const send = async () => {
         as(null);
         const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/d1`, {
-          method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ik_0badc0de_nope' }, body: method === 'DELETE' ? undefined : '{}',
+          method, headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '1.1.1.1', Authorization: 'Bearer ik_0badc0de_nope' }, body: method === 'DELETE' ? undefined : '{}',
         });
         const res = await (documentRoute[method] as unknown as Route)(req, { params: Promise.resolve({ id: index.id, documentId: 'd1' }) });
         return res.status;
@@ -693,7 +693,7 @@ describe('an area switched off, to a caller without a valid credential', () => {
     const deleteByFilter = async (key: string) => {
       as(null);
       const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: '{}',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '1.1.1.1', Authorization: `Bearer ${key}` }, body: '{}',
       });
       const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
       return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
@@ -718,7 +718,7 @@ describe('an area switched off, to a caller without a valid credential', () => {
     const deleteByFilter = async () => {
       as(viewer);
       const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '1.1.1.1' }, body: '{}',
       });
       const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
       return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
@@ -733,7 +733,7 @@ describe('an area switched off, to a caller without a valid credential', () => {
     const deleteByFilter = async () => {
       as(admin);
       const req = new NextRequest(`http://localhost/api/search-indexes/${index.id}/documents/delete-by-filter`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '1.1.1.1' }, body: '{}',
       });
       const res = await (deleteByFilterRoute.POST as unknown as Route)(req, { params: Promise.resolve({ id: index.id }) });
       return { status: res.status, limit: res.headers.get('X-RateLimit-Limit') };
