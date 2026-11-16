@@ -10,6 +10,8 @@
  *  - a request's key is looked up once, however many checks ask for it.
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,6 +27,9 @@ vi.mock('./ingestion-key.repository', async (original) => {
     },
   };
 });
+// Requests with a live key reach the document handlers: keep them off the search engine
+vi.mock('@/features/document-indexing/document-writer.service', async (original) =>
+  (await import('@/shared/test/document-writer-stub')).documentWriterWithoutEngine(original));
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 let testDb: AppTestDb;
@@ -234,6 +239,19 @@ describe('a real key', () => {
     expect(onOther.limit).toBe('20');
   });
 
+  it('counts index ids outside its scope on one count of its own, apart from its indexes', async () => {
+    const before = rateLimiter.size();
+    for (let i = 0; i < 20; i++) {
+      const res = await send(deleteByFilterRoute.POST, 'POST', '/delete-by-filter', realKey, '5.5.8.1', randomUUID());
+      expect(res.status).toBe(403);
+    }
+    // Twenty made-up ids: one counter for the key (plus the address's failed-check count, unused)
+    expect(rateLimiter.size() - before).toBeLessThanOrEqual(2);
+    expect((await send(deleteByFilterRoute.POST, 'POST', '/delete-by-filter', realKey, '5.5.8.1', randomUUID())).status).toBe(429);
+    // Its own index keeps its full allowance
+    expect((await deleteByFilter(realKey, '5.5.8.1')).limit).toBe('20');
+  });
+
   it('is counted separately on each route', async () => {
     for (let i = 0; i < 20; i++) await deleteByFilter(realKey, '5.5.6.1');
     expect((await deleteByFilter(realKey, '5.5.6.1')).status).toBe(429);
@@ -265,6 +283,27 @@ describe('a signed-in admin (no key)', () => {
     }
     // The address has used no failed key checks
     expect((await list('ik_0badc0de_nope', '6.6.6.1')).status).toBe(401);
+  });
+
+  it('is counted once per route across indexes: the index id is checked after the limit', async () => {
+    const [admin] = await testDb.db.insert(user).values({ email: `rl-b${n}@x.test`, roleId: ADMIN_ROLE_ID, isActive: true, firstName: 'A' }).returning();
+    signedIn.session = { user: { id: admin.id } };
+    try {
+      for (let i = 0; i < 20; i++) await deleteByFilter('', '6.6.6.2');
+      const [other] = await testDb.db.insert(searchIndex).values({ name: `limits-admin-${n}`, displayName: 'Limits', searchType: 'lexical' }).returning();
+      expect((await send(deleteByFilterRoute.POST, 'POST', '/delete-by-filter', '', '6.6.6.2', other.id)).status).toBe(429);
+    } finally {
+      signedIn.session = null;
+    }
+  });
+});
+
+describe('a request without a key', () => {
+  it('adds one counter however many index ids it names, so made-up ids leave the store as it was', async () => {
+    const before = rateLimiter.size();
+    for (let i = 0; i < 20; i++) expect((await send(deleteByFilterRoute.POST, 'POST', '/delete-by-filter', '', '6.6.7.1', randomUUID())).status).toBe(401);
+    expect(rateLimiter.size() - before).toBe(1);
+    expect((await send(deleteByFilterRoute.POST, 'POST', '/delete-by-filter', '', '6.6.7.1', randomUUID())).status).toBe(429);
   });
 });
 

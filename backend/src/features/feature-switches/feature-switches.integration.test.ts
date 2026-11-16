@@ -72,6 +72,9 @@ let session: { user: { id: string } } | null = null;
 // Dismissed tips and the hidden checklist are kept in the analytics database
 let analyticsTestDb: AnalyticsTestDb;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; }, get analyticsDB() { return analyticsTestDb.db; } }));
+// Requests with a live key reach the document handlers: keep them off the search engine
+vi.mock('@/features/document-indexing/document-writer.service', async (original) =>
+  (await import('@/shared/test/document-writer-stub')).documentWriterWithoutEngine(original));
 vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => session }));
 
 // The chat itself is not under test: a request that gets through the checks answers 200

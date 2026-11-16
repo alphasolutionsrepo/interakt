@@ -39,8 +39,12 @@ export interface RateLimitConfig {
    *
    * null: this request is counted by a limit of its own elsewhere (the document routes'
    * failed-key-check limit), so this one doesn't count it. It gets no limit headers here.
+   *
+   * id: the route's own [id] (a search index, a data source), when it has one. The default
+   * counts each id apart; a key function includes it only once it knows the id is one the
+   * caller may use, so made-up ids share one count instead of adding one each.
    */
-  keyFn?: (request: NextRequest) => ClientKey | null | Promise<ClientKey | null>;
+  keyFn?: (request: NextRequest, id?: string) => ClientKey | null | Promise<ClientKey | null>;
 }
 
 interface WindowEntry {
@@ -173,14 +177,20 @@ export const rateLimiter = {
 // HANDLER WRAPPER
 // ============================================================================
 
+let routes = 0;
+
+/** The default count: the client address, per id (the routes using it check access first). */
+function clientKeyPerId(request: NextRequest, id?: string): ClientKey {
+  const client = clientKey(request);
+  return id ? { ...client, key: `${id}:${client.key}` } : client;
+}
+
 /**
  * Wrap a Next.js API route handler with rate limiting.
  *
  * @example
  * export const GET = withRateLimit(myHandler, { maxRequests: 30 });
  */
-let routes = 0;
-
 export function withRateLimit<T extends (...args: never[]) => Promise<NextResponse>>(
   handler: T,
   config: RateLimitConfig = {}
@@ -188,21 +198,21 @@ export function withRateLimit<T extends (...args: never[]) => Promise<NextRespon
   const {
     maxRequests = 60,
     windowMs = 60_000,
-    keyFn = clientKey,
+    keyFn = clientKeyPerId,
   } = config;
 
-  // One count per wrapped handler (a route's method) and the route's own [id] (a search index, a
-  // data source), not per URL: an id below it in the path (a document, a span) would otherwise
-  // give each of those its own allowance
+  // One count per wrapped handler (a route's method), not per URL: an id below the route's own
+  // [id] in the path (a document, a span) would otherwise give each of those its own allowance.
+  // Whether the route's own [id] is counted apart is up to keyFn
   const route = `route-${++routes}`;
 
   const wrapped = async (...args: Parameters<T>): Promise<NextResponse> => {
     const request = args[0] as NextRequest;
-    const key = await keyFn(request);
+    const { id } = (await (args[1] as { params?: Promise<{ id?: unknown }> } | undefined)?.params) ?? {};
+    const key = await keyFn(request, typeof id === 'string' ? id : undefined);
     if (key === null) return handler(...args);
     const limit = limitFor(key, maxRequests);
-    const { id } = (await (args[1] as { params?: Promise<{ id?: unknown }> } | undefined)?.params) ?? {};
-    const routeKey = typeof id === 'string' ? `${route}:${id}:${key.key}` : `${route}:${key.key}`;
+    const routeKey = `${route}:${key.key}`;
 
     const result = rateLimiter.check(routeKey, limit, windowMs);
 

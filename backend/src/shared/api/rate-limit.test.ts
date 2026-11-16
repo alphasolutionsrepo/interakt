@@ -193,6 +193,20 @@ describe('withRateLimit', () => {
     expect((await limited(new NextRequest('http://localhost/api/x', { headers: { 'X-Forwarded-For': '1.1.1.1' } }))).status).toBe(200);
   });
 
+  it("hands the route's own [id] to the key function, which decides whether it is counted apart", async () => {
+    type Ctx = { params: Promise<Record<string, string>> };
+    const seen: (string | undefined)[] = [];
+    const limited = withRateLimit(async (_request: NextRequest, _ctx: Ctx) => NextResponse.json({ ok: true }), {
+      maxRequests: 1,
+      keyFn: (_request, id) => { seen.push(id); return { key: 'one-count', shared: false }; },
+    });
+    const req = () => new NextRequest('http://interakt.test/api/x');
+    expect((await limited(req(), { params: Promise.resolve({ id: 'a', documentId: 'd' }) })).status).toBe(200);
+    // The key function left the id out, so a second id shares the count
+    expect((await limited(req(), { params: Promise.resolve({ id: 'b' }) })).status).toBe(429);
+    expect(seen).toEqual(['a', 'b']);
+  });
+
   it('leaves a request to the handler, uncounted and without headers, when the key function answers null', async () => {
     rateLimiter.clear();
     const limited = withRateLimit(async (_request: NextRequest) => NextResponse.json({ ok: true }), { maxRequests: 1, keyFn: () => null });

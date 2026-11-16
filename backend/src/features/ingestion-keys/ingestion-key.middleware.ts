@@ -120,11 +120,13 @@ function identify(request: NextRequest, presented: string): Promise<Identity> {
 
 /**
  * Rate-limit identity for a document request: a live key is counted on its own (`key:<id>`),
- * so nobody else can spend its allowance; a request with any other key is left to the
- * failed-check limit per client (null); a request without a key (an admin session) is
- * counted by its client address, or with the requests that have none (see clientKey).
+ * so nobody else can spend its allowance, and per index for the indexes it may use; a request
+ * with any other key is left to the failed-check limit per client (null); a request without a
+ * key (an admin session) is counted by its client address, or with the requests that have none
+ * (see clientKey). This limit runs before the access checks, so an index id the caller may not
+ * use is left out of the count: made-up ids share one count instead of adding one each.
  */
-export async function ingestionRateLimitKey(request: NextRequest): Promise<ClientKey | null> {
+export async function ingestionRateLimitKey(request: NextRequest, indexId?: string): Promise<ClientKey | null> {
     const presented = extractBearer(request);
     if (!presented) {
         const client = clientKey(request);
@@ -138,7 +140,9 @@ export async function ingestionRateLimitKey(request: NextRequest): Promise<Clien
         // and answers it as an error, logged
         return null;
     }
-    return identity.success && isKeyLive(identity.key) ? { key: `key:${identity.key.id}`, shared: false } : null;
+    if (!identity.success || !isKeyLive(identity.key)) return null;
+    const { id, searchIndexIds } = identity.key;
+    return { key: indexId && searchIndexIds.includes(indexId) ? `key:${id}:${indexId}` : `key:${id}`, shared: false };
 }
 
 /**
