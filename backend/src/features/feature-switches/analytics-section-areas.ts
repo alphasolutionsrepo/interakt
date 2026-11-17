@@ -16,3 +16,8 @@ export const ANALYTICS_SECTION_NEEDS = {
   '/analytics/ai': { all: ['chat'] },
   '/analytics/traces': { anyOf: ['search', 'chat'] },
 } as const satisfies Record<string, AreaNeeds>;
+
+/** What the analytics section at this href needs beyond Analytics itself; undefined: only Analytics. */
+export function analyticsSectionNeeds(href: string): AreaNeeds | undefined {
+  return (ANALYTICS_SECTION_NEEDS as Record<string, AreaNeeds | undefined>)[href];
+}

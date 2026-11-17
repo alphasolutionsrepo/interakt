@@ -2,9 +2,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { hiddenSectionAreas, visibleSections } from './sections';
+import { ANALYTICS_SECTIONS, hiddenSectionAreas, visibleSections } from './sections';
 
 import type { Area } from '@/features/feature-switches/areas';
+import { pageAreasOn } from '@/features/feature-switches/page-areas';
 
 const offFor = (...off: Area[]) => (a: Area) => !off.includes(a);
 const labels = (areaOn: (a: Area) => boolean) => visibleSections(areaOn).map((s) => s.label);
@@ -32,5 +33,18 @@ describe('hiddenSectionAreas', () => {
     expect(hiddenSectionAreas(offFor())).toEqual([]);
     expect(hiddenSectionAreas(offFor('chat'))).toEqual(['chat']);
     expect(hiddenSectionAreas(offFor('search', 'chat', 'playground'))).toEqual(['search', 'chat']);
+  });
+});
+
+describe('the section menu and the page gate', () => {
+  // Analytics on; Search and Chat in every combination
+  const combos: Array<readonly Area[]> = [[], ['search'], ['chat'], ['search', 'chat']];
+
+  it.each(combos)('agree on every section with %j off', (...off: Area[]) => {
+    const areaOn = (a: Area) => !off.includes(a);
+    const shown = visibleSections(areaOn).map((s) => s.href);
+    for (const section of ANALYTICS_SECTIONS) {
+      expect(shown.includes(section.href), section.href).toBe(pageAreasOn(section.href, areaOn));
+    }
   });
 });
