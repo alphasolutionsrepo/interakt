@@ -62,7 +62,7 @@ An embedding model that can return shorter vectors on request (such as `qwen3-em
 1. Click **Add Provider**, name it, and set **Connection type** to **Ollama**.
 2. Set **base URL** — `http://localhost:11434` by default. Change only if Ollama is on a different machine.
    If your Ollama sits behind a proxy that checks keys, set **Authentication** to **API Key** and enter the key: Interakt sends it as a bearer token.
-3. Click **Discover Models** — Interakt asks Ollama for the list of pulled models.
+3. Click **Discover Models** — Interakt asks Ollama for the pulled models, and takes each one's type, context size and (for embedding models) dimensions from Ollama.
 4. Tick the ones you want to expose in the admin UI's dropdowns.
 5. Click **Save**.
 

@@ -47,6 +47,8 @@ let oddAnswer: unknown = null;
 const ollama = {
   seen: [] as Seen[],
   tags: [] as Array<Record<string, unknown>>,
+  /** /api/show answers by model name (model_info); unset names get a 404 */
+  show: {} as Record<string, Record<string, unknown>>,
   /** Answers to /api/generate, in order; empty means a normal answer */
   answers: [] as Array<{ status: number; retryAfter?: string }>,
 };
@@ -102,6 +104,16 @@ beforeAll(async () => {
       return res.end('{"response":"Hi from Ollama","done":true,"prompt_eval_count":1,"eval_count":1}');
     }
     if (req.url === '/api/tags') return res.end(JSON.stringify({ models: ollama.tags }));
+    if (req.url === '/api/show') {
+      let raw = '';
+      req.on('data', (c) => { raw += c; });
+      req.on('end', () => {
+        const info = ollama.show[JSON.parse(raw || '{}').model];
+        if (!info) { res.writeHead(404); return res.end('{"error":"model not found"}'); }
+        res.end(JSON.stringify({ model_info: info }));
+      });
+      return;
+    }
     res.writeHead(404); res.end();
   });
   gatewayUrl = `${await listen(gatewayServer)}/v1`;
@@ -109,7 +121,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => { gatewayServer.close(); ollamaServer.close(); await testDb.close(); });
-beforeEach(() => { gateway.seen = []; gateway.answers = []; gateway.embeddings = true; ollama.seen = []; ollama.answers = []; ollama.tags = []; });
+beforeEach(() => { gateway.seen = []; gateway.answers = []; gateway.embeddings = true; ollama.seen = []; ollama.answers = []; ollama.tags = []; ollama.show = {}; });
 
 // ── Calls through the routes ─────────────────────────────────────────────────
 
@@ -126,7 +138,7 @@ async function updateProvider(id: string, body: Record<string, unknown>) {
   const res = await providerRoute.PUT(new NextRequest(`http://localhost/api/ai-providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }), idParams(id));
   return { status: res.status, data: (await res.json()).data };
 }
-async function modelsOf(id: string): Promise<Array<{ id: number; modelKey: string; isAvailable: boolean; capabilities: Record<string, unknown> }>> {
+async function modelsOf(id: string): Promise<Array<{ id: number; modelKey: string; modelType: string; dimensions: number | null; isAvailable: boolean; capabilities: Record<string, unknown> }>> {
   const res = await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${id}?includeModels=true`), idParams(id));
   return (await res.json()).data.models;
 }
@@ -347,8 +359,9 @@ describe("an Ollama provider under its own name: connection test and discovery",
     const { data } = await createProvider({ providerKey: 'lab-discover', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
     expect((await (await post(testConnectionRoute, data.id)).json()).data).toMatchObject({ success: true });
     expect((await (await post(discoverRoute, data.id)).json()).data).toMatchObject({ modelsFound: 1, modelsAdded: 1 });
-    expect(ollama.seen.map((x) => x.path)).toEqual(['/api/tags', '/api/tags']);
-    expect(ollama.seen.map((x) => x.auth)).toEqual([undefined, undefined]);
+    // The connection test, then discovery: the list, and the model's details
+    expect(ollama.seen.map((x) => x.path)).toEqual(['/api/tags', '/api/tags', '/api/show']);
+    expect(ollama.seen.map((x) => x.auth)).toEqual([undefined, undefined, undefined]);
   });
 
   it('sends its API key, when it has one (an Ollama behind a proxy that checks keys)', async () => {
@@ -645,5 +658,57 @@ describe('Discover Models when the provider refuses or is down (review 17 Nov)',
     const body = await res.json();
     expect(res.status).toBe(503);
     expect(body).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', error: "gw-down couldn't be reached." });
+  });
+});
+
+describe("discovery reads what the provider says about each model, before guessing from its name", () => {
+  const details = { parameter_size: '4B', quantization_level: 'Q4', family: 'x' };
+  const byKey = async (id: string) => Object.fromEntries((await modelsOf(id)).map((m) => [m.modelKey, m]));
+
+  it("Ollama: type from its capabilities, context and vector size from /api/show", async () => {
+    ollama.tags = [
+      { name: 'house-chat:4b', details, capabilities: ['completion', 'tools'] },
+      { name: 'house-vectors:1b', details, capabilities: ['embedding'] },
+      { name: 'house-router:4b', details, capabilities: ['decision'] },
+      // An older Ollama says nothing: the name still decides
+      { name: 'nomic-embed-text:v1.5', details },
+    ];
+    ollama.show = {
+      'house-chat:4b': { 'general.architecture': 'qwen2', 'qwen2.context_length': 32768, 'qwen2.embedding_length': 5120 },
+      // A vision tower has its own embedding length: the model's own one is read
+      'house-vectors:1b': { 'general.architecture': 'gemma3', 'gemma3.vision.embedding_length': 1152, 'gemma3.embedding_length': 768, 'gemma3.context_length': 2048 },
+    };
+    const { data } = await createProvider({ providerKey: 'lab-caps', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    await post(discoverRoute, data.id);
+    const saved = await byKey(data.id);
+
+    expect(Object.keys(saved).sort()).toEqual(['house-chat:4b', 'house-vectors:1b', 'nomic-embed-text:v1.5']);
+    expect(saved['house-chat:4b']).toMatchObject({ modelType: 'chat', capabilities: expect.objectContaining({ contextWindow: 32768 }) });
+    expect(saved['house-vectors:1b']).toMatchObject({ modelType: 'embedding', dimensions: 768 });
+    expect(saved['nomic-embed-text:v1.5']).toMatchObject({ modelType: 'embedding', dimensions: 768 });
+    // No embedding request was needed to learn a size
+    expect(ollama.seen.some((x) => x.path.startsWith('/api/embed'))).toBe(false);
+  });
+
+  it('OpenAI-compatible: type from the capabilities or output modalities the list carries', async () => {
+    gateway.embeddings = false; // a size probe would fail: the list itself must decide the type
+    gateway.models = [
+      { id: 'house-vectors', capabilities: { embeddings: true } },
+      { id: 'house-chat', capabilities: { embeddings: false, tools: true } },
+      { id: 'ft-legacy', capabilities: { chat_completion: false, completion: true, embeddings: false } },
+      { id: 'router/vectors-small', output_modalities: ['embeddings'] },
+      { id: 'router/painter', output_modalities: ['image'] },
+      { id: 'router/writer', output_modalities: ['text'], context_length: 65536 },
+      { id: 'o3-pro' },
+    ];
+    const { data } = await createProvider({ providerKey: 'gw-caps', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    await post(discoverRoute, data.id);
+    const saved = await byKey(data.id);
+
+    expect(Object.keys(saved).sort()).toEqual(['house-chat', 'house-vectors', 'router/vectors-small', 'router/writer']);
+    expect(saved['house-vectors'].modelType).toBe('embedding');
+    expect(saved['router/vectors-small'].modelType).toBe('embedding');
+    expect(saved['house-chat'].modelType).toBe('chat');
+    expect(saved['router/writer']).toMatchObject({ modelType: 'chat', capabilities: expect.objectContaining({ contextWindow: 65536 }) });
   });
 });

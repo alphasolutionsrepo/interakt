@@ -229,6 +229,8 @@ export interface OllamaModelInfo {
     parameter_size: string;
     quantization_level: string;
   };
+  /** What the model can do ("completion", "embedding", "tools", ...): newer Ollama versions list them */
+  capabilities?: string[];
 }
 
 /**

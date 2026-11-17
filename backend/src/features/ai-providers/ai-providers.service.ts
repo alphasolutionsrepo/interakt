@@ -1112,23 +1112,94 @@ async function readModelList(provider: AIProvider, path: string, headers: Record
 async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
   const data = ((await readModelList(provider, '/api/tags', ollamaHeaders(provider.apiKey), timeoutMs)) ?? {}) as OllamaTagsResponse;
   const installed = data.models || [];
-  const models = installed.map((ollamaModel): ReportedModel => {
-    const modelType = inferModelType(ollamaModel);
-    return {
-      modelKey: ollamaModel.name,
-      modelType,
-      description: `Discovered from Ollama (${ollamaModel.details.parameter_size})`,
-      dimensions: modelType === 'embedding' ? inferEmbeddingDimensions(ollamaModel) : null,
-      capabilities: {
-        parameterSize: ollamaModel.details.parameter_size,
-        quantization: ollamaModel.details.quantization_level,
-        family: ollamaModel.details.family,
-      },
-    };
-  });
+  const usable = installed
+    .map((ollamaModel) => ({ ollamaModel, modelType: ollamaModelType(ollamaModel) }))
+    .filter((m): m is { ollamaModel: OllamaModelInfo; modelType: AIModelType } => m.modelType !== 'skip');
+  const shown = await inBatches(usable, 4, ({ ollamaModel }) => ollamaShown(provider, ollamaModel.name));
+  const models = usable.map(({ ollamaModel, modelType }, i): ReportedModel => ({
+    modelKey: ollamaModel.name,
+    modelType,
+    description: `Discovered from Ollama (${ollamaModel.details.parameter_size})`,
+    dimensions: modelType === 'embedding' ? shown[i].embeddingLength ?? inferEmbeddingDimensions(ollamaModel) : null,
+    capabilities: {
+      parameterSize: ollamaModel.details.parameter_size,
+      quantization: ollamaModel.details.quantization_level,
+      family: ollamaModel.details.family,
+      ...(shown[i].contextLength !== undefined && { contextWindow: shown[i].contextLength }),
+    },
+  }));
   // What Ollama has installed is the truth: every other model is hidden, seeded ones included
   // An empty list (nothing pulled yet, or Ollama restarting) hides nothing
   return { models, listed: installed.map((m) => m.name), hides: installed.length === 0 ? 'none' : 'all' };
+}
+
+/**
+ * A model's type as Ollama states it (its capabilities: "embedding", "completion"); a model
+ * that does neither (an image or "decision" model) is skipped. An Ollama too old to list
+ * capabilities leaves the name to decide.
+ */
+function ollamaModelType(model: OllamaModelInfo): AIModelType | 'skip' {
+  const capabilities = model.capabilities;
+  if (!Array.isArray(capabilities) || capabilities.length === 0) return inferModelType(model);
+  if (capabilities.includes('embedding')) return 'embedding';
+  return capabilities.includes('completion') ? 'chat' : 'skip';
+}
+
+/**
+ * A model's context size and vector size from Ollama's /api/show, read under the model's own
+ * architecture ("qwen2.context_length"), not a vision tower's. Empty when Ollama won't say.
+ */
+async function ollamaShown(provider: AIProvider, model: string): Promise<{ contextLength?: number; embeddingLength?: number }> {
+  try {
+    const response = await fetch(`${provider.baseUrl}/api/show`, {
+      method: 'POST',
+      headers: ollamaHeaders(provider.apiKey, true),
+      body: JSON.stringify({ model }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return {};
+    const info = ((await response.json()) as { model_info?: Record<string, unknown> }).model_info ?? {};
+    const architecture = info['general.architecture'];
+    if (typeof architecture !== 'string') return {};
+    const size = (key: string) => {
+      const value = info[`${architecture}.${key}`];
+      return typeof value === 'number' && value > 0 ? value : undefined;
+    };
+    return { contextLength: size('context_length'), embeddingLength: size('embedding_length') };
+  } catch {
+    return {};
+  }
+}
+
+/** fn over items, a few at a time, results in order */
+async function inBatches<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    results.push(...await Promise.all(items.slice(i, i + size).map(fn)));
+  }
+  return results;
+}
+
+/**
+ * A model's type as an OpenAI-compatible list states it, when it does: a capabilities object
+ * (embeddings, chat_completion: Azure OpenAI and some gateways) or output modalities
+ * (OpenRouter). Undefined when the list says nothing, and the id decides.
+ */
+function listedModelType(model: Record<string, unknown>): AIModelType | 'skip' | undefined {
+  const capabilities = model.capabilities;
+  if (capabilities && typeof capabilities === 'object' && !Array.isArray(capabilities)) {
+    const said = capabilities as Record<string, unknown>;
+    if (said.embeddings === true) return 'embedding';
+    if (said.chat_completion === true) return 'chat';
+    if (said.chat_completion === false) return 'skip';
+  }
+  const architecture = model.architecture as { output_modalities?: unknown } | undefined;
+  const modalities = model.output_modalities ?? architecture?.output_modalities;
+  if (Array.isArray(modalities)) {
+    if (modalities.includes('embeddings')) return 'embedding';
+    return modalities.includes('text') ? 'chat' : 'skip';
+  }
+  return undefined;
 }
 
 /** Model ids that read as embedding models: "embed" in the name, or a well-known embedding family. */
@@ -1141,7 +1212,7 @@ const NOT_TEXT_MODEL = /(whisper|tts|dall-e|gpt-image|image|audio|realtime|trans
  * OpenAI text models that don't answer /chat/completions (completions-only or Responses-only),
  * also behind a router's "openai/" prefix. Other "-instruct" models (Llama, Qwen) do chat.
  */
-const NOT_CHAT_MODEL = /(^|\/)(babbage-|davinci-|gpt-3\.5-turbo-instruct|o1-pro|computer-use)/i;
+const NOT_CHAT_MODEL = /(^|\/)(babbage-|davinci-|gpt-3\.5-turbo-instruct|o1-pro|o3-pro|computer-use)/i;
 
 /** A context size some gateways report beside each model (vLLM max_model_len, others context_length). */
 function reportedContextWindow(model: Record<string, unknown>): number | undefined {
@@ -1157,14 +1228,20 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
   }
   const listed = (body.data as Array<Record<string, unknown>>)
     .filter((model): model is Record<string, unknown> & { id: string } => typeof model.id === 'string' && model.id.length > 0);
-  // New models are added when their id reads as a text or embedding model; any other can be added by hand
-  const models = listed
-    .filter((model) => !NOT_TEXT_MODEL.test(model.id) && !NOT_CHAT_MODEL.test(model.id))
-    .map((model): ReportedModel => {
+  // A model's type is what the list says about it; when it says nothing, the id decides. A model
+  // that is neither a text nor an embedding model is not added (it can be added by hand)
+  const typed = listed.map((model) => ({
+    model,
+    modelType: listedModelType(model)
+      ?? (NOT_TEXT_MODEL.test(model.id) || NOT_CHAT_MODEL.test(model.id) ? 'skip' : EMBEDDING_MODEL.test(model.id) ? 'embedding' : 'chat'),
+  }));
+  const models = typed
+    .filter((t): t is { model: (typeof listed)[number]; modelType: AIModelType } => t.modelType !== 'skip')
+    .map(({ model, modelType }): ReportedModel => {
       const contextWindow = reportedContextWindow(model);
       return {
         modelKey: model.id,
-        modelType: EMBEDDING_MODEL.test(model.id) ? 'embedding' : 'chat',
+        modelType,
         description: `Discovered from ${provider.displayName}`,
         dimensions: null,
         capabilities: contextWindow ? { contextWindow } : {},
