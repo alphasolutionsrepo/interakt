@@ -330,15 +330,24 @@ describe('where the traffic is recorded as coming from', () => {
 
 describe('which search callers see fields an index keeps out of responses', () => {
   const bySlug = ROUTES.find((r) => r.name === 'search by slug')!;
-  async function signedInAdminOption(headers: Record<string, string>): Promise<unknown> {
+  const byToken = ROUTES.find((r) => r.name === 'search by token')!;
+  async function signedInAdminOption(headers: Record<string, string>, route = bySlug): Promise<unknown> {
     let seen: unknown = 'not called';
     mocks.executeExperienceSearch.mockImplementation(async (_e: unknown, _r: unknown, options: { signedInAdmin?: boolean }) => {
       seen = options.signedInAdmin;
       return { results: { hits: [], total: { value: 0 }, pagination: {}, facets: [] }, sourcesSearched: [], failedSources: [] };
     });
-    expect(await settle(await bySlug.call(headers))).toBe(200);
+    expect(await settle(await route.call(headers))).toBe(200);
     return seen;
   }
+
+  it('the search by token never does, even for an admin testing from the Widget playground', async () => {
+    expect(await signedInAdminOption({ 'X-Access-Token': byToken.token, Origin: SHOP }, byToken)).toBeFalsy();
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    expect(await signedInAdminOption({
+      'X-Access-Token': byToken.token, Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin', 'X-Interakt-Test': '1',
+    }, byToken)).toBeFalsy();
+  });
 
   it('an admin signed in to the playground, without the token, does', async () => {
     mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
