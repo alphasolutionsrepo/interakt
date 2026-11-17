@@ -55,6 +55,7 @@ describe("a path the AI would leave", () => {
     ['..', 'https://api.example.com/orders/{{input.id}}/items', { id: '..' }],
     ['.', 'https://api.example.com/orders/{{input.id}}/items', { id: '.' }],
     ['.. made of two values', 'https://api.example.com/orders/{{input.a}}{{input.b}}/items', { a: '.', b: '.' }],
+    ['.. next to one the admin wrote', 'https://api.example.com/v1/../orders/{{input.id}}/items', { id: '..' }],
   ])('is refused for a %s segment, and nothing is sent', async (_case, baseUrl, input) => {
     const result = await executeHttpApi(tool({ baseUrl }), input);
     expect(result.success).toBe(false);

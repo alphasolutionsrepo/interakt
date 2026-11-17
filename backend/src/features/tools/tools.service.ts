@@ -426,7 +426,7 @@ type ReadinessFields = Pick<Tool, 'name' | 'executorType' | 'operation' | 'dataS
 export async function notReadyToAssign(tool: ReadinessFields): Promise<string | undefined> {
   const baseUrl = (tool.executorConfig as Record<string, unknown> | null)?.baseUrl;
   if (tool.executorType === 'http' && typeof baseUrl === 'string' && !hasFixedHost(baseUrl)) {
-    return `HTTP tool "${tool.name}" can't run: its URL takes the host from input. Write the host and a "/" before any {{input.field}} on the tool`;
+    return `HTTP tool "${tool.name}" isn't set up: its URL takes the host from input. Write the host and a "/" before any {{input.field}} on the tool`;
   }
   if (tool.operation !== 'lookup' || hasChosenLookupFields(tool.executorConfig as Record<string, unknown> | null ?? undefined)) {
     return undefined;

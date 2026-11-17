@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import * as assignRoute from '@/app/api/ai-experiences/[id]/tools/route';
 import * as toolRoute from '@/app/api/tools/[id]/route';
 import * as toolsRoute from '@/app/api/tools/route';
 import { user } from '@/db/schema/users.schema';
@@ -19,6 +20,7 @@ import { accessStub } from '@/shared/test/access-stub';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 let testDb: AppTestDb;
+let adminId: string;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
 vi.mock('@/features/auth/auth.api.handlers', async () => (await import('@/shared/test/access-stub')).signedInAuth);
 vi.mock('@/features/access/access.service', async () => (await import('@/shared/test/access-stub')).accessService);
@@ -28,6 +30,7 @@ beforeAll(async () => {
   // Tools record who made them: sign in as a stored user
   const [admin] = await testDb.db.insert(user).values({ email: 'admin@x.test', roleId: ADMIN_ROLE_ID, isActive: true, firstName: 'Admin' }).returning();
   accessStub.session = { user: { id: admin.id } };
+  adminId = admin.id;
 }, 60_000);
 afterAll(() => { accessStub.reset(); return testDb.close(); });
 
@@ -75,6 +78,19 @@ describe('saving an HTTP tool', () => {
     expect(body.data.executorConfig).toMatchObject({ baseUrl: 'https://api.example.com/orders/{{input.id}}', timeout: 5000 });
   });
 
+  it('keeps a URL whose host is one of the admin\'s secrets', async () => {
+    const { status } = await create(restConfig('https://{{secret:orders_host}}/orders/{{input.id}}'));
+    expect(status).toBe(201);
+  });
+
+  it.each([
+    ['a URL that is not one', { ...restConfig('orders'), baseUrl: 'orders' }],
+    ['no method', { baseUrl: 'https://api.example.com/orders', responseMapping: { resultsPath: '$.items' } }],
+    ['a web search setting of the wrong kind', { maxResults: 'many' }],
+  ])('refuses %s', async (_case, config) => {
+    expect((await create(config)).status).toBe(400);
+  });
+
   it('keeps a web search config', async () => {
     const { status, body } = await create({ maxResults: 5, searchDepth: 'advanced' });
     expect(status).toBe(201);
@@ -94,6 +110,20 @@ describe('an HTTP tool stored with its host taken from input', () => {
     const id = await storedTool(config);
     const { status } = await update(id, { name: 'Renamed', executorConfig: config });
     expect(status).toBe(200);
+  });
+
+  it('cannot be added to a chat experience, saying what to change', async () => {
+    const id = await storedTool(restConfig('https://{{input.host}}/orders'));
+    const t = tag();
+    const rows = (await testDb.db.execute(sql`INSERT INTO ai_experiences (name, slug, created_by, persona_config, session_config, access_config, observability_config)
+      VALUES (${t}, ${t}, ${adminId}, '{}', '{}', '{}', '{}') RETURNING id`)) as unknown as { rows: Array<{ id: string }> };
+    const experienceId = rows.rows[0].id;
+    const res = await assignRoute.POST(
+      new NextRequest(`http://localhost/api/ai-experiences/${experienceId}/tools`, { method: 'POST', body: JSON.stringify({ toolId: id }) }),
+      { params: Promise.resolve({ id: experienceId }) },
+    );
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain('takes the host from input');
   });
 
   it('is marked as needing setup in the tools list, with what to change', async () => {

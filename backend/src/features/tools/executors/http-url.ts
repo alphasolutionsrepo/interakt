@@ -1,5 +1,7 @@
 // src/features/tools/executors/http-url.ts
 
+import { SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
+
 /** An HTTP tool's {{input.field}} placeholder, filled with what the AI passes for that field. */
 export const INPUT_PATTERN = /\{\{input\.([a-zA-Z0-9_]+)\}\}/g;
 
@@ -20,18 +22,22 @@ function fixedOrigin(baseUrl: string): string | null {
 /** What to change when a tool's URL lets input choose the host. */
 export const FIXED_HOST_MESSAGE = 'Use a full URL with a fixed host: write the host and a "/" before any {{input.field}}, which fills the path and query';
 
-/** Whether a tool's URL keeps its host fixed, with {{input.field}} only after the host and its "/". */
+/**
+ * Whether a tool's stored URL keeps its host fixed, with {{input.field}} only after the host and
+ * its "/". A {{secret:name}} is the admin's own value, filled in before the call, so it counts
+ * as written (as "secret").
+ */
 export function hasFixedHost(baseUrl: string): boolean {
-  return fixedOrigin(baseUrl) !== null;
+  return fixedOrigin(baseUrl.replace(SECRET_TEMPLATE_PATTERN, 'secret')) !== null;
 }
 
 /**
- * Whether the URL's path has a "." or ".." segment, which URL parsing removes along with the
- * segment before it ("%2e" counts as a dot).
+ * How many "." or ".." segments the URL's path has: URL parsing removes them, with the segment
+ * before a "..". ("%2e" counts as a dot.)
  */
-function hasDotSegment(url: string): boolean {
+function dotSegments(url: string): number {
   const path = url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, '').split(/[?#]/)[0];
-  return path.split('/').some((segment) => /^(\.|%2e){1,2}$/i.test(segment));
+  return path.split('/').filter((segment) => /^(\.|%2e){1,2}$/i.test(segment)).length;
 }
 
 /**
@@ -50,6 +56,7 @@ export function resolveUrlTemplate(
     const v = input[field];
     return encodeURIComponent(v != null ? String(v) : '');
   });
-  if (hasDotSegment(filled) && !hasDotSegment(baseUrl.replace(INPUT_PATTERN, 'a'))) return { problem: 'path' };
+  // More dot segments than the admin wrote: an input value is one
+  if (dotSegments(filled) > dotSegments(baseUrl.replace(INPUT_PATTERN, 'a'))) return { problem: 'path' };
   return originOf(filled) === origin ? { url: filled } : { problem: 'host' };
 }
