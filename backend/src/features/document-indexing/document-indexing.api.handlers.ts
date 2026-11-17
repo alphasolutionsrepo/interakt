@@ -352,7 +352,7 @@ export async function handleGetBatchStatus(
             return authResult.response;
         }
 
-        const progress = await getIndexingProgress(params.batchId);
+        const progress = await getIndexingProgress(idValidation.data.id, params.batchId);
 
         if (!progress) {
             return apiResponse.notFound('Indexing batch not found');
@@ -431,7 +431,7 @@ export async function handleCancelBatch(
             return authResult.response;
         }
 
-        const cancelled = await cancelBatch(params.batchId);
+        const cancelled = await cancelBatch(idValidation.data.id, params.batchId);
 
         if (!cancelled) {
             return apiResponse.badRequest('Batch cannot be cancelled (not in progress or not found)');

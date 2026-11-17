@@ -92,6 +92,7 @@ export function buildSearchContext(index: SearchIndexComplete): SearchContext {
         searchableFields,
         facetableFields,
         defaultResponseFields,
+        showsNoFields: showsNoFields(index.fields),
         allFields,
         language: index.language,
         embedding,
@@ -211,6 +212,15 @@ export function buildBrowsableFields(
         && hasDataAvailable(field)
         && !isEmptySystemField(field, { allowGeneratedTimestamps })
     );
+}
+
+/**
+ * Every field the index has set up is kept out of responses by the admin ("Include in
+ * response" off). Exported for its tests.
+ */
+export function showsNoFields(fields: SearchIndexField[]): boolean {
+    const configured = fields.filter(field => !isEmptySystemField(field));
+    return configured.length > 0 && !configured.some(field => field.includeInResponse);
 }
 
 /**

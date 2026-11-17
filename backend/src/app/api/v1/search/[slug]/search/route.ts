@@ -86,6 +86,9 @@ async function post(
     const run = () => withAnalyticsSource(analyticsSource, () => executeExperienceSearch(experience, validated as PublicSearchRequest, {
       source: analyticsSource,
       includeHighlights: validated.includeHighlights,
+      // The playground (its role allows playground use) sees every field; the built-in help,
+      // open to everyone signed in, keeps to the shown fields like any visitor
+      signedInAdmin: isAdmin && !experience.isBuiltIn,
     }));
     // Admin searches: untraced, or traced in full when the admin asks for it.
     const { results, hitOrigins, failedSources, interpretation } = isAdmin

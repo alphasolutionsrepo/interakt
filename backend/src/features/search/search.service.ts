@@ -35,6 +35,7 @@ import type {
 } from './search.types';
 import { SearchError } from './search.types';
 import { searchRequestSchema } from './search.validation';
+import { keepShownFields, withinShownFields } from './response-fields';
 import { buildSearchContext, supportsSemanticSearch } from './search-context.builder';
 import {
     providerRegistry,
@@ -126,6 +127,8 @@ export interface SearchOptions {
     timeoutMs?: number;
     /** What the request carries that its caller didn't write (a chat tool's defaults) */
     fixed?: FixedClauses;
+    /** A public caller: its field list and highlights are kept to the fields the index shows in responses */
+    shownFieldsOnly?: boolean;
     /** What the visitor typed, when query understanding changed the query searched: analytics records both */
     visitorQuery?: string;
 }
@@ -188,13 +191,14 @@ export async function search(
 
     try {
         // 1. Validate request - parse throws on invalid input
-        const validatedRequest = searchRequestSchema.parse(request) as SearchRequest;
+        const parsedRequest = searchRequestSchema.parse(request) as SearchRequest;
 
         // 2. Get search index (uses cached service)
         searchIndex = await resolveSearchIndex(identifier);
 
         // 3. Build search context
         const context = buildSearchContext(searchIndex);
+        const validatedRequest = options?.shownFieldsOnly ? withinShownFields(parsedRequest, context) : parsedRequest;
 
         // 4. Determine effective search type
         searchType = resolveSearchType(validatedRequest, context);
@@ -245,6 +249,7 @@ export async function search(
                     context,
                     searchType
                 );
+                if (options?.shownFieldsOnly) keepShownFields(normalized.hits, context);
 
                 // Record results on span
                 span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, normalized.total.value);
