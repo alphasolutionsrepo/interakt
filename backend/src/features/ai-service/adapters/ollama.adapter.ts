@@ -26,6 +26,7 @@ import type {
 import { createLogger } from '@/shared/logger/logger';
 
 import { estimateChatUsage } from '../utils/token-counter';
+import { ollamaHeaders } from './ollama-headers';
 import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseNDJSONStream, requestSignal, wasAborted } from './types';
 
@@ -106,7 +107,7 @@ async function modelFamily(config: AdapterConfig): Promise<string | undefined> {
     try {
         const response = await fetch(`${config.baseUrl}/api/show`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: ollamaHeaders(config.apiKey, true),
             body: JSON.stringify({ model: config.modelKey }),
             signal: AbortSignal.timeout(Math.min(config.timeout, 5_000)),
         });
@@ -461,9 +462,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         try {
             const response = await fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: ollamaHeaders(config.apiKey, true),
                 body: JSON.stringify(body),
                 signal: requestSignal(controller.signal, signal),
             });

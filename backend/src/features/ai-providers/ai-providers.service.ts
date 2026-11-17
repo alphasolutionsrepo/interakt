@@ -5,6 +5,7 @@
  * Business logic, caching, type transformations, and integrations
  */
 
+import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
 import { CacheManager } from '@/shared/cache/cache-manager';
 import { createLogger } from '@/shared/logger/logger';
 import * as repository from './ai-providers.repository';
@@ -919,6 +920,7 @@ async function testOllamaConnection(provider: AIProvider): Promise<ConnectionTes
   try {
     const response = await fetch(`${provider.baseUrl}/api/tags`, {
       method: 'GET',
+      headers: ollamaHeaders(provider.apiKey),
       signal: AbortSignal.timeout(10000), // 10 second timeout
     });
 
@@ -1053,8 +1055,9 @@ interface ReportedModel {
 
 /**
  * Discover a provider's models from its own API (Ollama's installed models, or an
- * OpenAI-compatible /models list) and save them: new ones are added, listed ones are
- * available, and every model it doesn't list is hidden.
+ * OpenAI-compatible /models list) and save them: new ones are added, saved ones keep their
+ * on/off state (an admin switches them on), and models it no longer lists are hidden as the
+ * provider's report says.
  */
 export async function discoverModels(
   providerId: string,
@@ -1081,6 +1084,7 @@ export async function discoverModels(
 async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
   const response = await fetch(`${provider.baseUrl}/api/tags`, {
     method: 'GET',
+    headers: ollamaHeaders(provider.apiKey),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
@@ -1178,10 +1182,10 @@ async function embeddingDimensions(provider: AIProvider, modelKey: string): Prom
 }
 
 /**
- * Save the models a provider reported: new ones are added, saved ones it lists are available
- * (with the context size it reports when they have none), and saved ones it no longer lists are
- * hidden as its report says; listing one again later makes it available. Ollama reports
- * "name:latest" for a model saved as "name".
+ * Save the models a provider reported: new ones are added, saved ones it lists keep their
+ * on/off state (gaining the context size it reports when they have none), and saved ones it no
+ * longer lists are hidden as its report says; listing one again later leaves it off until an
+ * admin switches it on. Ollama reports "name:latest" for a model saved as "name".
  */
 async function saveDiscoveredModels(providerId: string, report: ProviderReport): Promise<ModelDiscoveryResult> {
   const reported = report.models;
@@ -1193,6 +1197,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
   let modelsUpdated = 0;
   const errors: string[] = [];
   const needsSetup: string[] = [];
+  const leftOff: string[] = [];
 
   for (const model of reported) {
     try {
@@ -1200,8 +1205,9 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
       if (existing) {
         const caps = (existing.capabilities ?? {}) as Record<string, unknown>;
         const reportedWindow = model.capabilities.contextWindow as number | undefined;
+        // A saved model stays on or off as it is: an admin may have switched it off on purpose
+        if (!existing.isAvailable) leftOff.push(existing.modelKey);
         await repository.updateModel(existing.id, {
-          isAvailable: true,
           // Only discovery's own models are hidden when an OpenAI-compatible service stops listing
           // them, so a saved model it lists keeps its origin there; for Ollama every model is its
           ...(report.hides === 'all' && { isDiscovered: true }),
@@ -1253,6 +1259,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
     modelsRemoved: modelsToMarkUnavailable.length,
     errors,
     needsSetup,
+    leftOff,
   };
 }
 

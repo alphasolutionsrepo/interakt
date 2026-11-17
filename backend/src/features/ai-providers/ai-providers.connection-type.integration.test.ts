@@ -25,6 +25,7 @@ import * as providerRoute from '@/app/api/ai-providers/[id]/route';
 import * as testConnectionRoute from '@/app/api/ai-providers/[id]/test-connection/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
 import { generateText, streamChat } from '@/features/ai-service/ai-service.service';
+import { checkAIProvidersHealth } from '@/features/health/health.service';
 import { sql } from 'drizzle-orm';
 
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
@@ -270,6 +271,29 @@ describe('models a gateway stops listing, or lists under names that are not text
     expect(later).toMatchObject({ 'my-fine-tune': true, 'gpt-4o-audio-preview': true, 'campus-chat': true, 'glm-ocr-chat': false });
   });
 
+  it('leave a listed model an admin switched off as it is, and say so', async () => {
+    const { data } = await createProvider({ providerKey: 'gw-off', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    gateway.models = [{ id: 'campus-chat' }, { id: 'big-expensive-model' }];
+    await post(discoverRoute, data.id);
+    await testDb.db.execute(sql`UPDATE ai_provider_models SET is_available = false WHERE provider_id = ${data.id} AND model_key = 'big-expensive-model'`);
+
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+
+    expect(result.leftOff).toEqual(['big-expensive-model']);
+    const byKey = Object.fromEntries((await modelsOf(data.id)).map((m) => [m.modelKey, m.isAvailable]));
+    expect(byKey).toMatchObject({ 'campus-chat': true, 'big-expensive-model': false });
+  });
+
+  it('leave an Ollama model an admin switched off as it is', async () => {
+    ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }];
+    const { data } = await createProvider({ providerKey: 'lab-off', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    await post(discoverRoute, data.id);
+    await testDb.db.execute(sql`UPDATE ai_provider_models SET is_available = false WHERE provider_id = ${data.id}`);
+
+    expect((await (await post(discoverRoute, data.id)).json()).data.leftOff).toEqual(['qwen2.5:14b']);
+    expect((await modelsOf(data.id))[0].isAvailable).toBe(false);
+  });
+
   it.each([
     ['an empty list', { object: 'list', data: [] }, 200],
     ['an answer with no model list', { message: 'gateway restarting' }, 500],
@@ -294,6 +318,18 @@ describe('a cloud provider\'s new embedding model', () => {
   });
 });
 
+describe('a discovery where one model cannot be saved', () => {
+  it('saves the others and answers both the model it could not save and the ones that need setup', async () => {
+    const tooLong = `org/${'x'.repeat(120)}`; // longer than a model key can be
+    gateway.models = [{ id: 'cloud-chat' }, { id: tooLong }, { id: 'cloud-embed-2' }];
+    const { data } = await createProvider({ providerKey: 'gw-one-fails', providerType: 'cloud', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect(result).toMatchObject({ success: false, modelsAdded: 2, needsSetup: ['cloud-embed-2: set its dimensions on the model'] });
+    expect(result.errors).toEqual([expect.stringContaining(`Failed to process model ${tooLong}`)]);
+  });
+});
+
 describe('an embedding model whose dimensions the service will not tell', () => {
   it('is added, and the admin is told to set its dimensions', async () => {
     gateway.models = [{ id: 'campus-embed' }];
@@ -311,6 +347,19 @@ describe("an Ollama provider under its own name: connection test and discovery",
     expect((await (await post(testConnectionRoute, data.id)).json()).data).toMatchObject({ success: true });
     expect((await (await post(discoverRoute, data.id)).json()).data).toMatchObject({ modelsFound: 1, modelsAdded: 1 });
     expect(ollama.seen.map((x) => x.path)).toEqual(['/api/tags', '/api/tags']);
+    expect(ollama.seen.map((x) => x.auth)).toEqual([undefined, undefined]);
+  });
+
+  it('sends its API key, when it has one (an Ollama behind a proxy that checks keys)', async () => {
+    ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }];
+    const { data } = await createProvider({ providerKey: 'lab-keyed', connectionType: 'ollama', authType: 'api_key', apiKey: 'ol-key', baseUrl: ollamaUrl });
+    await post(testConnectionRoute, data.id);
+    await post(discoverRoute, data.id);
+    const model = (await modelsOf(data.id))[0];
+    await generateText('Say hi', { providerId: data.id, modelId: model.id });
+
+    expect(ollama.seen.map((x) => x.path)).toEqual(expect.arrayContaining(['/api/tags', '/api/generate']));
+    expect(ollama.seen.every((x) => x.auth === 'Bearer ol-key')).toBe(true);
   });
 });
 
@@ -436,4 +485,24 @@ describe('Retry-After on a stream and on Ollama', () => {
     const [first, second] = ollama.seen.filter((x) => x.path === '/api/generate');
     expect(second.at - first.at).toBeGreaterThanOrEqual(2900);
   }, 20_000);
+});
+
+describe('the health check of providers under their own names', () => {
+  it('asks each provider the way its connection type answers, with its key', async () => {
+    ollama.tags = [];
+    await createProvider({ providerKey: 'health-gw', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    await createProvider({ providerKey: 'health-lab', connectionType: 'ollama', authType: 'api_key', apiKey: 'ol-key', baseUrl: ollamaUrl });
+    // Named openai but on another server: that server is checked, not OpenAI's status page
+    await createProvider({ providerKey: 'openai', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+
+    const health = await checkAIProvidersHealth();
+    const byKey = Object.fromEntries((health.details!.providers as Array<{ key: string; healthy: boolean; endpointTested: string }>).map((p) => [p.key, p]));
+
+    expect(byKey['health-gw']).toMatchObject({ healthy: true, endpointTested: `${gatewayUrl}/models` });
+    expect(byKey['health-lab']).toMatchObject({ healthy: true, endpointTested: `${ollamaUrl}/api/tags` });
+    expect(byKey.openai).toMatchObject({ healthy: true, endpointTested: `${gatewayUrl}/models` });
+    // Other providers saved by earlier tests are checked too; these two carry their keys
+    expect(gateway.seen.filter((x) => x.path === '/v1/models').some((x) => x.auth === 'Bearer gw-key')).toBe(true);
+    expect(ollama.seen.filter((x) => x.path === '/api/tags').some((x) => x.auth === 'Bearer ol-key')).toBe(true);
+  });
 });
