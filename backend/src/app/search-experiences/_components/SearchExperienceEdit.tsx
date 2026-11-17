@@ -1,17 +1,5 @@
 'use client';
 
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   ChevronLeft,
   Save,
@@ -50,7 +38,29 @@ import { toast } from 'sonner';
 import { useSearchExperience, useSlugAvailability } from '../_lib/hooks';
 import { useAvailableDisplayFields } from '../_lib/hooks/useAvailableDisplayFields';
 
-import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
+import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
+import { ExperienceSourcesCard } from './ExperienceSources';
+import { SummaryAreaGuard, useSummaryAreaOff } from './SummaryAreaGuard';
+import { TimeLimitInput } from './TimeLimitInput';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import {
   MULTI_INDEX_STRATEGY_INFO,
   RESULT_MERGE_STRATEGY_INFO,
@@ -61,19 +71,11 @@ import {
   type UpdateSearchExperienceDTO,
   type DisplayFieldRole,
  SearchExperienceDisplayConfig, SearchExperienceDisplayField } from '@/features/search-experience/search-experience.client';
-import { CustomInstructionsGenerator } from './CreateWizard/CustomInstructionsGenerator/CustomInstructionsGenerator';
-import { ExperienceSourcesCard } from './ExperienceSources';
-import { SummaryAreaGuard, useSummaryAreaOff } from './SummaryAreaGuard';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { builtInGateFor } from '@/shared/access/ActionControls';
 import { LockedPage } from '@/shared/access/PageAccessGate';
 import { useAccess } from '@/shared/access/useAccess';
 import { errorText } from '@/shared/api/api-error';
+import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
 
 // ============================================================================
 // ICON MAP FOR DISPLAY FIELD ROLES
@@ -651,7 +653,8 @@ export function AiTab({
                   </div>
                   <CardDescription>
                     Turn phrases like &quot;under $200&quot; or a product code into real filters
-                    before searching. Adds an LLM call to every search, so it is off by default.
+                    before searching. For external indexes, it rewrites the visitor&apos;s question
+                    into search terms. Adds an LLM call to every search, so it is off by default.
                   </CardDescription>
                 </CardHeader>
                 {formData.aiConfig.queryUnderstanding?.enabled && (
@@ -694,6 +697,20 @@ export function AiTab({
                     </div>
 
                     <div className="space-y-2">
+                      <Label htmlFor="queryUnderstandingTimeLimit" className="text-sm font-semibold">
+                        Time Limit (seconds)
+                      </Label>
+                      <TimeLimitInput
+                        id="queryUnderstandingTimeLimit"
+                        timeoutMs={formData.aiConfig.queryUnderstanding?.timeoutMs}
+                        onChange={(ms) => updateQueryUnderstandingConfig('timeoutMs', ms)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        When the limit is reached, search goes on with the visitor&apos;s own words.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
                       <Label className="text-sm font-semibold">Custom Instructions (Optional)</Label>
                       <Textarea
                         value={formData.aiConfig.queryUnderstanding?.customInstructions || ''}
@@ -707,7 +724,8 @@ export function AiTab({
                       <p className="text-xs text-muted-foreground">
                         Added to the core interpreter instructions, which are written around product
                         attributes. Use this to describe fields it would not otherwise recognise,
-                        such as identifiers or domain-specific codes.
+                        such as identifiers or domain-specific codes. They also guide the search
+                        terms written for external indexes.
                       </p>
                     </div>
                   </CardContent>
@@ -783,6 +801,7 @@ export function SearchExperienceEdit({ id, basePath = '/search-experiences', lis
         enabled: boolean;
         minWords: number;
         customInstructions?: string;
+        timeoutMs?: number;
       };
       chat: {
         enabled: boolean;

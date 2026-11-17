@@ -9,24 +9,31 @@
 
 'use client';
 
-import { useCallback, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Button } from '@/components/ui/button';
 import {
   Brain,
   Sparkles,
   Wand2,
 } from 'lucide-react';
-import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
+import { useCallback, useState } from 'react';
+
 import { SummaryAreaGuard } from '../SummaryAreaGuard';
+import { TimeLimitInput } from '../TimeLimitInput';
+
 import { CustomInstructionsGenerator } from './CustomInstructionsGenerator';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import {
   type WizardFormData,
 } from '@/features/search-experience/search-experience.client';
+import { ProviderModelSelect } from '@/shared/ui/custom/ProviderModelSelect';
+
+
+
 
 // ============================================================================
 // TYPES
@@ -244,7 +251,8 @@ export function StepAIConfig({
                   </CardTitle>
                   <CardDescription>
                     Turn phrases like &quot;under $200&quot; or a product code into real filters
-                    before searching. Adds an LLM call to every search, so it is off by default.
+                    before searching. For external indexes, it rewrites the visitor&apos;s question
+                    into search terms. Adds an LLM call to every search, so it is off by default.
                   </CardDescription>
                 </div>
                 <Switch
@@ -275,6 +283,18 @@ export function StepAIConfig({
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="queryUnderstandingTimeLimit">Time Limit (seconds)</Label>
+                  <TimeLimitInput
+                    id="queryUnderstandingTimeLimit"
+                    timeoutMs={aiConfig.queryUnderstanding.timeoutMs}
+                    onChange={(ms) => updateQueryUnderstandingConfig('timeoutMs', ms)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    When the limit is reached, search goes on with the visitor&apos;s own words.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="queryUnderstandingCustomInstructions">
                     Custom Instructions (Optional)
                   </Label>
@@ -290,7 +310,8 @@ export function StepAIConfig({
                   <p className="text-xs text-muted-foreground">
                     Added to the core interpreter instructions, which are written around product
                     attributes. Use this to describe fields it would not otherwise recognise, such
-                    as identifiers or domain-specific codes.
+                    as identifiers or domain-specific codes. They also guide the search terms
+                    written for external indexes.
                   </p>
                 </div>
               </CardContent>

@@ -99,6 +99,13 @@
       "when": 1793142122423,
       "tag": "0013_modern_karen_page",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794885130980,
+      "tag": "0014_search_events_searched_query",
+      "breakpoints": true
     }
   ]
 }

@@ -488,10 +488,29 @@ export const DEFAULT_AI_SUMMARY_CONFIG = {
   maxTokens: 500,
 };
 
+/** How long query understanding may take before search goes on with the visitor's words. */
+export const DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS = 3000;
+export const MIN_QUERY_UNDERSTANDING_TIMEOUT_MS = 500;
+export const MAX_QUERY_UNDERSTANDING_TIMEOUT_MS = 10000;
+
+/** The time limit in seconds, as the settings show it. */
+export function timeoutSecondsFromMs(timeoutMs: number | undefined): number {
+  return (timeoutMs ?? DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS) / 1000;
+}
+
+/** A typed number of seconds as a stored limit in ms, kept within the allowed range. */
+export function timeoutMsFromSeconds(input: string): number {
+  const seconds = Number.parseFloat(input);
+  if (!Number.isFinite(seconds)) return DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS;
+  const ms = Math.round(seconds * 1000);
+  return Math.min(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS, Math.max(MIN_QUERY_UNDERSTANDING_TIMEOUT_MS, ms));
+}
+
 /** Off by default: it adds an LLM call to every search. */
 export const DEFAULT_QUERY_UNDERSTANDING_CONFIG = {
   enabled: false,
   minWords: 3,
+  timeoutMs: DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS,
 };
 
 export const DEFAULT_AI_CONFIG: SearchExperienceAIConfig = {

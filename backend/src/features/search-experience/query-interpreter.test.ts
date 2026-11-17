@@ -47,6 +47,7 @@ import * as searchService from '@/features/search/search.service';
 import { SearchError } from '@/features/search/search.types';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
+import { MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 
 const QUERY = 'waterproof jackets under 200';
@@ -185,6 +186,97 @@ describe('a model call that fails', () => {
     });
 });
 
+describe('a model call past the time limit', () => {
+    const slowConfig = (): SearchExperienceAIConfig => {
+        const config = aiConfig();
+        return { ...config, queryUnderstanding: { ...config.queryUnderstanding!, timeoutMs: 500 } };
+    };
+
+    it("searches with the raw query and the client's filters within the limit, leaving the shared call running", async () => {
+        let signal: AbortSignal | undefined;
+        vi.mocked(aiService.chat).mockImplementation((_messages, options) => {
+            signal = options?.signal;
+            return new Promise((_resolve, reject) => {
+                options?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+            });
+        });
+        logs.length = 0;
+
+        const startedAt = Date.now();
+        const result = await applyQueryInterpretation({
+            query: QUERY,
+            clientFilters: [{ field: 'brand', operator: 'eq', value: 'x' }],
+            searchIndexId: freshIndexId(),
+            aiConfig: slowConfig(),
+            experienceId: 'exp-1',
+        });
+
+        expect(Date.now() - startedAt).toBeLessThan(1500);
+        expect(result.query).toBe(QUERY);
+        expect(result.filters).toEqual([{ field: 'brand', operator: 'eq', value: 'x' }]);
+        expect(signal?.aborted).toBe(false);
+        expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', message: 'Query interpretation timed out; searching with the raw query' })]);
+    });
+
+    it('does not keep a call the provider never ends: the backstop releases it and the next search asks again', async () => {
+        vi.useFakeTimers();
+        try {
+            const searchIndexId = freshIndexId();
+            vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise(() => {}));
+            const ask = () => applyQueryInterpretation({
+                query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: slowConfig(), experienceId: 'exp-1',
+            });
+
+            const first = ask();
+            await vi.advanceTimersByTimeAsync(500);
+            expect((await first).query).toBe(QUERY);
+            await vi.advanceTimersByTimeAsync(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS);
+
+            expect((await ask()).query).toBe('waterproof jackets');
+            expect(aiService.chat).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('times out only the caller whose limit passed; a joiner with a longer limit gets the answer from the one call', async () => {
+        vi.useFakeTimers();
+        try {
+            const searchIndexId = freshIndexId();
+            let answer: () => void = () => {};
+            vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise((resolve) => {
+                answer = () => resolve({ message: { content: JSON.stringify({ query: 'waterproof jackets', filters: [] }) } } as unknown as Awaited<ReturnType<typeof aiService.chat>>);
+            }));
+            const ask = (timeoutMs: number) => {
+                const config = aiConfig();
+                return applyQueryInterpretation({
+                    query: QUERY,
+                    clientFilters: [{ field: 'brand', operator: 'eq', value: 'x' }],
+                    searchIndexId,
+                    aiConfig: { ...config, queryUnderstanding: { ...config.queryUnderstanding!, timeoutMs } },
+                    experienceId: 'exp-1',
+                });
+            };
+            logs.length = 0;
+            const short = ask(500);
+            const long = ask(4000);
+
+            await vi.advanceTimersByTimeAsync(500);
+            const shortResult = await short;
+            expect(shortResult.query).toBe(QUERY);
+            expect(shortResult.filters).toEqual([{ field: 'brand', operator: 'eq', value: 'x' }]);
+
+            await vi.advanceTimersByTimeAsync(1000);
+            answer();
+            expect((await long).query).toBe('waterproof jackets');
+            expect(aiService.chat).toHaveBeenCalledTimes(1);
+            expect(logs.filter((l) => l.message === 'Query interpretation failed; searching with the raw query')).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
 describe('interpretation cache', () => {
     it('reuses the interpretation for an identical query and config', async () => {
         const searchIndexId = freshIndexId();
@@ -198,6 +290,25 @@ describe('interpretation cache', () => {
         });
 
         expect(aiService.chat).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps each visitor's letter case: the same words in other capitals get their own interpretation", async () => {
+        const searchIndexId = freshIndexId();
+        const config = aiConfig();
+        vi.mocked(aiService.chat).mockImplementation(async (messages) => ({
+            message: { content: JSON.stringify({ query: messages[1].content, filters: [] }) },
+        }) as never);
+
+        const lower = await applyQueryInterpretation({
+            query: 'sku ab-12 jackets', clientFilters: undefined, searchIndexId, aiConfig: config, experienceId: 'exp-1',
+        });
+        const upper = await applyQueryInterpretation({
+            query: 'SKU AB-12 jackets', clientFilters: undefined, searchIndexId, aiConfig: config, experienceId: 'exp-1',
+        });
+
+        expect(lower.query).toBe('sku ab-12 jackets');
+        expect(upper.query).toBe('SKU AB-12 jackets');
+        expect(aiService.chat).toHaveBeenCalledTimes(2);
     });
 
     it('re-interprets after the custom instructions change', async () => {

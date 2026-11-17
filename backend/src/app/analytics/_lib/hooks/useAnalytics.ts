@@ -91,6 +91,8 @@ export interface RecentSearchEvent {
   id: string;
   timestamp: string;
   query: string;
+  /** What was searched, when query understanding changed the visitor's words */
+  searchedQuery?: string | null;
   searchType: string;
   triggerType: string;
   triggerStep: string | null;

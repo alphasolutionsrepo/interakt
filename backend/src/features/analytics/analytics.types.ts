@@ -126,7 +126,13 @@ export interface SearchEventData {
   experienceSlug?: string;
 
   // Query details
+  /** The query searched */
   queryText: string;
+  /**
+   * What the visitor typed, when query understanding changed the query searched. The event is
+   * then stored with the visitor's words as its query and the query searched beside it.
+   */
+  visitorQuery?: string;
   queryLanguage?: string;
 
   // Filters & facets
@@ -313,9 +319,11 @@ export interface SessionData {
 /**
  * Internal type for queued search events
  */
-export interface QueuedSearchEvent extends SearchEventData {
+export interface QueuedSearchEvent extends Omit<SearchEventData, 'visitorQuery'> {
   id: string;
   timestamp: Date;
+  /** The query searched, when it differs from queryText (the visitor's words) */
+  searchedQuery?: string;
   queryNormalized: string;
   queryLength: number;
   queryWordCount: number;

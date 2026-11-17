@@ -1,0 +1,1 @@
+ALTER TABLE "search_events" ADD COLUMN "searched_query" text;

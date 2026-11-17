@@ -70,6 +70,15 @@ describe('filters recorded for analytics', () => {
     await expect(searchById('idx', { query: 'shirt', filters })).rejects.toThrow();
     expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ filterCount: 2, success: false });
   });
+
+  it("records the visitor's words with the query searched, after a search and when it fails", async () => {
+    await searchById('idx', { query: 'waterproof jackets' }, { visitorQuery: 'waterproof jackets under 200' });
+    expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ queryText: 'waterproof jackets', visitorQuery: 'waterproof jackets under 200' });
+
+    engineSearch.mockRejectedValueOnce(new Error('engine down'));
+    await expect(searchById('idx', { query: 'waterproof jackets' }, { visitorQuery: 'waterproof jackets under 200' })).rejects.toThrow();
+    expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ visitorQuery: 'waterproof jackets under 200', success: false });
+  });
 });
 
 describe('a failure passed on without a warning or error of its own: whoever answers the caller logs it', () => {
