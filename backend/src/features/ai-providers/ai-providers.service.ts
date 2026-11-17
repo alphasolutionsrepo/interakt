@@ -1151,7 +1151,8 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
     listed: listed.map((m) => m.id),
     // An empty list hides nothing: a service between restarts can briefly list no models
     hides: listed.length === 0 ? 'none' : 'discovered',
-    dimensionsOf: (key) => embeddingDimensions(provider, key),
+    // One short embedding tells the size; only on a self-hosted service, where it costs nothing
+    ...(provider.providerType === 'local' && { dimensionsOf: (key: string) => embeddingDimensions(provider, key) }),
   };
 }
 

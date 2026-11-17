@@ -95,7 +95,7 @@ Many organisations run their own AI gateway or router in front of their models. 
 
 ### Good to know
 - A gateway may limit requests per key. Interakt waits for the time it asks (`Retry-After`) before trying again.
-- Discover Models keeps the context window a service reports and reads each new embedding model's dimensions with one short embedding request. Set either on the model when the service doesn't give it.
+- Discover Models keeps the context window a service reports and, on a provider set as Local (self-hosted), reads each new embedding model's dimensions with one short embedding request. It says when an embedding model's dimensions need setting on the model.
 
 ## Setting system defaults
 

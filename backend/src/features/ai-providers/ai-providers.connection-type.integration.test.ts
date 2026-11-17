@@ -284,6 +284,16 @@ describe('models a gateway stops listing, or lists under names that are not text
   });
 });
 
+describe('a cloud provider\'s new embedding model', () => {
+  it('is added without a paid embedding call, and the admin is told to set its dimensions', async () => {
+    gateway.models = [{ id: 'cloud-embed' }];
+    const { data } = await createProvider({ providerKey: 'gw-cloud', providerType: 'cloud', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect(result).toMatchObject({ modelsAdded: 1, needsSetup: ['cloud-embed: set its dimensions on the model'] });
+    expect(gateway.seen.filter((x) => x.path === '/v1/embeddings')).toEqual([]);
+  });
+});
+
 describe('an embedding model whose dimensions the service will not tell', () => {
   it('is added, and the admin is told to set its dimensions', async () => {
     gateway.models = [{ id: 'campus-embed' }];
