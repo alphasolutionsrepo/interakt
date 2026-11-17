@@ -133,3 +133,24 @@ describe('input the admin placed', () => {
     expect(JSON.parse(sentInit()?.body as string)).toEqual({ note: 'order A-1' });
   });
 });
+
+describe('a URL that is not a full URL, or names a secret the vault no longer has', () => {
+  it.each(['orders', 'api.example.com/orders', 'http//api.example.com/orders'])('says %s is not a full URL, and nothing is sent', async (baseUrl) => {
+    const result = await executeHttpApi(tool({ baseUrl }), {});
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/not a full URL.*starts with https:\/\//);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the host', 'https://{{secret:gone_host}}/orders'],
+    ['the whole server address', '{{secret:gone_host}}/orders'],
+    ['the path', 'https://api.example.com/{{secret:gone_host}}/orders'],
+  ])('says the secret is missing when it is in %s, by name, and nothing is sent', async (_case, baseUrl) => {
+    const result = await executeHttpApi(tool({ baseUrl }), {});
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("The secret \"gone_host\" used in the URL is missing from the Secrets Vault or can't be read");
+    expect(result.error).not.toMatch(/fixed host/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

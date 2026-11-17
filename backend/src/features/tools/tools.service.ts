@@ -8,7 +8,7 @@ import { aiExperienceCache } from '../ai-experience/ai-experience.cache';
 import { generateToolDescription } from './tools.description-generator';
 import { checkLookupFieldsForSave, lookupFieldsContext, suggestLookupFieldsFor } from './lookup-fields.service';
 import { hasChosenLookupFields } from './executors/data-source/lookup-field-rules';
-import { hasFixedHost } from './executors/http-url';
+import { hasFixedHost, isNotFullUrl } from './executors/http-url';
 import { dataSourceConfigProblem, httpConfigProblem } from './tools.validation';
 import {
   getOperationsForDataSource,
@@ -429,6 +429,9 @@ export async function notReadyToAssign(tool: ReadinessFields): Promise<string | 
   const baseUrl = config?.baseUrl;
   if (tool.executorType === 'http' && (typeof baseUrl !== 'string' || typeof config?.method !== 'string')) {
     return `HTTP tool "${tool.name}" isn't set up: it needs a URL and a method. For a web search, use a Web Search tool`;
+  }
+  if (tool.executorType === 'http' && typeof baseUrl === 'string' && isNotFullUrl(baseUrl)) {
+    return `HTTP tool "${tool.name}" isn't set up: its URL is not a full URL. Use one that starts with https://, like https://api.example.com/orders`;
   }
   if (tool.executorType === 'http' && typeof baseUrl === 'string' && !hasFixedHost(baseUrl)) {
     return `HTTP tool "${tool.name}" isn't set up: its URL takes the host from input. Write the host and a "/" before any {{input.field}} on the tool`;
