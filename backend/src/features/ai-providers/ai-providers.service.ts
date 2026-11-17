@@ -1112,20 +1112,25 @@ async function readModelList(provider: AIProvider, path: string, headers: Record
 async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
   const data = ((await readModelList(provider, '/api/tags', ollamaHeaders(provider.apiKey), timeoutMs)) ?? {}) as OllamaTagsResponse;
   const installed = data.models || [];
+  // Each model's details; capabilities are in the list on newer Ollama, in /api/show from 0.6.4
+  const shown = await inBatches(installed, 4, (ollamaModel) => ollamaShown(provider, ollamaModel.name));
   const usable = installed
-    .map((ollamaModel) => ({ ollamaModel, modelType: ollamaModelType(ollamaModel) }))
-    .filter((m): m is { ollamaModel: OllamaModelInfo; modelType: AIModelType } => m.modelType !== 'skip');
-  const shown = await inBatches(usable, 4, ({ ollamaModel }) => ollamaShown(provider, ollamaModel.name));
-  const models = usable.map(({ ollamaModel, modelType }, i): ReportedModel => ({
+    .map((ollamaModel, i) => ({
+      ollamaModel,
+      shown: shown[i],
+      modelType: ollamaModelType({ ...ollamaModel, capabilities: ollamaModel.capabilities ?? shown[i].capabilities }),
+    }))
+    .filter((m): m is { ollamaModel: OllamaModelInfo; shown: OllamaShown; modelType: AIModelType } => m.modelType !== 'skip');
+  const models = usable.map(({ ollamaModel, modelType, shown: details }): ReportedModel => ({
     modelKey: ollamaModel.name,
     modelType,
     description: `Discovered from Ollama (${ollamaModel.details.parameter_size})`,
-    dimensions: modelType === 'embedding' ? shown[i].embeddingLength ?? inferEmbeddingDimensions(ollamaModel) : null,
+    dimensions: modelType === 'embedding' ? details.embeddingLength ?? inferEmbeddingDimensions(ollamaModel) : null,
     capabilities: {
       parameterSize: ollamaModel.details.parameter_size,
       quantization: ollamaModel.details.quantization_level,
       family: ollamaModel.details.family,
-      ...(shown[i].contextLength !== undefined && { contextWindow: shown[i].contextLength }),
+      ...(details.contextLength !== undefined && { contextWindow: details.contextLength }),
     },
   }));
   // What Ollama has installed is the truth: every other model is hidden, seeded ones included
@@ -1145,11 +1150,15 @@ function ollamaModelType(model: OllamaModelInfo): AIModelType | 'skip' {
   return capabilities.includes('completion') ? 'chat' : 'skip';
 }
 
+/** What Ollama's /api/show tells about a model */
+interface OllamaShown { capabilities?: string[]; contextLength?: number; embeddingLength?: number }
+
 /**
- * A model's context size and vector size from Ollama's /api/show, read under the model's own
- * architecture ("qwen2.context_length"), not a vision tower's. Empty when Ollama won't say.
+ * A model's capabilities, context size and vector size from Ollama's /api/show, the sizes read
+ * under the model's own architecture ("qwen2.context_length"), not a vision tower's. Empty
+ * when Ollama won't say.
  */
-async function ollamaShown(provider: AIProvider, model: string): Promise<{ contextLength?: number; embeddingLength?: number }> {
+async function ollamaShown(provider: AIProvider, model: string): Promise<OllamaShown> {
   try {
     const response = await fetch(`${provider.baseUrl}/api/show`, {
       method: 'POST',
@@ -1158,14 +1167,16 @@ async function ollamaShown(provider: AIProvider, model: string): Promise<{ conte
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) return {};
-    const info = ((await response.json()) as { model_info?: Record<string, unknown> }).model_info ?? {};
+    const body = (await response.json()) as { capabilities?: unknown; model_info?: Record<string, unknown> };
+    const capabilities = Array.isArray(body.capabilities) ? body.capabilities.filter((c): c is string => typeof c === 'string') : undefined;
+    const info = body.model_info ?? {};
     const architecture = info['general.architecture'];
-    if (typeof architecture !== 'string') return {};
+    if (typeof architecture !== 'string') return { capabilities };
     const size = (key: string) => {
       const value = info[`${architecture}.${key}`];
       return typeof value === 'number' && value > 0 ? value : undefined;
     };
-    return { contextLength: size('context_length'), embeddingLength: size('embedding_length') };
+    return { capabilities, contextLength: size('context_length'), embeddingLength: size('embedding_length') };
   } catch {
     return {};
   }

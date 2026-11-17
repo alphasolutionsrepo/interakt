@@ -110,7 +110,8 @@ beforeAll(async () => {
       req.on('end', () => {
         const info = ollama.show[JSON.parse(raw || '{}').model];
         if (!info) { res.writeHead(404); return res.end('{"error":"model not found"}'); }
-        res.end(JSON.stringify({ model_info: info }));
+        const { capabilities, ...modelInfo } = info as { capabilities?: unknown };
+        res.end(JSON.stringify({ model_info: modelInfo, ...(capabilities !== undefined && { capabilities }) }));
       });
       return;
     }
@@ -688,6 +689,19 @@ describe("discovery reads what the provider says about each model, before guessi
     expect(saved['nomic-embed-text:v1.5']).toMatchObject({ modelType: 'embedding', dimensions: 768 });
     // No embedding request was needed to learn a size
     expect(ollama.seen.some((x) => x.path.startsWith('/api/embed'))).toBe(false);
+  });
+
+  it('Ollama before capabilities were in its list: type from /api/show', async () => {
+    ollama.tags = [{ name: 'house-vectors:1b', details }, { name: 'house-router:4b', details }];
+    ollama.show = {
+      'house-vectors:1b': { capabilities: ['embedding'], 'general.architecture': 'bert', 'bert.embedding_length': 384 },
+      'house-router:4b': { capabilities: ['decision'] },
+    };
+    const { data } = await createProvider({ providerKey: 'lab-show-caps', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    await post(discoverRoute, data.id);
+    const saved = await byKey(data.id);
+    expect(Object.keys(saved)).toEqual(['house-vectors:1b']);
+    expect(saved['house-vectors:1b']).toMatchObject({ modelType: 'embedding', dimensions: 384 });
   });
 
   it('OpenAI-compatible: type from the capabilities or output modalities the list carries', async () => {
