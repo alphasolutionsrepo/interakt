@@ -18,7 +18,9 @@ vi.mock('@/features/secrets/secrets.service', () => ({ resolveSecret: async () =
 import { OllamaAdapter } from '@/features/ai-service/adapters/ollama.adapter';
 import { OpenAIAdapter } from '@/features/ai-service/adapters/openai.adapter';
 import { AdapterError } from '@/features/ai-service/adapters/types';
+import { sitecoreSearchConnector } from '@/features/data-source/external-search/connectors/sitecore-search.connector';
 import { callAzureAISearch } from '@/features/data-source/external-search/engines/azure-ai-search';
+import { callElasticsearchSearch } from '@/features/data-source/external-search/engines/elasticsearch';
 import { probeAndDiscover } from '@/features/mcp-connection/mcp-client';
 import { executeWebSearch } from '@/features/tools/executors/web-search';
 
@@ -73,10 +75,23 @@ describe('a redirect to another server', () => {
     expect(reached).toEqual([]);
   });
 
-  it('is refused for an external Azure AI Search source (its key is a custom header)', async () => {
-    await callAzureAISearch({ endpoint: redirectorUrl, indexName: 'products', apiKey: 'azure-key' }, { query: 'a visitor question', maxResults: 5 } as never)
-      .catch(() => undefined);
+  it('is refused for an external Azure AI Search source (its key is a custom header), and said plainly', async () => {
+    const result = await callAzureAISearch({ endpoint: redirectorUrl, indexName: 'products', apiKey: 'azure-key' }, { query: 'a visitor question', maxResults: 5 } as never);
+    expect(result).toMatchObject({ success: false, error: expect.stringMatching(/^Azure AI Search: The server redirected to another server/) });
     expect(redirects).toBe(1);
+    expect(reached).toEqual([]);
+  });
+
+  it('is refused for an external Elasticsearch source', async () => {
+    const result = await callElasticsearchSearch({ endpoint: redirectorUrl, indexName: 'products', apiKey: 'es-key' }, { query: 'a visitor question', maxResults: 5 } as never);
+    expect(result).toMatchObject({ success: false, error: expect.stringMatching(/^Elasticsearch: The server redirected to another server/) });
+    expect(reached).toEqual([]);
+  });
+
+  it('is refused for a Sitecore Search source', async () => {
+    const connection = { provider: 'sitecore-search', endpoint: `${redirectorUrl}/discover/v2/1`, indexName: 'rfk_widget', apiKey: 'sc-key', authType: 'api_key' as const, providerSettings: {} };
+    await expect(sitecoreSearchConnector.search(connection, { query: 'a visitor question', offset: 0, limit: 5 } as never))
+      .rejects.toThrow(/^Sitecore Search: The server redirected to another server/);
     expect(reached).toEqual([]);
   });
 

@@ -11,6 +11,12 @@
 /** The server answered with a redirect to another server: not followed, and not worth a retry. */
 export class RedirectedElsewhereError extends Error {}
 
+/** A failed call to a service, in words: a refused redirect as itself, anything else as a network error. */
+export function connectFailure(service: string, error: unknown): string {
+  const message = (error as Error).message;
+  return error instanceof RedirectedElsewhereError ? `${service}: ${message}` : `Network error connecting to ${service}: ${message}`;
+}
+
 const MAX_REDIRECTS = 5;
 
 /**
@@ -37,7 +43,7 @@ export async function fetchOnSameServer(url: string, init: RequestInit): Promise
     const from = new URL(current);
     const next = new URL(location, from);
     if (!sameServer(from, next)) {
-      throw new RedirectedElsewhereError(`The server redirected to another server (${next.host}); Interakt follows redirects only on the same server`);
+      throw new RedirectedElsewhereError(`The server redirected to another server (${next.host}); Interakt follows redirects only on the same server, so use the address it redirects to`);
     }
     if (redirects >= MAX_REDIRECTS) throw new RedirectedElsewhereError(`The server redirected more than ${MAX_REDIRECTS} times`);
     // As browsers do: 303, and 301/302 after a POST, continue as a GET without the body

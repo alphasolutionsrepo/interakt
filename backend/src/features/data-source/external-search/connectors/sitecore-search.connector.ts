@@ -31,7 +31,7 @@ import {
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 import type { FilterClause } from '@/features/search/search.types';
-import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { connectFailure, fetchOnSameServer } from '@/shared/http/same-server-fetch';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 
 
@@ -91,7 +91,7 @@ async function callSitecore(
       SITECORE,
       (error as Error).name === 'TimeoutError'
         ? 'Sitecore Search request timed out'
-        : `Network error connecting to Sitecore Search: ${(error as Error).message}`,
+        : connectFailure('Sitecore Search', error),
     );
   }
 
