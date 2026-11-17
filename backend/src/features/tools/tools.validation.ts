@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { FIXED_HOST_MESSAGE, hasFixedHost } from './executors/http-url';
+
 // ============================================================================
 // TOOL TYPE CONSTANTS
 // ============================================================================
@@ -96,7 +98,26 @@ export function dataSourceConfigProblem(
   previous?: Record<string, unknown> | null,
 ): string | undefined {
   const schema = DATA_SOURCE_CONFIG_SCHEMAS[operation as keyof typeof DATA_SOURCE_CONFIG_SCHEMAS];
-  if (!schema || config === undefined || config === null) return undefined;
+  if (!schema) return undefined;
+  return configProblem(schema, config, previous);
+}
+
+/**
+ * Why an HTTP tool's config is invalid, or undefined when it is valid: a REST call (with a
+ * baseUrl) or a web search. As for data source tools, a setting saved unchanged isn't checked
+ * again, so a tool stored before a rule existed can still be saved.
+ */
+export function httpConfigProblem(config: unknown, previous?: Record<string, unknown> | null): string | undefined {
+  const isRestCall = config != null && typeof config === 'object' && 'baseUrl' in config;
+  return configProblem(isRestCall ? httpExecutorConfigSchema : webSearchExecutorConfigSchema, config, previous);
+}
+
+function configProblem(
+  schema: z.AnyZodObject,
+  config: unknown,
+  previous?: Record<string, unknown> | null,
+): string | undefined {
+  if (config === undefined || config === null) return undefined;
   const result = schema.passthrough().safeParse(config);
   if (result.success) return undefined;
   const unchanged = (key: unknown) =>
@@ -108,7 +129,7 @@ export function dataSourceConfigProblem(
 }
 
 const httpExecutorConfigSchema = z.object({
-  baseUrl: z.string().url(),
+  baseUrl: z.string().refine(hasFixedHost, { message: FIXED_HOST_MESSAGE }),
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   headers: z.record(z.string()).optional(),
   queryParams: z.record(z.string()).optional(),
@@ -218,7 +239,9 @@ const httpToolSchema = baseCreateSchema.extend({
   executorType: z.literal('http'),
   dataSourceId: z.string().uuid().nullish(),
   operation: z.null().optional(),
-  executorConfig: z.union([httpExecutorConfigSchema, webSearchExecutorConfigSchema]),
+  // Checked by the tools service (httpConfigProblem): a union here took the web search schema
+  // (all optional) for a REST config it refused, and dropped every key.
+  executorConfig: z.record(z.unknown()),
 });
 
 /** Web search tool: Tavily-powered live web search */
