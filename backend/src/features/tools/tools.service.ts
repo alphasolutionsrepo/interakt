@@ -8,7 +8,8 @@ import { aiExperienceCache } from '../ai-experience/ai-experience.cache';
 import { generateToolDescription } from './tools.description-generator';
 import { checkLookupFieldsForSave, lookupFieldsContext, suggestLookupFieldsFor } from './lookup-fields.service';
 import { hasChosenLookupFields } from './executors/data-source/lookup-field-rules';
-import { dataSourceConfigProblem } from './tools.validation';
+import { hasFixedHost } from './executors/http-url';
+import { dataSourceConfigProblem, httpConfigProblem } from './tools.validation';
 import {
   getOperationsForDataSource,
   generateToolSlug,
@@ -59,6 +60,12 @@ async function checkExecutorConfig(
   if (operation === 'lookup') await checkLookupFieldsForSave(dataSourceId, config, previous ?? undefined);
 }
 
+/** Check an HTTP tool's config before it is stored; on an edit only what this save changes. */
+function checkHttpConfig(config: unknown, previous?: Record<string, unknown> | null): void {
+  const problem = httpConfigProblem(config, previous);
+  if (problem) throw new Error(`Invalid config: ${problem}`);
+}
+
 export async function createTool(input: CreateToolDTO, userId?: string) {
   const slugAvailable = await repository.isSlugAvailable(input.slug);
   if (!slugAvailable) {
@@ -67,6 +74,7 @@ export async function createTool(input: CreateToolDTO, userId?: string) {
   if (input.executorType === 'data_source') {
     await checkExecutorConfig(input.operation, input.dataSourceId, input.executorConfig as Record<string, unknown> | undefined);
   }
+  if (input.executorType === 'http') checkHttpConfig(input.executorConfig);
 
   const created = await repository.createTool({
     name: input.name,
@@ -334,6 +342,10 @@ export async function updateTool(id: string, input: UpdateToolDTO, userId?: stri
     );
   }
 
+  if (input.executorConfig !== undefined && existing.executorType === 'http') {
+    checkHttpConfig(input.executorConfig, existing.executorConfig as Record<string, unknown> | null);
+  }
+
   const updated = await repository.updateTool(id, {
     ...(input.name !== undefined && { name: input.name }),
     ...(input.description !== undefined && { description: input.description }),
@@ -403,12 +415,19 @@ function nonEmpty(lists: { nameFields: string[]; codeFields: string[] }): Record
   return Object.fromEntries(Object.entries(lists).filter(([, list]) => list.length > 0));
 }
 
+type ReadinessFields = Pick<Tool, 'name' | 'executorType' | 'operation' | 'dataSourceId' | 'executorConfig'>;
+
 /**
- * Why a tool can't be added to an AI experience yet, or undefined when it can. A Find Record
+ * Why a tool can't be added to an AI experience yet, or undefined when it can. An HTTP tool
+ * whose URL takes the host from input can't run (saved before that was checked). A Find Record
  * tool on a search index needs its name or code fields (or a hand-set idField) first; one that
  * is already in an experience keeps working there as before.
  */
-export async function notReadyToAssign(tool: Pick<Tool, 'name' | 'operation' | 'dataSourceId' | 'executorConfig'>): Promise<string | undefined> {
+export async function notReadyToAssign(tool: ReadinessFields): Promise<string | undefined> {
+  const baseUrl = (tool.executorConfig as Record<string, unknown> | null)?.baseUrl;
+  if (tool.executorType === 'http' && typeof baseUrl === 'string' && !hasFixedHost(baseUrl)) {
+    return `HTTP tool "${tool.name}" can't run: its URL takes the host from input. Write the host and a "/" before any {{input.field}} on the tool`;
+  }
   if (tool.operation !== 'lookup' || hasChosenLookupFields(tool.executorConfig as Record<string, unknown> | null ?? undefined)) {
     return undefined;
   }
@@ -417,7 +436,7 @@ export async function notReadyToAssign(tool: Pick<Tool, 'name' | 'operation' | '
 }
 
 /** The tools, each one that can't be added to an AI experience yet with `notReadyReason`. */
-async function withNotReadyReasons<T extends Pick<Tool, 'name' | 'operation' | 'dataSourceId' | 'executorConfig'>>(
+async function withNotReadyReasons<T extends ReadinessFields>(
   tools: T[],
 ): Promise<Array<T & { notReadyReason?: string }>> {
   return Promise.all(tools.map(async (tool) => {
@@ -427,7 +446,7 @@ async function withNotReadyReasons<T extends Pick<Tool, 'name' | 'operation' | '
 }
 
 /** The tools that can be added to an AI experience, and why each of the others can't. */
-export async function splitReadyToAssign<T extends Pick<Tool, 'name' | 'operation' | 'dataSourceId' | 'executorConfig'>>(
+export async function splitReadyToAssign<T extends ReadinessFields>(
   tools: T[],
 ): Promise<{ ready: T[]; notReady: string[] }> {
   const ready: T[] = [];

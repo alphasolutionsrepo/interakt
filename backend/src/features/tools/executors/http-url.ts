@@ -13,6 +13,14 @@ function fixedOrigin(baseUrl: string): string | null {
   return origin && originOf(baseUrl.replace(INPUT_PATTERN, 'b')) === origin ? origin : null;
 }
 
+/** What to change when a tool's URL lets input choose the host. */
+export const FIXED_HOST_MESSAGE = 'Use a full URL with a fixed host: write the host and a "/" before any {{input.field}}, which fills the path and query';
+
+/** Whether a tool's URL keeps its host fixed, with {{input.field}} only after the host and its "/". */
+export function hasFixedHost(baseUrl: string): boolean {
+  return fixedOrigin(baseUrl) !== null;
+}
+
 /**
  * Whether the URL's path has a "." or ".." segment, which URL parsing removes along with the
  * segment before it ("%2e" counts as a dot).

@@ -38,7 +38,7 @@ describe('a host the AI would choose', () => {
   ])('is refused when the URL takes %s from input, and nothing is sent', async (_case, baseUrl) => {
     const result = await executeHttpApi(tool({ baseUrl }), { host: 'elsewhere.test', suffix: '.elsewhere.test', url: 'https://elsewhere.test/x', port: '8443', scheme: 'http', path: '/v1/items' });
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/host is fixed/);
+    expect(result.error).toMatch(/fixed host: write the host and a "\/" before any/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

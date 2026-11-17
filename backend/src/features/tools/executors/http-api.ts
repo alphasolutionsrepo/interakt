@@ -10,7 +10,7 @@
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import type { ToolExecutionResult } from '../tools.executor';
 
-import { INPUT_PATTERN, resolveUrlTemplate } from './http-url';
+import { FIXED_HOST_MESSAGE, INPUT_PATTERN, resolveUrlTemplate } from './http-url';
 
 // ============================================================================
 // CONFIG TYPES
@@ -127,7 +127,7 @@ export async function executeHttpApi(
     return {
       success: false,
       error: filledUrl.problem === 'host'
-        ? 'HTTP API baseUrl must be a full URL whose host is fixed: write the host and a "/" before any {{input.field}}, which fills the path and query'
+        ? `HTTP API baseUrl: ${FIXED_HOST_MESSAGE}`
         : 'An input value for the URL path is "." or "..", which would leave the path this tool calls; pass the value itself',
     };
   }

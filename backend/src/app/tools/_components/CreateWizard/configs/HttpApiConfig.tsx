@@ -14,6 +14,13 @@ import {
 } from '@/components/ui/select';
 import { Check, ChevronDown, ChevronUp, FileJson, Plus, Trash2 } from 'lucide-react';
 
+import { FIXED_HOST_MESSAGE, hasFixedHost } from '@/features/tools/executors/http-url';
+
+/** Why a typed base URL won't run, shown as the admin types: input may not choose the host. */
+function baseUrlProblem(baseUrl: unknown): string | undefined {
+  return typeof baseUrl === 'string' && baseUrl.trim() && !hasFixedHost(baseUrl.trim()) ? FIXED_HOST_MESSAGE : undefined;
+}
+
 interface HttpApiConfigProps {
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
@@ -254,7 +261,11 @@ export function HttpApiConfig({ value, onChange, errors }: HttpApiConfigProps) {
             placeholder="https://api.example.com/search"
             className={`rounded-xl font-mono text-sm ${errors?.baseUrl ? 'border-destructive' : ''}`}
           />
-          {errors?.baseUrl && <p className="text-xs text-destructive">{errors.baseUrl}</p>}
+          {errors?.baseUrl ? (
+            <p className="text-xs text-destructive">{errors.baseUrl}</p>
+          ) : baseUrlProblem(value.baseUrl) && (
+            <p className="text-xs text-destructive">{baseUrlProblem(value.baseUrl)}</p>
+          )}
           <p className="text-xs text-muted-foreground">
             Supports <code className="font-mono bg-muted px-1 rounded text-[11px]">{'{{secret:name}}'}</code> and{' '}
             <code className="font-mono bg-muted px-1 rounded text-[11px]">{'{{input.field}}'}</code> templates.
