@@ -19,10 +19,13 @@ Sidebar → **Administration → Admin → AI Providers**.
 - Billing set up (the free tier doesn't include the chat models most experiences use).
 
 ### Steps
-1. Click **Add Provider** and name it, for example "OpenAI".
-2. Set **Connection type** to **OpenAI-compatible** and **base URL** to `https://api.openai.com/v1`.
-3. Paste your **API key**.
-4. Click **Save**, then **Test Connection**: Interakt reads OpenAI's `/v1/models`.
+Interakt comes with an **OpenAI** provider already set up (OpenAI-compatible, `https://api.openai.com/v1`).
+
+1. Open its row's menu and click **Edit**.
+2. Paste your **API key** and save.
+3. Click **Test Connection**: Interakt reads OpenAI's `/v1/models`.
+
+For a second OpenAI account, click **Add Provider** and give it its own name (for example "OpenAI team"), with the same connection type and base URL.
 
 ### Models
 By default, the OpenAI provider registers:

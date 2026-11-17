@@ -1034,7 +1034,7 @@ interface ProviderReport {
   models: ReportedModel[];
   listed: string[];
   /** Ollama: anything not installed. An OpenAI-compatible service: only models discovery added. */
-  hides: 'all' | 'discovered';
+  hides: 'all' | 'discovered' | 'none';
   /** A new embedding model's vector size, when the provider doesn't report it with the list */
   dimensionsOf?: (modelKey: string) => Promise<number | null>;
 }
@@ -1103,6 +1103,9 @@ async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promis
   return { models, listed: installed.map((m) => m.name), hides: 'all' };
 }
 
+/** Model ids that read as embedding models: "embed" in the name, or a well-known embedding family. */
+const EMBEDDING_MODEL = /(embed|\bbge\b|\bbge-|\be5-|\bgte-|minilm|mxbai|sentence-transformers)/i;
+
 /** Model ids an OpenAI-compatible list carries that aren't text or embedding models. */
 const NOT_TEXT_MODEL = /(whisper|tts|dall-e|gpt-image|image|audio|realtime|transcribe|moderation|speech|sora|rerank|ocr)/i;
 
@@ -1121,8 +1124,12 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
   if (!response.ok) {
     throw new Error(`Failed to fetch models: HTTP ${response.status}`);
   }
-  const body = (await response.json()) as { data?: Array<Record<string, unknown>> };
-  const listed = (Array.isArray(body.data) ? body.data : [])
+  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+  // An answer that isn't a model list (a proxy's page, a changed API) says nothing about the models
+  if (!body || !Array.isArray(body.data)) {
+    throw new Error('Failed to fetch models: the answer is not an OpenAI-style model list (no "data" list)');
+  }
+  const listed = (body.data as Array<Record<string, unknown>>)
     .filter((model): model is Record<string, unknown> & { id: string } => typeof model.id === 'string' && model.id.length > 0);
   // New models are added when their id reads as a text or embedding model; any other can be added by hand
   const models = listed
@@ -1131,7 +1138,7 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
       const contextWindow = reportedContextWindow(model);
       return {
         modelKey: model.id,
-        modelType: /embed/i.test(model.id) ? 'embedding' : 'chat',
+        modelType: EMBEDDING_MODEL.test(model.id) ? 'embedding' : 'chat',
         description: `Discovered from ${provider.displayName}`,
         dimensions: null,
         capabilities: contextWindow ? { contextWindow } : {},
@@ -1139,7 +1146,13 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
     });
   // A service can list fewer models than are saved (models added by hand, aliases it serves
   // unlisted): only models an earlier discovery added are hidden when it stops listing them
-  return { models, listed: listed.map((m) => m.id), hides: 'discovered', dimensionsOf: (key) => embeddingDimensions(provider, key) };
+  return {
+    models,
+    listed: listed.map((m) => m.id),
+    // An empty list hides nothing: a service between restarts can briefly list no models
+    hides: listed.length === 0 ? 'none' : 'discovered',
+    dimensionsOf: (key) => embeddingDimensions(provider, key),
+  };
 }
 
 /** An embedding model's vector size, from one short embedding; null when the service won't say. */
@@ -1214,7 +1227,8 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
 
   const listedKeys = new Set(report.listed.map(sameModel));
   const modelsToMarkUnavailable = existingModels.filter(
-    (m) => m.isAvailable && !listedKeys.has(sameModel(m.modelKey)) && (report.hides === 'all' || m.isDiscovered)
+    (m) => m.isAvailable && !listedKeys.has(sameModel(m.modelKey))
+      && (report.hides === 'all' || (report.hides === 'discovered' && m.isDiscovered))
   );
   for (const model of modelsToMarkUnavailable) {
     await repository.updateModelAvailability(model.id, false);

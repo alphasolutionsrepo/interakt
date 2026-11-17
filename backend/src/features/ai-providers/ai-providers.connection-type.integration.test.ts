@@ -38,6 +38,8 @@ const gateway = {
   /** Answers to /v1/chat/completions, in order; empty means a normal answer */
   answers: [] as Array<{ status: number; retryAfter?: string }>,
 };
+/** An answer /v1/models gives instead of the list, when set */
+let oddAnswer: unknown = null;
 const ollama = {
   seen: [] as Seen[],
   tags: [] as Array<Record<string, unknown>>,
@@ -62,7 +64,7 @@ beforeAll(async () => {
   gatewayServer = http.createServer((req, res) => {
     gateway.seen.push({ at: Date.now(), path: req.url ?? '', auth: req.headers.authorization });
     if (req.headers.authorization !== 'Bearer gw-key') { res.writeHead(401); return res.end('{"error":{"message":"bad key"}}'); }
-    if (req.url === '/v1/models') return res.end(JSON.stringify({ object: 'list', data: gateway.models }));
+    if (req.url === '/v1/models') return res.end(JSON.stringify(oddAnswer ?? { object: 'list', data: gateway.models }));
     if (req.url === '/v1/embeddings') return res.end(JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3, 0.4] }] }));
     if (req.url === '/v1/chat/completions') {
       let raw = '';
@@ -254,13 +256,26 @@ describe('models a gateway stops listing, or lists under names that are not text
     expect(byKey['gpt-4o-audio-preview'].isAvailable).toBe(true);
     expect(byKey['gone-model'].isAvailable).toBe(false);
     expect(byKey['glm-ocr-chat'].isAvailable).toBe(true);
+    expect(byKey['campus-chat'].capabilities.contextWindow).toBe(16384);
 
     // Later the service stops listing the models added by hand: they stay all the same
-    gateway.models = [];
+    gateway.models = [{ id: 'campus-chat' }];
     await post(discoverRoute, data.id);
     const later = Object.fromEntries((await modelsOf(data.id)).map((m) => [m.modelKey, m.isAvailable]));
     expect(later).toMatchObject({ 'my-fine-tune': true, 'gpt-4o-audio-preview': true, 'campus-chat': true, 'glm-ocr-chat': false });
-    expect(byKey['campus-chat'].capabilities.contextWindow).toBe(16384);
+  });
+
+  it.each([
+    ['an empty list', { object: 'list', data: [] }, 200],
+    ['an answer with no model list', { message: 'gateway restarting' }, 500],
+  ])('hides nothing on %s', async (_case, answer, status) => {
+    const { data } = await createProvider({ providerKey: `gw-odd-${++n}`, connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    gateway.models = [{ id: 'campus-chat' }];
+    await post(discoverRoute, data.id);
+    oddAnswer = answer;
+    expect((await post(discoverRoute, data.id)).status).toBe(status);
+    oddAnswer = null;
+    expect((await modelsOf(data.id)).find((m) => m.modelKey === 'campus-chat')?.isAvailable).toBe(true);
   });
 });
 
