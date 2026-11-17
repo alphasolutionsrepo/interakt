@@ -623,6 +623,19 @@ describe('Discover Models when the provider refuses or is down (review 17 Nov)',
     expect(body).toMatchObject({ code: 'UPSTREAM_AUTH', error: 'gw-bad-key rejected the credentials.' });
   });
 
+  it("passes on the provider's own 'not found' as its error, not as a missing provider", async () => {
+    const notFound = http.createServer((_req, res) => { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{"error":{"message":"the requested resource was not found"}}'); });
+    const url = await listen(notFound);
+    try {
+      const { data } = await createProvider({ providerKey: 'gw-wrong-path', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: `${url}/v1` });
+      const res = await post(discoverRoute, data.id);
+      expect(res.status).not.toBe(404);
+      expect((await res.json()).code).toMatch(/^UPSTREAM_/);
+    } finally {
+      notFound.close();
+    }
+  });
+
   it("says the provider couldn't be reached when nothing answers", async () => {
     const closed = http.createServer();
     const url = await listen(closed);
