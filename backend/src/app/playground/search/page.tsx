@@ -14,11 +14,12 @@ import { Search, Sparkles, Layers } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
 
-import { SEARCH_TAB_AREA, areaGateFor, initialSearchTab, settledChoice, type SearchTab } from '../_lib/area-gate';
+import { SEARCH_TAB_AREA, initialSearchTab, type SearchTab } from '../_lib/area-gate';
 
 import { SearchPlayground } from './_components/SearchPlayground';
 
 import { cn } from '@/lib/utils';
+import { areaGateFor, settledChoice } from '@/shared/access/area-gate';
 import { AreaOffNote } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';

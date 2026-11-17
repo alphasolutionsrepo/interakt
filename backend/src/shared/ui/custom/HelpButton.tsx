@@ -37,9 +37,17 @@ import { useDocsSearch } from '@/shared/help/useDocsSearch';
 /** The last mode used, remembered for the browser session. */
 const MODE_KEY = 'interakt.help.mode';
 
-/** With the Help assistant off only the docs search is left, whatever mode was remembered. */
-export function effectiveHelpMode(remembered: HelpMode, askOn: boolean): HelpMode {
-  return askOn ? remembered : 'search';
+/**
+ * With the Help assistant off only the docs search is left, whatever mode was remembered. While
+ * that is not known yet (null) the remembered mode stays, so the drawer doesn't flip once access loads.
+ */
+export function effectiveHelpMode(remembered: HelpMode, askOn: boolean | null): HelpMode {
+  return askOn === false ? 'search' : remembered;
+}
+
+/** Whether a question can be sent: not empty, no answer in flight, and only once access shows the Help assistant on. */
+export function canAsk(question: string, askKnown: boolean | null, busy: boolean): boolean {
+  return askKnown === true && !!question.trim() && !busy;
 }
 
 /** Whether the docs-search route may be called: it is refused with the Help assistant off (still loading: try it). */
@@ -86,7 +94,7 @@ export function HelpButton() {
   // Until access has loaded the answer is unknown: nothing about asking is shown, then it appears once
   const askKnown: boolean | null = accessLoading ? null : askOn;
   const [savedMode, setModeState] = useState<HelpMode>('search');
-  const mode = effectiveHelpMode(savedMode, askOn);
+  const mode = effectiveHelpMode(savedMode, askKnown);
   const [text, setText] = useState('');
   const [group, setGroup] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
@@ -259,11 +267,12 @@ export function HelpButton() {
 
   const ask = useCallback(
     (question: string) => {
-      if (!question.trim() || chatBusy) return;
+      // While access loads the remembered Ask mode stays on screen, but nothing is sent until it's known
+      if (!canAsk(question, askKnown, chatBusy)) return;
       void sendChat(question);
       setText('');
     },
-    [chatBusy, sendChat],
+    [askKnown, chatBusy, sendChat],
   );
 
   /** "Ask AI about … instead" — the user's explicit hand-off from Search. */
@@ -417,7 +426,7 @@ export function HelpButton() {
         <SheetHeader className="gap-3 border-b border-border/60 p-4">
           <div>
             <SheetTitle>Help</SheetTitle>
-            <SheetDescription>{helpDescription(askOn)}</SheetDescription>
+            <SheetDescription>{helpDescription(askKnown ?? mode === 'ask')}</SheetDescription>
           </div>
 
           <ModeSwitch mode={mode} onChange={setMode} />
@@ -462,11 +471,12 @@ export function HelpButton() {
                 type="button"
                 size="icon"
                 className="size-7 shrink-0"
-                disabled={!text.trim() || chat.busy}
+                disabled={!canAsk(text, askKnown, chat.busy)}
                 onClick={() => ask(text)}
                 aria-label="Ask"
               >
-                {chat.busy ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
+                {/* Busy, or waiting for access before a question can be sent: the typed text stays */}
+                {chat.busy || askKnown === null ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
               </Button>
             )}
           </div>

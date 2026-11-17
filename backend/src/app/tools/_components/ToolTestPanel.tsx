@@ -14,10 +14,10 @@ import { useState } from 'react';
 
 import { toolsApi, type ToolTestResult } from '../_lib/api-client';
 
-import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/shared/access/area-gate';
 import { errorText } from '@/shared/api/api-error';
 
 /** Run a tool with test input; Run is locked with the reason for a role that can't test (it calls the tool). */
