@@ -90,7 +90,7 @@ beforeAll(async () => {
     res.writeHead(404); res.end();
   });
   ollamaServer = http.createServer((req, res) => {
-    ollama.seen.push({ at: Date.now(), path: req.url ?? '' });
+    ollama.seen.push({ at: Date.now(), path: req.url ?? '', auth: req.headers.authorization });
     if (req.url === '/api/generate') {
       const next = ollama.answers.shift();
       if (next && next.status !== 200) {
@@ -329,6 +329,37 @@ describe("a provider's API key", () => {
     await post(testConnectionRoute, data.id);
     expect(ollama.seen).toEqual([]);
     expect((await updateProvider(data.id, { baseUrl: `${ollamaUrl}/v1`, apiKey: 'new-key' })).status).toBe(200);
+  });
+
+  it('can be added when an Ollama provider without authentication is edited into an OpenAI-compatible one, and is sent', async () => {
+    const { data } = await createProvider({ providerKey: 'was-ollama', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    gateway.models = [{ id: 'campus-chat', object: 'model' }];
+
+    // Everything the edit form sends
+    const { status, data: updated } = await updateProvider(data.id, {
+      providerKey: 'was-ollama', displayName: 'Campus gateway', description: '', providerType: 'local',
+      connectionType: 'openai_compatible', authType: 'api_key', baseUrl: gatewayUrl, apiKey: 'gw-key', isEnabled: true,
+    });
+    expect(status).toBe(200);
+    expect(updated).toMatchObject({ connectionType: 'openai_compatible', authType: 'api_key', hasApiKey: true });
+
+    await post(discoverRoute, data.id);
+    const model = (await modelsOf(data.id)).find((m) => m.modelKey === 'campus-chat');
+    expect((await generateText('Say hi', { providerId: data.id, modelId: model!.id })).text).toBe('Hi from the gateway');
+    expect(gateway.seen.at(-1)).toMatchObject({ path: '/v1/chat/completions', auth: 'Bearer gw-key' });
+  });
+
+  it('is removed when authentication is set to none, so no request carries it', async () => {
+    const { data } = await createProvider({ providerKey: 'drop-key', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+
+    // Moving to another server at the same time needs no key: there is none to send
+    const { status, data: updated } = await updateProvider(data.id, { authType: 'none', baseUrl: `${ollamaUrl}/v1`, apiKey: '' });
+    expect(status).toBe(200);
+    expect(updated).toMatchObject({ authType: 'none', hasApiKey: false });
+
+    await post(testConnectionRoute, data.id);
+    expect(ollama.seen.map((s) => s.path)).toEqual(['/v1/models']);
+    expect(ollama.seen[0].auth).toBeUndefined();
   });
 
   it('stays for a new path on the same server', async () => {
