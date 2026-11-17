@@ -39,7 +39,7 @@ describe('a redirect from http to https on the same host', () => {
 
 /**
  * The redirect rules on a real local server: where a redirect is followed, what method and
- * body go with it, and when it stops. The server redirects by path (/status/<code>/to/<path>)
+ * body go with it, and when it stops. The server redirects by path (/status/<code>/to/final)
  * and records every request it gets.
  */
 describe('redirects on the same server', () => {
@@ -54,8 +54,9 @@ describe('redirects on the same server', () => {
       req.on('data', (c) => { body += c; });
       req.on('end', () => {
         hits.push({ method: req.method, url: req.url, body });
-        const redirect = /^\/status\/(\d+)\/to\/(.*)$/.exec(req.url ?? '');
-        if (redirect) { res.writeHead(Number(redirect[1]), { location: `/${redirect[2]}` }); return res.end(); }
+        // Redirects go to a fixed path, never one taken from the request
+        const redirect = /^\/status\/(\d+)\/to\/final$/.exec(req.url ?? '');
+        if (redirect) { res.writeHead(Number(redirect[1]), { location: '/final' }); return res.end(); }
         if (req.url === '/no-location') { res.writeHead(302); return res.end(); }
         if (req.url === '/loop') { res.writeHead(302, { location: '/loop' }); return res.end(); }
         if (req.url === '/missing') { res.writeHead(404, { 'content-type': 'application/json' }); return res.end('{"error":"nope"}'); }
