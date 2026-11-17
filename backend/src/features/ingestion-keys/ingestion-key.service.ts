@@ -9,7 +9,7 @@
 import 'server-only';
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { createLogger } from '@/shared/logger/logger';
+
 import * as repository from './ingestion-key.repository';
 import { isIngestionAuthFailure } from './ingestion-key.types';
 import type {
@@ -19,6 +19,9 @@ import type {
     IngestionKeyWithIndexes,
     IngestionOperation,
 } from './ingestion-key.types';
+
+import { memoryCacheStore } from '@/shared/cache/cache-store';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ingestion-key-service');
 
@@ -208,6 +211,31 @@ export function toSummary(key: IngestionKeyWithIndexes): IngestionKeySummary {
 }
 
 // ============================================================================
+// KEY LOOKUP CACHE
+// ============================================================================
+
+/**
+ * How long a key looked up by its prefix (or "no such key") is reused. A server sending the
+ * same key, right or wrong, costs one database read per window. The secret is checked on every
+ * request; revoked and expired are judged from the cached row (expiry against the clock at use).
+ * Creating or revoking a key here drops its entry at once on this server. Other servers, and
+ * changes made outside this service (an index deleted, a row edited), are seen within this time:
+ * the cache is per process until the shared store replaces it.
+ */
+export const KEY_LOOKUP_TTL_MS = 10_000;
+
+const keysByPrefix = memoryCacheStore<IngestionKeyWithIndexes | null>('ingestion-keys', { maxSize: 10_000 });
+
+function keyByPrefix(keyPrefix: string): Promise<IngestionKeyWithIndexes | null> {
+    return keysByPrefix.getOrSet(keyPrefix, () => repository.getByPrefix(keyPrefix), KEY_LOOKUP_TTL_MS);
+}
+
+/** Forget every cached key lookup (tests). */
+export function clearKeyLookupCache(): Promise<void> {
+    return keysByPrefix.clear();
+}
+
+// ============================================================================
 // CREATE / LIST / REVOKE
 // ============================================================================
 
@@ -232,6 +260,8 @@ export async function createIngestionKey(input: {
         expiresAt: input.expiresAt,
         createdBy: input.createdBy,
     });
+    // A lookup of this prefix just before (cached as "no such key") must not refuse the new key
+    await keysByPrefix.delete(key.keyPrefix);
 
     return {
         key: toSummary(key),
@@ -255,7 +285,9 @@ export async function revokeIngestionKey(
     searchIndexId: string
 ): Promise<IngestionKeySummary | null> {
     const revoked = await repository.revoke(keyId, searchIndexId);
-    return revoked ? toSummary(revoked) : null;
+    if (!revoked) return null;
+    await keysByPrefix.delete(revoked.keyPrefix);
+    return toSummary(revoked);
 }
 
 // ============================================================================
@@ -263,22 +295,17 @@ export async function revokeIngestionKey(
 // ============================================================================
 
 /**
- * Verify a presented key and check it may perform an operation on an index.
- *
- * The order matters: identity first (is this a real, live key?), then
- * authorization (may it act here?). The caller maps the former to 401 and the
- * latter to 403.
+ * Which key was presented: the stored key when the secret matches, whatever its state
+ * (revoked, expired, scope are checked by evaluateKeyAccess). At most one database read
+ * (see KEY_LOOKUP_TTL_MS).
  */
-export async function verifyIngestionKey(
-    presented: string,
-    requirement: { searchIndexId: string; operation?: IngestionOperation }
-): Promise<IngestionAuthResult> {
+export async function identifyIngestionKey(presented: string): Promise<IngestionAuthResult> {
     const parsed = parseKey(presented);
     if (!parsed) {
         return { success: false, reason: 'malformed' };
     }
 
-    const key = await repository.getByPrefix(parsed.keyPrefix);
+    const key = await keyByPrefix(parsed.keyPrefix);
     if (!key) {
         return { success: false, reason: 'unknown' };
     }
@@ -288,6 +315,33 @@ export async function verifyIngestionKey(
         // is real but the secret wrong.
         return { success: false, reason: 'unknown' };
     }
+
+    return { success: true, key };
+}
+
+/** Whether an identified key can be used at all now (not revoked or expired). */
+export function isKeyLive(key: IngestionKeyWithIndexes, now: Date = new Date()): boolean {
+    return !isRevoked(key) && !isExpired(key, now);
+}
+
+/**
+ * Verify a presented key and check it may perform an operation on an index.
+ *
+ * The order matters: identity first (is this a real, live key?), then
+ * authorization (may it act here?). The caller maps the former to 401 and the
+ * latter to 403. `identified` is the result of identifyIngestionKey when the caller
+ * already has it.
+ */
+export async function verifyIngestionKey(
+    presented: string,
+    requirement: { searchIndexId: string; operation?: IngestionOperation },
+    identified?: IngestionAuthResult,
+): Promise<IngestionAuthResult> {
+    const identity = identified ?? await identifyIngestionKey(presented);
+    if (isIngestionAuthFailure(identity)) {
+        return identity;
+    }
+    const { key } = identity;
 
     const access = evaluateKeyAccess(key, requirement);
     if (isIngestionAuthFailure(access)) {
