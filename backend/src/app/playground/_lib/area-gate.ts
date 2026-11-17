@@ -4,11 +4,12 @@
 
 import { useState } from 'react';
 
-import type { Area } from '@/features/feature-switches/areas';
+import { EXPERIENCE_TYPE_AREA, type Area } from '@/features/feature-switches/areas';
 
 /** The widget kinds the widget playground can render, and the area each needs. */
 export type WidgetKind = 'chat' | 'search';
-export const WIDGET_KIND_AREA: Record<WidgetKind, Area> = { chat: 'chat', search: 'search' };
+// A chat widget serves a chat (AI) experience, a search widget a search one
+export const WIDGET_KIND_AREA: Record<WidgetKind, Area> = { chat: EXPERIENCE_TYPE_AREA.ai, search: EXPERIENCE_TYPE_AREA.search };
 
 /** A pick that remembers which widget kind it was made for (an experience, a launcher). */
 export interface KindPick<V> {
