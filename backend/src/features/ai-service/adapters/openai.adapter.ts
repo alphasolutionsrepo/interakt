@@ -26,7 +26,7 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
-import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal, retryAfterMs, wasAborted } from './types';
+import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseSSEStream, requestSignal } from './types';
 import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -474,7 +474,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
         const toolCallsInProgress: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
         let chunkCount = 0;
-        for await (const data of parseSSEStream(response, this.providerKey)) {
+        for await (const data of parseSSEStream(response, config.providerKey ?? this.providerKey)) {
             try {
                 chunkCount++;
                 const chunk: OpenAIStreamChunk = JSON.parse(data);
@@ -627,7 +627,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
         try {
             return await response.json() as T;
         } catch (error) {
-            throw this.requestFailure(error, signal);
+            throw this.requestFailure(error, config, signal);
         }
     }
 
@@ -654,21 +654,19 @@ export class OpenAIAdapter implements AIProviderAdapter {
             clearTimeout(timeoutId);
 
             if (!response.ok) {
-                await this.handleErrorResponse(response);
+                await this.handleErrorResponse(response, config);
             }
 
             return response;
         } catch (error) {
             clearTimeout(timeoutId);
-            throw this.requestFailure(error, signal);
+            throw this.requestFailure(error, config, signal);
         }
     }
 
     /** A request that failed, as an AdapterError: timed out, cancelled, the network */
-    private requestFailure(error: unknown, signal?: AbortSignal): AdapterError {
-        if (error instanceof AdapterError) return error;
-        if (wasAborted(error, signal)) return abortedRequestError(this.providerKey, signal);
-        return new AdapterError(`Network error: ${(error as Error).message}`, this.providerKey, undefined, true, error as Error);
+    private requestFailure(error: unknown, config: AdapterConfig, signal?: AbortSignal): AdapterError {
+        return noAnswerError(error, config.providerKey ?? this.providerKey, signal);
     }
 
     /**
@@ -692,29 +690,10 @@ export class OpenAIAdapter implements AIProviderAdapter {
         return headers;
     }
 
-    /**
-     * Handle error response
-     */
-    private async handleErrorResponse(response: Response): Promise<never> {
-        let errorMessage = `HTTP ${response.status}`;
-
-        try {
-            const errorBody: OpenAIErrorResponse = await response.json();
-            errorMessage = errorBody.error?.message || errorMessage;
-        } catch {
-            // Ignore JSON parse errors
-        }
-
-        const retryable = response.status === 429 || response.status >= 500;
-
-        throw new AdapterError(
-            errorMessage,
-            this.providerKey,
-            response.status,
-            retryable,
-            undefined,
-            retryAfterMs(response),
-        );
+    /** An error answer, thrown as an AdapterError naming the provider */
+    private async handleErrorResponse(response: Response, config: AdapterConfig): Promise<never> {
+        throw await errorFromResponse(response, config.providerKey ?? this.providerKey,
+            (body) => (body as OpenAIErrorResponse).error?.message);
     }
 
     /**

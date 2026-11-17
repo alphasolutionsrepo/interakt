@@ -394,7 +394,7 @@ export function ProviderFormDialog({
                                         </FormControl>
                                         {mode === 'edit' && provider?.hasApiKey && (
                                             <FormDescription>
-                                                Leave empty to keep existing key
+                                                Leave empty to keep the saved key. A base URL on another server needs the key again.
                                             </FormDescription>
                                         )}
                                         <FormMessage />

@@ -222,6 +222,10 @@ export async function handleUpdateProvider(
       return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateProvider' });
     }
 
+    if (err instanceof service.KeyForAnotherServerError) {
+      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'updateProvider' });
+    }
+
     return apiResponse.error(err, undefined, { operation: 'updateProvider' });
   }
 }

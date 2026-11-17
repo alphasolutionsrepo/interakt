@@ -22,7 +22,7 @@ import {
 } from '@/features/ai-providers/ai-providers.service';
 import { defaultConnectionType } from '@/features/ai-providers/ai-providers.validation';
 import { CallerTimeoutError, CancelledRequestError, getAdapter } from './adapters';
-import { withResilience, withRetry } from './ai-service.resilience';
+import { waitAsAsked, withResilience, withRetry } from './ai-service.resilience';
 import { trackUsage, updateRealtimeMetrics } from './ai-service.analytics';
 import { processEmbeddingBatches } from './utils/batch-processor';
 import { estimateChatUsage } from './utils/token-counter';
@@ -183,6 +183,7 @@ async function resolveProviderConfig(
  */
 function toAdapterConfig(config: ResolvedProviderConfig): AdapterConfig {
     return {
+        providerKey: config.providerKey,
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         modelKey: config.modelKey,
@@ -606,6 +607,8 @@ export async function* streamChat(
                     // because adapter.streamChat returns the iterator lazily.
                     // Fall through to a single retry of the whole iteration.
                     if (yielded) throw err;
+                    // As long as the provider asked (Retry-After); a longer wait than any retry ends it here
+                    await waitAsAsked(err);
                     // A retry, not a failure: if the retry fails too, whoever handles it logs it
                     logger.info('Stream errored before first chunk — retrying once', {
                         provider: config!.providerKey,

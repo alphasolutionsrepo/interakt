@@ -24,7 +24,9 @@ import * as discoverRoute from '@/app/api/ai-providers/[id]/discover-models/rout
 import * as providerRoute from '@/app/api/ai-providers/[id]/route';
 import * as testConnectionRoute from '@/app/api/ai-providers/[id]/test-connection/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
-import { generateText } from '@/features/ai-service/ai-service.service';
+import { generateText, streamChat } from '@/features/ai-service/ai-service.service';
+import { sql } from 'drizzle-orm';
+
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 // ── Stand-ins ────────────────────────────────────────────────────────────────
@@ -36,7 +38,12 @@ const gateway = {
   /** Answers to /v1/chat/completions, in order; empty means a normal answer */
   answers: [] as Array<{ status: number; retryAfter?: string }>,
 };
-const ollama = { seen: [] as Seen[] };
+const ollama = {
+  seen: [] as Seen[],
+  tags: [] as Array<Record<string, unknown>>,
+  /** Answers to /api/generate, in order; empty means a normal answer */
+  answers: [] as Array<{ status: number; retryAfter?: string }>,
+};
 let gatewayUrl = '';
 let ollamaUrl = '';
 let gatewayServer: http.Server;
@@ -57,19 +64,34 @@ beforeAll(async () => {
     if (req.headers.authorization !== 'Bearer gw-key') { res.writeHead(401); return res.end('{"error":{"message":"bad key"}}'); }
     if (req.url === '/v1/models') return res.end(JSON.stringify({ object: 'list', data: gateway.models }));
     if (req.url === '/v1/chat/completions') {
-      const next = gateway.answers.shift();
-      if (next && next.status !== 200) {
-        res.writeHead(next.status, next.retryAfter ? { 'retry-after': next.retryAfter } : {});
-        return res.end('{"error":{"message":"rate limited"}}');
-      }
-      return res.end(chatAnswer);
+      let raw = '';
+      req.on('data', (c) => { raw += c; });
+      req.on('end', () => {
+        const next = gateway.answers.shift();
+        if (next && next.status !== 200) {
+          res.writeHead(next.status, next.retryAfter ? { 'retry-after': next.retryAfter } : {});
+          return res.end(JSON.stringify({ error: { message: next.status === 401 ? 'bad key' : 'rate limited' } }));
+        }
+        if (JSON.parse(raw || '{}').stream) {
+          return res.end('data: {"choices":[{"delta":{"content":"Hi from the gateway"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\ndata: [DONE]\n\n');
+        }
+        res.end(chatAnswer);
+      });
+      return;
     }
     res.writeHead(404); res.end();
   });
   ollamaServer = http.createServer((req, res) => {
     ollama.seen.push({ at: Date.now(), path: req.url ?? '' });
-    if (req.url === '/api/generate') return res.end('{"response":"Hi from Ollama","done":true,"prompt_eval_count":1,"eval_count":1}');
-    if (req.url === '/api/tags') return res.end(JSON.stringify({ models: [] }));
+    if (req.url === '/api/generate') {
+      const next = ollama.answers.shift();
+      if (next && next.status !== 200) {
+        res.writeHead(next.status, next.retryAfter ? { 'retry-after': next.retryAfter } : {});
+        return res.end('{"error":"too many requests"}');
+      }
+      return res.end('{"response":"Hi from Ollama","done":true,"prompt_eval_count":1,"eval_count":1}');
+    }
+    if (req.url === '/api/tags') return res.end(JSON.stringify({ models: ollama.tags }));
     res.writeHead(404); res.end();
   });
   gatewayUrl = `${await listen(gatewayServer)}/v1`;
@@ -77,7 +99,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => { gatewayServer.close(); ollamaServer.close(); await testDb.close(); });
-beforeEach(() => { gateway.seen = []; gateway.answers = []; ollama.seen = []; });
+beforeEach(() => { gateway.seen = []; gateway.answers = []; ollama.seen = []; ollama.answers = []; ollama.tags = []; });
 
 // ── Calls through the routes ─────────────────────────────────────────────────
 
@@ -90,6 +112,17 @@ async function createProvider(body: Record<string, unknown>) {
   return { status: res.status, data: (await res.json()).data };
 }
 const idParams = (id: string) => ({ params: Promise.resolve({ id }) });
+async function updateProvider(id: string, body: Record<string, unknown>) {
+  const res = await providerRoute.PUT(new NextRequest(`http://localhost/api/ai-providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }), idParams(id));
+  return { status: res.status, data: (await res.json()).data };
+}
+async function modelsOf(id: string): Promise<Array<{ id: number; modelKey: string; isAvailable: boolean; capabilities: Record<string, unknown> }>> {
+  const res = await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${id}?includeModels=true`), idParams(id));
+  return (await res.json()).data.models;
+}
+const addModel = (providerId: string, modelKey: string, isDiscovered: boolean, capabilities: Record<string, unknown> = {}) =>
+  testDb.db.execute(sql`INSERT INTO ai_provider_models (provider_id, model_key, display_name, model_type, is_discovered, capabilities)
+    VALUES (${providerId}, ${modelKey}, ${modelKey}, 'chat', ${isDiscovered}, ${JSON.stringify(capabilities)}::json)`);
 const post = (route: { POST: unknown }, id: string) =>
   (route.POST as (r: NextRequest, c: unknown) => Promise<Response>)(new NextRequest(`http://localhost/api/ai-providers/${id}/x`, { method: 'POST' }), idParams(id));
 
@@ -174,7 +207,7 @@ describe('an Ollama provider under its own name', () => {
   it('answers through the Ollama adapter', async () => {
     const { data } = await createProvider({ providerKey: 'lab-models', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
     const model = await testDb.db.execute(
-      (await import('drizzle-orm')).sql`INSERT INTO ai_provider_models (provider_id, model_key, display_name, model_type) VALUES (${data.id}, 'qwen3.5:9b', 'Qwen', 'chat') RETURNING id`,
+      sql`INSERT INTO ai_provider_models (provider_id, model_key, display_name, model_type) VALUES (${data.id}, 'qwen3.5:9b', 'Qwen', 'chat') RETURNING id`,
     ) as unknown as { rows: Array<{ id: number }> };
     const result = await generateText('Say hi', { providerId: data.id, modelId: model.rows[0].id });
     expect(result.text).toBe('Hi from Ollama');
@@ -200,4 +233,99 @@ describe('a gateway that asks callers to wait (Retry-After)', () => {
     await expect(generateText('Say hi', { providerId, modelId })).rejects.toThrow(/rate limited/);
     expect(gateway.seen.filter((s) => s.path === '/v1/chat/completions')).toHaveLength(1);
   });
+});
+
+describe('models a gateway stops listing, or lists under names that are not text models', () => {
+  it('stay when added by hand or seeded, hide when an earlier discovery added them, and gain a reported context size', async () => {
+    const { data } = await createProvider({ providerKey: 'gw-hide', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    await addModel(data.id, 'my-fine-tune', false);
+    await addModel(data.id, 'gone-model', true);
+    await addModel(data.id, 'gpt-4o-audio-preview', false);
+    await addModel(data.id, 'campus-chat', false);
+    // Discovered earlier, still listed, with a name new models aren't added under
+    await addModel(data.id, 'glm-ocr-chat', true);
+    gateway.models = [{ id: 'campus-chat', context_length: 16384 }, { id: 'gpt-4o-audio-preview' }, { id: 'glm-ocr-chat' }];
+
+    await post(discoverRoute, data.id);
+
+    const byKey = Object.fromEntries((await modelsOf(data.id)).map((m) => [m.modelKey, m]));
+    expect(byKey['my-fine-tune'].isAvailable).toBe(true);
+    expect(byKey['gpt-4o-audio-preview'].isAvailable).toBe(true);
+    expect(byKey['gone-model'].isAvailable).toBe(false);
+    expect(byKey['glm-ocr-chat'].isAvailable).toBe(true);
+    expect(byKey['campus-chat'].capabilities.contextWindow).toBe(16384);
+  });
+});
+
+describe("an Ollama provider under its own name: connection test and discovery", () => {
+  it('reads Ollama\'s installed models', async () => {
+    ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }];
+    const { data } = await createProvider({ providerKey: 'lab-discover', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    expect((await (await post(testConnectionRoute, data.id)).json()).data).toMatchObject({ success: true });
+    expect((await (await post(discoverRoute, data.id)).json()).data).toMatchObject({ modelsFound: 1, modelsAdded: 1 });
+    expect(ollama.seen.map((x) => x.path)).toEqual(['/api/tags', '/api/tags']);
+  });
+});
+
+describe("a provider's API key", () => {
+  it('is kept when the provider is edited without typing it', async () => {
+    const { data } = await createProvider({ providerKey: 'keep-key', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    const { status, data: updated } = await updateProvider(data.id, { displayName: 'Renamed', apiKey: '' });
+    expect(status).toBe(200);
+    expect(updated.hasApiKey).toBe(true);
+  });
+
+  it('must be typed again when the base URL moves to another server, and is never sent there', async () => {
+    const { data } = await createProvider({ providerKey: 'move-key', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    const moved = await updateProvider(data.id, { baseUrl: `${ollamaUrl}/v1`, apiKey: '' });
+    expect(moved.status).toBe(400);
+    await post(testConnectionRoute, data.id);
+    expect(ollama.seen).toEqual([]);
+    expect((await updateProvider(data.id, { baseUrl: `${ollamaUrl}/v1`, apiKey: 'new-key' })).status).toBe(200);
+  });
+
+  it('stays for a new path on the same server', async () => {
+    const { data } = await createProvider({ providerKey: 'same-server', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    const { status, data: updated } = await updateProvider(data.id, { baseUrl: gatewayUrl.replace(/\/v1$/, '/v2'), apiKey: '' });
+    expect(status).toBe(200);
+    expect(updated.hasApiKey).toBe(true);
+  });
+});
+
+describe("a failing gateway's errors", () => {
+  it("name the provider, not the API it speaks", async () => {
+    const { providerId, modelId } = await gatewayWithModel('named-failure');
+    gateway.answers = [{ status: 401 }];
+    await expect(generateText('Say hi', { providerId, modelId })).rejects.toMatchObject({ providerKey: 'named-failure' });
+  });
+});
+
+describe('Retry-After on a stream and on Ollama', () => {
+  const read = async (stream: AsyncIterable<{ content: string }>) => { let text = ''; for await (const c of stream) text += c.content; return text; };
+
+  it('a stream waits as long as the gateway asked before its retry', async () => {
+    const { providerId, modelId } = await gatewayWithModel('stream-wait');
+    gateway.seen = [];
+    gateway.answers = [{ status: 429, retryAfter: '3' }];
+    expect(await read(streamChat([{ role: 'user', content: 'Say hi' }], { providerId, modelId }))).toBe('Hi from the gateway');
+    const [first, second] = gateway.seen.filter((x) => x.path === '/v1/chat/completions');
+    expect(second.at - first.at).toBeGreaterThanOrEqual(2900);
+  }, 20_000);
+
+  it('a stream is not retried when the gateway asks for longer than the longest retry wait', async () => {
+    const { providerId, modelId } = await gatewayWithModel('stream-busy');
+    gateway.seen = [];
+    gateway.answers = [{ status: 429, retryAfter: '120' }];
+    await expect(read(streamChat([{ role: 'user', content: 'Say hi' }], { providerId, modelId }))).rejects.toThrow(/rate limited/);
+    expect(gateway.seen.filter((x) => x.path === '/v1/chat/completions')).toHaveLength(1);
+  });
+
+  it('Ollama is tried again after the wait it asked for', async () => {
+    const { data } = await createProvider({ providerKey: 'lab-busy', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    const model = (await testDb.db.execute(sql`INSERT INTO ai_provider_models (provider_id, model_key, display_name, model_type) VALUES (${data.id}, 'qwen2.5:14b', 'Qwen', 'chat') RETURNING id`)) as unknown as { rows: Array<{ id: number }> };
+    ollama.answers = [{ status: 429, retryAfter: '3' }];
+    expect((await generateText('Say hi', { providerId: data.id, modelId: model.rows[0].id })).text).toBe('Hi from Ollama');
+    const [first, second] = ollama.seen.filter((x) => x.path === '/api/generate');
+    expect(second.at - first.at).toBeGreaterThanOrEqual(2900);
+  }, 20_000);
 });

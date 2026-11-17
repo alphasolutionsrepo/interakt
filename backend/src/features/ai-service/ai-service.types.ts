@@ -484,6 +484,8 @@ export interface RetryConfig {
  * Configuration passed to adapters
  */
 export interface AdapterConfig {
+    /** The provider's own name, which errors carry (the adapter's own key when missing) */
+    providerKey?: string;
     baseUrl: string;
     apiKey?: string;
     modelKey: string;

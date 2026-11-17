@@ -242,6 +242,18 @@ function retryAfterOf(error: unknown): number | undefined {
     return typeof wait === 'number' ? wait : undefined;
 }
 
+/**
+ * Before another try outside withRetry (a stream's one retry): wait as long as the provider
+ * asked (its Retry-After), or pass its error on when it asks for longer than the longest
+ * retry wait, as withRetry does.
+ */
+export async function waitAsAsked(error: unknown, maxDelay: number = RETRY_DEFAULTS.maxDelay): Promise<void> {
+    const wait = retryAfterOf(error);
+    if (wait === undefined) return;
+    if (wait > maxDelay) throw error;
+    await sleep(wait);
+}
+
 /** The provider an attempt's error names (AdapterError, AIServiceError), for the error that ends the retries */
 function providerKeyOf(error: unknown): string {
     const key = (error as { providerKey?: unknown } | null)?.providerKey;

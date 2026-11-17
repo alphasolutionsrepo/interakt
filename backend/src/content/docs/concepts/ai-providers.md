@@ -61,13 +61,13 @@ Click **Add Provider**, then:
 - **Display name** — any name, for example "Campus AI". The **provider key** is made from it; you can change the key before saving.
 - **Connection type** — OpenAI-compatible or Ollama.
 - **Base URL** — for OpenAI-compatible, the address up to and including `/v1` (`https://api.openai.com/v1`, or your gateway's, such as `https://ai.example.edu/v1`). For Ollama, its address without `/v1` (`http://localhost:11434`).
-- **Authentication** — **API key** sends it as `Authorization: Bearer <key>`; **None** for a service that needs no key. Once saved, the key is never shown again.
+- **Authentication** — **API key** sends it as `Authorization: Bearer <key>`; **None** for a service that needs no key. Once saved, the key is never shown again. When you edit the provider, leave the key empty to keep it; a base URL on another server needs the key typed again.
 
 ### Models
-**Discover Models** reads the models the provider offers: Ollama's pulled models, or an OpenAI-compatible service's `/v1/models` list (text and embedding models; a context size the service reports is kept). Models the provider no longer lists are hidden. You can also add models by hand.
+**Discover Models** reads the models the provider offers: Ollama's pulled models, or an OpenAI-compatible service's `/v1/models` list. New text and embedding models are added, with the context size the service reports. For Ollama, models it no longer has are hidden. For an OpenAI-compatible service, models an earlier discovery added are hidden once it stops listing them; models you added by hand stay. You can add any model by hand, and set an embedding model's dimensions on the model.
 
 ### Rate limits
-When a provider answers "too many requests" with a `Retry-After` time, Interakt waits that long before trying again. If it asks for a longer wait than Interakt's longest retry wait (30 seconds), the request fails at once with the provider's message instead of retrying.
+When a provider answers "too many requests" with a `Retry-After` time, Interakt waits that long before trying again, for answers and streamed answers alike. If it asks for a longer wait than Interakt's longest retry wait (30 seconds), the request fails at once with the provider's message instead of retrying.
 
 ### After saving
 Interakt runs a **Test Connection** check immediately — pings the provider with a minimal request to confirm credentials work. If the check fails, the provider stays disabled and the dialog shows the error.

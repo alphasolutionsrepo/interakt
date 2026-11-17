@@ -138,6 +138,33 @@ export class AdapterError extends Error {
     }
 }
 
+/**
+ * A provider's error answer as an AdapterError, the same for every adapter: the message the
+ * provider gave (read by `messageOf` from its error body), retryable for "too many requests"
+ * and server errors, with the wait the provider asked for (Retry-After).
+ */
+export async function errorFromResponse(
+    response: Response,
+    providerKey: string,
+    messageOf: (body: unknown) => string | undefined,
+): Promise<AdapterError> {
+    let message = `HTTP ${response.status}`;
+    try {
+        message = messageOf(await response.json()) || message;
+    } catch {
+        // Not JSON: the status says it
+    }
+    const retryable = response.status === 429 || response.status >= 500;
+    return new AdapterError(message, providerKey, response.status, retryable, undefined, retryAfterMs(response));
+}
+
+/** A request that got no answer, as an AdapterError: cancelled or timed out, or the network failed. */
+export function noAnswerError(error: unknown, providerKey: string, signal?: AbortSignal): AdapterError {
+    if (error instanceof AdapterError) return error;
+    if (wasAborted(error, signal)) return abortedRequestError(providerKey, signal);
+    return new AdapterError(`Network error: ${(error as Error).message}`, providerKey, undefined, true, error as Error);
+}
+
 // ============================================================================
 // HELPER TYPES
 // ============================================================================

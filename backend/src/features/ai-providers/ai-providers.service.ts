@@ -405,6 +405,19 @@ export async function getEnabledProviders(): Promise<AIProviderWithModelsRespons
 // PROVIDER: UPDATE OPERATIONS
 // ============================================================================
 
+/** The server a base URL reaches (scheme, host and port), or the URL itself when it can't be read. */
+function serverOf(baseUrl: string): string {
+  try { return new URL(baseUrl).origin; } catch { return baseUrl; }
+}
+
+/** A provider moved to another server without its API key typed again. */
+export class KeyForAnotherServerError extends Error {
+  constructor() {
+    super('Enter the API key again: the new base URL is on a different server than the one the saved key was entered for');
+    this.name = 'KeyForAnotherServerError';
+  }
+}
+
 /**
  * Update a provider
  */
@@ -426,7 +439,15 @@ export async function updateProvider(
     if (input.description !== undefined) updateData.description = input.description ?? null;
     if (input.baseUrl !== undefined) updateData.baseUrl = input.baseUrl;
     if (input.connectionType !== undefined) updateData.connectionType = input.connectionType;
-    if (input.apiKey !== undefined) updateData.apiKey = input.apiKey ?? null;
+    // An empty key keeps the saved one (the form sends one when nothing was typed); null removes it
+    const newKey = typeof input.apiKey === 'string' && input.apiKey.trim() !== '' ? input.apiKey : undefined;
+    if (newKey !== undefined) updateData.apiKey = newKey;
+    else if (input.apiKey === null) updateData.apiKey = null;
+    // A saved key goes only to the server it was entered for: another server needs it typed again
+    if (input.baseUrl !== undefined && existing.apiKey && newKey === undefined && input.apiKey !== null
+        && serverOf(input.baseUrl) !== serverOf(existing.baseUrl)) {
+      throw new KeyForAnotherServerError();
+    }
     if (input.isEnabled !== undefined) updateData.isEnabled = input.isEnabled;
     if (input.settings !== undefined) updateData.settings = input.settings;
 
@@ -1003,6 +1024,18 @@ export function connectionTypeOf(provider: Pick<AIProvider, 'providerKey'> & { c
   return provider.connectionType ?? defaultConnectionType(provider.providerKey);
 }
 
+/**
+ * What a provider reports through its own API: the models to save, every model key it lists
+ * (also ones not saved, such as speech models), and which saved models it may hide when it
+ * stops listing them.
+ */
+interface ProviderReport {
+  models: ReportedModel[];
+  listed: string[];
+  /** Ollama: anything not installed. An OpenAI-compatible service: only models discovery added. */
+  hides: 'all' | 'discovered';
+}
+
 /** A model a provider reports through its own API, ready to save. */
 interface ReportedModel {
   modelKey: string;
@@ -1027,10 +1060,10 @@ export async function discoverModels(
       throw new Error(`Provider with ID "${providerId}" not found`);
     }
     const timeoutMs = options.timeoutMs ?? 30000;
-    const reported = connectionTypeOf(provider) === 'ollama'
+    const report = connectionTypeOf(provider) === 'ollama'
       ? await readOllamaModels(provider, timeoutMs)
       : await readOpenAICompatibleModels(provider, timeoutMs);
-    const result = await saveDiscoveredModels(providerId, reported);
+    const result = await saveDiscoveredModels(providerId, report);
     logger.info('Completed model discovery', { providerId, ...result });
     return result;
   } catch (error) {
@@ -1039,7 +1072,7 @@ export async function discoverModels(
   }
 }
 
-async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ReportedModel[]> {
+async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
   const response = await fetch(`${provider.baseUrl}/api/tags`, {
     method: 'GET',
     signal: AbortSignal.timeout(timeoutMs),
@@ -1048,7 +1081,8 @@ async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promis
     throw new Error(`Failed to fetch models: HTTP ${response.status}`);
   }
   const data = (await response.json()) as OllamaTagsResponse;
-  return (data.models || []).map((ollamaModel) => {
+  const installed = data.models || [];
+  const models = installed.map((ollamaModel): ReportedModel => {
     const modelType = inferModelType(ollamaModel);
     return {
       modelKey: ollamaModel.name,
@@ -1062,6 +1096,8 @@ async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promis
       },
     };
   });
+  // What Ollama has installed is the truth: every other model is hidden, seeded ones included
+  return { models, listed: installed.map((m) => m.name), hides: 'all' };
 }
 
 /** Model ids an OpenAI-compatible list carries that aren't text or embedding models. */
@@ -1073,7 +1109,7 @@ function reportedContextWindow(model: Record<string, unknown>): number | undefin
   return typeof value === 'number' && value > 0 ? value : undefined;
 }
 
-async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: number): Promise<ReportedModel[]> {
+async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
   const response = await fetch(`${provider.baseUrl}/models`, {
     method: 'GET',
     headers: provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {},
@@ -1083,11 +1119,12 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
     throw new Error(`Failed to fetch models: HTTP ${response.status}`);
   }
   const body = (await response.json()) as { data?: Array<Record<string, unknown>> };
-  const listed = Array.isArray(body.data) ? body.data : [];
-  return listed
-    .filter((model): model is Record<string, unknown> & { id: string } => typeof model.id === 'string' && model.id.length > 0)
+  const listed = (Array.isArray(body.data) ? body.data : [])
+    .filter((model): model is Record<string, unknown> & { id: string } => typeof model.id === 'string' && model.id.length > 0);
+  // New models are added when their id reads as a text or embedding model; any other can be added by hand
+  const models = listed
     .filter((model) => !NOT_TEXT_MODEL.test(model.id))
-    .map((model) => {
+    .map((model): ReportedModel => {
       const contextWindow = reportedContextWindow(model);
       return {
         modelKey: model.id,
@@ -1097,14 +1134,19 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
         capabilities: contextWindow ? { contextWindow } : {},
       };
     });
+  // A service can list fewer models than are saved (models added by hand, aliases it serves
+  // unlisted): only models an earlier discovery added are hidden when it stops listing them
+  return { models, listed: listed.map((m) => m.id), hides: 'discovered' };
 }
 
 /**
- * Save the models a provider reported. What the provider reports is the truth: every model
- * it doesn't report is hidden, seeded catalog entries included; reporting one again later
- * makes it available. Ollama reports "name:latest" for a model saved as "name".
+ * Save the models a provider reported: new ones are added, saved ones it lists are available
+ * (with the context size it reports when they have none), and saved ones it no longer lists are
+ * hidden as its report says; listing one again later makes it available. Ollama reports
+ * "name:latest" for a model saved as "name".
  */
-async function saveDiscoveredModels(providerId: string, reported: ReportedModel[]): Promise<ModelDiscoveryResult> {
+async function saveDiscoveredModels(providerId: string, report: ProviderReport): Promise<ModelDiscoveryResult> {
+  const reported = report.models;
   const existingModels = await repository.listModelsByProvider(providerId);
   const sameModel = (key: string) => key.replace(/:latest$/, '');
   const existingByKey = new Map(existingModels.map((m) => [sameModel(m.modelKey), m]));
@@ -1117,7 +1159,13 @@ async function saveDiscoveredModels(providerId: string, reported: ReportedModel[
     try {
       const existing = existingByKey.get(sameModel(model.modelKey));
       if (existing) {
-        await repository.updateModel(existing.id, { isAvailable: true, isDiscovered: true });
+        const caps = (existing.capabilities ?? {}) as Record<string, unknown>;
+        const reportedWindow = model.capabilities.contextWindow as number | undefined;
+        await repository.updateModel(existing.id, {
+          isAvailable: true,
+          isDiscovered: true,
+          ...(reportedWindow !== undefined && caps.contextWindow === undefined && { capabilities: { ...caps, contextWindow: reportedWindow } }),
+        });
         modelsUpdated++;
       } else {
         await repository.createModel({
@@ -1140,9 +1188,9 @@ async function saveDiscoveredModels(providerId: string, reported: ReportedModel[
     }
   }
 
-  const reportedKeys = new Set(reported.map((m) => sameModel(m.modelKey)));
+  const listedKeys = new Set(report.listed.map(sameModel));
   const modelsToMarkUnavailable = existingModels.filter(
-    (m) => m.isAvailable && !reportedKeys.has(sameModel(m.modelKey))
+    (m) => m.isAvailable && !listedKeys.has(sameModel(m.modelKey)) && (report.hides === 'all' || m.isDiscovered)
   );
   for (const model of modelsToMarkUnavailable) {
     await repository.updateModelAvailability(model.id, false);
