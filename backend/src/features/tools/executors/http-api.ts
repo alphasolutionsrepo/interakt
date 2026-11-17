@@ -104,6 +104,12 @@ function resolveJsonPath(path: string, obj: unknown): unknown {
   return current;
 }
 
+/** What joins more query parameters to a URL: "?", or "&" after a query it already has. */
+function querySeparator(url: string): string {
+  if (!url.includes('?')) return '?';
+  return url.endsWith('?') || url.endsWith('&') ? '' : '&';
+}
+
 // ============================================================================
 // MAIN EXECUTOR
 // ============================================================================
@@ -164,7 +170,8 @@ export async function executeHttpApi(
 
   // 4. Build full URL
   const qs = params.toString();
-  const url = qs ? `${resolved.baseUrl}?${qs}` : resolved.baseUrl;
+  // Joined to a query the URL already has with "&", not a second "?"
+  const url = qs ? `${resolved.baseUrl}${querySeparator(resolved.baseUrl)}${qs}` : resolved.baseUrl;
 
   // 5. Build fetch options
   const timeout = cfg.timeout ?? 8000;

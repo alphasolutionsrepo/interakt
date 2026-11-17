@@ -85,6 +85,15 @@ describe('a URL the admin wrote', () => {
     expect(new URL(sentTo()!).pathname).toBe('/v2/orders/A-1');
   });
 
+  it('keeps its own query when query parameters and a query key are added', async () => {
+    await executeHttpApi(tool({
+      baseUrl: 'https://api.example.com/search?q={{input.q}}',
+      queryParams: { lang: '{{input.lang}}' },
+      authentication: { type: 'query_param', key: 'api_key', valueRef: 'orders_key' },
+    }), { q: 'linen', lang: 'da' });
+    expect(Object.fromEntries(new URL(sentTo()!).searchParams)).toEqual({ q: 'linen', lang: 'da', api_key: 'sk-orders' });
+  });
+
   it('takes input in its query, encoded', async () => {
     await executeHttpApi(tool({ baseUrl: 'https://api.example.com/search?q={{input.q}}' }), { q: 'red & blue' });
     expect(sentTo()).toBe('https://api.example.com/search?q=red%20%26%20blue');
