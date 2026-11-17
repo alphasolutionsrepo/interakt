@@ -72,6 +72,13 @@ describe('saving an HTTP tool', () => {
     expect(JSON.stringify(body)).toContain('write the host and a \\"/\\" before any {{input.field}}');
   });
 
+  it.each(['orders', 'api.example.com/orders', 'http//api.example.com/orders'])('says %s is not a full URL, not that the host must be fixed', async (baseUrl) => {
+    const { status, body } = await create(restConfig(baseUrl));
+    expect(status).toBe(400);
+    expect(JSON.stringify(body)).toContain('not a full URL');
+    expect(JSON.stringify(body)).not.toContain('fixed host');
+  });
+
   it('keeps a URL with input in its path, and every setting it was given', async () => {
     const { status, body } = await create(restConfig('https://api.example.com/orders/{{input.id}}'));
     expect(status).toBe(201);

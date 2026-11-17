@@ -14,11 +14,11 @@ import {
 } from '@/components/ui/select';
 import { Check, ChevronDown, ChevronUp, FileJson, Plus, Trash2 } from 'lucide-react';
 
-import { FIXED_HOST_MESSAGE, hasFixedHost } from '@/features/tools/executors/http-url';
+import { urlProblemMessage } from '@/features/tools/executors/http-url';
 
 /** Why a typed base URL won't run, shown as the admin types: input may not choose the host. */
 function baseUrlProblem(baseUrl: unknown): string | undefined {
-  return typeof baseUrl === 'string' && baseUrl.trim() && !hasFixedHost(baseUrl.trim()) ? FIXED_HOST_MESSAGE : undefined;
+  return typeof baseUrl === 'string' && baseUrl.trim() ? urlProblemMessage(baseUrl.trim()) : undefined;
 }
 
 interface HttpApiConfigProps {

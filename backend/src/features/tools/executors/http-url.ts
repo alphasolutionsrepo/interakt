@@ -22,6 +22,25 @@ function fixedOrigin(baseUrl: string): string | null {
 /** What to change when a tool's URL lets input choose the host. */
 export const FIXED_HOST_MESSAGE = 'Use a full URL (like https://api.example.com/orders) with a fixed host: write the host and a "/" before any {{input.field}}, which fills the path and query';
 
+/** What to change when a tool's URL isn't a full URL at all (no "https://" start). */
+export const NOT_A_URL_MESSAGE = 'This is not a full URL. Use a full URL that starts with https://, like https://api.example.com/orders';
+
+/** True when the text has no "scheme://" start and isn't a template standing in for one. */
+function isNotFullUrl(baseUrl: string): boolean {
+  return !/^[a-z][a-z0-9+.-]*:\/\//i.test(baseUrl) && !baseUrl.startsWith('{{');
+}
+
+/** What to change in a tool's URL, or undefined when it is fine to save and run. */
+export function urlProblemMessage(baseUrl: string): string | undefined {
+  if (isNotFullUrl(baseUrl)) return NOT_A_URL_MESSAGE;
+  return hasFixedHost(baseUrl) ? undefined : FIXED_HOST_MESSAGE;
+}
+
+/** Names of {{secret:name}} templates still in the text: the vault had no secret by that name. */
+export function unresolvedSecretNames(text: string): string[] {
+  return [...new Set([...text.matchAll(SECRET_TEMPLATE_PATTERN)].map((m) => m[1]))];
+}
+
 /**
  * Whether a tool's stored URL keeps its host fixed, with {{input.field}} only after the host and
  * its "/". A {{secret:name}} is the admin's own value, filled in before the call, so it counts

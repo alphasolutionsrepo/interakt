@@ -13,7 +13,7 @@ import { Step3_AiSettings } from './Step3_AiSettings';
 import { ToolTypeChip } from '../ToolTypeChip';
 import { useCreateTool } from '../../_lib/hooks/useTools';
 import type { ExecutorType, DataSourceOperation, CreateToolPayload } from '../../_lib/api-client';
-import { FIXED_HOST_MESSAGE, hasFixedHost } from '@/features/tools/executors/http-url';
+import { urlProblemMessage } from '@/features/tools/executors/http-url';
 
 // Default AI schemas per executor type (kept in sync with backend EXECUTOR_INPUT_SCHEMAS)
 const EXECUTOR_INPUT_SCHEMAS: Record<string, object> = {
@@ -210,7 +210,7 @@ export function CreateWizard() {
       }
       if (data.executorType === 'http') {
         if (!data.config.baseUrl) e.baseUrl = 'Base URL is required';
-        else if (!hasFixedHost(String(data.config.baseUrl).trim())) e.baseUrl = FIXED_HOST_MESSAGE;
+        else e.baseUrl = urlProblemMessage(String(data.config.baseUrl).trim()) ?? e.baseUrl;
         if (!(data.config.responseMapping as Record<string, unknown>)?.resultsPath)
           e['responseMapping.resultsPath'] = 'Results path is required';
       }
