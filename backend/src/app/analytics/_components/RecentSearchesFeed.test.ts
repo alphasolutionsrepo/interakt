@@ -52,4 +52,13 @@ describe('recent searches feed', () => {
     expect(html).toContain('searched as “minimal shirts summer”');
     expect(html.match(/searched as/g)).toHaveLength(1);
   });
+
+  it('says a search ran with filters only when every word of the question became a filter', () => {
+    const html = renderToStaticMarkup(createElement(RecentSearchesFeed, {
+      data: [{ ...event('user', null, 'red dresses under 50'), searchedQuery: '' }],
+    }));
+    expect(html).toContain('red dresses under 50');
+    expect(html).toContain('searched with filters only');
+    expect(html).not.toContain('searched as');
+  });
 });
