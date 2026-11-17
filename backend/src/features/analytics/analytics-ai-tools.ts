@@ -1287,7 +1287,7 @@ function triggerOf(event: { triggerType: string; triggerStep: string | null }): 
   return event.triggerStep && event.triggerStep !== 'search' ? `${event.triggerType}:${event.triggerStep}` : event.triggerType;
 }
 
-function formatRecentSearchesForAI(
+export function formatRecentSearchesForAI(
   data: Awaited<ReturnType<typeof getRecentSearchEvents>>
 ): string {
   if (data.length === 0) {
@@ -1307,7 +1307,7 @@ function formatRecentSearchesForAI(
   return result;
 }
 
-function formatQuerySearchEventsForAI(
+export function formatQuerySearchEventsForAI(
   data: Awaited<ReturnType<typeof getQuerySearchEvents>>,
   queryText: string
 ): string {
@@ -1372,13 +1372,26 @@ By Search Type:
     result += `- ${type}: ${stats.total} searches, ${stats.zeroResults} zero results (${failRate}% fail rate)\n`;
   }
 
+  // What query understanding searched for instead of the visitor's words, most frequent first
+  const searchedAs = new Map<string, number>();
+  for (const event of data) {
+    if (event.searchedQuery) searchedAs.set(event.searchedQuery, (searchedAs.get(event.searchedQuery) ?? 0) + 1);
+  }
+  if (searchedAs.size > 0) {
+    result += `\nSearched as (query understanding changed the query):\n`;
+    for (const [searched, times] of [...searchedAs].sort((a, b) => b[1] - a[1]).slice(0, 5)) {
+      result += `- "${searched}": ${times} search${times === 1 ? '' : 'es'}\n`;
+    }
+  }
+
   // Show sample of zero-result events
   const zeroResultEvents = data.filter((e) => e.isZeroResult).slice(0, 5);
   if (zeroResultEvents.length > 0) {
     result += `\nSample Zero-Result Events:\n`;
     for (const event of zeroResultEvents) {
       const filterInfo = event.hasFilters ? ` [filters: ${event.filterFields?.join(', ') || 'yes'}]` : '';
-      result += `- ${new Date(event.timestamp).toLocaleString()}: ${event.searchType}, ${triggerOf(event)}${filterInfo}\n`;
+      const searchedInfo = event.searchedQuery ? ` [searched as "${event.searchedQuery}"]` : '';
+      result += `- ${new Date(event.timestamp).toLocaleString()}: ${event.searchType}, ${triggerOf(event)}${filterInfo}${searchedInfo}\n`;
     }
   }
 
