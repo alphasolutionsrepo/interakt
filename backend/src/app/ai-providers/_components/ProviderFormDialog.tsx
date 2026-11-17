@@ -55,6 +55,7 @@ const providerFormSchema = z.object({
         .max(1000, 'Description too long')
         .optional(),
     providerType: z.enum(['cloud', 'local']),
+    connectionType: z.enum(['openai_compatible', 'ollama']),
     authType: z.enum(['api_key', 'none', 'oauth']),
     baseUrl: z.string()
         .url('Must be a valid URL')
@@ -67,6 +68,28 @@ const providerFormSchema = z.object({
 });
 
 type ProviderFormData = z.infer<typeof providerFormSchema>;
+type ConnectionType = ProviderFormData['connectionType'];
+
+/** What each connection type covers, and the base URL it expects. */
+const CONNECTION_TYPES: Record<ConnectionType, { label: string; description: string; baseUrlExample: string; baseUrlHint: string }> = {
+    openai_compatible: {
+        label: 'OpenAI-compatible',
+        description: 'OpenAI, AI gateways and routers, vLLM, LM Studio and other services with an OpenAI-style /v1 API.',
+        baseUrlExample: 'https://api.openai.com/v1',
+        baseUrlHint: 'The address up to and including /v1, for example https://ai.example.edu/v1',
+    },
+    ollama: {
+        label: 'Ollama',
+        description: "Ollama's own API.",
+        baseUrlExample: 'http://localhost:11434',
+        baseUrlHint: "Ollama's address, without /v1",
+    },
+};
+
+/** A provider key made from its name: lowercase letters, digits and hyphens, starting with a letter. */
+export function providerKeyFor(name: string): string {
+    return name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^[^a-z]+|-+$/g, '').slice(0, 50);
+}
 
 // ============================================================================
 // Component
@@ -99,6 +122,7 @@ export function ProviderFormDialog({
             displayName: '',
             description: '',
             providerType: 'cloud',
+            connectionType: 'openai_compatible',
             authType: 'api_key',
             baseUrl: '',
             apiKey: '',
@@ -114,6 +138,7 @@ export function ProviderFormDialog({
                 displayName: provider.displayName,
                 description: provider.description ?? '',
                 providerType: provider.providerType,
+                connectionType: provider.connectionType,
                 authType: provider.authType,
                 baseUrl: provider.baseUrl,
                 apiKey: '', // Don't prefill API key for security
@@ -125,6 +150,7 @@ export function ProviderFormDialog({
                 displayName: '',
                 description: '',
                 providerType: 'cloud',
+                connectionType: 'openai_compatible',
                 authType: 'api_key',
                 baseUrl: '',
                 apiKey: '',
@@ -149,7 +175,7 @@ export function ProviderFormDialog({
         }
     };
 
-    const providerType = form.watch('providerType');
+    const connectionType = form.watch('connectionType');
     const authType = form.watch('authType');
 
     return (
@@ -178,12 +204,13 @@ export function ProviderFormDialog({
                                         <FormLabel>Provider Key</FormLabel>
                                         <FormControl>
                                             <Input
-                                                placeholder="my-provider"
+                                                placeholder="campus-ai"
                                                 {...field}
+                                                onChange={(e) => form.setValue('providerKey', e.target.value, { shouldDirty: true, shouldValidate: true })}
                                             />
                                         </FormControl>
                                         <FormDescription>
-                                            Unique identifier (lowercase, no spaces)
+                                            Unique identifier, made from the name (lowercase, no spaces)
                                         </FormDescription>
                                         <FormMessage />
                                     </FormItem>
@@ -199,7 +226,17 @@ export function ProviderFormDialog({
                                 <FormItem>
                                     <FormLabel>Display Name</FormLabel>
                                     <FormControl>
-                                        <Input placeholder="My AI Provider" {...field} />
+                                        <Input
+                                            placeholder="Campus AI"
+                                            {...field}
+                                            onChange={(e) => {
+                                                field.onChange(e);
+                                                // The key follows the name until the admin edits the key
+                                                if (mode === 'create' && !form.getFieldState('providerKey').isDirty) {
+                                                    form.setValue('providerKey', providerKeyFor(e.target.value));
+                                                }
+                                            }}
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -220,6 +257,31 @@ export function ProviderFormDialog({
                                             {...field}
                                         />
                                     </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        {/* Connection type: the API the provider speaks, whatever it is called */}
+                        <FormField
+                            control={form.control}
+                            name="connectionType"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Connection type</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select connection type" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            {(Object.keys(CONNECTION_TYPES) as ConnectionType[]).map((type) => (
+                                                <SelectItem key={type} value={type}>{CONNECTION_TYPES[type].label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormDescription>{CONNECTION_TYPES[field.value].description}</FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )}
@@ -250,31 +312,32 @@ export function ProviderFormDialog({
                             />
                         )}
 
-                        {/* Auth Type (only for create) */}
-                        {mode === 'create' && (
-                            <FormField
-                                control={form.control}
-                                name="authType"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Authentication</FormLabel>
-                                        <Select onValueChange={field.onChange} value={field.value}>
-                                            <FormControl>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select auth type" />
-                                                </SelectTrigger>
-                                            </FormControl>
-                                            <SelectContent>
-                                                <SelectItem value="api_key">API Key</SelectItem>
-                                                <SelectItem value="none">None (Local)</SelectItem>
-                                                <SelectItem value="oauth">OAuth</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        )}
+                        {/* Auth Type: editable too, since a changed connection type can need a key */}
+                        <FormField
+                            control={form.control}
+                            name="authType"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Authentication</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select auth type" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="api_key">API Key</SelectItem>
+                                            <SelectItem value="none">None (Local)</SelectItem>
+                                            <SelectItem value="oauth">OAuth</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {mode === 'edit' && provider?.hasApiKey && field.value === 'none' && (
+                                        <FormDescription>Saving removes the saved API key.</FormDescription>
+                                    )}
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
 
                         {/* Base URL */}
                         <FormField
@@ -285,14 +348,12 @@ export function ProviderFormDialog({
                                     <FormLabel>Base URL</FormLabel>
                                     <FormControl>
                                         <Input
-                                            placeholder={providerType === 'local'
-                                                ? 'http://localhost:11434'
-                                                : 'https://api.openai.com/v1'}
+                                            placeholder={CONNECTION_TYPES[connectionType].baseUrlExample}
                                             {...field}
                                         />
                                     </FormControl>
                                     <FormDescription>
-                                        API endpoint URL
+                                        {CONNECTION_TYPES[connectionType].baseUrlHint}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -334,7 +395,7 @@ export function ProviderFormDialog({
                                         </FormControl>
                                         {mode === 'edit' && provider?.hasApiKey && (
                                             <FormDescription>
-                                                Leave empty to keep existing key
+                                                Leave empty to keep the saved key. A base URL on another server needs the key again.
                                             </FormDescription>
                                         )}
                                         <FormMessage />

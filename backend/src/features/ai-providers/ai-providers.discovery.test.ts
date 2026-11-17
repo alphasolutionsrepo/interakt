@@ -35,7 +35,7 @@ vi.mock('./ai-providers.repository', () => ({
 }));
 
 import * as repository from './ai-providers.repository';
-import { discoverOllamaModels, formatModelDisplayName } from './ai-providers.service';
+import { discoverModels, formatModelDisplayName } from './ai-providers.service';
 
 const installed = (name: string) => ({
   name,
@@ -44,13 +44,13 @@ const installed = (name: string) => ({
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('discoverOllamaModels', () => {
+describe('discoverModels', () => {
   it('hides every model Ollama does not report, seeded ones included', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       models: [installed('qwen2.5:14b'), installed('gemma3:12b'), installed('nomic-embed-text:latest')],
     }))));
 
-    const result = await discoverOllamaModels('p');
+    const result = await discoverModels('p');
 
     const hidden = vi.mocked(repository.updateModelAvailability).mock.calls.map(([id]) => id);
     expect(hidden.sort()).toEqual([2, 3]);

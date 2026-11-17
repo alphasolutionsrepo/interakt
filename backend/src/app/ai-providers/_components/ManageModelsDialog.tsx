@@ -85,7 +85,7 @@ interface ManageModelsDialogProps {
     onOpenChange: (open: boolean) => void;
     provider: AIProviderWithModelsResponse;
     onModelsChanged: () => void; // Callback to refresh parent data
-    onDiscoverModels?: () => void; // For Ollama auto-discovery
+    onDiscoverModels?: () => void; // Reads the models the provider offers (Ollama or an OpenAI-compatible /models list)
     isDiscovering?: boolean;
 }
 
@@ -199,7 +199,7 @@ function ModelRow({ model, onEdit, onDelete, onToggleAvailable, isUpdating }: Mo
 /** Add Model and, for Ollama, Discover Models; locked with the reason for someone who may not. */
 function ModelActions({ onAdd, onDiscover, isDiscovering }: {
     onAdd: () => void;
-    /** Set only when discovery applies (Ollama) */
+    /** Set when the caller offers discovery */
     onDiscover?: () => void;
     isDiscovering: boolean;
 }) {
@@ -245,10 +245,9 @@ export function ManageModelsDialog({
     const [updatingModelId, setUpdatingModelId] = useState<number | null>(null);
 
     const models = provider.models || [];
-    const isOllama = provider.providerKey === 'ollama';
     const { canDo } = useAccess();
     const canChange = canDo('ai-models.change');
-    const discover = isOllama ? onDiscoverModels : undefined;
+    const discover = onDiscoverModels;
 
     // Handle add model
     const handleAddModel = () => {
@@ -365,8 +364,8 @@ export function ManageModelsDialog({
                                 </div>
                                 <p className="text-slate-600 font-medium">No models configured</p>
                                 <p className="text-sm text-slate-400 mt-1 mb-4">
-                                    {isOllama && discover
-                                        ? 'Discover models from Ollama or add them manually'
+                                    {discover
+                                        ? 'Discover the models this provider offers, or add them manually'
                                         : 'Add models to start using this provider'}
                                 </p>
                                 <div className="flex justify-center">{actions}</div>

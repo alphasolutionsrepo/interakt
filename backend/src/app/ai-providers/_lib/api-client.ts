@@ -19,7 +19,7 @@ import type {
     SystemDefaultsResponse,
     ResolvedSystemDefaults,
     ConnectionTestResult,
-    OllamaDiscoveryResult,
+    ModelDiscoveryResult,
     CreateAIProviderInput,
     UpdateAIProviderInput,
     CreateAIModelInput,
@@ -149,7 +149,7 @@ export const aiProvidersApi = {
     /**
      * Discover models (Ollama only)
      */
-    discoverModels: async (id: string): Promise<OllamaDiscoveryResult> => {
+    discoverModels: async (id: string): Promise<ModelDiscoveryResult> => {
         const response = await fetch(`/api/ai-providers/${id}/discover-models`, {
             method: 'POST',
         });

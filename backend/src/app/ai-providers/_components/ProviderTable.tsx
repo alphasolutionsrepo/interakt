@@ -240,7 +240,7 @@ export function ProviderTable({
                       >
                         {testingId === provider.id ? 'Testing...' : 'Test Connection'}
                       </ActionMenuItem>
-                      {provider.providerKey === 'ollama' && onDiscoverModels && (
+                      {onDiscoverModels && (
                         <ActionMenuItem action="ai-providers.discover-models" icon={Search} onClick={() => onDiscoverModels(provider)}>
                           Discover Models
                         </ActionMenuItem>

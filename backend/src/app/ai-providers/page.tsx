@@ -20,6 +20,7 @@ import {
   ProviderTable,
 } from './_components';
 import { aiProvidersApi } from './_lib/api-client';
+import { discoveryMessage } from './_lib/discovery-message';
 import {
   useAIProviders,
   useCreateProvider,
@@ -193,11 +194,8 @@ export default function AIProvidersPage() {
     setDiscoveringId(provider.id);
     try {
       const result = await aiProvidersApi.discoverModels(provider.id);
-      if (result.success) {
-        toast.success(`Found ${result.modelsFound} models (${result.modelsAdded} new)`);
-      } else {
-        toast.warning(`Completed with ${result.errors.length} errors`);
-      }
+      const { level, text } = discoveryMessage(result);
+      toast[level](text);
       refetchProviders();
     } catch (error) {
       reportActionError(`Model discovery for ${provider.displayName}`, error);
@@ -393,11 +391,7 @@ export default function AIProvidersPage() {
           onOpenChange={(open) => setManageModelsDialog(prev => ({ ...prev, open }))}
           provider={manageModelsDialog.provider}
           onModelsChanged={refetchProviders}
-          onDiscoverModels={
-            manageModelsDialog.provider.providerKey === 'ollama'
-              ? () => handleDiscoverModels(manageModelsDialog.provider!)
-              : undefined
-          }
+          onDiscoverModels={() => handleDiscoverModels(manageModelsDialog.provider!)}
           isDiscovering={discoveringId === manageModelsDialog.provider.id}
         />
       )}

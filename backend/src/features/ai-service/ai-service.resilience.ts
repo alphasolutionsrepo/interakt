@@ -200,11 +200,14 @@ function calculateDelay(
     return Math.round(delay);
 }
 
-/**
- * Sleep for a specified duration
- */
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+/** Wait ms, or less when the caller leaves first (its signal aborts) */
+function waitUnlessLeft(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve();
+        const timer = setTimeout(done, ms);
+        function done() { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); }
+        signal?.addEventListener('abort', done, { once: true });
+    });
 }
 
 /**
@@ -234,6 +237,25 @@ function isRetryableError(error: unknown): boolean {
     }
 
     return false;
+}
+
+/** How long the provider asked to wait before the next attempt (an AdapterError's Retry-After) */
+function retryAfterOf(error: unknown): number | undefined {
+    const wait = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+    return typeof wait === 'number' ? wait : undefined;
+}
+
+/**
+ * Before another try outside withRetry (a stream's one retry): wait as long as the provider
+ * asked (its Retry-After), or pass its error on when it asks for longer than the longest
+ * retry wait, as withRetry does.
+ */
+export async function waitAsAsked(error: unknown, signal?: AbortSignal, maxDelay: number = RETRY_DEFAULTS.maxDelay): Promise<void> {
+    const wait = retryAfterOf(error);
+    if (wait === undefined) return;
+    if (wait > maxDelay) throw error;
+    // The caller leaving ends the wait at once
+    await waitUnlessLeft(wait, signal);
 }
 
 /** The provider an attempt's error names (AdapterError, AIServiceError), for the error that ends the retries */
@@ -289,8 +311,15 @@ export async function withRetry<T>(
                 throw error;
             }
 
-            // Calculate and apply delay
-            const delay = calculateDelay(attempt, fullConfig);
+            // A provider that asks for a longer wait than the longest backoff (its Retry-After) is
+            // not tried again now: another attempt would only be refused again
+            const askedWait = retryAfterOf(error);
+            if (askedWait !== undefined && askedWait > fullConfig.maxDelay) {
+                throw error;
+            }
+
+            // Calculate and apply delay: the backoff, or the provider's own wait when longer
+            const delay = Math.max(calculateDelay(attempt, fullConfig), askedWait ?? 0);
             logger.debug('Retrying after error', {
                 attempt: attempt + 1,
                 maxRetries: fullConfig.maxRetries,
@@ -298,7 +327,8 @@ export async function withRetry<T>(
                 error: (error as Error).message,
             });
 
-            await sleep(delay);
+            // The caller leaving ends the wait at once (a Retry-After can be up to maxDelay)
+            await waitUnlessLeft(delay, signal);
             // The caller stopped waiting during the wait (it left, or its own time ran out): no
             // other attempt, and it ends as an aborted request does, not as the provider failing
             if (signal?.aborted) {

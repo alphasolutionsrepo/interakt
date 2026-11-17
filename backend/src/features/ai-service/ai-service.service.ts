@@ -20,8 +20,9 @@ import {
     getModelById,
     getResolvedDefaults,
 } from '@/features/ai-providers/ai-providers.service';
+import { defaultConnectionType } from '@/features/ai-providers/ai-providers.validation';
 import { CallerTimeoutError, CancelledRequestError, getAdapter } from './adapters';
-import { withResilience, withRetry } from './ai-service.resilience';
+import { waitAsAsked, withResilience, withRetry } from './ai-service.resilience';
 import { trackUsage, updateRealtimeMetrics } from './ai-service.analytics';
 import { processEmbeddingBatches } from './utils/batch-processor';
 import { estimateChatUsage } from './utils/token-counter';
@@ -162,6 +163,8 @@ async function resolveProviderConfig(
     return {
         providerId: provider.id,
         providerKey: provider.providerKey,
+        // A provider cached before connection types has none yet: its key picked the adapter then
+        connectionType: provider.connectionType ?? defaultConnectionType(provider.providerKey),
         modelId: model.id,
         modelKey: model.modelKey,
         baseUrl: provider.baseUrl,
@@ -180,6 +183,7 @@ async function resolveProviderConfig(
  */
 function toAdapterConfig(config: ResolvedProviderConfig): AdapterConfig {
     return {
+        providerKey: config.providerKey,
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         modelKey: config.modelKey,
@@ -230,7 +234,7 @@ export async function generateText(
         });
 
         // Get adapter
-        const adapter = getAdapter(config.providerKey);
+        const adapter = getAdapter(config.connectionType);
 
         // Execute with resilience (circuit breaker + retry), wrapped in OTel span
         const response = await traceGenerateText(config, async (span) => {
@@ -369,7 +373,7 @@ export async function chat(
             messageCount: messages.length,
         });
 
-        const adapter = getAdapter(config.providerKey);
+        const adapter = getAdapter(config.connectionType);
 
         const response = await traceChatSpan(
             config,
@@ -557,7 +561,7 @@ export async function* streamChat(
             toolChoice: options?.toolChoice,
         });
 
-        const adapter = getAdapter(config.providerKey);
+        const adapter = getAdapter(config.connectionType);
 
         // Streaming with OTel tracing — span lives across the generator lifecycle.
         // We retry on connection-establishment errors (i.e. failures *before* the
@@ -603,6 +607,10 @@ export async function* streamChat(
                     // because adapter.streamChat returns the iterator lazily.
                     // Fall through to a single retry of the whole iteration.
                     if (yielded) throw err;
+                    // As long as the provider asked (Retry-After); a longer wait than any retry ends it here
+                    await waitAsAsked(err, options?.signal);
+                    // The caller left during the wait: the stream just ends, as a cancel does
+                    if (options?.signal?.aborted) return;
                     // A retry, not a failure: if the retry fails too, whoever handles it logs it
                     logger.info('Stream errored before first chunk — retrying once', {
                         provider: config!.providerKey,
@@ -767,7 +775,7 @@ export async function generateEmbeddings(
             batchSize,
         });
 
-        const adapter = getAdapter(config.providerKey);
+        const adapter = getAdapter(config.connectionType);
         const adapterConfig = toAdapterConfig(config);
 
         // The size wanted: the caller's, else the one registered for the model. It is sent to

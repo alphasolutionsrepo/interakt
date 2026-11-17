@@ -26,7 +26,7 @@ vi.mock('@/db/schema/ai-providers.schema', () => ({
   aiProviderModels: { __name: 'models' },
   systemDefaults: {},
 }));
-vi.mock('@/features/ai-providers/ai-providers.service', () => ({ discoverOllamaModels: vi.fn() }));
+vi.mock('@/features/ai-providers/ai-providers.service', () => ({ discoverModels: vi.fn() }));
 vi.mock('../seed-registry.service', () => ({}));
 
 import { canShortenVectorsByDefault } from '@/features/ai-providers/shortenable-embeddings';

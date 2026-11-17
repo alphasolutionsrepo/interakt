@@ -101,6 +101,12 @@ export const aiProviderTypeEnum = pgEnum('ai_provider_type', [
   'local'
 ]);
 
+/** The API a provider speaks, which picks the adapter: any name can use either. */
+export const aiConnectionTypeEnum = pgEnum('ai_connection_type', [
+  'openai_compatible',
+  'ollama'
+]);
+
 // ============================================================================
 // DATA SOURCE ENUMS
 // ============================================================================
