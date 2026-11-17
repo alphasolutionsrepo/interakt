@@ -34,6 +34,7 @@ import type {
   QueueStats,
   AnalyticsCollectorConfig,
 } from './analytics.types';
+import { searchQueryFields } from './search-query-fields';
 import { inBackground } from '@/shared/telemetry/background';
 import { scrubCredentials } from '@/shared/errors/error-detail';
 
@@ -154,16 +155,21 @@ export function trackSearch(event: SearchEventData, experienceId?: string): void
   }
 
   try {
-    const queryNormalized = normalizeQuery(event.queryText);
+    // Stored and counted by what the visitor typed, with the query searched beside it
+    const { visitorQuery: _visitorQuery, ...rest } = event;
+    const { queryText, searchedQuery } = searchQueryFields(event);
+    const queryNormalized = normalizeQuery(queryText);
 
     const queuedEvent: QueuedSearchEvent = {
-      ...event,
+      ...rest,
+      queryText,
+      searchedQuery,
       id: generateId(),
       timestamp: new Date(),
       source: event.source ?? 'api',
       queryNormalized,
-      queryLength: event.queryText.length,
-      queryWordCount: countWords(event.queryText),
+      queryLength: queryText.length,
+      queryWordCount: countWords(queryText),
       // Only a search that ran can have found nothing; a failed one is recorded as failed
       isZeroResult: event.success && event.totalResults === 0,
       hasFilters: event.hasFilters ?? (event.filterCount ?? 0) > 0,
@@ -423,6 +429,7 @@ async function flushSearchEvents(): Promise<void> {
         experienceId: e.experienceId,
         experienceSlug: e.experienceSlug,
         queryText: e.queryText,
+        searchedQuery: e.searchedQuery,
         queryNormalized: e.queryNormalized,
         queryLength: e.queryLength,
         queryWordCount: e.queryWordCount,

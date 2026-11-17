@@ -23,6 +23,7 @@ vi.mock('./analytics-retention', () => ({ startRetentionCleanup: vi.fn(), stopRe
 import { aiToolExecutions, aiUsageEvents, searchEvents } from '@/db/analytics-schema';
 
 import { clearQueues, forceFlush, stopAnalyticsCollector, trackAI, trackSearch, trackToolExecution } from './analytics-collector';
+import { getQuerySearchEvents, getRecentSearchEvents } from './analytics-query.service';
 
 function search(queryText: string, source?: 'api' | 'admin_test' | 'playground') {
   trackSearch({
@@ -64,6 +65,43 @@ describe('search event source', () => {
       'wool coat': 'playground',
       'denim jacket': 'api',
     });
+  });
+});
+
+describe('the visitor\'s words and the query searched', () => {
+  const tracked = (searched: string, visitorQuery?: string) =>
+    trackSearch({
+      requestId: crypto.randomUUID(),
+      triggerType: 'user',
+      searchType: 'lexical',
+      indexIds: ['idx'],
+      queryText: searched,
+      visitorQuery,
+      totalResults: 0,
+      resultsReturned: 0,
+      durationMs: 5,
+      success: true,
+    });
+
+  it('stores both when query understanding changed the query, and reports read them back', async () => {
+    tracked('minimal style shirts summer', 'can you show me some minimal style shirts for summer please');
+    tracked('linen shirt', 'linen shirt');
+    tracked('wool coat');
+    await forceFlush();
+
+    const rows = await testDb.db.select({ query: searchEvents.queryText, searched: searchEvents.searchedQuery }).from(searchEvents);
+    expect(Object.fromEntries(rows.map((r) => [r.query, r.searched]))).toEqual({
+      'can you show me some minimal style shirts for summer please': 'minimal style shirts summer',
+      'linen shirt': null,
+      'wool coat': null,
+    });
+
+    const recent = await getRecentSearchEvents(10);
+    expect(recent.find((e) => e.query.startsWith('can you'))?.searchedQuery).toBe('minimal style shirts summer');
+    // Reports group by what the visitor typed
+    const forQuery = await getQuerySearchEvents('can you show me some minimal style shirts for summer please', '24h');
+    expect(forQuery).toHaveLength(1);
+    expect(forQuery[0].searchedQuery).toBe('minimal style shirts summer');
   });
 });
 

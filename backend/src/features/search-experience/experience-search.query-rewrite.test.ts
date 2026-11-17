@@ -131,6 +131,14 @@ describe('an experience with a managed index and an external source', () => {
     });
   });
 
+  it("hands both engines the visitor's words for analytics, next to what each searched", async () => {
+    modelAnswers();
+    await search(experience());
+
+    expect(vi.mocked(searchService.searchById).mock.calls[0]?.[2]).toMatchObject({ visitorQuery: QUESTION });
+    expect(vi.mocked(searchExternalSourceForExperience).mock.calls[0]?.[5]).toBe(QUESTION);
+  });
+
   it('starts both model calls before either answers', async () => {
     modelHolds();
     const running = search(experience());

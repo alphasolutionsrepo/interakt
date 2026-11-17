@@ -123,7 +123,8 @@ export const searchEvents = pgTable(
     experienceSlug: varchar('experience_slug', { length: 255 }),
 
     // Query analysis
-    queryText: text('query_text').notNull(),
+    queryText: text('query_text').notNull(), // what the visitor typed
+    searchedQuery: text('searched_query'), // what was searched, when query understanding changed it
     queryNormalized: text('query_normalized').notNull(), // lowercase, trimmed
     queryLength: integer('query_length').notNull(),
     queryWordCount: integer('query_word_count').notNull(),

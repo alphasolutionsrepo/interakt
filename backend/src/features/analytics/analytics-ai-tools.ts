@@ -1298,7 +1298,8 @@ function formatRecentSearchesForAI(
 
   for (const event of data) {
     const status = event.success ? '✓' : '✗';
-    result += `${status} [${triggerOf(event)}] "${event.query}"
+    const searchedAs = event.searchedQuery ? ` (searched as "${event.searchedQuery}")` : '';
+    result += `${status} [${triggerOf(event)}] "${event.query}"${searchedAs}
    - ${event.totalResults} results, ${event.durationMs}ms, ${event.searchType}
    - ${new Date(event.timestamp).toLocaleString()}\n`;
   }

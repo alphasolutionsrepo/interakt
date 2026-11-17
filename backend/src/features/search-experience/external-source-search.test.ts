@@ -200,4 +200,9 @@ describe('searchExternalSourceForExperience', () => {
     await searchExternalSourceForExperience(SOURCE, [], { query: 'x', filters }, EXPERIENCE);
     expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ filterFields: ['site'], filterCount: 2 });
   });
+
+  it("records the visitor's words with the search terms sent", async () => {
+    await searchExternalSourceForExperience(SOURCE, [], { query: 'apply financial aid' }, EXPERIENCE, 'api', 'how do I apply for financial aid');
+    expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ queryText: 'apply financial aid', visitorQuery: 'how do I apply for financial aid' });
+  });
 });

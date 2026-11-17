@@ -19,8 +19,8 @@
  * - **Cached with single-flight.** An LLM call on every keystroke would be slow and
  *   expensive; CacheManager.getOrSet collapses concurrent identical queries into
  *   one call.
- * - **Time-limited.** Each step has the experience's time limit; past it the model
- *   call is aborted and search goes on with what the visitor sent.
+ * - **Time-limited.** Each step has the experience's time limit; past it search goes on
+ *   with what the visitor sent. The shared model call is cut off at the longest limit (10 s).
  *
  * Managed indexes get filters (interpretQuery); external sources, which expose no
  * fields to filter on, get the question rewritten into search terms

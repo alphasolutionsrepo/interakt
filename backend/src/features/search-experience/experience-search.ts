@@ -138,7 +138,7 @@ export async function executeExperienceSearch(
         indexes,
         external,
         externalFields,
-        { managed: request, external: externalRequest },
+        { managed: request, external: externalRequest, visitorQuery: publicRequest.query },
         experience,
         options,
         hitOrigins,
@@ -462,7 +462,7 @@ async function executeMultiIndexSearch(
   indexes: Array<SearchExperienceIndex & { searchIndex: { id: string; name: string; displayName: string } }>,
   externalSources: SearchExperienceExternalSourceWithDetails[],
   externalFields: Map<string, DataSourceField[]>,
-  requests: { managed: SearchRequest; external: SearchRequest },
+  requests: { managed: SearchRequest; external: SearchRequest; visitorQuery: string },
   experience: SearchExperienceWithIndexes,
   options: ExperienceSearchOptions,
   hitOrigins: WeakMap<SearchHit, HitOrigin>,
@@ -473,6 +473,7 @@ async function executeMultiIndexSearch(
     source: options.source,
     experienceId: experience.id,
     experienceSlug: experience.slug,
+    visitorQuery: requests.visitorQuery,
     ...(hybridConfig && {
       hybridConfig: {
         lexicalWeight: hybridConfig.lexicalWeight,
@@ -504,7 +505,8 @@ async function executeMultiIndexSearch(
             externalFields.get(src.dataSourceId) ?? [],
             req,
             experience,
-            options.source
+            options.source,
+            requests.visitorQuery
           ),
         request: requests.external,
       };
