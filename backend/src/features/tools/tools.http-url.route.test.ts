@@ -79,6 +79,11 @@ describe('saving an HTTP tool', () => {
     expect(JSON.stringify(body)).not.toContain('fixed host');
   });
 
+  it('accepts a full URL with spaces around it, as it did before', async () => {
+    const { status } = await create(restConfig('  https://api.example.com/orders/{{input.id}} '));
+    expect(status).toBe(201);
+  });
+
   it('keeps a URL with input in its path, and every setting it was given', async () => {
     const { status, body } = await create(restConfig('https://api.example.com/orders/{{input.id}}'));
     expect(status).toBe(201);
@@ -149,6 +154,17 @@ describe('an HTTP tool stored with its host taken from input', () => {
     expect(tools.find((t) => t.id === id)?.notReadyReason).toMatch(/takes the host from input\. Write the host and a "\/" before any \{\{input\.field\}\}/);
     expect(tools.find((t) => t.id === fine)?.notReadyReason).toBeUndefined();
     expect(tools.find((t) => t.id === secretServer)?.notReadyReason).toBeUndefined();
+  });
+});
+
+describe('an HTTP tool stored with a URL that is not a full URL', () => {
+  it('is marked as needing setup, saying to use a full URL; one with spaces around a full URL is not', async () => {
+    const partial = await storedTool(restConfig('api.example.com/orders/{{input.id}}'));
+    const spaced = await storedTool(restConfig(' https://api.example.com/orders/{{input.id}}'));
+    const res = await toolsRoute.GET(new NextRequest('http://localhost/api/tools?limit=100'));
+    const tools = (await res.json()).data as Array<{ id: string; notReadyReason?: string }>;
+    expect(tools.find((t) => t.id === partial)?.notReadyReason).toMatch(/its URL is not a full URL\. Use one that starts with https:\/\//);
+    expect(tools.find((t) => t.id === spaced)?.notReadyReason).toBeUndefined();
   });
 });
 

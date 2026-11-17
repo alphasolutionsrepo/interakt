@@ -27,7 +27,9 @@ export const NOT_A_URL_MESSAGE = 'This is not a full URL. Use a full URL that st
 
 /** True when the text has no "scheme://" start and isn't a template standing in for one. */
 function isNotFullUrl(baseUrl: string): boolean {
-  return !/^[a-z][a-z0-9+.-]*:\/\//i.test(baseUrl) && !baseUrl.startsWith('{{');
+  // Spaces around the URL don't matter: fetch and new URL() drop them
+  const url = baseUrl.trim();
+  return !/^[a-z][a-z0-9+.-]*:\/\//i.test(url) && !url.startsWith('{{');
 }
 
 /** What to change in a tool's URL, or undefined when it is fine to save and run. */
