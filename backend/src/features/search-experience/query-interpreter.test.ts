@@ -273,6 +273,35 @@ describe('a model call past the time limit', () => {
         }
     });
 
+    it('stops the shared call when the joiner, the last one waiting, reaches its limit too', async () => {
+        vi.useFakeTimers();
+        try {
+            const searchIndexId = freshIndexId();
+            vi.mocked(aiService.chat).mockImplementationOnce(() => new Promise(() => {}));
+            const ask = (timeoutMs: number) => {
+                const config = aiConfig();
+                return applyQueryInterpretation({
+                    query: QUERY, clientFilters: undefined, searchIndexId,
+                    aiConfig: { ...config, queryUnderstanding: { ...config.queryUnderstanding!, timeoutMs } },
+                    experienceId: 'exp-1',
+                });
+            };
+            const first = ask(500);
+            const joiner = ask(2000);
+
+            await vi.advanceTimersByTimeAsync(500);
+            expect((await first).query).toBe(QUERY);
+            const signal = vi.mocked(aiService.chat).mock.calls[0]?.[1]?.signal;
+            expect(signal?.aborted).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1500);
+            expect((await joiner).query).toBe(QUERY);
+            expect(signal?.aborted).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('does not start the model call when its caller left while the fields were loading', async () => {
         vi.useFakeTimers();
         try {
@@ -318,6 +347,10 @@ describe('a model call past the time limit', () => {
             const shortResult = await short;
             expect(shortResult.query).toBe(QUERY);
             expect(shortResult.filters).toEqual([{ field: 'brand', operator: 'eq', value: 'x' }]);
+
+            // The joiner still waits for the call, so it keeps running
+            const signal = vi.mocked(aiService.chat).mock.calls[0]?.[1]?.signal;
+            expect(signal?.aborted).toBe(false);
 
             await vi.advanceTimersByTimeAsync(1000);
             answer();

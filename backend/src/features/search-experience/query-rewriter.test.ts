@@ -99,6 +99,16 @@ describe('rewriteQueryForExternalSearch', () => {
         expect(aiService.chat).not.toHaveBeenCalled();
     });
 
+    it('skips, and reads the switch again next time, when the AI summaries switch cannot be read', async () => {
+        const switches = await import('@/features/feature-switches/feature-switches.service');
+        vi.spyOn(switches, 'isAreaOn').mockRejectedValueOnce(new Error('settings store down'));
+        modelReplies(JSON.stringify({ query: 'apply financial aid transfer student' }));
+
+        expect(await rewrite(aiConfig())).toMatchObject({ query: QUESTION, outcome: 'skipped' });
+        expect(aiService.chat).not.toHaveBeenCalled();
+        expect((await rewrite(aiConfig())).outcome).toBe('rewritten');
+    });
+
     it('skips when AI summaries is off', async () => {
         featureSwitchesStub.off.add('ai-summaries');
         const result = await rewrite(aiConfig());
