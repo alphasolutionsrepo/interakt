@@ -23,17 +23,21 @@ function hasDotSegment(url: string): boolean {
 }
 
 /**
- * The URL with input filled in, each value encoded as one URL part. Null when input would
- * choose the host, or step out of the admin's path with a "." or ".." segment: the URL reaches
- * the server and path the admin set, whatever the input.
+ * The URL with input filled in, each value encoded as one URL part, or why it can't be:
+ * 'host' when the URL lets input choose the host (the tool's URL is set up that way), 'path'
+ * when an input value would step out of the admin's path with a "." or ".." segment. The URL
+ * reaches the server and path the admin set, whatever the input.
  */
-export function resolveUrlTemplate(baseUrl: string, input: Record<string, unknown>): string | null {
+export function resolveUrlTemplate(
+  baseUrl: string,
+  input: Record<string, unknown>,
+): { url: string } | { problem: 'host' | 'path' } {
   const origin = fixedOrigin(baseUrl);
-  if (!origin) return null;
+  if (!origin) return { problem: 'host' };
   const filled = baseUrl.replace(INPUT_PATTERN, (_, field: string) => {
     const v = input[field];
     return encodeURIComponent(v != null ? String(v) : '');
   });
-  if (hasDotSegment(filled) && !hasDotSegment(baseUrl.replace(INPUT_PATTERN, 'a'))) return null;
-  return originOf(filled) === origin ? filled : null;
+  if (hasDotSegment(filled) && !hasDotSegment(baseUrl.replace(INPUT_PATTERN, 'a'))) return { problem: 'path' };
+  return originOf(filled) === origin ? { url: filled } : { problem: 'host' };
 }

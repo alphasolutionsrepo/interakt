@@ -32,6 +32,12 @@ vi.mock('@/features/search-index/search-index.service', () => ({
       id: 'idx', name: 'products', isActive: true, status: 'active', searchType: 'lexical', searchProvider: 'elasticsearch',
       fields: [field('name', true), field('specs', true), field('price', true), field('costPrice', false)],
     }
+    : id === 'idx-open'
+    ? {
+      // An index with no field marked shown: responses carry whole documents
+      id: 'idx-open', name: 'open', isActive: true, status: 'active', searchType: 'lexical', searchProvider: 'elasticsearch',
+      fields: [field('name', false), field('costPrice', false)],
+    }
     : {
       // A second index that shows costPrice
       id: 'idx-trade', name: 'trade', isActive: true, status: 'active', searchType: 'lexical', searchProvider: 'elasticsearch',
@@ -82,6 +88,15 @@ describe('a public search names the fields it wants', () => {
 
   it('gets the shown fields when its list is empty', async () => {
     expect(await engineFields([])).toBeUndefined();
+  });
+
+  it('narrows an index that shows whole documents to the fields it names', async () => {
+    const open = {
+      ...experience,
+      indexes: [{ searchIndexId: 'idx-open', weight: 1, searchIndex: { id: 'idx-open', name: 'open', displayName: 'Open', isActive: true } }],
+    } as SearchExperienceWithIndexes;
+    await executeExperienceSearch(open, { query: 'shirt', includeFields: ['name'] }, { source: 'api' });
+    expect(engineSearch.mock.lastCall?.[0].request.includeFields).toEqual(['name']);
   });
 
   it('gets from each index the fields that index shows', async () => {

@@ -57,6 +57,7 @@ describe("a path the AI would leave", () => {
   ])('is refused for a %s segment, and nothing is sent', async (_case, baseUrl, input) => {
     const result = await executeHttpApi(tool({ baseUrl }), input);
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/input value for the URL path is "\." or "\.\."/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

@@ -122,10 +122,16 @@ export async function executeHttpApi(
   }
 
   // 1. Fill {{input.field}} templates in the URL, query parameters, headers and body
-  const baseUrl = resolveUrlTemplate(cfg.baseUrl, input);
-  if (!baseUrl) {
-    return { success: false, error: 'HTTP API baseUrl must be a full URL whose host is fixed: write the host and a "/" before any {{input.field}}, which fills only the path and query, and not with "." or ".."' };
+  const filledUrl = resolveUrlTemplate(cfg.baseUrl, input);
+  if ('problem' in filledUrl) {
+    return {
+      success: false,
+      error: filledUrl.problem === 'host'
+        ? 'HTTP API baseUrl must be a full URL whose host is fixed: write the host and a "/" before any {{input.field}}, which fills the path and query'
+        : 'An input value for the URL path is "." or "..", which would leave the path this tool calls; pass the value itself',
+    };
   }
+  const baseUrl = filledUrl.url;
   const resolved: HttpApiConfig = {
     ...cfg,
     baseUrl,
