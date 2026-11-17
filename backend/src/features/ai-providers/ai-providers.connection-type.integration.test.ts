@@ -37,6 +37,8 @@ const gateway = {
   models: [] as Array<Record<string, unknown>>,
   /** Answers to /v1/chat/completions, in order; empty means a normal answer */
   answers: [] as Array<{ status: number; retryAfter?: string }>,
+  /** Whether /v1/embeddings answers (it tells an embedding model's dimensions) */
+  embeddings: true,
 };
 /** An answer /v1/models gives instead of the list, when set */
 let oddAnswer: unknown = null;
@@ -65,7 +67,10 @@ beforeAll(async () => {
     gateway.seen.push({ at: Date.now(), path: req.url ?? '', auth: req.headers.authorization });
     if (req.headers.authorization !== 'Bearer gw-key') { res.writeHead(401); return res.end('{"error":{"message":"bad key"}}'); }
     if (req.url === '/v1/models') return res.end(JSON.stringify(oddAnswer ?? { object: 'list', data: gateway.models }));
-    if (req.url === '/v1/embeddings') return res.end(JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3, 0.4] }] }));
+    if (req.url === '/v1/embeddings') {
+      if (!gateway.embeddings) { res.writeHead(503); return res.end('{}'); }
+      return res.end(JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3, 0.4] }] }));
+    }
     if (req.url === '/v1/chat/completions') {
       let raw = '';
       req.on('data', (c) => { raw += c; });
@@ -102,7 +107,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => { gatewayServer.close(); ollamaServer.close(); await testDb.close(); });
-beforeEach(() => { gateway.seen = []; gateway.answers = []; ollama.seen = []; ollama.answers = []; ollama.tags = []; });
+beforeEach(() => { gateway.seen = []; gateway.answers = []; gateway.embeddings = true; ollama.seen = []; ollama.answers = []; ollama.tags = []; });
 
 // ── Calls through the routes ─────────────────────────────────────────────────
 
@@ -276,6 +281,16 @@ describe('models a gateway stops listing, or lists under names that are not text
     expect((await post(discoverRoute, data.id)).status).toBe(status);
     oddAnswer = null;
     expect((await modelsOf(data.id)).find((m) => m.modelKey === 'campus-chat')?.isAvailable).toBe(true);
+  });
+});
+
+describe('an embedding model whose dimensions the service will not tell', () => {
+  it('is added, and the admin is told to set its dimensions', async () => {
+    gateway.models = [{ id: 'campus-embed' }];
+    gateway.embeddings = false;
+    const { data } = await createProvider({ providerKey: 'gw-dims', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect(result).toMatchObject({ success: true, modelsAdded: 1, needsSetup: ['campus-embed: set its dimensions on the model'] });
   });
 });
 

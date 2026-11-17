@@ -1188,6 +1188,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
   let modelsAdded = 0;
   let modelsUpdated = 0;
   const errors: string[] = [];
+  const needsSetup: string[] = [];
 
   for (const model of reported) {
     try {
@@ -1204,14 +1205,18 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
         });
         modelsUpdated++;
       } else {
+        const dimensions = model.dimensions
+          ?? (model.modelType === 'embedding' && report.dimensionsOf ? await report.dimensionsOf(model.modelKey) : null);
+        if (model.modelType === 'embedding' && dimensions === null) {
+          needsSetup.push(`${model.modelKey}: set its dimensions on the model`);
+        }
         await repository.createModel({
           providerId,
           modelKey: model.modelKey,
           displayName: formatModelDisplayName(model.modelKey),
           description: model.description,
           modelType: model.modelType,
-          dimensions: model.dimensions
-            ?? (model.modelType === 'embedding' && report.dimensionsOf ? await report.dimensionsOf(model.modelKey) : null),
+          dimensions,
           canShortenVectors: canShortenVectorsByDefault(model.modelKey, model.modelType),
           capabilities: model.capabilities,
           isAvailable: true,
@@ -1243,6 +1248,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
     modelsUpdated,
     modelsRemoved: modelsToMarkUnavailable.length,
     errors,
+    needsSetup,
   };
 }
 

@@ -248,6 +248,8 @@ export interface ModelDiscoveryResult {
   modelsUpdated: number;
   modelsRemoved: number;
   errors: string[];
+  /** Models added that need the admin before they can be used (an embedding model's dimensions) */
+  needsSetup: string[];
 }
 
 // ============================================================================

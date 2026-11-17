@@ -193,7 +193,9 @@ export default function AIProvidersPage() {
     setDiscoveringId(provider.id);
     try {
       const result = await aiProvidersApi.discoverModels(provider.id);
-      if (result.success) {
+      if (result.success && result.needsSetup.length > 0) {
+        toast.warning(`Found ${result.modelsFound} models (${result.modelsAdded} new). Needs setup: ${result.needsSetup.join('; ')}`);
+      } else if (result.success) {
         toast.success(`Found ${result.modelsFound} models (${result.modelsAdded} new)`);
       } else {
         toast.warning(`Completed with ${result.errors.length} errors`);
