@@ -302,6 +302,34 @@ describe('a model call past the time limit', () => {
         }
     });
 
+    it('stops both calls when the index settings change while one runs and every search then leaves', async () => {
+        vi.useFakeTimers();
+        try {
+            const searchIndexId = freshIndexId();
+            vi.mocked(aiService.chat).mockImplementation(() => new Promise(() => {}));
+            const ask = () => applyQueryInterpretation({
+                query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: slowConfig(), experienceId: 'exp-1',
+            });
+
+            const first = ask();
+            await vi.advanceTimersByTimeAsync(10);
+            // The index's settings change: the running call's answer is stale, a new search asks again
+            await invalidateQueryInterpreterCache(searchIndexId);
+            const second = ask();
+            await vi.advanceTimersByTimeAsync(10);
+            const signals = vi.mocked(aiService.chat).mock.calls.map(([, options]) => options?.signal);
+            expect(signals).toHaveLength(2);
+            expect(signals.map((signal) => signal?.aborted)).toEqual([false, false]);
+
+            await vi.advanceTimersByTimeAsync(500);
+            expect((await first).query).toBe(QUERY);
+            expect((await second).query).toBe(QUERY);
+            expect(signals.map((signal) => signal?.aborted)).toEqual([true, true]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('does not start the model call when its caller left while the fields were loading', async () => {
         vi.useFakeTimers();
         try {
