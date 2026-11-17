@@ -339,6 +339,13 @@ export interface SearchContext {
     /** Fields to include in response by default */
     defaultResponseFields: string[];
 
+    /**
+     * The admin turned "Include in response" off for every field of the index: public
+     * responses carry each result's id and no fields. (An index with no fields set up has an
+     * empty defaultResponseFields too, and returns whole documents.)
+     */
+    showsNoFields?: boolean;
+
     /** All indexed fields (for validation) */
     allFields: Map<string, FieldConfig>;
 

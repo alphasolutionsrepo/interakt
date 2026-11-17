@@ -47,6 +47,11 @@ export interface ExperienceSearchOptions {
   source: 'api' | 'playground' | 'admin_test';
   /** Highlight matches even when the experience doesn't enable highlighting */
   includeHighlights?: boolean;
+  /**
+   * An admin signed in to the search playground: their field list and highlights may include
+   * fields the index keeps out of responses. Every other caller gets the shown fields only.
+   */
+  signedInAdmin?: boolean;
 }
 
 /** Which source a merged hit came from. */
@@ -473,9 +478,10 @@ async function executeMultiIndexSearch(
     source: options.source,
     experienceId: experience.id,
     experienceSlug: experience.slug,
+    // A visitor's field list never adds fields the index keeps out of responses; an admin
+    // signed in to the playground sees them all
+    shownFieldsOnly: !options.signedInAdmin,
     visitorQuery: requests.visitorQuery,
-    // A visitor's field list never adds fields the index keeps out of responses
-    shownFieldsOnly: true,
     ...(hybridConfig && {
       hybridConfig: {
         lexicalWeight: hybridConfig.lexicalWeight,

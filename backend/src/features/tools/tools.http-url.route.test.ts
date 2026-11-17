@@ -98,10 +98,10 @@ describe('saving an HTTP tool', () => {
     expect((await create(config)).status).toBe(400);
   });
 
-  it('keeps a web search config', async () => {
+  it('refuses web search settings, which belong on a Web Search tool', async () => {
     const { status, body } = await create({ maxResults: 5, searchDepth: 'advanced' });
-    expect(status).toBe(201);
-    expect(body.data.executorConfig).toEqual({ maxResults: 5, searchDepth: 'advanced' });
+    expect(status).toBe(400);
+    expect(JSON.stringify(body)).toContain('baseUrl');
   });
 
   it('refuses changing a URL to one that takes the host from input', async () => {
@@ -142,5 +142,43 @@ describe('an HTTP tool stored with its host taken from input', () => {
     expect(tools.find((t) => t.id === id)?.notReadyReason).toMatch(/takes the host from input\. Write the host and a "\/" before any \{\{input\.field\}\}/);
     expect(tools.find((t) => t.id === fine)?.notReadyReason).toBeUndefined();
     expect(tools.find((t) => t.id === secretServer)?.notReadyReason).toBeUndefined();
+  });
+});
+
+describe('an HTTP tool stored with web search settings', () => {
+  it('cannot be added to a chat experience, and the tools list says to use a Web Search tool', async () => {
+    const id = await storedTool({ maxResults: 5, searchDepth: 'advanced' });
+    const t = tag();
+    const rows = (await testDb.db.execute(sql`INSERT INTO ai_experiences (name, slug, created_by, persona_config, session_config, access_config, observability_config)
+      VALUES (${t}, ${t}, ${adminId}, '{}', '{}', '{}', '{}') RETURNING id`)) as unknown as { rows: Array<{ id: string }> };
+    const experienceId = rows.rows[0].id;
+    const res = await assignRoute.POST(
+      new NextRequest(`http://localhost/api/ai-experiences/${experienceId}/tools`, { method: 'POST', body: JSON.stringify({ toolId: id }) }),
+      { params: Promise.resolve({ id: experienceId }) },
+    );
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain('use a Web Search tool');
+
+    const list = await toolsRoute.GET(new NextRequest('http://localhost/api/tools?limit=100'));
+    const tools = (await list.json()).data as Array<{ id: string; notReadyReason?: string }>;
+    expect(tools.find((tool) => tool.id === id)?.notReadyReason).toMatch(/needs a URL and a method/);
+  });
+
+  it('can still be renamed with its settings sent back as they were, in any key order', async () => {
+    const id = await storedTool({ maxResults: 5, searchDepth: 'advanced' });
+    const { status } = await update(id, { name: 'Renamed', executorConfig: { searchDepth: 'advanced', maxResults: 5 } });
+    expect(status).toBe(200);
+  });
+
+  it('cannot have its web search settings changed while it has no URL and method', async () => {
+    const id = await storedTool({ maxResults: 5, searchDepth: 'advanced' });
+    const { status } = await update(id, { executorConfig: { maxResults: 8, searchDepth: 'advanced' } });
+    expect(status).toBe(400);
+  });
+
+  it('can be given a URL and a method to become a working HTTP tool', async () => {
+    const id = await storedTool({ maxResults: 5, searchDepth: 'advanced' });
+    const { status } = await update(id, { executorConfig: restConfig('https://api.example.com/orders/{{input.id}}') });
+    expect(status).toBe(200);
   });
 });

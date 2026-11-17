@@ -15,6 +15,8 @@ import type { SearchContext, SearchHit, SearchRequest } from './search.types';
  * each engine. With no shown fields the index narrows nothing, so neither does this.
  */
 export function withinShownFields(request: SearchRequest, context: SearchContext): SearchRequest {
+    // Nothing is shown: the fields are cleared from the results (keepShownFields)
+    if (context.showsNoFields) return { ...request, includeFields: undefined };
     const underShown = shownFieldTest(context);
     if (!request.includeFields || !underShown) return request;
     const kept = request.includeFields.filter(underShown);
@@ -22,10 +24,26 @@ export function withinShownFields(request: SearchRequest, context: SearchContext
 }
 
 /**
+ * Results kept to the fields the index shows. When the admin turned every field off, each
+ * result keeps its id and nothing else, on every engine.
+ */
+export function keepShownFields(hits: SearchHit[], context: SearchContext): void {
+    if (!context.showsNoFields) {
+        keepShownHighlights(hits, context);
+        return;
+    }
+    for (const hit of hits) {
+        hit.source = {};
+        delete hit.highlights;
+        delete hit.hiddenSearchedFields;
+    }
+}
+
+/**
  * Highlights kept to the fields the index shows: each engine highlights every searchable field
  * by default, shown or not. With no shown fields the index narrows nothing, so neither does this.
  */
-export function keepShownHighlights(hits: SearchHit[], context: SearchContext): void {
+function keepShownHighlights(hits: SearchHit[], context: SearchContext): void {
     const underShown = shownFieldTest(context);
     if (!underShown) return;
     for (const hit of hits) {
