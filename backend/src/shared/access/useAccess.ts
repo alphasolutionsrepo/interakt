@@ -34,8 +34,6 @@ export interface MyAccess {
 
 export const accessKeys = { mine: ['access', 'mine'] as const };
 
-export { areaOnFor };
-
 /**
  * How the access query refreshes: it counts as fresh for a minute (no refetch when a component
  * mounts), but focusing the browser tab always refetches, fresh or not. So another admin's

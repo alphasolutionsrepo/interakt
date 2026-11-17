@@ -2,7 +2,9 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { areaGateFor } from './area-gate';
+import { areaGateFor, settledChoice } from './area-gate';
+
+import type { Area } from '@/features/feature-switches/areas';
 
 const on = () => true;
 const offFor = (...off: string[]) => (a: string) => !off.includes(a);
@@ -40,5 +42,24 @@ describe('areaGateFor', () => {
 
   it('keeps loading as loading', () => {
     expect(areaGateFor({ state: 'loading' }, 'playground', offFor('playground'))).toEqual({ state: 'loading' });
+  });
+});
+
+describe('settledChoice', () => {
+  type Pane = 'talk' | 'find';
+  const PANE_AREA: Record<Pane, Area> = { talk: 'chat', find: 'search' };
+  const firstOn = (areaOn: (area: Area) => boolean): Pane => (areaOn('chat') || !areaOn('search') ? 'talk' : 'find');
+
+  it('keeps the pick while its area is on', () => {
+    expect(settledChoice<Pane>('find', PANE_AREA, on, firstOn)).toBe('find');
+  });
+
+  it('falls back once the picked area is switched off', () => {
+    expect(settledChoice<Pane>('talk', PANE_AREA, offFor('chat'), firstOn)).toBe('find');
+  });
+
+  it('uses the fallback for the areas on now when nothing was picked', () => {
+    expect(settledChoice<Pane>(null, PANE_AREA, on, firstOn)).toBe('talk');
+    expect(settledChoice<Pane>(null, PANE_AREA, offFor('chat'), firstOn)).toBe('find');
   });
 });

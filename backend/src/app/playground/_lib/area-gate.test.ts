@@ -9,7 +9,7 @@ import { settledChoice } from '@/shared/access/area-gate';
 const on = () => true;
 const offFor = (...off: string[]) => (a: string) => !off.includes(a);
 
-describe('settledChoice', () => {
+describe('the Test pages\' choices, settled with their area tables', () => {
   const loading = () => false;
   it('settles on a usable kind once access loads, though it first rendered while loading', () => {
     // While loading every area reads off; once loaded with Chat off, Search is shown
