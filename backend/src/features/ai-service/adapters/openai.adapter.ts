@@ -26,7 +26,7 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
-import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal, wasAborted } from './types';
+import { AIProviderAdapter, AdapterError, abortedRequestError, parseSSEStream, requestSignal, retryAfterMs, wasAborted } from './types';
 import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -711,7 +711,9 @@ export class OpenAIAdapter implements AIProviderAdapter {
             errorMessage,
             this.providerKey,
             response.status,
-            retryable
+            retryable,
+            undefined,
+            retryAfterMs(response),
         );
     }
 

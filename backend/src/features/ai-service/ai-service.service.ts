@@ -20,6 +20,7 @@ import {
     getModelById,
     getResolvedDefaults,
 } from '@/features/ai-providers/ai-providers.service';
+import { defaultConnectionType } from '@/features/ai-providers/ai-providers.validation';
 import { CallerTimeoutError, CancelledRequestError, getAdapter } from './adapters';
 import { withResilience, withRetry } from './ai-service.resilience';
 import { trackUsage, updateRealtimeMetrics } from './ai-service.analytics';
@@ -162,6 +163,8 @@ async function resolveProviderConfig(
     return {
         providerId: provider.id,
         providerKey: provider.providerKey,
+        // A provider cached before connection types has none yet: its key picked the adapter then
+        connectionType: provider.connectionType ?? defaultConnectionType(provider.providerKey),
         modelId: model.id,
         modelKey: model.modelKey,
         baseUrl: provider.baseUrl,
@@ -230,7 +233,7 @@ export async function generateText(
         });
 
         // Get adapter
-        const adapter = getAdapter(config.providerKey);
+        const adapter = getAdapter(config.connectionType);
 
         // Execute with resilience (circuit breaker + retry), wrapped in OTel span
         const response = await traceGenerateText(config, async (span) => {
@@ -369,7 +372,7 @@ export async function chat(
             messageCount: messages.length,
         });
 
-        const adapter = getAdapter(config.providerKey);
+        const adapter = getAdapter(config.connectionType);
 
         const response = await traceChatSpan(
             config,
@@ -557,7 +560,7 @@ export async function* streamChat(
             toolChoice: options?.toolChoice,
         });
 
-        const adapter = getAdapter(config.providerKey);
+        const adapter = getAdapter(config.connectionType);
 
         // Streaming with OTel tracing — span lives across the generator lifecycle.
         // We retry on connection-establishment errors (i.e. failures *before* the
@@ -767,7 +770,7 @@ export async function generateEmbeddings(
             batchSize,
         });
 
-        const adapter = getAdapter(config.providerKey);
+        const adapter = getAdapter(config.connectionType);
         const adapterConfig = toAdapterConfig(config);
 
         // The size wanted: the caller's, else the one registered for the model. It is sent to

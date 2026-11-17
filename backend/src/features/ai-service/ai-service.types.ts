@@ -56,6 +56,8 @@ export interface AIServiceOptions {
 export interface ResolvedProviderConfig {
     providerId: string;
     providerKey: string;
+    /** The API the provider speaks: picks the adapter */
+    connectionType: string;
     modelId: number;
     modelKey: string;
     baseUrl: string;

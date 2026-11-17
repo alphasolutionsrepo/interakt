@@ -58,7 +58,6 @@ export function ProviderCard({
     const [isDeleting, setIsDeleting] = useState(false);
 
     const isLocal = provider.providerType === 'local';
-    const isOllama = provider.providerKey === 'ollama';
 
     const availableModels = provider.models?.filter(m => m.isAvailable).length ?? 0;
     const totalModels = provider.models?.length ?? 0;
@@ -157,7 +156,7 @@ export function ProviderCard({
                                 )}
                                 Test Connection
                             </DropdownMenuItem>
-                            {isOllama && onDiscoverModels && (
+                            {onDiscoverModels && (
                                 <DropdownMenuItem
                                     onClick={() => onDiscoverModels(provider.id)}
                                     disabled={isDiscovering}

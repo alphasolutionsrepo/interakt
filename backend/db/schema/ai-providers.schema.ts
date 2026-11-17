@@ -28,6 +28,7 @@ import {
   aiModelTypeEnum,
   aiAuthTypeEnum,
   aiProviderTypeEnum,
+  aiConnectionTypeEnum,
 } from './enums.schema';
 
 // ============================================================================
@@ -107,6 +108,8 @@ export const aiProviders = pgTable('ai_providers', {
 
   // Provider type and authentication
   providerType: aiProviderTypeEnum('provider_type').notNull(),
+  // The API it speaks (OpenAI-compatible or Ollama): picks the adapter, whatever the provider is called
+  connectionType: aiConnectionTypeEnum('connection_type').notNull().default('openai_compatible'),
   authType: aiAuthTypeEnum('auth_type').notNull(),
 
   // Connection configuration

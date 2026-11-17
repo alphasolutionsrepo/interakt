@@ -19,12 +19,10 @@ Sidebar → **Administration → Admin → AI Providers**.
 - Billing set up (the free tier doesn't include the chat models most experiences use).
 
 ### Steps
-1. Click **Add Provider** → select **OpenAI**.
-2. Paste your **API key**.
-3. (Optional) Override the **display name** if you'll have multiple OpenAI accounts.
-4. Leave **base URL** blank unless you're using a proxy.
-5. Click **Save**. Interakt runs a connection test against OpenAI's `/v1/models` endpoint.
-6. On success: provider is enabled, key is encrypted and stored.
+1. Click **Add Provider** and name it, for example "OpenAI".
+2. Set **Connection type** to **OpenAI-compatible** and **base URL** to `https://api.openai.com/v1`.
+3. Paste your **API key**.
+4. Click **Save**, then **Test Connection**: Interakt reads OpenAI's `/v1/models`.
 
 ### Models
 By default, the OpenAI provider registers:
@@ -58,7 +56,7 @@ An embedding model that can return shorter vectors on request (such as `qwen3-em
 - Run `ollama list` to confirm. Run `ollama serve` if it isn't already.
 
 ### Steps
-1. Click **Add Provider** → select **Ollama**.
+1. Click **Add Provider**, name it, and set **Connection type** to **Ollama**.
 2. Set **base URL** — `http://localhost:11434` by default. Change only if Ollama is on a different machine.
 3. Click **Discover Models** — Interakt asks Ollama for the list of pulled models.
 4. Tick the ones you want to expose in the admin UI's dropdowns.
@@ -77,16 +75,24 @@ Ollama on a laptop is slow. Each chat turn makes 3–5 LLM calls behind the scen
 | "No models found" | Pull at least one chat and one embedding model. |
 | Works but very slow | Expected on CPU. Try a smaller model variant or switch to OpenAI. |
 
-## Anthropic, Azure OpenAI, Google Vertex AI, HuggingFace
+## An AI gateway or router (OpenAI-compatible)
 
-Same shape — click **Add Provider**, select the type, fill the credentials, save.
+Many organisations run their own AI gateway or router in front of their models. Any service with an OpenAI-style `/v1` API connects the same way, under any name you choose.
 
-- **Anthropic** — API key from [console.anthropic.com](https://console.anthropic.com). Chat models only, no embeddings.
-- **Azure OpenAI** — API key, endpoint URL, deployment names.
-- **Google Vertex AI** — project ID, credentials JSON.
-- **HuggingFace** — API token.
+### What you need
+- The service's address, up to and including `/v1` (for example `https://ai.example.edu/v1`).
+- An API key for Interakt, if the service uses keys.
 
-Specific configuration is provider-dependent. The dialog adapts.
+### Steps
+1. Click **Add Provider** and give it a name, for example "Campus AI".
+2. Set **Connection type** to **OpenAI-compatible**.
+3. Paste the **base URL** and the **API key** (or set Authentication to **None**).
+4. Save, then click **Test Connection**: Interakt reads the service's `/v1/models`.
+5. Click **Discover Models** to add the models it offers, and set your defaults.
+
+### Good to know
+- A gateway may limit requests per key. Interakt waits for the time it asks (`Retry-After`) before trying again.
+- A model's context window and embedding dimensions can be set on the model when the service doesn't report them.
 
 ## Setting system defaults
 

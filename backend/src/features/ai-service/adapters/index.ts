@@ -28,7 +28,8 @@ export { OllamaAdapter } from './ollama.adapter';
  * Add new adapters here as they are implemented
  */
 const adapterRegistry: Record<string, () => AIProviderAdapter> = {
-  openai: () => new OpenAIAdapter(),
+  // Keyed by connection type (the API a provider speaks), never by the provider's own name
+  openai_compatible: () => new OpenAIAdapter(),
   ollama: () => new OllamaAdapter(),
 };
 
@@ -44,12 +45,12 @@ const adapterCache: Map<string, AIProviderAdapter> = new Map();
 /**
  * Get an adapter instance for the specified provider
  * 
- * @param providerKey - The provider key (e.g., 'openai', 'ollama')
+ * @param providerKey - The provider's connection type ('openai_compatible' or 'ollama')
  * @returns The adapter instance
  * @throws AIServiceError if provider is not supported
  * 
  * @example
- * const adapter = getAdapter('openai');
+ * const adapter = getAdapter('openai_compatible');
  * const result = await adapter.generateText(request, config);
  */
 export function getAdapter(providerKey: string): AIProviderAdapter {

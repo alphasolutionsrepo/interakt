@@ -393,11 +393,7 @@ export default function AIProvidersPage() {
           onOpenChange={(open) => setManageModelsDialog(prev => ({ ...prev, open }))}
           provider={manageModelsDialog.provider}
           onModelsChanged={refetchProviders}
-          onDiscoverModels={
-            manageModelsDialog.provider.providerKey === 'ollama'
-              ? () => handleDiscoverModels(manageModelsDialog.provider!)
-              : undefined
-          }
+          onDiscoverModels={() => handleDiscoverModels(manageModelsDialog.provider!)}
           isDiscovering={discoveringId === manageModelsDialog.provider.id}
         />
       )}

@@ -288,6 +288,13 @@
       "when": 1794581018463,
       "tag": "0040_feature_switches",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794928893106,
+      "tag": "0041_provider_connection_type",
+      "breakpoints": true
     }
   ]
 }

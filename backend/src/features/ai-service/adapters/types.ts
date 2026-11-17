@@ -83,13 +83,27 @@ export interface AIProviderAdapter {
 /**
  * Error thrown by adapters with provider-specific details
  */
+/**
+ * How long a response asks callers to wait before trying again: its Retry-After header, in
+ * seconds or as a date. Gateways and hosted APIs send it with a 429. Undefined without one.
+ */
+export function retryAfterMs(response: Response, now: number = Date.now()): number | undefined {
+    const header = response.headers.get('retry-after')?.trim();
+    if (!header) return undefined;
+    if (/^\d+(\.\d+)?$/.test(header)) return Math.round(Number(header) * 1000);
+    const at = Date.parse(header);
+    return Number.isNaN(at) ? undefined : Math.max(0, at - now);
+}
+
 export class AdapterError extends Error {
     constructor(
         message: string,
         public readonly providerKey: string,
         public readonly statusCode?: number,
         public readonly retryable: boolean = false,
-        public readonly cause?: Error
+        public readonly cause?: Error,
+        /** How long the provider asked callers to wait before trying again (its Retry-After) */
+        public readonly retryAfterMs?: number,
     ) {
         super(message);
         this.name = 'AdapterError';

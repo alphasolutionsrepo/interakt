@@ -409,7 +409,7 @@ export async function handleDiscoverModels(
       return apiResponse.validationError(validation.error);
     }
 
-    const result = await service.discoverOllamaModels(validation.data.id);
+    const result = await service.discoverModels(validation.data.id);
 
     logger.info('Discovered models via API', {
       providerId: validation.data.id,
@@ -423,10 +423,6 @@ export async function handleDiscoverModels(
 
     if (err.message.includes('not found')) {
       return apiResponse.refused(error, 'NOT_FOUND', { operation: 'discoverModels' });
-    }
-
-    if (err.message.includes('only supported for Ollama')) {
-      return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'discoverModels' });
     }
 
     return apiResponse.error(err, undefined, { operation: 'discoverModels' });

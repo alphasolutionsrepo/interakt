@@ -25,7 +25,7 @@ vi.mock('./ai-providers.repository', () => ({
 }));
 
 import * as repository from './ai-providers.repository';
-import { createModel, discoverOllamaModels, updateModel } from './ai-providers.service';
+import { createModel, discoverModels, updateModel } from './ai-providers.service';
 import { canShortenVectorsByDefault } from './shortenable-embeddings';
 
 const created = () => vi.mocked(repository.createModel).mock.lastCall?.[0];
@@ -75,7 +75,7 @@ describe('a model found by Ollama discovery', () => {
     const installed = (name: string) => ({ name, details: { parameter_size: '4B', quantization_level: 'Q4', family: 'qwen3', families: ['qwen3'] } });
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ models: [installed('qwen3-embedding:4b')] }))));
 
-    await discoverOllamaModels('p');
+    await discoverModels('p');
 
     expect(created()).toMatchObject({ modelKey: 'qwen3-embedding:4b', canShortenVectors: true });
   });

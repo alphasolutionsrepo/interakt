@@ -26,7 +26,7 @@ The table of providers with these columns:
 - **Status** — Enabled or Disabled.
 - **Models** — how many models are configured for the provider.
 - **Last Check** — when Interakt last verified it could reach this provider.
-- **Actions** — per-row dropdown: Edit / Manage Models / Test Connection / Discover Models (Ollama) / Enable-Disable.
+- **Actions** — per-row dropdown: Edit / Manage Models / Test Connection / Discover Models / Enable-Disable.
 
 ### Right column — System Configuration
 
@@ -45,32 +45,29 @@ Every new experience and index is pre-populated with these defaults. Individual 
 - **Refresh** button.
 - **Add Provider** button.
 
-## Supported providers
+## Connection types
 
-| Provider | Type | What you need | Default for |
-|---|---|---|---|
-| **OpenAI** | Cloud, paid | API key from openai.com | gpt-4o (chat), text-embedding-3-small (embedding) |
-| **Anthropic** | Cloud, paid | API key from console.anthropic.com | Claude models (chat only — no embeddings) |
-| **Azure OpenAI** | Cloud, paid | API key, endpoint, deployment names | Whatever you've deployed |
-| **Google Vertex AI** | Cloud, paid | Project ID, credentials JSON | Gemini models |
-| **Ollama** | Local, free | Ollama running locally with models pulled | Whatever you've pulled |
-| **HuggingFace** | Cloud, paid (some) | API token | Open-source models on HF Inference |
+A provider has a name you choose and a **connection type**: the API it speaks. Add as many providers as you like, several of the same type included, for example OpenAI and your own AI gateway side by side.
 
-Each provider has slightly different configuration. The provider dialog adapts to the type you pick.
+| Connection type | Speaks | Use it for |
+|---|---|---|
+| **OpenAI-compatible** | OpenAI's `/v1` API (chat, embeddings, `/v1/models`) | OpenAI, self-hosted AI gateways and routers, vLLM, LM Studio and other OpenAI-style services |
+| **Ollama** | Ollama's own API | Ollama on your machine or a server |
 
 ## Adding a provider
 
-Click **Add Provider** → pick the provider type from the dropdown.
+Click **Add Provider**, then:
 
-### Cloud providers (OpenAI, Anthropic, Azure, Google, HuggingFace)
-- **API key** — paste it. Stored encrypted at rest. Once saved, the field shows "•••" and never displays the key again.
-- **Base URL** — for self-hosted or Azure: the endpoint. For OpenAI: leave blank.
-- **Display name** — what shows in the UI. Defaults to the provider name; useful if you have multiple instances of the same provider.
-- **Model configuration** — what models to make available. Some providers have an auto-list; others are manual.
+- **Display name** — any name, for example "Campus AI". The **provider key** is made from it; you can change the key before saving.
+- **Connection type** — OpenAI-compatible or Ollama.
+- **Base URL** — for OpenAI-compatible, the address up to and including `/v1` (`https://api.openai.com/v1`, or your gateway's, such as `https://ai.example.edu/v1`). For Ollama, its address without `/v1` (`http://localhost:11434`).
+- **Authentication** — **API key** sends it as `Authorization: Bearer <key>`; **None** for a service that needs no key. Once saved, the key is never shown again.
 
-### Local provider (Ollama)
-- **Base URL** — `http://localhost:11434` is the default. Change if Ollama is on another machine.
-- **Discover Models** — clicks Ollama's API to list every model you've pulled. Tick the ones you want to expose.
+### Models
+**Discover Models** reads the models the provider offers: Ollama's pulled models, or an OpenAI-compatible service's `/v1/models` list (text and embedding models; a context size the service reports is kept). Models the provider no longer lists are hidden. You can also add models by hand.
+
+### Rate limits
+When a provider answers "too many requests" with a `Retry-After` time, Interakt waits that long before trying again. If it asks for a longer wait than Interakt's longest retry wait (30 seconds), the request fails at once with the provider's message instead of retrying.
 
 ### After saving
 Interakt runs a **Test Connection** check immediately — pings the provider with a minimal request to confirm credentials work. If the check fails, the provider stays disabled and the dialog shows the error.
@@ -83,7 +80,7 @@ Click the **Manage Models** option on any provider row. The dialog shows:
 - Each model with its name, purpose (text-generation / embedding / chat), and key configuration (context window, dimensions for embeddings).
 - An **Add model** button to add more.
 - **Remove model** per row.
-- For Ollama: a **Discover Models** button that re-checks the local Ollama server and offers any newly pulled models.
+- A **Discover Models** button that reads the models the provider offers again.
 
 You only need to register models you actually want available in the rest of the UI's dropdowns. Don't register every model on the provider's catalog — you'll never use most of them.
 
