@@ -13,7 +13,9 @@ export function discoveryMessage(result: ModelDiscoveryResult): { level: 'succes
   if (result.errors.length > 0) parts.push(`Not saved: ${result.errors.join('; ')}`);
   if (result.needsSetup.length > 0) parts.push(`Needs setup: ${result.needsSetup.join('; ')}`);
   if (result.addedOff.length > 0) parts.push(`${result.addedOff.length} new added switched off: switch on the ones you want in Manage Models`);
-  if (result.leftOff.length > 0) parts.push(`Left off as you set them (switch on in Manage Models): ${result.leftOff.join(', ')}`);
+  // A cloud provider can have hundreds left off: past a few, the count says enough
+  if (result.leftOff.length > 5) parts.push(`${result.leftOff.length} listed models left off as you set them (switch on in Manage Models)`);
+  else if (result.leftOff.length > 0) parts.push(`Left off as you set them (switch on in Manage Models): ${result.leftOff.join(', ')}`);
   // Models added or left switched off wait for the admin's choice: worth saying, not a warning
   const needsAttention = result.errors.length > 0 || result.needsSetup.length > 0;
   return { level: needsAttention ? 'warning' : 'success', text: parts.join('. ') };

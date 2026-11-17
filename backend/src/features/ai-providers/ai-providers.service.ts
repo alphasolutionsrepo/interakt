@@ -663,8 +663,10 @@ export async function updateModel(
     if (input.dimensions !== undefined) updateData.dimensions = input.dimensions ?? null;
     if (input.canShortenVectors !== undefined) updateData.canShortenVectors = input.canShortenVectors;
     if (input.capabilities !== undefined) updateData.capabilities = input.capabilities;
-    // Switched on or off by an admin: discovery leaves it as set from now on
-    if (input.isAvailable !== undefined) { updateData.isAvailable = input.isAvailable; updateData.hiddenByDiscovery = false; }
+    if (input.isAvailable !== undefined) updateData.isAvailable = input.isAvailable;
+    // Switched on or off by an admin: discovery leaves it as set from now on. An edit that sends
+    // the same value (the form sends every field) keeps discovery's own hiding
+    if (input.isAvailable !== undefined && input.isAvailable !== existing.isAvailable) updateData.hiddenByDiscovery = false;
     if (input.sortOrder !== undefined) updateData.sortOrder = input.sortOrder;
     if (input.inputCostPerMillionTokens !== undefined) updateData.inputCostPerMillionTokens = input.inputCostPerMillionTokens;
     if (input.outputCostPerMillionTokens !== undefined) updateData.outputCostPerMillionTokens = input.outputCostPerMillionTokens;

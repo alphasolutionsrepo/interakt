@@ -27,6 +27,11 @@ describe('the Discover Models message', () => {
     });
   });
 
+  it('counts the models left off once there are more than a few', () => {
+    const leftOff = ['a', 'b', 'c', 'd', 'e', 'f'];
+    expect(discoveryMessage(result({ leftOff })).text).toBe('Found 3 models (2 new). 6 listed models left off as you set them (switch on in Manage Models)');
+  });
+
   it('says how many new models were added switched off, and where to choose', () => {
     expect(discoveryMessage(result({ addedOff: ['a', 'b'] }))).toEqual({
       level: 'success', text: 'Found 3 models (2 new). 2 new added switched off: switch on the ones you want in Manage Models',

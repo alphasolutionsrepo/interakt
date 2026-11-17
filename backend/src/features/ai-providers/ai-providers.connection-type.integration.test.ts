@@ -545,6 +545,22 @@ describe('models discovery hid, and models an admin switched off (review 17 Nov)
     expect(result.leftOff).toEqual(['campus-chat-2']);
   });
 
+  it('still come back after an edit that leaves them switched off (the form sends every field)', async () => {
+    const { data } = await createProvider({ providerKey: 'gw-edit-hidden', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    gateway.models = [{ id: 'campus-chat' }, { id: 'campus-chat-2' }];
+    await post(discoverRoute, data.id);
+    gateway.models = [{ id: 'campus-chat' }];
+    await post(discoverRoute, data.id);
+    const hidden = (await modelsOf(data.id)).find((m) => m.modelKey === 'campus-chat-2')!;
+    const edit = await modelRoute.PUT(new NextRequest(`http://localhost/api/ai-provider-models/${hidden.id}`, { method: 'PUT', body: JSON.stringify({ displayName: 'Campus chat 2', isAvailable: false }) }),
+      { params: Promise.resolve({ id: String(hidden.id) }) });
+    expect(edit.status).toBe(200);
+
+    gateway.models = [{ id: 'campus-chat' }, { id: 'campus-chat-2' }];
+    await post(discoverRoute, data.id);
+    expect(await listedOn(data.id)).toMatchObject({ 'campus-chat-2': true });
+  });
+
   it('are not hidden when Ollama lists nothing (no model pulled yet)', async () => {
     ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }];
     const { data } = await createProvider({ providerKey: 'lab-empty', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
