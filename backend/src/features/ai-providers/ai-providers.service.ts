@@ -462,7 +462,8 @@ export async function updateProvider(
 
     return mapProviderToResponse(updated);
   } catch (error) {
-    logger.error('Failed to update AI provider', error as Error, { id });
+    // A key to type again is the admin's to fix: the handler answers it, nothing failed here
+    if (!(error instanceof KeyForAnotherServerError)) logger.error('Failed to update AI provider', error as Error, { id });
     throw error;
   }
 }
@@ -1034,6 +1035,8 @@ interface ProviderReport {
   listed: string[];
   /** Ollama: anything not installed. An OpenAI-compatible service: only models discovery added. */
   hides: 'all' | 'discovered';
+  /** A new embedding model's vector size, when the provider doesn't report it with the list */
+  dimensionsOf?: (modelKey: string) => Promise<number | null>;
 }
 
 /** A model a provider reports through its own API, ready to save. */
@@ -1136,7 +1139,25 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
     });
   // A service can list fewer models than are saved (models added by hand, aliases it serves
   // unlisted): only models an earlier discovery added are hidden when it stops listing them
-  return { models, listed: listed.map((m) => m.id), hides: 'discovered' };
+  return { models, listed: listed.map((m) => m.id), hides: 'discovered', dimensionsOf: (key) => embeddingDimensions(provider, key) };
+}
+
+/** An embedding model's vector size, from one short embedding; null when the service won't say. */
+async function embeddingDimensions(provider: AIProvider, modelKey: string): Promise<number | null> {
+  try {
+    const response = await fetch(`${provider.baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(provider.apiKey && { Authorization: `Bearer ${provider.apiKey}` }) },
+      body: JSON.stringify({ model: modelKey, input: 'dimensions' }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
+    const vector = body.data?.[0]?.embedding;
+    return Array.isArray(vector) && vector.length > 0 ? vector.length : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -1163,7 +1184,9 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
         const reportedWindow = model.capabilities.contextWindow as number | undefined;
         await repository.updateModel(existing.id, {
           isAvailable: true,
-          isDiscovered: true,
+          // Only discovery's own models are hidden when an OpenAI-compatible service stops listing
+          // them, so a saved model it lists keeps its origin there; for Ollama every model is its
+          ...(report.hides === 'all' && { isDiscovered: true }),
           ...(reportedWindow !== undefined && caps.contextWindow === undefined && { capabilities: { ...caps, contextWindow: reportedWindow } }),
         });
         modelsUpdated++;
@@ -1174,7 +1197,8 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
           displayName: formatModelDisplayName(model.modelKey),
           description: model.description,
           modelType: model.modelType,
-          dimensions: model.dimensions,
+          dimensions: model.dimensions
+            ?? (model.modelType === 'embedding' && report.dimensionsOf ? await report.dimensionsOf(model.modelKey) : null),
           canShortenVectors: canShortenVectorsByDefault(model.modelKey, model.modelType),
           capabilities: model.capabilities,
           isAvailable: true,

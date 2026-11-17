@@ -608,7 +608,9 @@ export async function* streamChat(
                     // Fall through to a single retry of the whole iteration.
                     if (yielded) throw err;
                     // As long as the provider asked (Retry-After); a longer wait than any retry ends it here
-                    await waitAsAsked(err);
+                    await waitAsAsked(err, options?.signal);
+                    // The caller left during the wait: the stream just ends, as a cancel does
+                    if (options?.signal?.aborted) return;
                     // A retry, not a failure: if the retry fails too, whoever handles it logs it
                     logger.info('Stream errored before first chunk — retrying once', {
                         provider: config!.providerKey,

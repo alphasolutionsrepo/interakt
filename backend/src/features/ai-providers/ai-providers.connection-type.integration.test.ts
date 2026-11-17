@@ -63,6 +63,7 @@ beforeAll(async () => {
     gateway.seen.push({ at: Date.now(), path: req.url ?? '', auth: req.headers.authorization });
     if (req.headers.authorization !== 'Bearer gw-key') { res.writeHead(401); return res.end('{"error":{"message":"bad key"}}'); }
     if (req.url === '/v1/models') return res.end(JSON.stringify({ object: 'list', data: gateway.models }));
+    if (req.url === '/v1/embeddings') return res.end(JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3, 0.4] }] }));
     if (req.url === '/v1/chat/completions') {
       let raw = '';
       req.on('data', (c) => { raw += c; });
@@ -185,10 +186,10 @@ describe('an OpenAI-compatible gateway under its own name', () => {
     const first = (await (await post(discoverRoute, data.id)).json()).data;
     expect(first).toMatchObject({ modelsFound: 2, modelsAdded: 2 });
     const models = (await (await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${data.id}?includeModels=true`), idParams(data.id))).json()).data.models;
-    expect(Object.fromEntries(models.map((m: { modelKey: string; modelType: string; capabilities: Record<string, unknown> }) =>
-      [m.modelKey, { type: m.modelType, contextWindow: m.capabilities.contextWindow }]))).toEqual({
-      'campus-chat': { type: 'chat', contextWindow: 32768 },
-      'campus-embed': { type: 'embedding', contextWindow: undefined },
+    expect(Object.fromEntries(models.map((m: { modelKey: string; modelType: string; dimensions: number | null; capabilities: Record<string, unknown> }) =>
+      [m.modelKey, { type: m.modelType, contextWindow: m.capabilities.contextWindow, dimensions: m.dimensions }]))).toEqual({
+      'campus-chat': { type: 'chat', contextWindow: 32768, dimensions: null },
+      'campus-embed': { type: 'embedding', contextWindow: undefined, dimensions: 4 },
     });
 
     gateway.models = [{ id: 'campus-chat', object: 'model' }];
@@ -253,6 +254,12 @@ describe('models a gateway stops listing, or lists under names that are not text
     expect(byKey['gpt-4o-audio-preview'].isAvailable).toBe(true);
     expect(byKey['gone-model'].isAvailable).toBe(false);
     expect(byKey['glm-ocr-chat'].isAvailable).toBe(true);
+
+    // Later the service stops listing the models added by hand: they stay all the same
+    gateway.models = [];
+    await post(discoverRoute, data.id);
+    const later = Object.fromEntries((await modelsOf(data.id)).map((m) => [m.modelKey, m.isAvailable]));
+    expect(later).toMatchObject({ 'my-fine-tune': true, 'gpt-4o-audio-preview': true, 'campus-chat': true, 'glm-ocr-chat': false });
     expect(byKey['campus-chat'].capabilities.contextWindow).toBe(16384);
   });
 });
@@ -319,6 +326,18 @@ describe('Retry-After on a stream and on Ollama', () => {
     await expect(read(streamChat([{ role: 'user', content: 'Say hi' }], { providerId, modelId }))).rejects.toThrow(/rate limited/);
     expect(gateway.seen.filter((x) => x.path === '/v1/chat/completions')).toHaveLength(1);
   });
+
+  it('a stream waiting for its retry ends at once when the caller cancels, with no retry', async () => {
+    const { providerId, modelId } = await gatewayWithModel('stream-cancel');
+    gateway.seen = [];
+    gateway.answers = [{ status: 429, retryAfter: '20' }];
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 300);
+    const started = Date.now();
+    expect(await read(streamChat([{ role: 'user', content: 'Say hi' }], { providerId, modelId, signal: controller.signal }))).toBe('');
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(gateway.seen.filter((x) => x.path === '/v1/chat/completions')).toHaveLength(1);
+  }, 20_000);
 
   it('Ollama is tried again after the wait it asked for', async () => {
     const { data } = await createProvider({ providerKey: 'lab-busy', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });

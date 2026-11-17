@@ -247,11 +247,17 @@ function retryAfterOf(error: unknown): number | undefined {
  * asked (its Retry-After), or pass its error on when it asks for longer than the longest
  * retry wait, as withRetry does.
  */
-export async function waitAsAsked(error: unknown, maxDelay: number = RETRY_DEFAULTS.maxDelay): Promise<void> {
+export async function waitAsAsked(error: unknown, signal?: AbortSignal, maxDelay: number = RETRY_DEFAULTS.maxDelay): Promise<void> {
     const wait = retryAfterOf(error);
     if (wait === undefined) return;
     if (wait > maxDelay) throw error;
-    await sleep(wait);
+    // The caller leaving ends the wait at once
+    await new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve();
+        const timer = setTimeout(done, wait);
+        function done() { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); }
+        signal?.addEventListener('abort', done, { once: true });
+    });
 }
 
 /** The provider an attempt's error names (AdapterError, AIServiceError), for the error that ends the retries */
