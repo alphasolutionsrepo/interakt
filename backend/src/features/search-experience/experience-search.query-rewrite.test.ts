@@ -153,7 +153,7 @@ describe('an experience with a managed index and an external source', () => {
     expect(Date.now() - startedAt).toBeLessThan(1500);
     expect(externalRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
     expect(managedRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
-    const step = telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite');
+    const step = telemetry.steps.find((s) => s.name === 'query_understanding.rewrite');
     expect(step?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe('timed_out');
     // The step ends in error even though the search carried on
     expect(step?.error).toMatch(/time limit/);
@@ -162,7 +162,7 @@ describe('an experience with a managed index and an external source', () => {
   it('ends the step in error when the rewrite fails', async () => {
     vi.mocked(aiService.chat).mockRejectedValue(new Error('model down'));
     await search(experience({}, 'external'));
-    expect(telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite')?.error).toMatch(/failed/);
+    expect(telemetry.steps.find((s) => s.name === 'query_understanding.rewrite')?.error).toMatch(/failed/);
   });
 
   it.each([
@@ -172,14 +172,26 @@ describe('an experience with a managed index and an external source', () => {
   ] as const)('ends the step OK when the outcome is %s', async (outcome, settings, answer) => {
     vi.mocked(aiService.chat).mockResolvedValue({ message: { content: JSON.stringify({ query: answer }) } } as never);
     await search(experience(settings, 'external'));
-    const step = telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite');
+    const step = telemetry.steps.find((s) => s.name === 'query_understanding.rewrite');
     expect(step?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe(outcome);
     expect(step?.error).toBeUndefined();
   });
 });
 
+describe('query understanding steps in Analytics', () => {
+  it('are named outside the prefixes Analytics counts as searches, so one search stays one search', async () => {
+    modelAnswers();
+    await search(experience());
+
+    const inner = telemetry.steps.filter((s) => s.name !== 'search_experience.search').map((s) => s.name).sort();
+    expect(inner).toEqual(['query_understanding.interpretation', 'query_understanding.rewrite']);
+    // Request-level traces and turn counts (chat.%, search_experience.%), and search demand (search.%)
+    for (const name of inner) expect(name).not.toMatch(/^(chat|search_experience|search)\./);
+  });
+});
+
 describe('the query interpretation trace step (managed indexes)', () => {
-  const interpretationStep = () => telemetry.steps.find((s) => s.name === 'search_experience.query_interpretation');
+  const interpretationStep = () => telemetry.steps.find((s) => s.name === 'query_understanding.interpretation');
 
   it('records the outcome, duration and filters added, without the query below full', async () => {
     modelAnswers();
@@ -241,7 +253,7 @@ describe('the query rewrite trace step', () => {
     modelAnswers();
     await search(experience({}, 'external'));
 
-    const step = telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite');
+    const step = telemetry.steps.find((s) => s.name === 'query_understanding.rewrite');
     expect(step?.attributes).toEqual({
       [ATTR.QUERY_REWRITE_OUTCOME]: 'rewritten',
       [ATTR.QUERY_REWRITE_DURATION_MS]: expect.any(Number),
@@ -254,7 +266,7 @@ describe('the query rewrite trace step', () => {
     telemetry.content = true;
     await search(experience({}, 'external'));
 
-    const step = telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite');
+    const step = telemetry.steps.find((s) => s.name === 'query_understanding.rewrite');
     expect(step?.attributes).toMatchObject({
       [ATTR.QUERY_REWRITE_OUTCOME]: 'rewritten',
       [ATTR.QUERY_REWRITE_ORIGINAL]: QUESTION,
@@ -268,7 +280,7 @@ describe('the query rewrite trace step', () => {
 
     expect(aiService.chat).not.toHaveBeenCalled();
     expect(externalRequest()?.query).toBe(QUESTION);
-    expect(telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite')?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe('skipped');
+    expect(telemetry.steps.find((s) => s.name === 'query_understanding.rewrite')?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe('skipped');
   });
 
   it('is absent, and the query is sent as typed, with query understanding off', async () => {

@@ -292,6 +292,25 @@ describe('interpretation cache', () => {
         expect(aiService.chat).toHaveBeenCalledTimes(1);
     });
 
+    it("keeps each visitor's letter case: the same words in other capitals get their own interpretation", async () => {
+        const searchIndexId = freshIndexId();
+        const config = aiConfig();
+        vi.mocked(aiService.chat).mockImplementation(async (messages) => ({
+            message: { content: JSON.stringify({ query: messages[1].content, filters: [] }) },
+        }) as never);
+
+        const lower = await applyQueryInterpretation({
+            query: 'sku ab-12 jackets', clientFilters: undefined, searchIndexId, aiConfig: config, experienceId: 'exp-1',
+        });
+        const upper = await applyQueryInterpretation({
+            query: 'SKU AB-12 jackets', clientFilters: undefined, searchIndexId, aiConfig: config, experienceId: 'exp-1',
+        });
+
+        expect(lower.query).toBe('sku ab-12 jackets');
+        expect(upper.query).toBe('SKU AB-12 jackets');
+        expect(aiService.chat).toHaveBeenCalledTimes(2);
+    });
+
     it('re-interprets after the custom instructions change', async () => {
         const searchIndexId = freshIndexId();
 

@@ -339,7 +339,7 @@ async function interpretForManaged(
     interpretation?.outcome === 'failed' ? 'Query interpretation failed; searched with the visitor\'s words'
       : interpretation?.outcome === 'timed_out' ? 'Query interpretation reached its time limit; searched with the visitor\'s words'
         : undefined;
-  return withSpan({ name: 'search_experience.query_interpretation', experienceId: experience.id, errorFor }, async (span) => {
+  return withSpan({ name: 'query_understanding.interpretation', experienceId: experience.id, errorFor }, async (span) => {
     const interpreted = await run();
     const interpretation = interpreted.interpretation;
     span.setAttribute(ATTR.QUERY_INTERPRETATION_OUTCOME, interpretation?.outcome ?? 'skipped');
@@ -369,7 +369,7 @@ async function rewriteForExternal(
     r.outcome === 'failed' ? 'Query rewrite failed; searched with the visitor\'s words'
       : r.outcome === 'timed_out' ? 'Query rewrite reached its time limit; searched with the visitor\'s words'
         : undefined;
-  return withSpan({ name: 'search_experience.query_rewrite', experienceId: experience.id, errorFor }, async (span) => {
+  return withSpan({ name: 'query_understanding.rewrite', experienceId: experience.id, errorFor }, async (span) => {
     const rewrite = await rewriteQueryForExternalSearch({ query, aiConfig, experienceId: experience.id });
     span.setAttribute(ATTR.QUERY_REWRITE_OUTCOME, rewrite.outcome);
     span.setAttribute(ATTR.QUERY_REWRITE_DURATION_MS, rewrite.durationMs);

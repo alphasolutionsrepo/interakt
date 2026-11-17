@@ -38,6 +38,8 @@ const STEP_META: Record<string, { label: string; icon: React.ElementType; iconCl
   'ai.generate_embeddings': { label: 'Query embedding', icon: Binary, iconClass: 'text-violet-500' },
   'ai.stream_chat': { label: 'Summary generation', icon: Sparkles, iconClass: 'text-amber-500' },
   'ai.chat': { label: 'Model call', icon: Sparkles, iconClass: 'text-amber-500' },
+  'query_understanding.interpretation': { label: 'Query understanding (filters)', icon: Sparkles, iconClass: 'text-amber-500' },
+  'query_understanding.rewrite': { label: 'Query understanding (search terms)', icon: Sparkles, iconClass: 'text-amber-500' },
 };
 
 /** Key facts per step, in display order. */
@@ -61,6 +63,17 @@ function stepFacts(span: SpanDetail): Array<[string, string | undefined]> {
         ['Returned', attr(span, 'alpha.search.results_returned')],
         ['Engine time', attr(span, 'alpha.search.es_took_ms') && `${attr(span, 'alpha.search.es_took_ms')}ms`],
         ['Filters', attr(span, 'alpha.search.has_filters') === 'true' ? 'yes' : undefined],
+      ];
+    case 'query_understanding.interpretation':
+      return [
+        ['Outcome', attr(span, ATTR.QUERY_INTERPRETATION_OUTCOME)],
+        ['Filters added', attr(span, ATTR.QUERY_INTERPRETATION_FILTERS_ADDED)],
+        ['Query searched', attr(span, ATTR.QUERY_INTERPRETATION_QUERY)],
+      ];
+    case 'query_understanding.rewrite':
+      return [
+        ['Outcome', attr(span, ATTR.QUERY_REWRITE_OUTCOME)],
+        ['Search terms', attr(span, ATTR.QUERY_REWRITE_REWRITTEN)],
       ];
     case 'ai.generate_embeddings':
       return [['Model', attr(span, 'alpha.ai.model_key')]];
