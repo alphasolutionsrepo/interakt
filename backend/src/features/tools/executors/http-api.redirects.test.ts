@@ -36,6 +36,8 @@ beforeAll(async () => {
     if (req.url === '/away') { res.writeHead(302, { Location: `http://localhost:${elsewherePort}/collect` }); return res.end(); }
     if (req.url === '/moved') { res.writeHead(301, { Location: '/v2/orders' }); return res.end(); }
     if (req.url === '/created') { res.writeHead(303, { Location: '/v2/orders' }); return res.end(); }
+    if (req.url === '/other-port') { res.writeHead(302, { Location: `http://127.0.0.1:${elsewherePort}/collect` }); return res.end(); }
+    if (req.url === '/temporary') { res.writeHead(307, { Location: '/v2/orders' }); return res.end(); }
     if (req.url === '/loop') { res.writeHead(302, { Location: '/loop' }); return res.end(); }
     res.end(JSON.stringify({ items: [{ id: 'A-1' }] }));
   });
@@ -60,7 +62,27 @@ describe('a redirect to another server', () => {
   });
 });
 
+describe('a redirect to another port on the same host', () => {
+  it('is refused, and nothing is sent there', async () => {
+    const result = await executeHttpApi(tool('/other-port'), {});
+    expect(result).toMatchObject({ success: false, error: expect.stringMatching(/redirected to another server/) });
+    expect(elsewhereSeen).toEqual([]);
+  });
+});
+
+describe('a refused redirect', () => {
+  it('is not tried again', async () => {
+    await executeHttpApi({ ...tool('/away'), retries: 2 }, {});
+    expect(apiSeen).toHaveLength(1);
+  });
+});
+
 describe('a redirect on the same server', () => {
+  it('keeps a POST and its body after a 307', async () => {
+    await executeHttpApi(tool('/temporary', 'POST'), {});
+    expect(apiSeen.map((s) => s.method)).toEqual(['POST', 'POST']);
+  });
+
   it('is followed, with the key', async () => {
     const result = await executeHttpApi(tool('/moved'), {});
     expect(result).toMatchObject({ success: true, data: { results: [{ id: 'A-1' }] } });

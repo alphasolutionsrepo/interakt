@@ -11,10 +11,14 @@ export class RedirectedElsewhereError extends Error {}
 
 const MAX_REDIRECTS = 5;
 
-/** Same server: same scheme, host and port, or the same host moving from http to https. */
+/**
+ * Same server: same scheme, host and port, or the same host moving from http to https on the
+ * standard ports (80 to 443). Any other port can be another service.
+ */
 function sameServer(from: URL, to: URL): boolean {
   if (from.origin === to.origin) return true;
-  return from.protocol === 'http:' && to.protocol === 'https:' && from.hostname === to.hostname && to.port === '';
+  return from.protocol === 'http:' && to.protocol === 'https:' && from.hostname === to.hostname
+    && from.port === '' && to.port === '';
 }
 
 export async function fetchOnSameServer(url: string, init: RequestInit): Promise<Response> {

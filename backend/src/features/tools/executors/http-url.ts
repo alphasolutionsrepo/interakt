@@ -20,7 +20,7 @@ function fixedOrigin(baseUrl: string): string | null {
 }
 
 /** What to change when a tool's URL lets input choose the host. */
-export const FIXED_HOST_MESSAGE = 'Use a full URL with a fixed host: write the host and a "/" before any {{input.field}}, which fills the path and query';
+export const FIXED_HOST_MESSAGE = 'Use a full URL (like https://api.example.com/orders) with a fixed host: write the host and a "/" before any {{input.field}}, which fills the path and query';
 
 /**
  * Whether a tool's stored URL keeps its host fixed, with {{input.field}} only after the host and
