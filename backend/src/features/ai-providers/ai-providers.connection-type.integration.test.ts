@@ -53,6 +53,14 @@ let gatewayUrl = '';
 let ollamaUrl = '';
 let gatewayServer: http.Server;
 let ollamaServer: http.Server;
+/** Redirects every request to the catcher; the half-redirector lists models itself but redirects /embeddings */
+let redirectorServer: http.Server;
+let halfRedirectorServer: http.Server;
+let catcherServer: http.Server;
+let redirectorUrl = '';
+let halfRedirectorUrl = '';
+let catcherReached: Array<{ method?: string; url?: string; auth?: string }> = [];
+let redirectsMade = 0;
 
 const chatAnswer = JSON.stringify({
   choices: [{ message: { role: 'assistant', content: 'Hi from the gateway' }, finish_reason: 'stop' }],
@@ -103,12 +111,30 @@ beforeAll(async () => {
     if (req.url === '/api/tags') return res.end(JSON.stringify({ models: ollama.tags }));
     res.writeHead(404); res.end();
   });
+  catcherServer = http.createServer((req, res) => {
+    catcherReached.push({ method: req.method, url: req.url, auth: req.headers.authorization });
+    res.end('{}');
+  });
+  const catcherUrl = await listen(catcherServer);
+  redirectorServer = http.createServer((req, res) => {
+    redirectsMade++;
+    res.writeHead(307, { location: `${catcherUrl}${req.url}` });
+    res.end();
+  });
+  halfRedirectorServer = http.createServer((req, res) => {
+    if (req.url === '/v1/models') return res.end(JSON.stringify({ object: 'list', data: [{ id: 'campus-embed', object: 'model' }] }));
+    redirectsMade++;
+    res.writeHead(307, { location: `${catcherUrl}${req.url}` });
+    res.end();
+  });
+  redirectorUrl = await listen(redirectorServer);
+  halfRedirectorUrl = await listen(halfRedirectorServer);
   gatewayUrl = `${await listen(gatewayServer)}/v1`;
   ollamaUrl = await listen(ollamaServer);
 }, 60_000);
 
-afterAll(async () => { gatewayServer.close(); ollamaServer.close(); await testDb.close(); });
-beforeEach(() => { gateway.seen = []; gateway.answers = []; gateway.embeddings = true; ollama.seen = []; ollama.answers = []; ollama.tags = []; });
+afterAll(async () => { gatewayServer.close(); ollamaServer.close(); redirectorServer.close(); halfRedirectorServer.close(); catcherServer.close(); await testDb.close(); });
+beforeEach(() => { gateway.seen = []; gateway.answers = []; gateway.embeddings = true; ollama.seen = []; ollama.answers = []; ollama.tags = []; catcherReached = []; redirectsMade = 0; });
 
 // ── Calls through the routes ─────────────────────────────────────────────────
 
@@ -504,5 +530,45 @@ describe('the health check of providers under their own names', () => {
     // Other providers saved by earlier tests are checked too; these two carry their keys
     expect(gateway.seen.filter((x) => x.path === '/v1/models').some((x) => x.auth === 'Bearer gw-key')).toBe(true);
     expect(ollama.seen.filter((x) => x.path === '/api/tags').some((x) => x.auth === 'Bearer ol-key')).toBe(true);
+  });
+});
+
+describe('a provider whose address redirects to another server', () => {
+  const failureOf = async (route: { POST: unknown }, id: string) => (await (await post(route, id)).json());
+
+  it.each([
+    ['an OpenAI-compatible gateway', 'openai_compatible', '/v1'],
+    ['an Ollama provider', 'ollama', ''],
+  ])('fails the connection test for %s and sends nothing to the other server', async (_name, connectionType, path) => {
+    const { data } = await createProvider({ providerKey: `redir-test-${connectionType}`, connectionType, authType: 'api_key', apiKey: 'provider-key', baseUrl: `${redirectorUrl}${path}` });
+    const body = await failureOf(testConnectionRoute, data.id);
+    // The refusal is the answer, though it is longer than the stored status holds
+    expect(body.data).toMatchObject({ success: false, message: expect.stringMatching(/redirected to another server/) });
+    const saved = (await (await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${data.id}`), idParams(data.id))).json()).data;
+    expect(saved.lastConnectionStatus).toMatch(/^error: The server redirected to another server.{0,80}…$/);
+    expect(redirectsMade).toBe(1);
+    expect(catcherReached).toEqual([]);
+  });
+
+  it.each([
+    ['an OpenAI-compatible gateway', 'openai_compatible', '/v1'],
+    ['an Ollama provider', 'ollama', ''],
+  ])('fails Discover Models for %s and sends nothing to the other server', async (_name, connectionType, path) => {
+    const { data } = await createProvider({ providerKey: `redir-discover-${connectionType}`, connectionType, authType: 'api_key', apiKey: 'provider-key', baseUrl: `${redirectorUrl}${path}` });
+    const res = await post(discoverRoute, data.id);
+    // The route hides the cause from the caller; the discovery itself fails
+    expect(res.status).toBe(500);
+    expect(redirectsMade).toBe(1);
+    expect(catcherReached).toEqual([]);
+    expect(await modelsOf(data.id)).toEqual([]);
+  });
+
+  it('does not send the embeddings dimension probe (its key and text) to another server', async () => {
+    const { data } = await createProvider({ providerKey: 'redir-embed', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'provider-key', baseUrl: `${halfRedirectorUrl}/v1` });
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    // The model is still added, its dimensions left for the admin to set
+    expect(result).toMatchObject({ modelsAdded: 1, needsSetup: ['campus-embed: set its dimensions on the model'] });
+    expect(redirectsMade).toBe(1);
+    expect(catcherReached).toEqual([]);
   });
 });

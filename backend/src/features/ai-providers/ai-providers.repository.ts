@@ -325,7 +325,8 @@ export async function updateProviderConnectionStatus(
             .update(aiProviders)
             .set({
                 lastConnectionCheck: new Date(),
-                lastConnectionStatus: status,
+                // The column holds 100 characters: a longer error is cut to fit, not refused
+                lastConnectionStatus: status.length > 100 ? `${status.slice(0, 99)}…` : status,
                 updatedAt: new Date(),
             })
             .where(eq(aiProviders.id, id));

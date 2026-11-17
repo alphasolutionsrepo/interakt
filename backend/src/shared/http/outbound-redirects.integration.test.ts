@@ -75,6 +75,16 @@ describe('a redirect to another server', () => {
     expect(reached).toEqual([]);
   });
 
+  it('is refused by an Ollama provider for chat and embeddings too, not retried, and nothing reaches the other server', async () => {
+    const chat = await new OllamaAdapter().chat(request, adapterConfig()).catch((e: unknown) => e);
+    const embeddings = await new OllamaAdapter().generateEmbeddings({ texts: ['a visitor question'] }, adapterConfig()).catch((e: unknown) => e);
+    for (const error of [chat, embeddings]) {
+      expect(error).toBeInstanceOf(AdapterError);
+      expect(error).toMatchObject({ retryable: false, message: expect.stringMatching(/redirected to another server/) });
+    }
+    expect(reached).toEqual([]);
+  });
+
   it('is refused for an external Azure AI Search source (its key is a custom header), and said plainly', async () => {
     const result = await callAzureAISearch({ endpoint: redirectorUrl, indexName: 'products', apiKey: 'azure-key' }, { query: 'a visitor question', maxResults: 5 } as never);
     expect(result).toMatchObject({ success: false, error: expect.stringMatching(/^Azure AI Search: The server redirected to another server/) });
