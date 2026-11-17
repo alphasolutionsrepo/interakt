@@ -69,7 +69,8 @@ function mapProviderDtoToInsert(
     connectionType: input.connectionType ?? defaultConnectionType(input.providerKey),
     authType: input.authType,
     baseUrl: input.baseUrl,
-    apiKey: input.apiKey ?? null,
+    // No authentication, no key: a typed one would otherwise be sent
+    apiKey: input.authType === 'none' ? null : input.apiKey ?? null,
     isEnabled: input.isEnabled ?? false,
     settings: input.settings ?? {},
   };
@@ -662,7 +663,8 @@ export async function updateModel(
     if (input.dimensions !== undefined) updateData.dimensions = input.dimensions ?? null;
     if (input.canShortenVectors !== undefined) updateData.canShortenVectors = input.canShortenVectors;
     if (input.capabilities !== undefined) updateData.capabilities = input.capabilities;
-    if (input.isAvailable !== undefined) updateData.isAvailable = input.isAvailable;
+    // Switched on or off by an admin: discovery leaves it as set from now on
+    if (input.isAvailable !== undefined) { updateData.isAvailable = input.isAvailable; updateData.hiddenByDiscovery = false; }
     if (input.sortOrder !== undefined) updateData.sortOrder = input.sortOrder;
     if (input.inputCostPerMillionTokens !== undefined) updateData.inputCostPerMillionTokens = input.inputCostPerMillionTokens;
     if (input.outputCostPerMillionTokens !== undefined) updateData.outputCostPerMillionTokens = input.outputCostPerMillionTokens;
@@ -1072,7 +1074,8 @@ export async function discoverModels(
     const report = connectionTypeOf(provider) === 'ollama'
       ? await readOllamaModels(provider, timeoutMs)
       : await readOpenAICompatibleModels(provider, timeoutMs);
-    const result = await saveDiscoveredModels(providerId, report);
+    // A cloud service lists far more than an experience needs: new models wait for the admin
+    const result = await saveDiscoveredModels(providerId, report, { addOff: provider.providerType === 'cloud' });
     logger.info('Completed model discovery', { providerId, ...result });
     return result;
   } catch (error) {
@@ -1107,7 +1110,8 @@ async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promis
     };
   });
   // What Ollama has installed is the truth: every other model is hidden, seeded ones included
-  return { models, listed: installed.map((m) => m.name), hides: 'all' };
+  // An empty list (nothing pulled yet, or Ollama restarting) hides nothing
+  return { models, listed: installed.map((m) => m.name), hides: installed.length === 0 ? 'none' : 'all' };
 }
 
 /** Model ids that read as embedding models: "embed" in the name, or a well-known embedding family. */
@@ -1115,6 +1119,12 @@ const EMBEDDING_MODEL = /(embed|\bbge\b|\bbge-|\be5-|\bgte-|minilm|mxbai|sentenc
 
 /** Model ids an OpenAI-compatible list carries that aren't text or embedding models. */
 const NOT_TEXT_MODEL = /(whisper|tts|dall-e|gpt-image|image|audio|realtime|transcribe|moderation|speech|sora|rerank|ocr)/i;
+
+/**
+ * OpenAI text models that don't answer /chat/completions (completions-only or Responses-only),
+ * also behind a router's "openai/" prefix. Other "-instruct" models (Llama, Qwen) do chat.
+ */
+const NOT_CHAT_MODEL = /(^|\/)(babbage-|davinci-|gpt-3\.5-turbo-instruct|o1-pro|computer-use)/i;
 
 /** A context size some gateways report beside each model (vLLM max_model_len, others context_length). */
 function reportedContextWindow(model: Record<string, unknown>): number | undefined {
@@ -1140,7 +1150,7 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
     .filter((model): model is Record<string, unknown> & { id: string } => typeof model.id === 'string' && model.id.length > 0);
   // New models are added when their id reads as a text or embedding model; any other can be added by hand
   const models = listed
-    .filter((model) => !NOT_TEXT_MODEL.test(model.id))
+    .filter((model) => !NOT_TEXT_MODEL.test(model.id) && !NOT_CHAT_MODEL.test(model.id))
     .map((model): ReportedModel => {
       const contextWindow = reportedContextWindow(model);
       return {
@@ -1182,12 +1192,13 @@ async function embeddingDimensions(provider: AIProvider, modelKey: string): Prom
 }
 
 /**
- * Save the models a provider reported: new ones are added, saved ones it lists keep their
- * on/off state (gaining the context size it reports when they have none), and saved ones it no
- * longer lists are hidden as its report says; listing one again later leaves it off until an
- * admin switches it on. Ollama reports "name:latest" for a model saved as "name".
+ * Save the models a provider reported: new ones are added (switched off when `addOff`, for the
+ * admin to choose), and saved ones it no longer lists are hidden as its report says. A saved
+ * model it lists gains the context size it reports when it has none; one discovery hid is
+ * switched back on, while one an admin switched off stays off and is named in `leftOff`.
+ * Ollama reports "name:latest" for a model saved as "name".
  */
-async function saveDiscoveredModels(providerId: string, report: ProviderReport): Promise<ModelDiscoveryResult> {
+async function saveDiscoveredModels(providerId: string, report: ProviderReport, options: { addOff?: boolean } = {}): Promise<ModelDiscoveryResult> {
   const reported = report.models;
   const existingModels = await repository.listModelsByProvider(providerId);
   const sameModel = (key: string) => key.replace(/:latest$/, '');
@@ -1198,6 +1209,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
   const errors: string[] = [];
   const needsSetup: string[] = [];
   const leftOff: string[] = [];
+  const addedOff: string[] = [];
 
   for (const model of reported) {
     try {
@@ -1205,9 +1217,11 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
       if (existing) {
         const caps = (existing.capabilities ?? {}) as Record<string, unknown>;
         const reportedWindow = model.capabilities.contextWindow as number | undefined;
-        // A saved model stays on or off as it is: an admin may have switched it off on purpose
-        if (!existing.isAvailable) leftOff.push(existing.modelKey);
+        // Discovery switches back on only what it hid itself; an admin's choice stays
+        const comesBack = !existing.isAvailable && existing.hiddenByDiscovery;
+        if (!existing.isAvailable && !comesBack) leftOff.push(existing.modelKey);
         await repository.updateModel(existing.id, {
+          ...(comesBack && { isAvailable: true, hiddenByDiscovery: false }),
           // Only discovery's own models are hidden when an OpenAI-compatible service stops listing
           // them, so a saved model it lists keeps its origin there; for Ollama every model is its
           ...(report.hides === 'all' && { isDiscovered: true }),
@@ -1229,10 +1243,11 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
           dimensions,
           canShortenVectors: canShortenVectorsByDefault(model.modelKey, model.modelType),
           capabilities: model.capabilities,
-          isAvailable: true,
+          isAvailable: !options.addOff,
           isDiscovered: true,
           sortOrder: 100, // Discovered models at the end
         });
+        if (options.addOff) addedOff.push(model.modelKey);
         modelsAdded++;
       }
     } catch (error) {
@@ -1246,7 +1261,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
       && (report.hides === 'all' || (report.hides === 'discovered' && m.isDiscovered))
   );
   for (const model of modelsToMarkUnavailable) {
-    await repository.updateModelAvailability(model.id, false);
+    await repository.updateModelAvailability(model.id, false, true);
   }
 
   await clearModelCache(providerId);
@@ -1260,6 +1275,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
     errors,
     needsSetup,
     leftOff,
+    addedOff,
   };
 }
 

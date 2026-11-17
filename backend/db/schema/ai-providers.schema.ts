@@ -171,6 +171,9 @@ export const aiProviderModels = pgTable('ai_provider_models', {
   // Status
   isAvailable: boolean('is_available').default(true).notNull(),
   isDiscovered: boolean('is_discovered').default(false).notNull(),
+  // Switched off by Discover Models because the provider stopped listing it: discovery switches
+  // it back on when it is listed again. Cleared when an admin switches the model on or off.
+  hiddenByDiscovery: boolean('hidden_by_discovery').default(false).notNull(),
 
   // Display ordering
   sortOrder: integer('sort_order').default(0).notNull(),

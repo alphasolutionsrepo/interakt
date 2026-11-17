@@ -97,7 +97,8 @@ Many organisations run their own AI gateway or router in front of their models. 
 ### Good to know
 - A gateway may limit requests per key. Interakt waits for the time it asks (`Retry-After`) before trying again.
 - Discover Models keeps the context window a service reports and, on a provider set as Local (self-hosted), reads each new embedding model's dimensions with one short embedding request. It says when an embedding model's dimensions need setting on the model.
-- Discover Models never switches a saved model back on: a model you switched off, or one it hid when the service stopped listing it, stays off. It names those models so you can switch them on in **Manage Models**.
+- A model you switched off stays off when Discover Models runs again, and it names those models. One it hid because the service stopped listing it comes back on when listed again.
+- On a provider set as Cloud, new models are added switched off: switch on the ones you want in **Manage Models**.
 
 ## Setting system defaults
 

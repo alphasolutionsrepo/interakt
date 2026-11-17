@@ -681,13 +681,16 @@ export async function updateModel(
  */
 export async function updateModelAvailability(
     id: number,
-    isAvailable: boolean
+    isAvailable: boolean,
+    /** Whether Discover Models switched it off (so it may switch it back on) */
+    hiddenByDiscovery = false
 ): Promise<void> {
     try {
         await db
             .update(aiProviderModels)
             .set({
                 isAvailable,
+                hiddenByDiscovery,
                 updatedAt: new Date(),
             })
             .where(eq(aiProviderModels.id, id));

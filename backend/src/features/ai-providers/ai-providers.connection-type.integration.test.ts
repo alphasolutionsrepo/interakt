@@ -21,6 +21,7 @@ vi.mock('@/features/access/access.service', async () => (await import('@/shared/
 vi.mock('@/features/ai-service/ai-service.analytics', () => ({ trackUsage: vi.fn(), updateRealtimeMetrics: vi.fn() }));
 
 import * as discoverRoute from '@/app/api/ai-providers/[id]/discover-models/route';
+import * as modelRoute from '@/app/api/ai-provider-models/[id]/route';
 import * as providerRoute from '@/app/api/ai-providers/[id]/route';
 import * as testConnectionRoute from '@/app/api/ai-providers/[id]/test-connection/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
@@ -504,5 +505,91 @@ describe('the health check of providers under their own names', () => {
     // Other providers saved by earlier tests are checked too; these two carry their keys
     expect(gateway.seen.filter((x) => x.path === '/v1/models').some((x) => x.auth === 'Bearer gw-key')).toBe(true);
     expect(ollama.seen.filter((x) => x.path === '/api/tags').some((x) => x.auth === 'Bearer ol-key')).toBe(true);
+  });
+});
+
+describe('models discovery hid, and models an admin switched off (review 17 Nov)', () => {
+  const listedOn = async (id: string) => Object.fromEntries((await modelsOf(id)).map((m) => [m.modelKey, m.isAvailable]));
+  const switchModel = (modelId: number, isAvailable: boolean) =>
+    modelRoute.PUT(new NextRequest(`http://localhost/api/ai-provider-models/${modelId}`, { method: 'PUT', body: JSON.stringify({ isAvailable }) }),
+      { params: Promise.resolve({ id: String(modelId) }) });
+
+  it('come back when the service lists them again, when discovery hid them', async () => {
+    const { data } = await createProvider({ providerKey: 'gw-comeback', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    gateway.models = [{ id: 'campus-chat' }, { id: 'campus-chat-2' }];
+    await post(discoverRoute, data.id);
+    gateway.models = [{ id: 'campus-chat' }];
+    await post(discoverRoute, data.id);
+    expect(await listedOn(data.id)).toMatchObject({ 'campus-chat-2': false });
+
+    gateway.models = [{ id: 'campus-chat' }, { id: 'campus-chat-2' }];
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect(await listedOn(data.id)).toMatchObject({ 'campus-chat': true, 'campus-chat-2': true });
+    expect(result.leftOff).toEqual([]);
+  });
+
+  it('stay off when an admin switched them off, even after discovery had hidden them', async () => {
+    const { data } = await createProvider({ providerKey: 'gw-admin-off', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    gateway.models = [{ id: 'campus-chat' }, { id: 'campus-chat-2' }];
+    await post(discoverRoute, data.id);
+    gateway.models = [{ id: 'campus-chat' }];
+    await post(discoverRoute, data.id);
+    const hidden = (await modelsOf(data.id)).find((m) => m.modelKey === 'campus-chat-2')!;
+    // The admin turns it on and off again by hand: now it is the admin's choice
+    expect((await switchModel(hidden.id, true)).status).toBe(200);
+    expect((await switchModel(hidden.id, false)).status).toBe(200);
+
+    gateway.models = [{ id: 'campus-chat' }, { id: 'campus-chat-2' }];
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect(await listedOn(data.id)).toMatchObject({ 'campus-chat-2': false });
+    expect(result.leftOff).toEqual(['campus-chat-2']);
+  });
+
+  it('are not hidden when Ollama lists nothing (no model pulled yet)', async () => {
+    ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }];
+    const { data } = await createProvider({ providerKey: 'lab-empty', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    await post(discoverRoute, data.id);
+    ollama.tags = [];
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect(result.modelsRemoved).toBe(0);
+    expect(await listedOn(data.id)).toMatchObject({ 'qwen2.5:14b': true });
+  });
+
+  it('come back for Ollama once pulled again, when discovery hid them', async () => {
+    ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }, { name: 'llama3:8b', details: { parameter_size: '8B', quantization_level: 'Q4', family: 'llama' } }];
+    const { data } = await createProvider({ providerKey: 'lab-repull', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    await post(discoverRoute, data.id);
+    ollama.tags = [ollama.tags[0]];
+    await post(discoverRoute, data.id);
+    expect(await listedOn(data.id)).toMatchObject({ 'llama3:8b': false });
+    ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }, { name: 'llama3:8b', details: { parameter_size: '8B', quantization_level: 'Q4', family: 'llama' } }];
+    await post(discoverRoute, data.id);
+    expect(await listedOn(data.id)).toMatchObject({ 'llama3:8b': true });
+  });
+});
+
+describe('Discover Models on a cloud provider (review 17 Nov)', () => {
+  it("skips models that can't chat, and adds the rest switched off for the admin to choose", async () => {
+    const { data } = await createProvider({ providerKey: 'gw-cloud-chat', providerType: 'cloud', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    gateway.models = [{ id: 'babbage-002' }, { id: 'davinci-002' }, { id: 'gpt-3.5-turbo-instruct' }, { id: 'o1-pro' }, { id: 'computer-use-preview' }, { id: 'campus-chat' }];
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect((await modelsOf(data.id)).map((m) => [m.modelKey, m.isAvailable])).toEqual([['campus-chat', false]]);
+    expect(result.addedOff).toEqual(['campus-chat']);
+  });
+
+  it('adds new models switched on for a self-hosted (Local) provider', async () => {
+    const { data } = await createProvider({ providerKey: 'gw-local-chat', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    gateway.models = [{ id: 'campus-chat' }];
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect((await modelsOf(data.id))[0].isAvailable).toBe(true);
+    expect(result.addedOff).toEqual([]);
+  });
+});
+
+describe('a new provider with authentication set to None (review 17 Nov)', () => {
+  it('saves no key, even when one was typed', async () => {
+    const { status, data } = await createProvider({ providerKey: 'none-typed', connectionType: 'ollama', authType: 'none', apiKey: 'typed-key', baseUrl: ollamaUrl });
+    expect(status).toBe(201);
+    expect(data.hasApiKey).toBe(false);
   });
 });

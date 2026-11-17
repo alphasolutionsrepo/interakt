@@ -1,0 +1,1 @@
+ALTER TABLE "ai_provider_models" ADD COLUMN "hidden_by_discovery" boolean DEFAULT false NOT NULL;

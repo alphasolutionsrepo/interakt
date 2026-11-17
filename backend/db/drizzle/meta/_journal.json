@@ -295,6 +295,13 @@
       "when": 1794928893106,
       "tag": "0041_provider_connection_type",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794949152074,
+      "tag": "0042_model_hidden_by_discovery",
+      "breakpoints": true
     }
   ]
 }
