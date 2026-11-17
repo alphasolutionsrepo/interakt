@@ -6,6 +6,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { AdapterError } from '@/features/ai-service/adapters/types';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
@@ -394,7 +395,7 @@ export async function handleTestConnection(
 
 /**
  * POST /api/ai-providers/:id/discover-models
- * Discover models from provider (Ollama only)
+ * Discover models from the provider's own API (Ollama or OpenAI-compatible)
  */
 export async function handleDiscoverModels(
   request: NextRequest,
@@ -425,7 +426,8 @@ export async function handleDiscoverModels(
   } catch (error) {
     const err = error as Error;
 
-    if (err.message.includes('not found')) {
+    // Our own "no such provider"; the provider's own answer (a 404 from its API) is its error
+    if (!(error instanceof AdapterError) && err.message.includes('not found')) {
       return apiResponse.refused(error, 'NOT_FOUND', { operation: 'discoverModels' });
     }
 
