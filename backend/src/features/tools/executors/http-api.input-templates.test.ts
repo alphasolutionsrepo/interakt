@@ -1,0 +1,73 @@
+// src/features/tools/executors/http-api.input-templates.test.ts
+
+/**
+ * What the AI passes to an HTTP tool fills the URL's path and query, the query parameters,
+ * the headers and the body. The host and the authentication stay as the admin set them, so a
+ * request, and the secret it carries, always goes to the server the admin chose.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { executeHttpApi } from './http-api';
+
+const { resolveSecret } = vi.hoisted(() => ({ resolveSecret: vi.fn(async (name: string) => (name === 'orders_key' ? 'sk-orders' : null)) }));
+vi.mock('@/features/secrets/secrets.service', () => ({ resolveSecret }));
+
+const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+beforeEach(() => { vi.stubGlobal('fetch', fetchMock); });
+afterEach(() => { vi.unstubAllGlobals(); fetchMock.mockClear(); resolveSecret.mockClear(); });
+
+const tool = (overrides: Record<string, unknown>) => ({
+  baseUrl: 'https://api.example.com/orders',
+  method: 'GET',
+  responseMapping: { resultsPath: '$.items' },
+  authentication: { type: 'header', key: 'X-Api-Key', valueRef: 'orders_key' },
+  ...overrides,
+});
+const sentTo = () => fetchMock.mock.lastCall?.[0];
+const sentInit = () => fetchMock.mock.lastCall?.[1];
+
+describe('a host the AI would choose', () => {
+  it.each([
+    ['the whole host', 'https://{{input.host}}/orders'],
+    ['part of the host', 'https://api.example.com{{input.suffix}}/orders'],
+    ['the whole URL', '{{input.url}}'],
+  ])('is refused when the URL takes %s from input, and nothing is sent', async (_case, baseUrl) => {
+    const result = await executeHttpApi(tool({ baseUrl }), { host: 'elsewhere.test', suffix: '.elsewhere.test', url: 'https://elsewhere.test/x' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/host is fixed/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('stays out of reach through a path value', async () => {
+    await executeHttpApi(tool({ baseUrl: 'https://api.example.com/orders/{{input.id}}' }), { id: '@elsewhere.test/x?y=1#z' });
+    expect(new URL(sentTo()!).host).toBe('api.example.com');
+    expect(sentTo()).toBe('https://api.example.com/orders/%40elsewhere.test%2Fx%3Fy%3D1%23z');
+  });
+});
+
+describe('the authentication', () => {
+  it('uses the secret the admin named, whatever the input', async () => {
+    await executeHttpApi(tool({ authentication: { type: 'header', key: 'X-Api-Key', valueRef: '{{input.secret}}' } }), { secret: 'orders_key' });
+    expect(resolveSecret).toHaveBeenCalledWith('{{input.secret}}');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('input the admin placed', () => {
+  it('fills the path, query parameters, headers and body, and the secret goes to the admin\'s server', async () => {
+    await executeHttpApi(tool({
+      baseUrl: 'https://api.example.com/orders/{{input.id}}',
+      method: 'POST',
+      queryParams: { lang: '{{input.lang}}' },
+      headers: { 'X-Locale': '{{input.lang}}' },
+      bodyTemplate: { note: 'order {{input.id}}' },
+    }), { id: 'A-1', lang: 'da' });
+
+    expect(sentTo()).toBe('https://api.example.com/orders/A-1?lang=da');
+    const headers = sentInit()?.headers as Record<string, string>;
+    expect(headers['X-Locale']).toBe('da');
+    expect(headers['X-Api-Key']).toBe('sk-orders');
+    expect(JSON.parse(sentInit()?.body as string)).toEqual({ note: 'order A-1' });
+  });
+});

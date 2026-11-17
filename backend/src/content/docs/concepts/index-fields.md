@@ -122,7 +122,7 @@ Is the field's value returned in search results?
 - **On** for everything you want to display.
 - **Off** for internal-only fields (computed scores, raw embedding inputs, debug metadata).
 
-Default is on.
+Default is on. A search experience's API returns the fields that are on; a caller can ask for fewer of them with `includeFields`.
 
 #### Boost value
 A relevance multiplier. Default is 1. Set higher to make matches in this field count more in ranking.

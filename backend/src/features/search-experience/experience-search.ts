@@ -396,6 +396,8 @@ async function executeMultiIndexSearch(
     source: options.source,
     experienceId: experience.id,
     experienceSlug: experience.slug,
+    // A visitor's field list never adds fields the index keeps out of responses
+    shownFieldsOnly: true,
     ...(hybridConfig && {
       hybridConfig: {
         lexicalWeight: hybridConfig.lexicalWeight,

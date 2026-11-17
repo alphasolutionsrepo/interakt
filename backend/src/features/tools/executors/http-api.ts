@@ -10,6 +10,8 @@
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import type { ToolExecutionResult } from '../tools.executor';
 
+import { INPUT_PATTERN, resolveUrlTemplate } from './http-url';
+
 // ============================================================================
 // CONFIG TYPES
 // ============================================================================
@@ -36,11 +38,11 @@ interface HttpApiConfig {
 
 // ============================================================================
 // {{input.field}} TEMPLATE RESOLUTION
-// Replaces {{input.fieldName}} with values from the AI-provided input.
+// Replaces {{input.fieldName}} with values from the AI-provided input, in the URL's path and
+// query, the query parameters, the headers and the body. The host, the authentication and the
+// rest of the config stay as the admin wrote them.
 // {{secret:name}} refs are already resolved before this executor runs.
 // ============================================================================
-
-const INPUT_PATTERN = /\{\{input\.([a-zA-Z0-9_]+)\}\}/g;
 
 function resolveInputTemplates(val: unknown, input: Record<string, unknown>): unknown {
   if (typeof val === 'string') {
@@ -119,8 +121,18 @@ export async function executeHttpApi(
     return { success: false, error: 'HTTP API config is missing responseMapping.resultsPath' };
   }
 
-  // 1. Resolve {{input.field}} templates throughout the entire config
-  const resolved = resolveInputTemplates(cfg, input) as HttpApiConfig;
+  // 1. Fill {{input.field}} templates in the URL, query parameters, headers and body
+  const baseUrl = resolveUrlTemplate(cfg.baseUrl, input);
+  if (!baseUrl) {
+    return { success: false, error: 'HTTP API baseUrl must be a full URL whose host is fixed; {{input.field}} can fill only its path and query' };
+  }
+  const resolved: HttpApiConfig = {
+    ...cfg,
+    baseUrl,
+    headers: resolveInputTemplates(cfg.headers, input) as HttpApiConfig['headers'],
+    queryParams: resolveInputTemplates(cfg.queryParams, input) as HttpApiConfig['queryParams'],
+    bodyTemplate: resolveInputTemplates(cfg.bodyTemplate, input) as HttpApiConfig['bodyTemplate'],
+  };
 
   // 2. Build query params (may include static values + resolved templates)
   const params = new URLSearchParams();
