@@ -100,7 +100,7 @@ describe('a redirect to another server', () => {
       serverUrl: `${redirectorUrl}/mcp`, transport: 'streamable-http', timeoutMs: 5000,
       authConfig: { type: 'header', headerName: 'X-Api-Key', secretRef: 'mcp-key' } as never,
     }).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ message: expect.stringMatching(/redirected to another server/) });
     expect(reached).toEqual([]);
   });
 });

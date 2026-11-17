@@ -226,11 +226,10 @@ async function checkProviderHealth(
   const { url, headers, checkType } = providerHealthRequest(provider);
 
   try {
-    const response = await fetchOnSameServer(url, {
-      method: 'GET',
-      signal: AbortSignal.timeout(timeout),
-      headers,
-    });
+    // A vendor's status page is a fixed public address with nothing of ours sent: its own
+    // redirects are followed (a vendor moves it). The provider itself is checked on its server only.
+    const request = { method: 'GET', signal: AbortSignal.timeout(timeout), headers };
+    const response = checkType === 'status-page' ? await fetch(url, request) : await fetchOnSameServer(url, request);
 
     const responseTimeMs = Date.now() - startTime;
 

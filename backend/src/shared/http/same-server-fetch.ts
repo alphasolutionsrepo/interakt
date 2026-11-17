@@ -43,7 +43,7 @@ export async function fetchOnSameServer(url: string, init: RequestInit): Promise
     const from = new URL(current);
     const next = new URL(location, from);
     if (!sameServer(from, next)) {
-      throw new RedirectedElsewhereError(`The server redirected to another server (${next.host}); Interakt follows redirects only on the same server, so use the address it redirects to`);
+      throw new RedirectedElsewhereError('The server redirected to another server; Interakt follows redirects only on the same server');
     }
     if (redirects >= MAX_REDIRECTS) throw new RedirectedElsewhereError(`The server redirected more than ${MAX_REDIRECTS} times`);
     // As browsers do: 303, and 301/302 after a POST, continue as a GET without the body

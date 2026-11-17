@@ -19,7 +19,7 @@ import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } fro
 import * as searchIndexRepository from '@/features/search-index/search-index.repository';
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import * as toolsService from '@/features/tools/tools.service';
-import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
 import { createLogger } from '@/shared/logger/logger';
 import { inferFieldRole } from '@/shared/utils/field-roles';
 
@@ -474,7 +474,9 @@ async function probeExternalConnection(
         signal: controller.signal,
         headers: { 'User-Agent': 'Interakt-HealthCheck/1.0' },
       });
-    } catch {
+    } catch (error) {
+      // A redirect to another server answers the same to a GET
+      if (error instanceof RedirectedElsewhereError) throw error;
       // HEAD might fail on some providers, try GET
       response = await fetchOnSameServer(baseUrl, {
         method: 'GET',
