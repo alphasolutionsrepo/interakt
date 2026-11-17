@@ -64,7 +64,7 @@ describe('a redirect to another server', () => {
   it('is refused for an OpenAI-compatible provider: no retry, and nothing reaches the other server', async () => {
     const error = await new OpenAIAdapter().chat(request, adapterConfig()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(AdapterError);
-    expect(error).toMatchObject({ retryable: false, message: expect.stringMatching(/redirected to another server/) });
+    expect(error).toMatchObject({ retryable: false, message: expect.stringMatching(/redirected to another server \(127\.0\.0\.1:\d+\)/) });
     expect(redirects).toBe(1);
     expect(reached).toEqual([]);
   });

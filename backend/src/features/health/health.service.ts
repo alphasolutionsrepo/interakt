@@ -15,7 +15,7 @@ import { defaultConnectionType, type AIConnectionType } from '@/features/ai-prov
 import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
 import { getDefaultSearchEngineProvider } from '@/features/search/providers';
 import { clientAddressSetup, SHARED_LIMIT_FACTOR, type ClientAddressSetup } from '@/shared/api/client-ip';
-import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('health-service');
@@ -265,6 +265,11 @@ async function checkProviderHealth(
   } catch (error) {
     const responseTimeMs = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    // Health is read by roles that don't see provider addresses: the other server isn't named
+    if (error instanceof RedirectedElsewhereError) {
+      return { healthy: false, message: 'Redirected to another server (not followed)', responseTimeMs, endpointTested: url };
+    }
 
     // Provide user-friendly error messages
     if (errorMessage.includes('fetch failed') || errorMessage.includes('ECONNREFUSED')) {

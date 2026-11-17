@@ -41,7 +41,10 @@ describe('the provider health check and redirects', () => {
     fetchMock.mockImplementation(async () => new Response(null, { status: 307, headers: { location: 'https://elsewhere.example.com/v1/models' } }));
 
     const health = await checkAIProvidersHealth();
-    expect((health.details!.providers as Detail[])[0]).toMatchObject({ healthy: false });
+    const detail = (health.details!.providers as Detail[])[0];
+    expect(detail).toMatchObject({ healthy: false, message: 'Redirected to another server (not followed)' });
+    // Health readers may not see provider addresses: the other server isn't named
+    expect(JSON.stringify(health)).not.toContain('elsewhere.example.com');
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'manual' });
   });
