@@ -106,6 +106,8 @@ describe('withResilience when the caller stops waiting during the wait before a 
     expect(settled).toBe(true);
     expect(await call).toBeInstanceOf(CancelledRequestError);
     expect(fn).toHaveBeenCalledOnce();
+    // The caller leaving is not the provider failing
+    expect(getCircuitStatus('prov-backoff')).toMatchObject({ state: 'closed', failures: 0 });
   });
 
   it('still counts a provider failure when the caller waited to the end', async () => {

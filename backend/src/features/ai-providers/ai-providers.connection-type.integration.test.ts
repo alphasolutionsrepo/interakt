@@ -362,6 +362,24 @@ describe("a provider's API key", () => {
     expect(ollama.seen[0].auth).toBeUndefined();
   });
 
+  it('can be left for later when authentication becomes API key: the connection test asks for it', async () => {
+    const { data } = await createProvider({ providerKey: 'key-later', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    const { status, data: updated } = await updateProvider(data.id, { connectionType: 'openai_compatible', authType: 'api_key', baseUrl: gatewayUrl, apiKey: '' });
+    expect(status).toBe(200);
+    expect(updated).toMatchObject({ authType: 'api_key', hasApiKey: false });
+
+    const test = (await (await post(testConnectionRoute, data.id)).json()).data;
+    expect(test).toMatchObject({ success: false, message: expect.stringMatching(/API key is required/) });
+    expect(gateway.seen).toEqual([]);
+  });
+
+  it('is not saved when one is typed with authentication set to none', async () => {
+    const { data } = await createProvider({ providerKey: 'typed-none', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    const { status, data: updated } = await updateProvider(data.id, { authType: 'none', apiKey: 'typed-key' });
+    expect(status).toBe(200);
+    expect(updated).toMatchObject({ authType: 'none', hasApiKey: false });
+  });
+
   it('stays for a new path on the same server', async () => {
     const { data } = await createProvider({ providerKey: 'same-server', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
     const { status, data: updated } = await updateProvider(data.id, { baseUrl: gatewayUrl.replace(/\/v1$/, '/v2'), apiKey: '' });
