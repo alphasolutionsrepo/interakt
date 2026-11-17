@@ -6,8 +6,10 @@
 // patterns in string fields. The apiKeySecret field is a bare secret name
 // (like http-api's authentication.valueRef), so we resolve it here directly.
 
-import { resolveSecret } from '@/features/secrets/secrets.service';
 import type { ToolExecutionResult } from '../tools.executor';
+
+import { resolveSecret } from '@/features/secrets/secrets.service';
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
 
 // ============================================================================
 // CONFIG TYPES
@@ -100,7 +102,7 @@ export async function executeWebSearch(
   const timer = setTimeout(() => controller.abort(), 15_000);
 
   try {
-    const response = await fetch(TAVILY_SEARCH_URL, {
+    const response = await fetchOnSameServer(TAVILY_SEARCH_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

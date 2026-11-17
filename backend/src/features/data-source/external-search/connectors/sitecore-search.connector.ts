@@ -12,9 +12,7 @@
  * are facetable. Admins refine the result in the schema editor.
  */
 
-import type { DataSourceField } from '@/db/schema/data-sources.schema';
-import type { FilterClause } from '@/features/search/search.types';
-import { inferFieldRole } from '@/shared/utils/field-roles';
+import { bodyExcerpt, readResponseBody } from '../engines/response-body';
 import type {
   ExternalConnection,
   ExternalSearchConnector,
@@ -22,6 +20,7 @@ import type {
   ExternalSearchResult,
 } from '../external-search.types';
 import { EXTERNAL_REQUEST_TIMEOUT_MS, ExternalSearchError } from '../external-search.types';
+
 import {
   buildSitecoreRequest,
   mapSitecoreResponse,
@@ -29,7 +28,14 @@ import {
   type SitecoreFieldTypes,
   type SitecoreRequestInput,
 } from './sitecore-search.request';
-import { bodyExcerpt, readResponseBody } from '../engines/response-body';
+
+import type { DataSourceField } from '@/db/schema/data-sources.schema';
+import type { FilterClause } from '@/features/search/search.types';
+import { connectFailure, fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { inferFieldRole } from '@/shared/utils/field-roles';
+
+
+
 
 // ============================================================================
 // HTTP
@@ -73,7 +79,7 @@ async function callSitecore(
   let response: Response;
   let answer: Awaited<ReturnType<typeof readResponseBody>>;
   try {
-    response = await fetch(settings.endpoint, {
+    response = await fetchOnSameServer(settings.endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -85,7 +91,7 @@ async function callSitecore(
       SITECORE,
       (error as Error).name === 'TimeoutError'
         ? 'Sitecore Search request timed out'
-        : `Network error connecting to Sitecore Search: ${(error as Error).message}`,
+        : connectFailure('Sitecore Search', error),
     );
   }
 

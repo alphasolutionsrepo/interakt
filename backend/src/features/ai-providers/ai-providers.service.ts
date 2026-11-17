@@ -5,13 +5,7 @@
  * Business logic, caching, type transformations, and integrations
  */
 
-import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
-import { AdapterError, errorFromResponse, noAnswerError } from '@/features/ai-service/adapters/types';
-import { CacheManager } from '@/shared/cache/cache-manager';
-import { createLogger } from '@/shared/logger/logger';
 import * as repository from './ai-providers.repository';
-import { canShortenVectorsByDefault } from './shortenable-embeddings';
-import { defaultConnectionType, type AIConnectionType } from './ai-providers.validation';
 import type {
   // DTOs from validation
   CreateAIProviderInput,
@@ -41,6 +35,15 @@ import type {
   NewAIProviderModel,
   AIModelType,
 } from './ai-providers.types';
+import { defaultConnectionType, type AIConnectionType } from './ai-providers.validation';
+import { canShortenVectorsByDefault } from './shortenable-embeddings';
+
+import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
+import { AdapterError, errorFromResponse, noAnswerError } from '@/features/ai-service/adapters/types';
+import { CacheManager } from '@/shared/cache/cache-manager';
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { createLogger } from '@/shared/logger/logger';
+
 
 const logger = createLogger('ai-providers-service');
 
@@ -923,7 +926,7 @@ async function testOllamaConnection(provider: AIProvider): Promise<ConnectionTes
   const startTime = Date.now();
 
   try {
-    const response = await fetch(`${provider.baseUrl}/api/tags`, {
+    const response = await fetchOnSameServer(`${provider.baseUrl}/api/tags`, {
       method: 'GET',
       headers: ollamaHeaders(provider.apiKey),
       signal: AbortSignal.timeout(10000), // 10 second timeout
@@ -985,7 +988,7 @@ async function testOpenAICompatibleConnection(provider: AIProvider): Promise<Con
   }
 
   try {
-    const response = await fetch(`${provider.baseUrl}/models`, {
+    const response = await fetchOnSameServer(`${provider.baseUrl}/models`, {
       method: 'GET',
       headers: provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {},
       signal: AbortSignal.timeout(10000),
@@ -1095,7 +1098,7 @@ export async function discoverModels(
 async function readModelList(provider: AIProvider, path: string, headers: Record<string, string>, timeoutMs: number): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetch(`${provider.baseUrl}${path}`, { method: 'GET', headers, signal: AbortSignal.timeout(timeoutMs) });
+    response = await fetchOnSameServer(`${provider.baseUrl}${path}`, { method: 'GET', headers, signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     throw noAnswerError(error, provider.providerKey);
   }
@@ -1160,7 +1163,7 @@ interface OllamaShown { capabilities?: string[]; contextLength?: number; embeddi
  */
 async function ollamaShown(provider: AIProvider, model: string): Promise<OllamaShown> {
   try {
-    const response = await fetch(`${provider.baseUrl}/api/show`, {
+    const response = await fetchOnSameServer(`${provider.baseUrl}/api/show`, {
       method: 'POST',
       headers: ollamaHeaders(provider.apiKey, true),
       body: JSON.stringify({ model }),
@@ -1273,7 +1276,7 @@ async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: numbe
 /** An embedding model's vector size, from one short embedding; null when the service won't say. */
 async function embeddingDimensions(provider: AIProvider, modelKey: string): Promise<number | null> {
   try {
-    const response = await fetch(`${provider.baseUrl}/embeddings`, {
+    const response = await fetchOnSameServer(`${provider.baseUrl}/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(provider.apiKey && { Authorization: `Bearer ${provider.apiKey}` }) },
       body: JSON.stringify({ model: modelKey, input: 'dimensions' }),

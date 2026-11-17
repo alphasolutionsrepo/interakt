@@ -19,6 +19,8 @@ import type {
     AIOperation,
 } from '../ai-service.types';
 
+import { RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
+
 // ============================================================================
 // ADAPTER INTERFACE
 // ============================================================================
@@ -162,6 +164,8 @@ export async function errorFromResponse(
 export function noAnswerError(error: unknown, providerKey: string, signal?: AbortSignal): AdapterError {
     if (error instanceof AdapterError) return error;
     if (wasAborted(error, signal)) return abortedRequestError(providerKey, signal);
+    // A redirect to another server answers the same on every try
+    if (error instanceof RedirectedElsewhereError) return new AdapterError(error.message, providerKey, undefined, false, error);
     return new AdapterError(`Network error: ${(error as Error).message}`, providerKey, undefined, true, error as Error);
 }
 

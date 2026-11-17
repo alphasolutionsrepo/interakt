@@ -7,6 +7,7 @@
  * Uses native fetch (no SDK dependency).
  */
 
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
 import type { WebSearchResponse, WebSearchOptions } from './web-search.types';
 import { createLogger } from '@/shared/logger/logger';
 
@@ -56,7 +57,7 @@ export async function searchWeb(
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(TAVILY_API_URL, {
+    const response = await fetchOnSameServer(TAVILY_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

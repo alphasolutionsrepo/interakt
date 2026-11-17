@@ -7,11 +7,12 @@
 // The authentication.valueRef field is stored as a raw secret name
 // (not a {{secret:...}} template), so we resolve it here directly.
 
-import { resolveSecret } from '@/features/secrets/secrets.service';
 import type { ToolExecutionResult } from '../tools.executor';
 
 import { FIXED_HOST_MESSAGE, INPUT_PATTERN, resolveUrlTemplate, unresolvedSecretNames, urlProblemMessage } from './http-url';
-import { fetchOnSameServer, RedirectedElsewhereError } from './same-server-fetch';
+
+import { resolveSecret } from '@/features/secrets/secrets.service';
+import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
 
 // ============================================================================
 // CONFIG TYPES

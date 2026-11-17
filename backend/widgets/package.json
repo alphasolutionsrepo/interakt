@@ -6,7 +6,7 @@
   "description": "Drop-in search and chat widgets for Interakt. Built as a self-contained IIFE bundle that exposes window.SearchDropinUI and window.ChatDropinUI.",
   "type": "module",
   "engines": {
-    "node": ">=24.0.0 <25.0.0"
+    "node": ">=24.22.1 <25.0.0"
   },
   "scripts": {
     "dev": "vite build --watch",

@@ -22,13 +22,14 @@ import type {
     TokenUsage,
     ResponseFormat,
 } from '../ai-service.types';
-
-import { createLogger } from '@/shared/logger/logger';
-
 import { estimateChatUsage } from '../utils/token-counter';
+
 import { ollamaHeaders } from './ollama-headers';
-import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseNDJSONStream, requestSignal, wasAborted } from './types';
+import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
+
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ollama-adapter');
 
@@ -105,7 +106,7 @@ function takesThinkLevels(config: AdapterConfig): Promise<boolean> {
 /** The model's family as Ollama's /api/show reports it, or undefined when it can't say */
 async function modelFamily(config: AdapterConfig): Promise<string | undefined> {
     try {
-        const response = await fetch(`${config.baseUrl}/api/show`, {
+        const response = await fetchOnSameServer(`${config.baseUrl}/api/show`, {
             method: 'POST',
             headers: ollamaHeaders(config.apiKey, true),
             body: JSON.stringify({ model: config.modelKey }),
@@ -460,7 +461,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
         try {
-            const response = await fetch(url, {
+            const response = await fetchOnSameServer(url, {
                 method: 'POST',
                 headers: ollamaHeaders(config.apiKey, true),
                 body: JSON.stringify(body),

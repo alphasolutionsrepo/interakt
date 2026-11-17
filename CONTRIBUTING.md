@@ -5,7 +5,7 @@ the conventions we follow, and what we expect on a pull request.
 
 ## Local development
 
-**Prerequisites:** Node.js 24 (see [`.nvmrc`](.nvmrc)) and Docker + Docker Compose.
+**Prerequisites:** Node.js 24.22.1 or a later 24.x (see [`.nvmrc`](.nvmrc)) and Docker + Docker Compose.
 
 ### Backend (admin dashboard + APIs)
 
