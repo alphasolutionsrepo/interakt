@@ -1055,8 +1055,9 @@ interface ReportedModel {
 
 /**
  * Discover a provider's models from its own API (Ollama's installed models, or an
- * OpenAI-compatible /models list) and save them: new ones are added, listed ones are
- * available, and every model it doesn't list is hidden.
+ * OpenAI-compatible /models list) and save them: new ones are added, saved ones keep their
+ * on/off state (an admin switches them on), and models it no longer lists are hidden as the
+ * provider's report says.
  */
 export async function discoverModels(
   providerId: string,
@@ -1181,10 +1182,10 @@ async function embeddingDimensions(provider: AIProvider, modelKey: string): Prom
 }
 
 /**
- * Save the models a provider reported: new ones are added, saved ones it lists are available
- * (with the context size it reports when they have none), and saved ones it no longer lists are
- * hidden as its report says; listing one again later makes it available. Ollama reports
- * "name:latest" for a model saved as "name".
+ * Save the models a provider reported: new ones are added, saved ones it lists keep their
+ * on/off state (gaining the context size it reports when they have none), and saved ones it no
+ * longer lists are hidden as its report says; listing one again later leaves it off until an
+ * admin switches it on. Ollama reports "name:latest" for a model saved as "name".
  */
 async function saveDiscoveredModels(providerId: string, report: ProviderReport): Promise<ModelDiscoveryResult> {
   const reported = report.models;

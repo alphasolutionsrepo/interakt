@@ -25,6 +25,7 @@ import * as providerRoute from '@/app/api/ai-providers/[id]/route';
 import * as testConnectionRoute from '@/app/api/ai-providers/[id]/test-connection/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
 import { generateText, streamChat } from '@/features/ai-service/ai-service.service';
+import { checkAIProvidersHealth } from '@/features/health/health.service';
 import { sql } from 'drizzle-orm';
 
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
@@ -484,4 +485,24 @@ describe('Retry-After on a stream and on Ollama', () => {
     const [first, second] = ollama.seen.filter((x) => x.path === '/api/generate');
     expect(second.at - first.at).toBeGreaterThanOrEqual(2900);
   }, 20_000);
+});
+
+describe('the health check of providers under their own names', () => {
+  it('asks each provider the way its connection type answers, with its key', async () => {
+    ollama.tags = [];
+    await createProvider({ providerKey: 'health-gw', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    await createProvider({ providerKey: 'health-lab', connectionType: 'ollama', authType: 'api_key', apiKey: 'ol-key', baseUrl: ollamaUrl });
+    // Named openai but on another server: that server is checked, not OpenAI's status page
+    await createProvider({ providerKey: 'openai', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+
+    const health = await checkAIProvidersHealth();
+    const byKey = Object.fromEntries((health.details!.providers as Array<{ key: string; healthy: boolean; endpointTested: string }>).map((p) => [p.key, p]));
+
+    expect(byKey['health-gw']).toMatchObject({ healthy: true, endpointTested: `${gatewayUrl}/models` });
+    expect(byKey['health-lab']).toMatchObject({ healthy: true, endpointTested: `${ollamaUrl}/api/tags` });
+    expect(byKey.openai).toMatchObject({ healthy: true, endpointTested: `${gatewayUrl}/models` });
+    // Other providers saved by earlier tests are checked too; these two carry their keys
+    expect(gateway.seen.filter((x) => x.path === '/v1/models').some((x) => x.auth === 'Bearer gw-key')).toBe(true);
+    expect(ollama.seen.filter((x) => x.path === '/api/tags').some((x) => x.auth === 'Bearer ol-key')).toBe(true);
+  });
 });
