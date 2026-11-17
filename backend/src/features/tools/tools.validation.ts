@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { FIXED_HOST_MESSAGE, hasFixedHost } from './executors/http-url';
+import { urlProblemMessage } from './executors/http-url';
 
 // ============================================================================
 // TOOL TYPE CONSTANTS
@@ -142,7 +142,10 @@ function configProblem(
 }
 
 const httpExecutorConfigSchema = z.object({
-  baseUrl: z.string().refine(hasFixedHost, { message: FIXED_HOST_MESSAGE }),
+  baseUrl: z.string().superRefine((url, ctx) => {
+    const message = urlProblemMessage(url);
+    if (message) ctx.addIssue({ code: 'custom', message });
+  }),
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   headers: z.record(z.string()).optional(),
   queryParams: z.record(z.string()).optional(),

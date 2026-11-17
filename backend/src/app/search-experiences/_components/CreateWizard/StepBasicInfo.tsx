@@ -20,9 +20,9 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import {
-  generateSlugFromName,
   type WizardFormData,
 } from '@/features/search-experience/search-experience.client';
+import { generateSlugFromName } from '@/shared/utils/slug';
 import { useSlugAvailability } from '../../_lib/hooks';
 import { ExperienceSources, useSourceOptions } from '../ExperienceSources';
 
