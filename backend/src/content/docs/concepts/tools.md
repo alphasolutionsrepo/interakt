@@ -163,7 +163,7 @@ Two kinds of templating in tool configs:
 - `{{input.fieldName}}` — values the AI passes when invoking the tool. These come from the input schema.
 - `{{secret:name}}` — references to the secrets vault.
 
-Both work in URLs, headers, body templates, and query parameters of HTTP tools. In the URL, `{{input.fieldName}}` fills the path and query, each value encoded as one part, and the host stays the one you set, so every call goes to your server.
+Both work in URLs, headers, body templates, and query parameters of HTTP tools. In the URL, `{{input.fieldName}}` fills the path and query, each value encoded as one part, and the host and the path you wrote stay as you set them, so every call goes to your server and endpoint.
 
 ## Editing a tool
 

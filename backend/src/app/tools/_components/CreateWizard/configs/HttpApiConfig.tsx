@@ -258,6 +258,7 @@ export function HttpApiConfig({ value, onChange, errors }: HttpApiConfigProps) {
           <p className="text-xs text-muted-foreground">
             Supports <code className="font-mono bg-muted px-1 rounded text-[11px]">{'{{secret:name}}'}</code> and{' '}
             <code className="font-mono bg-muted px-1 rounded text-[11px]">{'{{input.field}}'}</code> templates.
+            Input fills the path and query; the host stays as you write it.
           </p>
         </div>
         <div className="space-y-1.5">

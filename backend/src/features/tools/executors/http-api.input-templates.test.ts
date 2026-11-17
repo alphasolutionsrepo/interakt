@@ -32,8 +32,10 @@ describe('a host the AI would choose', () => {
     ['the whole host', 'https://{{input.host}}/orders'],
     ['part of the host', 'https://api.example.com{{input.suffix}}/orders'],
     ['the whole URL', '{{input.url}}'],
+    ['the port', 'https://api.example.com:{{input.port}}/orders'],
+    ['the scheme', '{{input.scheme}}://api.example.com/orders'],
   ])('is refused when the URL takes %s from input, and nothing is sent', async (_case, baseUrl) => {
-    const result = await executeHttpApi(tool({ baseUrl }), { host: 'elsewhere.test', suffix: '.elsewhere.test', url: 'https://elsewhere.test/x' });
+    const result = await executeHttpApi(tool({ baseUrl }), { host: 'elsewhere.test', suffix: '.elsewhere.test', url: 'https://elsewhere.test/x', port: '8443', scheme: 'http' });
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/host is fixed/);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -43,6 +45,28 @@ describe('a host the AI would choose', () => {
     await executeHttpApi(tool({ baseUrl: 'https://api.example.com/orders/{{input.id}}' }), { id: '@elsewhere.test/x?y=1#z' });
     expect(new URL(sentTo()!).host).toBe('api.example.com');
     expect(sentTo()).toBe('https://api.example.com/orders/%40elsewhere.test%2Fx%3Fy%3D1%23z');
+  });
+});
+
+describe("a path the AI would leave", () => {
+  it.each([
+    ['..', 'https://api.example.com/orders/{{input.id}}/items', { id: '..' }],
+    ['.', 'https://api.example.com/orders/{{input.id}}/items', { id: '.' }],
+    ['.. made of two values', 'https://api.example.com/orders/{{input.a}}{{input.b}}/items', { a: '.', b: '.' }],
+  ])('is refused for a %s segment, and nothing is sent', async (_case, baseUrl, input) => {
+    const result = await executeHttpApi(tool({ baseUrl }), input);
+    expect(result.success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps dots that are part of a value', async () => {
+    await executeHttpApi(tool({ baseUrl: 'https://api.example.com/files/{{input.name}}' }), { name: '..report.v2' });
+    expect(sentTo()).toBe('https://api.example.com/files/..report.v2');
+  });
+
+  it('leaves an empty segment for a field the AI did not pass', async () => {
+    await executeHttpApi(tool({ baseUrl: 'https://api.example.com/orders/{{input.id}}' }), {});
+    expect(sentTo()).toBe('https://api.example.com/orders/');
   });
 });
 

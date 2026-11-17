@@ -14,8 +14,18 @@ function fixedOrigin(baseUrl: string): string | null {
 }
 
 /**
+ * Whether the URL's path has a "." or ".." segment, which URL parsing removes along with the
+ * segment before it ("%2e" counts as a dot).
+ */
+function hasDotSegment(url: string): boolean {
+  const path = url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, '').split(/[?#]/)[0];
+  return path.split('/').some((segment) => /^(\.|%2e){1,2}$/i.test(segment));
+}
+
+/**
  * The URL with input filled in, each value encoded as one URL part. Null when input would
- * choose the host: the URL reaches the same server whatever the input.
+ * choose the host, or step out of the admin's path with a "." or ".." segment: the URL reaches
+ * the server and path the admin set, whatever the input.
  */
 export function resolveUrlTemplate(baseUrl: string, input: Record<string, unknown>): string | null {
   const origin = fixedOrigin(baseUrl);
@@ -24,5 +34,6 @@ export function resolveUrlTemplate(baseUrl: string, input: Record<string, unknow
     const v = input[field];
     return encodeURIComponent(v != null ? String(v) : '');
   });
+  if (hasDotSegment(filled) && !hasDotSegment(baseUrl.replace(INPUT_PATTERN, 'a'))) return null;
   return originOf(filled) === origin ? filled : null;
 }
