@@ -291,6 +291,17 @@ describe('the query rewrite trace step', () => {
     expect(telemetry.steps.find((s) => s.name === 'query_understanding.rewrite')?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe('skipped');
   });
 
+  it('are both absent, and the query is sent as typed, with AI summaries off', async () => {
+    featureSwitchesStub.off.add('ai-summaries');
+    modelAnswers();
+    await search(experience());
+
+    expect(aiService.chat).not.toHaveBeenCalled();
+    expect(externalRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
+    expect(managedRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
+    expect(telemetry.steps.map((s) => s.name)).toEqual(['search_experience.search']);
+  });
+
   it('is absent, and the query is sent as typed, with query understanding off', async () => {
     modelAnswers();
     await search(experience({ enabled: false }, 'external'));

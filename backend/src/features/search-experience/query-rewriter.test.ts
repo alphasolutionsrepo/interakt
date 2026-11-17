@@ -9,7 +9,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resolveTimeoutMs, rewriteQueryForExternalSearch } from './query-interpreter';
-import { MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
 
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 import * as aiService from '@/features/ai-service';
@@ -20,6 +19,11 @@ const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/feature-switches/feature-switches.service', async () => (await import('@/shared/test/feature-switches-stub')).featureSwitchesService);
 vi.mock('@/features/ai-service', () => ({ chat: vi.fn() }));
+// Cache keys are logged with every cache log switch on, as in development
+vi.mock('@/config/cache.config', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/config/cache.config')>();
+    return { cacheConfig: { ...actual.cacheConfig, logging: { logHits: true, logMisses: true, logOperations: true } } };
+});
 vi.mock('@/features/search-index/search-index.service', () => ({ getSearchIndexById: vi.fn() }));
 vi.mock('@/features/search/search.service', () => ({ searchById: vi.fn() }));
 
@@ -72,8 +76,12 @@ describe('rewriteQueryForExternalSearch', () => {
         expect(logs.some((l) => l.message === 'Query rewritten for external search')).toBe(true);
     });
 
-    it('keeps the visitor\'s words and the rewrite out of the application log', async () => {
-        await rewrite(aiConfig());
+    it('keeps the visitor\'s words and the rewrite out of the application log, cache lines included', async () => {
+        const experienceId = freshExperience();
+        await rewrite(aiConfig(), QUESTION, experienceId);
+        await rewrite(aiConfig(), QUESTION, experienceId);
+        // The cache did log its keys
+        expect(logs.some((l) => l.message.startsWith('Cache'))).toBe(true);
         const text = JSON.stringify(logs);
         expect(text).not.toContain(QUESTION);
         expect(text).not.toContain('apply financial aid transfer student');
@@ -117,7 +125,7 @@ describe('rewriteQueryForExternalSearch', () => {
         expect(await rewrite(aiConfig())).toMatchObject({ query: QUESTION, outcome: 'failed' });
     });
 
-    it('gives up at the time limit, leaving the shared model call running', async () => {
+    it('gives up at the time limit and stops the model call nobody waits for', async () => {
         let signal: AbortSignal | undefined;
         vi.mocked(aiService.chat).mockImplementation((_messages, options) => {
             signal = options?.signal;
@@ -131,8 +139,7 @@ describe('rewriteQueryForExternalSearch', () => {
 
         expect(result).toMatchObject({ query: QUESTION, outcome: 'timed_out' });
         expect(Date.now() - startedAt).toBeLessThan(1500);
-        // Others may have joined the call: only the backstop at the longest limit aborts it
-        expect(signal?.aborted).toBe(false);
+        expect(signal?.aborted).toBe(true);
         expect(logs.some((l) => l.level === 'warn' && l.message === 'Query rewrite timed out; searching with the raw query')).toBe(true);
     });
 
@@ -184,7 +191,7 @@ describe('rewriteQueryForExternalSearch', () => {
         expect(aiService.chat).toHaveBeenCalledTimes(3);
     });
 
-    it('does not keep a call the provider never ends: the backstop releases it and the next search asks again', async () => {
+    it('does not keep a call the provider never ends: it is released when its caller leaves and the next search asks again', async () => {
         vi.useFakeTimers();
         try {
             const experienceId = freshExperience();
@@ -196,9 +203,6 @@ describe('rewriteQueryForExternalSearch', () => {
             const first = rewrite(aiConfig({ timeoutMs: 500 }), QUESTION, experienceId);
             await vi.advanceTimersByTimeAsync(500);
             expect((await first).outcome).toBe('timed_out');
-            expect(signal?.aborted).toBe(false);
-
-            await vi.advanceTimersByTimeAsync(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS);
             expect(signal?.aborted).toBe(true);
 
             expect((await rewrite(aiConfig({ timeoutMs: 500 }), QUESTION, experienceId)).outcome).toBe('rewritten');
@@ -252,8 +256,14 @@ describe('rewriteQueryForExternalSearch', () => {
 
                 await vi.advanceTimersByTimeAsync(500);
                 expect((await first).outcome).toBe('timed_out');
+                const signal = vi.mocked(aiService.chat).mock.calls[0]?.[1]?.signal;
+                expect(signal).toBeDefined();
+                // The joiner still waits for the call, so it keeps running
+                expect(signal?.aborted).toBe(false);
                 await vi.advanceTimersByTimeAsync(1500);
                 expect(await joiner).toMatchObject({ query: QUESTION, outcome: 'timed_out' });
+                // Nobody waits any more: the call is stopped
+                expect(signal?.aborted).toBe(true);
             } finally {
                 vi.useRealTimers();
             }

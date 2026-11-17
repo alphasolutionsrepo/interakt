@@ -41,13 +41,18 @@ vi.mock('@/features/search/search.service', () => ({
     searchById: vi.fn(),
 }));
 
+// Cache keys are logged with every cache log switch on, as in development
+vi.mock('@/config/cache.config', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/config/cache.config')>();
+    return { cacheConfig: { ...actual.cacheConfig, logging: { logHits: true, logMisses: true, logOperations: true } } };
+});
+
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as searchService from '@/features/search/search.service';
 import { SearchError } from '@/features/search/search.types';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
-import { MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 
 const QUERY = 'waterproof jackets under 200';
@@ -151,6 +156,36 @@ describe('global AI switch', () => {
         expect(result).toEqual({ query: QUERY, filters: [{ field: 'brand', operator: 'eq', value: 'x' }] });
     });
 
+    it("keeps the visitor's words, the query searched and filter values out of the application log, cache lines included", async () => {
+        logs.length = 0;
+        const searchIndexId = freshIndexId();
+        const ask = () => applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: aiConfig(), experienceId: 'exp-1',
+        });
+        await ask();
+        await ask();
+
+        // The cache did log its keys, and the step logged its result
+        expect(logs.some((l) => l.message.startsWith('Cache'))).toBe(true);
+        expect(logs.some((l) => l.message === 'Query interpreted')).toBe(true);
+        const text = JSON.stringify(logs);
+        expect(text).not.toContain(QUERY);
+        expect(text).not.toContain('waterproof jackets');
+        expect(text).not.toContain('lte200');
+    });
+
+    it('searches with the raw query when the switch cannot be read, and reads it again on the next search', async () => {
+        const switches = await import('@/features/feature-switches/feature-switches.service');
+        vi.spyOn(switches, 'isAreaOn').mockRejectedValueOnce(new Error('settings store down'));
+        const ask = () => applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId: freshIndexId(), aiConfig: aiConfig(), experienceId: 'exp-1',
+        });
+
+        expect(await ask()).toEqual({ query: QUERY, filters: undefined });
+        expect(aiService.chat).not.toHaveBeenCalled();
+        expect((await ask()).query).toBe('waterproof jackets');
+    });
+
     it('interprets when both switches are on', async () => {
         const result = await applyQueryInterpretation({
             query: QUERY,
@@ -192,7 +227,7 @@ describe('a model call past the time limit', () => {
         return { ...config, queryUnderstanding: { ...config.queryUnderstanding!, timeoutMs: 500 } };
     };
 
-    it("searches with the raw query and the client's filters within the limit, leaving the shared call running", async () => {
+    it("searches with the raw query and the client's filters within the limit, and stops the model call nobody waits for", async () => {
         let signal: AbortSignal | undefined;
         vi.mocked(aiService.chat).mockImplementation((_messages, options) => {
             signal = options?.signal;
@@ -214,11 +249,11 @@ describe('a model call past the time limit', () => {
         expect(Date.now() - startedAt).toBeLessThan(1500);
         expect(result.query).toBe(QUERY);
         expect(result.filters).toEqual([{ field: 'brand', operator: 'eq', value: 'x' }]);
-        expect(signal?.aborted).toBe(false);
+        expect(signal?.aborted).toBe(true);
         expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn', message: 'Query interpretation timed out; searching with the raw query' })]);
     });
 
-    it('does not keep a call the provider never ends: the backstop releases it and the next search asks again', async () => {
+    it('does not keep a call the provider never ends: it is released when its caller leaves and the next search asks again', async () => {
         vi.useFakeTimers();
         try {
             const searchIndexId = freshIndexId();
@@ -230,10 +265,28 @@ describe('a model call past the time limit', () => {
             const first = ask();
             await vi.advanceTimersByTimeAsync(500);
             expect((await first).query).toBe(QUERY);
-            await vi.advanceTimersByTimeAsync(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS);
 
             expect((await ask()).query).toBe('waterproof jackets');
             expect(aiService.chat).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not start the model call when its caller left while the fields were loading', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.mocked(searchIndexService.getSearchIndexById).mockImplementationOnce(() => new Promise((resolve) => {
+                setTimeout(() => resolve({ id: 'idx', fields: INDEX_FIELDS } as never), 1000);
+            }));
+            const result = applyQueryInterpretation({
+                query: QUERY, clientFilters: undefined, searchIndexId: freshIndexId(), aiConfig: slowConfig(), experienceId: 'exp-1',
+            });
+
+            await vi.advanceTimersByTimeAsync(500);
+            expect((await result).query).toBe(QUERY);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(aiService.chat).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
         }

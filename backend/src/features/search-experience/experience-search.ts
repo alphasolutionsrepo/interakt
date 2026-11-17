@@ -15,6 +15,7 @@ import 'server-only';
 import { externalFacetableFields, searchExternalSourceForExperience } from './external-source-search';
 import {
   applyQueryInterpretation,
+  queryUnderstandingAreaOn,
   rewriteQueryForExternalSearch,
   type QueryInterpretation,
   type QueryRewrite,
@@ -332,7 +333,8 @@ async function interpretForManaged(
 ): Promise<InterpretedRequest> {
   const aiConfig = experience.aiConfig;
   const run = () => applyQueryInterpretation({ query, clientFilters, searchIndexId, aiConfig, experienceId: experience.id });
-  if (!searchIndexId || !aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled) return run();
+  // No step when query understanding is off, by the experience or with AI summaries
+  if (!searchIndexId || !aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled || !(await queryUnderstandingAreaOn())) return run();
 
   // A failed or timed-out step falls back to the visitor's words and filters, but the step itself ends in error
   const errorFor = ({ interpretation }: InterpretedRequest) =>
@@ -355,14 +357,15 @@ async function interpretForManaged(
 
 /**
  * Rewrite the query into search terms for external sources, as its own trace step. No
- * step when query understanding is off: there is nothing to report.
+ * step when query understanding is off, by the experience or with AI summaries: there is
+ * nothing to report.
  */
 async function rewriteForExternal(
   query: string,
   experience: SearchExperienceWithIndexes
 ): Promise<QueryRewrite | undefined> {
   const aiConfig = experience.aiConfig;
-  if (!aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled) return undefined;
+  if (!aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled || !(await queryUnderstandingAreaOn())) return undefined;
 
   // A failed or timed-out rewrite falls back to the visitor's words, but the step itself ends in error
   const errorFor = (r: QueryRewrite) =>
