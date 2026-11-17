@@ -4,12 +4,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Bot, Search, Layers } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { useAnalyticsContext } from '../_lib/AnalyticsContext';
 import { experiencesWithAreaOn, selectionChange, loadExperienceOptions, type ExperienceOption } from '../_lib/experience-options';
 
-import { EXPERIENCE_TYPE_AREA } from '@/features/feature-switches/areas';
+import { EXPERIENCE_TYPE_AREA, type Area } from '@/features/feature-switches/areas';
 import { useAccess } from '@/shared/access/useAccess';
 import { errorText } from '@/shared/api/api-error';
 import {
@@ -50,13 +50,15 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
   const { data, isLoading } = useExperiences(!accessLoading && areaOn('analytics'));
   const allExperiences = useMemo(() => data?.experiences ?? [], [data]);
   // Only types whose area is on: a chat experience is hidden with Chat off (its data is kept)
-  // areaOn is a new function every render, so the memo depends on the two answers it gives here
+  // areaOn is a new function every render: the memo and the effect below use this one instead, which
+  // changes only when one of the two experience-type answers does
   const aiOn = areaOn(EXPERIENCE_TYPE_AREA.ai);
   const searchOn = areaOn(EXPERIENCE_TYPE_AREA.search);
-  const experiences = useMemo(
-    () => experiencesWithAreaOn(allExperiences, (area) => (area === EXPERIENCE_TYPE_AREA.ai ? aiOn : area === EXPERIENCE_TYPE_AREA.search ? searchOn : true)),
-    [allExperiences, aiOn, searchOn],
+  const typeAreaOn = useCallback(
+    (area: Area) => (area === EXPERIENCE_TYPE_AREA.ai ? aiOn : area === EXPERIENCE_TYPE_AREA.search ? searchOn : true),
+    [aiOn, searchOn],
   );
+  const experiences = useMemo(() => experiencesWithAreaOn(allExperiences, typeAreaOn), [allExperiences, typeAreaOn]);
 
   const aiExperiences = experiences.filter((e) => e.type === 'ai');
   const searchExperiences = experiences.filter((e) => e.type === 'search');
@@ -67,14 +69,14 @@ export function ExperienceSelector({ compact = false }: ExperienceSelectorProps)
     const change = selectionChange({
       selected: { id: experienceId, name: experienceName, type: experienceType },
       experiences: allExperiences,
-      areaOn,
+      areaOn: typeAreaOn,
       loading: isLoading || accessLoading,
       complete: !!data?.complete,
       keepWhenMissing,
     });
     if (change.kind === 'reset') setExperience(undefined);
     else if (change.kind === 'fill') setExperience(change.id, change.name, change.type);
-  }, [isLoading, accessLoading, data, allExperiences, areaOn, experienceId, experienceName, experienceType, keepWhenMissing, setExperience]);
+  }, [isLoading, accessLoading, data, allExperiences, typeAreaOn, experienceId, experienceName, experienceType, keepWhenMissing, setExperience]);
 
   // Selected experience that is not in the list (deleted, or the list is still incomplete)
   const missingSelection = !!experienceId && !allExperiences.some((e) => e.id === experienceId);

@@ -4,8 +4,9 @@
  * The selector's wiring to selectionChange. SSR does not run effects, so React's useEffect is
  * replaced here by "run it at once" (the effect body is the component's own code, unchanged),
  * and the query and analytics context are stubbed. Covered: a selected experience of a switched
- * off area is reset, one of an area that is on is kept, a known one is filled in. Not covered:
- * the effect's dependency list, or re-running on later changes.
+ * off area is reset, one of an area that is on is kept, a known one is filled in. The memo and
+ * effect dependency lists hold no function that is new every render (only useCallback results and
+ * the context's setter). Not covered: re-running on later changes.
  */
 
 import { createElement } from 'react';
@@ -16,13 +17,18 @@ import { ExperienceSelector } from './ExperienceSelector';
 
 import { uiAccess, uiAccessLoading } from '@/shared/test/ui-access-stub';
 
-const memoDeps = vi.hoisted(() => ({ seen: [] as unknown[][] }));
+const memoDeps = vi.hoisted(() => ({ seen: [] as unknown[][], effects: [] as unknown[][], stable: new Set<unknown>() }));
 vi.mock('react', async (importOriginal) => {
   const react = await importOriginal<typeof import('react')>();
   return {
     ...react,
-    useEffect: (fn: () => void) => void fn(),
+    useEffect: (fn: () => void, deps: unknown[]) => (memoDeps.effects.push(deps), void fn()),
     useMemo: <T>(fn: () => T, deps: unknown[]) => (memoDeps.seen.push(deps), react.useMemo(fn, deps)),
+    useCallback: <T>(fn: T, deps: unknown[]) => {
+      const cb = react.useCallback(fn as never, deps) as T;
+      memoDeps.stable.add(cb);
+      return cb;
+    },
   };
 });
 vi.mock('@/shared/access/useAccess', async () => (await import('@/shared/test/ui-access-stub')).useAccessModule);
@@ -47,6 +53,8 @@ const render = () => renderToStaticMarkup(createElement(ExperienceSelector));
 beforeEach(() => {
   setExperience.mockClear();
   memoDeps.seen = [];
+  memoDeps.effects = [];
+  memoDeps.stable = new Set([setExperience]);
   uiAccess.asAdmin();
 });
 
@@ -90,10 +98,18 @@ describe('ExperienceSelector request', () => {
   });
 });
 
-describe('ExperienceSelector memo', () => {
-  it('never depends on a function, which is new every render and would defeat the memo', () => {
+describe('ExperienceSelector memo and effect', () => {
+  const unstable = (deps: unknown[]) => deps.filter((d) => typeof d === 'function' && !memoDeps.stable.has(d));
+
+  it('the memo never depends on a function that is new every render', () => {
     render();
     expect(memoDeps.seen.length).toBeGreaterThan(0);
-    for (const deps of memoDeps.seen) expect(deps.filter((d) => typeof d === 'function')).toEqual([]);
+    for (const deps of memoDeps.seen) expect(unstable(deps)).toEqual([]);
+  });
+
+  it('the effect never depends on one either, so it doesn\'t run after every render', () => {
+    render();
+    expect(memoDeps.effects.length).toBeGreaterThan(0);
+    for (const deps of memoDeps.effects) expect(unstable(deps)).toEqual([]);
   });
 });
