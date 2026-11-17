@@ -128,10 +128,10 @@ export async function executeHttpApi(
     return { success: false, error: 'HTTP API config is missing responseMapping.resultsPath' };
   }
 
-  // A {{secret:name}} still in the URL means the vault has no secret by that name (names only)
+  // A {{secret:name}} still in the URL means the vault has no secret by that name, or it can't be decrypted (names only)
   const missing = unresolvedSecretNames(cfg.baseUrl);
   if (missing.length > 0) {
-    return { success: false, error: `HTTP API baseUrl: The secret "${missing[0]}" used in the URL is not in the Secrets Vault` };
+    return { success: false, error: `HTTP API baseUrl: The secret "${missing[0]}" used in the URL is missing from the Secrets Vault or can't be read` };
   }
 
   // 1. Fill {{input.field}} templates in the URL, query parameters, headers and body

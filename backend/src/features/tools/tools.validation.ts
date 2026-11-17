@@ -142,7 +142,10 @@ function configProblem(
 }
 
 const httpExecutorConfigSchema = z.object({
-  baseUrl: z.string().refine((url) => !urlProblemMessage(url), (url) => ({ message: urlProblemMessage(url) })),
+  baseUrl: z.string().superRefine((url, ctx) => {
+    const message = urlProblemMessage(url);
+    if (message) ctx.addIssue({ code: 'custom', message });
+  }),
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   headers: z.record(z.string()).optional(),
   queryParams: z.record(z.string()).optional(),

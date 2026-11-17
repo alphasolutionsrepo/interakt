@@ -149,7 +149,7 @@ describe('a URL that is not a full URL, or names a secret the vault no longer ha
   ])('says the secret is missing when it is in %s, by name, and nothing is sent', async (_case, baseUrl) => {
     const result = await executeHttpApi(tool({ baseUrl }), {});
     expect(result.success).toBe(false);
-    expect(result.error).toContain('The secret "gone_host" used in the URL is not in the Secrets Vault');
+    expect(result.error).toContain("The secret \"gone_host\" used in the URL is missing from the Secrets Vault or can't be read");
     expect(result.error).not.toMatch(/fixed host/);
     expect(fetchMock).not.toHaveBeenCalled();
   });

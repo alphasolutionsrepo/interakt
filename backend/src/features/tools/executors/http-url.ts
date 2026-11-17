@@ -23,10 +23,10 @@ function fixedOrigin(baseUrl: string): string | null {
 export const FIXED_HOST_MESSAGE = 'Use a full URL (like https://api.example.com/orders) with a fixed host: write the host and a "/" before any {{input.field}}, which fills the path and query';
 
 /** What to change when a tool's URL isn't a full URL at all (no "https://" start). */
-export const NOT_A_URL_MESSAGE = 'This is not a full URL. Use a full URL that starts with https://, like https://api.example.com/orders';
+const NOT_A_URL_MESSAGE = 'This is not a full URL. Use a full URL that starts with https://, like https://api.example.com/orders';
 
 /** True when the text has no "scheme://" start and isn't a template standing in for one. */
-function isNotFullUrl(baseUrl: string): boolean {
+export function isNotFullUrl(baseUrl: string): boolean {
   // Spaces around the URL don't matter: fetch and new URL() drop them
   const url = baseUrl.trim();
   return !/^[a-z][a-z0-9+.-]*:\/\//i.test(url) && !url.startsWith('{{');
@@ -38,7 +38,7 @@ export function urlProblemMessage(baseUrl: string): string | undefined {
   return hasFixedHost(baseUrl) ? undefined : FIXED_HOST_MESSAGE;
 }
 
-/** Names of {{secret:name}} templates still in the text: the vault had no secret by that name. */
+/** Names of {{secret:name}} templates still in the text: the vault had no secret by that name, or could not decrypt it. */
 export function unresolvedSecretNames(text: string): string[] {
   return [...new Set([...text.matchAll(SECRET_TEMPLATE_PATTERN)].map((m) => m[1]))];
 }
