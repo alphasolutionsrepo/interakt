@@ -14,9 +14,10 @@
  * the `mcp-session-id` header through the calls.
  */
 
-import { createLogger } from '@/shared/logger/logger';
-import { resolveSecret } from '@/features/secrets/secrets.service';
 import type { McpAuthConfig, DiscoveredMcpTool, DiscoveredToolCatalog } from '@/db/schema/mcp-connections.schema';
+import { resolveSecret } from '@/features/secrets/secrets.service';
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('mcp-client');
 
@@ -147,7 +148,7 @@ async function rpcCall<T>(
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
   try {
-    const response = await fetch(config.serverUrl, {
+    const response = await fetchOnSameServer(config.serverUrl, {
       method: 'POST',
       headers: {
         Accept: 'application/json, text/event-stream',

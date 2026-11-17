@@ -1,4 +1,4 @@
-// src/features/tools/executors/same-server-fetch.test.ts
+// src/shared/http/same-server-fetch.test.ts
 
 /**
  * Moving from http to https counts as the same server only on the standard ports: from any

@@ -6,15 +6,17 @@
  * Checks the health of all external dependencies and system components
  */
 
-import { db } from '@/db/index';
 import { sql } from 'drizzle-orm';
-import { getDefaultSearchEngineProvider } from '@/features/search/providers';
-import { clientAddressSetup, SHARED_LIMIT_FACTOR, type ClientAddressSetup } from '@/shared/api/client-ip';
-import { createLogger } from '@/shared/logger/logger';
-import * as aiProvidersRepo from '@/features/ai-providers/ai-providers.repository';
+
 import { aiProvidersConfig, elasticsearchConfig, getProviderHealthConfig, type StatusPageResponse } from '@/config';
+import { db } from '@/db/index';
+import * as aiProvidersRepo from '@/features/ai-providers/ai-providers.repository';
 import { defaultConnectionType, type AIConnectionType } from '@/features/ai-providers/ai-providers.validation';
 import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
+import { getDefaultSearchEngineProvider } from '@/features/search/providers';
+import { clientAddressSetup, SHARED_LIMIT_FACTOR, type ClientAddressSetup } from '@/shared/api/client-ip';
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('health-service');
 
@@ -224,7 +226,7 @@ async function checkProviderHealth(
   const { url, headers, checkType } = providerHealthRequest(provider);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchOnSameServer(url, {
       method: 'GET',
       signal: AbortSignal.timeout(timeout),
       headers,

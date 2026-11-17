@@ -26,8 +26,11 @@ import type {
     ResponseFormat,
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
+
 import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseSSEStream, requestSignal } from './types';
 import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
+
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('openai-adapter');
@@ -644,7 +647,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
         const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
         try {
-            const response = await fetch(url, {
+            const response = await fetchOnSameServer(url, {
                 method: 'POST',
                 headers: this.getHeaders(config),
                 body: JSON.stringify(body),
