@@ -66,13 +66,14 @@ describe('saving an HTTP tool', () => {
   it.each([
     ['the whole host', 'https://{{input.host}}/orders'],
     ['the path right after the host, with no "/"', 'https://api.example.com{{input.path}}'],
+    ['the whole start, scheme included', '{{input.base}}/orders'],
   ])('refuses a URL that takes %s from input, saying what to change', async (_case, baseUrl) => {
     const { status, body } = await create(restConfig(baseUrl));
     expect(status).toBe(400);
     expect(JSON.stringify(body)).toContain('write the host and a \\"/\\" before any {{input.field}}');
   });
 
-  it.each(['orders', 'api.example.com/orders', 'http//api.example.com/orders'])('says %s is not a full URL, not that the host must be fixed', async (baseUrl) => {
+  it.each(['orders', 'api.example.com/orders', 'http//api.example.com/orders', 'localhost:8080/api'])('says %s is not a full URL, not that the host must be fixed', async (baseUrl) => {
     const { status, body } = await create(restConfig(baseUrl));
     expect(status).toBe(400);
     expect(JSON.stringify(body)).toContain('not a full URL');
@@ -158,13 +159,16 @@ describe('an HTTP tool stored with its host taken from input', () => {
 });
 
 describe('an HTTP tool stored with a URL that is not a full URL', () => {
-  it('is marked as needing setup, saying to use a full URL; one with spaces around a full URL is not', async () => {
+  it('is marked as needing setup, saying to use a full URL; one with spaces around a full URL is not, and one starting with input gets the host advice', async () => {
     const partial = await storedTool(restConfig('api.example.com/orders/{{input.id}}'));
     const spaced = await storedTool(restConfig(' https://api.example.com/orders/{{input.id}}'));
+    const fromInput = await storedTool(restConfig('{{input.base}}/orders'));
     const res = await toolsRoute.GET(new NextRequest('http://localhost/api/tools?limit=100'));
     const tools = (await res.json()).data as Array<{ id: string; notReadyReason?: string }>;
     expect(tools.find((t) => t.id === partial)?.notReadyReason).toMatch(/its URL is not a full URL\. Use one that starts with https:\/\//);
     expect(tools.find((t) => t.id === spaced)?.notReadyReason).toBeUndefined();
+    // A URL that starts with input is about the host, not a missing scheme
+    expect(tools.find((t) => t.id === fromInput)?.notReadyReason).toMatch(/takes the host from input/);
   });
 });
 

@@ -14,12 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Check, ChevronDown, ChevronUp, FileJson, Plus, Trash2 } from 'lucide-react';
 
-import { urlProblemMessage } from '@/features/tools/executors/http-url';
-
-/** Why a typed base URL won't run, shown as the admin types: input may not choose the host. */
-function baseUrlProblem(baseUrl: unknown): string | undefined {
-  return typeof baseUrl === 'string' && baseUrl.trim() ? urlProblemMessage(baseUrl.trim()) : undefined;
-}
+import { baseUrlProblem } from '../../../_lib/http-config-errors';
 
 interface HttpApiConfigProps {
   value: Record<string, unknown>;
