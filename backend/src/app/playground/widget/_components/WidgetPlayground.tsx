@@ -15,7 +15,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
-import { initialWidgetKind, pickFor, previewIfOn, WIDGET_KIND_AREA, type KindPick } from '@/app/playground/_lib/area-gate';
+import { initialWidgetKind, pickFor, useKindPreview, WIDGET_KIND_AREA, type KindPick } from '@/app/playground/_lib/area-gate';
 import {
   useSearchExperiences,
   useSearchExperience,
@@ -338,7 +338,7 @@ const DEFAULT_LAUNCHER: Record<WidgetKind, Launcher> = {
 // ============================================================================
 
 export function WidgetPlayground() {
-  const { areaOn, access } = useAccess();
+  const { areaOn, access, isLoading: accessLoading } = useAccess();
   // Shows a kind whose area is on (also once access has loaded, or after a switch change); the
   // other stays visible, disabled with the reason
   const [pickedKind, setPickedKind] = useState<WidgetKind | null>(null);
@@ -350,9 +350,8 @@ export function WidgetPlayground() {
   const [pickedLauncher, setPickedLauncher] = useState<KindPick<Launcher> | null>(null);
   const launcher = pickFor(pickedLauncher, kind) ?? DEFAULT_LAUNCHER[kind];
   const [device, setDevice] = useState<Device>('desktop');
-  const [appliedSpec, setApplied] = useState<AppliedSpec | null>(null);
-  // A preview of a kind that is off is not kept
-  const applied = previewIfOn(appliedSpec, areaOn);
+  // A preview of a kind that is switched off is dropped: Apply brings it back
+  const [applied, setApplied] = useKindPreview<AppliedSpec>(areaOn, accessLoading);
 
   // An off kind's routes are refused by the server: don't ask for its list
   const chatOn = areaOn(WIDGET_KIND_AREA.chat);

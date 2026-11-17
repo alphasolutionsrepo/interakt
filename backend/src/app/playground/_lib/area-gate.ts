@@ -2,6 +2,8 @@
 
 /** What the Test pages need beyond the general area gate (shared/access/area-gate.ts): which kind or tab is shown, and the area each needs. */
 
+import { useState } from 'react';
+
 import type { Area } from '@/features/feature-switches/areas';
 
 /** The widget kinds the widget playground can render, and the area each needs. */
@@ -22,6 +24,19 @@ export function pickFor<V>(pick: KindPick<V> | null, kind: WidgetKind): V | unde
 /** The applied preview, unless its kind's area is off (the off kind's widget can't be previewed). */
 export function previewIfOn<T extends { kind: WidgetKind }>(applied: T | null, areaOn: (area: Area) => boolean): T | null {
   return applied && areaOn(WIDGET_KIND_AREA[applied.kind]) ? applied : null;
+}
+
+/**
+ * The applied preview, held as state. Once its kind's area is seen off it is dropped, not just hidden,
+ * so switching the area back on never brings an old preview (and its access token) back without Apply.
+ * While access loads every area reads off, so nothing is dropped then.
+ */
+export function useKindPreview<T extends { kind: WidgetKind }>(areaOn: (area: Area) => boolean, accessLoading: boolean) {
+  const [stored, setStored] = useState<T | null>(null);
+  const shown = previewIfOn(stored, areaOn);
+  // Adjusting state during render (React re-renders straight away, before anything is shown)
+  if (stored && !shown && !accessLoading) setStored(null);
+  return [shown, setStored] as const;
 }
 
 export function initialWidgetKind(areaOn: (area: Area) => boolean): WidgetKind {
