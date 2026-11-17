@@ -23,7 +23,7 @@ describe('the Discover Models message', () => {
 
   it('names the listed models it left switched off, and where to switch them on', () => {
     expect(discoveryMessage(result({ leftOff: ['big-expensive-model'] }))).toEqual({
-      level: 'success', text: 'Found 3 models (2 new). Left off as you set them (switch on in Manage Models): big-expensive-model',
+      level: 'success', text: 'Found 3 models (2 new). Listed but switched off (switch on in Manage Models): big-expensive-model',
     });
   });
 

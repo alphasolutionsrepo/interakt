@@ -11,8 +11,8 @@ export function discoveryMessage(result: ModelDiscoveryResult): { level: 'succes
   const parts = [`Found ${result.modelsFound} models (${result.modelsAdded} new)`];
   if (result.errors.length > 0) parts.push(`Not saved: ${result.errors.join('; ')}`);
   if (result.needsSetup.length > 0) parts.push(`Needs setup: ${result.needsSetup.join('; ')}`);
-  if (result.leftOff.length > 0) parts.push(`Left off as you set them (switch on in Manage Models): ${result.leftOff.join(', ')}`);
-  // Models left off are the admin's own choice: worth saying, not a warning
+  if (result.leftOff.length > 0) parts.push(`Listed but switched off (switch on in Manage Models): ${result.leftOff.join(', ')}`);
+  // Switched-off models are left as they are on purpose: worth saying, not a warning
   const needsAttention = result.errors.length > 0 || result.needsSetup.length > 0;
   return { level: needsAttention ? 'warning' : 'success', text: parts.join('. ') };
 }

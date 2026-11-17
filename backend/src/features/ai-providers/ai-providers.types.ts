@@ -250,7 +250,7 @@ export interface ModelDiscoveryResult {
   errors: string[];
   /** Models added that need the admin before they can be used (an embedding model's dimensions) */
   needsSetup: string[];
-  /** Listed models already saved and switched off: discovery leaves them off */
+  /** Listed models already saved and switched off (by an admin, or hidden by an earlier discovery): left off */
   leftOff: string[];
 }
 
