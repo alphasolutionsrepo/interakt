@@ -270,6 +270,29 @@ describe('models a gateway stops listing, or lists under names that are not text
     expect(later).toMatchObject({ 'my-fine-tune': true, 'gpt-4o-audio-preview': true, 'campus-chat': true, 'glm-ocr-chat': false });
   });
 
+  it('leave a listed model an admin switched off as it is, and say so', async () => {
+    const { data } = await createProvider({ providerKey: 'gw-off', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+    gateway.models = [{ id: 'campus-chat' }, { id: 'big-expensive-model' }];
+    await post(discoverRoute, data.id);
+    await testDb.db.execute(sql`UPDATE ai_provider_models SET is_available = false WHERE provider_id = ${data.id} AND model_key = 'big-expensive-model'`);
+
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+
+    expect(result.leftOff).toEqual(['big-expensive-model']);
+    const byKey = Object.fromEntries((await modelsOf(data.id)).map((m) => [m.modelKey, m.isAvailable]));
+    expect(byKey).toMatchObject({ 'campus-chat': true, 'big-expensive-model': false });
+  });
+
+  it('leave an Ollama model an admin switched off as it is', async () => {
+    ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }];
+    const { data } = await createProvider({ providerKey: 'lab-off', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl });
+    await post(discoverRoute, data.id);
+    await testDb.db.execute(sql`UPDATE ai_provider_models SET is_available = false WHERE provider_id = ${data.id}`);
+
+    expect((await (await post(discoverRoute, data.id)).json()).data.leftOff).toEqual(['qwen2.5:14b']);
+    expect((await modelsOf(data.id))[0].isAvailable).toBe(false);
+  });
+
   it.each([
     ['an empty list', { object: 'list', data: [] }, 200],
     ['an answer with no model list', { message: 'gateway restarting' }, 500],
@@ -323,6 +346,19 @@ describe("an Ollama provider under its own name: connection test and discovery",
     expect((await (await post(testConnectionRoute, data.id)).json()).data).toMatchObject({ success: true });
     expect((await (await post(discoverRoute, data.id)).json()).data).toMatchObject({ modelsFound: 1, modelsAdded: 1 });
     expect(ollama.seen.map((x) => x.path)).toEqual(['/api/tags', '/api/tags']);
+    expect(ollama.seen.map((x) => x.auth)).toEqual([undefined, undefined]);
+  });
+
+  it('sends its API key, when it has one (an Ollama behind a proxy that checks keys)', async () => {
+    ollama.tags = [{ name: 'qwen2.5:14b', details: { parameter_size: '14B', quantization_level: 'Q4', family: 'qwen2' } }];
+    const { data } = await createProvider({ providerKey: 'lab-keyed', connectionType: 'ollama', authType: 'api_key', apiKey: 'ol-key', baseUrl: ollamaUrl });
+    await post(testConnectionRoute, data.id);
+    await post(discoverRoute, data.id);
+    const model = (await modelsOf(data.id))[0];
+    await generateText('Say hi', { providerId: data.id, modelId: model.id });
+
+    expect(ollama.seen.map((x) => x.path)).toEqual(expect.arrayContaining(['/api/tags', '/api/generate']));
+    expect(ollama.seen.every((x) => x.auth === 'Bearer ol-key')).toBe(true);
   });
 });
 

@@ -5,6 +5,7 @@
  * Business logic, caching, type transformations, and integrations
  */
 
+import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
 import { CacheManager } from '@/shared/cache/cache-manager';
 import { createLogger } from '@/shared/logger/logger';
 import * as repository from './ai-providers.repository';
@@ -919,6 +920,7 @@ async function testOllamaConnection(provider: AIProvider): Promise<ConnectionTes
   try {
     const response = await fetch(`${provider.baseUrl}/api/tags`, {
       method: 'GET',
+      headers: ollamaHeaders(provider.apiKey),
       signal: AbortSignal.timeout(10000), // 10 second timeout
     });
 
@@ -1081,6 +1083,7 @@ export async function discoverModels(
 async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
   const response = await fetch(`${provider.baseUrl}/api/tags`, {
     method: 'GET',
+    headers: ollamaHeaders(provider.apiKey),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
@@ -1193,6 +1196,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
   let modelsUpdated = 0;
   const errors: string[] = [];
   const needsSetup: string[] = [];
+  const leftOff: string[] = [];
 
   for (const model of reported) {
     try {
@@ -1200,8 +1204,9 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
       if (existing) {
         const caps = (existing.capabilities ?? {}) as Record<string, unknown>;
         const reportedWindow = model.capabilities.contextWindow as number | undefined;
+        // A saved model stays on or off as it is: an admin may have switched it off on purpose
+        if (!existing.isAvailable) leftOff.push(existing.modelKey);
         await repository.updateModel(existing.id, {
-          isAvailable: true,
           // Only discovery's own models are hidden when an OpenAI-compatible service stops listing
           // them, so a saved model it lists keeps its origin there; for Ollama every model is its
           ...(report.hides === 'all' && { isDiscovered: true }),
@@ -1253,6 +1258,7 @@ async function saveDiscoveredModels(providerId: string, report: ProviderReport):
     modelsRemoved: modelsToMarkUnavailable.length,
     errors,
     needsSetup,
+    leftOff,
   };
 }
 

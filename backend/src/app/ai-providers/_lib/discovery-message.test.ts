@@ -7,7 +7,7 @@ import { discoveryMessage } from './discovery-message';
 import type { ModelDiscoveryResult } from '@/features/ai-providers';
 
 const result = (over: Partial<ModelDiscoveryResult>): ModelDiscoveryResult => ({
-  success: true, modelsFound: 3, modelsAdded: 2, modelsUpdated: 1, modelsRemoved: 0, errors: [], needsSetup: [], ...over,
+  success: true, modelsFound: 3, modelsAdded: 2, modelsUpdated: 1, modelsRemoved: 0, errors: [], needsSetup: [], leftOff: [], ...over,
 });
 
 describe('the Discover Models message', () => {
@@ -18,6 +18,12 @@ describe('the Discover Models message', () => {
   it('names the embedding models that need their dimensions', () => {
     expect(discoveryMessage(result({ needsSetup: ['emb: set its dimensions on the model'] }))).toEqual({
       level: 'warning', text: 'Found 3 models (2 new). Needs setup: emb: set its dimensions on the model',
+    });
+  });
+
+  it('names the listed models it left switched off, and where to switch them on', () => {
+    expect(discoveryMessage(result({ leftOff: ['big-expensive-model'] }))).toEqual({
+      level: 'success', text: 'Found 3 models (2 new). Left off as you set them (switch on in Manage Models): big-expensive-model',
     });
   });
 
