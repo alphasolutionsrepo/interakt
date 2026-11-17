@@ -215,6 +215,15 @@ export function buildBrowsableFields(
 }
 
 /**
+ * Every field the index has set up is kept out of responses by the admin ("Include in
+ * response" off). Exported for its tests.
+ */
+export function showsNoFields(fields: SearchIndexField[]): boolean {
+    const configured = fields.filter(field => !isEmptySystemField(field));
+    return configured.length > 0 && !configured.some(field => field.includeInResponse);
+}
+
+/**
  * Check if a system field is empty/unconfigured and shouldn't be requested.
  * Also excludes auto-generated system timestamp fields (createdAt, updatedAt)
  * which are not useful in search responses and may not exist in the provider index.
@@ -223,12 +232,6 @@ export function buildBrowsableFields(
  * document browse (see buildBrowsableFields). It defaults to false so search
  * behaviour is unchanged.
  */
-/** Every field the index has set up is kept out of responses by the admin. */
-function showsNoFields(fields: SearchIndexField[]): boolean {
-    const configured = fields.filter(field => !isEmptySystemField(field));
-    return configured.length > 0 && !configured.some(field => field.includeInResponse);
-}
-
 function isEmptySystemField(
     field: SearchIndexField,
     options: { allowGeneratedTimestamps?: boolean } = {}

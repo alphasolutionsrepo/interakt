@@ -345,6 +345,20 @@ describe('which search callers see fields an index keeps out of responses', () =
     expect(await signedInAdminOption({})).toBe(true);
   });
 
+  it('a signed-in user on the built-in help, which everyone signed in may search, does not', async () => {
+    const help = { ...searchExperience, isBuiltIn: true };
+    mocks.getSearchExperienceBySlug.mockResolvedValue(help);
+    mocks.getSearchExperienceWithIndexes.mockResolvedValue(help);
+    mocks.auth.mockResolvedValue({ user: { id: 'v' } });
+    // A Viewer: may search the help, may not use the playground
+    accessStub.access = { userId: 'v', roleId: 'r', roleName: 'Viewer', isAdmin: false, permissions: new Set() } as never;
+    try {
+      expect(await signedInAdminOption({})).toBeFalsy();
+    } finally {
+      accessStub.reset();
+    }
+  });
+
   it('a caller with the token does not, even with an admin login and the test marker (the Widget playground)', async () => {
     expect(await signedInAdminOption({ 'X-Access-Token': bySlug.token, Origin: SHOP })).toBeFalsy();
     mocks.auth.mockResolvedValue({ user: { id: 'admin' } });

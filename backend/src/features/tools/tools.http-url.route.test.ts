@@ -164,6 +164,18 @@ describe('an HTTP tool stored with web search settings', () => {
     expect(tools.find((tool) => tool.id === id)?.notReadyReason).toMatch(/needs a URL and a method/);
   });
 
+  it('can still be renamed with its settings sent back as they were, in any key order', async () => {
+    const id = await storedTool({ maxResults: 5, searchDepth: 'advanced' });
+    const { status } = await update(id, { name: 'Renamed', executorConfig: { searchDepth: 'advanced', maxResults: 5 } });
+    expect(status).toBe(200);
+  });
+
+  it('cannot have its web search settings changed while it has no URL and method', async () => {
+    const id = await storedTool({ maxResults: 5, searchDepth: 'advanced' });
+    const { status } = await update(id, { executorConfig: { maxResults: 8, searchDepth: 'advanced' } });
+    expect(status).toBe(400);
+  });
+
   it('can be given a URL and a method to become a working HTTP tool', async () => {
     const id = await storedTool({ maxResults: 5, searchDepth: 'advanced' });
     const { status } = await update(id, { executorConfig: restConfig('https://api.example.com/orders/{{input.id}}') });
