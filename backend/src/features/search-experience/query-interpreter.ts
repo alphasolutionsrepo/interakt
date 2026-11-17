@@ -441,6 +441,8 @@ async function interpretWithModel(
     // depending on provider/model and per-experience instructions. The instructions are
     // fingerprinted rather than assumed constant per experience — an admin can edit them,
     // and without this the old interpretation would be served for the rest of the TTL.
+    // The query is kept as typed, letter case included, like the rewrite's key: the cached
+    // effective query is searched as is, so codes and names keep this visitor's capitals.
     const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim()}`;
     return interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
         const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
