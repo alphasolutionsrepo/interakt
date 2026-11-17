@@ -3,12 +3,12 @@
 import { Bot, ChevronDown, ChevronUp, ImageIcon, Loader2, MessageSquare, Send, Sparkles, Trash2, Wrench } from 'lucide-react';
 import { useRef, useState } from 'react';
 
-import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { ActionButton, useActionGate, type ActionGate } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/shared/access/area-gate';
 import { reportActionError } from '@/shared/activity/report';
 import { apiErrorFrom, errorText } from '@/shared/api/api-error';
 import { startExperienceChat } from '@/shared/ui/custom/start-experience-chat';

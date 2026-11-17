@@ -16,16 +16,20 @@
 import 'server-only';
 
 import type { NextRequest, NextResponse } from 'next/server';
-import { clientIp } from '@/shared/api/client-ip';
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
-import { parseKey, verifyIngestionKey } from './ingestion-key.service';
+
+import { identifyIngestionKey, isKeyLive, verifyIngestionKey } from './ingestion-key.service';
 import { isIngestionAuthFailure } from './ingestion-key.types';
 import type {
     IngestionAuthFailure,
+    IngestionAuthResult,
     IngestionKeyWithIndexes,
     IngestionOperation,
 } from './ingestion-key.types';
+
+import { clientKey, clientLabel, limitFor, type ClientKey } from '@/shared/api/client-ip';
+import { rateLimiter } from '@/shared/api/rate-limit';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ingestion-key-middleware');
 
@@ -49,25 +53,81 @@ function extractBearer(request: NextRequest): string | null {
     return header.slice(BEARER_PREFIX.length).trim() || null;
 }
 
+/** Failed key checks allowed per client address in a window, across the document routes. */
+export const FAILED_KEY_CHECKS = { maxRequests: 20, windowMs: 60_000 } as const;
+
+type Identity = IngestionAuthResult | { success: false; throttled: { retryAfter: number } };
+
+// One identification per request, shared by the rate limit, the route guard, the built-in
+// check and the handler (they all get the same request object)
+const identities = new WeakMap<object, Promise<Identity>>();
+
 /**
- * Rate-limit identity for a request.
+ * Which key the request presents, looked up once per request (see identifyIngestionKey for its
+ * cache). A live key is counted only on its own limit, so it is never held back by other
+ * requests from the same client. A failed check (no such key, wrong secret, revoked or expired)
+ * is counted per client; past FAILED_KEY_CHECKS in the window it is answered 429 instead of 401.
+ * Requests without a trusted address share one count at a higher limit (see clientKey).
  *
- * Uses the presented key's public prefix, which identifies the caller without a
- * database lookup (keyFn is synchronous) and cannot be forged without the real
- * key.
- *
- * Session requests fall back to the client IP — the admin UI is low-volume, and
- * resolving a session is async.
+ * Every request is looked up as it arrives, with no per-client queue: a queue would make a live
+ * key wait behind other requests from its address, which is the outcome this design avoids. The
+ * load is kept down elsewhere: the same key sent again, or many times at once, costs one database
+ * read (the lookup cache); reads across all clients are bounded by the database connection pool;
+ * request volume is limited at the edge, in front of the app.
  */
-export function ingestionRateLimitKey(request: NextRequest): string {
-    const presented = extractBearer(request);
-    const parsed = presented ? parseKey(presented) : null;
-
-    if (parsed) {
-        return `key:${parsed.keyPrefix}`;
+function identify(request: NextRequest, presented: string): Promise<Identity> {
+    let identity = identities.get(request);
+    if (!identity) {
+        identity = (async (): Promise<Identity> => {
+            const client = clientKey(request);
+            const failures = `ingestion-key-failures:${client.key}`;
+            const maxRequests = limitFor(client, FAILED_KEY_CHECKS.maxRequests);
+            const { windowMs } = FAILED_KEY_CHECKS;
+            const result = await identifyIngestionKey(presented);
+            if (isIngestionAuthFailure(result) || !isKeyLive(result.key)) {
+                const counted = rateLimiter.check(failures, maxRequests, windowMs);
+                if (!counted.allowed) return { success: false, throttled: { retryAfter: counted.retryAfter ?? 60 } };
+                // Once per window, when the client uses up its last failed check
+                if (counted.remaining === 0) {
+                    logger.warn('A client reached the failed ingestion key check limit', {
+                        client: clientLabel(client),
+                        limit: maxRequests,
+                        windowMs,
+                    });
+                }
+            }
+            return result;
+        })();
+        identities.set(request, identity);
     }
+    return identity;
+}
 
-    return `ip:${clientIp(request)}`;
+/**
+ * Rate-limit identity for a document request: a live key is counted on its own (`key:<id>`),
+ * so nobody else can spend its allowance, and per index for the indexes it may use; a request
+ * with any other key is left to the failed-check limit per client (null); a request without a
+ * key (an admin session) is counted by its client address, or with the requests that have none
+ * (see clientKey). This limit runs before the access checks, so an index id the caller may not
+ * use is left out of the count: made-up ids share one count instead of adding one each.
+ */
+export async function ingestionRateLimitKey(request: NextRequest, indexId?: string): Promise<ClientKey | null> {
+    const presented = extractBearer(request);
+    if (!presented) {
+        const client = clientKey(request);
+        return { ...client, key: `ip:${client.key}` };
+    }
+    let identity: Identity;
+    try {
+        identity = await identify(request, presented);
+    } catch {
+        // The lookup failed (database down): the route's own key check meets the same error
+        // and answers it as an error, logged
+        return null;
+    }
+    if (!identity.success || !isKeyLive(identity.key)) return null;
+    const { id, searchIndexIds } = identity.key;
+    return { key: indexId && searchIndexIds.includes(indexId) ? `key:${id}:${indexId}` : `key:${id}`, shared: false };
 }
 
 /**
@@ -126,7 +186,11 @@ export async function authenticateIngestionKey(
         return { success: false, response: toErrorResponse('missing') };
     }
 
-    const result = await verifyIngestionKey(presented, requirement);
+    const identity = await identify(request, presented);
+    if ('throttled' in identity) {
+        return { success: false, response: apiResponse.tooManyRequests(identity.throttled.retryAfter, 'Too many failed ingestion key checks') };
+    }
+    const result = await verifyIngestionKey(presented, requirement, identity);
 
     if (isIngestionAuthFailure(result)) {
         // Log the reason server-side even though the client gets a vague message

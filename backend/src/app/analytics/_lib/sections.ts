@@ -1,5 +1,6 @@
 // app/analytics/_lib/sections.ts
 
+import { analyticsSectionNeeds } from '@/features/feature-switches/analytics-section-areas';
 import type { Area } from '@/features/feature-switches/areas';
 
 /**
@@ -14,8 +15,6 @@ export interface AnalyticsSection {
   description: string;
   /** Only for chat (AI) experiences and the all-experiences view */
   chatOnly?: boolean;
-  /** The feature areas it needs (all of `all`, one of `anyOf`); absent: only Analytics itself */
-  needs?: { all?: readonly Area[]; anyOf?: readonly Area[] };
   /** Questions the Ask panel suggests on this section */
   suggestions: string[];
 }
@@ -34,7 +33,6 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
   {
     href: '/analytics/search',
     label: 'Search',
-    needs: { all: ['search'] },
     description: 'What people searched for, and how well search answered',
     suggestions: [
       'Which searches most often find nothing?',
@@ -47,7 +45,6 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
     label: 'Conversations',
     description: 'How the assistant handled conversations, and what people asked about',
     chatOnly: true,
-    needs: { all: ['chat'] },
     suggestions: [
       'Why do conversations fail?',
       'What do people ask about most?',
@@ -59,7 +56,6 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
     label: 'AI & cost',
     description: 'Model calls, tokens, cost and tool usage',
     chatOnly: true,
-    needs: { all: ['chat'] },
     suggestions: [
       'Which conversations use the most tokens?',
       'Which tools fail most often?',
@@ -69,7 +65,6 @@ export const ANALYTICS_SECTIONS: readonly AnalyticsSection[] = [
   {
     href: '/analytics/traces',
     label: 'Traces',
-    needs: { anyOf: ['search', 'chat'] },
     description: 'Every chat turn, search and AI summary: what was asked, what ran, and how long it took',
     suggestions: ['Show me the slowest conversations', 'Which conversations failed today?'],
   },
@@ -98,9 +93,9 @@ export function sectionForPath(pathname: string): AnalyticsSection {
   return ANALYTICS_SECTIONS.find((s) => pathname === s.href || pathname.startsWith(`${s.href}/`)) ?? ANALYTICS_SECTIONS[0];
 }
 
-/** Whether the areas a section needs are on */
+/** Whether the areas a section needs are on: looked up by its href in the table the page rules use too */
 function sectionAreasOn(section: AnalyticsSection, areaOn: (area: Area) => boolean): boolean {
-  const { all = [], anyOf } = section.needs ?? {};
+  const { all = [], anyOf } = analyticsSectionNeeds(section.href) ?? {};
   return all.every(areaOn) && (!anyOf || anyOf.some(areaOn));
 }
 

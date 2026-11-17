@@ -6,7 +6,7 @@ import type { AIExperienceWithTools } from '@/app/ai-experiences/_lib/api-client
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
 import { useSearchExperiences } from '@/app/search-experiences/_lib/hooks';
 import type { Permission } from '@/features/access/permissions';
-import type { Area } from '@/features/feature-switches/areas';
+import { EXPERIENCE_TYPE_AREA, type Area } from '@/features/feature-switches/areas';
 import type { SearchExperienceSummary } from '@/features/search-experience/search-experience.types';
 import { useAccess } from '@/shared/access/useAccess';
 
@@ -30,8 +30,8 @@ export interface UseUnifiedExperiencesParams {
  */
 export function listsToLoad(can: (p: Permission) => boolean, areaOn: (a: Area) => boolean) {
   return {
-    skipAI: !can('ai-experiences:view') || !areaOn('chat'),
-    skipSearch: !can('search-experiences:view') || !areaOn('search'),
+    skipAI: !can('ai-experiences:view') || !areaOn(EXPERIENCE_TYPE_AREA.ai),
+    skipSearch: !can('search-experiences:view') || !areaOn(EXPERIENCE_TYPE_AREA.search),
   };
 }
 
@@ -61,8 +61,8 @@ export function hubMetrics(ai: KindCounts, search: KindCounts) {
 
 /** The hub's type tabs a user may use: one per kind they can view whose area is on, and "All" when both. */
 export function viewableTypes(can: (p: Permission) => boolean, areaOn: (a: Area) => boolean): Array<'all' | 'ai' | 'search'> {
-  const ai = can('ai-experiences:view') && areaOn('chat');
-  const search = can('search-experiences:view') && areaOn('search');
+  const ai = can('ai-experiences:view') && areaOn(EXPERIENCE_TYPE_AREA.ai);
+  const search = can('search-experiences:view') && areaOn(EXPERIENCE_TYPE_AREA.search);
   return [...(ai && search ? ['all' as const] : []), ...(ai ? ['ai' as const] : []), ...(search ? ['search' as const] : [])];
 }
 

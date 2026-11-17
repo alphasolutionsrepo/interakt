@@ -13,7 +13,12 @@ const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), de
 vi.mock('@/shared/logger/logger', () => ({ createLogger: () => log }));
 vi.mock('server-only', () => ({}));
 const off = vi.hoisted(() => new Set<string>());
-vi.mock('./feature-switches.service', () => ({ isAreaOn: async (area: string) => !off.has(area) }));
+// Areas the deployment setting turns off, and the stored reads made
+const pinned = vi.hoisted(() => ({ areas: new Set<string>(), reads: 0 }));
+vi.mock('./feature-switches.service', () => ({
+  isAreaOn: async (area: string) => { pinned.reads++; return !off.has(area); },
+  offByDeployment: (area: string) => pinned.areas.has(area),
+}));
 
 import { TURNED_OFF_CODE } from './areas';
 import { publicApiRoute, refuseExperienceIfOff, refuseIfRouteOff } from './gate';
@@ -88,8 +93,52 @@ describe('a public route that answers without asking for its area', () => {
     }
   });
 
+  it('is left as it answered with the Help assistant on while its own area is off (built-in help uses the same route)', async () => {
+    off.add('search');
+    log.error.mockClear();
+    try {
+      expect((await unchecked(request)).status).toBe(200);
+      expect(log.error).toHaveBeenCalledWith('A public route answered without checking its feature area', { pathname: '/api/v1/search', method: 'POST' });
+    } finally {
+      off.clear();
+    }
+  });
+
+  it('is left as it answered with the Help assistant off while its own area is on', async () => {
+    off.add('help-assistant');
+    try {
+      expect((await unchecked(request)).status).toBe(200);
+    } finally {
+      off.clear();
+    }
+  });
+
   it('answers as it did while its area is on', async () => {
     expect((await unchecked(request)).status).toBe(200);
+  });
+
+  it('is refused "turned off" without a read when the deployment setting turns off its area and the Help assistant', async () => {
+    pinned.areas = new Set(['search', 'help-assistant']);
+    pinned.reads = 0;
+    try {
+      const response = await unchecked(request);
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({ code: TURNED_OFF_CODE });
+      expect(pinned.reads).toBe(0);
+    } finally {
+      pinned.areas = new Set();
+    }
+  });
+
+  it('reads the stored switches when the deployment setting turns off only one of them', async () => {
+    pinned.areas = new Set(['search']);
+    pinned.reads = 0;
+    try {
+      expect((await unchecked(request)).status).toBe(200);
+      expect(pinned.reads).toBeGreaterThan(0);
+    } finally {
+      pinned.areas = new Set();
+    }
   });
 
   it('is not second-guessed when it asked', async () => {

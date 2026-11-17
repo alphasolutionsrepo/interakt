@@ -106,7 +106,8 @@ interface Route {
 function req(path: string, method: string, headers: Record<string, string>, body?: unknown): NextRequest {
   return new NextRequest(`http://interakt.test${path}`, {
     method,
-    headers: { 'content-type': 'application/json', ...headers },
+    // As through the platform's proxy, which adds the caller's address
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.1.1.1', ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -229,6 +230,22 @@ describe.each(ROUTES)('$name', (route) => {
       expect(await settle(await route.call({ Origin: OTHER }))).not.toBe(403);
     }
     expect(route.work()).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('searches with no trusted client address', () => {
+  // As a request with no proxy entry: no X-Forwarded-For at all
+  const unaddressed = () => searchByToken(new NextRequest('http://interakt.test/api/v1/search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'X-Access-Token': 'search-token', Origin: SHOP },
+    body: JSON.stringify({ query: 'jeans' }),
+  }));
+
+  it('share one count at ten times the per-minute limit, apart from visitors with an address', async () => {
+    // searchPerMinute is 2, so 20 together
+    for (let i = 0; i < 20; i++) expect(await settle(await unaddressed())).toBe(200);
+    expect(await settle(await unaddressed())).toBe(429);
+    expect(await settle(await searchByToken(req('/api/v1/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans' })))).toBe(200);
   });
 });
 
@@ -829,7 +846,7 @@ describe('a document lookup that fails after the token is checked', () => {
 describe('a request whose body is not JSON', () => {
   const broken = (path: string) => new NextRequest(`http://interakt.test${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'X-Access-Token': 'search-token', Origin: SHOP },
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.1.1.1', 'X-Access-Token': 'search-token', Origin: SHOP },
     body: '{"query": "jea',
   });
 

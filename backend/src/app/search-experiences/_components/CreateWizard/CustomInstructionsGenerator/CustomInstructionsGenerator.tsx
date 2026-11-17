@@ -17,7 +17,6 @@ import { useState } from 'react';
 
 import { searchExperiencesApi } from '../../../_lib/api-client';
 
-import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,6 +30,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/shared/access/area-gate';
 import { reportActionError } from '@/shared/activity/report';
 import { errorText } from '@/shared/api/api-error';
 

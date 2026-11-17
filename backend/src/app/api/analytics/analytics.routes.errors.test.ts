@@ -45,7 +45,8 @@ import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const EXPERIENCE = '5b0e3a52-8a7e-4a0e-9f61-2f1e9b1f2c11';
 const request = (path: string, method = 'GET', body?: unknown) =>
-  new NextRequest(`http://localhost/api/analytics${path}`, { method, ...(body !== undefined && { body: JSON.stringify(body) }) });
+  // As through the platform's proxy, which adds the caller's address
+  new NextRequest(`http://localhost/api/analytics${path}`, { method, headers: { 'X-Forwarded-For': '1.1.1.1' }, ...(body !== undefined && { body: JSON.stringify(body) }) });
 
 beforeEach(() => {
   logs.length = 0;

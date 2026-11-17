@@ -16,6 +16,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
 import { withPermission } from '@/features/access/route-guard';
 import { getProviderByKey } from '@/features/ai-providers/ai-providers.service';
+import { isAreaOn } from '@/features/feature-switches/feature-switches.service';
+import { turnedOff } from '@/features/feature-switches/gate';
 import { apiResponse, describeError } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
@@ -26,6 +28,9 @@ import { trustedOllamaUrl } from '@/shared/seeders/demo/ollama-url';
 import { getRegistryEntry } from '@/shared/seeders/seed-registry.service';
 
 const logger = createLogger('setup-demo-api');
+
+/** The areas the demo's index and experiences belong to. */
+const DEMO_AREAS = ['search', 'chat', 'managed-indexes'] as const;
 
 // Generous ceiling: embedding 200 docs + the warm-up replay can take a minute+.
 export const maxDuration = 300;
@@ -93,6 +98,14 @@ export const POST = withPermission('setup:run', async function POST(request: Nex
   const action = body.action ?? 'seed';
 
   try {
+    // The demo builds and exercises a search index, a search and a chat experience: refused
+    // unless all three areas are on. Removing the demo (reset) stays open with any area off.
+    if (action === 'seed') {
+      for (const area of DEMO_AREAS) {
+        if (!(await isAreaOn(area))) return turnedOff();
+      }
+    }
+
     const loaded = await loadDemoManifest();
 
     if (action === 'reset') {

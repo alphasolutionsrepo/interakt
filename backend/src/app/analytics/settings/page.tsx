@@ -14,9 +14,9 @@ import { clearAnalyticsData, INSIGHTS_QUEUE, loadInsightsSchedule } from '../_li
 import { useDeleteAllSpans } from '../traces/_lib/hooks/useTraces';
 
 import { jobsApi } from '@/app/jobs/_lib/api-client';
-import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { noPermissionTo } from '@/features/access/ui-actions';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/shared/access/area-gate';
 import { AccessLink } from '@/shared/access/Can';
 import { useAccess } from '@/shared/access/useAccess';
 import { reportActionError } from '@/shared/activity/report';
@@ -112,7 +112,7 @@ export default function AnalyticsSettingsPage() {
     <div className="grid items-start gap-6 @3xl:grid-cols-2">
       <div className="space-y-6">
         <InsightsCard analyticsOff={analyticsOff} />
-        <DataCard />
+        <DataCard analyticsOff={analyticsOff} />
       </div>
       <TrackingCard />
     </div>
@@ -288,8 +288,12 @@ function TrackingCard() {
   );
 }
 
-function DataCard() {
-  const { experienceId, experienceName } = useAnalyticsContext();
+function DataCard({ analyticsOff }: { analyticsOff: boolean }) {
+  // With Analytics off the shell hides the experience picker, so a remembered pick can't be seen or
+  // reset: clearing then covers every experience, and the labels say so
+  const picked = useAnalyticsContext();
+  const experienceId = analyticsOff ? undefined : picked.experienceId;
+  const experienceName = analyticsOff ? undefined : picked.experienceName;
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const [confirmTraces, setConfirmTraces] = useState(false);

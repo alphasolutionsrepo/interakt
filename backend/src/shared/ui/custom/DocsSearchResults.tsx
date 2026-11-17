@@ -10,7 +10,10 @@
 import { ArrowDown, ArrowUp, CornerDownLeft, FileText, Hash, Sparkles } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 
+import type { Area } from '@/features/feature-switches/areas';
+import type { OffReasons } from '@/features/feature-switches/off-causes';
 import { cn } from '@/lib/utils';
+import { offAreasText } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
 import type { DocsSearchHit } from '@/shared/help/docs-search';
 import type { DocsSearchState } from '@/shared/help/useDocsSearch';
@@ -18,6 +21,13 @@ import type { DocsSearchState } from '@/shared/help/useDocsSearch';
 /** The listbox id and row ids the drawer's combobox input points at (aria-controls / aria-activedescendant). */
 export const RESULTS_ID = 'help-search-results';
 export const resultRowId = (index: number) => `help-search-row-${index}`;
+
+/** The footer when only page titles were matched: names the Help assistant when that is why, else the search is still being set up. */
+export function titleMatchNote(turnedOff: boolean, areaOn: (area: Area) => boolean, reasons?: OffReasons): string {
+  return turnedOff
+    ? `${offAreasText(['help-assistant'], areaOn, reasons)} Results match page titles only.`
+    : 'Matching page titles only — full-text docs search is still being set up.';
+}
 
 interface DocsSearchResultsProps {
   query: string;
@@ -43,7 +53,7 @@ export function DocsSearchResults({
 }: DocsSearchResultsProps) {
   const q = query.trim();
   // With the Help assistant off there is nothing to hand the question to
-  const { areaOn } = useAccess();
+  const { areaOn, access } = useAccess();
   const canAsk = areaOn('help-assistant');
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -118,7 +128,7 @@ export function DocsSearchResults({
       <footer className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-2 text-[11px] text-muted-foreground">
         <span role="status" className="truncate">
           {search.fallback
-            ? `Matching page titles only — full-text docs search is ${search.turnedOff ? 'turned off for this installation' : 'still being set up'}.`
+            ? titleMatchNote(search.turnedOff, areaOn, access)
             : search.tookMs !== null
               ? `Interakt search · ${search.tookMs} ms`
               : 'Searching…'}

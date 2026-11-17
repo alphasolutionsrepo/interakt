@@ -2,7 +2,7 @@
 
 /**
  * Worker for the `health-check` queue: runs the same checks as Health
- * Monitoring (database, search engine, AI providers) and returns a summary.
+ * Monitoring (database, search engine, AI providers, client addresses) and returns a summary.
  * pg-boss stores it as the job's output, which the home page reads, so the
  * dashboard shows real health without running the checks on every page load.
  * The checks are plain status requests; they spend no model tokens.
@@ -12,7 +12,7 @@
 export interface HealthCheckOutput {
   status: 'healthy' | 'degraded' | 'unhealthy';
   checkedAt: string;
-  services: Array<{ name: string; status: 'healthy' | 'degraded' | 'unhealthy'; message?: string }>;
+  services: Array<{ name: string; status: 'healthy' | 'degraded' | 'unhealthy'; message?: string; task?: string }>;
 }
 
 export async function healthCheckWorker(): Promise<HealthCheckOutput> {
@@ -22,6 +22,11 @@ export async function healthCheckWorker(): Promise<HealthCheckOutput> {
   return {
     status: health.status,
     checkedAt: health.timestamp.toISOString(),
-    services: health.services.map((s) => ({ name: s.name, status: s.status, ...(s.message ? { message: s.message } : {}) })),
+    services: health.services.map((s) => ({
+      name: s.name,
+      status: s.status,
+      ...(s.message ? { message: s.message } : {}),
+      ...(s.task ? { task: s.task } : {}),
+    })),
   };
 }

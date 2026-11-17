@@ -13,7 +13,7 @@ import { refreshInsightsWorker } from './refresh-insights.handler';
 
 import { INTERNAL_MESSAGE } from '@/shared/errors/app-error';
 import { failedQuery } from '@/shared/test/error-answers';
-import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
+import { featureSwitchesService, featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
@@ -42,6 +42,19 @@ describe('refreshInsightsWorker', () => {
     expect(output).toEqual([{ jobId: 'job', skipped: 'Analytics is turned off for this installation.' }]);
     expect(runAnalyticsProcessing).not.toHaveBeenCalled();
     expect(listRecentlyActiveExperienceIds).not.toHaveBeenCalled();
+  });
+
+  it('skips the run, with a warning, when the feature switches cannot be read', async () => {
+    const isAreaOn = vi.spyOn(featureSwitchesService, 'isAreaOn').mockRejectedValue(new Error('database down'));
+    try {
+      const output = await refreshInsightsWorker([{ id: 'job', data: {} }]);
+
+      expect(output).toEqual([{ jobId: 'job', skipped: expect.stringContaining('could not be read') }]);
+    } finally {
+      isAreaOn.mockRestore();
+    }
+    expect(runAnalyticsProcessing).not.toHaveBeenCalled();
+    expect(logs.filter((l) => l.level === 'warn')).toHaveLength(1);
   });
 
   it('refreshes only the given experience', async () => {

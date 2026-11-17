@@ -30,8 +30,8 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from '@/components/ui/collapsible';
-import { useAreaGate } from '@/app/playground/_lib/area-gate';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { useAreaGate } from '@/shared/access/area-gate';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { PageHeaderSkeleton } from '@/shared/ui/custom/skeletons';
 

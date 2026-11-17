@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { accessQueryOptions, areaOnFor } from './useAccess';
+import { areaOnFor } from './access-state';
+import { accessQueryOptions } from './useAccess';
 
 describe('areaOn', () => {
   it('is false for every area while loading', () => {

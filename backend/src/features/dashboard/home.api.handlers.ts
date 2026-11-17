@@ -47,7 +47,7 @@ export async function handleGetHome(request: NextRequest) {
     const areaOn = (area: Area) => on.has(area);
     const analyticsOn = areaOn('analytics');
     const holds = (p: Permission) => can(access, p) && (analyticsOn || !p.startsWith('analytics:'));
-    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz), holds, { analyticsOn, areaOn }) });
+    return NextResponse.json({ success: true, data: homeDataForRole(await getHomeData(tz, analyticsOn), holds, { analyticsOn, areaOn }) });
   } catch (error) {
     return apiResponse.error('Failed to load the home page', 500, { operation: 'getHome', err: error });
   }

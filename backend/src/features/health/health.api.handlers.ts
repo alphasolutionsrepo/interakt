@@ -69,7 +69,7 @@ export async function handleGetElasticsearchHealth(request: NextRequest) {
       return apiResponse.unauthorized('You must be logged in');
     }
 
-    const health = await service.checkElasticsearchHealth();
+    const health = await providerAddressesFor(await service.checkElasticsearchHealth());
     return apiResponse.success(health);
   } catch (error) {
     const err = error as Error;

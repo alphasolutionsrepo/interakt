@@ -22,7 +22,6 @@ import {
     handleDeleteDocument,
 } from '@/features/document-indexing';
 import { ingestionRateLimitKey } from '@/features/ingestion-keys';
-import { withRateLimit } from '@/shared/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,20 +41,20 @@ export const GET = withPermissionOrIngestionKey('search-indexes:view', async fun
     return handleGetDocument(request, context);
 });
 
-export const PUT = forBuiltInDocumentChange('documents:edit', withRateLimit(
+export const PUT = forBuiltInDocumentChange('documents:edit',
     async (request: NextRequest, context: DocumentContext) =>
         handleReplaceDocument(request, context),
     singleDocumentRateLimit
-));
+);
 
-export const PATCH = forBuiltInDocumentChange('documents:edit', withRateLimit(
+export const PATCH = forBuiltInDocumentChange('documents:edit',
     async (request: NextRequest, context: DocumentContext) =>
         handleMergeDocument(request, context),
     singleDocumentRateLimit
-));
+);
 
-export const DELETE = forBuiltInDocumentChange('documents:edit', withRateLimit(
+export const DELETE = forBuiltInDocumentChange('documents:edit',
     async (request: NextRequest, context: DocumentContext) =>
         handleDeleteDocument(request, context),
     singleDocumentRateLimit
-));
+);

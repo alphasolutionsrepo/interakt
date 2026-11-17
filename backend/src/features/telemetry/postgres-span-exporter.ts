@@ -107,7 +107,8 @@ export class PostgresSpanExporter implements SpanExporter {
   // ==========================================================================
 
   private async writeSpans(spans: ReadableSpan[]): Promise<void> {
-    // Analytics off: no traces are recorded (if the switches can't be read, they are)
+    // Analytics off: no traces are recorded (if the switches can't be read, they are, unless the
+    // deployment setting turns Analytics off)
     try {
       const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
       if (!(await isAreaOn('analytics'))) return;

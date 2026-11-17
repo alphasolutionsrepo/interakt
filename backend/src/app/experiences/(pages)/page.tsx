@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { EXPERIENCE_TYPE_AREA } from '@/features/feature-switches/areas';
 import { ActionButton, useAnyActionGate } from '@/shared/access/ActionControls';
 import { AreaOffNote } from '@/shared/access/AreaOffNote';
 import { useAccess } from '@/shared/access/useAccess';
@@ -404,8 +405,8 @@ function ExperiencesContent() {
       />
 
       {/* A kind whose feature area is off: one note, and its card and tab are gone */}
-      {!accessLoading && !areaOn('chat') && <AreaOffNote area="chat" />}
-      {!accessLoading && !areaOn('search') && <AreaOffNote area="search" />}
+      {!accessLoading && !areaOn(EXPERIENCE_TYPE_AREA.ai) && <AreaOffNote area={EXPERIENCE_TYPE_AREA.ai} />}
+      {!accessLoading && !areaOn(EXPERIENCE_TYPE_AREA.search) && <AreaOffNote area={EXPERIENCE_TYPE_AREA.search} />}
 
       {/* Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -413,8 +414,8 @@ function ExperiencesContent() {
         <MetricCard label="Active" value={metrics.active} icon={<CircleCheck className="size-5 text-emerald-500" />} iconBg="bg-emerald-500/10"
           trend={metrics.total > 0 ? `${Math.round((metrics.active / metrics.total) * 100)}%` : undefined}
           trendColor="bg-emerald-500/10 text-emerald-600" />
-        {areaOn('chat') && <MetricCard label="AI Experiences" value={metrics.aiCount} icon={<Bot className="size-5 text-amber-600" />} iconBg="bg-amber-50 dark:bg-amber-500/10" />}
-        {areaOn('search') && <MetricCard label="Search Experiences" value={metrics.searchCount} icon={<Search className="size-5 text-teal-600" />} iconBg="bg-teal-500/10" />}
+        {areaOn(EXPERIENCE_TYPE_AREA.ai) && <MetricCard label="AI Experiences" value={metrics.aiCount} icon={<Bot className="size-5 text-amber-600" />} iconBg="bg-amber-50 dark:bg-amber-500/10" />}
+        {areaOn(EXPERIENCE_TYPE_AREA.search) && <MetricCard label="Search Experiences" value={metrics.searchCount} icon={<Search className="size-5 text-teal-600" />} iconBg="bg-teal-500/10" />}
       </div>
 
       {/* Type Tabs + Filters */}
