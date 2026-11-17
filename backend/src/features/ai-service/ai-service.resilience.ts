@@ -200,11 +200,14 @@ function calculateDelay(
     return Math.round(delay);
 }
 
-/**
- * Sleep for a specified duration
- */
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+/** Wait ms, or less when the caller leaves first (its signal aborts) */
+function waitUnlessLeft(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve();
+        const timer = setTimeout(done, ms);
+        function done() { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); }
+        signal?.addEventListener('abort', done, { once: true });
+    });
 }
 
 /**
@@ -252,12 +255,7 @@ export async function waitAsAsked(error: unknown, signal?: AbortSignal, maxDelay
     if (wait === undefined) return;
     if (wait > maxDelay) throw error;
     // The caller leaving ends the wait at once
-    await new Promise<void>((resolve) => {
-        if (signal?.aborted) return resolve();
-        const timer = setTimeout(done, wait);
-        function done() { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); }
-        signal?.addEventListener('abort', done, { once: true });
-    });
+    await waitUnlessLeft(wait, signal);
 }
 
 /** The provider an attempt's error names (AdapterError, AIServiceError), for the error that ends the retries */
@@ -329,7 +327,8 @@ export async function withRetry<T>(
                 error: (error as Error).message,
             });
 
-            await sleep(delay);
+            // The caller leaving ends the wait at once (a Retry-After can be up to maxDelay)
+            await waitUnlessLeft(delay, signal);
             // The caller stopped waiting during the wait (it left, or its own time ran out): no
             // other attempt, and it ends as an aborted request does, not as the provider failing
             if (signal?.aborted) {

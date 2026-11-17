@@ -178,12 +178,15 @@ export const updateAIProviderSchema = z.object({
     .optional(),
 
   connectionType: connectionTypeSchema.optional(),
-  
+
+  // Changes with the connection type: an Ollama provider becoming an OpenAI-compatible one needs a key
+  authType: authTypeSchema.optional(),
+
   apiKey: z.string()
     .max(500, 'API key too long')
     .optional()
     .nullable(),
-  
+
   isEnabled: z.boolean().optional(),
   
   settings: providerSettingsSchema.optional(),

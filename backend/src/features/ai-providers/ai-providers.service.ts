@@ -439,12 +439,15 @@ export async function updateProvider(
     if (input.description !== undefined) updateData.description = input.description ?? null;
     if (input.baseUrl !== undefined) updateData.baseUrl = input.baseUrl;
     if (input.connectionType !== undefined) updateData.connectionType = input.connectionType;
+    if (input.authType !== undefined) updateData.authType = input.authType;
+    // No authentication: the saved key goes too, or requests would still carry it
+    const dropsKey = input.authType === 'none';
     // An empty key keeps the saved one (the form sends one when nothing was typed); null removes it
-    const newKey = typeof input.apiKey === 'string' && input.apiKey.trim() !== '' ? input.apiKey : undefined;
+    const newKey = !dropsKey && typeof input.apiKey === 'string' && input.apiKey.trim() !== '' ? input.apiKey : undefined;
     if (newKey !== undefined) updateData.apiKey = newKey;
-    else if (input.apiKey === null) updateData.apiKey = null;
+    else if (input.apiKey === null || dropsKey) updateData.apiKey = null;
     // A saved key goes only to the server it was entered for: another server needs it typed again
-    if (input.baseUrl !== undefined && existing.apiKey && newKey === undefined && input.apiKey !== null
+    if (input.baseUrl !== undefined && existing.apiKey && newKey === undefined && updateData.apiKey !== null
         && serverOf(input.baseUrl) !== serverOf(existing.baseUrl)) {
       throw new KeyForAnotherServerError();
     }

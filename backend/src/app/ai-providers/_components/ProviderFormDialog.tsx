@@ -312,31 +312,32 @@ export function ProviderFormDialog({
                             />
                         )}
 
-                        {/* Auth Type (only for create) */}
-                        {mode === 'create' && (
-                            <FormField
-                                control={form.control}
-                                name="authType"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Authentication</FormLabel>
-                                        <Select onValueChange={field.onChange} value={field.value}>
-                                            <FormControl>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select auth type" />
-                                                </SelectTrigger>
-                                            </FormControl>
-                                            <SelectContent>
-                                                <SelectItem value="api_key">API Key</SelectItem>
-                                                <SelectItem value="none">None (Local)</SelectItem>
-                                                <SelectItem value="oauth">OAuth</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        )}
+                        {/* Auth Type: editable too, since a changed connection type can need a key */}
+                        <FormField
+                            control={form.control}
+                            name="authType"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Authentication</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select auth type" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="api_key">API Key</SelectItem>
+                                            <SelectItem value="none">None (Local)</SelectItem>
+                                            <SelectItem value="oauth">OAuth</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {mode === 'edit' && provider?.hasApiKey && field.value === 'none' && (
+                                        <FormDescription>Saving removes the saved API key.</FormDescription>
+                                    )}
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
 
                         {/* Base URL */}
                         <FormField
