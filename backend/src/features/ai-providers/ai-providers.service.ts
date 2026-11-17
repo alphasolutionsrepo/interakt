@@ -6,6 +6,7 @@
  */
 
 import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
+import { AdapterError, errorFromResponse, noAnswerError } from '@/features/ai-service/adapters/types';
 import { CacheManager } from '@/shared/cache/cache-manager';
 import { createLogger } from '@/shared/logger/logger';
 import * as repository from './ai-providers.repository';
@@ -1086,16 +1087,30 @@ export async function discoverModels(
   }
 }
 
-async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
-  const response = await fetch(`${provider.baseUrl}/api/tags`, {
-    method: 'GET',
-    headers: ollamaHeaders(provider.apiKey),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch models: HTTP ${response.status}`);
+/**
+ * A provider's model list as JSON (null when the answer isn't JSON). A refusal or no answer is
+ * thrown as the provider's own error, named and with its status, so the admin is told what
+ * happened (the key was rejected, the service couldn't be reached) rather than a bare failure.
+ */
+async function readModelList(provider: AIProvider, path: string, headers: Record<string, string>, timeoutMs: number): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(`${provider.baseUrl}${path}`, { method: 'GET', headers, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    throw noAnswerError(error, provider.providerKey);
   }
-  const data = (await response.json()) as OllamaTagsResponse;
+  if (!response.ok) {
+    // OpenAI-style answers say why in error.message, Ollama's in error
+    throw await errorFromResponse(response, provider.providerKey, (body) => {
+      const error = (body as { error?: unknown } | null)?.error;
+      return typeof error === 'string' ? error : (error as { message?: string } | undefined)?.message;
+    });
+  }
+  return response.json().catch(() => null);
+}
+
+async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
+  const data = ((await readModelList(provider, '/api/tags', ollamaHeaders(provider.apiKey), timeoutMs)) ?? {}) as OllamaTagsResponse;
   const installed = data.models || [];
   const models = installed.map((ollamaModel): ReportedModel => {
     const modelType = inferModelType(ollamaModel);
@@ -1135,18 +1150,10 @@ function reportedContextWindow(model: Record<string, unknown>): number | undefin
 }
 
 async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
-  const response = await fetch(`${provider.baseUrl}/models`, {
-    method: 'GET',
-    headers: provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {},
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch models: HTTP ${response.status}`);
-  }
-  const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+  const body = (await readModelList(provider, '/models', provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}, timeoutMs)) as { data?: unknown } | null;
   // An answer that isn't a model list (a proxy's page, a changed API) says nothing about the models
   if (!body || !Array.isArray(body.data)) {
-    throw new Error('Failed to fetch models: the answer is not an OpenAI-style model list (no "data" list)');
+    throw new AdapterError('The answer is not an OpenAI-style model list (no "data" list)', provider.providerKey, undefined, false);
   }
   const listed = (body.data as Array<Record<string, unknown>>)
     .filter((model): model is Record<string, unknown> & { id: string } => typeof model.id === 'string' && model.id.length > 0);

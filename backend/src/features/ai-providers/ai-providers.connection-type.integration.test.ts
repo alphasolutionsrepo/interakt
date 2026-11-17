@@ -297,7 +297,7 @@ describe('models a gateway stops listing, or lists under names that are not text
 
   it.each([
     ['an empty list', { object: 'list', data: [] }, 200],
-    ['an answer with no model list', { message: 'gateway restarting' }, 500],
+    ['an answer with no model list', { message: 'gateway restarting' }, 502],
   ])('hides nothing on %s', async (_case, answer, status) => {
     const { data } = await createProvider({ providerKey: `gw-odd-${++n}`, connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
     gateway.models = [{ id: 'campus-chat' }];
@@ -607,5 +607,26 @@ describe('a new provider with authentication set to None (review 17 Nov)', () =>
     const { status, data } = await createProvider({ providerKey: 'none-typed', connectionType: 'ollama', authType: 'none', apiKey: 'typed-key', baseUrl: ollamaUrl });
     expect(status).toBe(201);
     expect(data.hasApiKey).toBe(false);
+  });
+});
+
+describe('Discover Models when the provider refuses or is down (review 17 Nov)', () => {
+  it('says the provider rejected the key, not a generic failure', async () => {
+    const { data } = await createProvider({ providerKey: 'gw-bad-key', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'wrong-key', baseUrl: gatewayUrl });
+    const res = await post(discoverRoute, data.id);
+    const body = await res.json();
+    expect(res.status).toBe(502);
+    expect(body).toMatchObject({ code: 'UPSTREAM_AUTH', error: 'gw-bad-key rejected the credentials.' });
+  });
+
+  it("says the provider couldn't be reached when nothing answers", async () => {
+    const closed = http.createServer();
+    const url = await listen(closed);
+    closed.close();
+    const { data } = await createProvider({ providerKey: 'gw-down', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: `${url}/v1` });
+    const res = await post(discoverRoute, data.id);
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', error: "gw-down couldn't be reached." });
   });
 });
