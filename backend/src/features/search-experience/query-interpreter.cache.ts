@@ -26,6 +26,7 @@ const CONSTRAINT_TTL = 5 * 60 * 1000;
 // one serving reads — the cache looks stale no matter how often you clear it.
 const interpretationKey = '__queryInterpreterCache';
 const constraintKey = '__queryInterpreterFieldCache';
+const rewriteKey = '__queryRewriteCache';
 
 export const interpretationCache: CacheManager =
     (globalThis as Record<string, unknown>)[interpretationKey] as CacheManager
@@ -39,6 +40,14 @@ export const constraintCache: CacheManager =
     ?? ((globalThis as Record<string, unknown>)[constraintKey] = new CacheManager('query-interpreter-fields', {
         defaultTTL: CONSTRAINT_TTL,
         maxSize: 100,
+    }));
+
+/** Search-term rewrites for external sources, per (experience, model, instructions, query). */
+export const rewriteCache: CacheManager =
+    (globalThis as Record<string, unknown>)[rewriteKey] as CacheManager
+    ?? ((globalThis as Record<string, unknown>)[rewriteKey] = new CacheManager('query-rewrite', {
+        defaultTTL: INTERPRETATION_TTL,
+        maxSize: 1000,
     }));
 
 /**

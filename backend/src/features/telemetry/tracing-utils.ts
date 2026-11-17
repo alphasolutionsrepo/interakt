@@ -21,11 +21,13 @@ import {
   type Tracer,
   type Span,
 } from '@opentelemetry/api';
-import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
+
 
 import { ATTR } from './attribute-keys';
 import { isTelemetryEnabled } from './telemetry.config';
 import type { SpanOptions, StreamSpanOptions } from './telemetry.types';
+
+import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 
 // ============================================================================
 // TRACER MANAGEMENT
@@ -100,7 +102,10 @@ function turnAbandonedStep(error: unknown): string | undefined {
  * );
  */
 export async function withSpan<T>(
-  options: SpanOptions,
+  options: SpanOptions & {
+    /** A step that falls back instead of throwing: the error message when this result is a failure, so the span ends in error */
+    errorFor?: (result: T) => string | undefined;
+  },
   fn: (span: Span) => Promise<T>
 ): Promise<T> {
   if (!isTelemetryEnabled(options.experienceId)) {
@@ -118,7 +123,8 @@ export async function withSpan<T>(
     async (span) => {
       try {
         const result = await fn(span);
-        span.setStatus({ code: SpanStatusCode.OK });
+        const failure = options.errorFor?.(result);
+        span.setStatus(failure ? { code: SpanStatusCode.ERROR, message: failure } : { code: SpanStatusCode.OK });
         return result;
       } catch (error) {
         // Nobody waits for the turn any more (the visitor left, or it timed out): it stopped

@@ -40,4 +40,16 @@ describe('recent searches feed', () => {
     expect(html).toContain('AI step: Filter values');
     expect(html).toContain('AI step: Field values (earlier)');
   });
+
+  it('shows what was searched under the visitor\'s words when query understanding changed it', () => {
+    const html = renderToStaticMarkup(createElement(RecentSearchesFeed, {
+      data: [
+        { ...event('user', null, 'can you show me minimal shirts for summer'), searchedQuery: 'minimal shirts summer' },
+        event('user', null, 'linen shirt'),
+      ],
+    }));
+    expect(html).toContain('can you show me minimal shirts for summer');
+    expect(html).toContain('searched as “minimal shirts summer”');
+    expect(html.match(/searched as/g)).toHaveLength(1);
+  });
 });

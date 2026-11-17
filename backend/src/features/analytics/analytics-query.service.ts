@@ -1027,6 +1027,7 @@ export async function getRecentSearchEvents(
     id: string;
     timestamp: Date;
     query: string;
+    searchedQuery: string | null;
     searchType: string;
     triggerType: string;
     triggerStep: string | null;
@@ -1056,6 +1057,7 @@ export async function getRecentSearchEvents(
         id: searchEvents.id,
         timestamp: searchEvents.timestamp,
         query: searchEvents.queryText,
+        searchedQuery: searchEvents.searchedQuery,
         searchType: searchEvents.searchType,
         triggerType: searchEvents.triggerType,
         triggerStep: searchEvents.triggerStep,
@@ -1072,6 +1074,7 @@ export async function getRecentSearchEvents(
       id: row.id,
       timestamp: row.timestamp,
       query: row.query,
+      searchedQuery: row.searchedQuery,
       searchType: row.searchType,
       triggerType: row.triggerType,
       triggerStep: row.triggerStep,
@@ -1099,6 +1102,7 @@ export async function getQuerySearchEvents(
     id: string;
     timestamp: Date;
     query: string;
+    searchedQuery: string | null;
     searchType: string;
     triggerType: string;
     triggerStep: string | null;
@@ -1126,6 +1130,7 @@ export async function getQuerySearchEvents(
         id: searchEvents.id,
         timestamp: searchEvents.timestamp,
         query: searchEvents.queryText,
+        searchedQuery: searchEvents.searchedQuery,
         searchType: searchEvents.searchType,
         triggerType: searchEvents.triggerType,
         triggerStep: searchEvents.triggerStep,
@@ -1145,6 +1150,7 @@ export async function getQuerySearchEvents(
       id: row.id,
       timestamp: row.timestamp,
       query: row.query,
+      searchedQuery: row.searchedQuery,
       searchType: row.searchType,
       triggerType: row.triggerType,
       triggerStep: row.triggerStep,
