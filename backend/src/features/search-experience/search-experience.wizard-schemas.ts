@@ -7,6 +7,8 @@
  */
 
 import { z } from 'zod';
+
+import { SLUG_MAX_LENGTH } from '@/shared/utils/slug';
 import {
   DEFAULT_SEARCH_CONFIG,
   DEFAULT_AI_CONFIG,
@@ -23,7 +25,7 @@ import {
 
 export const SLUG_REGEX = /^[a-z][a-z0-9-]*[a-z0-9]$/;
 export const SLUG_MIN_LENGTH = 3;
-export const SLUG_MAX_LENGTH = 100;
+export { SLUG_MAX_LENGTH };
 
 // ============================================================================
 // STEP 1: BASIC INFO
@@ -282,17 +284,3 @@ export const WIZARD_DEFAULT_VALUES: WizardFormData = {
   displayConfig: undefined,
 };
 
-// ============================================================================
-// HELPER: Generate slug from name
-// ============================================================================
-
-export function generateSlugFromName(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .substring(0, SLUG_MAX_LENGTH);
-}
