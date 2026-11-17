@@ -1204,7 +1204,8 @@ async function embeddingDimensions(provider: AIProvider, modelKey: string): Prom
  * Save the models a provider reported: new ones are added (switched off when `addOff`, for the
  * admin to choose), and saved ones it no longer lists are hidden as its report says. A saved
  * model it lists gains the context size it reports when it has none; one discovery hid is
- * switched back on, while one an admin switched off stays off and is named in `leftOff`.
+ * switched back on, while one an admin switched off (or that was added off) stays off and is
+ * named in `leftOff`.
  * Ollama reports "name:latest" for a model saved as "name".
  */
 async function saveDiscoveredModels(providerId: string, report: ProviderReport, options: { addOff?: boolean } = {}): Promise<ModelDiscoveryResult> {

@@ -21,15 +21,15 @@ describe('the Discover Models message', () => {
     });
   });
 
-  it('names the listed models an admin switched off, and where to switch them on', () => {
+  it('names the listed models that are switched off, and where to switch them on', () => {
     expect(discoveryMessage(result({ leftOff: ['big-expensive-model'] }))).toEqual({
-      level: 'success', text: 'Found 3 models (2 new). Left off as you set them (switch on in Manage Models): big-expensive-model',
+      level: 'success', text: 'Found 3 models (2 new). Listed but switched off (switch on in Manage Models): big-expensive-model',
     });
   });
 
   it('counts the models left off once there are more than a few', () => {
     const leftOff = ['a', 'b', 'c', 'd', 'e', 'f'];
-    expect(discoveryMessage(result({ leftOff })).text).toBe('Found 3 models (2 new). 6 listed models left off as you set them (switch on in Manage Models)');
+    expect(discoveryMessage(result({ leftOff })).text).toBe('Found 3 models (2 new). 6 listed models are switched off (switch on in Manage Models)');
   });
 
   it('says how many new models were added switched off, and where to choose', () => {

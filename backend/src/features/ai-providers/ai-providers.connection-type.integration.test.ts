@@ -591,6 +591,10 @@ describe('Discover Models on a cloud provider (review 17 Nov)', () => {
     const result = (await (await post(discoverRoute, data.id)).json()).data;
     expect((await modelsOf(data.id)).map((m) => [m.modelKey, m.isAvailable])).toEqual([['campus-chat', false]]);
     expect(result.addedOff).toEqual(['campus-chat']);
+
+    // Next run: still off, and named as switched off, not as the admin's choice
+    const next = (await (await post(discoverRoute, data.id)).json()).data;
+    expect(next).toMatchObject({ addedOff: [], leftOff: ['campus-chat'] });
   });
 
   it('adds new models switched on for a self-hosted (Local) provider', async () => {
