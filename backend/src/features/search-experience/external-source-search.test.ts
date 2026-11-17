@@ -205,4 +205,11 @@ describe('searchExternalSourceForExperience', () => {
     await searchExternalSourceForExperience(SOURCE, [], { query: 'apply financial aid' }, EXPERIENCE, 'api', 'how do I apply for financial aid');
     expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ queryText: 'apply financial aid', visitorQuery: 'how do I apply for financial aid' });
   });
+
+  it("records the visitor's words when the source fails or refuses a filter too", async () => {
+    vi.mocked(searchExternalSource).mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:9200'));
+    await expect(searchExternalSourceForExperience(SOURCE, [], { query: 'apply financial aid' }, EXPERIENCE, 'api', 'how do I apply for financial aid'))
+      .rejects.toThrow();
+    expect(vi.mocked(trackSearch).mock.lastCall?.[0]).toMatchObject({ visitorQuery: 'how do I apply for financial aid', success: false });
+  });
 });

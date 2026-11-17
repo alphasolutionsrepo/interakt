@@ -16,4 +16,11 @@ describe('searchQueryFields', () => {
     expect(searchQueryFields({ queryText: 'linen shirt', visitorQuery: ' linen shirt ' })).toEqual({ queryText: 'linen shirt' });
     expect(searchQueryFields({ queryText: 'linen shirt' })).toEqual({ queryText: 'linen shirt' });
   });
+
+  it('keeps the query searched when the visitor\'s words are empty, and stores an empty search beside real words', () => {
+    // No words of the visitor's own: the search is recorded under what was searched
+    expect(searchQueryFields({ queryText: 'linen shirt', visitorQuery: '  ' })).toEqual({ queryText: 'linen shirt' });
+    // Every word moved into filters: the visitor's question stays, the empty query searched beside it
+    expect(searchQueryFields({ queryText: '', visitorQuery: 'shirts under 50' })).toEqual({ queryText: 'shirts under 50', searchedQuery: '' });
+  });
 });

@@ -148,16 +148,18 @@ export function trackSearch(event: SearchEventData, experienceId?: string): void
   }
   if (!analyticsAreaOn()) return;
 
-  // Skip empty queries — these are noise (e.g., match_all probes, empty tool calls)
-  if (!event.queryText || event.queryText.trim().length === 0) {
+  // Stored and counted by what the visitor typed, with the query searched beside it
+  const { queryText, searchedQuery } = searchQueryFields(event);
+
+  // Skip empty queries — these are noise (e.g., match_all probes, empty tool calls). A visitor's
+  // question whose words all became filters still counts: it is recorded by the visitor's words.
+  if (!queryText || queryText.trim().length === 0) {
     logger.debug('trackSearch: skipping empty query');
     return;
   }
 
   try {
-    // Stored and counted by what the visitor typed, with the query searched beside it
     const { visitorQuery: _visitorQuery, ...rest } = event;
-    const { queryText, searchedQuery } = searchQueryFields(event);
     const queryNormalized = normalizeQuery(queryText);
 
     const queuedEvent: QueuedSearchEvent = {

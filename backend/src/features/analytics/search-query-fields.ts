@@ -11,7 +11,8 @@ export function searchQueryFields(
   event: Pick<SearchEventData, 'queryText' | 'visitorQuery'>,
 ): { queryText: string; searchedQuery?: string } {
   const { queryText: searched, visitorQuery } = event;
-  if (visitorQuery === undefined || visitorQuery.trim() === searched.trim()) {
+  // No words of the visitor's own (a browse, or a caller that has none): recorded as searched
+  if (!visitorQuery?.trim() || visitorQuery.trim() === searched.trim()) {
     return { queryText: searched };
   }
   return { queryText: visitorQuery, searchedQuery: searched };

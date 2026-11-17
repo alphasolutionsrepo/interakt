@@ -103,6 +103,15 @@ describe('the visitor\'s words and the query searched', () => {
     expect(forQuery).toHaveLength(1);
     expect(forQuery[0].searchedQuery).toBe('minimal style shirts summer');
   });
+
+  it('records a question whose words all became filters, by the visitor\'s words, and still skips an empty search', async () => {
+    tracked('', 'shirts under 50');
+    tracked('', '');
+    await forceFlush();
+
+    const rows = await testDb.db.select({ query: searchEvents.queryText, searched: searchEvents.searchedQuery }).from(searchEvents);
+    expect(rows).toEqual([{ query: 'shirts under 50', searched: '' }]);
+  });
 });
 
 describe('AI usage source', () => {
