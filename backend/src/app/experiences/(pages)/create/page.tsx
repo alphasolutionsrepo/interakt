@@ -115,7 +115,7 @@ function CreateExperienceContent() {
       />
 
       <div className="grid md:grid-cols-2 gap-6 max-w-3xl">
-        {areaOn('chat') ? <KindCard
+        {areaOn(EXPERIENCE_TYPE_AREA.ai) ? <KindCard
           gate={aiGate}
           onSelect={() => setSelectedType('ai')}
           icon={<Bot className="size-7 text-indigo-500" />}
@@ -124,8 +124,8 @@ function CreateExperienceContent() {
           linkClassName="text-indigo-600 dark:text-indigo-400"
           title="AI Experience"
           text="Build conversational AI assistants powered by tools and configurable pipelines. Great for chatbots, support agents, and interactive Q&A."
-        /> : <AreaOffNote area="chat" className="rounded-2xl border border-dashed border-border/60 p-8" />}
-        {areaOn('search') ? <KindCard
+        /> : <AreaOffNote area={EXPERIENCE_TYPE_AREA.ai} className="rounded-2xl border border-dashed border-border/60 p-8" />}
+        {areaOn(EXPERIENCE_TYPE_AREA.search) ? <KindCard
           gate={searchGate}
           onSelect={() => setSelectedType('search')}
           icon={<Compass className="size-7 text-violet-500" />}
@@ -134,7 +134,7 @@ function CreateExperienceContent() {
           linkClassName="text-violet-600 dark:text-violet-400"
           title="Search Experience"
           text="Create search interfaces with multi-index support, AI summaries, and configurable result displays. Ideal for product search and knowledge bases."
-        /> : <AreaOffNote area="search" className="rounded-2xl border border-dashed border-border/60 p-8" />}
+        /> : <AreaOffNote area={EXPERIENCE_TYPE_AREA.search} className="rounded-2xl border border-dashed border-border/60 p-8" />}
       </div>
     </div>
   );
