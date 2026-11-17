@@ -104,6 +104,12 @@ describe('plainSearchTerms', () => {
         expect(plainSearchTerms('research OR teaching OR awards', 'research OR teaching awards for staff')).toBe('research OR teaching OR awards');
     });
 
+    it('removes a "+" the model put inside a word, which engines read as AND; keeps a hyphen inside one', () => {
+        expect(plainSearchTerms('linen+shirt summer', 'any linen shirts for summer')).toBe('linen shirt summer');
+        expect(plainSearchTerms('form AB-12 linen-blend', 'form AB-12 in a linen blend')).toBe('form AB-12 linen-blend');
+        expect(plainSearchTerms('c++ courses', 'are there any c++ courses')).toBe('c++ courses');
+    });
+
     it('removes an escape character the model added', () => {
         expect(plainSearchTerms('drive\\ error', 'why does my drive show an error')).toBe('drive error');
         expect(plainSearchTerms('C:\\ drive error', 'C:\\ drive error help')).toBe('C:\\ drive error');

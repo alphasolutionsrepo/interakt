@@ -81,11 +81,11 @@ export function parseRewrite(content: string): string | null {
 /**
  * Characters the external engines' simple query syntax reads as syntax (Elasticsearch
  * simple_query_string, Azure AI Search simple): wildcards, OR, phrases, grouping,
- * fuzziness and the escape character.
+ * fuzziness, the escape character, and "+" (AND, inside a word too: "linen+shirt").
  */
-const SYNTAX_CHARACTERS = ['*', '|', '"', '(', ')', '~', '\\'];
-/** Signs that mean must / must not at the start of a word. */
-const WORD_SIGNS = ['+', '-'];
+const SYNTAX_CHARACTERS = ['*', '|', '"', '(', ')', '~', '\\', '+'];
+/** "-" means NOT only at the start of a word; inside one ("AB-12") it is part of the word. */
+const WORD_SIGNS = ['-'];
 /** Words some engines read as operators when written in capitals. */
 const OPERATOR_WORDS = ['OR', 'AND', 'NOT'];
 
