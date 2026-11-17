@@ -3,7 +3,7 @@
 /**
  * With Ask remembered, a question is never sent while access is still loading: the server may have
  * the Help assistant off. The drawer stays in Ask mode, but its send button is disabled until access
- * shows the assistant on. Enter, the send button and "Ask AI about … instead" all go through canAsk.
+ * shows the assistant on, and shows a spinner meanwhile. Enter, the send button and "Ask AI about … instead" all go through canAsk.
  * useState is wrapped so the remembered mode starts on 'ask' and the box already holds a question
  * (a server render runs no effects or typing).
  */
@@ -32,20 +32,22 @@ vi.mock('@/components/ui/sheet', () => {
 /** The Ask send button's markup */
 const sendButton = () => {
   const html = renderToStaticMarkup(createElement(HelpButton));
-  const button = html.match(/<button[^>]*aria-label="Ask"[^>]*>/)?.[0];
+  const button = html.match(/<button[^>]*aria-label="Ask"[^>]*>[\s\S]*?<\/button>/)?.[0];
   expect(button, 'the Ask send button is rendered').toBeDefined();
   return button!;
 };
 
 describe('sending a Help question while access loads, with Ask remembered', () => {
-  it('disables the send button until access is known', () => {
+  it('disables the send button until access is known, and shows it waiting', () => {
     uiAccessLoading();
     expect(sendButton()).toMatch(/\sdisabled=""/);
+    expect(sendButton()).toContain('animate-spin');
   });
 
   it('enables it once access shows the Help assistant on (control)', () => {
     uiAccess.asAdmin();
     expect(sendButton()).not.toMatch(/\sdisabled=""/);
+    expect(sendButton()).not.toContain('animate-spin');
   });
 });
 

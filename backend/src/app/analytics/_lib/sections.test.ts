@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ANALYTICS_SECTIONS, hiddenSectionAreas, visibleSections } from './sections';
 
+import { ANALYTICS_SECTION_NEEDS } from '@/features/feature-switches/analytics-section-areas';
 import type { Area } from '@/features/feature-switches/areas';
 import { pageAreasOn } from '@/features/feature-switches/page-areas';
 
@@ -46,5 +47,12 @@ describe('the section menu and the page gate', () => {
     for (const section of ANALYTICS_SECTIONS) {
       expect(shown.includes(section.href), section.href).toBe(pageAreasOn(section.href, areaOn));
     }
+  });
+});
+
+describe('the analytics section needs table', () => {
+  it('names only sections that exist, so a renamed section cannot silently lose its areas', () => {
+    const hrefs = ANALYTICS_SECTIONS.map((s) => s.href);
+    for (const href of Object.keys(ANALYTICS_SECTION_NEEDS)) expect(hrefs, href).toContain(href);
   });
 });

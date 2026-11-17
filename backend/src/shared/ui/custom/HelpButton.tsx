@@ -475,7 +475,8 @@ export function HelpButton() {
                 onClick={() => ask(text)}
                 aria-label="Ask"
               >
-                {chat.busy ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
+                {/* Busy, or waiting for access before a question can be sent: the typed text stays */}
+                {chat.busy || askKnown === null ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
               </Button>
             )}
           </div>
