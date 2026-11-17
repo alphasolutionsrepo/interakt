@@ -42,6 +42,19 @@ export const AI_AUTH_TYPES = ['api_key', 'none', 'oauth'] as const;
 export const AI_PROVIDER_TYPES = ['cloud', 'local'] as const;
 
 /**
+ * The API a provider speaks, which picks the adapter. Any name can use either, so one
+ * Interakt can hold OpenAI itself and any number of OpenAI-compatible gateways or routers.
+ * - openai_compatible: OpenAI's /v1 API (OpenAI, AI gateways and routers, vLLM, LM Studio, ...)
+ * - ollama: Ollama's own API
+ */
+export const AI_CONNECTION_TYPES = ['openai_compatible', 'ollama'] as const;
+
+/** The connection type a provider created without one gets: its key decided the adapter before. */
+export function defaultConnectionType(providerKey: string): (typeof AI_CONNECTION_TYPES)[number] {
+  return providerKey === 'ollama' ? 'ollama' : 'openai_compatible';
+}
+
+/**
  * Default Purpose Types
  * What system defaults can be configured for
  */
@@ -54,12 +67,14 @@ export const AI_DEFAULT_PURPOSES = ['text_generation', 'embedding', 'chat'] as c
 export const modelTypeSchema = z.enum(AI_MODEL_TYPES);
 export const authTypeSchema = z.enum(AI_AUTH_TYPES);
 export const providerTypeSchema = z.enum(AI_PROVIDER_TYPES);
+export const connectionTypeSchema = z.enum(AI_CONNECTION_TYPES);
 export const defaultPurposeSchema = z.enum(AI_DEFAULT_PURPOSES);
 
 // Inferred types from Zod schemas
 export type AIModelType = z.infer<typeof modelTypeSchema>;
 export type AIAuthType = z.infer<typeof authTypeSchema>;
 export type AIProviderType = z.infer<typeof providerTypeSchema>;
+export type AIConnectionType = z.infer<typeof connectionTypeSchema>;
 export type AIDefaultPurpose = z.infer<typeof defaultPurposeSchema>;
 
 // ============================================================================
@@ -123,6 +138,8 @@ export const createAIProviderSchema = z.object({
     .optional(),
   
   providerType: providerTypeSchema,
+  // Optional for callers written before connection types: derived from the key then
+  connectionType: connectionTypeSchema.optional(),
   authType: authTypeSchema,
   
   baseUrl: z.string()
@@ -159,6 +176,8 @@ export const updateAIProviderSchema = z.object({
     .url('Must be a valid URL')
     .max(500, 'URL too long')
     .optional(),
+
+  connectionType: connectionTypeSchema.optional(),
   
   apiKey: z.string()
     .max(500, 'API key too long')

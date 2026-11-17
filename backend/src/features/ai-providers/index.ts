@@ -53,7 +53,7 @@ export type {
   // Ollama types
   OllamaModelInfo,
   OllamaTagsResponse,
-  OllamaDiscoveryResult,
+  ModelDiscoveryResult,
   
   // Connection types
   ConnectionTestResult,
@@ -154,5 +154,4 @@ export {
   testConnection,
   
   // Ollama discovery
-  discoverOllamaModels,
 } from './ai-providers.service';

@@ -236,6 +236,30 @@ function isRetryableError(error: unknown): boolean {
     return false;
 }
 
+/** How long the provider asked to wait before the next attempt (an AdapterError's Retry-After) */
+function retryAfterOf(error: unknown): number | undefined {
+    const wait = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+    return typeof wait === 'number' ? wait : undefined;
+}
+
+/**
+ * Before another try outside withRetry (a stream's one retry): wait as long as the provider
+ * asked (its Retry-After), or pass its error on when it asks for longer than the longest
+ * retry wait, as withRetry does.
+ */
+export async function waitAsAsked(error: unknown, signal?: AbortSignal, maxDelay: number = RETRY_DEFAULTS.maxDelay): Promise<void> {
+    const wait = retryAfterOf(error);
+    if (wait === undefined) return;
+    if (wait > maxDelay) throw error;
+    // The caller leaving ends the wait at once
+    await new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve();
+        const timer = setTimeout(done, wait);
+        function done() { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); }
+        signal?.addEventListener('abort', done, { once: true });
+    });
+}
+
 /** The provider an attempt's error names (AdapterError, AIServiceError), for the error that ends the retries */
 function providerKeyOf(error: unknown): string {
     const key = (error as { providerKey?: unknown } | null)?.providerKey;
@@ -289,8 +313,15 @@ export async function withRetry<T>(
                 throw error;
             }
 
-            // Calculate and apply delay
-            const delay = calculateDelay(attempt, fullConfig);
+            // A provider that asks for a longer wait than the longest backoff (its Retry-After) is
+            // not tried again now: another attempt would only be refused again
+            const askedWait = retryAfterOf(error);
+            if (askedWait !== undefined && askedWait > fullConfig.maxDelay) {
+                throw error;
+            }
+
+            // Calculate and apply delay: the backoff, or the provider's own wait when longer
+            const delay = Math.max(calculateDelay(attempt, fullConfig), askedWait ?? 0);
             logger.debug('Retrying after error', {
                 attempt: attempt + 1,
                 maxRetries: fullConfig.maxRetries,

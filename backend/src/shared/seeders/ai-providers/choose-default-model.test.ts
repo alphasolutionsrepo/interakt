@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@/db/index', () => ({ db: {} }));
-vi.mock('@/features/ai-providers/ai-providers.service', () => ({ discoverOllamaModels: vi.fn() }));
+vi.mock('@/features/ai-providers/ai-providers.service', () => ({ discoverModels: vi.fn() }));
 vi.mock('../seed-registry.service', () => ({}));
 
 import { chooseDefaultModel } from './index';

@@ -193,7 +193,9 @@ export default function AIProvidersPage() {
     setDiscoveringId(provider.id);
     try {
       const result = await aiProvidersApi.discoverModels(provider.id);
-      if (result.success) {
+      if (result.success && result.needsSetup.length > 0) {
+        toast.warning(`Found ${result.modelsFound} models (${result.modelsAdded} new). Needs setup: ${result.needsSetup.join('; ')}`);
+      } else if (result.success) {
         toast.success(`Found ${result.modelsFound} models (${result.modelsAdded} new)`);
       } else {
         toast.warning(`Completed with ${result.errors.length} errors`);
@@ -393,11 +395,7 @@ export default function AIProvidersPage() {
           onOpenChange={(open) => setManageModelsDialog(prev => ({ ...prev, open }))}
           provider={manageModelsDialog.provider}
           onModelsChanged={refetchProviders}
-          onDiscoverModels={
-            manageModelsDialog.provider.providerKey === 'ollama'
-              ? () => handleDiscoverModels(manageModelsDialog.provider!)
-              : undefined
-          }
+          onDiscoverModels={() => handleDiscoverModels(manageModelsDialog.provider!)}
           isDiscovering={discoveringId === manageModelsDialog.provider.id}
         />
       )}
