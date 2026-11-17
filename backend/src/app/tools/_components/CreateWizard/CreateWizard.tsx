@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Loader2, Check } from 'lucide-react';
 import { useMinDelayAction } from '@/shared/hooks';
+import { generateSlugFromName } from '@/shared/utils/slug';
 import { Step1_BasicInfo } from './Step1_BasicInfo';
 import type { Step1Data } from './Step1_BasicInfo';
 import { Step2_Config } from './Step2_Config';
@@ -92,15 +93,6 @@ const DEFAULT_AI_DESCRIPTIONS: Partial<Record<string, string>> = {
   ai_call:
     'Process the input with specialized AI reasoning. Use this for tasks requiring focused analysis or transformation.',
 };
-
-function generateSlug(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 100);
-}
 
 // ============================================================================
 // TYPES
@@ -273,7 +265,7 @@ export function CreateWizard() {
       const updates: Partial<WizardData> = {};
       if (!prev.name || prev.name === '') {
         updates.name = `Search ${meta.name}`;
-        updates.slug = generateSlug(`Search ${meta.name}`);
+        updates.slug = generateSlugFromName(`Search ${meta.name}`);
       }
       if (!prev.description || prev.description === '') {
         updates.description = meta.description ?? `Search tool for ${meta.name} data source.`;

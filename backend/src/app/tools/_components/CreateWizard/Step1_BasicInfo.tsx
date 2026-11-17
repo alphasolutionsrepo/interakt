@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CheckCircle2, Loader2, XCircle, Database, Globe, Search, Bot } from 'lucide-react';
+import { generateSlugFromName } from '@/shared/utils/slug';
 import type { ExecutorType } from '../../_lib/api-client';
 import { useToolSlugAvailability } from '../../_lib/hooks/useTools';
 
@@ -70,15 +71,6 @@ interface Step1Props {
   errors: Record<string, string>;
 }
 
-function generateSlug(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 100);
-}
-
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -91,7 +83,7 @@ export function Step1_BasicInfo({ data, onChange, errors }: Step1Props) {
   );
 
   function handleNameChange(name: string) {
-    const slug = generateSlug(name);
+    const slug = generateSlugFromName(name);
     onChange({ ...data, name, slug });
   }
 
