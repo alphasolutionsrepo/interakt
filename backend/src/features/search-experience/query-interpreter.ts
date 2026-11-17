@@ -42,6 +42,7 @@ import {
 } from './query-interpreter.core';
 import { REWRITE_SCHEMA, buildRewritePrompt, parseRewrite, shouldRewrite } from './query-rewriter.core';
 import { DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS, MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
+
 import type {
     SearchExperienceAIConfig,
     SearchExperienceQueryUnderstandingConfig,
@@ -76,16 +77,21 @@ export interface QueryInterpretation {
     droppedFilters: Array<{ field: string; reason: string }>;
     /** False when interpretation was skipped or failed — effectiveQuery is then the original */
     interpreted: boolean;
+    /** How the step ended, for the trace: a failed or timed-out step searched with the visitor's words */
+    outcome: QueryInterpretationOutcome;
     durationMs: number;
 }
 
-function passthrough(query: string, startedAt: number): QueryInterpretation {
+export type QueryInterpretationOutcome = 'interpreted' | 'skipped' | 'failed' | 'timed_out';
+
+function passthrough(query: string, startedAt: number, outcome: Exclude<QueryInterpretationOutcome, 'interpreted'>): QueryInterpretation {
     return {
         originalQuery: query,
         effectiveQuery: query,
         appliedFilters: [],
         droppedFilters: [],
         interpreted: false,
+        outcome,
         durationMs: Date.now() - startedAt,
     };
 }
@@ -377,10 +383,10 @@ export async function interpretQuery(
     const { query, searchIndexId, config } = options;
 
     if (!config?.enabled) {
-        return passthrough(query, startedAt);
+        return passthrough(query, startedAt, 'skipped');
     }
     if (!shouldInterpret(query, config.minWords ?? 3)) {
-        return passthrough(query, startedAt);
+        return passthrough(query, startedAt, 'skipped');
     }
 
     const timeoutMs = resolveTimeoutMs(config);
@@ -388,8 +394,11 @@ export async function interpretQuery(
         // Field loading counts toward the limit too: the search waits for all of it
         const result = await withTimeLimit(timeoutMs, () => interpretWithModel(options, config));
 
+        if (result === NO_FILTERABLE_FIELDS) {
+            return passthrough(query, startedAt, 'skipped');
+        }
         if (!result) {
-            return passthrough(query, startedAt);
+            return passthrough(query, startedAt, 'failed');
         }
 
         logger.info('Query interpreted', {
@@ -405,24 +414,27 @@ export async function interpretQuery(
     } catch (err) {
         if (err instanceof QueryStepTimeoutError) {
             logger.warn('Query interpretation timed out; searching with the raw query', { searchIndexId, timeoutMs });
-            return passthrough(query, startedAt);
+            return passthrough(query, startedAt, 'timed_out');
         }
         // Fail open — a search that returns loose results beats one that errors. A model
         // that is down or misconfigured still needs fixing, so it is logged as an error.
         logger[failureLevel(err, 'warn')]('Query interpretation failed; searching with the raw query', { searchIndexId, err });
-        return passthrough(query, startedAt);
+        return passthrough(query, startedAt, 'failed');
     }
 }
 
-/** Load the index's fields and ask the model; null when there is nothing usable. */
+/** The index has no fields to filter on, so there is nothing to ask the model. */
+const NO_FILTERABLE_FIELDS = Symbol('no filterable fields');
+
+/** Load the index's fields and ask the model; null when the model gave nothing usable. */
 async function interpretWithModel(
     options: InterpretQueryOptions,
     config: SearchExperienceQueryUnderstandingConfig,
-): Promise<QueryInterpretation | null> {
+): Promise<QueryInterpretation | null | typeof NO_FILTERABLE_FIELDS> {
     const { query, searchIndexId } = options;
     const constraints = await loadFieldConstraints(searchIndexId);
     if (Object.keys(constraints).length === 0) {
-        return null;
+        return NO_FILTERABLE_FIELDS;
     }
 
     // Key on the index + experience/model: the same phrase can be interpreted differently
@@ -480,6 +492,7 @@ async function interpretWithModel(
                 reason: d.reason,
             })),
             interpreted: true,
+            outcome: 'interpreted',
             durationMs: 0,
         };
     });
@@ -525,7 +538,9 @@ export async function rewriteQueryForExternalSearch(options: {
         return done('skipped');
     }
     const timeoutMs = resolveTimeoutMs(config);
-    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim().toLowerCase()}`;
+    // Keyed on the words as typed, letter case included: the rewrite keeps codes and names as the
+    // visitor wrote them, and "unchanged" is judged against this visitor's own words
+    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim()}`;
 
     try {
         // Part of AI summaries, like filter interpretation

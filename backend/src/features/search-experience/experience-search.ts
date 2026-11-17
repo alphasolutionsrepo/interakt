@@ -263,13 +263,12 @@ async function buildSearchRequest(
   // indexes get "men's t-shirts below $110" as a clean query plus real filters; external
   // sources get the question as search terms. The two model calls run side by side.
   const [interpreted, rewrite] = await Promise.all([
-    applyQueryInterpretation({
-      query: publicRequest.query,
-      clientFilters: publicRequest.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
-      searchIndexId: indexes[0]?.searchIndex?.id,
-      aiConfig: experience.aiConfig,
-      experienceId: experience.id,
-    }),
+    interpretForManaged(
+      publicRequest.query,
+      publicRequest.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
+      indexes[0]?.searchIndex?.id,
+      experience,
+    ),
     hasExternal ? rewriteForExternal(publicRequest.query, experience) : undefined,
   ]);
 
@@ -317,6 +316,41 @@ async function buildSearchRequest(
   };
 
   return { request, interpretation: interpreted.interpretation, externalQuery: rewrite?.query ?? publicRequest.query };
+}
+
+type InterpretedRequest = Awaited<ReturnType<typeof applyQueryInterpretation>>;
+
+/**
+ * Interpret the query into a query plus filters for Interakt's own indexes, as its own trace
+ * step. No step when query understanding is off or no managed index is searched.
+ */
+async function interpretForManaged(
+  query: string,
+  clientFilters: Array<{ field: string; operator: string; value: unknown }> | undefined,
+  searchIndexId: string | undefined,
+  experience: SearchExperienceWithIndexes
+): Promise<InterpretedRequest> {
+  const aiConfig = experience.aiConfig;
+  const run = () => applyQueryInterpretation({ query, clientFilters, searchIndexId, aiConfig, experienceId: experience.id });
+  if (!searchIndexId || !aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled) return run();
+
+  // A failed or timed-out step falls back to the visitor's words and filters, but the step itself ends in error
+  const errorFor = ({ interpretation }: InterpretedRequest) =>
+    interpretation?.outcome === 'failed' ? 'Query interpretation failed; searched with the visitor\'s words'
+      : interpretation?.outcome === 'timed_out' ? 'Query interpretation reached its time limit; searched with the visitor\'s words'
+        : undefined;
+  return withSpan({ name: 'search_experience.query_interpretation', experienceId: experience.id, errorFor }, async (span) => {
+    const interpreted = await run();
+    const interpretation = interpreted.interpretation;
+    span.setAttribute(ATTR.QUERY_INTERPRETATION_OUTCOME, interpretation?.outcome ?? 'skipped');
+    span.setAttribute(ATTR.QUERY_INTERPRETATION_DURATION_MS, interpretation?.durationMs ?? 0);
+    span.setAttribute(ATTR.QUERY_INTERPRETATION_FILTERS_ADDED, interpretation?.appliedFilters.length ?? 0);
+    // The query searched is content: recorded only at 'full'
+    if (shouldLogContent(experience.id)) {
+      span.setAttribute(ATTR.QUERY_INTERPRETATION_QUERY, interpreted.query);
+    }
+    return interpreted;
+  });
 }
 
 /**

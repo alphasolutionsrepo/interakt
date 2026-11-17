@@ -60,6 +60,11 @@ export const ATTR = {
   QUERY_REWRITE_DURATION_MS: 'alpha.search.query_rewrite.duration_ms',
   QUERY_REWRITE_ORIGINAL: 'alpha.search.query_rewrite.original',
   QUERY_REWRITE_REWRITTEN: 'alpha.search.query_rewrite.rewritten',
+  // Query understanding's interpretation of the visitor's words into a query plus filters for Interakt's own indexes
+  QUERY_INTERPRETATION_OUTCOME: 'alpha.search.query_interpretation.outcome', // 'interpreted' | 'skipped' | 'failed' | 'timed_out'
+  QUERY_INTERPRETATION_DURATION_MS: 'alpha.search.query_interpretation.duration_ms',
+  QUERY_INTERPRETATION_FILTERS_ADDED: 'alpha.search.query_interpretation.filters_added',
+  QUERY_INTERPRETATION_QUERY: 'alpha.search.query_interpretation.query',
   DATA_SOURCE_ID: 'alpha.data_source.id',
   DATA_SOURCE_NAME: 'alpha.data_source.name',
 
@@ -128,6 +133,7 @@ export const CONTENT_ATTRIBUTES: ReadonlySet<string> = new Set([
   ATTR.SEARCH_QUERY,
   ATTR.QUERY_REWRITE_ORIGINAL,
   ATTR.QUERY_REWRITE_REWRITTEN,
+  ATTR.QUERY_INTERPRETATION_QUERY,
   ATTR.TOOL_INPUT_PARAMS,
   ATTR.V2_PLAN_REASONING,
   'alpha.v2.plan.actions',

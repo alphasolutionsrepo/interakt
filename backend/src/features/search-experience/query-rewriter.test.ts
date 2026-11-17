@@ -147,9 +147,22 @@ describe('rewriteQueryForExternalSearch', () => {
     it('reuses the rewrite for the same question and config', async () => {
         const experienceId = freshExperience();
         await rewrite(aiConfig(), QUESTION, experienceId);
-        const second = await rewrite(aiConfig(), `  ${QUESTION.toUpperCase()} `, experienceId);
+        const second = await rewrite(aiConfig(), `  ${QUESTION} `, experienceId);
         expect(aiService.chat).toHaveBeenCalledTimes(1);
         expect(second.query).toBe('apply financial aid transfer student');
+    });
+
+    it('keeps each visitor\'s letter case: the same words typed in other capitals get their own rewrite and outcome', async () => {
+        const experienceId = freshExperience();
+        vi.mocked(aiService.chat).mockImplementation(async (messages) =>
+            ({ message: { content: JSON.stringify({ query: messages[1].content }) } }) as never);
+
+        const first = await rewrite(aiConfig(), 'sku ab-12 replacement parts', experienceId);
+        const second = await rewrite(aiConfig(), 'SKU AB-12 replacement parts', experienceId);
+
+        expect(first).toMatchObject({ query: 'sku ab-12 replacement parts', outcome: 'unchanged' });
+        expect(second).toMatchObject({ query: 'SKU AB-12 replacement parts', outcome: 'unchanged' });
+        expect(aiService.chat).toHaveBeenCalledTimes(2);
     });
 
     it('asks again after the custom instructions change', async () => {

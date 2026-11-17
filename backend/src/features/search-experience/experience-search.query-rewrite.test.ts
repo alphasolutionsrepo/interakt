@@ -159,10 +159,80 @@ describe('an experience with a managed index and an external source', () => {
     expect(step?.error).toMatch(/time limit/);
   });
 
-  it('ends the step in error when the rewrite fails, and OK when it works', async () => {
+  it('ends the step in error when the rewrite fails', async () => {
     vi.mocked(aiService.chat).mockRejectedValue(new Error('model down'));
     await search(experience({}, 'external'));
     expect(telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite')?.error).toMatch(/failed/);
+  });
+
+  it.each([
+    ['rewritten', {}, 'apply financial aid transfer student'],
+    ['unchanged', {}, QUESTION],
+    ['skipped', { minWords: 20 }, 'unused'],
+  ] as const)('ends the step OK when the outcome is %s', async (outcome, settings, answer) => {
+    vi.mocked(aiService.chat).mockResolvedValue({ message: { content: JSON.stringify({ query: answer }) } } as never);
+    await search(experience(settings, 'external'));
+    const step = telemetry.steps.find((s) => s.name === 'search_experience.query_rewrite');
+    expect(step?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe(outcome);
+    expect(step?.error).toBeUndefined();
+  });
+});
+
+describe('the query interpretation trace step (managed indexes)', () => {
+  const interpretationStep = () => telemetry.steps.find((s) => s.name === 'search_experience.query_interpretation');
+
+  it('records the outcome, duration and filters added, without the query below full', async () => {
+    modelAnswers();
+    await search(experience());
+
+    expect(interpretationStep()?.attributes).toEqual({
+      [ATTR.QUERY_INTERPRETATION_OUTCOME]: 'interpreted',
+      [ATTR.QUERY_INTERPRETATION_DURATION_MS]: expect.any(Number),
+      [ATTR.QUERY_INTERPRETATION_FILTERS_ADDED]: 1,
+    });
+    expect(interpretationStep()?.error).toBeUndefined();
+  });
+
+  it('records the query searched at full', async () => {
+    modelAnswers();
+    telemetry.content = true;
+    await search(experience());
+    expect(interpretationStep()?.attributes[ATTR.QUERY_INTERPRETATION_QUERY]).toBe('financial aid transfer');
+  });
+
+  it('ends in error, naming the time limit, when the model is slower than the limit', async () => {
+    vi.mocked(aiService.chat).mockImplementation(() => new Promise(() => {}));
+    await search(experience({ timeoutMs: 500 }));
+
+    expect(managedRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
+    expect(interpretationStep()?.attributes[ATTR.QUERY_INTERPRETATION_OUTCOME]).toBe('timed_out');
+    expect(interpretationStep()?.error).toMatch(/time limit/);
+  });
+
+  it('ends in error when the model fails or answers with nothing usable', async () => {
+    vi.mocked(aiService.chat).mockRejectedValue(new Error('model down'));
+    await search(experience());
+    expect(interpretationStep()?.attributes[ATTR.QUERY_INTERPRETATION_OUTCOME]).toBe('failed');
+    expect(interpretationStep()?.error).toMatch(/failed/);
+
+    telemetry.steps = [];
+    vi.mocked(aiService.chat).mockResolvedValue({ message: { content: 'not json' } } as never);
+    await search(experience());
+    expect(interpretationStep()?.attributes[ATTR.QUERY_INTERPRETATION_OUTCOME]).toBe('failed');
+  });
+
+  it('records a skip, ending OK, when the query is shorter than the minimum words', async () => {
+    modelAnswers();
+    await search(experience({ minWords: 20 }));
+    expect(interpretationStep()?.attributes[ATTR.QUERY_INTERPRETATION_OUTCOME]).toBe('skipped');
+    expect(interpretationStep()?.error).toBeUndefined();
+  });
+
+  it('is absent with query understanding off, or with no managed index', async () => {
+    modelAnswers();
+    await search(experience({ enabled: false }));
+    await search(experience({}, 'external'));
+    expect(interpretationStep()).toBeUndefined();
   });
 });
 
