@@ -294,6 +294,18 @@ describe('a cloud provider\'s new embedding model', () => {
   });
 });
 
+describe('a discovery where one model cannot be saved', () => {
+  it('saves the others and answers both the model it could not save and the ones that need setup', async () => {
+    const tooLong = `org/${'x'.repeat(120)}`; // longer than a model key can be
+    gateway.models = [{ id: 'cloud-chat' }, { id: tooLong }, { id: 'cloud-embed-2' }];
+    const { data } = await createProvider({ providerKey: 'gw-one-fails', providerType: 'cloud', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl });
+
+    const result = (await (await post(discoverRoute, data.id)).json()).data;
+    expect(result).toMatchObject({ success: false, modelsAdded: 2, needsSetup: ['cloud-embed-2: set its dimensions on the model'] });
+    expect(result.errors).toEqual([expect.stringContaining(`Failed to process model ${tooLong}`)]);
+  });
+});
+
 describe('an embedding model whose dimensions the service will not tell', () => {
   it('is added, and the admin is told to set its dimensions', async () => {
     gateway.models = [{ id: 'campus-embed' }];
