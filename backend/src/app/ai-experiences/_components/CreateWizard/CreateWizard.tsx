@@ -16,6 +16,7 @@ import {
  Cpu, Wrench } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useRef, useState } from 'react';
+import { generateSlugFromName } from '@/shared/utils/slug';
 
 import type { PipelineMode } from '../../_lib/api-client';
 import { useCreateAIExperience, useAIExperienceSlugAvailability } from '../../_lib/hooks/useAIExperiences';
@@ -245,7 +246,7 @@ function Step1({ data, onChange, errors }: {
   );
 
   function handleNameChange(name: string) {
-    const slug = name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 100);
+    const slug = generateSlugFromName(name);
     onChange({ name, slug });
   }
 

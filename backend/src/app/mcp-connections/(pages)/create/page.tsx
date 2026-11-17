@@ -17,16 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCreateMcpConnection } from '../../_lib/hooks/useMcpConnections';
+import { generateSlugFromName } from '@/shared/utils/slug';
 import type { McpAuthType, McpTransport } from '../../_lib/api-client';
-
-function generateSlug(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 100);
-}
 
 const PRESETS = [
   {
@@ -64,7 +56,7 @@ export default function CreateMcpConnectionPage() {
 
   function applyPreset(p: typeof PRESETS[number]) {
     setName(p.label);
-    setSlug(generateSlug(p.label));
+    setSlug(generateSlugFromName(p.label));
     setServerUrl(p.url);
     setTransport(p.transport);
     setAuthType('none');
@@ -72,7 +64,7 @@ export default function CreateMcpConnectionPage() {
 
   function handleNameChange(v: string) {
     setName(v);
-    setSlug(generateSlug(v));
+    setSlug(generateSlugFromName(v));
   }
 
   const isValid =

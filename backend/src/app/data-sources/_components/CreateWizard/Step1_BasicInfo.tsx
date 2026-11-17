@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
+import { generateSlugFromName } from '@/shared/utils/slug';
 import { DS_TYPE_CONFIG } from '../DataSourceTypeChip';
 import type { DataSourceType } from '../../_lib/api-client';
 import { useDataSourceSlugAvailability } from '../../_lib/hooks/useDataSources';
@@ -21,15 +22,6 @@ interface Step1Props {
   errors: Record<string, string>;
 }
 
-function generateSlug(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 100);
-}
-
 export function Step1_BasicInfo({ data, onChange, errors }: Step1Props) {
   const { isAvailable, isChecking, isDebouncing } = useDataSourceSlugAvailability(
     data.slug,
@@ -38,7 +30,7 @@ export function Step1_BasicInfo({ data, onChange, errors }: Step1Props) {
   );
 
   function handleNameChange(name: string) {
-    const slug = generateSlug(name);
+    const slug = generateSlugFromName(name);
     onChange({ ...data, name, slug });
   }
 
