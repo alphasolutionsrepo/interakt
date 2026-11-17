@@ -11,6 +11,7 @@ import { resolveSecret } from '@/features/secrets/secrets.service';
 import type { ToolExecutionResult } from '../tools.executor';
 
 import { FIXED_HOST_MESSAGE, INPUT_PATTERN, resolveUrlTemplate } from './http-url';
+import { fetchOnSameServer, RedirectedElsewhereError } from './same-server-fetch';
 
 // ============================================================================
 // CONFIG TYPES
@@ -200,7 +201,7 @@ export async function executeHttpApi(
     const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const response = await fetch(url, { ...requestInit, signal: controller.signal });
+      const response = await fetchOnSameServer(url, { ...requestInit, signal: controller.signal });
       clearTimeout(timer);
 
       if (!response.ok) {
@@ -241,6 +242,8 @@ export async function executeHttpApi(
       };
     } catch (err) {
       clearTimeout(timer);
+      // A redirect to another server answers the same on every try
+      if (err instanceof RedirectedElsewhereError) return { success: false, error: err.message };
       const msg = err instanceof Error ? err.message : String(err);
       lastError = msg.toLowerCase().includes('abort')
         ? `Request timed out after ${timeout}ms`
