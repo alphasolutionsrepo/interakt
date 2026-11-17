@@ -96,6 +96,19 @@ describe('plainSearchTerms', () => {
         expect(plainSearchTerms('engineer*', 'jobs for engineer* graduates')).toBe('engineer*');
     });
 
+    it('keeps syntax only on the words the visitor typed with it, not on words the model added', () => {
+        // The visitor's quotes stay on their phrase; quotes, a wildcard and a sign the model added go
+        expect(plainSearchTerms('"financial aid" "loans" grant* -fees', 'find "financial aid" -loans please'))
+            .toBe('"financial aid" loans grant fees');
+        // A typed OR keeps that word, not one the model adds elsewhere
+        expect(plainSearchTerms('research OR teaching OR awards', 'research OR teaching awards for staff')).toBe('research OR teaching OR awards');
+    });
+
+    it('removes an escape character the model added', () => {
+        expect(plainSearchTerms('drive\\ error', 'why does my drive show an error')).toBe('drive error');
+        expect(plainSearchTerms('C:\\ drive error', 'C:\\ drive error help')).toBe('C:\\ drive error');
+    });
+
     it('keeps lower-case "or", "and" and "not": they are words, not operators', () => {
         expect(plainSearchTerms('black and white photos', 'show me black and white photos')).toBe('black and white photos');
     });

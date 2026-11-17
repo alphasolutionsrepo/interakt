@@ -78,31 +78,34 @@ export function parseRewrite(content: string): string | null {
     return trimmed;
 }
 
-/** Characters search engines read as syntax: wildcards, OR, phrases, grouping, fuzziness. */
-const SYNTAX_CHARACTERS = ['*', '|', '"', '(', ')', '~'];
+/**
+ * Characters the external engines' simple query syntax reads as syntax (Elasticsearch
+ * simple_query_string, Azure AI Search simple): wildcards, OR, phrases, grouping,
+ * fuzziness and the escape character.
+ */
+const SYNTAX_CHARACTERS = ['*', '|', '"', '(', ')', '~', '\\'];
 /** Signs that mean must / must not at the start of a word. */
 const WORD_SIGNS = ['+', '-'];
 /** Words some engines read as operators when written in capitals. */
 const OPERATOR_WORDS = ['OR', 'AND', 'NOT'];
 
 /**
- * Keep search terms to plain words, as the prompt asks: search syntax the model added is
- * removed, while syntax the visitor typed themselves stays. Returns null when no words
- * are left; the caller then searches with the visitor's own words.
+ * Keep search terms to plain words, as the prompt asks. A word the visitor typed exactly,
+ * syntax and all, stays as they typed it; in any other word, search syntax is removed.
+ * Returns null when no words are left; the caller then searches with the visitor's own words.
  */
 export function plainSearchTerms(terms: string, visitorQuery: string): string | null {
-    const visitorWords = visitorQuery.split(/\s+/).filter(Boolean);
-    let plain = terms;
-    for (const char of SYNTAX_CHARACTERS) {
-        if (!visitorQuery.includes(char)) plain = plain.split(char).join(' ');
-    }
-    const words = plain.split(/\s+/).filter(Boolean).flatMap((word) => {
-        if (OPERATOR_WORDS.includes(word) && !visitorWords.includes(word)) return [];
-        let rest = word;
-        while (rest.length > 0 && WORD_SIGNS.includes(rest[0]) && !visitorWords.some((w) => w.startsWith(rest[0]))) {
-            rest = rest.slice(1);
-        }
-        return rest.length > 0 ? [rest] : [];
+    const visitorWords = new Set(visitorQuery.split(/\s+/).filter(Boolean));
+    const words = terms.split(/\s+/).filter(Boolean).flatMap((word) => {
+        if (visitorWords.has(word)) return [word];
+        if (OPERATOR_WORDS.includes(word)) return [];
+        let plain = word;
+        for (const char of SYNTAX_CHARACTERS) plain = plain.split(char).join(' ');
+        return plain.split(/\s+/).filter(Boolean).flatMap((piece) => {
+            let rest = piece;
+            while (rest.length > 0 && WORD_SIGNS.includes(rest[0])) rest = rest.slice(1);
+            return rest.length > 0 ? [rest] : [];
+        });
     });
     return words.length > 0 ? words.join(' ') : null;
 }
