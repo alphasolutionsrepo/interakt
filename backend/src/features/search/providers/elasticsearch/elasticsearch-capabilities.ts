@@ -89,6 +89,20 @@ export const ELASTICSEARCH_CAPABILITIES: ProviderCapabilities = {
             defaultValue: '1s',
             requiresReindex: false,
         },
+        {
+            key: 'totalFieldsLimit',
+            label: 'Total Fields Limit',
+            description:
+                'Maximum number of mapped fields Elasticsearch allows in the index. '
+                + 'Leave empty to size it automatically from the configured fields. '
+                + 'Only needed for very wide mappings or heavily nested JSON fields.',
+            type: 'number',
+            min: 1000,
+            max: 100000,
+            // No default on purpose: unset means "computed from the mapping"
+            defaultValue: null,
+            requiresReindex: false,
+        },
     ],
 
     // Per-field settings shown in the field mapping UI

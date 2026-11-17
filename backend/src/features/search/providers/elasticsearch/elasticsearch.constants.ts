@@ -288,4 +288,24 @@ export const ES_INDEX_DEFAULTS = {
     numberOfShards: 1,
     numberOfReplicas: 0,
     refreshInterval: '1s',
+    /** Elasticsearch's own default for index.mapping.total_fields.limit */
+    totalFieldsLimit: 1000,
 } as const;
+
+/**
+ * Work out index.mapping.total_fields.limit for a mapping with this many
+ * top-level properties.
+ *
+ * Elasticsearch counts every mapped property toward the limit, including the
+ * subfields dynamic mapping adds under `object` fields and the `.keyword`
+ * subfields on text. A catalog with ~900 attribute columns plus a few json
+ * fields blows past the default of 1000 and every write fails with "Limit of
+ * total fields [1000] has been exceeded". Doubling the configured count leaves
+ * room for those subfields; the floor keeps small indexes on the ES default,
+ * and rounding up to the nearest 500 stops the value drifting on every reindex.
+ */
+export function computeTotalFieldsLimit(mappedPropertyCount: number): number {
+    const withHeadroom = mappedPropertyCount * 2;
+    const rounded = Math.ceil(withHeadroom / 500) * 500;
+    return Math.max(ES_INDEX_DEFAULTS.totalFieldsLimit, rounded);
+}

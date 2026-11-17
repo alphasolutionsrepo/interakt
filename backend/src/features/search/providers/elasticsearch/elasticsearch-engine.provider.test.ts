@@ -17,6 +17,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ElasticsearchEngineProvider } from './elasticsearch-engine.provider';
+import { computeTotalFieldsLimit } from './elasticsearch.constants';
 import type { IndexSettingsBuildContext } from '../search-engine-provider.interface';
 
 const provider = new ElasticsearchEngineProvider();
@@ -235,5 +236,63 @@ describe('provider settings passthrough', () => {
         expect(settings.number_of_replicas).toBe(2);
         expect(settings.refresh_interval).toBe('30s');
         expect(analysis.analyzer.interakt_text).toBeDefined();
+    });
+});
+
+describe('total fields limit', () => {
+    // A catalog with ~900 attribute columns plus json fields exceeded ES's
+    // default of 1000 and every write failed: "Limit of total fields [1000]
+    // has been exceeded". The limit must follow the mapping.
+    const field = (i: number) => ({
+        fieldName: `attr_${i}`,
+        fieldType: 'number',
+        isSearchable: false,
+        isFacetable: false,
+        providerFieldSettings: {},
+    });
+
+    it('keeps the ES default for a small mapping', () => {
+        expect(build().settings['index.mapping.total_fields.limit']).toBe(1000);
+    });
+
+    it('grows with the number of mapped fields, with headroom for subfields', () => {
+        const { settings } = build({
+            fields: Array.from({ length: 930 }, (_, i) => field(i)),
+        });
+
+        expect(settings['index.mapping.total_fields.limit']).toBe(2000);
+    });
+
+    it('counts the embedding field too', () => {
+        const { settings } = build({
+            fields: Array.from({ length: 750 }, (_, i) => field(i)),
+            embeddingConfig: { fieldName: 'content_embedding', dimensions: 1536, similarity: 'cosine' },
+        });
+
+        // 751 * 2 = 1502 -> rounds up to the next 500
+        expect(settings['index.mapping.total_fields.limit']).toBe(2000);
+    });
+
+    it('honours an explicit provider setting over the computed value', () => {
+        const { settings } = build({ providerSettings: { totalFieldsLimit: 5000 } });
+
+        expect(settings['index.mapping.total_fields.limit']).toBe(5000);
+    });
+
+    it('ignores a blank or invalid override and computes instead', () => {
+        expect(build({ providerSettings: { totalFieldsLimit: '' } }).settings['index.mapping.total_fields.limit']).toBe(1000);
+        expect(build({ providerSettings: { totalFieldsLimit: 0 } }).settings['index.mapping.total_fields.limit']).toBe(1000);
+    });
+});
+
+describe('computeTotalFieldsLimit', () => {
+    it.each([
+        [0, 1000],
+        [400, 1000],
+        [501, 1500],
+        [930, 2000],
+        [1300, 3000],
+    ])('%i mapped properties -> %i', (count, expected) => {
+        expect(computeTotalFieldsLimit(count)).toBe(expected);
     });
 });

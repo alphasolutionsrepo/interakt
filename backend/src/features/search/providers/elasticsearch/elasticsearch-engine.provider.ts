@@ -46,6 +46,7 @@ import {
     INTERAKT_SYNONYM_FILTER,
     INTERAKT_TEXT_ANALYZER,
     INTERAKT_TEXT_SEARCH_ANALYZER,
+    computeTotalFieldsLimit,
 } from './elasticsearch.constants';
 import { registerProviderClass } from '../search-engine-provider.factory';
 import { buildFilterQuery } from './query-builders/filter.builder';
@@ -394,6 +395,14 @@ export class ElasticsearchEngineProvider implements SearchEngineProvider {
         if (ps.refreshInterval) {
             indexSettings.refresh_interval = ps.refreshInterval;
         }
+
+        // Size the field limit to the mapping, or honour an explicit override.
+        // Without this a wide catalog fails every write at ES's default of 1000.
+        const explicitLimit = Number(ps.totalFieldsLimit);
+        indexSettings['index.mapping.total_fields.limit'] =
+            Number.isFinite(explicitLimit) && explicitLimit > 0
+                ? explicitLimit
+                : computeTotalFieldsLimit(Object.keys(properties).length);
 
         return {
             settings: Object.keys(indexSettings).length > 0 ? indexSettings : undefined,
