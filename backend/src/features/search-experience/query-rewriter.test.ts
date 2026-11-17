@@ -151,6 +151,14 @@ describe('rewriteQueryForExternalSearch', () => {
         expect(Date.now() - startedAt).toBeLessThan(1500);
     });
 
+    it('sends plain words: syntax the model added is removed, and only syntax falls back to the visitor\'s words', async () => {
+        modelReplies(JSON.stringify({ query: '"financial aid" | transfer*' }));
+        expect(await rewrite(aiConfig())).toMatchObject({ query: 'financial aid transfer', outcome: 'rewritten' });
+
+        modelReplies(JSON.stringify({ query: '*' }));
+        expect(await rewrite(aiConfig())).toMatchObject({ query: QUESTION, outcome: 'failed' });
+    });
+
     it('reuses the rewrite for the same question and config', async () => {
         const experienceId = freshExperience();
         await rewrite(aiConfig(), QUESTION, experienceId);

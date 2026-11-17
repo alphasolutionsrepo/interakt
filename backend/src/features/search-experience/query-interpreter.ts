@@ -40,7 +40,7 @@ import {
     toParameterContext,
     type InterpretedFilter,
 } from './query-interpreter.core';
-import { REWRITE_SCHEMA, buildRewritePrompt, parseRewrite, shouldRewrite } from './query-rewriter.core';
+import { REWRITE_SCHEMA, buildRewritePrompt, parseRewrite, plainSearchTerms, shouldRewrite } from './query-rewriter.core';
 import { DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS, MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
 
 import type {
@@ -655,7 +655,8 @@ export async function rewriteQueryForExternalSearch(options: {
                         },
                     },
                 ));
-                return parseRewrite(completionText(completion));
+                const terms = parseRewrite(completionText(completion));
+                return terms === null ? null : plainSearchTerms(terms, query.trim());
             }),
         );
 

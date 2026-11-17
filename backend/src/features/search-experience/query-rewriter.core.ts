@@ -77,3 +77,32 @@ export function parseRewrite(content: string): string | null {
     if (trimmed.length === 0 || trimmed.length > MAX_REWRITE_LENGTH) return null;
     return trimmed;
 }
+
+/** Characters search engines read as syntax: wildcards, OR, phrases, grouping, fuzziness. */
+const SYNTAX_CHARACTERS = ['*', '|', '"', '(', ')', '~'];
+/** Signs that mean must / must not at the start of a word. */
+const WORD_SIGNS = ['+', '-'];
+/** Words some engines read as operators when written in capitals. */
+const OPERATOR_WORDS = ['OR', 'AND', 'NOT'];
+
+/**
+ * Keep search terms to plain words, as the prompt asks: search syntax the model added is
+ * removed, while syntax the visitor typed themselves stays. Returns null when no words
+ * are left; the caller then searches with the visitor's own words.
+ */
+export function plainSearchTerms(terms: string, visitorQuery: string): string | null {
+    const visitorWords = visitorQuery.split(/\s+/).filter(Boolean);
+    let plain = terms;
+    for (const char of SYNTAX_CHARACTERS) {
+        if (!visitorQuery.includes(char)) plain = plain.split(char).join(' ');
+    }
+    const words = plain.split(/\s+/).filter(Boolean).flatMap((word) => {
+        if (OPERATOR_WORDS.includes(word) && !visitorWords.includes(word)) return [];
+        let rest = word;
+        while (rest.length > 0 && WORD_SIGNS.includes(rest[0]) && !visitorWords.some((w) => w.startsWith(rest[0]))) {
+            rest = rest.slice(1);
+        }
+        return rest.length > 0 ? [rest] : [];
+    });
+    return words.length > 0 ? words.join(' ') : null;
+}

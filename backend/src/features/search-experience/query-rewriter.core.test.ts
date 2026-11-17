@@ -12,6 +12,7 @@ import {
     REWRITE_SCHEMA,
     buildRewritePrompt,
     parseRewrite,
+    plainSearchTerms,
     shouldRewrite,
 } from './query-rewriter.core';
 
@@ -67,5 +68,35 @@ describe('shouldRewrite', () => {
     it('counts words against the minimum', () => {
         expect(shouldRewrite('financial aid', 3)).toBe(false);
         expect(shouldRewrite('  financial   aid deadlines ', 3)).toBe(true);
+    });
+});
+
+describe('plainSearchTerms', () => {
+    const VISITOR = 'what are the library opening hours on weekends';
+
+    it('keeps plain search terms as they are', () => {
+        expect(plainSearchTerms('library opening hours weekends', VISITOR)).toBe('library opening hours weekends');
+        expect(plainSearchTerms('form AB-12 replacement', 'where is form AB-12')).toBe('form AB-12 replacement');
+    });
+
+    it('removes search syntax the model added', () => {
+        expect(plainSearchTerms('"library hours" | weekend*', VISITOR)).toBe('library hours weekend');
+        expect(plainSearchTerms('(library OR hours) -fees +weekends ~2', VISITOR)).toBe('library hours fees weekends 2');
+        expect(plainSearchTerms('library NOT AND hours', VISITOR)).toBe('library hours');
+    });
+
+    it('returns null when nothing but syntax is left', () => {
+        expect(plainSearchTerms('*', VISITOR)).toBeNull();
+        expect(plainSearchTerms(' | - " ', VISITOR)).toBeNull();
+    });
+
+    it('keeps the syntax the visitor typed themselves', () => {
+        expect(plainSearchTerms('"financial aid" -loans', 'find "financial aid" -loans please')).toBe('"financial aid" -loans');
+        expect(plainSearchTerms('research OR teaching awards', 'research OR teaching awards for staff')).toBe('research OR teaching awards');
+        expect(plainSearchTerms('engineer*', 'jobs for engineer* graduates')).toBe('engineer*');
+    });
+
+    it('keeps lower-case "or", "and" and "not": they are words, not operators', () => {
+        expect(plainSearchTerms('black and white photos', 'show me black and white photos')).toBe('black and white photos');
     });
 });
