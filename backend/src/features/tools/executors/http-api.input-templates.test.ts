@@ -34,8 +34,9 @@ describe('a host the AI would choose', () => {
     ['the whole URL', '{{input.url}}'],
     ['the port', 'https://api.example.com:{{input.port}}/orders'],
     ['the scheme', '{{input.scheme}}://api.example.com/orders'],
+    ['the path right after the host, with no "/"', 'https://api.example.com{{input.path}}'],
   ])('is refused when the URL takes %s from input, and nothing is sent', async (_case, baseUrl) => {
-    const result = await executeHttpApi(tool({ baseUrl }), { host: 'elsewhere.test', suffix: '.elsewhere.test', url: 'https://elsewhere.test/x', port: '8443', scheme: 'http' });
+    const result = await executeHttpApi(tool({ baseUrl }), { host: 'elsewhere.test', suffix: '.elsewhere.test', url: 'https://elsewhere.test/x', port: '8443', scheme: 'http', path: '/v1/items' });
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/host is fixed/);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -67,6 +68,23 @@ describe("a path the AI would leave", () => {
   it('leaves an empty segment for a field the AI did not pass', async () => {
     await executeHttpApi(tool({ baseUrl: 'https://api.example.com/orders/{{input.id}}' }), {});
     expect(sentTo()).toBe('https://api.example.com/orders/');
+  });
+});
+
+describe('a URL the admin wrote', () => {
+  it('is sent as written when it has no placeholders', async () => {
+    await executeHttpApi(tool({ baseUrl: 'https://api.example.com/v1/orders' }), { id: 'A-1' });
+    expect(sentTo()).toBe('https://api.example.com/v1/orders');
+  });
+
+  it('keeps its own dot segments', async () => {
+    await executeHttpApi(tool({ baseUrl: 'https://api.example.com/v1/../v2/orders/{{input.id}}' }), { id: 'A-1' });
+    expect(new URL(sentTo()!).pathname).toBe('/v2/orders/A-1');
+  });
+
+  it('takes input in its query, encoded', async () => {
+    await executeHttpApi(tool({ baseUrl: 'https://api.example.com/search?q={{input.q}}' }), { q: 'red & blue' });
+    expect(sentTo()).toBe('https://api.example.com/search?q=red%20%26%20blue');
   });
 });
 

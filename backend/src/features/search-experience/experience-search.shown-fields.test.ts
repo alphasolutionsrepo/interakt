@@ -27,14 +27,20 @@ const field = (fieldName: string, includeInResponse: boolean) => ({
   includeInResponse, isSystemField: false, transformConfig: null,
 });
 vi.mock('@/features/search-index/search-index.service', () => ({
-  getSearchIndexById: vi.fn(async () => ({
-    id: 'idx', name: 'products', isActive: true, status: 'active', searchType: 'lexical', searchProvider: 'elasticsearch',
-    fields: [field('name', true), field('specs', true), field('price', true), field('costPrice', false)],
-  })),
+  getSearchIndexById: vi.fn(async (id: string) => (id === 'idx'
+    ? {
+      id: 'idx', name: 'products', isActive: true, status: 'active', searchType: 'lexical', searchProvider: 'elasticsearch',
+      fields: [field('name', true), field('specs', true), field('price', true), field('costPrice', false)],
+    }
+    : {
+      // A second index that shows costPrice
+      id: 'idx-trade', name: 'trade', isActive: true, status: 'active', searchType: 'lexical', searchProvider: 'elasticsearch',
+      fields: [field('name', true), field('costPrice', true)],
+    })),
 }));
 
 const { engineSearch } = vi.hoisted(() => ({
-  engineSearch: vi.fn(async (_args: { request: SearchRequest }) => ({ hits: [], total: { value: 0, relation: 'eq' }, took: 1 })),
+  engineSearch: vi.fn(async (_args: { request: SearchRequest; context: { indexName: string } }) => ({ hits: [], total: { value: 0, relation: 'eq' }, took: 1 })),
 }));
 vi.mock('@/features/search/providers', () => {
   const engine = { name: 'elasticsearch', search: engineSearch, getDocument: vi.fn(), autocomplete: vi.fn() };
@@ -72,6 +78,23 @@ describe('a public search names the fields it wants', () => {
 
   it('gets the shown fields when it names none', async () => {
     expect(await engineFields()).toBeUndefined();
+  });
+
+  it('gets the shown fields when its list is empty', async () => {
+    expect(await engineFields([])).toBeUndefined();
+  });
+
+  it('gets from each index the fields that index shows', async () => {
+    const twoIndexes = {
+      ...experience,
+      indexes: [
+        ...experience.indexes,
+        { searchIndexId: 'idx-trade', weight: 1, searchIndex: { id: 'idx-trade', name: 'trade', displayName: 'Trade', isActive: true } },
+      ],
+    } as SearchExperienceWithIndexes;
+    await executeExperienceSearch(twoIndexes, { query: 'shirt', includeFields: ['name', 'costPrice'] }, { source: 'api' });
+    const byIndex = Object.fromEntries(engineSearch.mock.calls.map(([args]) => [args.context.indexName, args.request.includeFields]));
+    expect(byIndex).toEqual({ products: ['name'], trade: ['name', 'costPrice'] });
   });
 });
 

@@ -1,33 +1,32 @@
 // src/features/document-indexing/document-indexing.batch-scope.handler.test.ts
 
 /**
- * An upload batch is read and cancelled through its own index only: a caller with access to
- * one index gets "not found" for another index's batch, and that batch keeps running. The real
- * handlers and batch queries run on an in-memory Postgres; only the caller's access is faked
- * (allowed on the index in the URL).
+ * An upload batch is read and cancelled through its own index only: a server holding an
+ * ingestion key for one index gets "not found" for another index's batch, and that batch keeps
+ * running. The real batch route, its guard, the key check and the batch queries run on an
+ * in-memory Postgres (PGlite, all migrations).
  */
 
 import { eq } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-
-import { indexingBatches, searchIndex } from '../../../db/schema';
-
-import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let testDb: AppTestDb;
 vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
-vi.mock('server-only', () => ({}));
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger([]));
-vi.mock('./document-actor', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./document-actor')>()),
-  resolveDocumentActor: async () => ({ actor: { kind: 'user', userId: 'u1' } }),
-}));
+vi.mock('@/features/auth/auth.api.handlers', () => ({ auth: async () => null }));
 
-import { handleCancelBatch, handleGetBatchStatus } from './document-indexing.api.handlers';
+import * as batchRoute from '@/app/api/search-indexes/[id]/documents/batches/[batchId]/route';
+import { indexingBatches } from '@/db/schema/indexing-batches.schema';
+import { searchIndex } from '@/db/schema/search-index.schema';
+import { clearKeyLookupCache, createIngestionKey } from '@/features/ingestion-keys/ingestion-key.service';
+import { rateLimiter } from '@/shared/api/rate-limit';
+import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 let shop: string;
 let blog: string;
+let shopKey: string;
+let blogKey: string;
 let blogBatch: string;
 
 beforeAll(async () => {
@@ -36,41 +35,62 @@ beforeAll(async () => {
     { name: 'shop', displayName: 'Shop', searchType: 'lexical' },
     { name: 'blog', displayName: 'Blog', searchType: 'lexical' },
   ]).returning();
+  ({ plaintextKey: shopKey } = await createIngestionKey({ name: 'shop', operations: ['write'], searchIndexIds: [shop] }));
+  ({ plaintextKey: blogKey } = await createIngestionKey({ name: 'blog', operations: ['write'], searchIndexIds: [blog] }));
   [{ id: blogBatch }] = await testDb.db.insert(indexingBatches)
     .values({ searchIndexId: blog, status: 'processing', totalDocuments: 10, startedAt: new Date() })
     .returning();
-}, 30_000);
+}, 60_000);
 
 afterAll(() => testDb.close());
+beforeEach(async () => { rateLimiter.clear(); await clearKeyLookupCache(); });
 
-const url = (indexId: string, batchId: string) => `http://localhost/api/search-indexes/${indexId}/documents/batches/${batchId}`;
-const params = (id: string, batchId: string) => ({ params: Promise.resolve({ id, batchId }) });
-const status = (indexId: string, batchId: string) => handleGetBatchStatus(new NextRequest(url(indexId, batchId)), params(indexId, batchId));
-const cancel = (indexId: string, batchId: string) =>
-  handleCancelBatch(new NextRequest(url(indexId, batchId), { method: 'DELETE' }), params(indexId, batchId));
-const batchStatus = async () =>
+type Handler = (req: NextRequest, ctx: { params: Promise<{ id: string; batchId: string }> }) => Promise<Response>;
+function send(handler: unknown, method: string, indexId: string, batchId: string, key: string) {
+  const req = new NextRequest(`http://localhost/api/search-indexes/${indexId}/documents/batches/${batchId}`, {
+    method, headers: { authorization: `Bearer ${key}` },
+  });
+  return (handler as Handler)(req, { params: Promise.resolve({ id: indexId, batchId }) });
+}
+const status = (indexId: string, batchId: string, key: string) => send(batchRoute.GET, 'GET', indexId, batchId, key);
+const cancel = (indexId: string, batchId: string, key: string) => send(batchRoute.DELETE, 'DELETE', indexId, batchId, key);
+const blogBatchStatus = async () =>
   (await testDb.db.select({ status: indexingBatches.status }).from(indexingBatches).where(eq(indexingBatches.id, blogBatch)))[0].status;
 
-describe("another index's upload batch", () => {
-  it('is not found through an index it does not belong to', async () => {
-    expect((await status(shop, blogBatch)).status).toBe(404);
+describe("another index's upload batch, with a key for one index", () => {
+  it('is not found through the index the key is for', async () => {
+    expect((await status(shop, blogBatch, shopKey)).status).toBe(404);
   });
 
-  it('is not cancelled through an index it does not belong to, and keeps running', async () => {
-    expect((await cancel(shop, blogBatch)).status).toBe(400);
-    expect(await batchStatus()).toBe('processing');
+  it('is not cancelled through the index the key is for, and keeps running', async () => {
+    expect((await cancel(shop, blogBatch, shopKey)).status).toBe(400);
+    expect(await blogBatchStatus()).toBe('processing');
+  });
+
+  it('is refused through its own index, which the key is not for', async () => {
+    expect((await status(blog, blogBatch, shopKey)).status).toBe(403);
   });
 });
 
-describe('an upload batch on its own index', () => {
+describe('a batch id that names no batch', () => {
+  it('is not found when unknown', async () => {
+    expect((await status(shop, crypto.randomUUID(), shopKey)).status).toBe(404);
+  });
+
+  it('is a bad request when not an id', async () => {
+    expect((await status(shop, 'not-an-id', shopKey)).status).toBe(400);
+  });
+});
+
+describe('an upload batch on its own index, with its key', () => {
   it('reports its progress', async () => {
-    const res = await status(blog, blogBatch);
+    const res = await status(blog, blogBatch, blogKey);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ data: { batchId: blogBatch, status: 'processing' } });
   });
 
   it('is cancelled', async () => {
-    expect((await cancel(blog, blogBatch)).status).toBe(200);
-    expect(await batchStatus()).toBe('cancelled');
+    expect((await cancel(blog, blogBatch, blogKey)).status).toBe(200);
+    expect(await blogBatchStatus()).toBe('cancelled');
   });
 });
