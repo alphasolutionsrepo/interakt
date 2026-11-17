@@ -2,8 +2,8 @@
 
 /**
  * The migration that marks models hidden by discovery: before it, only Ollama had discovery,
- * and it switched a model back on when Ollama listed it again. So Ollama's discovered models
- * that are off are marked, and keep coming back as before; nothing else is marked. Runs the
+ * and it hid any model Ollama didn't list (seeded ones too) and switched it back on when listed
+ * again. So Ollama's models that are off are marked and keep coming back; nothing else is. Runs the
  * real migrations on an in-memory Postgres (PGlite), the new one after rows exist.
  */
 
@@ -43,11 +43,11 @@ beforeAll(async () => {
 afterAll(() => client.close());
 
 describe('models saved before the hidden-by-discovery marker', () => {
-  it("are marked only when Ollama's discovery switched them off", async () => {
+  it("are marked when they are Ollama's and off, seeded ones too, as Ollama's discovery treated them", async () => {
     const { rows } = await client.query<{ model_key: string; hidden_by_discovery: boolean }>(
       'SELECT model_key, hidden_by_discovery FROM ai_provider_models ORDER BY model_key');
     expect(Object.fromEntries(rows.map((r) => [r.model_key, r.hidden_by_discovery]))).toEqual({
-      'gateway-off': false, 'pulled-then-removed': true, 'seeded-off': false, 'still-pulled': false,
+      'gateway-off': false, 'pulled-then-removed': true, 'seeded-off': true, 'still-pulled': false,
     });
   });
 });
