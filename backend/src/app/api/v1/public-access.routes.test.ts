@@ -328,6 +328,32 @@ describe('where the traffic is recorded as coming from', () => {
   });
 });
 
+describe('which search callers see fields an index keeps out of responses', () => {
+  const bySlug = ROUTES.find((r) => r.name === 'search by slug')!;
+  async function signedInAdminOption(headers: Record<string, string>): Promise<unknown> {
+    let seen: unknown = 'not called';
+    mocks.executeExperienceSearch.mockImplementation(async (_e: unknown, _r: unknown, options: { signedInAdmin?: boolean }) => {
+      seen = options.signedInAdmin;
+      return { results: { hits: [], total: { value: 0 }, pagination: {}, facets: [] }, sourcesSearched: [], failedSources: [] };
+    });
+    expect(await settle(await bySlug.call(headers))).toBe(200);
+    return seen;
+  }
+
+  it('an admin signed in to the playground, without the token, does', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    expect(await signedInAdminOption({})).toBe(true);
+  });
+
+  it('a caller with the token does not, even with an admin login and the test marker (the Widget playground)', async () => {
+    expect(await signedInAdminOption({ 'X-Access-Token': bySlug.token, Origin: SHOP })).toBeFalsy();
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    expect(await signedInAdminOption({
+      'X-Access-Token': bySlug.token, Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin', 'X-Interakt-Test': '1',
+    })).toBeFalsy();
+  });
+});
+
 describe('allowed sites saved with a trailing slash', () => {
   it('still let that site in', async () => {
     const saved = { allowedOrigins: [`${SHOP}/`], rateLimits: { chatPerMinute: 100, requestsPerDay: 100 } };

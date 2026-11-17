@@ -419,12 +419,17 @@ type ReadinessFields = Pick<Tool, 'name' | 'executorType' | 'operation' | 'dataS
 
 /**
  * Why a tool can't be added to an AI experience yet, or undefined when it can. An HTTP tool
- * whose URL takes the host from input can't run (saved before that was checked). A Find Record
+ * without a URL and method, or whose URL takes the host from input, can't run (saved before
+ * that was checked). A Find Record
  * tool on a search index needs its name or code fields (or a hand-set idField) first; one that
  * is already in an experience keeps working there as before.
  */
 export async function notReadyToAssign(tool: ReadinessFields): Promise<string | undefined> {
-  const baseUrl = (tool.executorConfig as Record<string, unknown> | null)?.baseUrl;
+  const config = tool.executorConfig as Record<string, unknown> | null;
+  const baseUrl = config?.baseUrl;
+  if (tool.executorType === 'http' && (typeof baseUrl !== 'string' || typeof config?.method !== 'string')) {
+    return `HTTP tool "${tool.name}" isn't set up: it needs a URL and a method. For a web search, use a Web Search tool`;
+  }
   if (tool.executorType === 'http' && typeof baseUrl === 'string' && !hasFixedHost(baseUrl)) {
     return `HTTP tool "${tool.name}" isn't set up: its URL takes the host from input. Write the host and a "/" before any {{input.field}} on the tool`;
   }

@@ -34,8 +34,15 @@ vi.mock('@/features/search-index/search-index.service', () => ({
     }
     : id === 'idx-open'
     ? {
-      // An index with no field marked shown: responses carry whole documents
+      // An index with no fields set up: responses carry whole documents
       id: 'idx-open', name: 'open', isActive: true, status: 'active', searchType: 'lexical', searchProvider: 'elasticsearch',
+      fields: [],
+    }
+    : id.startsWith('idx-hidden')
+    ? {
+      // Every field turned off for responses, on either engine
+      id, name: 'hidden', isActive: true, status: 'active', searchType: 'lexical',
+      searchProvider: id === 'idx-hidden-azure' ? 'azure-ai-search' : 'elasticsearch',
       fields: [field('name', false), field('costPrice', false)],
     }
     : {
@@ -139,5 +146,50 @@ describe('an admin search names the fields it wants', () => {
   it('still gets a field kept out of public responses', async () => {
     await searchById('idx', { query: 'shirt', includeFields: ['name', 'costPrice'] });
     expect(engineSearch.mock.lastCall?.[0].request.includeFields).toEqual(['name', 'costPrice']);
+  });
+});
+
+describe('an index with every field turned off for responses', () => {
+  const hiddenHit = {
+    hits: [{ id: 'p1', score: 1, source: { name: 'Linen shirt', costPrice: 12 }, highlight: { name: ['<em>shirt</em>'], costPrice: ['<em>12</em>'] } }],
+    total: { value: 1, relation: 'eq' }, took: 1,
+  };
+  const on = (searchIndexId: string) => ({
+    ...experience,
+    indexes: [{ searchIndexId, weight: 1, searchIndex: { id: searchIndexId, name: 'hidden', displayName: 'Hidden', isActive: true } }],
+  }) as SearchExperienceWithIndexes;
+
+  it.each(['idx-hidden', 'idx-hidden-azure'])('gives a public search each result\'s id and no fields, even ones it names (%s)', async (indexId) => {
+    for (const includeFields of [undefined, ['costPrice'], ['name', 'costPrice']]) {
+      engineSearch.mockResolvedValueOnce(hiddenHit as never);
+      const { results } = await executeExperienceSearch(on(indexId), { query: 'shirt', includeFields }, { source: 'api' });
+      expect(results.hits[0]).toMatchObject({ id: 'p1', source: {} });
+      expect(results.hits[0].highlights).toBeUndefined();
+    }
+  });
+
+  it('still gives an admin signed in to the playground the fields and highlights they ask for', async () => {
+    engineSearch.mockResolvedValueOnce(hiddenHit as never);
+    const { results } = await executeExperienceSearch(on('idx-hidden'), { query: 'shirt', includeFields: ['costPrice'] }, { source: 'admin_test', signedInAdmin: true });
+    expect(engineSearch.mock.lastCall?.[0].request.includeFields).toEqual(['costPrice']);
+    expect(results.hits[0].source).toEqual({ name: 'Linen shirt', costPrice: 12 });
+    expect(Object.keys(results.hits[0].highlights ?? {})).toEqual(['name', 'costPrice']);
+  });
+});
+
+describe('an admin signed in to the search playground', () => {
+  it('gets the hidden fields they name and every highlight', async () => {
+    engineSearch.mockResolvedValueOnce({
+      hits: [{ id: 'p1', score: 1, source: { name: 'Linen shirt' }, highlight: { name: ['<em>shirt</em>'], costPrice: ['<em>12</em>'] } }],
+      total: { value: 1, relation: 'eq' }, took: 1,
+    } as never);
+    const { results } = await executeExperienceSearch(experience, { query: 'shirt', includeFields: ['name', 'costPrice'] }, { source: 'admin_test', signedInAdmin: true });
+    expect(engineSearch.mock.lastCall?.[0].request.includeFields).toEqual(['name', 'costPrice']);
+    expect(Object.keys(results.hits[0].highlights ?? {})).toEqual(['name', 'costPrice']);
+  });
+
+  it('is told apart by being signed in, not by where the search is recorded: admin_test traffic alone is kept to the shown fields', async () => {
+    await executeExperienceSearch(experience, { query: 'shirt', includeFields: ['name', 'costPrice'] }, { source: 'admin_test' });
+    expect(engineSearch.mock.lastCall?.[0].request.includeFields).toEqual(['name']);
   });
 });

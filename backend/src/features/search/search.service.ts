@@ -35,7 +35,7 @@ import type {
 } from './search.types';
 import { SearchError } from './search.types';
 import { searchRequestSchema } from './search.validation';
-import { keepShownHighlights, withinShownFields } from './response-fields';
+import { keepShownFields, withinShownFields } from './response-fields';
 import { buildSearchContext, supportsSemanticSearch } from './search-context.builder';
 import {
     providerRegistry,
@@ -249,7 +249,7 @@ export async function search(
                     context,
                     searchType
                 );
-                if (options?.shownFieldsOnly) keepShownHighlights(normalized.hits, context);
+                if (options?.shownFieldsOnly) keepShownFields(normalized.hits, context);
 
                 // Record results on span
                 span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, normalized.total.value);
