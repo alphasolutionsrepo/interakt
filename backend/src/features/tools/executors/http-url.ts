@@ -28,7 +28,11 @@ export const FIXED_HOST_MESSAGE = 'Use a full URL with a fixed host: write the h
  * as written (as "secret").
  */
 export function hasFixedHost(baseUrl: string): boolean {
-  return fixedOrigin(baseUrl.replace(SECRET_TEMPLATE_PATTERN, 'secret')) !== null;
+  // A URL that starts with a secret has the secret's server: stand it in as a full address
+  const written = baseUrl
+    .replace(new RegExp(`^${SECRET_TEMPLATE_PATTERN.source}`), 'https://secret.invalid')
+    .replace(SECRET_TEMPLATE_PATTERN, 'secret');
+  return fixedOrigin(written) !== null;
 }
 
 /**

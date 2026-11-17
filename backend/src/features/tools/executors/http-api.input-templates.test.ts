@@ -94,6 +94,14 @@ describe('a URL the admin wrote', () => {
     expect(Object.fromEntries(new URL(sentTo()!).searchParams)).toEqual({ q: 'linen', lang: 'da', api_key: 'sk-orders' });
   });
 
+  it.each([
+    ['ending in "?"', 'https://api.example.com/search?', 'https://api.example.com/search?lang=da'],
+    ['ending in "&"', 'https://api.example.com/search?v=2&', 'https://api.example.com/search?v=2&lang=da'],
+  ])('adds query parameters to a URL %s without an extra separator', async (_case, baseUrl, expected) => {
+    await executeHttpApi(tool({ baseUrl, queryParams: { lang: 'da' }, authentication: undefined }), {});
+    expect(sentTo()).toBe(expected);
+  });
+
   it('takes input in its query, encoded', async () => {
     await executeHttpApi(tool({ baseUrl: 'https://api.example.com/search?q={{input.q}}' }), { q: 'red & blue' });
     expect(sentTo()).toBe('https://api.example.com/search?q=red%20%26%20blue');

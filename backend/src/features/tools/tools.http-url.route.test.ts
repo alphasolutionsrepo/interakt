@@ -78,9 +78,16 @@ describe('saving an HTTP tool', () => {
     expect(body.data.executorConfig).toMatchObject({ baseUrl: 'https://api.example.com/orders/{{input.id}}', timeout: 5000 });
   });
 
-  it('keeps a URL whose host is one of the admin\'s secrets', async () => {
-    const { status } = await create(restConfig('https://{{secret:orders_host}}/orders/{{input.id}}'));
+  it.each([
+    ['host', 'https://{{secret:orders_host}}/orders/{{input.id}}'],
+    ['whole server address', '{{secret:orders_api}}/orders/{{input.id}}'],
+  ])('keeps a URL whose %s is one of the admin\'s secrets', async (_case, baseUrl) => {
+    const { status } = await create(restConfig(baseUrl));
     expect(status).toBe(201);
+  });
+
+  it('refuses input right after a secret server address, with no "/"', async () => {
+    expect((await create(restConfig('{{secret:orders_api}}{{input.path}}'))).status).toBe(400);
   });
 
   it.each([
@@ -129,9 +136,11 @@ describe('an HTTP tool stored with its host taken from input', () => {
   it('is marked as needing setup in the tools list, with what to change', async () => {
     const id = await storedTool(restConfig('https://{{input.host}}/orders'));
     const fine = await storedTool(restConfig('https://api.example.com/orders/{{input.id}}'));
+    const secretServer = await storedTool(restConfig('{{secret:orders_api}}/orders/{{input.id}}'));
     const res = await toolsRoute.GET(new NextRequest('http://localhost/api/tools?limit=100'));
     const tools = (await res.json()).data as Array<{ id: string; notReadyReason?: string }>;
     expect(tools.find((t) => t.id === id)?.notReadyReason).toMatch(/takes the host from input\. Write the host and a "\/" before any \{\{input\.field\}\}/);
     expect(tools.find((t) => t.id === fine)?.notReadyReason).toBeUndefined();
+    expect(tools.find((t) => t.id === secretServer)?.notReadyReason).toBeUndefined();
   });
 });
