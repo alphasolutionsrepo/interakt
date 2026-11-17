@@ -3,11 +3,15 @@
 /** An HTTP tool's {{input.field}} placeholder, filled with what the AI passes for that field. */
 export const INPUT_PATTERN = /\{\{input\.([a-zA-Z0-9_]+)\}\}/g;
 
+/** Everything before the path: scheme, any login written before "@", host and port. */
 function originOf(url: string): string | null {
-  try { return new URL(url).origin; } catch { return null; }
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.username}:${u.password}@${u.host}`;
+  } catch { return null; }
 }
 
-/** The server a URL reaches whatever its input: null when input would choose the host. */
+/** The server a URL reaches, and how, whatever its input: null when input would choose them. */
 function fixedOrigin(baseUrl: string): string | null {
   const origin = originOf(baseUrl.replace(INPUT_PATTERN, 'a'));
   return origin && originOf(baseUrl.replace(INPUT_PATTERN, 'b')) === origin ? origin : null;

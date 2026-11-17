@@ -35,7 +35,7 @@ import type {
 } from './search.types';
 import { SearchError } from './search.types';
 import { searchRequestSchema } from './search.validation';
-import { withinShownFields } from './response-fields';
+import { keepShownHighlights, withinShownFields } from './response-fields';
 import { buildSearchContext, supportsSemanticSearch } from './search-context.builder';
 import {
     providerRegistry,
@@ -127,7 +127,7 @@ export interface SearchOptions {
     timeoutMs?: number;
     /** What the request carries that its caller didn't write (a chat tool's defaults) */
     fixed?: FixedClauses;
-    /** A public caller: its field list is kept to the fields the index shows in responses */
+    /** A public caller: its field list and highlights are kept to the fields the index shows in responses */
     shownFieldsOnly?: boolean;
 }
 
@@ -247,6 +247,7 @@ export async function search(
                     context,
                     searchType
                 );
+                if (options?.shownFieldsOnly) keepShownHighlights(normalized.hits, context);
 
                 // Record results on span
                 span.setAttribute(ATTR.SEARCH_TOTAL_RESULTS, normalized.total.value);

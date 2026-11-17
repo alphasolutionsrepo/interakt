@@ -35,8 +35,9 @@ describe('a host the AI would choose', () => {
     ['the port', 'https://api.example.com:{{input.port}}/orders'],
     ['the scheme', '{{input.scheme}}://api.example.com/orders'],
     ['the path right after the host, with no "/"', 'https://api.example.com{{input.path}}'],
+    ['the login before "@"', 'https://{{input.user}}@api.example.com/orders'],
   ])('is refused when the URL takes %s from input, and nothing is sent', async (_case, baseUrl) => {
-    const result = await executeHttpApi(tool({ baseUrl }), { host: 'elsewhere.test', suffix: '.elsewhere.test', url: 'https://elsewhere.test/x', port: '8443', scheme: 'http', path: '/v1/items' });
+    const result = await executeHttpApi(tool({ baseUrl }), { host: 'elsewhere.test', suffix: '.elsewhere.test', url: 'https://elsewhere.test/x', port: '8443', scheme: 'http', path: '/v1/items', user: 'someone' });
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/fixed host: write the host and a "\/" before any/);
     expect(fetchMock).not.toHaveBeenCalled();

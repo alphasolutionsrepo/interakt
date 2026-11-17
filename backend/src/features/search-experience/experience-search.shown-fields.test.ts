@@ -113,6 +113,28 @@ describe('a public search names the fields it wants', () => {
   });
 });
 
+describe('highlights in a public search', () => {
+  const highlighted = {
+    hits: [{
+      id: 'p1', score: 1, source: { name: 'Linen shirt' },
+      highlight: { name: ['<em>shirt</em>'], 'specs.sku': ['<em>SH</em>-1'], costPrice: ['<em>12</em>'] },
+    }],
+    total: { value: 1, relation: 'eq' }, took: 1,
+  };
+
+  it('come only from fields the index shows', async () => {
+    engineSearch.mockResolvedValueOnce(highlighted as never);
+    const { results } = await executeExperienceSearch(experience, { query: 'shirt' }, { source: 'api' });
+    expect(results.hits[0].highlights).toEqual({ name: ['<em>shirt</em>'], 'specs.sku': ['<em>SH</em>-1'] });
+  });
+
+  it('are all kept for an admin search', async () => {
+    engineSearch.mockResolvedValueOnce(highlighted as never);
+    const { hits } = await searchById('idx', { query: 'shirt' });
+    expect(Object.keys(hits[0].highlights ?? {})).toEqual(['name', 'specs.sku', 'costPrice']);
+  });
+});
+
 describe('an admin search names the fields it wants', () => {
   it('still gets a field kept out of public responses', async () => {
     await searchById('idx', { query: 'shirt', includeFields: ['name', 'costPrice'] });
