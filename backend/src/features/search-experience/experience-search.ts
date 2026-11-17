@@ -12,23 +12,29 @@
 
 import 'server-only';
 
-import type { DataSourceField, DataSourceSchema } from '@/db/schema/data-sources.schema';
-import * as dataSourceService from '@/features/data-source/data-source.service';
-import * as searchService from '@/features/search/search.service';
-import type { FacetResult, FacetType, SearchHit, SearchRequest, SearchResponse, SortClause } from '@/features/search/search.types';
-import { SEARCH_DEFAULTS, SearchError } from '@/features/search/search.types';
-import * as searchIndexService from '@/features/search-index/search-index.service';
-import { createLogger } from '@/shared/logger/logger';
-import { failureLevel } from '@/shared/errors/to-app-error';
-import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
 import { externalFacetableFields, searchExternalSourceForExperience } from './external-source-search';
-import { applyQueryInterpretation, type QueryInterpretation } from './query-interpreter';
+import {
+  applyQueryInterpretation,
+  rewriteQueryForExternalSearch,
+  type QueryInterpretation,
+  type QueryRewrite,
+} from './query-interpreter';
 import type {
   PublicSearchRequest,
   SearchExperienceExternalSourceWithDetails,
   SearchExperienceIndex,
   SearchExperienceWithIndexes,
 } from './search-experience.types';
+
+import type { DataSourceField, DataSourceSchema } from '@/db/schema/data-sources.schema';
+import * as dataSourceService from '@/features/data-source/data-source.service';
+import * as searchService from '@/features/search/search.service';
+import type { FacetResult, FacetType, SearchHit, SearchRequest, SearchResponse, SortClause } from '@/features/search/search.types';
+import { SEARCH_DEFAULTS, SearchError } from '@/features/search/search.types';
+import * as searchIndexService from '@/features/search-index/search-index.service';
+import { ATTR, shouldLogContent, withSpan } from '@/features/telemetry';
+import { failureLevel } from '@/shared/errors/to-app-error';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('experience-search');
 
@@ -109,19 +115,22 @@ export async function executeExperienceSearch(
       }
 
       const externalFields = await loadExternalFields(external);
-      const { request, interpretation } = await buildSearchRequest(
+      const { request, interpretation, externalQuery } = await buildSearchRequest(
         publicRequest,
         experience,
         indexes,
+        external.length > 0,
         externalFields,
         options
       );
 
       // Query understanding infers filters from the managed index's fields; an external
-      // engine gets what the visitor sent instead.
-      const externalRequest: SearchRequest = interpretation?.interpreted
-        ? { ...request, query: publicRequest.query, filters: publicRequest.filters as SearchRequest['filters'] }
-        : request;
+      // engine gets the visitor's filters and, when rewritten, search terms for the query.
+      const externalRequest: SearchRequest = {
+        ...request,
+        query: externalQuery,
+        filters: publicRequest.filters as SearchRequest['filters'],
+      };
 
       const hitOrigins = new WeakMap<SearchHit, HitOrigin>();
       const failedSources: HitOrigin[] = [];
@@ -129,7 +138,7 @@ export async function executeExperienceSearch(
         indexes,
         external,
         externalFields,
-        { managed: request, external: externalRequest },
+        { managed: request, external: externalRequest, visitorQuery: publicRequest.query },
         experience,
         options,
         hitOrigins,
@@ -244,20 +253,24 @@ async function buildSearchRequest(
   publicRequest: PublicSearchRequest,
   experience: SearchExperienceWithIndexes,
   indexes: Array<SearchExperienceIndex & { searchIndex: { id: string; name: string; displayName: string } }>,
+  hasExternal: boolean,
   externalFields: Map<string, DataSourceField[]>,
   options: ExperienceSearchOptions
-): Promise<{ request: SearchRequest; interpretation?: QueryInterpretation }> {
+): Promise<{ request: SearchRequest; interpretation?: QueryInterpretation; externalQuery: string }> {
   const searchConfig = experience.searchConfig;
 
-  // Natural-language understanding: turn "men's t-shirts below $110" into a clean
-  // query plus real filters before searching. No-op unless the experience opts in.
-  const interpreted = await applyQueryInterpretation({
-    query: publicRequest.query,
-    clientFilters: publicRequest.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
-    searchIndexId: indexes[0]?.searchIndex?.id,
-    aiConfig: experience.aiConfig,
-    experienceId: experience.id,
-  });
+  // Natural-language understanding, both no-ops unless the experience opts in: managed
+  // indexes get "men's t-shirts below $110" as a clean query plus real filters; external
+  // sources get the question as search terms. The two model calls run side by side.
+  const [interpreted, rewrite] = await Promise.all([
+    interpretForManaged(
+      publicRequest.query,
+      publicRequest.filters as Array<{ field: string; operator: string; value: unknown }> | undefined,
+      indexes[0]?.searchIndex?.id,
+      experience,
+    ),
+    hasExternal ? rewriteForExternal(publicRequest.query, experience) : undefined,
+  ]);
 
   const filters = interpreted.filters as SearchRequest['filters'];
 
@@ -302,7 +315,71 @@ async function buildSearchRequest(
       : undefined,
   };
 
-  return { request, interpretation: interpreted.interpretation };
+  return { request, interpretation: interpreted.interpretation, externalQuery: rewrite?.query ?? publicRequest.query };
+}
+
+type InterpretedRequest = Awaited<ReturnType<typeof applyQueryInterpretation>>;
+
+/**
+ * Interpret the query into a query plus filters for Interakt's own indexes, as its own trace
+ * step. No step when query understanding is off or no managed index is searched.
+ */
+async function interpretForManaged(
+  query: string,
+  clientFilters: Array<{ field: string; operator: string; value: unknown }> | undefined,
+  searchIndexId: string | undefined,
+  experience: SearchExperienceWithIndexes
+): Promise<InterpretedRequest> {
+  const aiConfig = experience.aiConfig;
+  const run = () => applyQueryInterpretation({ query, clientFilters, searchIndexId, aiConfig, experienceId: experience.id });
+  if (!searchIndexId || !aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled) return run();
+
+  // A failed or timed-out step falls back to the visitor's words and filters, but the step itself ends in error
+  const errorFor = ({ interpretation }: InterpretedRequest) =>
+    interpretation?.outcome === 'failed' ? 'Query interpretation failed; searched with the visitor\'s words'
+      : interpretation?.outcome === 'timed_out' ? 'Query interpretation reached its time limit; searched with the visitor\'s words'
+        : undefined;
+  return withSpan({ name: 'query_understanding.interpretation', experienceId: experience.id, errorFor }, async (span) => {
+    const interpreted = await run();
+    const interpretation = interpreted.interpretation;
+    span.setAttribute(ATTR.QUERY_INTERPRETATION_OUTCOME, interpretation?.outcome ?? 'skipped');
+    span.setAttribute(ATTR.QUERY_INTERPRETATION_DURATION_MS, interpretation?.durationMs ?? 0);
+    span.setAttribute(ATTR.QUERY_INTERPRETATION_FILTERS_ADDED, interpretation?.appliedFilters.length ?? 0);
+    // The query searched is content: recorded only at 'full'
+    if (shouldLogContent(experience.id)) {
+      span.setAttribute(ATTR.QUERY_INTERPRETATION_QUERY, interpreted.query);
+    }
+    return interpreted;
+  });
+}
+
+/**
+ * Rewrite the query into search terms for external sources, as its own trace step. No
+ * step when query understanding is off: there is nothing to report.
+ */
+async function rewriteForExternal(
+  query: string,
+  experience: SearchExperienceWithIndexes
+): Promise<QueryRewrite | undefined> {
+  const aiConfig = experience.aiConfig;
+  if (!aiConfig?.enabled || !aiConfig.queryUnderstanding?.enabled) return undefined;
+
+  // A failed or timed-out rewrite falls back to the visitor's words, but the step itself ends in error
+  const errorFor = (r: QueryRewrite) =>
+    r.outcome === 'failed' ? 'Query rewrite failed; searched with the visitor\'s words'
+      : r.outcome === 'timed_out' ? 'Query rewrite reached its time limit; searched with the visitor\'s words'
+        : undefined;
+  return withSpan({ name: 'query_understanding.rewrite', experienceId: experience.id, errorFor }, async (span) => {
+    const rewrite = await rewriteQueryForExternalSearch({ query, aiConfig, experienceId: experience.id });
+    span.setAttribute(ATTR.QUERY_REWRITE_OUTCOME, rewrite.outcome);
+    span.setAttribute(ATTR.QUERY_REWRITE_DURATION_MS, rewrite.durationMs);
+    // What the visitor typed and the terms made from it are content: recorded only at 'full'
+    if (shouldLogContent(experience.id)) {
+      span.setAttribute(ATTR.QUERY_REWRITE_ORIGINAL, rewrite.originalQuery);
+      span.setAttribute(ATTR.QUERY_REWRITE_REWRITTEN, rewrite.query);
+    }
+    return rewrite;
+  });
 }
 
 /**
@@ -385,7 +462,7 @@ async function executeMultiIndexSearch(
   indexes: Array<SearchExperienceIndex & { searchIndex: { id: string; name: string; displayName: string } }>,
   externalSources: SearchExperienceExternalSourceWithDetails[],
   externalFields: Map<string, DataSourceField[]>,
-  requests: { managed: SearchRequest; external: SearchRequest },
+  requests: { managed: SearchRequest; external: SearchRequest; visitorQuery: string },
   experience: SearchExperienceWithIndexes,
   options: ExperienceSearchOptions,
   hitOrigins: WeakMap<SearchHit, HitOrigin>,
@@ -396,6 +473,7 @@ async function executeMultiIndexSearch(
     source: options.source,
     experienceId: experience.id,
     experienceSlug: experience.slug,
+    visitorQuery: requests.visitorQuery,
     ...(hybridConfig && {
       hybridConfig: {
         lexicalWeight: hybridConfig.lexicalWeight,
@@ -427,7 +505,8 @@ async function executeMultiIndexSearch(
             externalFields.get(src.dataSourceId) ?? [],
             req,
             experience,
-            options.source
+            options.source,
+            requests.visitorQuery
           ),
         request: requests.external,
       };

@@ -45,6 +45,8 @@ export async function searchExternalSourceForExperience(
   request: SearchRequest,
   experience: SearchExperienceWithIndexes,
   analyticsSource: 'api' | 'playground' | 'admin_test' = 'api',
+  /** What the visitor typed, when query understanding rewrote the query: analytics records both */
+  visitorQuery?: string,
 ): Promise<SearchResponse> {
   const page = request.page ?? 1;
   const pageSize = request.pageSize ?? 20;
@@ -65,6 +67,7 @@ export async function searchExternalSourceForExperience(
       experienceId: experience.id,
       experienceSlug: experience.slug,
       queryText: request.query,
+      visitorQuery,
       hasFilters: !!request.filters?.length,
       filterFields: filterFields(request.filters),
       filterCount: leafFilters(request.filters).length,

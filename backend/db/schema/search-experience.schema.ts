@@ -156,6 +156,11 @@ export interface SearchExperienceQueryUnderstandingConfig {
   minWords: number;
   /** Extra guidance appended to the interpreter instructions */
   customInstructions?: string;
+  /**
+   * Time limit for the model call, in ms. When it runs out, search uses the
+   * visitor's own words. Absent means DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS.
+   */
+  timeoutMs?: number;
 }
 
 /**

@@ -19,26 +19,19 @@
  * - **Cached with single-flight.** An LLM call on every keystroke would be slow and
  *   expensive; CacheManager.getOrSet collapses concurrent identical queries into
  *   one call.
+ * - **Time-limited.** Each step has the experience's time limit; past it search goes on
+ *   with what the visitor sent. The shared model call is cut off at the longest limit (10 s).
+ *
+ * Managed indexes get filters (interpretQuery); external sources, which expose no
+ * fields to filter on, get the question rewritten into search terms
+ * (rewriteQueryForExternalSearch).
  */
 
 import 'server-only';
 
 import { createHash } from 'node:crypto';
 
-import { createLogger } from '@/shared/logger/logger';
-import { failureLevel } from '@/shared/errors/to-app-error';
-import { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
-import * as aiService from '@/features/ai-service';
-import * as searchIndexService from '@/features/search-index/search-index.service';
-import * as searchService from '@/features/search/search.service';
-import { validateFilters } from '@/features/pipeline/v2/param-validation';
-import type { FieldConstraint } from '@/features/pipeline/v2/parameter-context.types';
-import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
-import type {
-    SearchExperienceAIConfig,
-    SearchExperienceQueryUnderstandingConfig,
-} from '@/db/schema/search-experience.schema';
-import { constraintCache, interpretationCache } from './query-interpreter.cache';
+import { constraintCache, interpretationCache, rewriteCache } from './query-interpreter.cache';
 import {
     INTERPRETER_SCHEMA,
     buildInterpreterPrompt,
@@ -47,6 +40,22 @@ import {
     toParameterContext,
     type InterpretedFilter,
 } from './query-interpreter.core';
+import { REWRITE_SCHEMA, buildRewritePrompt, parseRewrite, shouldRewrite } from './query-rewriter.core';
+import { DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS, MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
+
+import type {
+    SearchExperienceAIConfig,
+    SearchExperienceQueryUnderstandingConfig,
+} from '@/db/schema/search-experience.schema';
+import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
+import * as aiService from '@/features/ai-service';
+import { validateFilters } from '@/features/pipeline/v2/param-validation';
+import type { FieldConstraint } from '@/features/pipeline/v2/parameter-context.types';
+import * as searchService from '@/features/search/search.service';
+import * as searchIndexService from '@/features/search-index/search-index.service';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/embedding.constants';
+import { failureLevel } from '@/shared/errors/to-app-error';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('query-interpreter');
 
@@ -68,18 +77,110 @@ export interface QueryInterpretation {
     droppedFilters: Array<{ field: string; reason: string }>;
     /** False when interpretation was skipped or failed — effectiveQuery is then the original */
     interpreted: boolean;
+    /** How the step ended, for the trace: a failed or timed-out step searched with the visitor's words */
+    outcome: QueryInterpretationOutcome;
     durationMs: number;
 }
 
-function passthrough(query: string, startedAt: number): QueryInterpretation {
+export type QueryInterpretationOutcome = 'interpreted' | 'skipped' | 'failed' | 'timed_out';
+
+function passthrough(query: string, startedAt: number, outcome: Exclude<QueryInterpretationOutcome, 'interpreted'>): QueryInterpretation {
     return {
         originalQuery: query,
         effectiveQuery: query,
         appliedFilters: [],
         droppedFilters: [],
         interpreted: false,
+        outcome,
         durationMs: Date.now() - startedAt,
     };
+}
+
+// ============================================================================
+// TIME LIMIT
+// ============================================================================
+
+/** A query understanding step ran past its time limit. */
+export class QueryStepTimeoutError extends Error {
+    constructor(timeoutMs: number) {
+        super(`Query understanding took longer than ${timeoutMs} ms`);
+        this.name = 'QueryStepTimeoutError';
+    }
+}
+
+/** The experience's time limit, or the default for experiences saved before it existed. */
+export function resolveTimeoutMs(config?: SearchExperienceQueryUnderstandingConfig): number {
+    return config?.timeoutMs ?? DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS;
+}
+
+/**
+ * Run a step with this caller's own time limit. Past it, this rejects with
+ * QueryStepTimeoutError at once. It never aborts anything: a model call shared through
+ * the cache keeps running for the other callers that joined it.
+ */
+async function withTimeLimit<T>(timeoutMs: number, run: () => Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new QueryStepTimeoutError(timeoutMs)), timeoutMs);
+    });
+    try {
+        return await Promise.race([run(), limit]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Start a model call that callers share through the cache. It is owned by the cache
+ * entry, not by whoever started it: its signal aborts only at the longest limit any
+ * experience can set, so a hung provider cannot hold the cache key forever. It settles
+ * then even if the provider ignores the signal, which keeps the failure out of the cache.
+ */
+function startSharedCall<T>(start: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    const backstop = setTimeout(
+        () => controller.abort(new QueryStepTimeoutError(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS)),
+        MAX_QUERY_UNDERSTANDING_TIMEOUT_MS,
+    );
+    return settleOnAbort(controller.signal, start(controller.signal)).finally(() => clearTimeout(backstop));
+}
+
+/**
+ * Settle when the signal aborts, even if the provider ignores it.
+ */
+function settleOnAbort<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const onAbort = () => reject(signal.reason);
+        if (signal.aborted) {
+            onAbort();
+            return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+        work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+    });
+}
+
+// One import shared by both steps, which run side by side: vitest hands the second of two
+// concurrent dynamic imports the real module instead of its mock.
+let featureSwitches: Promise<typeof import('@/features/feature-switches/feature-switches.service')> | undefined;
+
+/** Whether AI summaries, which query understanding is part of, is on. */
+async function summariesAreaOn(): Promise<boolean> {
+    featureSwitches ??= import('@/features/feature-switches/feature-switches.service');
+    const { isAreaOn } = await featureSwitches;
+    return isAreaOn('ai-summaries');
+}
+
+/** The text of a completion; only text can carry the JSON we asked for. */
+function completionText(completion: Awaited<ReturnType<typeof aiService.chat>>): string {
+    const rawContent = completion.message?.content;
+    return typeof rawContent === 'string'
+        ? rawContent
+        : (rawContent ?? [])
+            .map(block => (typeof block === 'object' && block !== null && 'text' in block
+                ? String((block as { text?: unknown }).text ?? '')
+                : ''))
+            .join('');
 }
 
 // ============================================================================
@@ -227,8 +328,7 @@ export async function applyQueryInterpretation(options: {
     }
 
     // Query understanding is part of AI summaries: with that off, search runs as plain search
-    const { isAreaOn } = await import('@/features/feature-switches/feature-switches.service');
-    if (!(await isAreaOn('ai-summaries'))) {
+    if (!(await summariesAreaOn())) {
         return { query, filters: clientFilters };
     }
 
@@ -283,89 +383,22 @@ export async function interpretQuery(
     const { query, searchIndexId, config } = options;
 
     if (!config?.enabled) {
-        return passthrough(query, startedAt);
+        return passthrough(query, startedAt, 'skipped');
     }
     if (!shouldInterpret(query, config.minWords ?? 3)) {
-        return passthrough(query, startedAt);
+        return passthrough(query, startedAt, 'skipped');
     }
 
+    const timeoutMs = resolveTimeoutMs(config);
     try {
-        const constraints = await loadFieldConstraints(searchIndexId);
-        if (Object.keys(constraints).length === 0) {
-            return passthrough(query, startedAt);
+        // Field loading counts toward the limit too: the search waits for all of it
+        const result = await withTimeLimit(timeoutMs, () => interpretWithModel(options, config));
+
+        if (result === NO_FILTERABLE_FIELDS) {
+            return passthrough(query, startedAt, 'skipped');
         }
-
-        // Key on the index + experience/model: the same phrase can be interpreted differently
-        // depending on provider/model and per-experience instructions. The instructions are
-        // fingerprinted rather than assumed constant per experience — an admin can edit them,
-        // and without this the old interpretation would be served for the rest of the TTL.
-        const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim().toLowerCase()}`;
-        const result = await interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
-            const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
-
-            const completion = await aiService.chat(
-                [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: query },
-                ],
-                {
-                    providerId: options.providerId ?? undefined,
-                    modelId: options.modelId ?? undefined,
-                    temperature: 0,
-                    maxTokens: 500,
-                    feature: 'search_query_understanding',
-                    experienceId: options.experienceId,
-                    responseFormat: {
-                        type: 'json_schema',
-                        json_schema: {
-                            name: 'query_interpretation',
-                            strict: true,
-                            schema: INTERPRETER_SCHEMA as unknown as {
-                                type: 'object';
-                                properties: Record<string, unknown>;
-                                required?: string[];
-                                additionalProperties?: boolean;
-                            },
-                        },
-                    },
-                },
-            );
-
-            // Content is a string for ordinary completions, but the type allows
-            // structured blocks; only text can carry the JSON we asked for.
-            const rawContent = completion.message?.content;
-            const text = typeof rawContent === 'string'
-                ? rawContent
-                : (rawContent ?? [])
-                    .map(block => (typeof block === 'object' && block !== null && 'text' in block
-                        ? String((block as { text?: unknown }).text ?? '')
-                        : ''))
-                    .join('');
-
-            const parsed = parseInterpretation(text, query);
-            if (!parsed) {
-                return null;
-            }
-
-            // Same validation the agentic path uses: drops unknown or non-filterable
-            // fields and canonicalises text values against the index's real ones.
-            const validation = validateFilters(parsed.filters, toParameterContext(constraints));
-
-            return {
-                originalQuery: query,
-                effectiveQuery: parsed.query,
-                appliedFilters: validation.filters,
-                droppedFilters: validation.droppedFilters.map(d => ({
-                    field: d.field,
-                    reason: d.reason,
-                })),
-                interpreted: true,
-                durationMs: 0,
-            };
-        });
-
         if (!result) {
-            return passthrough(query, startedAt);
+            return passthrough(query, startedAt, 'failed');
         }
 
         logger.info('Query interpreted', {
@@ -379,9 +412,198 @@ export async function interpretQuery(
 
         return { ...result, durationMs: Date.now() - startedAt };
     } catch (err) {
+        if (err instanceof QueryStepTimeoutError) {
+            logger.warn('Query interpretation timed out; searching with the raw query', { searchIndexId, timeoutMs });
+            return passthrough(query, startedAt, 'timed_out');
+        }
         // Fail open — a search that returns loose results beats one that errors. A model
         // that is down or misconfigured still needs fixing, so it is logged as an error.
         logger[failureLevel(err, 'warn')]('Query interpretation failed; searching with the raw query', { searchIndexId, err });
-        return passthrough(query, startedAt);
+        return passthrough(query, startedAt, 'failed');
+    }
+}
+
+/** The index has no fields to filter on, so there is nothing to ask the model. */
+const NO_FILTERABLE_FIELDS = Symbol('no filterable fields');
+
+/** Load the index's fields and ask the model; null when the model gave nothing usable. */
+async function interpretWithModel(
+    options: InterpretQueryOptions,
+    config: SearchExperienceQueryUnderstandingConfig,
+): Promise<QueryInterpretation | null | typeof NO_FILTERABLE_FIELDS> {
+    const { query, searchIndexId } = options;
+    const constraints = await loadFieldConstraints(searchIndexId);
+    if (Object.keys(constraints).length === 0) {
+        return NO_FILTERABLE_FIELDS;
+    }
+
+    // Key on the index + experience/model: the same phrase can be interpreted differently
+    // depending on provider/model and per-experience instructions. The instructions are
+    // fingerprinted rather than assumed constant per experience — an admin can edit them,
+    // and without this the old interpretation would be served for the rest of the TTL.
+    // The query is kept as typed, letter case included, like the rewrite's key: the cached
+    // effective query is searched as is, so codes and names keep this visitor's capitals.
+    const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim()}`;
+    return interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
+        const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
+
+        const completion = await startSharedCall(signal => aiService.chat(
+            [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: query },
+            ],
+            {
+                providerId: options.providerId ?? undefined,
+                modelId: options.modelId ?? undefined,
+                temperature: 0,
+                maxTokens: 500,
+                feature: 'search_query_understanding',
+                experienceId: options.experienceId,
+                signal,
+                responseFormat: {
+                    type: 'json_schema',
+                    json_schema: {
+                        name: 'query_interpretation',
+                        strict: true,
+                        schema: INTERPRETER_SCHEMA as unknown as {
+                            type: 'object';
+                            properties: Record<string, unknown>;
+                            required?: string[];
+                            additionalProperties?: boolean;
+                        },
+                    },
+                },
+            },
+        ));
+
+        const parsed = parseInterpretation(completionText(completion), query);
+        if (!parsed) {
+            return null;
+        }
+
+        // Same validation the agentic path uses: drops unknown or non-filterable
+        // fields and canonicalises text values against the index's real ones.
+        const validation = validateFilters(parsed.filters, toParameterContext(constraints));
+
+        return {
+            originalQuery: query,
+            effectiveQuery: parsed.query,
+            appliedFilters: validation.filters,
+            droppedFilters: validation.droppedFilters.map(d => ({
+                field: d.field,
+                reason: d.reason,
+            })),
+            interpreted: true,
+            outcome: 'interpreted',
+            durationMs: 0,
+        };
+    });
+}
+
+// ============================================================================
+// SEARCH TERMS FOR EXTERNAL SOURCES
+// ============================================================================
+
+export type QueryRewriteOutcome = 'rewritten' | 'unchanged' | 'skipped' | 'failed' | 'timed_out';
+
+export interface QueryRewrite {
+    /** What the visitor typed */
+    originalQuery: string;
+    /** What external sources are searched for: the visitor's words unless rewritten */
+    query: string;
+    outcome: QueryRewriteOutcome;
+    durationMs: number;
+}
+
+/**
+ * Rewrite a visitor's question into search terms for external sources.
+ *
+ * Same switches as filter interpretation. Never throws: every failure, and a step
+ * past the time limit, returns the visitor's words.
+ */
+export async function rewriteQueryForExternalSearch(options: {
+    query: string;
+    aiConfig?: SearchExperienceAIConfig;
+    experienceId?: string;
+}): Promise<QueryRewrite> {
+    const startedAt = Date.now();
+    const { query, aiConfig, experienceId } = options;
+    const done = (outcome: QueryRewriteOutcome, rewritten = query): QueryRewrite => ({
+        originalQuery: query,
+        query: rewritten,
+        outcome,
+        durationMs: Date.now() - startedAt,
+    });
+
+    const config = aiConfig?.queryUnderstanding;
+    if (!aiConfig?.enabled || !config?.enabled || !shouldRewrite(query, config.minWords ?? 3)) {
+        return done('skipped');
+    }
+    const timeoutMs = resolveTimeoutMs(config);
+    // Keyed on the words as typed, letter case included: the rewrite keeps codes and names as the
+    // visitor wrote them, and "unchanged" is judged against this visitor's own words
+    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim()}`;
+
+    try {
+        // Part of AI summaries, like filter interpretation
+        if (!(await summariesAreaOn())) {
+            return done('skipped');
+        }
+
+        // A null result (nothing usable) is not kept: the cache treats null as a miss
+        const rewritten = await withTimeLimit(timeoutMs, () =>
+            rewriteCache.getOrSet<string | null>(cacheKey, async () => {
+                const completion = await startSharedCall(signal => aiService.chat(
+                    [
+                        { role: 'system', content: buildRewritePrompt(config.customInstructions) },
+                        { role: 'user', content: query },
+                    ],
+                    {
+                        providerId: aiConfig.providerId ?? undefined,
+                        modelId: aiConfig.modelId ?? undefined,
+                        temperature: 0,
+                        maxTokens: 100,
+                        feature: 'search_query_understanding',
+                        experienceId,
+                        signal,
+                        responseFormat: {
+                            type: 'json_schema',
+                            json_schema: {
+                                name: 'query_rewrite',
+                                strict: true,
+                                schema: REWRITE_SCHEMA as unknown as {
+                                    type: 'object';
+                                    properties: Record<string, unknown>;
+                                    required?: string[];
+                                    additionalProperties?: boolean;
+                                },
+                            },
+                        },
+                    },
+                ));
+                return parseRewrite(completionText(completion));
+            }),
+        );
+
+        if (!rewritten) {
+            logger.warn('Query rewrite returned nothing usable; searching with the raw query', { experienceId });
+            return done('failed');
+        }
+
+        const outcome = rewritten === query.trim() ? 'unchanged' : 'rewritten';
+        // The visitor's words stay out of the application log: the trace keeps them at the Full detail level
+        logger.info('Query rewritten for external search', {
+            experienceId,
+            outcome,
+            durationMs: Date.now() - startedAt,
+        });
+        return done(outcome, outcome === 'rewritten' ? rewritten : query);
+    } catch (err) {
+        if (err instanceof QueryStepTimeoutError) {
+            logger.warn('Query rewrite timed out; searching with the raw query', { experienceId, timeoutMs });
+            return done('timed_out');
+        }
+        logger[failureLevel(err, 'warn')]('Query rewrite failed; searching with the raw query', { experienceId, err });
+        return done('failed');
     }
 }

@@ -69,6 +69,21 @@ If on, you can layer AI summaries on top of the search results:
 
 The summary appears in the search response as a field your frontend can render above the result list.
 
+#### Query understanding
+
+Turn on **Query understanding** to have the AI read what the visitor typed before the search runs:
+
+- **Interakt indexes** — phrases like "under $200" or a product code become real filters on the index's fields, and the rest stays as the query.
+- **External indexes** — the question becomes search terms for that engine. "How do I apply for financial aid as a transfer student" becomes something like "apply financial aid transfer student": the key words and qualifiers stay, filler goes, names and codes stay as typed, and the visitor's language is kept. A phrase that already reads like search terms is sent unchanged. The visitor's own filters are sent as they are.
+
+In an experience with both, the two run at the same time.
+
+- **Minimum words** — shorter queries are searched as typed.
+- **Time limit** — how long query understanding may take, 3 seconds by default (0.5 to 10). When the limit is reached, or the AI's answer can't be used, search goes on with the visitor's own words and filters, so it never waits longer than the limit.
+- **Custom instructions** — added to the AI's instructions for both, e.g. to describe identifiers or codes your content uses.
+
+Query understanding is part of **AI summaries** and runs while that area is on. With query understanding on, each search of an external index shows a **query_understanding.rewrite** step in **Analytics → Traces** with the outcome (rewritten, unchanged, skipped, failed or timed out) and how long it took. At the **Full** observability level the step also shows the visitor's words and the search terms sent. Searches of Interakt's own indexes show a **query_understanding.interpretation** step the same way: the outcome (interpreted, skipped, failed or timed out), how long it took and how many filters it added, with the query searched at the **Full** level. A failed or timed-out step is marked as an error in the trace while the search carries on with the visitor's words.
+
 ### Step 4 — Display configuration
 
 How the result cards should look. See [Display configuration](display-configuration) — it's its own page because it's worth understanding properly.
@@ -155,7 +170,7 @@ When an experience has several sources (any mix of Interakt and external indexes
 - **Sorting** — an explicit sort (e.g. price ascending) orders the merged list by that field; results without the field come last.
 - **Paging** — exact up to 100 results deep; beyond that, each source pages on its own and the order is approximate.
 - **A failing source** doesn't fail the search. The others still answer, the response carries `partial: true`, and the error shows in the logs and in **Analytics → Traces**.
-- **Query understanding** reads Interakt index fields only. In a mixed experience, the filters it infers apply to Interakt indexes; external indexes get the query as typed. In an experience with only external indexes it doesn't run.
+- **Query understanding** turns the question into filters for Interakt indexes and into search terms for external indexes; external indexes get the visitor's filters as sent. See [Query understanding](#query-understanding).
 
 ## Common gotchas
 

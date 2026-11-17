@@ -52,6 +52,11 @@ export function RecentSearchesFeed({ data, isLoading, refreshing }: RecentSearch
                     event.query
                   )}
                   <span className="ml-1.5 text-xs text-muted-foreground">{event.searchType}</span>
+                  {event.searchedQuery && (
+                    <span className="block truncate text-xs text-muted-foreground" title={event.searchedQuery}>
+                      searched as “{event.searchedQuery}”
+                    </span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                   {searchTriggerLabel(event.triggerType, event.triggerStep)}

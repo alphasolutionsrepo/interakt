@@ -126,6 +126,8 @@ export interface SearchOptions {
     timeoutMs?: number;
     /** What the request carries that its caller didn't write (a chat tool's defaults) */
     fixed?: FixedClauses;
+    /** What the visitor typed, when query understanding changed the query searched: analytics records both */
+    visitorQuery?: string;
 }
 
 // ============================================================================
@@ -282,6 +284,7 @@ export async function search(
             experienceId,
             experienceSlug,
             queryText: validatedRequest.query,
+            visitorQuery: options?.visitorQuery,
             hasFilters: validatedRequest.filters && validatedRequest.filters.length > 0,
             filterFields: validatedRequest.filters?.length ? filterFields(validatedRequest.filters) : undefined,
             filterCount: leafFilters(validatedRequest.filters).length,
@@ -321,6 +324,7 @@ export async function search(
             experienceId,
             experienceSlug,
             queryText: request.query ?? '',
+            visitorQuery: options?.visitorQuery,
             hasFilters: request.filters && request.filters.length > 0,
             filterCount: leafFilters(request.filters).length,
             totalResults: 0,
