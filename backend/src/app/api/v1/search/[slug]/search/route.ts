@@ -135,7 +135,7 @@ async function post(
 
     logger.info('Search completed via slug', {
       slug,
-      ...contentForLog({ query: validated.query.substring(0, 50) }, experience.id),
+      ...contentForLog({ query: validated.query }, experience.id, { maxChars: 50 }),
       totalHits: results.total.value,
       took: response.timing.totalMs,
       admin: isAdmin,

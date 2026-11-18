@@ -26,16 +26,18 @@ export function mayLogContent(experienceId?: string): boolean {
 /**
  * Log fields for visitors' words: each field as it is when content may be logged, otherwise
  * its length under `<name>Length` (`query` → `queryLength`). Missing values are left out.
+ * `maxChars` shortens the text a line keeps; the length is always of the whole text.
  */
 export function contentForLog(
   fields: Record<string, string | null | undefined>,
   experienceId?: string,
+  options: { maxChars?: number } = {},
 ): Record<string, string | number> {
   const keep = mayLogContent(experienceId);
   const out: Record<string, string | number> = {};
   for (const [name, value] of Object.entries(fields)) {
     if (value == null) continue;
-    if (keep) out[name] = value;
+    if (keep) out[name] = options.maxChars === undefined ? value : value.substring(0, options.maxChars);
     else out[`${name}Length`] = value.length;
   }
   return out;

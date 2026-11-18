@@ -176,7 +176,7 @@ export function createSummaryStream(
 
       logger.info('Summary generated', {
         experienceId: experience.id,
-        ...contentForLog({ query: validated.query.substring(0, 50) }, experience.id),
+        ...contentForLog({ query: validated.query }, experience.id, { maxChars: 50 }),
         resultCount: validated.results.length,
       });
     } catch (error) {

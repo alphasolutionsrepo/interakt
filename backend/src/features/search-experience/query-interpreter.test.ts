@@ -41,6 +41,7 @@ vi.mock('@/features/search/search.service', () => ({
     searchById: vi.fn(),
 }));
 
+import { cacheConfig } from '@/config/cache.config';
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as searchService from '@/features/search/search.service';
@@ -456,6 +457,30 @@ describe('loading a field’s values for the model', () => {
         expect(reported(logs).filter((l) => l.message === 'Failed to fetch facet values')).toEqual([
             expect.objectContaining({ level: 'error', context: expect.objectContaining({ field: 'colour', err: down }) }),
         ]);
+    });
+});
+
+describe('the interpretation cache with its key logging on', () => {
+    const logging = cacheConfig.logging as { logHits: boolean; logMisses: boolean; logOperations: boolean };
+    const saved = { ...logging };
+    beforeEach(() => {
+        logs.length = 0;
+        Object.assign(logging, { logHits: true, logMisses: true, logOperations: true });
+    });
+    afterEach(() => Object.assign(logging, saved));
+
+    it("logs its miss, set and hit without the visitor's words", async () => {
+        const searchIndexId = freshIndexId();
+        const interpret = () => applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: aiConfig(), experienceId: 'exp-1',
+        });
+        await interpret();
+        await interpret();
+
+        expect(aiService.chat).toHaveBeenCalledTimes(1);
+        const cacheLines = logs.filter((l) => l.message.startsWith('Cache ') && l.context.feature === 'query-interpreter');
+        expect(cacheLines.map((l) => l.message)).toEqual(expect.arrayContaining(['Cache miss', 'Cache set', 'Cache hit']));
+        expect(JSON.stringify(cacheLines)).not.toContain('waterproof');
     });
 });
 

@@ -270,7 +270,7 @@ export async function search(
 
         logger.info('Search completed', {
             indexName: context.indexName,
-            ...contentForLog({ query: validatedRequest.query.substring(0, 50) }),
+            ...contentForLog({ query: validatedRequest.query }, undefined, { maxChars: 50 }),
             searchType,
             totalHits: response.total.value,
             took: durationMs,
@@ -312,7 +312,7 @@ export async function search(
         // Passed on: whoever answers the caller logs it (the API, a chat tool)
         logger.debug('Search failed', {
             identifier,
-            ...contentForLog({ query: request.query?.substring(0, 50) }),
+            ...contentForLog({ query: request.query }, undefined, { maxChars: 50 }),
             error: error instanceof Error ? error.message : 'Unknown error',
         });
 
@@ -734,7 +734,7 @@ export async function autocomplete(
 
         logger.debug('Autocomplete completed', {
             indexName: context.indexName,
-            ...contentForLog({ query: query.substring(0, 20) }),
+            ...contentForLog({ query }, undefined, { maxChars: 20 }),
             suggestions: suggestions.length,
             took: Date.now() - startTime,
         });
@@ -748,7 +748,7 @@ export async function autocomplete(
         // Passed on: whoever answers the caller logs it
         logger.debug('Autocomplete failed', {
             identifier,
-            ...contentForLog({ query: query.substring(0, 20) }),
+            ...contentForLog({ query }, undefined, { maxChars: 20 }),
             error: error instanceof Error ? error.message : 'Unknown error',
         });
 

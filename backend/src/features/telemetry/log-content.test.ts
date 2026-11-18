@@ -32,6 +32,14 @@ afterEach(() => {
 });
 
 describe('contentForLog with an experience', () => {
+  it('with maxChars, shortens the words it keeps', () => {
+    expect(contentForLog({ query: QUESTION }, 'exp-full', { maxChars: 10 })).toEqual({ query: QUESTION.substring(0, 10) });
+  });
+
+  it('with maxChars, still logs the length of the whole text', () => {
+    expect(contentForLog({ query: QUESTION }, 'exp-metadata', { maxChars: 10 })).toEqual({ queryLength: QUESTION.length });
+  });
+
   it('keeps the words when the experience is set to full', () => {
     expect(contentForLog({ query: QUESTION }, 'exp-full')).toEqual({ query: QUESTION });
   });

@@ -67,6 +67,16 @@ describe('search logs', () => {
     expect(everything()).not.toContain('linen');
   });
 
+  it('log the length of a long question in full, though a kept question is cut to 50 characters', async () => {
+    const long = `${QUESTION} in late spring, with matching trousers and a waistcoat`;
+    await searchById('idx', { query: long });
+    expect(line('Search completed')?.context).toMatchObject({ queryLength: long.length });
+
+    logs.length = 0;
+    await runWithTelemetryLevel('full', () => searchById('idx', { query: long }));
+    expect(line('Search completed')?.context).toMatchObject({ query: long.substring(0, 50) });
+  });
+
   it('log the question when the request may keep content', async () => {
     await runWithTelemetryLevel('full', async () => {
       await searchById('idx', { query: QUESTION });
@@ -80,13 +90,13 @@ describe('search logs', () => {
 });
 
 describe('autocomplete logs', () => {
-  it('log the length, not what was typed, when the request may not keep content', async () => {
+  it('log the length of the whole text, not what was typed, when the request may not keep content', async () => {
     await autocompleteById('idx', { query: QUESTION });
     engineAutocomplete.mockRejectedValueOnce(new Error('engine down'));
     await expect(autocompleteById('idx', { query: QUESTION })).rejects.toThrow();
 
-    expect(line('Autocomplete completed')?.context).toMatchObject({ queryLength: TYPED.length });
-    expect(line('Autocomplete failed')?.context).toMatchObject({ queryLength: TYPED.length });
+    expect(line('Autocomplete completed')?.context).toMatchObject({ queryLength: QUESTION.length });
+    expect(line('Autocomplete failed')?.context).toMatchObject({ queryLength: QUESTION.length });
     expect(everything()).not.toContain('linen');
   });
 

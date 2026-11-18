@@ -184,7 +184,7 @@ export function trackSearch(event: SearchEventData, experienceId?: string): void
 
     logger.info('Search event queued', {
       // Callers put the experience on the event; the argument is only for feature flags
-      ...contentForLog({ query: event.queryText.substring(0, 50) }, experienceId ?? event.experienceId),
+      ...contentForLog({ query: event.queryText }, experienceId ?? event.experienceId, { maxChars: 50 }),
       queueSize: searchEventQueue.length,
     });
 

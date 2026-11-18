@@ -76,7 +76,7 @@ export async function handlePublicSearch(request: NextRequest): Promise<NextResp
 
     logger.info('Public search completed', {
       experienceId: experience.id,
-      ...contentForLog({ query: validated.query.substring(0, 50) }, experience.id),
+      ...contentForLog({ query: validated.query }, experience.id, { maxChars: 50 }),
       indexCount: sourcesSearched.length,
       totalHits: results.total.value,
       took: response.took,
@@ -175,7 +175,7 @@ export async function handleAutocomplete(request: NextRequest): Promise<NextResp
 
     logger.info('Autocomplete completed', {
       experienceId: experience.id,
-      ...contentForLog({ query: validated.query.substring(0, 50) }, experience.id),
+      ...contentForLog({ query: validated.query }, experience.id, { maxChars: 50 }),
       suggestionCount: result.suggestions.length,
       took: result.took,
     });

@@ -289,6 +289,14 @@ function fingerprint(value: string | undefined): string {
 }
 
 /**
+ * The visitor's words as they go into a cache key: a digest, so the key (which the cache
+ * may log) never carries the question. Full length, since each question needs its own entry.
+ */
+function queryKey(query: string): string {
+    return createHash('sha256').update(query.trim()).digest('hex');
+}
+
+/**
  * Drop everything cached for an index after its configuration changes.
  * Re-exported from the cache module so callers have one obvious place to reach for.
  */
@@ -445,7 +453,7 @@ async function interpretWithModel(
     // and without this the old interpretation would be served for the rest of the TTL.
     // The query is kept as typed, letter case included, like the rewrite's key: the cached
     // effective query is searched as is, so codes and names keep this visitor's capitals.
-    const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim()}`;
+    const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${queryKey(query)}`;
     return interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
         const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
 
@@ -544,7 +552,7 @@ export async function rewriteQueryForExternalSearch(options: {
     const timeoutMs = resolveTimeoutMs(config);
     // Keyed on the words as typed, letter case included: the rewrite keeps codes and names as the
     // visitor wrote them, and "unchanged" is judged against this visitor's own words
-    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim()}`;
+    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${queryKey(query)}`;
 
     try {
         // Part of AI summaries, like filter interpretation

@@ -54,7 +54,8 @@ import {
 import { rateLimiter } from '@/shared/api/rate-limit';
 import type { LogLine } from '@/shared/test/log-recorder';
 
-const QUESTION = 'can I defer my exam because of my health';
+// Longer than the 50 characters a log line keeps, so its length must be of the whole question
+const QUESTION = 'can I defer my exam because of my health and sit it in the summer instead';
 const SHOP = 'https://shop.example';
 
 const experience = {
@@ -113,6 +114,9 @@ describe.each(CALLS)('$name', ({ call }) => {
     expect(logs.length).toBeGreaterThan(0);
     expect(linesWithQuestion()).toEqual([]);
     expect(logs.some((line) => typeof line.context.queryLength === 'number')).toBe(true);
+    expect(logs.filter((line) => 'queryLength' in line.context).map((line) => line.context.queryLength)).toSatisfy(
+      (lengths: unknown[]) => lengths.every((n) => n === QUESTION.length),
+    );
   });
 
   it('logs no part of the question when telemetry is switched off, even if the experience says full', async () => {
