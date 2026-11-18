@@ -49,7 +49,7 @@ import { SearchError } from '@/features/search/search.types';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
 import { MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
-import { clearAllTelemetryOverrides, initializeTelemetryConfig, runWithTelemetryLevel } from '@/features/telemetry/telemetry.config';
+import { clearAllTelemetryOverrides, initializeTelemetryConfig, runWithTelemetryLevel, setExperienceTelemetryOverride } from '@/features/telemetry/telemetry.config';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 
 const QUERY = 'waterproof jackets under 200';
@@ -513,6 +513,16 @@ describe("the visitor's words in the 'Query interpreted' log line", () => {
         });
         expect(JSON.stringify(logs)).not.toContain('waterproof');
         expect(JSON.stringify(logs)).not.toContain('lte200');
+    });
+
+    it("keeps the words and filter values when the request's experience is set to Full", async () => {
+        setExperienceTelemetryOverride('exp-1', 'full');
+        await interpret();
+
+        expect(interpreted()?.context).toMatchObject({
+            originalQuery: QUERY,
+            filters: ['pricelte200'],
+        });
     });
 
     it('keeps the words and filter values when the request may keep content', async () => {

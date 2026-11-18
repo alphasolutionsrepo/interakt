@@ -411,10 +411,10 @@ export async function interpretQuery(
         }
 
         // Filter values come from the visitor's words, so they follow the same rule as the query
-        const keepContent = mayLogContent();
+        const keepContent = mayLogContent(options.experienceId);
         logger.info('Query interpreted', {
             searchIndexId,
-            ...contentForLog({ originalQuery: query, effectiveQuery: result.effectiveQuery }),
+            ...contentForLog({ originalQuery: query, effectiveQuery: result.effectiveQuery }, options.experienceId),
             filters: result.appliedFilters.map(f => keepContent ? `${f.field}${f.operator}${String(f.value)}` : `${f.field}${f.operator}`),
             dropped: result.droppedFilters.length,
             durationMs: Date.now() - startedAt,
