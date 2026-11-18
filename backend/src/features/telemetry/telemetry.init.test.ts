@@ -97,6 +97,17 @@ describe('initializeTelemetry', () => {
     expect(otel.register).not.toHaveBeenCalled();
   });
 
+  it('shares one failed setup between overlapping calls', async () => {
+    otel.failOnRegister = true;
+    const { initializeTelemetry } = await import('./telemetry.init');
+    const first = initializeTelemetry();
+    const second = initializeTelemetry();
+    expect(second).toBe(first);
+    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
+    expect(otel.providers).toBe(1);
+    expect(otel.loggedErrors).toEqual(['Failed to initialize OpenTelemetry']);
+  });
+
   it('logs a failed setup, resolves, and does not retry', async () => {
     otel.failOnRegister = true;
     const { initializeTelemetry } = await import('./telemetry.init');
