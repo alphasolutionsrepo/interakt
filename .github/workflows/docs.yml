@@ -40,7 +40,7 @@ jobs:
       - name: Install & build
         working-directory: docs-site
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           # Redocusaurus renders the API reference from the committed OpenAPI spec
           # (static/openapi/interakt-v1.yaml) at build time — no codegen step.
           npm run build
