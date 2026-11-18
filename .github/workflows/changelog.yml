@@ -29,10 +29,14 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: CHANGELOG.md is updated
+      - name: The Unreleased section of CHANGELOG.md is updated
         run: |
-          if git diff --quiet HEAD^1 HEAD -- CHANGELOG.md; then
+          # Text between '## [Unreleased]' and the next '## [' heading.
+          unreleased() {
+            git show "$1:CHANGELOG.md" 2>/dev/null | awk '/^## \[Unreleased\]/ { on = 1; next } /^## \[/ { on = 0 } on'
+          }
+          if [ "$(unreleased HEAD^1)" = "$(unreleased HEAD)" ]; then
             echo "::error file=CHANGELOG.md::Add a line under '## [Unreleased]' in CHANGELOG.md describing this change, or add the 'no-changelog' label if people using Interakt won't notice it."
             exit 1
           fi
-          echo "CHANGELOG.md is updated."
+          echo "The Unreleased section of CHANGELOG.md is updated."
