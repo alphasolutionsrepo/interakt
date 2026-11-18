@@ -43,6 +43,72 @@ jobs:
       - name: Test
         run: npm test
 
+  # Builds the app the way the Docker image does, migrates a fresh Postgres and starts it, so a
+  # change that builds and passes the tests but can't start (a startup hook failure, say) fails
+  # here. No Elasticsearch: the search providers register without connecting.
+  backend-start:
+    name: Backend · build · start
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: production
+      POSTGRES_URL: postgres://postgres:postgres@localhost:5432/interakt
+      ANALYTICS_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/interakt_analytics
+      NEXTAUTH_URL: http://localhost:3100
+      AUTH_TRUST_HOST: 'true'
+      ENABLE_OTEL: 'true'
+      # Used by the database setup script below.
+      PGHOST: localhost
+      PGPASSWORD: postgres
+      POSTGRES_USER: postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            backend/widgets/package-lock.json
+
+      # Throwaway secrets for this run only.
+      - name: Generate secrets
+        run: |
+          echo "AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+          echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+          echo "SECRETS_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Create databases
+        run: bash docker/init-db/01-init.sh
+
+      - run: npm ci
+
+      # The same two commands as the Docker image's migration job.
+      - name: Migrate
+        run: node scripts/db-migrate.js apply && node scripts/db-migrate-analytics.js apply
+
+      - name: Build
+        run: npm run build
+
+      - name: Start
+        run: bash scripts/start-check.sh
+
   widgets:
     name: Widgets · lint · build · test
     runs-on: ubuntu-latest
