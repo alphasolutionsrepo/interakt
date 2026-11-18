@@ -59,6 +59,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Sitecore Search filter values are sent as the type discovery recorded for each attribute; a value that can't be converted is reported as not applied.
 - The tools API `GET /api/tools/:id/experiences` returns the experiences that use a tool (names only for roles that can view chat experiences), and the Experiences page counts (Total, Active, chat, search) match on every tab and follow the search and status filters.
 - A reindex stopped by a failing embedding model says so, from the provider's error. An AI call is not retried when its caller stops waiting.
+- Log lines keep a visitor's words (search and autocomplete queries, the AI summary, query understanding, Find Record values, zero-result retries, knowledge search, and the `LOG_ES_QUERIES` request log) only when the experience's telemetry level is Full. At Metadata or Off they log the length instead (`queryLength`), and filters by field without their values.
+- The search widget stops an AI summary that is still being written when the visitor closes the search (Esc, the close button or the backdrop) or the widget is removed from the page; reopening on the same query writes it again. The demo site stops it when the visitor leaves the page.
 
 ### Fixed
 
