@@ -838,7 +838,8 @@ export async function getDocumentById(
         // Passed on: whoever answers the caller logs it (the documents API, Find Record)
         logger.debug('Failed to get document by ID', {
             identifier,
-            documentId,
+            // Find Record passes what the visitor named, so the id follows the same rule as a query
+            ...contentForLog({ documentId }),
             error: error instanceof Error ? error.message : 'Unknown error',
         });
 

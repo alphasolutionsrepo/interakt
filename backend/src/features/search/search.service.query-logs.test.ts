@@ -24,19 +24,20 @@ vi.mock('@/features/search-index/search-index.service', () => ({
   })),
 }));
 vi.mock('./search-context.builder', () => ({
-  buildSearchContext: () => ({ indexName: 'products', searchType: 'lexical', searchProvider: 'elasticsearch' }),
+  buildSearchContext: () => ({ indexName: 'products', searchType: 'lexical', searchProvider: 'elasticsearch', defaultResponseFields: [] }),
   supportsSemanticSearch: () => false,
 }));
-const { engineSearch, engineAutocomplete } = vi.hoisted(() => ({
+const { engineSearch, engineAutocomplete, engineGetDocument } = vi.hoisted(() => ({
   engineSearch: vi.fn(async () => ({ hits: [], total: 0 })),
   engineAutocomplete: vi.fn(async () => ({ hits: [] })),
+  engineGetDocument: vi.fn(async () => ({ found: false, error: 'engine down' })),
 }));
 vi.mock('./providers', () => {
-  const engine = { name: 'elasticsearch', search: engineSearch, autocomplete: engineAutocomplete };
+  const engine = { name: 'elasticsearch', search: engineSearch, autocomplete: engineAutocomplete, getDocument: engineGetDocument };
   return { providerRegistry: { list: () => [engine], get: () => engine }, initializeSearchProviders: vi.fn() };
 });
 
-import { autocompleteById, searchById } from './search.service';
+import { autocompleteById, getDocumentByIdFromIndex, searchById } from './search.service';
 
 import { clearAllTelemetryOverrides, initializeTelemetryConfig, runWithTelemetryLevel } from '@/features/telemetry/telemetry.config';
 import type { LogLine } from '@/shared/test/log-recorder';
@@ -109,5 +110,23 @@ describe('autocomplete logs', () => {
 
     expect(line('Autocomplete completed')?.context).toMatchObject({ query: TYPED });
     expect(line('Autocomplete failed')?.context).toMatchObject({ query: TYPED });
+  });
+});
+
+describe('a failed document lookup (Find Record looks up what the visitor named)', () => {
+  const NAMED = 'blue linen shirt';
+  const lookup = () => getDocumentByIdFromIndex('idx', NAMED).catch(() => undefined);
+
+  it('logs the length of the value, not the value, when the request may not keep content', async () => {
+    await lookup();
+
+    expect(line('Failed to get document by ID')?.context).toMatchObject({ documentIdLength: NAMED.length });
+    expect(everything()).not.toContain('linen');
+  });
+
+  it('logs the value when the request may keep content', async () => {
+    await runWithTelemetryLevel('full', lookup);
+
+    expect(line('Failed to get document by ID')?.context).toMatchObject({ documentId: NAMED });
   });
 });
