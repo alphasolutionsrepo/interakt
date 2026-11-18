@@ -13,6 +13,16 @@ const otel = vi.hoisted(() => ({
   failOnRegister: false,
   register: vi.fn(),
   providers: 0,
+  loggedErrors: [] as string[],
+}));
+
+vi.mock('@/shared/logger/logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+    error: (message: string) => { otel.loggedErrors.push(message); },
+  }),
 }));
 
 vi.mock('./telemetry.config', () => ({
@@ -49,6 +59,7 @@ beforeEach(() => {
   otel.enabled = true;
   otel.failOnRegister = false;
   otel.providers = 0;
+  otel.loggedErrors = [];
   otel.register.mockClear();
 });
 afterEach(resetGlobals);
@@ -86,12 +97,16 @@ describe('initializeTelemetry', () => {
     expect(otel.register).not.toHaveBeenCalled();
   });
 
-  it('resolves when setup fails, and does not retry', async () => {
+  it('logs a failed setup, resolves, and does not retry', async () => {
     otel.failOnRegister = true;
     const { initializeTelemetry } = await import('./telemetry.init');
     await expect(initializeTelemetry()).resolves.toBeUndefined();
+    expect(otel.loggedErrors).toEqual(['Failed to initialize OpenTelemetry']);
+    expect(otel.register).not.toHaveBeenCalled();
+
     otel.failOnRegister = false;
     await initializeTelemetry();
     expect(otel.providers).toBe(1);
+    expect(otel.register).not.toHaveBeenCalled();
   });
 });
