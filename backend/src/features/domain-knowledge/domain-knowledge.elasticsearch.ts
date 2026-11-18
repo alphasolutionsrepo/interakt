@@ -22,6 +22,7 @@ import {
   deleteIndex,
   refreshIndex,
 } from '@/features/search/providers/elasticsearch';
+import { contentForLog } from '@/features/telemetry/log-content';
 import { createLogger } from '@/shared/logger/logger';
 import type {
   KnowledgeESDocument,
@@ -429,7 +430,7 @@ export async function searchKnowledge(
 
     logger.debug('Knowledge search completed', {
       indexName,
-      query,
+      ...contentForLog({ query }),
       resultCount: results.length,
       topScore: results[0]?.score,
     });
@@ -437,7 +438,7 @@ export async function searchKnowledge(
     return results;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Knowledge search failed', { indexName, query, error: message });
+    logger.error('Knowledge search failed', { indexName, ...contentForLog({ query }), error: message });
     return [];
   }
 }

@@ -42,7 +42,7 @@ import {
     createRRFConfig,
     type RRFConfig,
 } from '../../hybrid-fusion';
-import { contentForLog } from '@/features/telemetry/log-content';
+import { contentForLog, mayLogContent } from '@/features/telemetry/log-content';
 
 const logger = createLogger('elasticsearch-search-provider');
 
@@ -529,9 +529,10 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
         // Log the outgoing ES query (async, non-blocking)
         if (ES_QUERY_LOGGING_ENABLED) {
+            // The body holds the visitor's words: written only when the request may keep content
             esQueryLogger.debug('ES request', {
                 index: indexName,
-                body: truncateForLog(searchBody),
+                ...(mayLogContent() ? { body: truncateForLog(searchBody) } : { bodyWithheld: 'telemetry level below Full' }),
             });
         }
 
@@ -605,7 +606,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                     index: indexName,
                     took,
                     error: error instanceof Error ? error.message : 'Unknown error',
-                    query: truncateForLog(searchBody),
+                    ...(mayLogContent() && { query: truncateForLog(searchBody) }),
                 });
             }
 
