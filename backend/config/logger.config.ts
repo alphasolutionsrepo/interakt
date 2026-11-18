@@ -33,7 +33,8 @@ export const loggerConfig = {
     api: process.env.LOG_API !== 'false', // default true
     performance: process.env.LOG_PERFORMANCE === 'true',
     /**
-     * Elasticsearch query logging - shows full request/response bodies
+     * Elasticsearch query logging - shows request/response bodies. The request body (the
+     * visitor's question) is logged only for experiences whose telemetry level is Full.
      * Usage: LOG_ES_QUERIES=true npm run dev
      */
     esQueries: process.env.LOG_ES_QUERIES === 'true',

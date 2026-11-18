@@ -1,6 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+
+import type { LogLine } from '@/shared/test/log-recorder';
+
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+
 
 import { ZeroResultRetryStep } from './zero-result-retry.step';
+
+import {
+    clearAllTelemetryOverrides,
+    initializeTelemetryConfig,
+    setExperienceTelemetryOverride,
+} from '@/features/telemetry/telemetry.config';
 
 import type { ActionStepContext, ActionStepDeps } from './action-step.types';
 import type { ToolExecutionResultV2 } from '../v2.types';
@@ -23,6 +35,7 @@ const hit = (n: number): ToolExecutionResultV2 => ({
 function context(filters: Array<{ field: string; operator: string; value: unknown }>): ActionStepContext {
     return {
         action: { toolSlug: 'catalog-search', intent: 'find items' },
+        turnContext: { experienceId: 'exp-1' },
         toolId: 'tool-1',
         toolResult: empty,
         finalParams: { query: 'mens t-shirt', filters },
@@ -119,5 +132,42 @@ describe('ZeroResultRetryStep — reporting what it gave up', () => {
         expect(result.spanAttributes?.['alpha.v2.step.dropped_filters']).toBe(
             JSON.stringify(['maxPrice=60'])
         );
+    });
+});
+
+describe("ZeroResultRetryStep — the visitor's words in log lines", () => {
+    // Filter values and the query come from the visitor's question
+    const ctx = () => context([
+        { field: 'gender', operator: 'eq', value: 'Men' },
+        { field: 'maxPrice', operator: 'lte', value: 60 },
+    ]);
+    const run = () => new ZeroResultRetryStep().execute(ctx(), deps(() => empty));
+    const logged = () => JSON.stringify(logs);
+
+    beforeEach(() => {
+        logs.length = 0;
+        initializeTelemetryConfig().enabled = true;
+    });
+    afterEach(() => {
+        clearAllTelemetryOverrides();
+        initializeTelemetryConfig().enabled = false;
+    });
+
+    it.each(['metadata', 'off'] as const)('keeps no query or filter value at %s, only lengths and field names', async (level) => {
+        setExperienceTelemetryOverride('exp-1', level);
+        await run();
+        expect(logs.length).toBeGreaterThan(0);
+        expect(logged()).not.toContain('t-shirt');
+        expect(logged()).not.toContain('Men');
+        expect(logged()).not.toContain('=60');
+        expect(logged()).toContain('maxPrice');
+        expect(logged()).toContain('enrichedQueryLength');
+    });
+
+    it('keeps the query and the filter values at full', async () => {
+        setExperienceTelemetryOverride('exp-1', 'full');
+        await run();
+        expect(logged()).toContain('mens t-shirt');
+        expect(logged()).toContain('maxPrice=60');
     });
 });

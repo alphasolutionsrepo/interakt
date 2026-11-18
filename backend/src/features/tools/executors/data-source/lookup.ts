@@ -32,6 +32,7 @@ import {
   type ResolvedExternalSource,
   type OperationResult,
 } from './shared';
+import { contentForLog } from '@/features/telemetry/log-content';
 
 // ============================================================================
 // INPUT TYPE
@@ -223,7 +224,7 @@ async function lookupFromManagedIndex(
   if (match) {
     logger.info('Lookup id was not a document key — returning matching search hit', {
       searchIndexId,
-      query: documentId,
+      ...contentForLog({ query: documentId }),
       matchedId: match.id,
     });
     noteMissingChosenFields(match.source, roles);
@@ -312,7 +313,7 @@ async function lookupFromExternalSource(
   if (match) {
     logger.info('External lookup id did not match — returning matching search hit', {
       dataSourceId: source.dataSourceId,
-      query: documentId,
+      ...contentForLog({ query: documentId }),
       matchedId: match.id,
     });
     noteMissingChosenFields(match.source, roles);
