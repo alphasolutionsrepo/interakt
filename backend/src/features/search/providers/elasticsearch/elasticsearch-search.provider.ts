@@ -288,7 +288,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
             const message = failureText(error, 'Failed to get document');
             // The search service turns it into a failure, and whoever answers logs it
-            logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
+            logger.debug('Failed to get document by ID', { indexName, ...contentForLog({ documentId }), error: message });
             return { found: false, error: message, cause: error };
         }
     }

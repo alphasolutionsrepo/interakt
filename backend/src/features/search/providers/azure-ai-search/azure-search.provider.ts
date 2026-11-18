@@ -432,7 +432,7 @@ export class AzureSearchProvider implements SearchProvider {
             }
             const message = failureText(error, 'Get document failed');
             // The search service turns it into a failure, and whoever answers logs it
-            logger.debug('Azure getDocument failed', { indexName, documentId, error: message });
+            logger.debug('Azure getDocument failed', { indexName, ...contentForLog({ documentId }), error: message });
             return { found: false, error: message, cause: error };
         }
     }

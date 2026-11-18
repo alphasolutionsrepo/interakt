@@ -14,8 +14,8 @@ vi.hoisted(() => { process.env.LOG_ES_QUERIES = 'true'; });
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 
-const es = vi.hoisted(() => ({ search: vi.fn() }));
-vi.mock('./elasticsearch.client', () => ({ getElasticsearchClient: () => ({ search: es.search }) }));
+const es = vi.hoisted(() => ({ search: vi.fn(), get: vi.fn() }));
+vi.mock('./elasticsearch.client', () => ({ getElasticsearchClient: () => ({ search: es.search, get: es.get }) }));
 
 import { ElasticsearchSearchProvider } from './elasticsearch-search.provider';
 
@@ -56,6 +56,7 @@ describe('Elasticsearch search logs', () => {
 
     expect(line('Executing search')?.context).toMatchObject({ queryLength: QUESTION.length });
     expect(line('Executing custom hybrid search')?.context).toMatchObject({ queryLength: QUESTION.length });
+    expect(line('Search context')?.context).toMatchObject({ queryLength: QUESTION.length });
     expect(everything()).not.toContain('linen');
   });
 
@@ -67,6 +68,7 @@ describe('Elasticsearch search logs', () => {
 
     expect(line('Executing search')?.context).toMatchObject({ query: QUESTION });
     expect(line('Executing custom hybrid search')?.context).toMatchObject({ query: QUESTION });
+    expect(line('Search context')?.context).toMatchObject({ query: QUESTION });
   });
 });
 
@@ -103,5 +105,24 @@ describe('the Elasticsearch request log (LOG_ES_QUERIES)', () => {
 
     const failure = logs.find((l) => l.message === 'ES query failed' && l.service === 'es-query');
     expect(failure?.context.query).toContain(QUESTION);
+  });
+});
+
+describe('a failed document lookup (Find Record looks up what the visitor named)', () => {
+  const NAMED = 'blue linen shirt';
+  const lookup = () => new ElasticsearchSearchProvider().getDocument('products', NAMED);
+  beforeEach(() => { es.get.mockReset().mockRejectedValue(new Error('engine down')); });
+
+  it('logs the length of the value, not the value, when the request may not keep content', async () => {
+    await lookup();
+
+    expect(line('Failed to get document by ID')?.context).toMatchObject({ documentIdLength: NAMED.length });
+    expect(everything()).not.toContain('linen');
+  });
+
+  it('logs the value when the request may keep content', async () => {
+    await runWithTelemetryLevel('full', lookup);
+
+    expect(line('Failed to get document by ID')?.context).toMatchObject({ documentId: NAMED });
   });
 });

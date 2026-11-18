@@ -9,8 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
+const getDocument = vi.hoisted(() => vi.fn());
 vi.mock('./azure-client', () => ({
-    getSearchClient: () => ({ search: async () => ({ results: (async function* () { /* no hits */ })(), count: 0 }) }),
+    getSearchClient: () => ({ search: async () => ({ results: (async function* () { /* no hits */ })(), count: 0 }), getDocument }),
     checkAzureHealth: vi.fn(),
 }));
 
@@ -47,5 +48,25 @@ describe('Azure search logs', () => {
         await runWithTelemetryLevel('full', search);
 
         expect(logs.find((l) => l.message === 'Executing Azure search')?.context).toMatchObject({ query: QUESTION });
+    });
+});
+
+describe('a failed document lookup (Find Record looks up what the visitor named)', () => {
+    const NAMED = 'blue_linen_shirt';
+    const lookup = () => new AzureSearchProvider().getDocument('products', NAMED);
+    const failed = () => logs.find((l) => l.message === 'Azure getDocument failed');
+    beforeEach(() => { getDocument.mockReset().mockRejectedValue(new Error('service down')); });
+
+    it('logs the length of the value, not the value, when the request may not keep content', async () => {
+        await lookup();
+
+        expect(failed()?.context).toMatchObject({ documentIdLength: NAMED.length });
+        expect(JSON.stringify(logs)).not.toContain('linen');
+    });
+
+    it('logs the value when the request may keep content', async () => {
+        await runWithTelemetryLevel('full', lookup);
+
+        expect(failed()?.context).toMatchObject({ documentId: NAMED });
     });
 });
