@@ -37,6 +37,7 @@ import type {
 import { searchQueryFields } from './search-query-fields';
 import { inBackground } from '@/shared/telemetry/background';
 import { scrubCredentials } from '@/shared/errors/error-detail';
+import { contentForLog } from '@/features/telemetry/log-content';
 
 /**
  * An event's error as stored: without credentials. The text comes from errors that can
@@ -182,7 +183,8 @@ export function trackSearch(event: SearchEventData, experienceId?: string): void
     searchEventQueue.push(queuedEvent);
 
     logger.info('Search event queued', {
-      query: event.queryText.substring(0, 50),
+      // Callers put the experience on the event; the argument is only for feature flags
+      ...contentForLog({ query: event.queryText }, experienceId ?? event.experienceId, { maxChars: 50 }),
       queueSize: searchEventQueue.length,
     });
 

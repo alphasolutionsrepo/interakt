@@ -49,6 +49,7 @@ import type {
 } from '@/db/schema/search-experience.schema';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import * as aiService from '@/features/ai-service';
+import { contentForLog, mayLogContent } from '@/features/telemetry/log-content';
 import { validateFilters } from '@/features/pipeline/v2/param-validation';
 import type { FieldConstraint } from '@/features/pipeline/v2/parameter-context.types';
 import * as searchService from '@/features/search/search.service';
@@ -288,6 +289,14 @@ function fingerprint(value: string | undefined): string {
 }
 
 /**
+ * The visitor's words as they go into a cache key: a digest, so the key (which the cache
+ * may log) never carries the question. Full length, since each question needs its own entry.
+ */
+function queryKey(query: string): string {
+    return createHash('sha256').update(query.trim()).digest('hex');
+}
+
+/**
  * Drop everything cached for an index after its configuration changes.
  * Re-exported from the cache module so callers have one obvious place to reach for.
  */
@@ -401,11 +410,12 @@ export async function interpretQuery(
             return passthrough(query, startedAt, 'failed');
         }
 
+        // Filter values come from the visitor's words, so they follow the same rule as the query
+        const keepContent = mayLogContent(options.experienceId);
         logger.info('Query interpreted', {
             searchIndexId,
-            originalQuery: query,
-            effectiveQuery: result.effectiveQuery,
-            filters: result.appliedFilters.map(f => `${f.field}${f.operator}${String(f.value)}`),
+            ...contentForLog({ originalQuery: query, effectiveQuery: result.effectiveQuery }, options.experienceId),
+            filters: result.appliedFilters.map(f => keepContent ? `${f.field}${f.operator}${String(f.value)}` : `${f.field}${f.operator}`),
             dropped: result.droppedFilters.length,
             durationMs: Date.now() - startedAt,
         });
@@ -443,7 +453,7 @@ async function interpretWithModel(
     // and without this the old interpretation would be served for the rest of the TTL.
     // The query is kept as typed, letter case included, like the rewrite's key: the cached
     // effective query is searched as is, so codes and names keep this visitor's capitals.
-    const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim()}`;
+    const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${queryKey(query)}`;
     return interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
         const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
 
@@ -542,7 +552,7 @@ export async function rewriteQueryForExternalSearch(options: {
     const timeoutMs = resolveTimeoutMs(config);
     // Keyed on the words as typed, letter case included: the rewrite keeps codes and names as the
     // visitor wrote them, and "unchanged" is judged against this visitor's own words
-    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${query.trim()}`;
+    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${queryKey(query)}`;
 
     try {
         // Part of AI summaries, like filter interpretation
