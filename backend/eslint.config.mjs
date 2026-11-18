@@ -77,6 +77,9 @@ export default defineConfig([
         { vars: "all", varsIgnorePattern: "^_", args: "after-used", argsIgnorePattern: "^_" },
       ],
       "@typescript-eslint/no-explicit-any": "warn",
+      // require() of a package that ships ES modules can return a promise instead of the
+      // module (the server failed to start that way); use import or await import().
+      "@typescript-eslint/no-require-imports": "error",
       "@typescript-eslint/explicit-function-return-type": "off",
       "@typescript-eslint/explicit-module-boundary-types": "off",
     },
