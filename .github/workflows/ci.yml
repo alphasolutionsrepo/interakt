@@ -93,3 +93,30 @@ jobs:
 
       - name: Test
         run: npm test
+
+  docs-site:
+    name: Docs site · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same Node version as the Pages deploy (docs.yml).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Stage docs into the site
+        run: bash docs-site/stage-docs.sh
+
+      # `npm ci` installs exactly what package-lock.json pins, so this builds what a merge
+      # would deploy, and a dependency update that breaks the build fails here, not in the
+      # Pages deploy.
+      - name: Install
+        working-directory: docs-site
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        working-directory: docs-site
+        run: npm run build
