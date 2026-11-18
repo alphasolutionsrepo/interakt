@@ -14,4 +14,5 @@
 - [ ] Tests added or updated for non-trivial logic
 - [ ] Schema change: the migration **and** `meta/_journal.json` are committed together
 - [ ] Docs updated in `backend/src/content/docs/` if behaviour or the API changed
+- [ ] A line under `## [Unreleased]` in `CHANGELOG.md`, or the `no-changelog` label if people using Interakt won't notice the change
 - [ ] Title and description match what the diff actually does

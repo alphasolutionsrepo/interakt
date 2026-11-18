@@ -1,0 +1,47 @@
+name: Changelog
+
+# Every pull request adds a line under `## [Unreleased]` in CHANGELOG.md, so release notes
+# are ready when a version is tagged. The check passes when the Unreleased section has an entry
+# line ("- ...") it didn't have before: a new line, or an existing one reworded for this change. Changes nobody using Interakt would notice (tests,
+# refactors, CI) carry the `no-changelog` label instead. Dependabot's PRs are skipped; their
+# updates are summarised when a release is cut.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    name: Changelog entry
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+    steps:
+      # The pull_request checkout is a merge commit; its first parent is the base branch.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: CHANGELOG.md has a new entry under Unreleased
+        run: |
+          # Entry lines ('- ...') between '## [Unreleased]' and the next '## [' heading.
+          entries() {
+            { git show "$1:CHANGELOG.md" 2>/dev/null || true; } \
+              | awk '/^## \[Unreleased\]/ { on = 1; next } /^## \[/ { on = 0 } on && /^- /' \
+              | sort -u
+          }
+          added=$(comm -13 <(entries HEAD^1) <(entries HEAD))
+          if [ -z "$added" ]; then
+            echo "::error file=CHANGELOG.md::Add a line under '## [Unreleased]' in CHANGELOG.md describing this change, or add the 'no-changelog' label if people using Interakt won't notice it."
+            exit 1
+          fi
+          echo "New entries under Unreleased:"
+          echo "$added"
