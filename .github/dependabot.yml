@@ -2,9 +2,9 @@
 #
 # Security updates (PRs for dependencies with a published advisory) are switched on in the
 # repository settings and open as soon as an advisory appears. The version updates below are
-# routine: once a month, minor and patch updates for each npm project come as one grouped PR,
-# and each major npm update gets a PR of its own. GitHub Actions updates, majors included, come
-# as one PR.
+# routine: once a month, each npm project gets at most two PRs, one for minor and patch updates
+# and one for major updates, and GitHub Actions updates come as one PR. To leave one major
+# update out of its group, comment `@dependabot ignore <dependency> major version` on the PR.
 version: 2
 
 updates:
@@ -17,6 +17,9 @@ updates:
       backend-minor-and-patch:
         patterns: ["*"]
         update-types: [minor, patch]
+      backend-major:
+        patterns: ["*"]
+        update-types: [major]
 
   - package-ecosystem: npm
     directory: /backend/widgets
@@ -27,6 +30,9 @@ updates:
       widgets-minor-and-patch:
         patterns: ["*"]
         update-types: [minor, patch]
+      widgets-major:
+        patterns: ["*"]
+        update-types: [major]
 
   - package-ecosystem: npm
     directory: /demo-site
@@ -37,6 +43,9 @@ updates:
       demo-site-minor-and-patch:
         patterns: ["*"]
         update-types: [minor, patch]
+      demo-site-major:
+        patterns: ["*"]
+        update-types: [major]
 
   - package-ecosystem: npm
     directory: /docs-site
@@ -47,6 +56,9 @@ updates:
       docs-site-minor-and-patch:
         patterns: ["*"]
         update-types: [minor, patch]
+      docs-site-major:
+        patterns: ["*"]
+        update-types: [major]
 
   - package-ecosystem: github-actions
     directory: /
