@@ -23,6 +23,7 @@ import type {
 } from '@/features/search-experience/search-experience.types';
 import { buildSummarySystemPrompt, formatFieldsForContext } from '@/features/chat/prompt-builder';
 import { selectFieldPassages } from '@/features/chat/summary-context';
+import { contentForLog } from '@/features/telemetry/log-content';
 
 const logger = createLogger('summary-stream');
 
@@ -175,7 +176,7 @@ export function createSummaryStream(
 
       logger.info('Summary generated', {
         experienceId: experience.id,
-        query: validated.query.substring(0, 50),
+        ...contentForLog({ query: validated.query.substring(0, 50) }, experience.id),
         resultCount: validated.results.length,
       });
     } catch (error) {

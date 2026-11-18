@@ -18,6 +18,7 @@ import * as searchIndexService from '@/features/search-index/search-index.servic
 import { getProviderFieldSettings } from '@/features/search-index/provider-settings.utils';
 import type { SearchExperienceWithIndexes } from './search-experience.types';
 import { DEFAULT_AUTOCOMPLETE_CONFIG } from './search-experience.types';
+import { contentForLog } from '@/features/telemetry/log-content';
 
 const logger = createLogger('autocomplete-service');
 
@@ -131,7 +132,7 @@ export async function getAutocompleteSuggestions(
 
     logger.debug('Autocomplete completed', {
       experienceId: experience.id,
-      query: request.query,
+      ...contentForLog({ query: request.query }, experience.id),
       indexCount: indexesToSearch.length,
       totalSuggestions: allSuggestions.length,
       dedupedSuggestions: dedupedSuggestions.length,

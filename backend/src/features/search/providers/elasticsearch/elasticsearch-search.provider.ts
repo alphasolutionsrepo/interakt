@@ -42,6 +42,7 @@ import {
     createRRFConfig,
     type RRFConfig,
 } from '../../hybrid-fusion';
+import { contentForLog } from '@/features/telemetry/log-content';
 
 const logger = createLogger('elasticsearch-search-provider');
 
@@ -96,7 +97,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
             esQueryLogger.debug('Search context', {
                 index: context.indexName,
                 searchType,
-                query: searchRequest.query,
+                ...contentForLog({ query: searchRequest.query }),
                 searchableFields: context.searchableFields.map(f => ({
                     name: f.fieldName,
                     type: f.fieldType,
@@ -111,7 +112,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
         logger.debug('Executing search', {
             indexName: context.indexName,
             searchType,
-            query: searchRequest.query,
+            ...contentForLog({ query: searchRequest.query }),
             hasEmbedding: !!queryEmbedding,
             searchableFieldCount: context.searchableFields.length,
             responseFieldCount: context.defaultResponseFields.length,
@@ -440,7 +441,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
         logger.debug('Executing custom hybrid search', {
             indexName: context.indexName,
-            query: searchRequest.query,
+            ...contentForLog({ query: searchRequest.query }),
             hasHybridOverride: !!hybridConfigOverride,
         });
 

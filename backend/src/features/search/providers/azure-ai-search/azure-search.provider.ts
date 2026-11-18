@@ -33,6 +33,7 @@ import { getSearchClient, checkAzureHealth } from './azure-client';
 import { AZURE_DOCUMENT_KEY } from './azure-constants';
 import { buildAzureSearchOptions, type AzureSearchOptions } from './query-builders';
 import { failureText } from '../search-engine-provider.interface';
+import { contentForLog } from '@/features/telemetry/log-content';
 
 const logger = createLogger('azure-search-provider');
 
@@ -90,7 +91,7 @@ export class AzureSearchProvider implements SearchProvider {
         logger.debug('Executing Azure search', {
             indexName: context.indexName,
             searchType,
-            query: searchRequest.query,
+            ...contentForLog({ query: searchRequest.query }),
             hasEmbedding: !!queryEmbedding,
         });
 
