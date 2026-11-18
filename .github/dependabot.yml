@@ -1,0 +1,56 @@
+# Dependency updates.
+#
+# Security updates (PRs for dependencies with a published advisory) are switched on in the
+# repository settings and open as soon as an advisory appears. The version updates below are
+# routine: once a month, minor and patch updates for each project come as one grouped PR, and
+# each major update gets a PR of its own.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /backend/widgets
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      widgets-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /demo-site
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      demo-site-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /docs-site
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      docs-site-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]

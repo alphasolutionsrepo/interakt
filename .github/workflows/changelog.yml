@@ -1,0 +1,38 @@
+name: Changelog
+
+# Every pull request adds a line under `## [Unreleased]` in CHANGELOG.md, so release notes
+# are ready when a version is tagged. Changes nobody using Interakt would notice (tests,
+# refactors, CI) carry the `no-changelog` label instead. Dependabot's PRs are skipped; their
+# updates are summarised when a release is cut.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    name: Changelog entry
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+    steps:
+      # The pull_request checkout is a merge commit; its first parent is the base branch.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: CHANGELOG.md is updated
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::Add a line under '## [Unreleased]' in CHANGELOG.md describing this change, or add the 'no-changelog' label if people using Interakt won't notice it."
+            exit 1
+          fi
+          echo "CHANGELOG.md is updated."

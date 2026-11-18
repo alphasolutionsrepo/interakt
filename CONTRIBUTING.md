@@ -130,7 +130,12 @@ to a feature, match the surrounding structure rather than introducing a new patt
    ```
 
    If you touched `backend/widgets/`, also run `npm --prefix widgets run build && npm --prefix widgets test`.
-4. Open a PR against `main`. CI (lint · type-check · test, for both backend and widgets)
+4. Add a line for your change under `## [Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md), in the
+   matching section (Added, Changed, Fixed, Security and so on). Write it for someone running
+   Interakt: what they will notice, and anything they need to do when they upgrade. Changes they
+   won't notice (tests, refactors, CI) take the `no-changelog` label instead; the *Changelog*
+   check passes with either.
+5. Open a PR against `main`. CI (lint · type-check · test, for both backend and widgets)
    must pass.
 
 ## Code review
