@@ -65,8 +65,9 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # No NODE_ENV here: `npm ci` would skip dev dependencies the build needs, and `next build`
+    # and `next start` run in production mode on their own.
     env:
-      NODE_ENV: production
       POSTGRES_URL: postgres://postgres:postgres@localhost:5432/interakt
       ANALYTICS_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/interakt_analytics
       NEXTAUTH_URL: http://localhost:3100
