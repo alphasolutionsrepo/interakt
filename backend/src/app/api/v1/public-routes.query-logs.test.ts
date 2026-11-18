@@ -79,7 +79,8 @@ const CALLS = [
   { name: 'autocomplete', call: () => autocomplete(req('/api/v1/autocomplete', { query: QUESTION })) },
   {
     name: 'recording the search for analytics',
-    call: async () => { trackSearch({ requestId: 'r1', triggerType: 'user', searchType: 'lexical', indexIds: ['i1'], queryText: QUESTION, totalResults: 3, resultsReturned: 3, durationMs: 5, success: true }, experience.id); return new Response(null); },
+    call: async () => { // As the search service calls it: the experience is on the event, not passed separately
+      trackSearch({ requestId: 'r1', triggerType: 'user', searchType: 'lexical', indexIds: ['i1'], experienceId: experience.id, queryText: QUESTION, totalResults: 3, resultsReturned: 3, durationMs: 5, success: true }); return new Response(null); },
   },
 ];
 

@@ -8,6 +8,8 @@
 
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 const search = vi.fn();
 vi.mock('@/features/search/search.service', () => ({}));
 const { addSpanAttributes } = vi.hoisted(() => ({ addSpanAttributes: vi.fn() }));
@@ -25,6 +27,9 @@ vi.mock('./shared', async (importOriginal) => ({
 }));
 
 import { executeDataSourceLookup } from './lookup';
+
+import { clearAllTelemetryOverrides, initializeTelemetryConfig, runWithTelemetryLevel } from '@/features/telemetry/telemetry.config';
+import type { LogLine } from '@/shared/test/log-recorder';
 
 describe('external lookup', () => {
   it('falls back to search when the id filter fails', async () => {
@@ -324,5 +329,38 @@ describe("external lookup with the tool's chosen code fields", () => {
     await executeDataSourceLookup('ds', { nameFields: ['name'] }, { id: 'P-1' });
 
     expect(filteredOn()).toEqual(['productId']);
+  });
+});
+
+describe("the name asked for in the external lookup's log line", () => {
+  const ASKED = 'Vesper & Co Crew Neck Sweater';
+  const lookup = async () => {
+    search
+      .mockResolvedValueOnce({ hits: [], unappliedFilters: [] })
+      .mockResolvedValueOnce({ hits: [{ id: 'p2', score: 1, source: { name: ASKED } }], unappliedFilters: [] });
+    await executeDataSourceLookup('ds', { idField: 'id' }, { id: ASKED });
+  };
+  const matched = () => logs.find((l) => l.message === 'External lookup id did not match — returning matching search hit');
+
+  beforeEach(() => {
+    logs.length = 0;
+    initializeTelemetryConfig().enabled = true;
+  });
+  afterEach(() => {
+    clearAllTelemetryOverrides();
+    initializeTelemetryConfig().enabled = false;
+  });
+
+  it('is logged as a length when the request may not keep content', async () => {
+    await lookup();
+
+    expect(matched()?.context).toMatchObject({ queryLength: ASKED.length, matchedId: 'p2' });
+    expect(JSON.stringify(logs)).not.toContain('Vesper');
+  });
+
+  it('is logged as written when the request may keep content', async () => {
+    await runWithTelemetryLevel('full', lookup);
+
+    expect(matched()?.context).toMatchObject({ query: ASKED });
   });
 });

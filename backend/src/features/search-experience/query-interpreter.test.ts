@@ -19,7 +19,7 @@
  */
 
 import { errors as esErrors } from '@elastic/elasticsearch';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
@@ -48,6 +48,7 @@ import { SearchError } from '@/features/search/search.types';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
 import { MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
+import { clearAllTelemetryOverrides, initializeTelemetryConfig, runWithTelemetryLevel } from '@/features/telemetry/telemetry.config';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 
 const QUERY = 'waterproof jackets under 200';
@@ -455,5 +456,47 @@ describe('loading a field’s values for the model', () => {
         expect(reported(logs).filter((l) => l.message === 'Failed to fetch facet values')).toEqual([
             expect.objectContaining({ level: 'error', context: expect.objectContaining({ field: 'colour', err: down }) }),
         ]);
+    });
+});
+
+describe("the visitor's words in the 'Query interpreted' log line", () => {
+    const interpret = () => applyQueryInterpretation({
+        query: QUERY,
+        clientFilters: undefined,
+        searchIndexId: freshIndexId(),
+        aiConfig: aiConfig(),
+        experienceId: 'exp-1',
+    });
+    const interpreted = () => logs.find((l) => l.message === 'Query interpreted');
+
+    beforeEach(() => {
+        logs.length = 0;
+        initializeTelemetryConfig().enabled = true;
+    });
+    afterEach(() => {
+        clearAllTelemetryOverrides();
+        initializeTelemetryConfig().enabled = false;
+    });
+
+    it('keeps the lengths and the filter fields, not the words or filter values, when the request may not keep content', async () => {
+        await interpret();
+
+        expect(interpreted()?.context).toMatchObject({
+            originalQueryLength: QUERY.length,
+            effectiveQueryLength: 'waterproof jackets'.length,
+            filters: ['pricelte'],
+        });
+        expect(JSON.stringify(logs)).not.toContain('waterproof');
+        expect(JSON.stringify(logs)).not.toContain('lte200');
+    });
+
+    it('keeps the words and filter values when the request may keep content', async () => {
+        await runWithTelemetryLevel('full', interpret);
+
+        expect(interpreted()?.context).toMatchObject({
+            originalQuery: QUERY,
+            effectiveQuery: 'waterproof jackets',
+            filters: ['pricelte200'],
+        });
     });
 });

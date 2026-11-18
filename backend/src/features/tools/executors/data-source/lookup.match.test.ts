@@ -5,7 +5,7 @@
  * never just the top hit for an id that doesn't exist.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 // A key fetch finds the record unless a test says otherwise (each starts with a miss on the
 // requested value)
@@ -15,6 +15,8 @@ const { getDocumentByIdFromIndex, searchById } = vi.hoisted(() => ({
   ),
   searchById: vi.fn(),
 }));
+const logs = vi.hoisted(() => [] as LogLine[]);
+vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/features/search/search.service', () => ({ getDocumentByIdFromIndex, searchById }));
 const { getDataSourceById } = vi.hoisted(() => ({ getDataSourceById: vi.fn(async () => ({ schema: null })) }));
 vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById }));
@@ -32,6 +34,9 @@ vi.mock('./shared', async (importOriginal) => ({
 import catalog from '../../../../../setup/data/fashion_catalog.json';
 
 import { executeDataSourceLookup, matchesRequestedRecord } from './lookup';
+
+import { clearAllTelemetryOverrides, initializeTelemetryConfig, runWithTelemetryLevel } from '@/features/telemetry/telemetry.config';
+import type { LogLine } from '@/shared/test/log-recorder';
 
 const products = catalog as Array<{ productId: string; name: string }>;
 
@@ -706,5 +711,37 @@ describe("with the schema's roles and the tool's chosen fields", () => {
     const result = await executeDataSourceLookup('ds', {}, { id: 'Desk Lamp' });
 
     expect(result).toMatchObject({ success: true, data: { id: 'lamp' } });
+  });
+});
+
+describe("the name asked for in the managed lookup's log line", () => {
+  const ASKED = 'Vesper & Co Crew Neck Sweater';
+  const lookup = async () => {
+    getDocumentByIdFromIndex.mockResolvedValueOnce(null);
+    searchById.mockResolvedValueOnce({ hits: [{ id: 'p2', source: { name: ASKED } }] });
+    await executeDataSourceLookup('ds', {}, { id: ASKED });
+  };
+  const matched = () => logs.find((l) => l.message === 'Lookup id was not a document key — returning matching search hit');
+
+  beforeEach(() => {
+    logs.length = 0;
+    initializeTelemetryConfig().enabled = true;
+  });
+  afterEach(() => {
+    clearAllTelemetryOverrides();
+    initializeTelemetryConfig().enabled = false;
+  });
+
+  it('is logged as a length when the request may not keep content', async () => {
+    await lookup();
+
+    expect(matched()?.context).toMatchObject({ queryLength: ASKED.length, matchedId: 'p2' });
+    expect(JSON.stringify(logs)).not.toContain('Vesper');
+  });
+
+  it('is logged as written when the request may keep content', async () => {
+    await runWithTelemetryLevel('full', lookup);
+
+    expect(matched()?.context).toMatchObject({ query: ASKED });
   });
 });
