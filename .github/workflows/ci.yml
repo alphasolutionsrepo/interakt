@@ -22,9 +22,9 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -43,6 +43,73 @@ jobs:
       - name: Test
         run: npm test
 
+  # Builds the app the way the Docker image does, migrates a fresh Postgres and starts it, so a
+  # change that builds and passes the tests but can't start (a startup hook failure, say) fails
+  # here. No Elasticsearch: the search providers register without connecting.
+  backend-start:
+    name: Backend · build · start
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    # No NODE_ENV here: `npm ci` would skip dev dependencies the build needs, and `next build`
+    # and `next start` run in production mode on their own.
+    env:
+      POSTGRES_URL: postgres://postgres:postgres@localhost:5432/interakt
+      ANALYTICS_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/interakt_analytics
+      NEXTAUTH_URL: http://localhost:3100
+      AUTH_TRUST_HOST: 'true'
+      ENABLE_OTEL: 'true'
+      # Used by the database setup script below.
+      PGHOST: localhost
+      PGPASSWORD: postgres
+      POSTGRES_USER: postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            backend/widgets/package-lock.json
+
+      # Throwaway secrets for this run only.
+      - name: Generate secrets
+        run: |
+          echo "AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+          echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+          echo "SECRETS_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Create databases
+        run: bash docker/init-db/01-init.sh
+
+      - run: npm ci
+
+      # The same two commands as the Docker image's migration job.
+      - name: Migrate
+        run: node scripts/db-migrate.js apply && node scripts/db-migrate-analytics.js apply
+
+      - name: Build
+        run: npm run build
+
+      - name: Start
+        run: bash scripts/start-check.sh
+
   widgets:
     name: Widgets · lint · build · test
     runs-on: ubuntu-latest
@@ -50,9 +117,9 @@ jobs:
       run:
         working-directory: backend/widgets
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -78,9 +145,9 @@ jobs:
       run:
         working-directory: demo-site
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -93,3 +160,30 @@ jobs:
 
       - name: Test
         run: npm test
+
+  docs-site:
+    name: Docs site · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same Node version as the Pages deploy (docs.yml).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Stage docs into the site
+        run: bash docs-site/stage-docs.sh
+
+      # `npm ci` installs exactly what package-lock.json pins, so this builds what a merge
+      # would deploy, and a dependency update that breaks the build fails here, not in the
+      # Pages deploy.
+      - name: Install
+        working-directory: docs-site
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        working-directory: docs-site
+        run: npm run build

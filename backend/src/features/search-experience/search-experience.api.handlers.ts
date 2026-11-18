@@ -28,6 +28,7 @@ import type {
 } from './search-experience.types';
 import * as autocompleteService from './autocomplete.service';
 import { executeExperienceSearch, NoSourcesError } from './experience-search';
+import { contentForLog } from '@/features/telemetry/log-content';
 
 const logger = createLogger('search-experience-api');
 
@@ -75,7 +76,7 @@ export async function handlePublicSearch(request: NextRequest): Promise<NextResp
 
     logger.info('Public search completed', {
       experienceId: experience.id,
-      query: validated.query.substring(0, 50),
+      ...contentForLog({ query: validated.query }, experience.id, { maxChars: 50 }),
       indexCount: sourcesSearched.length,
       totalHits: results.total.value,
       took: response.took,
@@ -174,7 +175,7 @@ export async function handleAutocomplete(request: NextRequest): Promise<NextResp
 
     logger.info('Autocomplete completed', {
       experienceId: experience.id,
-      query: validated.query.substring(0, 50),
+      ...contentForLog({ query: validated.query }, experience.id, { maxChars: 50 }),
       suggestionCount: result.suggestions.length,
       took: result.took,
     });

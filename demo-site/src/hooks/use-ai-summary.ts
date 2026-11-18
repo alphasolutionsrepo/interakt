@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSettings } from '@/contexts/settings-context';
 import { createApiClient } from '@/lib/api/client';
 import type { SearchResult } from '@/lib/api/types';
@@ -53,6 +53,9 @@ export function useAISummary(): UseAISummaryReturn {
   const [state, setState] = useState<UseAISummaryState>(EMPTY_STATE);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Leaving the page stops a summary still being written, so the server stops generating it
+  useEffect(() => () => abortControllerRef.current?.abort(), []);
 
   // =========================================================================
   // GENERATE

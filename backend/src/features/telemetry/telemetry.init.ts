@@ -31,11 +31,24 @@ function markInitialized(): void {
   (globalThis as Record<string, unknown>)[INITIALIZED_KEY] = true;
 }
 
+const IN_FLIGHT_KEY = '__alpha_otel_initializing__' as const;
+
 /**
  * Initialize the OpenTelemetry SDK.
- * Safe to call multiple times (idempotent).
+ * Safe to call multiple times (idempotent); concurrent calls share one initialization.
  */
-export function initializeTelemetry(): void {
+export function initializeTelemetry(): Promise<void> {
+  const g = globalThis as Record<string, unknown>;
+  const inFlight = g[IN_FLIGHT_KEY] as Promise<void> | undefined;
+  if (inFlight) return inFlight;
+  const run = initializeTelemetryOnce().finally(() => {
+    delete g[IN_FLIGHT_KEY];
+  });
+  g[IN_FLIGHT_KEY] = run;
+  return run;
+}
+
+async function initializeTelemetryOnce(): Promise<void> {
   if (isAlreadyInitialized()) {
     logger.warn('Telemetry already initialized');
     return;
@@ -50,17 +63,24 @@ export function initializeTelemetry(): void {
   }
 
   try {
-    // Dynamic imports to avoid loading OTel SDK when disabled
-    const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-    const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-    const { resourceFromAttributes } = require('@opentelemetry/resources');
-    const {
-      ATTR_SERVICE_NAME,
-      ATTR_SERVICE_VERSION,
-    } = require('@opentelemetry/semantic-conventions');
-
-    const { PostgresSpanExporter } = require('./postgres-span-exporter');
-    const { ContentPolicyProcessor } = require('./content-policy');
+    // Loaded on demand so the OTel SDK isn't loaded when telemetry is off. `await import()`,
+    // not require(): OpenTelemetry packages (and our modules that import them) may load as
+    // ES modules, and a require() of one returns a promise instead of its exports.
+    const [
+      { NodeTracerProvider },
+      { BatchSpanProcessor },
+      { resourceFromAttributes },
+      { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION },
+      { PostgresSpanExporter },
+      { ContentPolicyProcessor },
+    ] = await Promise.all([
+      import('@opentelemetry/sdk-trace-node'),
+      import('@opentelemetry/sdk-trace-base'),
+      import('@opentelemetry/resources'),
+      import('@opentelemetry/semantic-conventions'),
+      import('./postgres-span-exporter'),
+      import('./content-policy'),
+    ]);
 
     // Create resource describing this service (v2 API: resourceFromAttributes)
     const resource = resourceFromAttributes({

@@ -42,6 +42,7 @@ import {
     createRRFConfig,
     type RRFConfig,
 } from '../../hybrid-fusion';
+import { contentForLog, mayLogContent } from '@/features/telemetry/log-content';
 
 const logger = createLogger('elasticsearch-search-provider');
 
@@ -96,7 +97,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
             esQueryLogger.debug('Search context', {
                 index: context.indexName,
                 searchType,
-                query: searchRequest.query,
+                ...contentForLog({ query: searchRequest.query }),
                 searchableFields: context.searchableFields.map(f => ({
                     name: f.fieldName,
                     type: f.fieldType,
@@ -111,7 +112,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
         logger.debug('Executing search', {
             indexName: context.indexName,
             searchType,
-            query: searchRequest.query,
+            ...contentForLog({ query: searchRequest.query }),
             hasEmbedding: !!queryEmbedding,
             searchableFieldCount: context.searchableFields.length,
             responseFieldCount: context.defaultResponseFields.length,
@@ -287,7 +288,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
             const message = failureText(error, 'Failed to get document');
             // The search service turns it into a failure, and whoever answers logs it
-            logger.debug('Failed to get document by ID', { indexName, documentId, error: message });
+            logger.debug('Failed to get document by ID', { indexName, ...contentForLog({ documentId }), error: message });
             return { found: false, error: message, cause: error };
         }
     }
@@ -440,7 +441,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
         logger.debug('Executing custom hybrid search', {
             indexName: context.indexName,
-            query: searchRequest.query,
+            ...contentForLog({ query: searchRequest.query }),
             hasHybridOverride: !!hybridConfigOverride,
         });
 
@@ -528,9 +529,10 @@ export class ElasticsearchSearchProvider implements SearchProvider {
 
         // Log the outgoing ES query (async, non-blocking)
         if (ES_QUERY_LOGGING_ENABLED) {
+            // The body holds the visitor's words: written only when the request may keep content
             esQueryLogger.debug('ES request', {
                 index: indexName,
-                body: truncateForLog(searchBody),
+                ...(mayLogContent() ? { body: truncateForLog(searchBody) } : { bodyWithheld: 'telemetry level below Full' }),
             });
         }
 
@@ -604,7 +606,7 @@ export class ElasticsearchSearchProvider implements SearchProvider {
                     index: indexName,
                     took,
                     error: error instanceof Error ? error.message : 'Unknown error',
-                    query: truncateForLog(searchBody),
+                    ...(mayLogContent() && { query: truncateForLog(searchBody) }),
                 });
             }
 

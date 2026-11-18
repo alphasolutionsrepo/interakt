@@ -15,6 +15,7 @@
  * via the chain factory.
  */
 
+import { contentForLog, mayLogContent } from '@/features/telemetry/log-content';
 import { createLogger } from '@/shared/logger/logger';
 import type { ToolExecutionResultV2 } from '../v2.types';
 import { stopIfAbandoned } from '../../turn-abandoned';
@@ -76,6 +77,11 @@ export class ZeroResultRetryStep implements ActionStep {
       } catch { /* non-fatal */ }
     };
 
+    // Filter values come from the visitor's words: logged only when the experience keeps content
+    const experienceId = ctx.turnContext.experienceId;
+    const keepContent = mayLogContent(experienceId);
+    const filterForLog = (f: { field: string; value: unknown }) => (keepContent ? `${f.field}=${String(f.value)}` : f.field);
+
     // Step 1: Relax query (strip filter-value words)
     const relaxedQuery = relaxQueryForFilters(originalQuery, originalFilters);
     const workingQuery = (relaxedQuery && relaxedQuery !== originalQuery) ? relaxedQuery : originalQuery;
@@ -83,8 +89,7 @@ export class ZeroResultRetryStep implements ActionStep {
     if (workingQuery !== originalQuery) {
       logger.info('Zero results — step 1: relaxed query', {
         toolSlug: ctx.action.toolSlug,
-        originalQuery,
-        relaxedQuery: workingQuery,
+        ...contentForLog({ originalQuery, relaxedQuery: workingQuery }, experienceId),
       });
 
       await retry({ ...params, query: workingQuery }, 'relax_query', `"${originalQuery}" → "${workingQuery}"`);
@@ -100,8 +105,8 @@ export class ZeroResultRetryStep implements ActionStep {
 
         logger.info('Zero results — step 2: dropping filter', {
           toolSlug: ctx.action.toolSlug,
-          droppedFilter: `${droppedFilter.field}=${droppedFilter.value}`,
-          remainingFilters: remainingFilters.map((f) => `${f.field}=${f.value}`),
+          droppedFilter: filterForLog(droppedFilter),
+          remainingFilters: remainingFilters.map(filterForLog),
         });
 
         await retry(
@@ -121,8 +126,8 @@ export class ZeroResultRetryStep implements ActionStep {
 
       logger.info('Zero results — step 3: semantic fallback', {
         toolSlug: ctx.action.toolSlug,
-        enrichedQuery,
-        droppedFilters: originalFilters.map((f) => `${f.field}=${f.value}`),
+        ...contentForLog({ enrichedQuery }, experienceId),
+        droppedFilters: originalFilters.map(filterForLog),
       });
 
       await retry({ ...params, query: enrichedQuery, filters: undefined }, 'semantic_fallback', `query="${enrichedQuery}", no filters`);

@@ -1,0 +1,95 @@
+# Dependency updates.
+#
+# Security updates (PRs for dependencies with a published advisory) are switched on in the
+# repository settings and open as soon as an advisory appears. The version updates below are
+# routine: once a month, each npm project gets at most two PRs, one for minor and patch updates
+# and one for major updates, and GitHub Actions updates come as one PR. To leave one major
+# update out of its group, comment `@dependabot ignore <dependency> major version` on the PR.
+#
+# Every npm project skips two kinds of major update until we choose to move:
+# - typescript: typescript-eslint, which our lint runs on, supports TypeScript up to 6.0, so
+#   TypeScript 7 breaks `npm run lint`.
+# - @types/node: the types follow the Node.js major we run (24, see .nvmrc), so they don't
+#   describe APIs our runtime lacks. Move them together with .nvmrc and `engines`.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+      backend-major:
+        patterns: ["*"]
+        update-types: [major]
+
+  - package-ecosystem: npm
+    directory: /backend/widgets
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      widgets-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+      widgets-major:
+        patterns: ["*"]
+        update-types: [major]
+
+  - package-ecosystem: npm
+    directory: /demo-site
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      demo-site-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+      demo-site-major:
+        patterns: ["*"]
+        update-types: [major]
+
+  - package-ecosystem: npm
+    directory: /docs-site
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      docs-site-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+      docs-site-major:
+        patterns: ["*"]
+        update-types: [major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]

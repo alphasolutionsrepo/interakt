@@ -29,6 +29,7 @@ import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
+import { contentForLog } from '@/features/telemetry/log-content';
 
 // Extended schema: playground-only switches
 const searchRequestSchema = publicSearchRequestSchema.extend({
@@ -134,7 +135,7 @@ async function post(
 
     logger.info('Search completed via slug', {
       slug,
-      query: validated.query.substring(0, 50),
+      ...contentForLog({ query: validated.query }, experience.id, { maxChars: 50 }),
       totalHits: results.total.value,
       took: response.timing.totalMs,
       admin: isAdmin,

@@ -49,6 +49,7 @@ import type {
 } from '@/db/schema/search-experience.schema';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import * as aiService from '@/features/ai-service';
+import { contentForLog, mayLogContent } from '@/features/telemetry/log-content';
 import { validateFilters } from '@/features/pipeline/v2/param-validation';
 import type { FieldConstraint } from '@/features/pipeline/v2/parameter-context.types';
 import * as searchService from '@/features/search/search.service';
@@ -464,11 +465,12 @@ export async function interpretQuery(
             return passthrough(query, startedAt, 'failed');
         }
 
-        // The visitor's words and the filter values made from them stay out of the application
-        // log: the trace keeps the query searched at the Full detail level
+        // Filter values come from the visitor's words, so they follow the same rule as the query
+        const keepContent = mayLogContent(options.experienceId);
         logger.info('Query interpreted', {
             searchIndexId,
-            filterFields: result.appliedFilters.map(f => f.field),
+            ...contentForLog({ originalQuery: query, effectiveQuery: result.effectiveQuery }, options.experienceId),
+            filters: result.appliedFilters.map(f => keepContent ? `${f.field}${f.operator}${String(f.value)}` : `${f.field}${f.operator}`),
             dropped: result.droppedFilters.length,
             durationMs: Date.now() - startedAt,
         });

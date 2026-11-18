@@ -6,10 +6,11 @@
  * with nothing usable, and one model call per distinct question.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resolveTimeoutMs, rewriteQueryForExternalSearch } from './query-interpreter';
 
+import { cacheConfig } from '@/config/cache.config';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 import * as aiService from '@/features/ai-service';
 import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
@@ -286,6 +287,24 @@ describe('rewriteQueryForExternalSearch', () => {
                 vi.useRealTimers();
             }
         });
+    });
+});
+
+describe('the rewrite cache with its key logging on', () => {
+    const logging = cacheConfig.logging as { logHits: boolean; logMisses: boolean; logOperations: boolean };
+    const saved = { ...logging };
+    beforeEach(() => Object.assign(logging, { logHits: true, logMisses: true, logOperations: true }));
+    afterEach(() => Object.assign(logging, saved));
+
+    it("logs its miss, set and hit without the visitor's words", async () => {
+        const experienceId = freshExperience();
+        await rewrite(aiConfig(), QUESTION, experienceId);
+        await rewrite(aiConfig(), QUESTION, experienceId);
+
+        expect(aiService.chat).toHaveBeenCalledTimes(1);
+        const cacheLines = logs.filter((l) => l.message.startsWith('Cache '));
+        expect(cacheLines.map((l) => l.message)).toEqual(expect.arrayContaining(['Cache miss', 'Cache set', 'Cache hit']));
+        expect(JSON.stringify(cacheLines)).not.toContain('financial aid');
     });
 });
 

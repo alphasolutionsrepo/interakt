@@ -19,7 +19,7 @@
  */
 
 import { errors as esErrors } from '@elastic/elasticsearch';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { featureSwitchesStub } from '@/shared/test/feature-switches-stub';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
@@ -47,12 +47,14 @@ vi.mock('@/config/cache.config', async (importOriginal) => {
     return { cacheConfig: { ...actual.cacheConfig, logging: { logHits: true, logMisses: true, logOperations: true } } };
 });
 
+import { cacheConfig } from '@/config/cache.config';
 import * as aiService from '@/features/ai-service';
 import * as searchIndexService from '@/features/search-index/search-index.service';
 import * as searchService from '@/features/search/search.service';
 import { SearchError } from '@/features/search/search.types';
 import { applyQueryInterpretation } from './query-interpreter';
 import { invalidateQueryInterpreterCache } from './query-interpreter.cache';
+import { clearAllTelemetryOverrides, initializeTelemetryConfig, runWithTelemetryLevel, setExperienceTelemetryOverride } from '@/features/telemetry/telemetry.config';
 import type { SearchExperienceAIConfig } from '@/db/schema/search-experience.schema';
 
 const QUERY = 'waterproof jackets under 200';
@@ -569,5 +571,81 @@ describe('loading a field’s values for the model', () => {
         expect(reported(logs).filter((l) => l.message === 'Failed to fetch facet values')).toEqual([
             expect.objectContaining({ level: 'error', context: expect.objectContaining({ field: 'colour', err: down }) }),
         ]);
+    });
+});
+
+describe('the interpretation cache with its key logging on', () => {
+    const logging = cacheConfig.logging as { logHits: boolean; logMisses: boolean; logOperations: boolean };
+    const saved = { ...logging };
+    beforeEach(() => {
+        logs.length = 0;
+        Object.assign(logging, { logHits: true, logMisses: true, logOperations: true });
+    });
+    afterEach(() => Object.assign(logging, saved));
+
+    it("logs its miss, set and hit without the visitor's words", async () => {
+        const searchIndexId = freshIndexId();
+        const interpret = () => applyQueryInterpretation({
+            query: QUERY, clientFilters: undefined, searchIndexId, aiConfig: aiConfig(), experienceId: 'exp-1',
+        });
+        await interpret();
+        await interpret();
+
+        expect(aiService.chat).toHaveBeenCalledTimes(1);
+        const cacheLines = logs.filter((l) => l.message.startsWith('Cache ') && l.context.feature === 'query-interpreter');
+        expect(cacheLines.map((l) => l.message)).toEqual(expect.arrayContaining(['Cache miss', 'Cache set', 'Cache hit']));
+        expect(JSON.stringify(cacheLines)).not.toContain('waterproof');
+    });
+});
+
+describe("the visitor's words in the 'Query interpreted' log line", () => {
+    const interpret = () => applyQueryInterpretation({
+        query: QUERY,
+        clientFilters: undefined,
+        searchIndexId: freshIndexId(),
+        aiConfig: aiConfig(),
+        experienceId: 'exp-1',
+    });
+    const interpreted = () => logs.find((l) => l.message === 'Query interpreted');
+
+    beforeEach(() => {
+        logs.length = 0;
+        initializeTelemetryConfig().enabled = true;
+    });
+    afterEach(() => {
+        clearAllTelemetryOverrides();
+        initializeTelemetryConfig().enabled = false;
+    });
+
+    it('keeps the lengths and the filter fields, not the words or filter values, when the request may not keep content', async () => {
+        await interpret();
+
+        expect(interpreted()?.context).toMatchObject({
+            originalQueryLength: QUERY.length,
+            effectiveQueryLength: 'waterproof jackets'.length,
+            filters: ['pricelte'],
+        });
+        expect(JSON.stringify(logs)).not.toContain('waterproof');
+        expect(JSON.stringify(logs)).not.toContain('lte200');
+    });
+
+    it("keeps the words and filter values when the request's experience is set to Full", async () => {
+        setExperienceTelemetryOverride('exp-1', 'full');
+        await interpret();
+
+        expect(interpreted()?.context).toMatchObject({
+            originalQuery: QUERY,
+            filters: ['pricelte200'],
+        });
+    });
+
+    it('keeps the words and filter values when the request may keep content', async () => {
+        await runWithTelemetryLevel('full', interpret);
+
+        expect(interpreted()?.context).toMatchObject({
+            originalQuery: QUERY,
+            effectiveQuery: 'waterproof jackets',
+            filters: ['pricelte200'],
+        });
     });
 });
