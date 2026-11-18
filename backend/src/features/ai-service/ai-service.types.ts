@@ -56,6 +56,8 @@ export interface AIServiceOptions {
 export interface ResolvedProviderConfig {
     providerId: string;
     providerKey: string;
+    /** The API the provider speaks: picks the adapter */
+    connectionType: string;
     modelId: number;
     modelKey: string;
     baseUrl: string;
@@ -482,6 +484,8 @@ export interface RetryConfig {
  * Configuration passed to adapters
  */
 export interface AdapterConfig {
+    /** The provider's own name, which errors carry (the adapter's own key when missing) */
+    providerKey?: string;
     baseUrl: string;
     apiKey?: string;
     modelKey: string;

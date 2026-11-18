@@ -11,7 +11,7 @@ import { createLogger } from '@/shared/logger/logger';
 import { db } from '@/db/index';
 import { aiProviders, aiProviderModels, systemDefaults } from '@/db/schema/ai-providers.schema';
 import { eq } from 'drizzle-orm';
-import { discoverOllamaModels } from '@/features/ai-providers/ai-providers.service';
+import { discoverModels } from '@/features/ai-providers/ai-providers.service';
 import * as registryService from '../seed-registry.service';
 import { canShortenVectorsByDefault } from '@/features/ai-providers/shortenable-embeddings';
 import { SEED_TYPES } from '@/db/schema/seed-registry.schema';
@@ -361,7 +361,7 @@ async function seedSystemDefaults(
  */
 async function syncOllamaCatalog(providerId: string): Promise<void> {
     try {
-        const result = await discoverOllamaModels(providerId, { timeoutMs: 3000 });
+        const result = await discoverModels(providerId, { timeoutMs: 3000 });
         logger.info('Synced Ollama catalog with installed models', {
             installed: result.modelsFound,
             hidden: result.modelsRemoved,
@@ -418,6 +418,7 @@ export async function createProviderFromSeed(seed: SeedAIProvider) {
             displayName: seed.displayName,
             description: seed.description,
             providerType: seed.providerType,
+            connectionType: seed.connectionType,
             authType: seed.authType,
             baseUrl: seed.baseUrl,
             isEnabled: seed.isEnabled,

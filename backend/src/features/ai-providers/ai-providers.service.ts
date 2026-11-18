@@ -5,10 +5,7 @@
  * Business logic, caching, type transformations, and integrations
  */
 
-import { CacheManager } from '@/shared/cache/cache-manager';
-import { createLogger } from '@/shared/logger/logger';
 import * as repository from './ai-providers.repository';
-import { canShortenVectorsByDefault } from './shortenable-embeddings';
 import type {
   // DTOs from validation
   CreateAIProviderInput,
@@ -27,7 +24,7 @@ import type {
   SystemDefaultsResponse,
   ResolvedSystemDefaults,
   ConnectionTestResult,
-  OllamaDiscoveryResult,
+  ModelDiscoveryResult,
   OllamaTagsResponse,
   OllamaModelInfo,
   // Database types
@@ -38,6 +35,15 @@ import type {
   NewAIProviderModel,
   AIModelType,
 } from './ai-providers.types';
+import { defaultConnectionType, type AIConnectionType } from './ai-providers.validation';
+import { canShortenVectorsByDefault } from './shortenable-embeddings';
+
+import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
+import { AdapterError, errorFromResponse, noAnswerError } from '@/features/ai-service/adapters/types';
+import { CacheManager } from '@/shared/cache/cache-manager';
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { createLogger } from '@/shared/logger/logger';
+
 
 const logger = createLogger('ai-providers-service');
 
@@ -64,9 +70,11 @@ function mapProviderDtoToInsert(
     displayName: input.displayName,
     description: input.description ?? null,
     providerType: input.providerType,
+    connectionType: input.connectionType ?? defaultConnectionType(input.providerKey),
     authType: input.authType,
     baseUrl: input.baseUrl,
-    apiKey: input.apiKey ?? null,
+    // No authentication, no key: a typed one would otherwise be sent
+    apiKey: input.authType === 'none' ? null : input.apiKey ?? null,
     isEnabled: input.isEnabled ?? false,
     settings: input.settings ?? {},
   };
@@ -106,6 +114,7 @@ function mapProviderToResponse(provider: AIProvider): AIProviderResponse {
     displayName: provider.displayName,
     description: provider.description,
     providerType: provider.providerType as AIProviderResponse['providerType'],
+    connectionType: provider.connectionType,
     authType: provider.authType as AIProviderResponse['authType'],
     baseUrl: provider.baseUrl,
     hasApiKey: !!provider.apiKey, // Don't expose actual key
@@ -402,6 +411,19 @@ export async function getEnabledProviders(): Promise<AIProviderWithModelsRespons
 // PROVIDER: UPDATE OPERATIONS
 // ============================================================================
 
+/** The server a base URL reaches (scheme, host and port), or the URL itself when it can't be read. */
+function serverOf(baseUrl: string): string {
+  try { return new URL(baseUrl).origin; } catch { return baseUrl; }
+}
+
+/** A provider moved to another server without its API key typed again. */
+export class KeyForAnotherServerError extends Error {
+  constructor() {
+    super('Enter the API key again: the new base URL is on a different server than the one the saved key was entered for');
+    this.name = 'KeyForAnotherServerError';
+  }
+}
+
 /**
  * Update a provider
  */
@@ -422,7 +444,19 @@ export async function updateProvider(
     if (input.displayName !== undefined) updateData.displayName = input.displayName;
     if (input.description !== undefined) updateData.description = input.description ?? null;
     if (input.baseUrl !== undefined) updateData.baseUrl = input.baseUrl;
-    if (input.apiKey !== undefined) updateData.apiKey = input.apiKey ?? null;
+    if (input.connectionType !== undefined) updateData.connectionType = input.connectionType;
+    if (input.authType !== undefined) updateData.authType = input.authType;
+    // No authentication: the saved key goes too, or requests would still carry it
+    const dropsKey = input.authType === 'none';
+    // An empty key keeps the saved one (the form sends one when nothing was typed); null removes it
+    const newKey = !dropsKey && typeof input.apiKey === 'string' && input.apiKey.trim() !== '' ? input.apiKey : undefined;
+    if (newKey !== undefined) updateData.apiKey = newKey;
+    else if (input.apiKey === null || dropsKey) updateData.apiKey = null;
+    // A saved key goes only to the server it was entered for: another server needs it typed again
+    if (input.baseUrl !== undefined && existing.apiKey && newKey === undefined && updateData.apiKey !== null
+        && serverOf(input.baseUrl) !== serverOf(existing.baseUrl)) {
+      throw new KeyForAnotherServerError();
+    }
     if (input.isEnabled !== undefined) updateData.isEnabled = input.isEnabled;
     if (input.settings !== undefined) updateData.settings = input.settings;
 
@@ -437,7 +471,8 @@ export async function updateProvider(
 
     return mapProviderToResponse(updated);
   } catch (error) {
-    logger.error('Failed to update AI provider', error as Error, { id });
+    // A key to type again is the admin's to fix: the handler answers it, nothing failed here
+    if (!(error instanceof KeyForAnotherServerError)) logger.error('Failed to update AI provider', error as Error, { id });
     throw error;
   }
 }
@@ -633,6 +668,9 @@ export async function updateModel(
     if (input.canShortenVectors !== undefined) updateData.canShortenVectors = input.canShortenVectors;
     if (input.capabilities !== undefined) updateData.capabilities = input.capabilities;
     if (input.isAvailable !== undefined) updateData.isAvailable = input.isAvailable;
+    // Switched on or off by an admin: discovery leaves it as set from now on. An edit that sends
+    // the same value (the form sends every field) keeps discovery's own hiding
+    if (input.isAvailable !== undefined && input.isAvailable !== existing.isAvailable) updateData.hiddenByDiscovery = false;
     if (input.sortOrder !== undefined) updateData.sortOrder = input.sortOrder;
     if (input.inputCostPerMillionTokens !== undefined) updateData.inputCostPerMillionTokens = input.inputCostPerMillionTokens;
     if (input.outputCostPerMillionTokens !== undefined) updateData.outputCostPerMillionTokens = input.outputCostPerMillionTokens;
@@ -855,13 +893,10 @@ export async function testConnection(providerId: string): Promise<ConnectionTest
     let result: ConnectionTestResult;
 
     // Test based on provider type
-    if (provider.providerKey === 'ollama') {
+    if (connectionTypeOf(provider) === 'ollama') {
       result = await testOllamaConnection(provider);
-    } else if (provider.providerKey === 'openai') {
-      result = await testOpenAIConnection(provider);
     } else {
-      // Generic HTTP test
-      result = await testGenericConnection(provider);
+      result = await testOpenAICompatibleConnection(provider);
     }
 
     // Update connection status in database
@@ -891,8 +926,9 @@ async function testOllamaConnection(provider: AIProvider): Promise<ConnectionTes
   const startTime = Date.now();
 
   try {
-    const response = await fetch(`${provider.baseUrl}/api/tags`, {
+    const response = await fetchOnSameServer(`${provider.baseUrl}/api/tags`, {
       method: 'GET',
+      headers: ollamaHeaders(provider.apiKey),
       signal: AbortSignal.timeout(10000), // 10 second timeout
     });
 
@@ -937,26 +973,24 @@ async function testOllamaConnection(provider: AIProvider): Promise<ConnectionTes
   }
 }
 
-async function testOpenAIConnection(provider: AIProvider): Promise<ConnectionTestResult> {
+async function testOpenAICompatibleConnection(provider: AIProvider): Promise<ConnectionTestResult> {
   const startTime = Date.now();
 
-  if (!provider.apiKey) {
+  if (provider.authType === 'api_key' && !provider.apiKey) {
     return {
       providerId: provider.id,
       providerKey: provider.providerKey,
       success: false,
-      message: 'API key is required for OpenAI',
+      message: 'API key is required: this provider is set to use one',
       responseTimeMs: 0,
       testedAt: new Date(),
     };
   }
 
   try {
-    const response = await fetch(`${provider.baseUrl}/models`, {
+    const response = await fetchOnSameServer(`${provider.baseUrl}/models`, {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${provider.apiKey}`,
-      },
+      headers: provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {},
       signal: AbortSignal.timeout(10000),
     });
 
@@ -994,153 +1028,356 @@ async function testOpenAIConnection(provider: AIProvider): Promise<ConnectionTes
   }
 }
 
-async function testGenericConnection(provider: AIProvider): Promise<ConnectionTestResult> {
-  const startTime = Date.now();
-
-  try {
-    const response = await fetch(provider.baseUrl, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(10000),
-    });
-
-    const responseTimeMs = Date.now() - startTime;
-
-    return {
-      providerId: provider.id,
-      providerKey: provider.providerKey,
-      success: response.ok,
-      message: response.ok ? 'Connected successfully' : `HTTP ${response.status}`,
-      responseTimeMs,
-      testedAt: new Date(),
-    };
-  } catch (error) {
-    return {
-      providerId: provider.id,
-      providerKey: provider.providerKey,
-      success: false,
-      message: (error as Error).message,
-      responseTimeMs: Date.now() - startTime,
-      testedAt: new Date(),
-    };
-  }
-}
 
 // ============================================================================
 // OLLAMA MODEL DISCOVERY
 // ============================================================================
 
+/** The connection type of a provider, also one stored or cached before connection types existed. */
+export function connectionTypeOf(provider: Pick<AIProvider, 'providerKey'> & { connectionType?: AIConnectionType | null }): AIConnectionType {
+  return provider.connectionType ?? defaultConnectionType(provider.providerKey);
+}
+
 /**
- * Discover models from Ollama
+ * What a provider reports through its own API: the models to save, every model key it lists
+ * (also ones not saved, such as speech models), and which saved models it may hide when it
+ * stops listing them.
  */
-export async function discoverOllamaModels(
+interface ProviderReport {
+  models: ReportedModel[];
+  listed: string[];
+  /** Ollama: anything not installed. An OpenAI-compatible service: only models discovery added. */
+  hides: 'all' | 'discovered' | 'none';
+  /** A new embedding model's vector size, when the provider doesn't report it with the list */
+  dimensionsOf?: (modelKey: string) => Promise<number | null>;
+}
+
+/** A model a provider reports through its own API, ready to save. */
+interface ReportedModel {
+  modelKey: string;
+  modelType: AIModelType;
+  description: string;
+  dimensions: number | null;
+  capabilities: Record<string, unknown>;
+}
+
+/**
+ * Discover a provider's models from its own API (Ollama's installed models, or an
+ * OpenAI-compatible /models list) and save them: new ones are added, saved ones keep their
+ * on/off state (an admin switches them on), and models it no longer lists are hidden as the
+ * provider's report says.
+ */
+export async function discoverModels(
   providerId: string,
   options: { timeoutMs?: number } = {}
-): Promise<OllamaDiscoveryResult> {
+): Promise<ModelDiscoveryResult> {
   try {
     const provider = await repository.getProviderById(providerId);
     if (!provider) {
       throw new Error(`Provider with ID "${providerId}" not found`);
     }
-
-    if (provider.providerKey !== 'ollama') {
-      throw new Error('Model discovery is only supported for Ollama provider');
-    }
-
-    // Fetch models from Ollama API
-    const response = await fetch(`${provider.baseUrl}/api/tags`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(options.timeoutMs ?? 30000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch models: HTTP ${response.status}`);
-    }
-
-    const data = (await response.json()) as OllamaTagsResponse;
-    const discoveredModels = data.models || [];
-
-    // Get existing models. Ollama reports "name:latest" for a model pulled as "name".
-    const existingModels = await repository.listModelsByProvider(providerId);
-    const sameModel = (key: string) => key.replace(/:latest$/, '');
-    const existingByKey = new Map(existingModels.map((m) => [sameModel(m.modelKey), m]));
-
-    let modelsAdded = 0;
-    let modelsUpdated = 0;
-    const errors: string[] = [];
-
-    // Process discovered models
-    for (const ollamaModel of discoveredModels) {
-      try {
-        const modelKey = ollamaModel.name;
-        const modelType = inferModelType(ollamaModel);
-
-        const existing = existingByKey.get(sameModel(modelKey));
-        if (existing) {
-          // Update existing model
-          await repository.updateModel(existing.id, {
-            isAvailable: true,
-            isDiscovered: true,
-          });
-          modelsUpdated++;
-        } else {
-          // Create new model
-          await repository.createModel({
-            providerId,
-            modelKey,
-            displayName: formatModelDisplayName(modelKey),
-            description: `Discovered from Ollama (${ollamaModel.details.parameter_size})`,
-            modelType,
-            dimensions: modelType === 'embedding' ? inferEmbeddingDimensions(ollamaModel) : null,
-            canShortenVectors: canShortenVectorsByDefault(modelKey, modelType),
-            capabilities: {
-              parameterSize: ollamaModel.details.parameter_size,
-              quantization: ollamaModel.details.quantization_level,
-              family: ollamaModel.details.family,
-            },
-            isAvailable: true,
-            isDiscovered: true,
-            sortOrder: 100, // Discovered models at the end
-          });
-          modelsAdded++;
-        }
-      } catch (error) {
-        errors.push(`Failed to process model ${ollamaModel.name}: ${(error as Error).message}`);
-      }
-    }
-
-    // What Ollama has installed is the truth: hide every model it doesn't report,
-    // including the seeded catalog entries never pulled on this machine. Pulling one
-    // later and discovering again makes it available.
-    const discoveredKeys = new Set(discoveredModels.map((m) => sameModel(m.name)));
-    const modelsToMarkUnavailable = existingModels.filter(
-      (m) => m.isAvailable && !discoveredKeys.has(sameModel(m.modelKey))
-    );
-
-    for (const model of modelsToMarkUnavailable) {
-      await repository.updateModelAvailability(model.id, false);
-    }
-
-    await clearModelCache(providerId);
-
-    const result: OllamaDiscoveryResult = {
-      success: errors.length === 0,
-      modelsFound: discoveredModels.length,
-      modelsAdded,
-      modelsUpdated,
-      modelsRemoved: modelsToMarkUnavailable.length,
-      errors,
-    };
-
-    logger.info('Completed Ollama model discovery', {
-      providerId,
-      ...result,
-    });
-
+    const timeoutMs = options.timeoutMs ?? 30000;
+    const report = connectionTypeOf(provider) === 'ollama'
+      ? await readOllamaModels(provider, timeoutMs)
+      : await readOpenAICompatibleModels(provider, timeoutMs);
+    // A cloud service lists far more than an experience needs: new models wait for the admin
+    const result = await saveDiscoveredModels(providerId, report, { addOff: provider.providerType === 'cloud' });
+    logger.info('Completed model discovery', { providerId, ...result });
     return result;
   } catch (error) {
-    logger.error('Failed to discover Ollama models', error as Error, { providerId });
+    logger.error('Failed to discover models', error as Error, { providerId });
     throw error;
   }
+}
+
+/**
+ * A provider's model list as JSON (null when the answer isn't JSON). A refusal or no answer is
+ * thrown as the provider's own error, named and with its status, so the admin is told what
+ * happened (the key was rejected, the service couldn't be reached) rather than a bare failure.
+ */
+async function readModelList(provider: AIProvider, path: string, headers: Record<string, string>, timeoutMs: number): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetchOnSameServer(`${provider.baseUrl}${path}`, { method: 'GET', headers, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    throw noAnswerError(error, provider.providerKey);
+  }
+  if (!response.ok) {
+    // OpenAI-style answers say why in error.message, Ollama's in error
+    throw await errorFromResponse(response, provider.providerKey, (body) => {
+      const error = (body as { error?: unknown } | null)?.error;
+      return typeof error === 'string' ? error : (error as { message?: string } | undefined)?.message;
+    });
+  }
+  return response.json().catch(() => null);
+}
+
+async function readOllamaModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
+  const data = ((await readModelList(provider, '/api/tags', ollamaHeaders(provider.apiKey), timeoutMs)) ?? {}) as OllamaTagsResponse;
+  const installed = data.models || [];
+  // Each model's details; capabilities are in the list on newer Ollama, in /api/show from 0.6.4
+  const shown = await inBatches(installed, 4, (ollamaModel) => ollamaShown(provider, ollamaModel.name));
+  const usable = installed
+    .map((ollamaModel, i) => ({
+      ollamaModel,
+      shown: shown[i],
+      modelType: ollamaModelType({ ...ollamaModel, capabilities: ollamaModel.capabilities ?? shown[i].capabilities }),
+    }))
+    .filter((m): m is { ollamaModel: OllamaModelInfo; shown: OllamaShown; modelType: AIModelType } => m.modelType !== 'skip');
+  const models = usable.map(({ ollamaModel, modelType, shown: details }): ReportedModel => ({
+    modelKey: ollamaModel.name,
+    modelType,
+    description: `Discovered from Ollama (${ollamaModel.details.parameter_size})`,
+    dimensions: modelType === 'embedding' ? details.embeddingLength ?? inferEmbeddingDimensions(ollamaModel) : null,
+    capabilities: {
+      parameterSize: ollamaModel.details.parameter_size,
+      quantization: ollamaModel.details.quantization_level,
+      family: ollamaModel.details.family,
+      ...(details.contextLength !== undefined && { contextWindow: details.contextLength }),
+    },
+  }));
+  // What Ollama has installed is the truth: every other model is hidden, seeded ones included
+  // An empty list (nothing pulled yet, or Ollama restarting) hides nothing
+  return { models, listed: installed.map((m) => m.name), hides: installed.length === 0 ? 'none' : 'all' };
+}
+
+/**
+ * A model's type as Ollama states it (its capabilities: "embedding", "completion"); a model
+ * that does neither (an image or "decision" model) is skipped. An Ollama too old to list
+ * capabilities leaves the name to decide.
+ */
+function ollamaModelType(model: OllamaModelInfo): AIModelType | 'skip' {
+  const capabilities = model.capabilities;
+  if (!Array.isArray(capabilities) || capabilities.length === 0) return inferModelType(model);
+  if (capabilities.includes('embedding')) return 'embedding';
+  return capabilities.includes('completion') ? 'chat' : 'skip';
+}
+
+/** What Ollama's /api/show tells about a model */
+interface OllamaShown { capabilities?: string[]; contextLength?: number; embeddingLength?: number }
+
+/**
+ * A model's capabilities, context size and vector size from Ollama's /api/show, the sizes read
+ * under the model's own architecture ("qwen2.context_length"), not a vision tower's. Empty
+ * when Ollama won't say.
+ */
+async function ollamaShown(provider: AIProvider, model: string): Promise<OllamaShown> {
+  try {
+    const response = await fetchOnSameServer(`${provider.baseUrl}/api/show`, {
+      method: 'POST',
+      headers: ollamaHeaders(provider.apiKey, true),
+      body: JSON.stringify({ model }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return {};
+    const body = (await response.json()) as { capabilities?: unknown; model_info?: Record<string, unknown> };
+    const capabilities = Array.isArray(body.capabilities) ? body.capabilities.filter((c): c is string => typeof c === 'string') : undefined;
+    const info = body.model_info ?? {};
+    const architecture = info['general.architecture'];
+    if (typeof architecture !== 'string') return { capabilities };
+    const size = (key: string) => {
+      const value = info[`${architecture}.${key}`];
+      return typeof value === 'number' && value > 0 ? value : undefined;
+    };
+    return { capabilities, contextLength: size('context_length'), embeddingLength: size('embedding_length') };
+  } catch {
+    return {};
+  }
+}
+
+/** fn over items, a few at a time, results in order */
+async function inBatches<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    results.push(...await Promise.all(items.slice(i, i + size).map(fn)));
+  }
+  return results;
+}
+
+/**
+ * A model's type as an OpenAI-compatible list states it, when it does: a capabilities object
+ * (embeddings, chat_completion: Azure OpenAI and some gateways) or output modalities
+ * (OpenRouter). Undefined when the list says nothing, and the id decides.
+ */
+function listedModelType(model: Record<string, unknown>): AIModelType | 'skip' | undefined {
+  const capabilities = model.capabilities;
+  if (capabilities && typeof capabilities === 'object' && !Array.isArray(capabilities)) {
+    const said = capabilities as Record<string, unknown>;
+    if (said.embeddings === true) return 'embedding';
+    if (said.chat_completion === true) return 'chat';
+    if (said.chat_completion === false) return 'skip';
+  }
+  const architecture = model.architecture as { output_modalities?: unknown } | undefined;
+  const modalities = model.output_modalities ?? architecture?.output_modalities;
+  if (Array.isArray(modalities)) {
+    if (modalities.includes('embeddings')) return 'embedding';
+    return modalities.includes('text') ? 'chat' : 'skip';
+  }
+  return undefined;
+}
+
+/** Model ids that read as embedding models: "embed" in the name, or a well-known embedding family. */
+const EMBEDDING_MODEL = /(embed|\bbge\b|\bbge-|\be5-|\bgte-|minilm|mxbai|sentence-transformers)/i;
+
+/** Model ids an OpenAI-compatible list carries that aren't text or embedding models. */
+const NOT_TEXT_MODEL = /(whisper|tts|dall-e|gpt-image|image|audio|realtime|transcribe|moderation|speech|sora|rerank|ocr)/i;
+
+/**
+ * OpenAI text models that don't answer /chat/completions (completions-only or Responses-only),
+ * also behind a router's "openai/" prefix. Other "-instruct" models (Llama, Qwen) do chat.
+ */
+const NOT_CHAT_MODEL = /(^|\/)(babbage-|davinci-|gpt-3\.5-turbo-instruct|o1-pro|o3-pro|computer-use)/i;
+
+/** A context size some gateways report beside each model (vLLM max_model_len, others context_length). */
+function reportedContextWindow(model: Record<string, unknown>): number | undefined {
+  const value = model.context_length ?? model.max_model_len ?? model.context_window;
+  return typeof value === 'number' && value > 0 ? value : undefined;
+}
+
+async function readOpenAICompatibleModels(provider: AIProvider, timeoutMs: number): Promise<ProviderReport> {
+  const body = (await readModelList(provider, '/models', provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}, timeoutMs)) as { data?: unknown } | null;
+  // An answer that isn't a model list (a proxy's page, a changed API) says nothing about the models
+  if (!body || !Array.isArray(body.data)) {
+    throw new AdapterError('The answer is not an OpenAI-style model list (no "data" list)', provider.providerKey, undefined, false);
+  }
+  const listed = (body.data as Array<Record<string, unknown>>)
+    .filter((model): model is Record<string, unknown> & { id: string } => typeof model.id === 'string' && model.id.length > 0);
+  // A model's type is what the list says about it; when it says nothing, the id decides. A model
+  // that is neither a text nor an embedding model is not added (it can be added by hand)
+  const typed = listed.map((model) => ({
+    model,
+    modelType: listedModelType(model)
+      ?? (NOT_TEXT_MODEL.test(model.id) || NOT_CHAT_MODEL.test(model.id) ? 'skip' : EMBEDDING_MODEL.test(model.id) ? 'embedding' : 'chat'),
+  }));
+  const models = typed
+    .filter((t): t is { model: (typeof listed)[number]; modelType: AIModelType } => t.modelType !== 'skip')
+    .map(({ model, modelType }): ReportedModel => {
+      const contextWindow = reportedContextWindow(model);
+      return {
+        modelKey: model.id,
+        modelType,
+        description: `Discovered from ${provider.displayName}`,
+        dimensions: null,
+        capabilities: contextWindow ? { contextWindow } : {},
+      };
+    });
+  // A service can list fewer models than are saved (models added by hand, aliases it serves
+  // unlisted): only models an earlier discovery added are hidden when it stops listing them
+  return {
+    models,
+    listed: listed.map((m) => m.id),
+    // An empty list hides nothing: a service between restarts can briefly list no models
+    hides: listed.length === 0 ? 'none' : 'discovered',
+    // One short embedding tells the size; only on a self-hosted service, where it costs nothing
+    ...(provider.providerType === 'local' && { dimensionsOf: (key: string) => embeddingDimensions(provider, key) }),
+  };
+}
+
+/** An embedding model's vector size, from one short embedding; null when the service won't say. */
+async function embeddingDimensions(provider: AIProvider, modelKey: string): Promise<number | null> {
+  try {
+    const response = await fetchOnSameServer(`${provider.baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(provider.apiKey && { Authorization: `Bearer ${provider.apiKey}` }) },
+      body: JSON.stringify({ model: modelKey, input: 'dimensions' }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { data?: Array<{ embedding?: unknown }> };
+    const vector = body.data?.[0]?.embedding;
+    return Array.isArray(vector) && vector.length > 0 ? vector.length : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save the models a provider reported: new ones are added (switched off when `addOff`, for the
+ * admin to choose), and saved ones it no longer lists are hidden as its report says. A saved
+ * model it lists gains the context size it reports when it has none; one discovery hid is
+ * switched back on, while one an admin switched off (or that was added off) stays off and is
+ * named in `leftOff`.
+ * Ollama reports "name:latest" for a model saved as "name".
+ */
+async function saveDiscoveredModels(providerId: string, report: ProviderReport, options: { addOff?: boolean } = {}): Promise<ModelDiscoveryResult> {
+  const reported = report.models;
+  const existingModels = await repository.listModelsByProvider(providerId);
+  const sameModel = (key: string) => key.replace(/:latest$/, '');
+  const existingByKey = new Map(existingModels.map((m) => [sameModel(m.modelKey), m]));
+
+  let modelsAdded = 0;
+  let modelsUpdated = 0;
+  const errors: string[] = [];
+  const needsSetup: string[] = [];
+  const leftOff: string[] = [];
+  const addedOff: string[] = [];
+
+  for (const model of reported) {
+    try {
+      const existing = existingByKey.get(sameModel(model.modelKey));
+      if (existing) {
+        const caps = (existing.capabilities ?? {}) as Record<string, unknown>;
+        const reportedWindow = model.capabilities.contextWindow as number | undefined;
+        // Discovery switches back on only what it hid itself; an admin's choice stays
+        const comesBack = !existing.isAvailable && existing.hiddenByDiscovery;
+        if (!existing.isAvailable && !comesBack) leftOff.push(existing.modelKey);
+        await repository.updateModel(existing.id, {
+          ...(comesBack && { isAvailable: true, hiddenByDiscovery: false }),
+          // Only discovery's own models are hidden when an OpenAI-compatible service stops listing
+          // them, so a saved model it lists keeps its origin there; for Ollama every model is its
+          ...(report.hides === 'all' && { isDiscovered: true }),
+          ...(reportedWindow !== undefined && caps.contextWindow === undefined && { capabilities: { ...caps, contextWindow: reportedWindow } }),
+        });
+        modelsUpdated++;
+      } else {
+        const dimensions = model.dimensions
+          ?? (model.modelType === 'embedding' && report.dimensionsOf ? await report.dimensionsOf(model.modelKey) : null);
+        if (model.modelType === 'embedding' && dimensions === null) {
+          needsSetup.push(`${model.modelKey}: set its dimensions on the model`);
+        }
+        await repository.createModel({
+          providerId,
+          modelKey: model.modelKey,
+          displayName: formatModelDisplayName(model.modelKey),
+          description: model.description,
+          modelType: model.modelType,
+          dimensions,
+          canShortenVectors: canShortenVectorsByDefault(model.modelKey, model.modelType),
+          capabilities: model.capabilities,
+          isAvailable: !options.addOff,
+          isDiscovered: true,
+          sortOrder: 100, // Discovered models at the end
+        });
+        if (options.addOff) addedOff.push(model.modelKey);
+        modelsAdded++;
+      }
+    } catch (error) {
+      errors.push(`Failed to process model ${model.modelKey}: ${(error as Error).message}`);
+    }
+  }
+
+  const listedKeys = new Set(report.listed.map(sameModel));
+  const modelsToMarkUnavailable = existingModels.filter(
+    (m) => m.isAvailable && !listedKeys.has(sameModel(m.modelKey))
+      && (report.hides === 'all' || (report.hides === 'discovered' && m.isDiscovered))
+  );
+  for (const model of modelsToMarkUnavailable) {
+    await repository.updateModelAvailability(model.id, false, true);
+  }
+
+  await clearModelCache(providerId);
+
+  return {
+    success: errors.length === 0,
+    modelsFound: reported.length,
+    modelsAdded,
+    modelsUpdated,
+    modelsRemoved: modelsToMarkUnavailable.length,
+    errors,
+    needsSetup,
+    leftOff,
+    addedOff,
+  };
 }
 
 /**

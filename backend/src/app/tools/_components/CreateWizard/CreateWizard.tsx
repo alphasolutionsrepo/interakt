@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Loader2, Check } from 'lucide-react';
 import { useMinDelayAction } from '@/shared/hooks';
+import { generateSlugFromName } from '@/shared/utils/slug';
 import { Step1_BasicInfo } from './Step1_BasicInfo';
 import type { Step1Data } from './Step1_BasicInfo';
 import { Step2_Config } from './Step2_Config';
@@ -13,6 +14,7 @@ import { Step3_AiSettings } from './Step3_AiSettings';
 import { ToolTypeChip } from '../ToolTypeChip';
 import { useCreateTool } from '../../_lib/hooks/useTools';
 import type { ExecutorType, DataSourceOperation, CreateToolPayload } from '../../_lib/api-client';
+import { httpConfigErrors } from '../../_lib/http-config-errors';
 
 // Default AI schemas per executor type (kept in sync with backend EXECUTOR_INPUT_SCHEMAS)
 const EXECUTOR_INPUT_SCHEMAS: Record<string, object> = {
@@ -91,15 +93,6 @@ const DEFAULT_AI_DESCRIPTIONS: Partial<Record<string, string>> = {
   ai_call:
     'Process the input with specialized AI reasoning. Use this for tasks requiring focused analysis or transformation.',
 };
-
-function generateSlug(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 100);
-}
 
 // ============================================================================
 // TYPES
@@ -207,11 +200,7 @@ export function CreateWizard() {
           e.dataSourceId = 'A data source is required';
         }
       }
-      if (data.executorType === 'http') {
-        if (!data.config.baseUrl) e.baseUrl = 'Base URL is required';
-        if (!(data.config.responseMapping as Record<string, unknown>)?.resultsPath)
-          e['responseMapping.resultsPath'] = 'Results path is required';
-      }
+      if (data.executorType === 'http') Object.assign(e, httpConfigErrors(data.config));
       if (data.executorType === 'ai_call') {
         if (!data.config.instructions) e.instructions = 'Instructions are required';
       }
@@ -271,7 +260,7 @@ export function CreateWizard() {
       const updates: Partial<WizardData> = {};
       if (!prev.name || prev.name === '') {
         updates.name = `Search ${meta.name}`;
-        updates.slug = generateSlug(`Search ${meta.name}`);
+        updates.slug = generateSlugFromName(`Search ${meta.name}`);
       }
       if (!prev.description || prev.description === '') {
         updates.description = meta.description ?? `Search tool for ${meta.name} data source.`;

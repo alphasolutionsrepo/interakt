@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { urlProblemMessage } from './executors/http-url';
+
 // ============================================================================
 // TOOL TYPE CONSTANTS
 // ============================================================================
@@ -96,7 +98,39 @@ export function dataSourceConfigProblem(
   previous?: Record<string, unknown> | null,
 ): string | undefined {
   const schema = DATA_SOURCE_CONFIG_SCHEMAS[operation as keyof typeof DATA_SOURCE_CONFIG_SCHEMAS];
-  if (!schema || config === undefined || config === null) return undefined;
+  if (!schema) return undefined;
+  return configProblem(schema, config, previous);
+}
+
+/**
+ * Why an HTTP tool's config is invalid, or undefined when it is valid: an HTTP tool calls a
+ * REST API, so it needs a URL and a method (web search settings belong on a Web Search tool).
+ * As for data source tools, a setting saved unchanged isn't checked again, so a tool stored
+ * before a rule existed can still be saved.
+ */
+export function httpConfigProblem(config: unknown, previous?: Record<string, unknown> | null): string | undefined {
+  return configProblem(httpExecutorConfigSchema, config, previous);
+}
+
+/** The same JSON value, whatever order its keys are in (Postgres stores jsonb keys in its own order). */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  return aKeys.length === bKeys.length
+    && aKeys.every((key) => key in b && sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
+}
+
+function configProblem(
+  schema: z.AnyZodObject,
+  config: unknown,
+  previous?: Record<string, unknown> | null,
+): string | undefined {
+  if (config === undefined || config === null) return undefined;
+  // A config saved back exactly as stored isn't checked again (a rename, say)
+  if (previous != null && sameValue(previous, config)) return undefined;
   const result = schema.passthrough().safeParse(config);
   if (result.success) return undefined;
   const unchanged = (key: unknown) =>
@@ -108,7 +142,10 @@ export function dataSourceConfigProblem(
 }
 
 const httpExecutorConfigSchema = z.object({
-  baseUrl: z.string().url(),
+  baseUrl: z.string().superRefine((url, ctx) => {
+    const message = urlProblemMessage(url);
+    if (message) ctx.addIssue({ code: 'custom', message });
+  }),
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   headers: z.record(z.string()).optional(),
   queryParams: z.record(z.string()).optional(),
@@ -218,7 +255,9 @@ const httpToolSchema = baseCreateSchema.extend({
   executorType: z.literal('http'),
   dataSourceId: z.string().uuid().nullish(),
   operation: z.null().optional(),
-  executorConfig: z.union([httpExecutorConfigSchema, webSearchExecutorConfigSchema]),
+  // Checked by the tools service (httpConfigProblem): a union here took the web search schema
+  // (all optional) for a REST config it refused, and dropped every key.
+  executorConfig: z.record(z.unknown()),
 });
 
 /** Web search tool: Tavily-powered live web search */

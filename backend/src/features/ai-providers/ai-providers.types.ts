@@ -16,6 +16,7 @@ export type {
   AIModelType,
   AIAuthType,
   AIProviderType,
+  AIConnectionType,
   AIDefaultPurpose,
   
   // Provider DTOs
@@ -87,7 +88,7 @@ export type {
 // ============================================================================
 
 import type { AIProviderSettings, AIModelCapabilities } from '@/db/schema/ai-providers.schema';
-import type { AIModelType, AIAuthType, AIProviderType, AIDefaultPurpose } from './ai-providers.validation';
+import type { AIModelType, AIAuthType, AIProviderType, AIConnectionType, AIDefaultPurpose } from './ai-providers.validation';
 
 /**
  * AI Provider response (safe for API - no sensitive data exposed)
@@ -98,6 +99,7 @@ export interface AIProviderResponse {
   displayName: string;
   description: string | null;
   providerType: AIProviderType;
+  connectionType: AIConnectionType;
   authType: AIAuthType;
   baseUrl: string;
   hasApiKey: boolean; // Indicates if API key is set, without exposing it
@@ -227,6 +229,8 @@ export interface OllamaModelInfo {
     parameter_size: string;
     quantization_level: string;
   };
+  /** What the model can do ("completion", "embedding", "tools", ...): newer Ollama versions list them */
+  capabilities?: string[];
 }
 
 /**
@@ -237,15 +241,21 @@ export interface OllamaTagsResponse {
 }
 
 /**
- * Result of Ollama model discovery
+ * Result of model discovery (Ollama or an OpenAI-compatible /models list)
  */
-export interface OllamaDiscoveryResult {
+export interface ModelDiscoveryResult {
   success: boolean;
   modelsFound: number;
   modelsAdded: number;
   modelsUpdated: number;
   modelsRemoved: number;
   errors: string[];
+  /** Models added that need the admin before they can be used (an embedding model's dimensions) */
+  needsSetup: string[];
+  /** Listed models that are switched off and that discovery leaves off (an admin's choice, or added off) */
+  leftOff: string[];
+  /** New models added switched off (a cloud provider): the admin switches on the ones wanted */
+  addedOff: string[];
 }
 
 // ============================================================================

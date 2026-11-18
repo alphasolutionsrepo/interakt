@@ -9,7 +9,7 @@
  * Once seeded, the database is the source of truth.
  */
 
-import type { AIModelType, AIAuthType, AIProviderType } from '@/features/ai-providers/ai-providers.types';
+import type { AIModelType, AIAuthType, AIProviderType, AIConnectionType } from '@/features/ai-providers/ai-providers.types';
 
 // ============================================================================
 // SEED DATA TYPES
@@ -20,6 +20,8 @@ export interface SeedAIProvider {
     displayName: string;
     description: string;
     providerType: AIProviderType;
+    /** The API it speaks, which picks the adapter */
+    connectionType: AIConnectionType;
     authType: AIAuthType;
     baseUrl: string;
     isEnabled: boolean;
@@ -55,6 +57,7 @@ export const AI_PROVIDER_SEEDS: SeedAIProvider[] = [
         displayName: 'Ollama',
         description: 'Local AI models running on your infrastructure. Free and private.',
         providerType: 'local',
+        connectionType: 'ollama',
         authType: 'none',
         baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
         isEnabled: true, // Enabled by default - no API key needed
@@ -177,6 +180,7 @@ export const AI_PROVIDER_SEEDS: SeedAIProvider[] = [
         displayName: 'OpenAI',
         description: 'OpenAI API for GPT models and embeddings. Requires API key.',
         providerType: 'cloud',
+        connectionType: 'openai_compatible',
         authType: 'api_key',
         baseUrl: 'https://api.openai.com/v1',
         isEnabled: false, // Disabled by default - requires API key

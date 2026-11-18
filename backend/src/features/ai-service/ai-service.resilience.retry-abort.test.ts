@@ -85,6 +85,31 @@ describe('withResilience when the caller stops waiting during the wait before a 
     expect(getCircuitStatus('prov-backoff')).toMatchObject({ state: 'closed', failures: 0 });
   });
 
+  it("ends at once when the caller leaves during the provider's own wait (Retry-After)", async () => {
+    vi.useFakeTimers();
+    resetCircuit('prov-backoff');
+    const caller = new AbortController();
+    // A 429 asking for 30 s, the longest wait withRetry accepts
+    const fn = vi.fn(async () => { throw new AdapterError('rate limited', 'gateway', 429, true, undefined, 30_000); });
+
+    let settled = false;
+    const call = withResilience(fn, {
+      providerId: 'prov-backoff',
+      providerKey: 'gateway',
+      retry: { maxRetries: 2, baseDelay: 1000, maxDelay: 30_000, jitter: false },
+      signal: caller.signal,
+    }).catch((error: unknown) => error).finally(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(100); // the first attempt failed: waiting the 30 s asked
+    caller.abort();
+    await vi.advanceTimersByTimeAsync(0); // no time passes
+
+    expect(settled).toBe(true);
+    expect(await call).toBeInstanceOf(CancelledRequestError);
+    expect(fn).toHaveBeenCalledOnce();
+    // The caller leaving is not the provider failing
+    expect(getCircuitStatus('prov-backoff')).toMatchObject({ state: 'closed', failures: 0 });
+  });
+
   it('still counts a provider failure when the caller waited to the end', async () => {
     vi.useFakeTimers();
     resetCircuit('prov-backoff');

@@ -1,7 +1,10 @@
 // src/features/data-source/external-search/engines/azure-ai-search.ts
 
 import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
+
 import { bodyExcerpt, readResponseBody } from './response-body';
+
+import { connectFailure, fetchOnSameServer } from '@/shared/http/same-server-fetch';
 
 /** Outcome of one engine call: data on success, a readable error otherwise. */
 /** status: the HTTP status of a failed call, when the engine answered */
@@ -110,7 +113,7 @@ export async function callAzureAISearch(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchOnSameServer(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -123,7 +126,7 @@ export async function callAzureAISearch(
   } catch (err) {
     return {
       success: false,
-      error: `Network error connecting to Azure AI Search: ${(err as Error).message}`,
+      error: connectFailure('Azure AI Search', err),
     };
   }
 

@@ -325,7 +325,8 @@ export async function updateProviderConnectionStatus(
             .update(aiProviders)
             .set({
                 lastConnectionCheck: new Date(),
-                lastConnectionStatus: status,
+                // The column holds 100 characters: a longer error is cut to fit, not refused
+                lastConnectionStatus: status.length > 100 ? `${status.slice(0, 99)}…` : status,
                 updatedAt: new Date(),
             })
             .where(eq(aiProviders.id, id));
@@ -681,13 +682,16 @@ export async function updateModel(
  */
 export async function updateModelAvailability(
     id: number,
-    isAvailable: boolean
+    isAvailable: boolean,
+    /** Whether Discover Models switched it off (so it may switch it back on) */
+    hiddenByDiscovery = false
 ): Promise<void> {
     try {
         await db
             .update(aiProviderModels)
             .set({
                 isAvailable,
+                hiddenByDiscovery,
                 updatedAt: new Date(),
             })
             .where(eq(aiProviderModels.id, id));

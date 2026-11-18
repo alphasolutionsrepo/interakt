@@ -328,6 +328,55 @@ describe('where the traffic is recorded as coming from', () => {
   });
 });
 
+describe('which search callers see fields an index keeps out of responses', () => {
+  const bySlug = ROUTES.find((r) => r.name === 'search by slug')!;
+  const byToken = ROUTES.find((r) => r.name === 'search by token')!;
+  async function signedInAdminOption(headers: Record<string, string>, route = bySlug): Promise<unknown> {
+    let seen: unknown = 'not called';
+    mocks.executeExperienceSearch.mockImplementation(async (_e: unknown, _r: unknown, options: { signedInAdmin?: boolean }) => {
+      seen = options.signedInAdmin;
+      return { results: { hits: [], total: { value: 0 }, pagination: {}, facets: [] }, sourcesSearched: [], failedSources: [] };
+    });
+    expect(await settle(await route.call(headers))).toBe(200);
+    return seen;
+  }
+
+  it('the search by token never does, even for an admin testing from the Widget playground', async () => {
+    expect(await signedInAdminOption({ 'X-Access-Token': byToken.token, Origin: SHOP }, byToken)).toBeFalsy();
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    expect(await signedInAdminOption({
+      'X-Access-Token': byToken.token, Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin', 'X-Interakt-Test': '1',
+    }, byToken)).toBeFalsy();
+  });
+
+  it('an admin signed in to the playground, without the token, does', async () => {
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    expect(await signedInAdminOption({})).toBe(true);
+  });
+
+  it('a signed-in user on the built-in help, which everyone signed in may search, does not', async () => {
+    const help = { ...searchExperience, isBuiltIn: true };
+    mocks.getSearchExperienceBySlug.mockResolvedValue(help);
+    mocks.getSearchExperienceWithIndexes.mockResolvedValue(help);
+    mocks.auth.mockResolvedValue({ user: { id: 'v' } });
+    // A Viewer: may search the help, may not use the playground
+    accessStub.access = { userId: 'v', roleId: 'r', roleName: 'Viewer', isAdmin: false, permissions: new Set() } as never;
+    try {
+      expect(await signedInAdminOption({})).toBeFalsy();
+    } finally {
+      accessStub.reset();
+    }
+  });
+
+  it('a caller with the token does not, even with an admin login and the test marker (the Widget playground)', async () => {
+    expect(await signedInAdminOption({ 'X-Access-Token': bySlug.token, Origin: SHOP })).toBeFalsy();
+    mocks.auth.mockResolvedValue({ user: { id: 'admin' } });
+    expect(await signedInAdminOption({
+      'X-Access-Token': bySlug.token, Origin: 'http://interakt.test', 'Sec-Fetch-Site': 'same-origin', 'X-Interakt-Test': '1',
+    })).toBeFalsy();
+  });
+});
+
 describe('allowed sites saved with a trailing slash', () => {
   it('still let that site in', async () => {
     const saved = { allowedOrigins: [`${SHOP}/`], rateLimits: { chatPerMinute: 100, requestsPerDay: 100 } };

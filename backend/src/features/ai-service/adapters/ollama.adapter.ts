@@ -22,12 +22,14 @@ import type {
     TokenUsage,
     ResponseFormat,
 } from '../ai-service.types';
-
-import { createLogger } from '@/shared/logger/logger';
-
 import { estimateChatUsage } from '../utils/token-counter';
+
+import { ollamaHeaders } from './ollama-headers';
+import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseNDJSONStream, requestSignal, wasAborted } from './types';
 import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
-import { AIProviderAdapter, AdapterError, abortedRequestError, parseNDJSONStream, requestSignal, wasAborted } from './types';
+
+import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ollama-adapter');
 
@@ -104,9 +106,9 @@ function takesThinkLevels(config: AdapterConfig): Promise<boolean> {
 /** The model's family as Ollama's /api/show reports it, or undefined when it can't say */
 async function modelFamily(config: AdapterConfig): Promise<string | undefined> {
     try {
-        const response = await fetch(`${config.baseUrl}/api/show`, {
+        const response = await fetchOnSameServer(`${config.baseUrl}/api/show`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: ollamaHeaders(config.apiKey, true),
             body: JSON.stringify({ model: config.modelKey }),
             signal: AbortSignal.timeout(Math.min(config.timeout, 5_000)),
         });
@@ -321,7 +323,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         let fullContent = '';
         let lastChunk: OllamaChatResponse | null = null;
 
-        for await (const data of parseNDJSONStream(response, this.providerKey)) {
+        for await (const data of parseNDJSONStream(response, config.providerKey ?? this.providerKey)) {
             try {
                 const chunk: OllamaChatResponse = JSON.parse(data);
 
@@ -449,7 +451,7 @@ export class OllamaAdapter implements AIProviderAdapter {
         try {
             return await response.json() as T;
         } catch (error) {
-            throw this.requestFailure(error, signal);
+            throw this.requestFailure(error, config, signal);
         }
     }
 
@@ -459,59 +461,38 @@ export class OllamaAdapter implements AIProviderAdapter {
         const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
         try {
-            const response = await fetch(url, {
+            const response = await fetchOnSameServer(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: ollamaHeaders(config.apiKey, true),
                 body: JSON.stringify(body),
                 signal: requestSignal(controller.signal, signal),
             });
 
             if (!response.ok) {
-                await this.handleErrorResponse(response);
+                await this.handleErrorResponse(response, config);
             }
 
             return response;
         } catch (error) {
-            throw this.requestFailure(error, signal);
+            throw this.requestFailure(error, config, signal);
         } finally {
             clearTimeout(timeoutId);
         }
     }
 
     /** A request that failed, as an AdapterError: timed out, cancelled, Ollama not running, the network */
-    private requestFailure(error: unknown, signal?: AbortSignal): AdapterError {
-        if (error instanceof AdapterError) return error;
-        if (wasAborted(error, signal)) return abortedRequestError(this.providerKey, signal);
-        // Check if Ollama is not running
-        if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
-            return new AdapterError('Ollama is not running. Please start Ollama and try again.', this.providerKey, undefined, true);
+    private requestFailure(error: unknown, config: AdapterConfig, signal?: AbortSignal): AdapterError {
+        const providerKey = config.providerKey ?? this.providerKey;
+        if (!(error instanceof AdapterError) && !wasAborted(error, signal) && (error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+            return new AdapterError('Ollama is not running. Please start Ollama and try again.', providerKey, undefined, true);
         }
-        return new AdapterError(`Network error: ${(error as Error).message}`, this.providerKey, undefined, true, error as Error);
+        return noAnswerError(error, providerKey, signal);
     }
 
-    /**
-     * Handle error response
-     */
-    private async handleErrorResponse(response: Response): Promise<never> {
-        let errorMessage = `HTTP ${response.status}`;
-
-        try {
-            const errorBody = await response.json() as { error?: string };
-            errorMessage = errorBody.error || errorMessage;
-        } catch {
-            // Ignore JSON parse errors
-        }
-
-        const retryable = response.status >= 500;
-
-        throw new AdapterError(
-            errorMessage,
-            this.providerKey,
-            response.status,
-            retryable
-        );
+    /** An error answer, thrown as an AdapterError naming the provider */
+    private async handleErrorResponse(response: Response, config: AdapterConfig): Promise<never> {
+        throw await errorFromResponse(response, config.providerKey ?? this.providerKey,
+            (body) => (body as { error?: string }).error);
     }
 
     /**

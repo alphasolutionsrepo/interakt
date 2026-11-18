@@ -7,8 +7,12 @@
 // The authentication.valueRef field is stored as a raw secret name
 // (not a {{secret:...}} template), so we resolve it here directly.
 
-import { resolveSecret } from '@/features/secrets/secrets.service';
 import type { ToolExecutionResult } from '../tools.executor';
+
+import { FIXED_HOST_MESSAGE, INPUT_PATTERN, resolveUrlTemplate, unresolvedSecretNames, urlProblemMessage } from './http-url';
+
+import { resolveSecret } from '@/features/secrets/secrets.service';
+import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
 
 // ============================================================================
 // CONFIG TYPES
@@ -36,11 +40,11 @@ interface HttpApiConfig {
 
 // ============================================================================
 // {{input.field}} TEMPLATE RESOLUTION
-// Replaces {{input.fieldName}} with values from the AI-provided input.
+// Replaces {{input.fieldName}} with values from the AI-provided input, in the URL's path and
+// query, the query parameters, the headers and the body. The host, the authentication and the
+// rest of the config stay as the admin wrote them.
 // {{secret:name}} refs are already resolved before this executor runs.
 // ============================================================================
-
-const INPUT_PATTERN = /\{\{input\.([a-zA-Z0-9_]+)\}\}/g;
 
 function resolveInputTemplates(val: unknown, input: Record<string, unknown>): unknown {
   if (typeof val === 'string') {
@@ -102,6 +106,12 @@ function resolveJsonPath(path: string, obj: unknown): unknown {
   return current;
 }
 
+/** What joins more query parameters to a URL: "?", or "&" after a query it already has. */
+function querySeparator(url: string): string {
+  if (!url.includes('?')) return '?';
+  return url.endsWith('?') || url.endsWith('&') ? '' : '&';
+}
+
 // ============================================================================
 // MAIN EXECUTOR
 // ============================================================================
@@ -119,8 +129,30 @@ export async function executeHttpApi(
     return { success: false, error: 'HTTP API config is missing responseMapping.resultsPath' };
   }
 
-  // 1. Resolve {{input.field}} templates throughout the entire config
-  const resolved = resolveInputTemplates(cfg, input) as HttpApiConfig;
+  // A {{secret:name}} still in the URL means the vault has no secret by that name, or it can't be decrypted (names only)
+  const missing = unresolvedSecretNames(cfg.baseUrl);
+  if (missing.length > 0) {
+    return { success: false, error: `HTTP API baseUrl: The secret "${missing[0]}" used in the URL is missing from the Secrets Vault or can't be read` };
+  }
+
+  // 1. Fill {{input.field}} templates in the URL, query parameters, headers and body
+  const filledUrl = resolveUrlTemplate(cfg.baseUrl, input);
+  if ('problem' in filledUrl) {
+    return {
+      success: false,
+      error: filledUrl.problem === 'host'
+        ? `HTTP API baseUrl: ${urlProblemMessage(cfg.baseUrl) ?? FIXED_HOST_MESSAGE}`
+        : 'An input value for the URL path is "." or "..", which would leave the path this tool calls; pass the value itself',
+    };
+  }
+  const baseUrl = filledUrl.url;
+  const resolved: HttpApiConfig = {
+    ...cfg,
+    baseUrl,
+    headers: resolveInputTemplates(cfg.headers, input) as HttpApiConfig['headers'],
+    queryParams: resolveInputTemplates(cfg.queryParams, input) as HttpApiConfig['queryParams'],
+    bodyTemplate: resolveInputTemplates(cfg.bodyTemplate, input) as HttpApiConfig['bodyTemplate'],
+  };
 
   // 2. Build query params (may include static values + resolved templates)
   const params = new URLSearchParams();
@@ -146,7 +178,8 @@ export async function executeHttpApi(
 
   // 4. Build full URL
   const qs = params.toString();
-  const url = qs ? `${resolved.baseUrl}?${qs}` : resolved.baseUrl;
+  // Joined to a query the URL already has with "&", not a second "?"
+  const url = qs ? `${resolved.baseUrl}${querySeparator(resolved.baseUrl)}${qs}` : resolved.baseUrl;
 
   // 5. Build fetch options
   const timeout = cfg.timeout ?? 8000;
@@ -175,7 +208,7 @@ export async function executeHttpApi(
     const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const response = await fetch(url, { ...requestInit, signal: controller.signal });
+      const response = await fetchOnSameServer(url, { ...requestInit, signal: controller.signal });
       clearTimeout(timer);
 
       if (!response.ok) {
@@ -216,6 +249,8 @@ export async function executeHttpApi(
       };
     } catch (err) {
       clearTimeout(timer);
+      // A redirect to another server answers the same on every try
+      if (err instanceof RedirectedElsewhereError) return { success: false, error: err.message };
       const msg = err instanceof Error ? err.message : String(err);
       lastError = msg.toLowerCase().includes('abort')
         ? `Request timed out after ${timeout}ms`

@@ -14,7 +14,10 @@
  */
 
 import { EXTERNAL_REQUEST_TIMEOUT_MS } from '../external-search.types';
+
 import { bodyExcerpt, readResponseBody } from './response-body';
+
+import { connectFailure, fetchOnSameServer } from '@/shared/http/same-server-fetch';
 
 /** Outcome of one engine call: data on success, a readable error otherwise. */
 /** status: the HTTP status of a failed call, when the engine answered */
@@ -62,7 +65,7 @@ async function esSearchRequest(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchOnSameServer(url, {
       method: 'POST',
       headers: buildHeaders(config),
       body: JSON.stringify(body),
@@ -71,7 +74,7 @@ async function esSearchRequest(
     });
   } catch (err) {
     return {
-      error: { success: false, error: `Network error connecting to Elasticsearch: ${(err as Error).message}` },
+      error: { success: false, error: connectFailure('Elasticsearch', err) },
     };
   }
 

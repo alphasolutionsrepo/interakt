@@ -388,6 +388,8 @@ Optional `?limit=` (default 20).
 
 ### GET /documents/batches/:batchId — batch progress
 
+Progress of a batch uploaded to this index.
+
 ```jsonc
 {
   "success": true,
@@ -408,7 +410,7 @@ Optional `?limit=` (default 20).
 
 ### DELETE /documents/batches/:batchId — cancel
 
-Cancels an in-flight batch. **Requires:** `write`. Documents already written stay written —
+Cancels an in-flight batch uploaded to this index. **Requires:** `write`. Documents already written stay written —
 cancelling stops further work, it does not roll back.
 
 ---

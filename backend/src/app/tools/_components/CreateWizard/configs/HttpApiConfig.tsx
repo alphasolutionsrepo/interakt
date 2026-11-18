@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/select';
 import { Check, ChevronDown, ChevronUp, FileJson, Plus, Trash2 } from 'lucide-react';
 
+import { baseUrlProblem } from '../../../_lib/http-config-errors';
+
 interface HttpApiConfigProps {
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
@@ -254,10 +256,15 @@ export function HttpApiConfig({ value, onChange, errors }: HttpApiConfigProps) {
             placeholder="https://api.example.com/search"
             className={`rounded-xl font-mono text-sm ${errors?.baseUrl ? 'border-destructive' : ''}`}
           />
-          {errors?.baseUrl && <p className="text-xs text-destructive">{errors.baseUrl}</p>}
+          {errors?.baseUrl ? (
+            <p className="text-xs text-destructive">{errors.baseUrl}</p>
+          ) : baseUrlProblem(value.baseUrl) && (
+            <p className="text-xs text-destructive">{baseUrlProblem(value.baseUrl)}</p>
+          )}
           <p className="text-xs text-muted-foreground">
             Supports <code className="font-mono bg-muted px-1 rounded text-[11px]">{'{{secret:name}}'}</code> and{' '}
             <code className="font-mono bg-muted px-1 rounded text-[11px]">{'{{input.field}}'}</code> templates.
+            Input fills the path and query after the host and its <code className="font-mono bg-muted px-1 rounded text-[11px]">/</code>; the host stays as you write it.
           </p>
         </div>
         <div className="space-y-1.5">

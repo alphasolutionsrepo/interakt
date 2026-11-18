@@ -3,7 +3,7 @@
 /**
  * Discovering a provider's models: a failure answers as before and is logged once, by
  * the error response, with the operation: a warning when the request was refused, an
- * error when Ollama failed. The errors are the ones discoverOllamaModels throws.
+ * error when Ollama failed. The errors are the ones discoverModels throws.
  */
 
 import { NextRequest } from 'next/server';
@@ -14,7 +14,7 @@ import { reported, type LogLine } from '@/shared/test/log-recorder';
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUserId: async () => 'admin' }));
-const service = vi.hoisted(() => ({ discoverOllamaModels: vi.fn() }));
+const service = vi.hoisted(() => ({ discoverModels: vi.fn() }));
 vi.mock('./ai-providers.service', () => service);
 
 import { handleDiscoverModels } from './ai-providers.api.handlers';
@@ -29,7 +29,7 @@ beforeEach(() => { logs.length = 0; });
 
 describe('discovering the models of a provider that fails', () => {
   it('answers a provider that is not there as before and logs it once, as a warning', async () => {
-    service.discoverOllamaModels.mockRejectedValue(new Error(`Provider with ID "${ID}" not found`));
+    service.discoverModels.mockRejectedValue(new Error(`Provider with ID "${ID}" not found`));
     const res = await discover();
 
     expect(res.status).toBe(404);
@@ -39,7 +39,7 @@ describe('discovering the models of a provider that fails', () => {
 
   it('logs Ollama failing to list its models once, as an error with the request id, the operation and the error', async () => {
     const failed = new Error('Failed to fetch models: HTTP 500');
-    service.discoverOllamaModels.mockRejectedValue(failed);
+    service.discoverModels.mockRejectedValue(failed);
     const res = await discover();
     const { requestId } = await res.json();
 
@@ -47,14 +47,5 @@ describe('discovering the models of a provider that fails', () => {
     expect(reported(logs)).toEqual([
       expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId, operation: 'discoverModels', err: failed }) }),
     ]);
-  });
-
-  it('answers a provider that is not Ollama as before and logs it once, as a warning', async () => {
-    service.discoverOllamaModels.mockRejectedValue(new Error('Model discovery is only supported for Ollama provider'));
-    const res = await discover();
-
-    expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST', message: 'Model discovery is only supported for Ollama provider' });
-    expect(reported(logs)).toEqual([expect.objectContaining({ level: 'warn' })]);
   });
 });

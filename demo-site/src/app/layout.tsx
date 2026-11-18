@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
-import { Montserrat } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import Header from "@/components/header";
 import { SettingsProvider } from "@/contexts/settings-context";
 import { ThemeProvider } from "@/components/theme-provider";
 
-const montserrat = Montserrat({
+// Montserrat (Latin, weights 300-700) ships with the site, so the build never downloads it.
+// From Google Fonts; SIL Open Font License, see fonts/OFL.txt
+const montserrat = localFont({
+  src: "./fonts/montserrat-latin.woff2",
   variable: "--font-montserrat",
-  subsets: ["latin"],
   display: "swap",
-  weight: ["300", "400", "500", "600", "700"],
+  weight: "300 700",
 });
 
 export const metadata: Metadata = {

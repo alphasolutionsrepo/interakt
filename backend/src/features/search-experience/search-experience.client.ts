@@ -27,7 +27,6 @@ export {
   SLUG_REGEX,
   SLUG_MIN_LENGTH,
   SLUG_MAX_LENGTH,
-  generateSlugFromName,
   type WizardFormData,
   type WizardStep1Data,
   type WizardStep2Data,

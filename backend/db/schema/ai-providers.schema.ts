@@ -28,6 +28,7 @@ import {
   aiModelTypeEnum,
   aiAuthTypeEnum,
   aiProviderTypeEnum,
+  aiConnectionTypeEnum,
 } from './enums.schema';
 
 // ============================================================================
@@ -107,6 +108,8 @@ export const aiProviders = pgTable('ai_providers', {
 
   // Provider type and authentication
   providerType: aiProviderTypeEnum('provider_type').notNull(),
+  // The API it speaks (OpenAI-compatible or Ollama): picks the adapter, whatever the provider is called
+  connectionType: aiConnectionTypeEnum('connection_type').notNull().default('openai_compatible'),
   authType: aiAuthTypeEnum('auth_type').notNull(),
 
   // Connection configuration
@@ -168,6 +171,9 @@ export const aiProviderModels = pgTable('ai_provider_models', {
   // Status
   isAvailable: boolean('is_available').default(true).notNull(),
   isDiscovered: boolean('is_discovered').default(false).notNull(),
+  // Switched off by Discover Models because the provider stopped listing it: discovery switches
+  // it back on when it is listed again. Cleared when an admin switches the model on or off.
+  hiddenByDiscovery: boolean('hidden_by_discovery').default(false).notNull(),
 
   // Display ordering
   sortOrder: integer('sort_order').default(0).notNull(),

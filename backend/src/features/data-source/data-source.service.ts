@@ -1,25 +1,27 @@
-import { createLogger } from '@/shared/logger/logger';
 import * as repository from './data-source.repository';
-import * as searchIndexRepository from '@/features/search-index/search-index.repository';
 import type {
   CreateDataSourceDTO,
   UpdateDataSourceDTO,
   UpdateHealthDTO,
   ListDataSourcesQuery,
 } from './data-source.validation';
-import type { ExternalSearchIndexConfig, DataSourceField, DataSourceSchema, DataSourceCapabilities } from '@/db/schema/data-sources.schema';
-import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
-import { resolveSecret } from '@/features/secrets/secrets.service';
-import { profileFields, resolveSampleSize } from './field-profiler';
-import * as toolsService from '@/features/tools/tools.service';
+
 // The cache module itself, not the search-experience barrel, which imports this service back
-import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } from '@/features/search-experience/search-experience.cache';
-import { inferFieldRole } from '@/shared/utils/field-roles';
 import { resolveExternalConnection } from './external-search/external-connection';
 import { discoverSitecoreFields, sampleSitecore } from './external-search/connectors/sitecore-search.connector';
 import { FixedFilterError, sitecoreFixedFilters } from './external-search/connectors/sitecore-search.request';
 import { ExternalSearchError } from './external-search/external-search.types';
 import { bodyExcerpt, readResponseBody } from './external-search/engines/response-body';
+import { profileFields, resolveSampleSize } from './field-profiler';
+import type { ExternalSearchIndexConfig, DataSourceField, DataSourceSchema, DataSourceCapabilities } from '@/db/schema/data-sources.schema';
+import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
+import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } from '@/features/search-experience/search-experience.cache';
+import * as searchIndexRepository from '@/features/search-index/search-index.repository';
+import { resolveSecret } from '@/features/secrets/secrets.service';
+import * as toolsService from '@/features/tools/tools.service';
+import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
+import { createLogger } from '@/shared/logger/logger';
+import { inferFieldRole } from '@/shared/utils/field-roles';
 
 const logger = createLogger('data-source-service');
 
@@ -467,14 +469,16 @@ async function probeExternalConnection(
     // Try HEAD first, fallback to GET (some providers like Azure don't support HEAD on base URL)
     let response: Response;
     try {
-      response = await fetch(baseUrl, {
+      response = await fetchOnSameServer(baseUrl, {
         method: 'HEAD',
         signal: controller.signal,
         headers: { 'User-Agent': 'Interakt-HealthCheck/1.0' },
       });
-    } catch {
+    } catch (error) {
+      // A redirect to another server answers the same to a GET
+      if (error instanceof RedirectedElsewhereError) throw error;
       // HEAD might fail on some providers, try GET
-      response = await fetch(baseUrl, {
+      response = await fetchOnSameServer(baseUrl, {
         method: 'GET',
         signal: controller.signal,
         headers: { 'User-Agent': 'Interakt-HealthCheck/1.0' },
@@ -603,7 +607,7 @@ async function fetchElasticsearchStats(config: ExternalSearchIndexConfig): Promi
 
   try {
     const headers = await buildAuthHeaders(config);
-    const response = await fetch(`${baseUrl}/${indexName}/_stats/docs,store`, {
+    const response = await fetchOnSameServer(`${baseUrl}/${indexName}/_stats/docs,store`, {
       signal: controller.signal,
       headers,
     });
@@ -641,7 +645,7 @@ async function fetchAzureAISearchStats(config: ExternalSearchIndexConfig): Promi
     headers['Content-Type'] = 'application/json';
 
     const url = `${baseUrl}/indexes/${indexName}/stats?api-version=2024-07-01`;
-    const response = await fetch(url, { signal: controller.signal, headers });
+    const response = await fetchOnSameServer(url, { signal: controller.signal, headers });
 
     if (!response.ok) return null;
 
@@ -774,7 +778,7 @@ async function sampleElasticsearchDocuments(
     const headers = await buildAuthHeaders(config);
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${baseUrl}/${indexName}/_search`, {
+    const response = await fetchOnSameServer(`${baseUrl}/${indexName}/_search`, {
       method: 'POST',
       signal: controller.signal,
       headers,
@@ -810,7 +814,7 @@ async function sampleAzureAISearchDocuments(
     headers['Content-Type'] = 'application/json';
 
     const url = `${baseUrl}/indexes/${indexName}/docs/search?api-version=2024-07-01`;
-    const response = await fetch(url, {
+    const response = await fetchOnSameServer(url, {
       method: 'POST',
       signal: controller.signal,
       headers,
@@ -851,7 +855,7 @@ async function discoverElasticsearchSchema(
   try {
     const headers = await buildAuthHeaders(config);
 
-    const response = await fetch(`${baseUrl}/${indexName}/_mapping`, {
+    const response = await fetchOnSameServer(`${baseUrl}/${indexName}/_mapping`, {
       signal: controller.signal,
       headers,
     });
@@ -980,7 +984,7 @@ async function discoverAzureAISearchSchema(
     const url = `${baseUrl}/indexes/${indexName}?api-version=2024-07-01`;
     logger.info('Azure AI Search schema discovery', { url: url.replace(/api-key=[^&]+/, 'api-key=***') });
 
-    const response = await fetch(url, { signal: controller.signal, headers });
+    const response = await fetchOnSameServer(url, { signal: controller.signal, headers });
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');

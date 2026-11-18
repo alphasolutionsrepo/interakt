@@ -17,7 +17,7 @@ import 'server-only';
 import { db } from '@/db/index';
 import { indexingBatches, type IndexingBatch } from '@/db/schema/indexing-batches.schema';
 import { searchIndex } from '@/db/schema/search-index.schema';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { createLogger } from '@/shared/logger/logger';
 import { elasticsearchConfig } from '../../../config';
 import { getSearchEngineProvider, type SearchProviderType } from '@/features/search/providers';
@@ -167,10 +167,11 @@ async function updateBatch(
 /**
  * Get batch by ID
  */
-export async function getBatch(batchId: string): Promise<IndexingBatch | null> {
+export async function getBatch(searchIndexId: string, batchId: string): Promise<IndexingBatch | null> {
+    // Found only on its own index: access to one index never reaches another index's batches
     const [batch] = await db.select()
         .from(indexingBatches)
-        .where(eq(indexingBatches.id, batchId))
+        .where(and(eq(indexingBatches.id, batchId), eq(indexingBatches.searchIndexId, searchIndexId)))
         .limit(1);
 
     return batch || null;
@@ -179,8 +180,8 @@ export async function getBatch(batchId: string): Promise<IndexingBatch | null> {
 /**
  * Get indexing progress for a batch
  */
-export async function getIndexingProgress(batchId: string): Promise<IndexingProgress | null> {
-    const batch = await getBatch(batchId);
+export async function getIndexingProgress(searchIndexId: string, batchId: string): Promise<IndexingProgress | null> {
+    const batch = await getBatch(searchIndexId, batchId);
     if (!batch) return null;
 
     return {
@@ -900,8 +901,8 @@ export async function indexDocuments(
 /**
  * Cancel an in-progress indexing batch
  */
-export async function cancelBatch(batchId: string): Promise<boolean> {
-    const batch = await getBatch(batchId);
+export async function cancelBatch(searchIndexId: string, batchId: string): Promise<boolean> {
+    const batch = await getBatch(searchIndexId, batchId);
     if (!batch || batch.status !== 'processing') {
         return false;
     }

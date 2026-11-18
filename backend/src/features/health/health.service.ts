@@ -6,13 +6,17 @@
  * Checks the health of all external dependencies and system components
  */
 
-import { db } from '@/db/index';
 import { sql } from 'drizzle-orm';
+
+import { aiProvidersConfig, elasticsearchConfig, getProviderHealthConfig, type StatusPageResponse } from '@/config';
+import { db } from '@/db/index';
+import * as aiProvidersRepo from '@/features/ai-providers/ai-providers.repository';
+import { defaultConnectionType, type AIConnectionType } from '@/features/ai-providers/ai-providers.validation';
+import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
 import { getDefaultSearchEngineProvider } from '@/features/search/providers';
 import { clientAddressSetup, SHARED_LIMIT_FACTOR, type ClientAddressSetup } from '@/shared/api/client-ip';
+import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
 import { createLogger } from '@/shared/logger/logger';
-import * as aiProvidersRepo from '@/features/ai-providers/ai-providers.repository';
-import { aiProvidersConfig, elasticsearchConfig, getProviderHealthConfig, type StatusPageResponse } from '@/config';
 
 const logger = createLogger('health-service');
 
@@ -178,41 +182,54 @@ export async function checkElasticsearchHealth(): Promise<ServiceHealth> {
 /**
  * Check health of a single provider using its configured health check method
  */
+type ProviderToCheck = { id: string; providerKey: string; baseUrl: string; connectionType?: AIConnectionType | null; apiKey?: string | null };
+
+/** Whether a provider's base URL is on the vendor's own domain (status.openai.com → openai.com) */
+function onVendorDomain(baseUrl: string, statusPageUrl: string): boolean {
+  try {
+    const vendor = new URL(statusPageUrl).hostname.replace(/^status\./, '');
+    const host = new URL(baseUrl).hostname;
+    return host === vendor || host.endsWith(`.${vendor}`);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What to ask a provider: the vendor's status page when the provider is that vendor's own
+ * service; otherwise the provider itself, as its connection type answers (an OpenAI-compatible
+ * model list, or Ollama's installed models), with its key when it has one.
+ */
+function providerHealthRequest(provider: ProviderToCheck): { url: string; headers: Record<string, string>; checkType: string } {
+  const config = getProviderHealthConfig(provider.providerKey);
+  const statusPage = config.healthCheckEndpoint?.startsWith('http') ? config.healthCheckEndpoint : undefined;
+  if (statusPage && config.statusPageUrl && onVendorDomain(provider.baseUrl, config.statusPageUrl)) {
+    return { url: statusPage, headers: { Accept: 'application/json' }, checkType: 'status-page' };
+  }
+  const baseUrl = provider.baseUrl.replace(/\/+$/, '');
+  if ((provider.connectionType ?? defaultConnectionType(provider.providerKey)) === 'ollama') {
+    return { url: `${baseUrl}/api/tags`, headers: { Accept: 'application/json', ...ollamaHeaders(provider.apiKey) }, checkType: 'api-endpoint' };
+  }
+  return {
+    url: `${baseUrl}/models`,
+    headers: { Accept: 'application/json', ...(provider.apiKey && { Authorization: `Bearer ${provider.apiKey}` }) },
+    checkType: 'api-endpoint',
+  };
+}
+
 async function checkProviderHealth(
-  provider: { id: string; providerKey: string; baseUrl: string }
+  provider: ProviderToCheck
 ): Promise<{ healthy: boolean; message: string; responseTimeMs: number; endpointTested: string }> {
   const startTime = Date.now();
   const config = getProviderHealthConfig(provider.providerKey);
   const timeout = aiProvidersConfig.healthCheck.timeoutMs;
-
-  let url: string;
-  let checkType: string;
-
-  // Determine the URL to test
-  if (config.healthCheckEndpoint) {
-    if (config.healthCheckEndpoint.startsWith('http')) {
-      // Absolute URL (e.g., status page API)
-      url = config.healthCheckEndpoint;
-      checkType = 'status-page';
-    } else {
-      // Relative to baseUrl (e.g., /api/tags for Ollama)
-      url = `${provider.baseUrl}${config.healthCheckEndpoint}`;
-      checkType = 'api-endpoint';
-    }
-  } else {
-    // Fallback: test base URL directly
-    url = provider.baseUrl;
-    checkType = 'base-url';
-  }
+  const { url, headers, checkType } = providerHealthRequest(provider);
 
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      signal: AbortSignal.timeout(timeout),
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    // A vendor's status page is a fixed public address with nothing of ours sent: its own
+    // redirects are followed (a vendor moves it). The provider itself is checked on its server only.
+    const request = { method: 'GET', signal: AbortSignal.timeout(timeout), headers };
+    const response = checkType === 'status-page' ? await fetch(url, request) : await fetchOnSameServer(url, request);
 
     const responseTimeMs = Date.now() - startTime;
 
@@ -248,6 +265,11 @@ async function checkProviderHealth(
   } catch (error) {
     const responseTimeMs = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    // Health is read by roles that don't see provider addresses: the other server isn't named
+    if (error instanceof RedirectedElsewhereError) {
+      return { healthy: false, message: 'Redirected to another server (not followed)', responseTimeMs, endpointTested: url };
+    }
 
     // Provide user-friendly error messages
     if (errorMessage.includes('fetch failed') || errorMessage.includes('ECONNREFUSED')) {
@@ -309,6 +331,8 @@ export async function checkAIProvidersHealth(): Promise<ServiceHealth> {
           id: provider.id,
           providerKey: provider.providerKey,
           baseUrl: provider.baseUrl,
+          connectionType: provider.connectionType,
+          apiKey: provider.apiKey,
         });
         return {
           providerId: provider.id,
