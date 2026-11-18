@@ -57,8 +57,10 @@ const type = (q: string) => {
 };
 const pressEsc = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
-const mountModal = async () => {
-  SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'modal' } as Parameters<typeof SearchDropinUI.init>[0]);
+const pressCtrlK = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+
+const mountModal = async (extra: Record<string, unknown> = {}) => {
+  SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'modal', ...extra } as Parameters<typeof SearchDropinUI.init>[0]);
   await flush();
   await openModal();
 };
@@ -109,6 +111,35 @@ describe('search widget: closing stops a summary still being written', () => {
     expect(calls).toHaveLength(2);
     expect(calls[1].signal?.aborted).toBe(false);
     expect(root().textContent).toContain('Partial');
+  });
+
+  it('reopening with Ctrl+K writes the stopped summary again', async () => {
+    const calls = stubServer();
+    await mountModal();
+    type('shoes');
+    await flush(300);
+    pressEsc();
+    await flush();
+
+    pressCtrlK();
+    await flush();
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0].signal?.aborted).toBe(true);
+    expect(calls[1].signal?.aborted).toBe(false);
+  });
+
+  it('with summaries turned off, closing during the search and reopening requests none', async () => {
+    const calls = stubServer({ searchDelayMs: 100 });
+    await mountModal({ aiSummary: false });
+    type('shoes');
+    await flush(250);
+    pressEsc();
+    await flush(150);
+    await openModal();
+    await flush(50);
+
+    expect(calls).toHaveLength(0);
   });
 
   it('a finished summary is kept on close and not requested again on reopen', async () => {
