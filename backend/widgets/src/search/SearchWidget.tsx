@@ -123,12 +123,45 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLUListElement>(null);
   const summaryAbortRef = useRef<AbortController | null>(null);
+  /** The query whose summary was stopped by closing the search; reopening writes it again. */
+  const summaryStoppedForRef = useRef<string | null>(null);
+
+  /** Stop the summary being written, so the server stops generating it. */
+  const cancelSummary = () => {
+    summaryAbortRef.current?.abort();
+    summaryAbortRef.current = null;
+    summary.value = '';
+    summaryStreaming.value = false;
+  };
 
   useEffect(() => {
     return () => {
       if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+      // Removed from the page (destroy, or a new init on the same container)
+      summaryAbortRef.current?.abort();
     };
   }, []);
+
+  const openSearch = () => {
+    open.value = true;
+    config.onEvent?.({ type: 'search:open' });
+    const stopped = summaryStoppedForRef.current;
+    summaryStoppedForRef.current = null;
+    if (stopped !== null && stopped === lastQueryRef.current && startsSummary()) {
+      void runSummary(stopped, results.value);
+    }
+  };
+
+  // Esc, the close button and the backdrop. A summary still being written is stopped:
+  // nobody can read it, and the model would keep running to the end.
+  const close = () => {
+    open.value = false;
+    config.onEvent?.({ type: 'search:close' });
+    if (summaryStreaming.value) {
+      summaryStoppedForRef.current = lastQueryRef.current;
+      cancelSummary();
+    }
+  };
 
   // ⌘K / Ctrl+K opens the modal search from anywhere on the host page.
   // Only active in modal mode — inline mode is always visible.
@@ -138,13 +171,9 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
       if (isCmdK) {
         e.preventDefault();
-        if (!open.value) {
-          open.value = true;
-          config.onEvent?.({ type: 'search:open' });
-        }
+        if (!open.value) openSearch();
       } else if (e.key === 'Escape' && open.value) {
-        open.value = false;
-        config.onEvent?.({ type: 'search:close' });
+        close();
       }
     };
     document.addEventListener('keydown', onKey);
@@ -154,10 +183,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
 
   const runSearch = async (q: string, chipOverride?: { field: string; value: string } | null) => {
     // Any in-flight summary belongs to the previous query — cancel it.
-    summaryAbortRef.current?.abort();
-    summaryAbortRef.current = null;
-    summary.value = '';
-    summaryStreaming.value = false;
+    cancelSummary();
+    summaryStoppedForRef.current = null;
 
     if (!q.trim()) {
       results.value = [];
@@ -219,9 +246,10 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       // Kick off the AI summary in parallel. Opt-out via `aiSummary: false`
       // on the caller's init. A 403 also flips summaryEnabled off for the
       // rest of the session so we don't hammer a disabled endpoint.
-      const aiSummaryEnabled = config.aiSummary !== false;
-      if (aiSummaryEnabled && summaryEnabled.current && results.value.length >= 3) {
-        void runSummary(q, results.value);
+      if (startsSummary()) {
+        if (open.value) void runSummary(q, results.value);
+        // Closed while the search was running: write it when the search is reopened
+        else summaryStoppedForRef.current = q;
       }
     } catch (err) {
       if (err instanceof ApiError && err.code === TURNED_OFF_CODE) {
@@ -237,6 +265,9 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       loading.value = false;
     }
   };
+
+  const startsSummary = () =>
+    config.aiSummary !== false && summaryEnabled.current && results.value.length >= 3;
 
   const runSummary = async (q: string, hits: SearchResultHit[]) => {
     const ac = new AbortController();
@@ -316,11 +347,6 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const close = () => {
-    open.value = false;
-    config.onEvent?.({ type: 'search:close' });
-  };
-
   const onInputKeyDown = (e: KeyboardEvent) => {
     const r = results.value;
     if (e.key === 'ArrowDown') {
@@ -356,10 +382,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       <button
         class="ik-launcher ik-launcher--search"
         aria-label="Open search"
-        onClick={() => {
-          open.value = true;
-          config.onEvent?.({ type: 'search:open' });
-        }}
+        onClick={openSearch}
       >
         <SearchIcon />
       </button>
