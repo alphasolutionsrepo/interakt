@@ -14,10 +14,15 @@ import type { SearchResult } from '@/lib/api/types';
 
 import { useAISummary } from './use-ai-summary';
 
-type Stream = { onContent: (text: string) => void; onComplete: () => void; request: { results: Array<{ id: string }> } };
+type Stream = {
+  onContent: (text: string) => void;
+  onComplete: () => void;
+  request: { results: Array<{ id: string }> };
+  signal: AbortSignal;
+};
 let stream: Stream;
-const streamSummary = vi.fn((request, onContent, onComplete) => {
-  stream = { request, onContent, onComplete };
+const streamSummary = vi.fn((request, onContent, onComplete, _onError, signal) => {
+  stream = { request, onContent, onComplete, signal };
 });
 vi.mock('@/lib/api/client', () => ({ createApiClient: () => ({ streamSummary }) }));
 vi.mock('@/contexts/settings-context', () => ({
@@ -99,5 +104,30 @@ describe('AI summary citations', () => {
     summarize('Product 6 [2].');
 
     expect(citation(2)?.getAttribute('href')).toBe('/products/6');
+  });
+});
+
+describe('AI summary request', () => {
+  it('is stopped when the visitor leaves the page while it is being written', () => {
+    const { unmount } = render(<SearchPage results={page1} />);
+    act(() => screen.getByText('summarize').click());
+    act(() => stream.onContent('Product 2 is'));
+    expect(stream.signal.aborted).toBe(false);
+
+    unmount();
+
+    expect(stream.signal.aborted).toBe(true);
+  });
+
+  it('a new summary stops the previous one, and the page keeps the new one running', () => {
+    const { rerender } = render(<SearchPage results={page1} />);
+    act(() => screen.getByText('summarize').click());
+    const first = stream.signal;
+
+    rerender(<SearchPage results={page2} query="boots" />);
+    act(() => screen.getByText('summarize').click());
+
+    expect(first.aborted).toBe(true);
+    expect(stream.signal.aborted).toBe(false);
   });
 });
