@@ -2,8 +2,9 @@
 #
 # Security updates (PRs for dependencies with a published advisory) are switched on in the
 # repository settings and open as soon as an advisory appears. The version updates below are
-# routine: once a month, minor and patch updates for each project come as one grouped PR, and
-# each major update gets a PR of its own.
+# routine: once a month, minor and patch updates for each npm project come as one grouped PR,
+# and each major npm update gets a PR of its own. GitHub Actions updates, majors included, come
+# as one PR.
 version: 2
 
 updates:
