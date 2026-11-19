@@ -22,7 +22,6 @@ import {
   type Span,
 } from '@opentelemetry/api';
 
-
 import { ATTR } from './attribute-keys';
 import { isTelemetryEnabled } from './telemetry.config';
 import type { SpanOptions, StreamSpanOptions } from './telemetry.types';

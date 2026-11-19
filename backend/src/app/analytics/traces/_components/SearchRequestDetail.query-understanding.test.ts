@@ -44,13 +44,15 @@ describe('query understanding steps on a search trace', () => {
     expect(html).toMatch(/Query searched: <span[^>]*>red linen summer dresses</);
   });
 
-  it('labels the search-terms step with its outcome and the terms sent', () => {
+  it('labels the search-terms step with its outcome, the visitor’s words and the terms sent', () => {
     const html = render([span('r', 'query_understanding.rewrite', {
       [ATTR.QUERY_REWRITE_OUTCOME]: 'rewritten',
+      [ATTR.QUERY_REWRITE_ORIGINAL]: 'any minimal style shirts for summer?',
       [ATTR.QUERY_REWRITE_REWRITTEN]: 'minimal style shirts summer',
     })]);
     expect(html).toContain('Query understanding (search terms)');
     expect(html).toMatch(/Outcome: <span[^>]*>rewritten</);
+    expect(html).toMatch(/Visitor’s words: <span[^>]*>any minimal style shirts for summer\?</);
     expect(html).toMatch(/Search terms: <span[^>]*>minimal style shirts summer</);
   });
 
