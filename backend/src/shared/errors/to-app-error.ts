@@ -73,7 +73,22 @@ export function toAppError(err: unknown): AppError {
     return aiConfigError(err)
         ?? classifyUpstream(err)
         ?? databaseUnavailable(err)
+        ?? malformedId(err)
         ?? new AppError(INTERNAL_MESSAGE, { code: 'INTERNAL_ERROR', status: 500, cause: err });
+}
+
+// Postgres refusing a value that isn't a UUID where a uuid column is compared (22P02)
+const INVALID_TEXT_REPRESENTATION = '22P02';
+const NOT_A_UUID = /invalid input syntax for type uuid/i;
+
+/**
+ * A query refused because an ID in the request isn't a UUID: the request is wrong, and
+ * nothing ran (Postgres rejects the value before running the query). Answered like the
+ * routes that check their IDs first, without repeating the value.
+ */
+function malformedId(err: Error): AppError | undefined {
+    const refused = causeOfQuery(err, (code, cause) => code === INVALID_TEXT_REPRESENTATION && NOT_A_UUID.test(cause.message));
+    return refused ? new AppError("That ID isn't valid.", { code: 'BAD_REQUEST', status: 400, cause: err }) : undefined;
 }
 
 // Postgres refusing the query for its connection: connection exceptions (08…), shutting
@@ -87,26 +102,45 @@ const DB_CONNECTION_CODES = new Set([
 const MAX_CAUSES = 5;
 
 /**
+ * A query's error as Drizzle wraps it. Checked by its shape too: a route bundled with its own
+ * copy of drizzle-orm (Next.js can load a module once per route) throws a DrizzleQueryError
+ * that isn't an instance of ours.
+ */
+function isQueryError(err: Error): boolean {
+    if (err instanceof DrizzleQueryError) return true;
+    const e = err as Error & { query?: unknown; params?: unknown };
+    return typeof e.query === 'string' && Array.isArray(e.params) && err.message.startsWith('Failed query: ');
+}
+
+/**
  * The database couldn't be reached or took no more connections. Only a query's error
  * counts: Drizzle wraps whatever the driver threw for it, so a refused connection
  * elsewhere (a webhook, an MCP server) isn't taken for the database. Nothing about the
  * address is kept; the cause is, for the log.
  */
 function databaseUnavailable(err: Error): AppError | undefined {
+    const unreachable = causeOfQuery(err, (code) => DB_UNAVAILABLE_SQLSTATE.test(code) || DB_CONNECTION_CODES.has(code));
+    if (!unreachable) return undefined;
+    return new AppError("The database couldn't be reached.", {
+        code: 'DATABASE_UNAVAILABLE',
+        status: 503,
+        hint: 'Check that Postgres is running and that its connection URL in the deployment settings (DATABASE_URL, or ANALYTICS_POSTGRES_URL for analytics) points at it, then try again.',
+        ourSide: true,
+        cause: err,
+    });
+}
+
+/**
+ * The error a query failed with (one of err's causes, under the query's error) whose code
+ * matches. Only a query's error counts, so the same code from elsewhere isn't taken for it.
+ */
+function causeOfQuery(err: Error, matches: (code: string, cause: Error) => boolean): Error | undefined {
     let inQuery = false;
     let current: unknown = err;
     for (let i = 0; current instanceof Error && i <= MAX_CAUSES; i++) {
         const code = (current as Error & { code?: unknown }).code;
-        if (inQuery && typeof code === 'string' && (DB_UNAVAILABLE_SQLSTATE.test(code) || DB_CONNECTION_CODES.has(code))) {
-            return new AppError("The database couldn't be reached.", {
-                code: 'DATABASE_UNAVAILABLE',
-                status: 503,
-                hint: 'Check that Postgres is running and that its connection URL in the deployment settings (DATABASE_URL, or ANALYTICS_POSTGRES_URL for analytics) points at it, then try again.',
-                ourSide: true,
-                cause: err,
-            });
-        }
-        if (current instanceof DrizzleQueryError) inQuery = true;
+        if (inQuery && typeof code === 'string' && matches(code, current)) return current;
+        if (isQueryError(current)) inQuery = true;
         current = current.cause;
     }
     return undefined;

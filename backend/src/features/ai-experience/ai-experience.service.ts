@@ -1,12 +1,9 @@
 // src/features/ai-experience/ai-experience.service.ts
 
-import { createLogger } from '@/shared/logger/logger';
-import * as repository from './ai-experience.repository';
 import * as toolsService from '../tools/tools.service';
+
 import { aiExperienceCache as cache } from './ai-experience.cache';
-import { setExperienceTelemetryOverride } from '@/features/telemetry';
-import { setupTopicGateEmbeddings } from '@/features/guardrails/topic-gate.service';
-import { getGlobalTopicGateCache } from '@/features/guardrails/topic-gate.cache';
+import * as repository from './ai-experience.repository';
 import type {
   CreateAIExperienceDTO,
   UpdateAIExperienceDTO,
@@ -16,6 +13,12 @@ import type {
   AIExperienceListResponse,
   AIExperienceWithTools,
 } from './ai-experience.types';
+
+import { getGlobalTopicGateCache } from '@/features/guardrails/topic-gate.cache';
+import { setupTopicGateEmbeddings } from '@/features/guardrails/topic-gate.service';
+import { setExperienceTelemetryOverride } from '@/features/telemetry';
+import { createLogger } from '@/shared/logger/logger';
+import { isUuidShape } from '@/shared/utils/uuid';
 
 const logger = createLogger('ai-experience-service');
 
@@ -150,6 +153,8 @@ export async function getAIExperienceBySlug(slug: string) {
 }
 
 export async function getAIExperienceByAccessToken(accessToken: string) {
+  // Tokens are UUIDs: anything else matches no experience (and Postgres would refuse the query)
+  if (!isUuidShape(accessToken)) return undefined;
   const cacheKey = `token:${accessToken}`;
   const cached = cache.get<AIExperienceWithTools>(cacheKey);
   if (cached) return cached;

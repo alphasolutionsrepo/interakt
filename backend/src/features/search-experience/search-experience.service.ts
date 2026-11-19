@@ -9,11 +9,8 @@
 
 import 'server-only';
 
-import { createLogger } from '@/shared/logger/logger';
-import { getHybridSearchDefaults } from '@/features/global-settings';
-import * as repository from './search-experience.repository';
-import { AppError } from '@/shared/errors/app-error';
 import * as cache from './search-experience.cache';
+import * as repository from './search-experience.repository';
 import {
   createSearchExperienceSchema,
   updateSearchExperienceSchema,
@@ -40,7 +37,12 @@ import {
   DEFAULT_QUERY_UNDERSTANDING_CONFIG,
   DEFAULT_TOOLS_CONFIG,
 } from './search-experience.types';
+
+import { getHybridSearchDefaults } from '@/features/global-settings';
 import { setExperienceTelemetryOverride } from '@/features/telemetry';
+import { AppError } from '@/shared/errors/app-error';
+import { createLogger } from '@/shared/logger/logger';
+import { isUuidShape } from '@/shared/utils/uuid';
 
 const logger = createLogger('search-experience-service');
 
@@ -304,6 +306,10 @@ export async function getSearchExperienceByAccessToken(
 ): Promise<SearchExperienceWithIndexes> {
   if (!accessToken) {
     throw new UnauthorizedError('Access token is required');
+  }
+  // Tokens are UUIDs: anything else matches no experience (and Postgres would refuse the query)
+  if (!isUuidShape(accessToken)) {
+    throw new UnauthorizedError('Invalid access token');
   }
 
   const experience = await cache.getOrFetchByToken(accessToken, () =>

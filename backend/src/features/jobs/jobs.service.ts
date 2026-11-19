@@ -17,7 +17,9 @@ import type {
 } from './jobs.types';
 
 import { db } from '@/db/index';
+import { NotFoundError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
+import { isUuidShape } from '@/shared/utils/uuid';
 
 const logger = createLogger('jobs-service');
 
@@ -132,7 +134,11 @@ function assertValidCron(cron: string): void {
 
 /** A single job with full payload/output, or null if not found. */
 export async function getJob(queue: string, id: string): Promise<JobRecord | null> {
+  // Job ids are UUIDs: anything else is no job (and Postgres would refuse the query)
+  if (!isUuidShape(id)) return null;
   const boss = getBoss();
+  // A queue that doesn't exist holds no job (pg-boss throws for it)
+  if (!(await boss.getQueue(queue))) return null;
   // findJobs (not the deprecated getJobById) — filter by id within the queue.
   const [job] = await boss.findJobs(queue, { id });
   if (!job) return null;
@@ -179,7 +185,11 @@ export async function applyJobAction(
   id: string,
   action: JobAction
 ): Promise<void> {
+  // Job ids are UUIDs: anything else is no job (and Postgres would refuse the query)
+  if (!isUuidShape(id)) throw new NotFoundError('Job not found');
   const boss = getBoss();
+  // A queue that doesn't exist holds no job (pg-boss throws for it)
+  if (!(await boss.getQueue(queue))) throw new NotFoundError('Job not found');
   switch (action) {
     case 'cancel':
       await boss.cancel(queue, id);

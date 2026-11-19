@@ -131,3 +131,66 @@ describe('writeFailureLevel', () => {
         expect(writeFailureLevel(undefined, ['mapper_parsing_exception: failed to parse field [price]', blocked])).toBe('error');
     });
 });
+
+describe('toAppError for an ID that is not a UUID', () => {
+    const query = (cause: Error) => new DrizzleQueryError('select "id" from "roles" where "roles"."id" = $1', ['not-a-uuid'], cause);
+    const postgres = (code: string, message: string) => Object.assign(new Error(message), { name: 'PostgresError', code, severity: 'ERROR' });
+    const badUuid = () => postgres('22P02', 'invalid input syntax for type uuid: "not-a-uuid"');
+
+    it('answers 400 for a query Postgres refused for a malformed uuid, without the value', () => {
+        const err = query(badUuid());
+        const appError = toAppError(err);
+        expect(appError).toMatchObject({ code: 'BAD_REQUEST', status: 400, message: "That ID isn't valid." });
+        expect(appError.message).not.toContain('not-a-uuid');
+        expect(JSON.stringify({ message: appError.message, hint: appError.hint, details: appError.details })).not.toContain('not-a-uuid');
+        expect(appError.cause).toBe(err);
+    });
+
+    it('is a warning in the log, not an error', () => {
+        expect(failureLevel(query(badUuid()), 'warn')).toBe('warn');
+    });
+
+    it('explains it when a step wrapped the failed query', () => {
+        const err = new Error('Lookup failed', { cause: query(badUuid()) });
+        expect(toAppError(err)).toMatchObject({ code: 'BAD_REQUEST', status: 400 });
+    });
+
+    it('leaves a 22P02 for another type as a bug of ours', () => {
+        const err = query(postgres('22P02', 'invalid input syntax for type integer: "abc"'));
+        expect(toAppError(err)).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
+    });
+
+    it("doesn't take the same error for a bad ID when it didn't come from a query", () => {
+        expect(toAppError(badUuid())).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
+        expect(toAppError(new Error('Something failed', { cause: badUuid() }))).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
+    });
+});
+
+describe('toAppError for a query error from another copy of drizzle-orm', () => {
+    // Next.js can bundle drizzle-orm once per route: its DrizzleQueryError is then not an
+    // instance of the class imported here, but has the same shape
+    class OtherDrizzleQueryError extends Error {
+        constructor(public query: string, public params: unknown[], cause: Error) {
+            super(`Failed query: ${query}\nparams: ${params}`);
+            this.cause = cause;
+        }
+    }
+    const pgError = (code: string, message: string) => Object.assign(new Error(message), { name: 'PostgresError', code });
+    const otherQuery = (cause: Error) => new OtherDrizzleQueryError('select "id" from "roles" where "roles"."id" = $1', ['not-a-uuid'], cause);
+
+    it('answers a malformed ID with 400', () => {
+        const err = otherQuery(pgError('22P02', 'invalid input syntax for type uuid: "not-a-uuid"'));
+        expect(err).not.toBeInstanceOf(DrizzleQueryError);
+        expect(toAppError(err)).toMatchObject({ code: 'BAD_REQUEST', status: 400, message: "That ID isn't valid." });
+    });
+
+    it('explains a database that is down', () => {
+        const err = otherQuery(pgError('57P01', 'terminating connection due to administrator command'));
+        expect(toAppError(err)).toMatchObject({ code: 'DATABASE_UNAVAILABLE', status: 503 });
+    });
+
+    it("doesn't take any error with a query field for a query's", () => {
+        const look = Object.assign(new Error('something else'), { query: 'q', params: [] , cause: pgError('22P02', 'invalid input syntax for type uuid: "x"') });
+        expect(toAppError(look)).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
+    });
+});
