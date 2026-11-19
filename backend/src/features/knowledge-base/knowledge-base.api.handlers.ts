@@ -10,14 +10,17 @@
  */
 
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
+
+import * as repository from './knowledge-base.repository';
+import * as service from './knowledge-base.service';
+import type { UploadDocumentInput } from './knowledge-base.service';
+
 import { assertMayChange } from '@/features/access/built-in';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
-import * as service from './knowledge-base.service';
-import type { UploadDocumentInput } from './knowledge-base.service';
-import * as repository from './knowledge-base.repository';
+import { z } from '@/shared/validation/zod';
+
 
 const logger = createLogger('knowledge-base-handlers');
 

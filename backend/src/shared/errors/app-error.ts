@@ -8,8 +8,12 @@
  * to-app-error.ts turns anything thrown into one.
  */
 
+import type { FieldErrorCode } from '@/shared/validation/validation-messages';
+
 export interface FieldError {
     field: string;
+    /** Stable, documented code (FIELD_ERROR_CODES in shared/validation/validation-messages.ts) */
+    code: FieldErrorCode;
     message: string;
 }
 

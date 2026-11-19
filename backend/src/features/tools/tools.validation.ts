@@ -1,6 +1,7 @@
-import { z } from 'zod';
-
 import { urlProblemMessage } from './executors/http-url';
+
+import { z } from '@/shared/validation/zod';
+
 
 // ============================================================================
 // TOOL TYPE CONSTANTS
@@ -28,7 +29,7 @@ const retryConfigSchema = z.object({
 
 const fallbackConfigSchema = z.object({
   type: z.enum(['default_response', 'alternative_tool', 'skip', 'error_message']),
-  config: z.record(z.unknown()).default({}),
+  config: z.record(z.string(), z.unknown()).default({}),
 });
 
 const healthCheckConfigSchema = z.object({
@@ -124,7 +125,7 @@ function sameValue(a: unknown, b: unknown): boolean {
 }
 
 function configProblem(
-  schema: z.AnyZodObject,
+  schema: z.ZodObject,
   config: unknown,
   previous?: Record<string, unknown> | null,
 ): string | undefined {
@@ -147,13 +148,13 @@ const httpExecutorConfigSchema = z.object({
     if (message) ctx.addIssue({ code: 'custom', message });
   }),
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
-  headers: z.record(z.string()).optional(),
-  queryParams: z.record(z.string()).optional(),
-  bodyTemplate: z.record(z.unknown()).nullable().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  queryParams: z.record(z.string(), z.string()).optional(),
+  bodyTemplate: z.record(z.string(), z.unknown()).nullable().optional(),
   responseMapping: z.object({
     resultsPath: z.string().optional(),
     totalCountPath: z.string().optional(),
-    fieldMappings: z.record(z.string()).optional(),
+    fieldMappings: z.record(z.string(), z.string()).optional(),
   }).optional(),
   authentication: z.object({
     type: z.enum(['none', 'header', 'query_param', 'bearer']),
@@ -230,8 +231,8 @@ const baseCreateSchema = z.object({
   aiDescription: z.string()
     .min(10, 'AI description must be at least 10 characters')
     .max(5000, 'AI description must be 5000 characters or less'),
-  inputSchema: z.record(z.unknown()).nullish().transform(v => v ?? undefined),
-  outputSchema: z.record(z.unknown()).nullish().transform(v => v ?? undefined),
+  inputSchema: z.record(z.string(), z.unknown()).nullish().transform(v => v ?? undefined),
+  outputSchema: z.record(z.string(), z.unknown()).nullish().transform(v => v ?? undefined),
   timeout: z.number().int().min(1000).max(300_000).default(30_000),
   retryConfig: retryConfigSchema.optional(),
   fallbackConfig: fallbackConfigSchema.optional(),
@@ -247,7 +248,7 @@ const dataSourceToolSchema = baseCreateSchema.extend({
   operation: z.enum(DATA_SOURCE_OPERATIONS),
   // Checked against the operation by the tools service (dataSourceConfigProblem): a union here
   // took the first schema that fit (search, all optional) and dropped every other key.
-  executorConfig: z.record(z.unknown()).optional(),
+  executorConfig: z.record(z.string(), z.unknown()).optional(),
 });
 
 /** HTTP tool: generic REST API or web search */
@@ -257,7 +258,7 @@ const httpToolSchema = baseCreateSchema.extend({
   operation: z.null().optional(),
   // Checked by the tools service (httpConfigProblem): a union here took the web search schema
   // (all optional) for a REST config it refused, and dropped every key.
-  executorConfig: z.record(z.unknown()),
+  executorConfig: z.record(z.string(), z.unknown()),
 });
 
 /** Web search tool: Tavily-powered live web search */
@@ -292,10 +293,10 @@ export type CreateToolDTO = z.infer<typeof createToolSchema>;
 export const updateToolSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(1000).nullish().transform(v => v ?? undefined),
-  executorConfig: z.record(z.unknown()).optional(),
+  executorConfig: z.record(z.string(), z.unknown()).optional(),
   aiDescription: z.string().min(10).max(5000).optional(),
-  inputSchema: z.record(z.unknown()).nullish().transform(v => v ?? undefined),
-  outputSchema: z.record(z.unknown()).nullish().transform(v => v ?? undefined),
+  inputSchema: z.record(z.string(), z.unknown()).nullish().transform(v => v ?? undefined),
+  outputSchema: z.record(z.string(), z.unknown()).nullish().transform(v => v ?? undefined),
   timeout: z.number().int().min(1000).max(300_000).optional(),
   retryConfig: retryConfigSchema.optional(),
   fallbackConfig: fallbackConfigSchema.nullable().optional(),

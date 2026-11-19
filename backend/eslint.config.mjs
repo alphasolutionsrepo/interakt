@@ -173,6 +173,14 @@ export default defineConfig([
       "no-restricted-imports": [
         "error",
         {
+          paths: [
+            {
+              name: "zod",
+              allowTypeImports: true,
+              message:
+                "Import z from '@/shared/validation/zod': it registers our validation messages before any schema runs.",
+            },
+          ],
           patterns: [
             {
               group: ["../widgets/*", "../../widgets/*", "../../../widgets/*"],
@@ -185,6 +193,14 @@ export default defineConfig([
     },
   },
   
+  // The one module that loads zod itself and registers our messages
+  {
+    files: ["src/shared/validation/zod.ts"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
+  },
+
   // Config file exceptions
   {
     files: ["*.config.{js,ts,mjs}", "next.config.*", "drizzle.config.*"],

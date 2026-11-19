@@ -765,6 +765,21 @@ describe('the AI summary routes with a value of the wrong type', () => {
   });
 });
 
+describe('the AI summary by slug with an invalid body', () => {
+  it('answers 400 with a code and our wording per field, in fields and in details', async () => {
+    const res = await summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { results: [] }), slugParams('catalog'));
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ success: false, code: 'VALIDATION_ERROR', message: 'Some values are not valid', requestId: expect.any(String) });
+    const expected = [
+      { field: 'query', code: 'invalid_type', message: 'This field is required.' },
+      { field: 'results', code: 'too_small', message: 'At least one result is required' },
+    ];
+    expect(body.fields).toEqual(expected);
+    expect(body.details).toEqual(expected);
+  });
+});
+
 describe('the AI summary by slug when the AI provider fails', () => {
   const providerError = () => Object.assign(new Error('401 Incorrect API key provided'), { name: 'AdapterError', providerKey: 'openai', statusCode: 401 });
 
@@ -1111,3 +1126,30 @@ describe('a dashboard session on the slug routes (the playgrounds)', () => {
     expect(source).toBe('admin_test');
   });
 });
+
+describe('a search request with values that are not valid', () => {
+  it('answers 400 with a field error carrying our wording and code, before any search runs', async () => {
+    const res = await searchBySlug(
+      req('/api/v1/search/catalog/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, { query: 'jeans', pageSize: 500 }),
+      slugParams('catalog'),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ success: false, code: 'VALIDATION_ERROR', message: 'Some values are not valid' });
+    expect(body.fields).toEqual([{ field: 'pageSize', code: 'too_big', message: 'Enter a number of at most 100.' }]);
+    expect(mocks.executeExperienceSearch).not.toHaveBeenCalled();
+  });
+
+  it('says a missing required value is required', async () => {
+    const res = await searchBySlug(
+      req('/api/v1/search/catalog/search', 'POST', { 'X-Access-Token': 'search-token', Origin: SHOP }, {}),
+      slugParams('catalog'),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.fields).toEqual([{ field: 'query', code: 'invalid_type', message: 'This field is required.' }]);
+  });
+});
+

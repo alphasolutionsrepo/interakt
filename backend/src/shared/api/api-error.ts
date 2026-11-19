@@ -8,6 +8,8 @@
 
 export interface ApiFieldError {
     field: string;
+    /** Stable code such as invalid_type or too_big (FIELD_ERROR_CODES); the message is for people */
+    code?: string;
     message: string;
 }
 

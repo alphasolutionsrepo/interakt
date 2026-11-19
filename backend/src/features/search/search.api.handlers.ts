@@ -8,14 +8,16 @@
  */
 
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { apiResponse } from '@/shared/api/response';
-import { getGlobalSearchConfig } from '@/features/global-settings';
-import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
-import { runWithTelemetryLevel } from '@/features/telemetry';
+
 import * as searchService from './search.service';
-import { searchRequestSchema } from './search.validation';
 import type { SearchRequest } from './search.types';
+import { searchRequestSchema } from './search.validation';
+
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import { getGlobalSearchConfig } from '@/features/global-settings';
+import { runWithTelemetryLevel } from '@/features/telemetry';
+import { apiResponse } from '@/shared/api/response';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // VALIDATION SCHEMAS

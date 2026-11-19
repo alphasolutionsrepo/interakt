@@ -6,8 +6,9 @@
  * Zod schemas for API request/response validation
  */
 
-import { z } from 'zod';
 import { SEARCH_DEFAULTS } from './search.types';
+
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // FILTER SCHEMAS
@@ -152,8 +153,8 @@ export type SearchRequestDTO = z.infer<typeof searchRequestSchema>;
 export const searchHitSchema = z.object({
     id: z.string(),
     score: z.number(),
-    source: z.record(z.unknown()),
-    highlights: z.record(z.array(z.string())).optional(),
+    source: z.record(z.string(), z.unknown()),
+    highlights: z.record(z.string(), z.array(z.string())).optional(),
     explanation: z.string().optional(),
 });
 

@@ -10,7 +10,7 @@
  * When modifying, also update: db/schema/enums.schema.ts
  */
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // ENUM VALUES (Source of Truth)

@@ -409,6 +409,7 @@ async function seedIndexWithDocs(
       aiProviderId: ai.providerId,
       aiModelId: ai.embeddingModelId,
       embeddingDimensions: ai.embeddingDimensions,
+      providerSettings: {},
     };
     indexRecord = await createSearchIndex(input, adminId);
     logger.info('Created search index', { name: cfg.name, id: indexRecord.id });

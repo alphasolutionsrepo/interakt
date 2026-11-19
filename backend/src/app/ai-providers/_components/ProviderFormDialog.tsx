@@ -5,7 +5,7 @@
 import { useEffect , useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 import {
     Dialog,
     DialogContent,
@@ -67,7 +67,8 @@ const providerFormSchema = z.object({
     isEnabled: z.boolean().default(false),
 });
 
-type ProviderFormData = z.infer<typeof providerFormSchema>;
+type ProviderFormData = z.output<typeof providerFormSchema>;
+type ProviderFormInput = z.input<typeof providerFormSchema>;
 type ConnectionType = ProviderFormData['connectionType'];
 
 /** What each connection type covers, and the base URL it expects. */
@@ -115,7 +116,7 @@ export function ProviderFormDialog({
     const [showApiKey, setShowApiKey] = useState(false);
     const inline = useInlineError();
 
-    const form = useForm<ProviderFormData>({
+    const form = useForm<ProviderFormInput, unknown, ProviderFormData>({
         resolver: zodResolver(providerFormSchema),
         defaultValues: {
             providerKey: '',

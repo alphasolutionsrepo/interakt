@@ -1,6 +1,6 @@
 // src/features/secrets/secrets.validation.ts
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // SECRET SCHEMAS

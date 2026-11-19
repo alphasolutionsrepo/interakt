@@ -12,23 +12,25 @@
 import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ZodError } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
-import { apiResponse } from '@/shared/api/response';
-import { readJsonBody } from '@/shared/api/read-json-body';
-import { AppError } from '@/shared/errors/app-error';
-import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
-import { analyticsSourceOfTokenCaller, markIfAdminTest } from '@/features/auth/token-or-session';
+
 import { createCorsHeaders, openPublicRequest, withCors } from './access-token.middleware';
+import * as autocompleteService from './autocomplete.service';
+import { executeExperienceSearch, NoSourcesError } from './experience-search';
 import { publicSearchRequestSchema, autocompleteRequestSchema } from './search-experience.schemas';
 import type {
   SearchExperienceWithIndexes,
   PublicSearchRequest,
   PublicSearchResponse,
 } from './search-experience.types';
-import * as autocompleteService from './autocomplete.service';
-import { executeExperienceSearch, NoSourcesError } from './experience-search';
+
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
+import { analyticsSourceOfTokenCaller, markIfAdminTest } from '@/features/auth/token-or-session';
 import { contentForLog } from '@/features/telemetry/log-content';
+import { readJsonBody } from '@/shared/api/read-json-body';
+import { apiResponse } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
+import { createLogger } from '@/shared/logger/logger';
+import { ZodError } from '@/shared/validation/zod';
 
 const logger = createLogger('search-experience-api');
 

@@ -22,7 +22,9 @@ import { toast } from 'sonner';
 import { aiModelsApi } from '../_lib/api-client';
 import { capabilitiesFromForm } from '../_lib/model-capabilities';
 import { modelUpdateInput, type ModelFormSubmission } from '../_lib/model-form';
+
 import { ModelFormDialog } from './ModelFormDialog';
+
 import {
     AlertDialog,
     AlertDialogAction,
@@ -318,6 +320,8 @@ export function ManageModelsDialog({
                     inputCostPerMillionTokens: data.inputCostPerMillionTokens,
                     outputCostPerMillionTokens: data.outputCostPerMillionTokens,
                     capabilities: capabilitiesFromForm(data),
+                    isDiscovered: false,
+                    sortOrder: 0,
                 };
                 await aiModelsApi.create(createData);
                 toast.success(`Model "${data.displayName}" added`);

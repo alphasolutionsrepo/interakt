@@ -10,11 +10,9 @@
 import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ZodError } from 'zod';
 
-import { apiResponse } from '@/shared/api/response';
-import { readJsonBody } from '@/shared/api/read-json-body';
-import { AppError } from '@/shared/errors/app-error';
+import { createSummaryStream } from './summary-stream';
+
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
 import { createCorsHeaders, openPublicRequest, withCors } from '@/features/search-experience/access-token.middleware';
@@ -25,7 +23,11 @@ import type {
   SearchExperienceWithIndexes,
   SummarizeAPIRequest,
 } from '@/features/search-experience/search-experience.types';
-import { createSummaryStream } from './summary-stream';
+import { readJsonBody } from '@/shared/api/read-json-body';
+import { apiResponse } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
+import { ZodError } from '@/shared/validation/zod';
+
 
 // ============================================================================
 // AI SUMMARY HANDLER
