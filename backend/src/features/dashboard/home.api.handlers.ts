@@ -3,7 +3,7 @@
 import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
+
 
 import { CHECKLIST_ID, getHomeData, homeDataForRole, invalidateHomeCache, TIP_ID } from './home.service';
 
@@ -18,6 +18,7 @@ import { turnedOff } from '@/features/feature-switches/gate';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
+import { z } from '@/shared/validation/zod';
 
 const logger = createLogger('home-handlers');
 

@@ -7,36 +7,21 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { jobError, recordLastJob } from '@/features/search-index/search-index.service';
-import { apiResponse } from '@/shared/api/response';
-import { writeFailureLevel } from '@/shared/errors/to-app-error';
-import { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
-import { createLogger } from '@/shared/logger/logger';
-// Session resolution now happens inside resolveDocumentActor, which handles both
-// session and ingestion-key callers.
-import { elasticsearchConfig } from '../../../config';
-import { uploadOutcome } from './upload-outcome';
-import { partialWriteHint, writeFailure } from './write-failure';
 
+import { elasticsearchConfig } from '../../../config';
+
+import {
+    resolveDocumentActor,
+    actorCan,
+    actorLogContext,
+    actorAuditColumns,
+} from './document-actor';
 import {
     indexDocuments,
     getIndexingProgress,
     listBatches,
     cancelBatch,
 } from './document-indexer.service';
-
-import {
-    getDocument,
-    listDocuments,
-    writeDocuments,
-    deleteDocumentsByFilter,
-    SearchIndexNotFoundError,
-    IndexNotProvisionedError,
-    type DocumentWriteAction,
-    type DocumentWriteOperation,
-    type DocumentWriteResult,
-} from './document-writer.service';
-
 import {
     indexDocumentsRequestSchema,
     batchIdParamSchema,
@@ -53,17 +38,30 @@ import {
     type DeleteByFilterResponse,
     type ListDocumentsResponse,
 } from './document-indexing.types';
+import {
+    getDocument,
+    listDocuments,
+    writeDocuments,
+    deleteDocumentsByFilter,
+    SearchIndexNotFoundError,
+    IndexNotProvisionedError,
+    type DocumentWriteAction,
+    type DocumentWriteOperation,
+    type DocumentWriteResult,
+} from './document-writer.service';
+import { uploadOutcome } from './upload-outcome';
+import { partialWriteHint, writeFailure } from './write-failure';
 
 import { SearchError, type FilterClause } from '@/features/search/search.types';
+import { jobError, recordLastJob } from '@/features/search-index/search-index.service';
+import { apiResponse } from '@/shared/api/response';
+import { EMBEDDING_FIELD_NAME } from '@/shared/constants/search-index.constants';
+import { writeFailureLevel } from '@/shared/errors/to-app-error';
+import { createLogger } from '@/shared/logger/logger';
+// Session resolution now happens inside resolveDocumentActor, which handles both
+// session and ingestion-key callers.
 
-import {
-    resolveDocumentActor,
-    actorCan,
-    actorLogContext,
-    actorAuditColumns,
-} from './document-actor';
-
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 const logger = createLogger('document-indexing-handlers');
 

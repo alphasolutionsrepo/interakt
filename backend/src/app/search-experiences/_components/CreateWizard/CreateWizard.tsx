@@ -21,11 +21,7 @@
 
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import {
   ChevronLeft,
   ChevronRight,
@@ -36,14 +32,21 @@ import {
   Brain,
   Layout,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { StepProgress } from '@/components/ui/steps-progress';
-import { StepBasicInfo } from './StepBasicInfo';
-import { StepSearchSettings } from './StepSearchSettings';
-import { StepAIConfig } from './StepAIConfig';
-import { StepDisplayConfig } from './StepDisplayConfig';
+
 import { searchExperiencesApi } from '../../_lib/api-client';
 import { searchExperienceKeys } from '../../_lib/hooks';
+
+import { StepAIConfig } from './StepAIConfig';
+import { StepBasicInfo } from './StepBasicInfo';
+import { StepDisplayConfig } from './StepDisplayConfig';
+import { StepSearchSettings } from './StepSearchSettings';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { StepProgress } from '@/components/ui/steps-progress';
 import {
   wizardStep1Schema,
   wizardStep2Schema,
@@ -55,6 +58,7 @@ import {
 } from '@/features/search-experience/search-experience.client';
 import { useInlineError } from '@/shared/activity/useInlineError';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
+import { firstMessagePerField } from '@/shared/validation/validation-messages';
 
 // ============================================================================
 // TYPES
@@ -205,16 +209,8 @@ export function CreateWizard({ basePath = '/search-experiences', listPath }: { b
       return true;
     }
 
-    // Convert Zod errors to simple field -> message map
-    const errors: StepErrors = {};
-    if (!result.success) {
-      result.error.errors.forEach((err) => {
-        const field = err.path.join('.');
-        if (!errors[field]) {
-          errors[field] = err.message;
-        }
-      });
-    }
+    // Zod issues as a field -> message map
+    const errors: StepErrors = result.success ? {} : firstMessagePerField(result.error.issues);
 
     // Add external errors
     if (hasExternalErrors && externalErrors.slug) {

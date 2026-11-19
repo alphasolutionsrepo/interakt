@@ -8,14 +8,16 @@
  */
 
 import { NextRequest } from 'next/server';
+
+import * as aiService from './ai-service.service';
+import type { ChatMessage } from './ai-service.types';
+
+import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { apiResponse, describeError } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
-import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
-import * as aiService from './ai-service.service';
-import type { ChatMessage } from './ai-service.types';
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 const logger = createLogger('ai-service-handlers');
 
@@ -206,13 +208,7 @@ export async function handleChatStream(request: NextRequest) {
     const validation = chatRequestBodySchema.safeParse(body);
 
     if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: 'Validation failed',
-        details: validation.error.errors,
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return apiResponse.validationError(validation.error, { operation: 'chatStream' });
     }
 
     const { messages, ...options } = validation.data;

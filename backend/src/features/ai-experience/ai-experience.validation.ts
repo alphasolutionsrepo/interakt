@@ -1,6 +1,6 @@
 // src/features/ai-experience/ai-experience.validation.ts
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // CONSTANTS
@@ -70,7 +70,7 @@ const guardrailRuleSchema = z.object({
   id: z.string().min(1).max(100),
   name: z.string().min(1).max(255),
   type: z.enum(GUARDRAIL_RULE_TYPES),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
   action: z.enum(GUARDRAIL_ACTIONS),
   enabled: z.boolean(),
   priority: z.number().int().min(0).max(1000),
@@ -186,12 +186,12 @@ const pipelineStepSchema = z.object({
   type: z.string().min(1),
   name: z.string().min(1).max(255),
   description: z.string().max(500).optional(),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
   enabled: z.boolean(),
   order: z.number().int().min(0),
   conditions: z.array(stepConditionSchema).optional(),
   onFailure: z.enum(['abort', 'skip', 'fallback']).optional(),
-  fallbackConfig: z.record(z.unknown()).optional(),
+  fallbackConfig: z.record(z.string(), z.unknown()).optional(),
 });
 
 const pipelineSettingsSchema = z.object({
@@ -322,7 +322,7 @@ export type UpdateAIExperienceDTO = z.infer<typeof updateAIExperienceSchema>;
 export const assignToolSchema = z.object({
   toolId: z.string().uuid('Invalid tool ID'),
   overrideAiDescription: z.string().max(2000).nullish().transform(v => v ?? undefined),
-  overrideConfig: z.record(z.unknown()).nullish().transform(v => v ?? undefined),
+  overrideConfig: z.record(z.string(), z.unknown()).nullish().transform(v => v ?? undefined),
   isEnabled: z.boolean().optional().default(true),
   sortOrder: z.number().int().min(0).optional().default(0),
 });
@@ -331,7 +331,7 @@ export type AssignToolDTO = z.infer<typeof assignToolSchema>;
 
 export const updateToolAssignmentSchema = z.object({
   overrideAiDescription: z.string().max(2000).nullish().transform(v => v ?? undefined),
-  overrideConfig: z.record(z.unknown()).nullish().transform(v => v ?? undefined),
+  overrideConfig: z.record(z.string(), z.unknown()).nullish().transform(v => v ?? undefined),
   isEnabled: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
 });

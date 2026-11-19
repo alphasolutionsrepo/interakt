@@ -21,11 +21,11 @@ import { getAIExperienceBySlug } from '@/features/ai-experience/ai-experience.se
 import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
 import { aiExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
-import { chatEventStream } from '@/features/pipeline/chat-event-stream';
 import { publicApiRoute, refuseHelpIfOff } from '@/features/feature-switches/gate';
-import { HELP_EXPERIENCE_SLUG } from '@/shared/help/help-content';
+import { chatEventStream } from '@/features/pipeline/chat-event-stream';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
+import { HELP_EXPERIENCE_SLUG } from '@/shared/help/help-content';
 
 async function post(
   request: NextRequest,
@@ -38,7 +38,7 @@ async function post(
     // ── Parse & validate body ──────────────────────────────────────────────────
     const parsed = chatRequestSchema.safeParse(await readJsonBody(request));
     if (!parsed.success) {
-      return apiResponse.badRequest(parsed.error.errors[0]?.message ?? 'Invalid request body');
+      return apiResponse.badRequest(parsed.error.issues[0]?.message ?? 'Invalid request body');
     }
 
     const { message, sessionId: clientSessionId } = parsed.data;

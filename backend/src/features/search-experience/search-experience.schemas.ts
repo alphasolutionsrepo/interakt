@@ -6,7 +6,6 @@
  * Zod schemas for validating API requests and configuration.
  */
 
-import { z } from 'zod';
 import {
   DEFAULT_SEARCH_CONFIG,
   DEFAULT_AI_CONFIG,
@@ -15,6 +14,8 @@ import {
   MIN_QUERY_UNDERSTANDING_TIMEOUT_MS,
   MAX_QUERY_UNDERSTANDING_TIMEOUT_MS,
 } from './search-experience.types';
+
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // BASE SCHEMAS
@@ -127,7 +128,7 @@ export const aiConfigSchema = z.object({
 
 export const toolsConfigSchema = z.object({
   enabled: z.array(z.string()).default(DEFAULT_TOOLS_CONFIG.enabled),
-  settings: z.record(z.unknown()).default(DEFAULT_TOOLS_CONFIG.settings),
+  settings: z.record(z.string(), z.unknown()).default(DEFAULT_TOOLS_CONFIG.settings),
 });
 
 // ============================================================================
@@ -312,7 +313,7 @@ export const summarizeAPIRequestSchema = z.object({
       id: z.string(),
       name: z.string(),
     }),
-    fields: z.record(z.unknown()),
+    fields: z.record(z.string(), z.unknown()),
   })).min(1, 'At least one result is required').max(50),
   totalResults: z.number().int().min(0).optional(),
   instruction: z.string().max(500).optional(),

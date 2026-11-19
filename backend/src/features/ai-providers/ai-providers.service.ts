@@ -640,6 +640,7 @@ export async function getModelsForPurpose(
   return listModelsWithProvider({
     modelType,
     isAvailable: true,
+    includeProvider: false,
   });
 }
 

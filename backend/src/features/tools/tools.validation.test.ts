@@ -416,3 +416,36 @@ describe('updateToolHealthSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('createToolSchema with record fields', () => {
+  const tool = {
+    ...baseFields,
+    executorType: 'http' as const,
+    executorConfig: { baseUrl: 'https://api.example.com', method: 'GET' },
+  };
+
+  it('keeps executorConfig, inputSchema and the fallback config as given', () => {
+    const inputSchema = { type: 'object', properties: { q: { type: 'string' } } };
+    const result = createToolSchema.safeParse({
+      ...tool,
+      inputSchema,
+      fallbackConfig: { type: 'default_response', config: { text: 'sorry' } },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.executorConfig).toEqual(tool.executorConfig);
+    expect(result.data.inputSchema).toEqual(inputSchema);
+    expect(result.data.fallbackConfig?.config).toEqual({ text: 'sorry' });
+  });
+
+  it('turns a null inputSchema into undefined and defaults the fallback config to {}', () => {
+    const result = createToolSchema.safeParse({ ...tool, inputSchema: null, fallbackConfig: { type: 'skip' } });
+    expect(result.success && result.data.inputSchema).toBeUndefined();
+    expect(result.success && result.data.fallbackConfig?.config).toEqual({});
+  });
+
+  it('refuses an executorConfig or inputSchema that is not an object', () => {
+    expect(createToolSchema.safeParse({ ...tool, executorConfig: 'x' }).success).toBe(false);
+    expect(createToolSchema.safeParse({ ...tool, inputSchema: [1] }).success).toBe(false);
+  });
+});

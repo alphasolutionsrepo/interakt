@@ -196,7 +196,7 @@ export async function updateAIExperience(id: string, input: UpdateAIExperienceDT
   // Expand topic gate embeddings if guardrail config changed
   let guardrailConfig = input.guardrailConfig;
   if (guardrailConfig !== undefined) {
-    guardrailConfig = await expandTopicGateIfNeeded(guardrailConfig);
+    guardrailConfig = (await expandTopicGateIfNeeded(guardrailConfig)) as typeof guardrailConfig;
   }
 
   const updated = await repository.updateAIExperience(id, {

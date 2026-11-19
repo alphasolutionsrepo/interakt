@@ -10,21 +10,24 @@
 // Run `npm run openapi:generate` (see generate-openapi.ts) to emit the spec
 // that the Docusaurus site renders.
 
-import { z } from 'zod';
 import {
   OpenAPIRegistry,
   OpenApiGeneratorV31,
   extendZodWithOpenApi,
 } from '@asteasolutions/zod-to-openapi';
 
+import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
 import {
   publicSearchRequestSchema,
   autocompleteRequestSchema,
   summarizeAPIRequestSchema,
 } from '@/features/search-experience/search-experience.schemas';
-import { chatRequestSchema } from '@/features/ai-experience/ai-experience.validation';
+import { FIELD_ERROR_CODES } from '@/shared/validation/validation-messages';
+import { z } from '@/shared/validation/zod';
 
-// Augment Zod with `.openapi()` — must run before any schema gets metadata.
+// Augment Zod with `.openapi()`. zod 4 gives each schema its methods when it is created, so only
+// schemas built after this line have `.openapi()`; schemas imported from other modules are
+// registered with zod's own `.meta({ id })`, which the generator reads the same way.
 extendZodWithOpenApi(z);
 
 export const registry = new OpenAPIRegistry();
@@ -56,15 +59,33 @@ const tokenAuth = [{ [ACCESS_TOKEN]: [] }, { [BEARER]: [] }];
 // SHARED RESPONSE SCHEMAS
 // ============================================================================
 
+const fieldErrorSchema = z
+  .object({
+    field: z.string().openapi({ description: 'Path of the value in the request, dot-separated.', example: 'pageSize' }),
+    code: z.enum(FIELD_ERROR_CODES).openapi({
+      description: 'Stable code for the problem; rely on this rather than the message. New codes may be added.',
+      example: 'too_big',
+    }),
+    message: z.string().openapi({ description: 'What is wrong, for people. The wording may change.', example: 'Enter a number of at most 100.' }),
+  })
+  .openapi('FieldError');
+
 const errorResponseSchema = z
   .object({
-    success: z.literal(false).optional(),
-    error: z.string().openapi({ example: 'Invalid access token' }),
-    code: z.string().optional().openapi({ example: 'UNAUTHORIZED' }),
-    details: z
-      .array(z.object({ field: z.string(), message: z.string() }))
+    success: z.literal(false),
+    code: z.string().openapi({ description: 'Stable error code.', example: 'VALIDATION_ERROR' }),
+    message: z.string().openapi({ description: 'What happened, in plain words.', example: 'Some values are not valid' }),
+    error: z.string().openapi({ description: 'Same as message.', example: 'Some values are not valid' }),
+    hint: z.string().optional().openapi({ description: 'What to try next, when there is something to try.' }),
+    fields: z
+      .array(fieldErrorSchema)
       .optional()
-      .openapi({ description: 'Per-field validation errors (present on 400 VALIDATION_ERROR).' }),
+      .openapi({ description: 'Per-field problems (present on 400 VALIDATION_ERROR).' }),
+    details: z
+      .array(fieldErrorSchema)
+      .optional()
+      .openapi({ description: 'The same per-field problems as fields (present on 400 VALIDATION_ERROR).' }),
+    requestId: z.string().openapi({ description: 'Quote this when contacting support.' }),
   })
   .openapi('ErrorResponse');
 
@@ -83,8 +104,8 @@ const searchHitSchema = z
   .object({
     id: z.string(),
     score: z.number(),
-    source: z.record(z.unknown()).openapi({ description: 'Indexed document fields (subject to field-level include/exclude config).' }),
-    highlights: z.record(z.array(z.string())).optional(),
+    source: z.record(z.string(), z.unknown()).openapi({ description: 'Indexed document fields (subject to field-level include/exclude config).' }),
+    highlights: z.record(z.string(), z.array(z.string())).optional(),
   })
   .openapi('SearchHit');
 
@@ -108,7 +129,7 @@ const searchResponseSchema = z
       took: z.number().int().openapi({ description: 'Total round-trip time in milliseconds.' }),
       searchExperienceId: z.string().uuid(),
       indexesSearched: z.array(z.object({ id: z.string().uuid(), name: z.string(), displayName: z.string() })),
-      displayConfig: z.record(z.unknown()).optional(),
+      displayConfig: z.record(z.string(), z.unknown()).optional(),
       partial: z.boolean().optional().openapi({
         description: 'Present and true when one of the experience\'s sources failed while others answered: the results are incomplete.',
       }),
@@ -142,11 +163,11 @@ const documentResponseSchema = z
     data: z.object({
       document: z.object({
         id: z.string(),
-        fields: z.record(z.unknown()),
+        fields: z.record(z.string(), z.unknown()),
         indexId: z.string(),
         indexName: z.string(),
       }),
-      displayConfig: z.record(z.unknown()).optional(),
+      displayConfig: z.record(z.string(), z.unknown()).optional(),
     }),
   })
   .openapi('DocumentResponse');
@@ -212,7 +233,7 @@ registry.registerPath({
   summary: 'Run a search query',
   description: 'Executes a query against a Search Experience and returns ranked results, facets, and pagination.',
   security: tokenAuth,
-  request: { body: { content: json(publicSearchRequestSchema.openapi('SearchRequest')) } },
+  request: { body: { content: json(publicSearchRequestSchema.meta({ id: 'SearchRequest' })) } },
   responses: {
     200: { description: 'Search results.', content: json(searchResponseSchema) },
     400: errorResponse('Invalid request body or no valid indexes configured.'),
@@ -230,7 +251,7 @@ registry.registerPath({
   summary: 'Autocomplete suggestions',
   description: 'Returns type-ahead suggestions for a partial query.',
   security: tokenAuth,
-  request: { body: { content: json(autocompleteRequestSchema.openapi('AutocompleteRequest')) } },
+  request: { body: { content: json(autocompleteRequestSchema.meta({ id: 'AutocompleteRequest' })) } },
   responses: {
     200: { description: 'Suggestions.', content: json(autocompleteResponseSchema) },
     401: errorResponse('Missing or invalid access token.'),
@@ -247,7 +268,7 @@ registry.registerPath({
   description:
     'Generates an AI summary over a set of search results. ' + sseDescription,
   security: tokenAuth,
-  request: { body: { content: json(summarizeAPIRequestSchema.openapi('SummarizeRequest')) } },
+  request: { body: { content: json(summarizeAPIRequestSchema.meta({ id: 'SummarizeRequest' })) } },
   responses: {
     200: { description: 'SSE stream of summary content.', content: { 'text/event-stream': { schema: z.string() } } },
     401: errorResponse('Missing or invalid access token.'),
@@ -286,7 +307,7 @@ registry.registerPath({
     'Sends a user message to the AI Experience identified by the access token and streams the assistant response. ' +
     sseDescription,
   security: tokenAuth,
-  request: { body: { content: json(chatRequestSchema.openapi('ChatRequest')) } },
+  request: { body: { content: json(chatRequestSchema.meta({ id: 'ChatRequest' })) } },
   responses: {
     200: { description: 'SSE stream of the assistant turn.', content: { 'text/event-stream': { schema: z.string() } } },
     400: errorResponse('Invalid request body.'),

@@ -1,11 +1,12 @@
 import { DrizzleQueryError } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+
 
 import { AppError, ConflictError } from './app-error';
 import { failureLevel, toAppError, writeFailureLevel } from './to-app-error';
 
 import { SearchError } from '@/features/search/search.types';
+import { z } from '@/shared/validation/zod';
 
 describe('toAppError', () => {
     it('returns AppErrors as they are', () => {
@@ -19,6 +20,19 @@ describe('toAppError', () => {
         const err = toAppError(!result.success && result.error);
         expect(err).toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
         expect(err.fields?.map((f) => f.field)).toEqual(['name', 'fields.0.dimensions']);
+    });
+
+    it('keeps the code and our wording on each field of a Zod error', () => {
+        const result = z.object({ name: z.string(), size: z.number().max(5), kind: z.enum(['a', 'b']) }).strict()
+            .safeParse({ size: 9, kind: 'c', extra: 1 });
+        const err = toAppError(!result.success && result.error);
+        expect(err).toMatchObject({ code: 'VALIDATION_ERROR', status: 400, message: 'Some values are not valid' });
+        expect(err.fields).toEqual([
+            { field: 'name', code: 'invalid_type', message: 'This field is required.' },
+            { field: 'size', code: 'too_big', message: 'Enter a number of at most 5.' },
+            { field: 'kind', code: 'invalid_value', message: 'Choose one of: "a", "b".' },
+            { field: 'extra', code: 'unrecognized_key', message: 'Unknown field: "extra".' },
+        ]);
     });
 
     it('maps the feature errors by name', () => {

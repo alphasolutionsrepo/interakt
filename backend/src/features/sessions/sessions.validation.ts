@@ -1,6 +1,6 @@
 // src/features/sessions/sessions.validation.ts
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // CONSTANTS
@@ -53,7 +53,7 @@ export const messageMetadataSchema = z.object({
 export const userContextSchema = z.object({
   userId: z.string().min(1).optional(),
   displayName: z.string().max(255).optional(),
-  preferences: z.record(z.unknown()).optional(),
+  preferences: z.record(z.string(), z.unknown()).optional(),
   permissions: z.array(z.string()).optional(),
 });
 
@@ -68,7 +68,7 @@ const toolResultEntrySchema = z.object({
   executedAt: z.string().datetime(),
 });
 
-export const lastToolResultsSchema = z.record(toolResultEntrySchema);
+export const lastToolResultsSchema = z.record(z.string(), toolResultEntrySchema);
 
 // ============================================================================
 // CREATE SESSION
@@ -78,7 +78,7 @@ export const createSessionSchema = z.object({
   aiExperienceId: z.string().uuid('Invalid AI Experience ID'),
 
   /** Optional client metadata (device info, page URL, etc.) */
-  clientMetadata: z.record(z.unknown()).optional(),
+  clientMetadata: z.record(z.string(), z.unknown()).optional(),
 
   /** Optional user context (Phase 3 — identity) */
   userContext: userContextSchema.optional(),
@@ -107,8 +107,8 @@ export type AddMessageDTO = z.infer<typeof addMessageSchema>;
 
 export const updateSessionSchema = z.object({
   summary: z.string().optional(),
-  facts: z.record(z.unknown()).optional(),
-  pipelineState: z.record(z.record(z.unknown())).optional(),
+  facts: z.record(z.string(), z.unknown()).optional(),
+  pipelineState: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
   lastToolResults: lastToolResultsSchema.optional(),
   userContext: userContextSchema.optional(),
   status: z.enum(SESSION_STATUSES).optional(),

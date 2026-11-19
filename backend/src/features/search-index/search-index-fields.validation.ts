@@ -7,7 +7,6 @@
  * SINGLE SOURCE OF TRUTH for field DTOs.
  */
 
-import { z } from 'zod';
 import { FIELD_TYPES } from '@/shared/constants/field-types';
 import {
     MAPPING_MODES,
@@ -18,6 +17,7 @@ import {
     DEFAULT_MAPPING_CONFIG,
     isAutocompleteCompatibleFieldType,
 } from '@/shared/constants/search-index.constants';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // BASE SCHEMAS (Enums)
@@ -181,7 +181,7 @@ export const fieldMappingConfigSchema = z.object({
     }
 );
 
-export type FieldMappingConfigInput = z.infer<typeof fieldMappingConfigSchema>;
+export type FieldMappingConfigInput = z.input<typeof fieldMappingConfigSchema>;
 
 /**
  * Partial schema for updates (all fields optional)
@@ -207,7 +207,7 @@ export const partialFieldMappingConfigSchema = z.object({
 export const legacyFieldTransformConfigSchema = z.object({
     type: valueTransformSchema,
     customFunction: z.string().optional(),
-    parameters: z.record(z.unknown()).optional(),
+    parameters: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -271,7 +271,7 @@ export const createSearchIndexFieldSchema = z.object({
     mappingConfig: fieldMappingConfigSchema.optional(),
 
     // Per-provider override JSON (ES analyzer knobs, Azure profile refs, etc.)
-    providerFieldSettings: z.record(z.unknown()).optional().nullable(),
+    providerFieldSettings: z.record(z.string(), z.unknown()).optional().nullable(),
 
     // Legacy support - will be converted to mappingConfig
     transformConfig: legacyFieldTransformConfigSchema.optional(),
@@ -329,7 +329,7 @@ export const updateSearchIndexFieldSchema = z.object({
     customAnalyzer: z.string().max(50).optional().nullable(),
 
     // Provider-specific field settings (e.g. Azure isSortable, ES isAutocomplete)
-    providerFieldSettings: z.record(z.unknown()).optional(),
+    providerFieldSettings: z.record(z.string(), z.unknown()).optional(),
 
     // Mapping configuration (new format)
     mappingConfig: partialFieldMappingConfigSchema.optional(),
@@ -381,7 +381,7 @@ export const bulkUpdateFieldMappingsSchema = z.object({
     })).min(1, 'At least one mapping is required'),
 });
 
-export type BulkUpdateFieldMappingsInput = z.infer<typeof bulkUpdateFieldMappingsSchema>;
+export type BulkUpdateFieldMappingsInput = z.input<typeof bulkUpdateFieldMappingsSchema>;
 
 // ============================================================================
 // ADDITIONAL DATA CONFIGURATION SCHEMA
@@ -409,8 +409,8 @@ export const analyzeSampleJsonSchema = z.object({
      */
     sampleJson: z.union([
         z.string().min(2, 'Sample JSON is required'),
-        z.record(z.unknown()),
-        z.array(z.record(z.unknown())),
+        z.record(z.string(), z.unknown()),
+        z.array(z.record(z.string(), z.unknown())),
     ]),
 
     /**

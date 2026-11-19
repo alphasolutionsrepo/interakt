@@ -2,9 +2,17 @@
 
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
+
+import { Loader2, Sparkles, MessageSquare, FileText, Database, Eye } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { cn } from '@/lib/utils';
+import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
+import { ActionSwitch } from '@/shared/access/ActionControls';
+import { REASONING_CHOICES, REASONING_LABELS } from '../_lib/model-capabilities';
+import { formValuesOf, modelFormSchema, optionalNumber, shortenSwitchFor, type ModelFormData } from '../_lib/model-form';
+import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
@@ -13,11 +21,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import {
     Select,
     SelectContent,
@@ -25,14 +30,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Sparkles, MessageSquare, FileText, Database, Eye } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import type { AIProviderModelResponse } from '@/features/ai-providers';
 import { useInlineError } from '@/shared/activity/useInlineError';
-import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
-import { ActionSwitch } from '@/shared/access/ActionControls';
-import { REASONING_CHOICES, REASONING_LABELS } from '../_lib/model-capabilities';
-import { formValuesOf, modelFormSchema, optionalNumber, shortenSwitchFor, type ModelFormData } from '../_lib/model-form';
+import type { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // Model Type Config
@@ -45,8 +47,11 @@ const MODEL_TYPE_CONFIG = {
     vision: { label: 'Vision', icon: Eye },
 } as const;
 
+/** What the form fields hold (schema input: defaulted fields may be unset) */
+type ModelFormInput = z.input<typeof modelFormSchema>;
+
 /** The form for a new model */
-const EMPTY_MODEL_FORM: ModelFormData = {
+const EMPTY_MODEL_FORM: ModelFormInput = {
     modelKey: '',
     displayName: '',
     description: '',
@@ -100,7 +105,7 @@ export function ModelFormDialog({
         setError,
         getValues,
         formState: { errors },
-    } = useForm<ModelFormData>({
+    } = useForm<ModelFormInput, unknown, ModelFormData>({
         resolver: zodResolver(modelFormSchema),
         // An edit starts from the saved model (the reset below follows it when the dialog reopens)
         defaultValues: model ? formValuesOf(model) : EMPTY_MODEL_FORM,

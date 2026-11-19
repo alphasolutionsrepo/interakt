@@ -491,6 +491,24 @@ Immediate and irreversible. The next request using that key gets `401`.
 | `409` | The index exists in Interakt but has not been provisioned in the search engine yet. Upload once via `POST /documents` to create it, then incremental writes will work |
 | `429` | Rate limited. Honour `Retry-After` |
 
+A `400` for failed validation lists each problem in `fields`, with the value's path, a stable
+`code` and a message for people:
+
+```jsonc
+{
+  "success": false,
+  "code": "VALIDATION_ERROR",
+  "message": "Some values are not valid",
+  "fields": [
+    { "field": "documents", "code": "too_small", "message": "Add at least 1 item." }
+  ]
+}
+```
+
+The codes are `invalid_type` (missing or the wrong type), `too_small`, `too_big`,
+`invalid_format`, `invalid_value`, `unrecognized_key` and `invalid`. Rely on the code rather
+than the message: codes are only ever added to, while the wording may improve.
+
 The `401` vs `403` split is deliberate: `403` confirms the key is real, so failures never reveal
 which indexes exist to someone holding an unrelated key.
 

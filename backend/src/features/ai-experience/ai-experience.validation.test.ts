@@ -570,3 +570,67 @@ describe('listAIExperiencesQuerySchema', () => {
     }
   });
 });
+
+// ============================================================================
+// FREE-FORM RECORD FIELDS (acceptance pins: records of unknown keep their content;
+// a string or array in a record's place is rejected with an invalid_type at its path)
+// ============================================================================
+
+describe('free-form record fields', () => {
+  const freeForm = { threshold: 0.5, list: ['a', { b: null }], nested: { deep: true } };
+  const pathsOf = (result: { success: boolean; error?: { issues: Array<{ code: string; path: PropertyKey[] }> } }) =>
+    result.error?.issues.map((i) => ({ code: i.code, path: i.path }));
+
+  describe('tool assignment overrideConfig', () => {
+    const toolId = '123e4567-e89b-42d3-a456-426614174000';
+
+    it('assign: keeps the record as sent; null becomes undefined', () => {
+      expect(assignToolSchema.parse({ toolId, overrideConfig: freeForm }).overrideConfig).toEqual(freeForm);
+      expect(assignToolSchema.parse({ toolId, overrideConfig: null }).overrideConfig).toBeUndefined();
+    });
+
+    it.each([['a string', 'x'], ['an array', [1]]])('assign: %s is rejected at overrideConfig', (_n, value) => {
+      expect(pathsOf(assignToolSchema.safeParse({ toolId, overrideConfig: value }))).toEqual([{ code: 'invalid_type', path: ['overrideConfig'] }]);
+    });
+
+    it('update: keeps the record; a string is rejected at overrideConfig', () => {
+      expect(updateToolAssignmentSchema.parse({ overrideConfig: freeForm }).overrideConfig).toEqual(freeForm);
+      expect(pathsOf(updateToolAssignmentSchema.safeParse({ overrideConfig: 'x' }))).toEqual([{ code: 'invalid_type', path: ['overrideConfig'] }]);
+    });
+  });
+
+  describe('pipeline step config and fallbackConfig', () => {
+    const step = (over: Record<string, unknown>) => ({
+      mode: 'deterministic' as const,
+      steps: [{ id: 's', type: 't', name: 'n', config: {}, enabled: true, order: 0, ...over }],
+      settings: {},
+    });
+
+    it('keeps config and fallbackConfig as sent', () => {
+      const parsed = pipelineConfigSchema.parse(step({ config: freeForm, fallbackConfig: freeForm }));
+      expect(parsed.steps[0].config).toEqual(freeForm);
+      expect(parsed.steps[0].fallbackConfig).toEqual(freeForm);
+    });
+
+    it.each([['config', 'x'], ['config', [1]], ['fallbackConfig', 'x'], ['fallbackConfig', [1]]])('rejects %s given %j', (key, value) => {
+      expect(pathsOf(pipelineConfigSchema.safeParse(step({ [key]: value })))).toEqual([{ code: 'invalid_type', path: ['steps', 0, key] }]);
+    });
+  });
+
+  describe('guardrail rule config', () => {
+    const rule = (config: unknown) => ({
+      id: 'r', name: 'n', type: 'topic_gate' as const, config, action: 'block', enabled: true, priority: 1,
+    });
+    const side = (config: unknown) => ({ enabled: true, rules: [rule(config)], onBlock: { message: 'no' } });
+
+    it('keeps the rule config as sent', () => {
+      const parsed = guardrailConfigSchema.parse({ inputGuardrail: side(freeForm), outputGuardrail: { ...side({}), rules: [] } });
+      expect(parsed.inputGuardrail.rules[0].config).toEqual(freeForm);
+    });
+
+    it.each([['a string', 'x'], ['an array', [1]]])('rejects a rule config given %s', (_n, value) => {
+      const result = guardrailConfigSchema.safeParse({ inputGuardrail: side(value), outputGuardrail: { ...side({}), rules: [] } });
+      expect(pathsOf(result)).toContainEqual({ code: 'invalid_type', path: ['inputGuardrail', 'rules', 0, 'config'] });
+    });
+  });
+});

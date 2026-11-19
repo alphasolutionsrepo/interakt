@@ -1,7 +1,7 @@
 // src/features/tools/tools.api.handlers.ts
 
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
+
 
 import type { LookupFieldsConfig } from './executors/data-source/lookup-field-rules';
 import { lookupFieldsStatus } from './lookup-fields.service';
@@ -30,6 +30,7 @@ import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
+import { z } from '@/shared/validation/zod';
 
 
 const logger = createLogger('tools-handlers');

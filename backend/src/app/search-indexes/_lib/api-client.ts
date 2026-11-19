@@ -1,16 +1,6 @@
 // app/search-indexes/_lib/api-client.ts
 
 import type { IndexLastJob } from '@/db/schema/search-index.schema';
-import { ApiError, apiErrorFrom, toApiError, handleApiResponse } from '@/shared/api/api-error';
-
-/**
- * Search Index API Client
- * 
- * Frontend API client for search index operations.
- * 
- * UPDATED: Added new mapping config endpoints
- */
-
 import type {
     SearchIndex,
     SearchIndexComplete,
@@ -29,6 +19,16 @@ import type {
     BulkUpdateFieldMappingsDTO,
     FieldMappingConfig,
 } from '@/features/search-index';
+import { ApiError, apiErrorFrom, toApiError, handleApiResponse } from '@/shared/api/api-error';
+
+/**
+ * Search Index API Client
+ * 
+ * Frontend API client for search index operations.
+ * 
+ * UPDATED: Added new mapping config endpoints
+ */
+
 import type { FieldType } from '@/shared/constants/field-types';
 
 // ============================================================================
@@ -118,7 +118,7 @@ export const searchIndexesApi = {
     /**
      * List search indexes with pagination
      */
-    list: async (query?: ListSearchIndexesQuery): Promise<SearchIndexListResponse> => {
+    list: async (query?: Partial<ListSearchIndexesQuery>): Promise<SearchIndexListResponse> => {
         const params = new URLSearchParams();
         if (query) {
             Object.entries(query).forEach(([key, value]) => {

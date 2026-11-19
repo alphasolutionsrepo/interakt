@@ -1,7 +1,7 @@
 // app/api/analytics/session/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
+
 
 import { withPermission } from '@/features/access/route-guard';
 import {
@@ -14,6 +14,7 @@ import type { SessionType } from '@/features/analytics';
 import { clientIp } from '@/shared/api/client-ip';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // SCHEMAS

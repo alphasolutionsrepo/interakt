@@ -7,7 +7,7 @@
  * Used by the wizard and edit page for client-side validation.
  */
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 export const elasticsearchSettingsSchema = z.object({
     numberOfShards: z.number().int().min(1).max(100).default(1),

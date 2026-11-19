@@ -9,7 +9,7 @@
 import 'server-only';
 
 import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+
 
 import { AREA_IDS, type Area } from './areas';
 import { listFeatureSwitches, setFeatureSwitches } from './feature-switches.service';
@@ -18,10 +18,13 @@ import { AccessDeniedError } from '@/features/access/access-policy';
 import { checkAccess } from '@/features/access/route-guard';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
+import { z } from '@/shared/validation/zod';
 
 const updateSchema = z.object({
+  // partialRecord: a request names only the areas it changes (a zod 4 record with enum keys
+  // would require every area).
   areas: z
-    .record(z.enum(AREA_IDS as [Area, ...Area[]]), z.boolean())
+    .partialRecord(z.enum(AREA_IDS as [Area, ...Area[]]), z.boolean())
     .refine((areas) => Object.keys(areas).length > 0, 'Name at least one area to switch'),
 }).strict();
 

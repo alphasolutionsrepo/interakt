@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
+
 
 import { withPermission } from '@/features/access/route-guard';
 import {
@@ -17,6 +17,7 @@ import {
   getAdminChatSessionCount,
 } from '@/features/analytics';
 import { apiResponse } from '@/shared/api/response';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // SCHEMAS

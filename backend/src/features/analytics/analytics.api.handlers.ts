@@ -7,10 +7,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { createLogger } from '@/shared/logger/logger';
-import { getCurrentUserId } from '@/shared/utils/auth-utils';
-import { apiResponse } from '@/shared/api/response';
+
+import { READABLE_INSIGHT_TYPES, getProactiveInsights, getStoredInsight, hideFinding, unhideFinding } from './analytics-insights.service';
+import { PeriodError, readRequestedPeriod, readTimeZone } from './analytics-period';
+
 import {
   getOverviewMetrics,
   getSearchTrends,
@@ -35,9 +35,12 @@ import {
   type TimeRange,
   type AnalyticsFeatureFlags,
 } from './index';
-import { READABLE_INSIGHT_TYPES, getProactiveInsights, getStoredInsight, hideFinding, unhideFinding } from './analytics-insights.service';
-import { PeriodError, readRequestedPeriod, readTimeZone } from './analytics-period';
+
 import { invalidateHomeCache } from '@/features/dashboard/home.service';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
+import { z } from '@/shared/validation/zod';
 
 const logger = createLogger('analytics-api');
 
@@ -126,7 +129,7 @@ export async function handleGetOverview(request: NextRequest) {
     return successResponse(metrics);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get overview metrics', error as Error);
     return errorResponse('Failed to get overview metrics', 500);
@@ -159,7 +162,7 @@ export async function handleGetSearchTrends(request: NextRequest) {
     return successResponse(trends);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get search trends', error as Error);
     return errorResponse('Failed to get search trends', 500);
@@ -194,7 +197,7 @@ export async function handleGetPopularQueries(request: NextRequest) {
     return successResponse(queries);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get popular queries', error as Error);
     return errorResponse('Failed to get popular queries', 500);
@@ -229,7 +232,7 @@ export async function handleGetZeroResultQueries(request: NextRequest) {
     return successResponse(queries);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get zero result queries', error as Error);
     return errorResponse('Failed to get zero result queries', 500);
@@ -262,7 +265,7 @@ export async function handleGetSearchTypeBreakdown(request: NextRequest) {
     return successResponse(breakdown);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get search type breakdown', error as Error);
     return errorResponse('Failed to get search type breakdown', 500);
@@ -295,7 +298,7 @@ export async function handleGetPerformanceMetrics(request: NextRequest) {
     return successResponse(metrics);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get performance metrics', error as Error);
     return errorResponse('Failed to get performance metrics', 500);
@@ -324,7 +327,7 @@ export async function handleGetAIUsage(request: NextRequest) {
     return successResponse(metrics);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get AI usage metrics', error as Error);
     return errorResponse('Failed to get AI usage metrics', 500);
@@ -353,7 +356,7 @@ export async function handleGetToolUsage(request: NextRequest) {
     return successResponse(metrics);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get tool usage metrics', error as Error);
     return errorResponse('Failed to get tool usage metrics', 500);
@@ -377,7 +380,7 @@ export async function handleGetRecentSearches(request: NextRequest) {
     return successResponse(events);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get recent search events', error as Error);
     return errorResponse('Failed to get recent search events', 500);
@@ -432,7 +435,7 @@ export async function handleGetInsights(request: NextRequest) {
     return successResponse(await getStoredInsight(params.type, params.timeRange, params.experienceId));
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to get insights', error as Error);
     return errorResponse('Failed to get insights', 500);
@@ -461,7 +464,7 @@ export async function handleHideFinding(request: NextRequest) {
     invalidateHomeCache();
     return successResponse({ findingId: body.findingId, hiddenUntil: hiddenUntil.toISOString() });
   } catch (error) {
-    if (error instanceof z.ZodError) return errorResponse(`Invalid request: ${error.message}`);
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
     logger.error('Failed to hide finding', error as Error);
     return errorResponse('Failed to hide finding', 500);
   }
@@ -480,7 +483,7 @@ export async function handleUnhideFinding(request: NextRequest) {
     invalidateHomeCache();
     return successResponse({ findingId: params.findingId });
   } catch (error) {
-    if (error instanceof z.ZodError) return errorResponse(`Invalid request: ${error.message}`);
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
     logger.error('Failed to show finding again', error as Error);
     return errorResponse('Failed to show finding again', 500);
   }
@@ -569,7 +572,7 @@ export async function handleGetDashboard(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid parameters: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     if (error instanceof PeriodError) {
       return errorResponse(error.message);
@@ -641,7 +644,7 @@ export async function handleUpdateConfig(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid configuration: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to update analytics config', error as Error);
     return errorResponse('Failed to update analytics config', 500);
@@ -753,7 +756,7 @@ export async function handleSetExperienceOverride(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid request: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to set experience override', error as Error);
     return errorResponse('Failed to set experience override', 500);

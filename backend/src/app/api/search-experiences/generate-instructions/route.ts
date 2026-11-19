@@ -5,13 +5,14 @@
  */
 
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
+
 
 import { withPermission } from '@/features/access/route-guard';
 import { generateCustomInstructions } from '@/features/search-experience/search-experience.service';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
+import { z } from '@/shared/validation/zod';
 
 const logger = createLogger('api-generate-instructions');
 

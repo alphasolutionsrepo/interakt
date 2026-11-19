@@ -6,9 +6,6 @@
  * Step-by-step validation for the create wizard.
  */
 
-import { z } from 'zod';
-
-import { SLUG_MAX_LENGTH } from '@/shared/utils/slug';
 import {
   DEFAULT_SEARCH_CONFIG,
   DEFAULT_AI_CONFIG,
@@ -18,6 +15,10 @@ import {
   MIN_QUERY_UNDERSTANDING_TIMEOUT_MS,
   MAX_QUERY_UNDERSTANDING_TIMEOUT_MS,
 } from './search-experience.types';
+
+import { SLUG_MAX_LENGTH } from '@/shared/utils/slug';
+import { z } from '@/shared/validation/zod';
+
 
 // ============================================================================
 // SLUG REGEX
@@ -125,7 +126,7 @@ export const wizardStep3Schema = z.object({
   }),
   toolsConfig: z.object({
     enabled: z.array(z.string()),
-    settings: z.record(z.unknown()),
+    settings: z.record(z.string(), z.unknown()),
   }),
 });
 

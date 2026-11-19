@@ -10,11 +10,14 @@
  */
 
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
+
+import * as repository from './user-memories.repository';
+
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
-import * as repository from './user-memories.repository';
+import { z } from '@/shared/validation/zod';
+
 
 const logger = createLogger('user-memories-handlers');
 
