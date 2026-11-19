@@ -394,3 +394,27 @@ describe('listSessionsQuerySchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('schemas with record fields', () => {
+  it('createSessionSchema keeps clientMetadata of any shape and refuses a non-object', () => {
+    const clientMetadata = { device: 'mobile', nested: { a: [1] }, n: 3 };
+    const ok = createSessionSchema.safeParse({ ...validCreateSession, clientMetadata });
+    expect(ok.success && ok.data.clientMetadata).toEqual(clientMetadata);
+    expect(createSessionSchema.safeParse({ ...validCreateSession, clientMetadata: 'x' }).success).toBe(false);
+    expect(createSessionSchema.safeParse({ ...validCreateSession, clientMetadata: [1] }).success).toBe(false);
+  });
+
+  it('updateSessionSchema keeps facts and a record of records in pipelineState', () => {
+    const input = { facts: { a: 1 }, pipelineState: { step1: { x: 1 }, step2: {} } };
+    const ok = updateSessionSchema.safeParse(input);
+    expect(ok.success && ok.data).toEqual(input);
+    expect(updateSessionSchema.safeParse({ pipelineState: { step1: 'x' } }).success).toBe(false);
+  });
+
+  it('lastToolResultsSchema accepts entries by tool and refuses a bad entry at its key', () => {
+    const entry = { toolId: 't1', toolName: 'search', result: { a: 1 }, executedAt: '2026-01-01T00:00:00.000Z' };
+    expect(lastToolResultsSchema.safeParse({ search: entry }).success).toBe(true);
+    const bad = lastToolResultsSchema.safeParse({ search: { ...entry, toolId: '' } });
+    expect(!bad.success && bad.error.issues[0].path).toEqual(['search', 'toolId']);
+  });
+});

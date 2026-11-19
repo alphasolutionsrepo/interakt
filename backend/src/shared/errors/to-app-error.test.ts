@@ -22,6 +22,19 @@ describe('toAppError', () => {
         expect(err.fields?.map((f) => f.field)).toEqual(['name', 'fields.0.dimensions']);
     });
 
+    it('keeps the code and our wording on each field of a Zod error', () => {
+        const result = z.object({ name: z.string(), size: z.number().max(5), kind: z.enum(['a', 'b']) }).strict()
+            .safeParse({ size: 9, kind: 'c', extra: 1 });
+        const err = toAppError(!result.success && result.error);
+        expect(err).toMatchObject({ code: 'VALIDATION_ERROR', status: 400, message: 'Some values are not valid' });
+        expect(err.fields).toEqual([
+            { field: 'name', code: 'invalid_type', message: 'This field is required.' },
+            { field: 'size', code: 'too_big', message: 'Enter a number of at most 5.' },
+            { field: 'kind', code: 'invalid_value', message: 'Choose one of: "a", "b".' },
+            { field: 'extra', code: 'unrecognized_key', message: 'Unknown field: "extra".' },
+        ]);
+    });
+
     it('maps the feature errors by name', () => {
         const inUse = Object.assign(new Error('Search index is still used by 1 config(s)'), { name: 'SearchIndexInUseError', references: [{ type: 'experience', name: 'Shop' }] });
         expect(toAppError(inUse)).toMatchObject({ code: 'CONFLICT', status: 409, details: { references: [{ type: 'experience', name: 'Shop' }] } });

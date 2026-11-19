@@ -464,7 +464,7 @@ export async function handleHideFinding(request: NextRequest) {
     invalidateHomeCache();
     return successResponse({ findingId: body.findingId, hiddenUntil: hiddenUntil.toISOString() });
   } catch (error) {
-    if (error instanceof z.ZodError) return errorResponse(`Invalid request: ${error.message}`);
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
     logger.error('Failed to hide finding', error as Error);
     return errorResponse('Failed to hide finding', 500);
   }
@@ -483,7 +483,7 @@ export async function handleUnhideFinding(request: NextRequest) {
     invalidateHomeCache();
     return successResponse({ findingId: params.findingId });
   } catch (error) {
-    if (error instanceof z.ZodError) return errorResponse(`Invalid request: ${error.message}`);
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
     logger.error('Failed to show finding again', error as Error);
     return errorResponse('Failed to show finding again', 500);
   }
@@ -644,7 +644,7 @@ export async function handleUpdateConfig(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid configuration: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to update analytics config', error as Error);
     return errorResponse('Failed to update analytics config', 500);
@@ -756,7 +756,7 @@ export async function handleSetExperienceOverride(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Invalid request: ${error.message}`);
+      return apiResponse.validationError(error);
     }
     logger.error('Failed to set experience override', error as Error);
     return errorResponse('Failed to set experience override', 500);

@@ -80,6 +80,19 @@ describe('field error codes', () => {
         expect(code(z.union([z.string(), z.number()]), true)).toBe('invalid');
     });
 
+    it('reports each unknown key at the key itself', () => {
+        const schema = z.object({ sort: z.object({ order: z.string() }).strict() });
+        const one = schema.safeParse({ sort: { order: 'asc', by: 'x' } });
+        expect(fieldErrorsFromIssues(one.error!.issues)).toEqual([
+            { field: 'sort.by', code: 'unrecognized_key', message: 'Unknown field: "by".' },
+        ]);
+        const two = z.object({}).strict().safeParse({ a: 1, b: 2 });
+        expect(fieldErrorsFromIssues(two.error!.issues)).toEqual([
+            { field: 'a', code: 'unrecognized_key', message: 'Unknown field: "a".' },
+            { field: 'b', code: 'unrecognized_key', message: 'Unknown field: "b".' },
+        ]);
+    });
+
     it('turns a zod error into field, code and message, with the path dot-joined', () => {
         const schema = z.object({ filters: z.array(z.object({ value: z.number().max(10) })) });
         const result = schema.safeParse({ filters: [{ value: 1 }, { value: 50 }] });

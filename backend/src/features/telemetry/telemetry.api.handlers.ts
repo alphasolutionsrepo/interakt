@@ -110,7 +110,7 @@ export async function handleSetExperienceOverride(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiResponse.refused(error, { code: 'BAD_REQUEST', message: `Invalid request: ${error.message}` }, { operation: 'setExperienceOverrideTelemetry' });
+      return apiResponse.validationError(error);
     }
     return apiResponse.error('Failed to set telemetry experience override', 500, { operation: 'setExperienceOverrideTelemetry', err: error });
   }
@@ -272,12 +272,14 @@ export async function handleGetSpanMetrics(request: NextRequest) {
     if (authError) return authError;
 
     const timeRange = (request.nextUrl.searchParams.get('timeRange') ?? '24h') as TimeRange;
-    const experienceId = z.string().uuid().optional().parse(request.nextUrl.searchParams.get('experienceId') ?? undefined);
+    const { experienceId } = z
+      .object({ experienceId: z.string().uuid().optional() })
+      .parse({ experienceId: request.nextUrl.searchParams.get('experienceId') ?? undefined });
     const metrics = await getSpanMetrics(timeRange, readRequestedPeriod(request.nextUrl.searchParams), experienceId);
     return apiResponse.success(metrics);
   } catch (error) {
     if (error instanceof PeriodError) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'getSpanMetrics' });
-    if (error instanceof z.ZodError) return apiResponse.refused(error, { code: 'BAD_REQUEST', message: 'experienceId must be a UUID' }, { operation: 'getSpanMetrics' });
+    if (error instanceof z.ZodError) return apiResponse.validationError(error);
     return apiResponse.error('Failed to get span metrics', 500, { operation: 'getSpanMetrics', err: error });
   }
 }

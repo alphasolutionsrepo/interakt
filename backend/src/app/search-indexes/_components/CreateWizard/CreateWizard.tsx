@@ -17,25 +17,29 @@
 
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import {
     ChevronLeft,
     ChevronRight,
     Check,
     Loader2,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { StepProgress } from '@/components/ui/steps-progress';
-import { StepBasicInfo } from './StepBasicInfo';
-import { StepSearchSettings } from './StepSearchSettings';
-import { StepAIConfig } from './StepAIConfig';
+
 import { searchIndexesApi } from '../../_lib/api-client';
 import { searchIndexKeys } from '../../_lib/hooks/useSearchIndexes';
+
+import { StepAIConfig } from './StepAIConfig';
+import { StepBasicInfo } from './StepBasicInfo';
+import { StepSearchSettings } from './StepSearchSettings';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { StepProgress } from '@/components/ui/steps-progress';
 import { requiresAIConfiguration } from '@/features/search-index';
+import type { CreateSearchIndexDTO } from '@/features/search-index';
 import {
     wizardStep1Schema,
     wizardStep2Schema,
@@ -43,9 +47,9 @@ import {
     WIZARD_DEFAULT_VALUES,
     type WizardFormData,
 } from '@/features/search-index/search-index.wizard-schemas';
-import type { CreateSearchIndexDTO } from '@/features/search-index';
 import { useInlineError } from '@/shared/activity/useInlineError';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
+import { firstMessagePerField } from '@/shared/validation/validation-messages';
 
 // ============================================================================
 // TYPES
@@ -223,16 +227,8 @@ export function CreateWizard() {
             return true;
         }
 
-        // Convert Zod errors to simple field -> message map
-        const errors: StepErrors = {};
-        if (!result.success) {
-            result.error.errors.forEach(err => {
-                const field = err.path[0] as string;
-                if (!errors[field]) {
-                    errors[field] = err.message;
-                }
-            });
-        }
+        // Zod issues as a field -> message map, keyed by the top-level field
+        const errors: StepErrors = result.success ? {} : firstMessagePerField(result.error.issues, { topLevel: true });
 
         // Add external errors
         if (hasExternalErrors && externalErrors.name) {

@@ -29,7 +29,7 @@ export const FIELD_ERROR_CODES = [
 export type FieldErrorCode = (typeof FIELD_ERROR_CODES)[number];
 
 /** A finished zod issue: what a ZodError holds (the input value is no longer on it). */
-type FinishedIssue = { code: string; path: PropertyKey[]; message: string };
+type FinishedIssue = { code: string; path: PropertyKey[]; message: string; keys?: readonly string[] };
 
 /** The code a client sees for a zod issue. A missing value is `invalid_type`; its message says it is required. */
 export function fieldErrorCode(issue: { code: string }): FieldErrorCode {
@@ -52,13 +52,45 @@ export function fieldErrorCode(issue: { code: string }): FieldErrorCode {
     }
 }
 
-/** A zod error's issues as the field errors our API and forms use. */
+/**
+ * A zod error's issues as the field errors our API and forms use. An unknown key is reported
+ * at the key itself (one entry per key), so `field` always names the value that is wrong.
+ */
 export function fieldErrorsFromIssues(issues: readonly FinishedIssue[]): Array<{ field: string; code: FieldErrorCode; message: string }> {
-    return issues.map((issue) => ({
-        field: issue.path.map(String).join('.'),
-        code: fieldErrorCode(issue),
-        message: issue.message,
-    }));
+    return issues.flatMap((issue) => {
+        const path = issue.path.map(String);
+        if (issue.code === 'unrecognized_keys' && issue.keys && issue.keys.length > 0) {
+            const keys = issue.keys;
+            return keys.map((key) => ({
+                field: [...path, key].join('.'),
+                code: 'unrecognized_key' as const,
+                message: keys.length === 1 ? issue.message : unknownFieldMessage([key]),
+            }));
+        }
+        return [{ field: path.join('.'), code: fieldErrorCode(issue), message: issue.message }];
+    });
+}
+
+/**
+ * The first message for each field, for showing next to form fields. `topLevel` keys each
+ * message by the first path segment (for forms whose fields are only top-level).
+ */
+export function firstMessagePerField(
+    issues: readonly FinishedIssue[],
+    options: { topLevel?: boolean } = {},
+): Record<string, string> {
+    const messages: Record<string, string> = {};
+    for (const issue of issues) {
+        const field = options.topLevel ? String(issue.path[0] ?? '') : issue.path.map(String).join('.');
+        if (!(field in messages)) messages[field] = issue.message;
+    }
+    return messages;
+}
+
+function unknownFieldMessage(keys: readonly string[]): string {
+    return keys.length === 1
+        ? `Unknown field: "${keys[0]}".`
+        : `Unknown fields: ${keys.map((k) => `"${k}"`).join(', ')}.`;
 }
 
 const TYPE_NAMES: Record<string, string> = {
@@ -161,9 +193,7 @@ export function validationMessage(issue: core.$ZodRawIssue): string {
             return `Choose one of: ${values.map(quoteValue).join(', ')}.`;
         }
         case 'unrecognized_keys':
-            return issue.keys.length === 1
-                ? `Unknown field: "${issue.keys[0]}".`
-                : `Unknown fields: ${issue.keys.map((k) => `"${k}"`).join(', ')}.`;
+            return unknownFieldMessage(issue.keys);
         case 'invalid_key':
             return 'This key is not valid.';
         default:

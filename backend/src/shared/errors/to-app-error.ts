@@ -29,7 +29,7 @@ export function toAppError(err: unknown): AppError {
     const e = err as Error & Record<string, unknown>;
 
     if (e.name === 'ZodError' && Array.isArray(e.issues)) {
-        const issues = e.issues as Array<{ code: string; path: PropertyKey[]; message: string }>;
+        const issues = e.issues as Array<{ code: string; path: PropertyKey[]; message: string; keys?: string[] }>;
         return new ValidationError('Some values are not valid', fieldErrorsFromIssues(issues));
     }
 

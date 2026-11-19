@@ -11,7 +11,17 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/db/index', () => ({ analyticsDB: null, db: {} }));
 vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUserId: async () => 'admin' }));
 
-import { handleGetOverview, handleGetPopularQueries } from './analytics.api.handlers';
+import {
+  handleGetOverview,
+  handleGetPopularQueries,
+  handleHideFinding,
+  handleSetExperienceOverride,
+  handleUnhideFinding,
+  handleUpdateConfig,
+} from './analytics.api.handlers';
+
+const post = (body: unknown) =>
+  new NextRequest('http://localhost/api/analytics/x', { method: 'POST', body: JSON.stringify(body) });
 
 describe('analytics handlers: invalid parameters', () => {
   it.each([
@@ -29,5 +39,41 @@ describe('analytics handlers: invalid parameters', () => {
     expect(String(body.message)).not.toContain('"code"');
     expect(String(body.error ?? '')).not.toContain('"code"');
     expect(String(body.message)).not.toMatch(/^Invalid parameters/);
+  });
+});
+
+describe('analytics handlers: invalid bodies and parameters on the write routes', () => {
+  const expectEnvelope = async (res: Response, fields: Array<Record<string, unknown>>) => {
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ success: false, code: 'VALIDATION_ERROR', message: 'Some values are not valid' });
+    expect(body.fields).toEqual(fields.map((f) => expect.objectContaining(f)));
+    expect(JSON.stringify(body)).not.toContain('Invalid request:');
+  };
+
+  it('hide finding: a bad finding id and days answer 400 with a field per problem', async () => {
+    const res = await handleHideFinding(post({ findingId: 'Bad Id!', days: 500 }));
+    await expectEnvelope(res, [
+      { field: 'findingId', code: 'invalid_format' },
+      { field: 'days', code: 'too_big', message: 'Enter a number of at most 90.' },
+    ]);
+  });
+
+  it('unhide finding: a missing finding id answers 400 with "This field is required."', async () => {
+    const res = await handleUnhideFinding(new NextRequest('http://localhost/api/analytics/insights/hidden', { method: 'DELETE' }));
+    await expectEnvelope(res, [{ field: 'findingId', code: 'invalid_type', message: 'This field is required.' }]);
+  });
+
+  it('update config: a wrong type answers 400 with a field error', async () => {
+    const res = await handleUpdateConfig(post({ enabled: 'yes' }));
+    await expectEnvelope(res, [{ field: 'enabled', code: 'invalid_type' }]);
+  });
+
+  it('set experience override: a bad id and a missing overrides object answer 400', async () => {
+    const res = await handleSetExperienceOverride(post({ experienceId: 'not-a-uuid' }));
+    await expectEnvelope(res, [
+      { field: 'experienceId', code: 'invalid_format' },
+      { field: 'overrides', code: 'invalid_type', message: 'This field is required.' },
+    ]);
   });
 });
