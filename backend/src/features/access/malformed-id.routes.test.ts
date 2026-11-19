@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ADMIN_ROLE_ID } from './permissions';
 
 import * as roleRoute from '@/app/api/roles/[id]/route';
+import * as experienceIndexRoute from '@/app/api/search-experiences/[id]/indexes/[indexId]/route';
 import * as userRoute from '@/app/api/users/[id]/route';
 import { user } from '@/db/schema/users.schema';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
@@ -28,13 +29,13 @@ beforeAll(async () => {
 afterAll(() => testDb.close());
 
 type Route = (req: NextRequest, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
-async function call(fn: unknown, method: string, url: string, id: string, body?: unknown) {
+async function call(fn: unknown, method: string, url: string, id: string | Record<string, string>, body?: unknown) {
   const req = new NextRequest(`http://localhost${url}`, {
     method,
     headers: { 'Content-Type': 'application/json' },
     ...(body !== undefined && { body: JSON.stringify(body) }),
   });
-  const res = await (fn as Route)(req, { params: Promise.resolve({ id }) });
+  const res = await (fn as Route)(req, { params: Promise.resolve(typeof id === 'string' ? { id } : id) });
   return { status: res.status, body: (await res.json()) as { error?: { code?: string; message?: string } | string; code?: string; message?: string } };
 }
 
@@ -42,6 +43,8 @@ describe.each([
   ['PUT /api/roles/:id', () => call(roleRoute.PUT, 'PUT', '/api/roles/not-a-uuid', 'not-a-uuid', { description: 'x' })],
   ['DELETE /api/roles/:id', () => call(roleRoute.DELETE, 'DELETE', '/api/roles/not-a-uuid', 'not-a-uuid')],
   ['GET /api/users/:id', () => call(userRoute.GET, 'GET', '/api/users/not-a-uuid', 'not-a-uuid')],
+  // A nested route, whose handler answers through apiResponse.error rather than a refusal of its own
+  ['DELETE /api/search-experiences/:id/indexes/:indexId', () => call(experienceIndexRoute.DELETE, 'DELETE', '/api/search-experiences/not-a-uuid/indexes/not-a-uuid', { id: 'not-a-uuid', indexId: 'not-a-uuid' })],
 ])('%s with an ID that is not a UUID', (_name, run) => {
   it('answers 400 BAD_REQUEST without repeating the value', async () => {
     const { status, body } = await run();

@@ -84,3 +84,18 @@ describe('a queue that does not exist', () => {
     expect(boss.deleteJob).not.toHaveBeenCalled();
   });
 });
+
+describe('a queue name pg-boss would refuse', () => {
+  it.each(['bad name', 'semi;colon', 'quote"d'])('holds no job: %j is answered without asking pg-boss', async (queue) => {
+    expect(await getJob(queue, GOOD)).toBeNull();
+    await expect(applyJobAction(queue, GOOD, 'cancel')).rejects.toBeInstanceOf(NotFoundError);
+    expect(getBoss).not.toHaveBeenCalled();
+  });
+
+  it('still accepts the characters pg-boss allows', async () => {
+    boss.findJobs.mockResolvedValue([]);
+    boss.getQueue.mockResolvedValue({ name: 'a.b-c/d_e' });
+    expect(await getJob('a.b-c/d_e', GOOD)).toBeNull();
+    expect(boss.findJobs).toHaveBeenCalledWith('a.b-c/d_e', { id: GOOD });
+  });
+});

@@ -132,10 +132,18 @@ function assertValidCron(cron: string): void {
   }
 }
 
+// The names pg-boss accepts for a queue (its assertObjectName); it throws for any other
+const QUEUE_NAME = /^[\w.\-/]+$/;
+
+/** Whether a name could be a queue's: anything else is no queue (pg-boss would throw for it). */
+function isQueueName(name: string): boolean {
+  return QUEUE_NAME.test(name);
+}
+
 /** A single job with full payload/output, or null if not found. */
 export async function getJob(queue: string, id: string): Promise<JobRecord | null> {
   // Job ids are UUIDs: anything else is no job (and Postgres would refuse the query)
-  if (!isUuidShape(id)) return null;
+  if (!isUuidShape(id) || !isQueueName(queue)) return null;
   const boss = getBoss();
   // A queue that doesn't exist holds no job (pg-boss throws for it)
   if (!(await boss.getQueue(queue))) return null;
@@ -186,7 +194,7 @@ export async function applyJobAction(
   action: JobAction
 ): Promise<void> {
   // Job ids are UUIDs: anything else is no job (and Postgres would refuse the query)
-  if (!isUuidShape(id)) throw new NotFoundError('Job not found');
+  if (!isUuidShape(id) || !isQueueName(queue)) throw new NotFoundError('Job not found');
   const boss = getBoss();
   // A queue that doesn't exist holds no job (pg-boss throws for it)
   if (!(await boss.getQueue(queue))) throw new NotFoundError('Job not found');
