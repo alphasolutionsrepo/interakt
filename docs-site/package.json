@@ -15,7 +15,7 @@
     "redocusaurus": "^2.5.2"
   },
   "engines": {
-    "node": ">=18.0"
+    "node": ">=20.0"
   },
   "overrides": {
     "serialize-javascript": "^7.1.4",
