@@ -110,6 +110,58 @@ jobs:
       - name: Start
         run: bash scripts/start-check.sh
 
+  backend-image:
+    name: Backend · Docker image · start
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      POSTGRES_URL: postgres://postgres:postgres@localhost:5432/interakt
+      ANALYTICS_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/interakt_analytics
+      NEXTAUTH_URL: http://localhost:3200
+      AUTH_TRUST_HOST: 'true'
+      ENABLE_OTEL: 'true'
+      # Used by the database setup script below.
+      PGHOST: localhost
+      PGPASSWORD: postgres
+      POSTGRES_USER: postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      # The production image the hosted copy is built from (az acr build uses the same
+      # Dockerfile). Installs and builds inside the image, so it catches files the
+      # Dockerfile leaves out.
+      - name: Build the image
+        run: docker build --file docker/Dockerfile --tag interakt:ci .
+
+      # Throwaway secrets for this run only.
+      - name: Generate secrets
+        run: |
+          echo "AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+          echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+          echo "SECRETS_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Create databases
+        run: bash docker/init-db/01-init.sh
+
+      # Migrates with the image, then starts it, as a deployment does.
+      - name: Start
+        run: bash scripts/image-start-check.sh interakt:ci
+
   widgets:
     name: Widgets · lint · build · test
     runs-on: ubuntu-latest
