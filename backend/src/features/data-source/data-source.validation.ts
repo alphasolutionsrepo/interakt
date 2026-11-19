@@ -1,8 +1,9 @@
-import { z } from 'zod';
+import { untranslatableReason } from './external-search/connectors/sitecore-search.request';
 
 import type { FilterClause } from '@/features/search/search.types';
+import { z } from '@/shared/validation/zod';
 
-import { untranslatableReason } from './external-search/connectors/sitecore-search.request';
+
 
 // ============================================================================
 // DATA SOURCE TYPE CONSTANTS
@@ -268,7 +269,7 @@ export function configSchemaForType(type: string): z.ZodTypeAny | undefined {
 export const updateDataSourceSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(1000).nullish().transform(v => v ?? undefined),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   schema: dataSourceSchemaSchema.optional(),
   isActive: z.boolean().optional(),
 }).refine(

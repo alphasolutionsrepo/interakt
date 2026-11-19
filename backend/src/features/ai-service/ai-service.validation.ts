@@ -5,8 +5,9 @@
  * Zod schemas for validating service inputs
  */
 
-import { z } from 'zod';
 import type { CircuitBreakerConfig, RetryConfig } from './ai-service.types';
+
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // COMMON SCHEMAS

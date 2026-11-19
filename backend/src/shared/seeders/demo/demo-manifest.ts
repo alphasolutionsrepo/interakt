@@ -18,12 +18,13 @@ import { readFile } from 'node:fs/promises';
 import { resolve, dirname, isAbsolute } from 'node:path';
 
 import YAML from 'yaml';
-import { z } from 'zod';
+
 import { selectedSearchProvider } from '@/config/search-provider.config';
 import { SetupRequiredError } from '@/shared/errors/app-error';
+import { z } from '@/shared/validation/zod';
 
 // A loose object that we forward to a service DTO verbatim.
-const looseObject = z.record(z.unknown());
+const looseObject = z.record(z.string(), z.unknown());
 
 // One selectable AI provider for the demo (e.g. ollama, openai). authType drives
 // what the page asks for: 'api_key' → a key input; 'none' → a base-URL input.
@@ -64,7 +65,7 @@ export const demoManifestSchema = z.object({
     // Which option is pre-selected on the Demo Setup page.
     recommended: z.string().default('ollama'),
     // One entry per selectable provider, keyed by catalog providerKey.
-    options: z.record(providerOptionSchema),
+    options: z.record(z.string(), providerOptionSchema),
   }),
   index: z.object({
     name: z.string(),

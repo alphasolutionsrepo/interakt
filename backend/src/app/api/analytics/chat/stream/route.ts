@@ -10,13 +10,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
+
 
 import { withPermission } from '@/features/access/route-guard';
 import { isValidTimeZone } from '@/features/analytics/analytics-period';
 import { runAnalyticsPipeline } from '@/features/analytics/pipeline/analytics-pipeline-orchestrator';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse, describeError } from '@/shared/api/response';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // SCHEMA

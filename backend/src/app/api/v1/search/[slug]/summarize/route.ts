@@ -12,20 +12,21 @@
  */
 
 import { NextRequest } from 'next/server';
-import { ZodError } from 'zod';
+
 
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { searchExperienceAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { createSummaryStream } from '@/features/chat/summary-stream';
+import { publicApiRoute } from '@/features/feature-switches/gate';
 import * as repository from '@/features/search-experience/search-experience.repository';
 import { summarizeAPIRequestSchema } from '@/features/search-experience/search-experience.schemas';
 import type { SummarizeAPIRequest } from '@/features/search-experience/search-experience.types';
 import { runWithTelemetryLevel } from '@/features/telemetry';
-import { publicApiRoute } from '@/features/feature-switches/gate';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { AppError } from '@/shared/errors/app-error';
+import { ZodError } from '@/shared/validation/zod';
 
 async function post(
   request: NextRequest,

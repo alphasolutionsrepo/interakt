@@ -25,7 +25,7 @@ import { NotFoundError, ValidationError } from '@/shared/errors/app-error';
 
 async function roleOrFail(roleId: string) {
   const role = await roles.getRole(roleId);
-  if (!role) throw new ValidationError('That role doesn\'t exist', [{ field: 'roleId', message: 'Unknown role' }]);
+  if (!role) throw new ValidationError('That role doesn\'t exist', [{ field: 'roleId', code: 'invalid_value', message: 'Unknown role' }]);
   return role;
 }
 

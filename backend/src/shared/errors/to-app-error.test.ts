@@ -1,11 +1,12 @@
 import { DrizzleQueryError } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+
 
 import { AppError, ConflictError } from './app-error';
 import { failureLevel, toAppError, writeFailureLevel } from './to-app-error';
 
 import { SearchError } from '@/features/search/search.types';
+import { z } from '@/shared/validation/zod';
 
 describe('toAppError', () => {
     it('returns AppErrors as they are', () => {

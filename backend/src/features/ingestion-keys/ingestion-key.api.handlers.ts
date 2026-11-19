@@ -9,10 +9,6 @@
  */
 
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { apiResponse } from '@/shared/api/response';
-import { createLogger } from '@/shared/logger/logger';
-import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
 import {
     createIngestionKey,
@@ -23,6 +19,11 @@ import {
     createIngestionKeyRequestSchema,
     ingestionKeyIdParamSchema,
 } from './ingestion-key.validation';
+
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
+import { z } from '@/shared/validation/zod';
 
 const logger = createLogger('ingestion-key-handlers');
 

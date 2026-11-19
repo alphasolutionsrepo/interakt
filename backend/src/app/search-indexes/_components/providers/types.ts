@@ -7,7 +7,7 @@
  * Each search provider registers its own settings forms and field settings.
  */
 
-import type { z } from 'zod';
+import type { z } from '@/shared/validation/zod';
 
 /**
  * Props for provider-specific index settings form.

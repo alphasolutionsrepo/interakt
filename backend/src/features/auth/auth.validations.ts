@@ -1,6 +1,6 @@
 // src/features/auth/auth.validation.ts
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 /**
  * Password validation rules

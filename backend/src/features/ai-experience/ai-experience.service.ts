@@ -1,12 +1,9 @@
 // src/features/ai-experience/ai-experience.service.ts
 
-import { createLogger } from '@/shared/logger/logger';
-import * as repository from './ai-experience.repository';
 import * as toolsService from '../tools/tools.service';
+
 import { aiExperienceCache as cache } from './ai-experience.cache';
-import { setExperienceTelemetryOverride } from '@/features/telemetry';
-import { setupTopicGateEmbeddings } from '@/features/guardrails/topic-gate.service';
-import { getGlobalTopicGateCache } from '@/features/guardrails/topic-gate.cache';
+import * as repository from './ai-experience.repository';
 import type {
   CreateAIExperienceDTO,
   UpdateAIExperienceDTO,
@@ -16,6 +13,11 @@ import type {
   AIExperienceListResponse,
   AIExperienceWithTools,
 } from './ai-experience.types';
+
+import { getGlobalTopicGateCache } from '@/features/guardrails/topic-gate.cache';
+import { setupTopicGateEmbeddings } from '@/features/guardrails/topic-gate.service';
+import { setExperienceTelemetryOverride } from '@/features/telemetry';
+import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ai-experience-service');
 
@@ -191,7 +193,7 @@ export async function updateAIExperience(id: string, input: UpdateAIExperienceDT
   // Expand topic gate embeddings if guardrail config changed
   let guardrailConfig = input.guardrailConfig;
   if (guardrailConfig !== undefined) {
-    guardrailConfig = await expandTopicGateIfNeeded(guardrailConfig);
+    guardrailConfig = (await expandTopicGateIfNeeded(guardrailConfig)) as typeof guardrailConfig;
   }
 
   const updated = await repository.updateAIExperience(id, {

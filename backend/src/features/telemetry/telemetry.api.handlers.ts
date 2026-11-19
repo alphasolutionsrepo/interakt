@@ -8,16 +8,7 @@
  */
 
 import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { getCurrentUserId } from '@/shared/utils/auth-utils';
-import { apiResponse } from '@/shared/api/response';
-import { PeriodError, readRequestedPeriod } from '@/features/analytics/analytics-period';
-import {
-  getTelemetryStatus,
-  setExperienceTelemetryOverride,
-  clearExperienceTelemetryOverride,
-  clearAllTelemetryOverrides,
-} from './telemetry.config';
+
 import {
   getRecentSpans,
   getSpanById,
@@ -27,6 +18,18 @@ import {
   deleteAllSpans,
   type TimeRange,
 } from './telemetry-query.service';
+import {
+  getTelemetryStatus,
+  setExperienceTelemetryOverride,
+  clearExperienceTelemetryOverride,
+  clearAllTelemetryOverrides,
+} from './telemetry.config';
+
+import { PeriodError, readRequestedPeriod } from '@/features/analytics/analytics-period';
+import { apiResponse } from '@/shared/api/response';
+import { getCurrentUserId } from '@/shared/utils/auth-utils';
+import { z } from '@/shared/validation/zod';
+
 
 // ============================================================================
 // VALIDATION
@@ -220,7 +223,7 @@ export async function handleGetSpans(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiResponse.refused(error, { code: 'BAD_REQUEST', message: `Invalid parameters: ${error.message}` }, { operation: 'getSpans' });
+      return apiResponse.validationError(error);
     }
     if (error instanceof PeriodError) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'getSpans' });
     return apiResponse.error('Failed to get spans', 500, { operation: 'getSpans', err: error });

@@ -1,6 +1,6 @@
 // src/features/mcp-connection/mcp-connection.validation.ts
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 export const MCP_TRANSPORTS = ['streamable-http', 'sse'] as const;
 export const MCP_AUTH_TYPES = ['none', 'bearer', 'header'] as const;

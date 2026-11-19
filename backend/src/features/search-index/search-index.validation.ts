@@ -8,7 +8,6 @@
  * SINGLE SOURCE OF TRUTH: All DTOs are inferred from these schemas
  */
 
-import { z } from 'zod';
 import {
     SEARCH_TYPES,
     INDEXING_STRATEGIES,
@@ -19,6 +18,7 @@ import {
     INDEX_NAME_MIN_LENGTH,
     SEARCH_INDEX_DEFAULTS,
 } from '@/shared/constants/search-index.constants';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // BASE ENUM SCHEMAS
@@ -65,7 +65,7 @@ export const createSearchIndexSchema = z.object({
     searchProvider: z.enum(['elasticsearch', 'azure-ai-search']).default('elasticsearch'),
 
     // Provider-specific settings (new JSON blob — each provider stores different settings)
-    providerSettings: z.record(z.unknown()).default({}),
+    providerSettings: z.record(z.string(), z.unknown()).default({}),
 
     // DEPRECATED ES Settings (kept for backward compat, use providerSettings instead)
     numberOfShards: z.number().int().min(1).max(100).default(SEARCH_INDEX_DEFAULTS.numberOfShards).optional(),
@@ -93,6 +93,7 @@ export const createSearchIndexSchema = z.object({
 });
 
 export type CreateSearchIndexDTO = z.infer<typeof createSearchIndexSchema>;
+export type CreateSearchIndexInput = z.input<typeof createSearchIndexSchema>;
 
 // ============================================================================
 // UPDATE SEARCH INDEX SCHEMA
@@ -106,7 +107,7 @@ export const updateSearchIndexSchema = z.object({
     indexingStrategy: indexingStrategySchema.optional(),
 
     // Provider-specific settings (partial update)
-    providerSettings: z.record(z.unknown()).optional(),
+    providerSettings: z.record(z.string(), z.unknown()).optional(),
 
     // DEPRECATED ES settings (kept for backward compat)
     numberOfReplicas: z.number().int().min(0).max(10).optional(),
@@ -148,7 +149,7 @@ export const changeAIConfigSchema = z.object({
 
     /** Confirmation text - must be "CONFIRM" to proceed */
     confirmText: z.literal('CONFIRM', {
-        errorMap: () => ({ message: 'You must type CONFIRM to proceed' }),
+        error: 'You must type CONFIRM to proceed',
     }),
 });
 
@@ -231,7 +232,7 @@ export const searchIndexFieldExportSchema = z.object({
     isVectorSource: z.boolean(),
     isAutocomplete: z.boolean(),
     customAnalyzer: z.string().nullable().optional(),
-    transformConfig: z.record(z.unknown()).optional(),
+    transformConfig: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type SearchIndexFieldExportDTO = z.infer<typeof searchIndexFieldExportSchema>;
@@ -251,7 +252,7 @@ export const searchIndexExportSchema = z.object({
         searchType: searchTypeSchema,
         indexingStrategy: indexingStrategySchema,
         searchProvider: z.string().default('elasticsearch'),
-        providerSettings: z.record(z.unknown()).default({}),
+        providerSettings: z.record(z.string(), z.unknown()).default({}),
         // DEPRECATED ES settings (kept for backward compat in export format)
         numberOfShards: z.number().optional(),
         numberOfReplicas: z.number().optional(),
@@ -259,7 +260,7 @@ export const searchIndexExportSchema = z.object({
         language: z.string(),
         synonyms: z.array(z.string()),
         stopWords: z.array(z.string()),
-        analyzerConfig: z.record(z.unknown()).optional(),
+        analyzerConfig: z.record(z.string(), z.unknown()).optional(),
         embeddingDimensions: z.number().nullable().optional(),
         vectorSimilarity: vectorSimilaritySchema.nullable().optional(),
         rrfRankConstant: z.number(),
@@ -269,6 +270,7 @@ export const searchIndexExportSchema = z.object({
 });
 
 export type SearchIndexExportDTO = z.infer<typeof searchIndexExportSchema>;
+export type SearchIndexExportInput = z.input<typeof searchIndexExportSchema>;
 
 /**
  * Schema for importing a search index

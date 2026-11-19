@@ -4,8 +4,8 @@
  * Ingestion Key Validation
  */
 
-import { z } from 'zod';
 import { INGESTION_OPERATIONS } from '@/db/schema/ingestion-keys.schema';
+import { z } from '@/shared/validation/zod';
 
 export const ingestionOperationSchema = z.enum(INGESTION_OPERATIONS);
 

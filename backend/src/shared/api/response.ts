@@ -6,7 +6,6 @@
  */
 
 import { NextResponse } from 'next/server';
-import { ZodError } from 'zod';
 
 import { isPublicRequest } from './public-route';
 import { currentRequestId, requestIdFor } from './request-id';
@@ -14,6 +13,8 @@ import { currentRequestId, requestIdFor } from './request-id';
 import { AppError, type FieldError, INTERNAL_MESSAGE, codeForStatus } from '@/shared/errors/app-error';
 import { failureLevel, isOurFailure, toAppError } from '@/shared/errors/to-app-error';
 import { createLogger } from '@/shared/logger/logger';
+import { fieldErrorsFromIssues } from '@/shared/validation/validation-messages';
+import type { ZodError } from '@/shared/validation/zod';
 
 const logger = createLogger('api');
 
@@ -237,10 +238,7 @@ function validationError(zodError: ZodError): NextResponse<APIErrorResponse> {
         {
             code: 'VALIDATION_ERROR',
             message: 'Some values are not valid',
-            fields: zodError.errors.map(err => ({
-                field: err.path.join('.'),
-                message: err.message,
-            })),
+            fields: fieldErrorsFromIssues(zodError.issues),
         },
         400
     );

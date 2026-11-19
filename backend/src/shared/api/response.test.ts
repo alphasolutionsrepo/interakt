@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
+
+import { z } from '@/shared/validation/zod';
 
 const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
@@ -126,7 +127,11 @@ describe('apiResponse.validationError', () => {
     it('lists the fields', async () => {
         const result = z.object({ name: z.string().min(1) }).safeParse({ name: '' });
         const body = await apiResponse.validationError(!result.success ? result.error : (undefined as never)).json();
-        expect(body).toMatchObject({ code: 'VALIDATION_ERROR', fields: [{ field: 'name' }] });
+        expect(body).toMatchObject({
+            code: 'VALIDATION_ERROR',
+            message: 'Some values are not valid',
+            fields: [{ field: 'name', code: 'too_small', message: "This field can't be empty." }],
+        });
         // details is the public API's documented list; admins read fields only
         expect(body.details).toBeUndefined();
     });
@@ -136,6 +141,18 @@ describe('apiResponse.validationError', () => {
         const handler = publicRoute(async () => apiResponse.validationError(!result.success ? result.error : (undefined as never)));
         const body = await (await handler()).json();
         expect(body.details).toEqual(body.fields);
+        expect(body.details).toEqual([{ field: 'name', code: 'too_small', message: "This field can't be empty." }]);
+    });
+
+    it('lists every problem with its code, nested paths dot-joined', async () => {
+        const schema = z.object({ query: z.string(), pageSize: z.number().max(100), sort: z.object({ order: z.enum(['asc', 'desc']) }) });
+        const result = schema.safeParse({ pageSize: 500, sort: { order: 'up' } });
+        const body = await apiResponse.validationError(!result.success ? result.error : (undefined as never)).json();
+        expect(body.fields).toEqual([
+            { field: 'query', code: 'invalid_type', message: 'This field is required.' },
+            { field: 'pageSize', code: 'too_big', message: 'Enter a number of at most 100.' },
+            { field: 'sort.order', code: 'invalid_value', message: 'Choose one of: "asc", "desc".' },
+        ]);
     });
 });
 

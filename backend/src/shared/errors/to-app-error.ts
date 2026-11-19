@@ -11,6 +11,8 @@ import { DrizzleQueryError } from 'drizzle-orm';
 import { AppError, ConflictError, INTERNAL_MESSAGE, NotFoundError, ValidationError, codeForStatus } from './app-error';
 import { classifyUpstream, explainSearchServiceText, findAIServiceError, isAIProviderFailure } from './upstream';
 
+import { fieldErrorsFromIssues } from '@/shared/validation/validation-messages';
+
 // AIServiceError codes that point at our own configuration
 const AI_CONFIG_CODES = new Set(['PROVIDER_NOT_FOUND', 'MODEL_NOT_FOUND', 'PROVIDER_DISABLED']);
 
@@ -27,11 +29,8 @@ export function toAppError(err: unknown): AppError {
     const e = err as Error & Record<string, unknown>;
 
     if (e.name === 'ZodError' && Array.isArray(e.issues)) {
-        const fields = (e.issues as Array<{ path: (string | number)[]; message: string }>).map((issue) => ({
-            field: issue.path.join('.'),
-            message: issue.message,
-        }));
-        return new ValidationError('Some values are not valid', fields);
+        const issues = e.issues as Array<{ code: string; path: PropertyKey[]; message: string }>;
+        return new ValidationError('Some values are not valid', fieldErrorsFromIssues(issues));
     }
 
     switch (e.name) {

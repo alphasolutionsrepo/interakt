@@ -7,21 +7,14 @@
  * UPDATED: Uses searchIndexFields instead of indexFieldMappings
  */
 
-import { createLogger } from '@/shared/logger/logger';
+import { buildIndexSettingsContext } from './provider-settings.utils';
+import * as fieldsRepository from './search-index-fields.repository';
+import * as fieldsService from './search-index-fields.service';
 import { cache, clearCachedIndexRecord, clearIndexCache, SEARCH_INDEX_CACHE_TTL } from './search-index.cache';
 import * as repository from './search-index.repository';
 import type { SearchIndexReference } from './search-index.repository';
-import * as fieldsService from './search-index-fields.service';
-import { invalidateSearchExperienceCacheBySearchIndex } from '@/features/search-experience';
-import {
-    EMBEDDING_FIELD_NAME,
-    generateDocumentEmbeddings,
-    getEmbeddingConfig,
-} from '@/features/document-indexing/document-indexer.service';
-import { embeddingFailureReason } from '@/features/document-indexing/embedding-warnings';
 import type {
     // DTOs
-    CreateSearchIndexDTO,
     UpdateSearchIndexDTO,
     // Query types
     ListSearchIndexesQuery,
@@ -34,20 +27,32 @@ import type {
 } from './search-index.types';
 import type {
     SearchIndexExportDTO,
+    SearchIndexExportInput,
+    CreateSearchIndexInput,
     SearchIndexFieldExportDTO,
     SearchIndexImportDTO,
  ChangeAIConfigDTO } from './search-index.validation';
+
+import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import type { IndexLastJob, NewSearchIndex } from '@/db/schema/search-index.schema';
+import {
+    EMBEDDING_FIELD_NAME,
+    generateDocumentEmbeddings,
+    getEmbeddingConfig,
+} from '@/features/document-indexing/document-indexer.service';
+import { invalidateSearchExperienceCacheBySearchIndex } from '@/features/search-experience';
+import { embeddingFailureReason } from '@/features/document-indexing/embedding-warnings';
+
+
 import { requestIdFor } from '@/shared/api/request-id';
+import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
 import { AppError, ConflictError, NotFoundError } from '@/shared/errors/app-error';
 import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
 import { classifyUpstream, explainWriteFailure, leadingReason, scrub } from '@/shared/errors/upstream';
-import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
-import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
-import * as fieldsRepository from './search-index-fields.repository';
 import { getSearchEngineProvider, type SearchProviderType } from '@/features/search/providers';
 import { selectedSearchProvider } from '@/config/search-provider.config';
-import { buildIndexSettingsContext } from './provider-settings.utils';
+import { createLogger } from '@/shared/logger/logger';
+
 
 const logger = createLogger('search-index-service');
 
@@ -75,7 +80,7 @@ export class SearchIndexInUseError extends Error {
  * Map CreateSearchIndexDTO to repository insert type
  */
 function mapSearchIndexDtoToInsert(
-    input: CreateSearchIndexDTO,
+    input: CreateSearchIndexInput,
     userId?: string
 ): Omit<NewSearchIndex, 'id' | 'createdAt' | 'updatedAt'> {
     // Build providerSettings: use the new JSON blob if populated, otherwise fall back to legacy fields
@@ -240,7 +245,7 @@ async function createDefaultSystemFields(searchIndexId: string): Promise<void> {
  * Create a new search index with default system fields.
  */
 export async function createSearchIndex(
-    input: CreateSearchIndexDTO,
+    input: CreateSearchIndexInput,
     userId: string
 ): Promise<SearchIndexComplete> {
     try {
@@ -1551,7 +1556,7 @@ export interface SearchIndexImportResult {
 export async function exportSearchIndex(
     id: string,
     userId?: string
-): Promise<SearchIndexExportDTO> {
+): Promise<SearchIndexExportInput> {
     const searchIndexData = await repository.getSearchIndexById(id);
     if (!searchIndexData) {
         throw new Error(`Search index with ID ${id} not found`);
@@ -1581,7 +1586,7 @@ export async function exportSearchIndex(
         transformConfig: field.transformConfig as unknown as Record<string, unknown> | undefined,
     }));
 
-    const exportData: SearchIndexExportDTO = {
+    const exportData: SearchIndexExportInput = {
         version: '1.0',
         exportedAt: new Date().toISOString(),
         exportedBy: userId,
@@ -1701,7 +1706,7 @@ export async function importSearchIndex(
         }
 
         // Build create input
-        const createInput: CreateSearchIndexDTO = {
+        const createInput: CreateSearchIndexInput = {
             name: finalName,
             displayName: importData.searchIndex.displayName,
             description: importData.searchIndex.description ?? undefined,

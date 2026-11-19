@@ -25,12 +25,13 @@ import { resolve } from 'node:path';
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import YAML from 'yaml';
-import { z } from 'zod';
+
 
 import { db } from '@/db/index';
 import { user } from '@/db/schema/users.schema';
 import { ADMIN_ROLE_ID } from '@/features/access/permissions';
 import { createLogger } from '@/shared/logger/logger';
+import { z } from '@/shared/validation/zod';
 
 const logger = createLogger('admin-seed');
 

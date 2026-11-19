@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
+
 
 import { withPermission } from '@/features/access/route-guard';
 import {
@@ -21,6 +21,7 @@ import {
 } from '@/features/analytics';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // SCHEMAS

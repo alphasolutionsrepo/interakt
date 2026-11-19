@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Validation errors give every field problem a stable `code` (`invalid_type`, `too_small`, `too_big`, `invalid_format`, `invalid_value`, `unrecognized_key`, `invalid`) beside its message, and the messages are Interakt's own ("This field is required.", "Enter a number of at most 100."). The public API reference documents the full error response, including `fields`. Analytics and trace requests with invalid parameters answer with the same field list instead of raw validation output.
 - AI experiences enforce their allowed origins, chats per minute (default 60) and requests per day (default 10,000 chat messages per experience). Settings saved on existing AI experiences take effect on upgrade.
 - Per-client rate limits identify a client by the address `CLIENT_IP_SOURCE` names; by default that is the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` places from the end. Each address has one form, and IPv6 clients are counted per /56 prefix.
 - Find Record returns an item only when its ID, SKU or name matches the request. When several items fit, it returns `found: false` with `matches` so the answer can ask which one; when none fits, `found: false` with up to three `closestMatches`. Neither shows a product card, and the test chat and tool analytics no longer show them as failures. On a managed index with keyword or hybrid search, a SKU or name that is searchable but kept out of responses still identifies its item, and only the fields responses show are returned. Find Record tools on a search index describe name lookups; existing tools still on the generated description are updated, and descriptions an admin wrote are kept. Experience instructions the create wizard wrote now say "look up specific items" instead of "look up specific items by ID" where the experience has Find Record on a search index.
@@ -85,6 +86,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Public experience routes apply the experience's allowed origins and rate limits through one shared check.
 - Server calls to addresses an admin sets (AI providers, external search sources, data source checks, MCP servers, web search) follow redirects only on the same server. A redirect to another server stops the call and names that server.
+- zod 4, for a security fix in validation. Requests are checked as before, except numbers that JSON can't carry exactly (infinity, whole numbers above 2^53), which are now rejected.
 - Dependencies were updated for security fixes: Next.js, next-auth, axios, DOMPurify and the Elasticsearch client, with other updates from `npm audit fix`.
 
 [Unreleased]: https://github.com/alphasolutionsrepo/interakt/commits/main

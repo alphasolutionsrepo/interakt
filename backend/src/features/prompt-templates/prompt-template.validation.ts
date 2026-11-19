@@ -1,6 +1,6 @@
 // src/features/prompt-templates/prompt-template.validation.ts
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // CONSTANTS

@@ -7,14 +7,17 @@
  */
 
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { apiResponse } from '@/shared/api/response';
-import { readJsonBody } from '@/shared/api/read-json-body';
-import { createLogger } from '@/shared/logger/logger';
+
 import {
     getGlobalSettingsForApi,
     updateGlobalSettings,
 } from './global-settings.service';
+
+import { readJsonBody } from '@/shared/api/read-json-body';
+import { apiResponse } from '@/shared/api/response';
+import { createLogger } from '@/shared/logger/logger';
+import { z } from '@/shared/validation/zod';
+
 
 const logger = createLogger('global-settings-api');
 

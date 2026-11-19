@@ -14,18 +14,19 @@
  * These wizard schemas extract subsets for UI step validation only.
  */
 
-import { z } from 'zod';
+import {
+    searchTypeSchema,
+    indexingStrategySchema,
+    vectorSimilaritySchema,
+} from './search-index.validation';
+
 import {
     INDEX_NAME_REGEX,
     INDEX_NAME_MAX_LENGTH,
     INDEX_NAME_MIN_LENGTH,
     SEARCH_INDEX_DEFAULTS,
 } from '@/shared/constants/search-index.constants';
-import {
-    searchTypeSchema,
-    indexingStrategySchema,
-    vectorSimilaritySchema,
-} from './search-index.validation';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // STEP 1: BASIC INFO SCHEMA
@@ -78,7 +79,7 @@ export const wizardStep2Schema = z.object({
     stopWords: z.array(z.string()).default([]),
 
     // Provider-specific settings (dynamic, rendered by provider UI component)
-    providerSettings: z.record(z.unknown()).default({}),
+    providerSettings: z.record(z.string(), z.unknown()).default({}),
 
     // DEPRECATED ES settings (kept for backward compat)
     numberOfShards: z.number().int().min(1).max(100).default(SEARCH_INDEX_DEFAULTS.numberOfShards).optional(),
@@ -103,8 +104,7 @@ export type WizardStep2Data = z.infer<typeof wizardStep2Schema>;
 export const wizardStep3Schema = z.object({
     aiProviderId: z.string().uuid('Please select an AI provider'),
     aiModelId: z.number({
-        required_error: 'Please select an embedding model',
-        invalid_type_error: 'Please select an embedding model',
+        error: 'Please select an embedding model',
     }).int().positive('Please select an embedding model'),
     embeddingDimensions: z.number().int().positive().max(4096),
     vectorSimilarity: vectorSimilaritySchema.default('cosine'),

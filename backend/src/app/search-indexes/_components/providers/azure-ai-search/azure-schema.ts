@@ -6,7 +6,7 @@
  * Validation schema for Azure-specific index settings.
  */
 
-import { z } from 'zod';
+import { z } from '@/shared/validation/zod';
 
 export const azureSettingsSchema = z.object({
     vectorSearchAlgorithm: z.enum(['hnsw', 'exhaustiveKnn']).default('hnsw'),

@@ -1,8 +1,9 @@
 // src/features/access/roles.validations.ts
 
-import { z } from 'zod';
-
 import { isPermission } from './permissions';
+
+import { z } from '@/shared/validation/zod';
+
 
 const permissionsSchema = z
   .array(z.string())

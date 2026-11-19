@@ -19,8 +19,8 @@ import { chatRequestSchema } from '@/features/ai-experience/ai-experience.valida
 import { auth } from '@/features/auth/auth.api.handlers';
 import { readAccessToken } from '@/features/auth/public-access';
 import { analyticsSourceOfTokenCaller } from '@/features/auth/token-or-session';
-import { chatEventStream } from '@/features/pipeline/chat-event-stream';
 import { publicApiRoute } from '@/features/feature-switches/gate';
+import { chatEventStream } from '@/features/pipeline/chat-event-stream';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 
@@ -41,7 +41,7 @@ async function post(request: NextRequest) {
     // ── Parse & validate body ──────────────────────────────────────────────────
     const parsed = chatRequestSchema.safeParse(await readJsonBody(request));
     if (!parsed.success) {
-      return apiResponse.badRequest(parsed.error.errors[0]?.message ?? 'Invalid request body');
+      return apiResponse.badRequest(parsed.error.issues[0]?.message ?? 'Invalid request body');
     }
 
     const { message, sessionId: clientSessionId } = parsed.data;

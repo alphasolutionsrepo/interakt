@@ -1,12 +1,12 @@
 // src/app/ai-providers/_lib/model-form.ts
 
-import { z } from 'zod';
+import { capabilitiesFromForm, REASONING_CHOICES, reasoningChoiceOf, type ReasoningChoice } from './model-capabilities';
 
 import type { AIProviderModelResponse, UpdateAIModelInput } from '@/features/ai-providers';
 import { modelFieldRules, modelTypeSchema } from '@/features/ai-providers/ai-providers.validation';
 import { canShortenVectorsByDefault } from '@/features/ai-providers/shortenable-embeddings';
+import { z } from '@/shared/validation/zod';
 
-import { capabilitiesFromForm, REASONING_CHOICES, reasoningChoiceOf, type ReasoningChoice } from './model-capabilities';
 
 /** Model form schema: the server's rules for the model's fields, plus the form's own */
 export const modelFormSchema = z.object({

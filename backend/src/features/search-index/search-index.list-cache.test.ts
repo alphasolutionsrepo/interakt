@@ -28,7 +28,7 @@ vi.mock('./search-index.repository', () => ({
 import { cache } from './search-index.cache';
 import { listSearchIndexes, setSearchIndexActive, updateSearchIndex } from './search-index.service';
 
-const activeList = { isActive: true, pageSize: 100 };
+const activeList = { isActive: true, page: 1, pageSize: 100, sortBy: 'createdAt', sortOrder: 'desc' } as const;
 const names = async () => (await listSearchIndexes(activeList)).items.map((i) => i.displayName);
 
 beforeEach(async () => {

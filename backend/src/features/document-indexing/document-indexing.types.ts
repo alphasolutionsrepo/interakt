@@ -5,11 +5,12 @@
  * Types for the document indexing feature
  */
 
+import type { EmbeddingPreview } from './embedding-text';
+
 import type { IndexLastJob } from '@/db/schema/search-index.schema';
-import { z } from 'zod';
 import { filterClauseSchema } from '@/features/search/search.validation';
 import type { FieldType } from '@/shared/constants/field-types';
-import type { EmbeddingPreview } from './embedding-text';
+import { z } from '@/shared/validation/zod';
 
 // ============================================================================
 // VALIDATION SCHEMAS
@@ -18,7 +19,7 @@ import type { EmbeddingPreview } from './embedding-text';
 /**
  * Schema for single document in upload
  */
-export const documentSchema = z.record(z.unknown());
+export const documentSchema = z.record(z.string(), z.unknown());
 
 /**
  * Schema for document upload request

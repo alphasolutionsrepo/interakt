@@ -40,74 +40,6 @@ components:
       description: "The same access token may be sent as `Authorization: Bearer
         <token>` instead of `X-Access-Token`."
   schemas:
-    SearchHit:
-      type: object
-      properties:
-        id:
-          type: string
-        score:
-          type: number
-        source:
-          type: object
-          additionalProperties: {}
-          description: Indexed document fields (subject to field-level include/exclude
-            config).
-        highlights:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
-      required:
-        - id
-        - score
-        - source
-    Pagination:
-      type: object
-      properties:
-        page:
-          type: integer
-        pageSize:
-          type: integer
-        totalPages:
-          type: integer
-        totalItems:
-          type: integer
-        hasNextPage:
-          type: boolean
-        hasPreviousPage:
-          type: boolean
-      required:
-        - page
-        - pageSize
-        - totalPages
-    Facet:
-      type: object
-      properties:
-        field:
-          type: string
-        type:
-          type: string
-        label:
-          type: string
-        buckets:
-          type: array
-          items:
-            type: object
-            properties:
-              key:
-                anyOf:
-                  - type: string
-                  - type: number
-              count:
-                type: integer
-            required:
-              - key
-              - count
-      required:
-        - field
-        - type
-        - buckets
     SearchResponse:
       type: object
       properties:
@@ -176,6 +108,74 @@ components:
       required:
         - success
         - data
+    SearchHit:
+      type: object
+      properties:
+        id:
+          type: string
+        score:
+          type: number
+        source:
+          type: object
+          additionalProperties: {}
+          description: Indexed document fields (subject to field-level include/exclude
+            config).
+        highlights:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      required:
+        - id
+        - score
+        - source
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+        totalItems:
+          type: integer
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
+      required:
+        - page
+        - pageSize
+        - totalPages
+    Facet:
+      type: object
+      properties:
+        field:
+          type: string
+        type:
+          type: string
+        label:
+          type: string
+        buckets:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                anyOf:
+                  - type: string
+                  - type: number
+              count:
+                type: integer
+            required:
+              - key
+              - count
+      required:
+        - field
+        - type
+        - buckets
     ErrorResponse:
       type: object
       properties:
@@ -183,27 +183,69 @@ components:
           type: boolean
           enum:
             - false
-        error:
-          type: string
-          example: Invalid access token
         code:
           type: string
-          example: UNAUTHORIZED
+          description: Stable error code.
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: What happened, in plain words.
+          example: Some values are not valid
+        error:
+          type: string
+          description: Same as message.
+          example: Some values are not valid
+        hint:
+          type: string
+          description: What to try next, when there is something to try.
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldError"
+          description: Per-field problems (present on 400 VALIDATION_ERROR).
         details:
           type: array
           items:
-            type: object
-            properties:
-              field:
-                type: string
-              message:
-                type: string
-            required:
-              - field
-              - message
-          description: Per-field validation errors (present on 400 VALIDATION_ERROR).
+            $ref: "#/components/schemas/FieldError"
+          description: The same per-field problems as fields (present on 400
+            VALIDATION_ERROR).
+        requestId:
+          type: string
+          description: Quote this when contacting support.
       required:
+        - success
+        - code
+        - message
         - error
+        - requestId
+    FieldError:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Path of the value in the request, dot-separated.
+          example: pageSize
+        code:
+          type: string
+          enum:
+            - invalid_type
+            - too_small
+            - too_big
+            - invalid_format
+            - invalid_value
+            - unrecognized_key
+            - invalid
+          description: Stable code for the problem; rely on this rather than the message.
+            New codes may be added.
+          example: too_big
+        message:
+          type: string
+          description: What is wrong, for people. The wording may change.
+          example: Enter a number of at most 100.
+      required:
+        - field
+        - code
+        - message
     SearchRequest:
       type: object
       properties:
@@ -826,6 +868,7 @@ paths:
             type: string
             description: DOM id the widget mounts into.
           required: false
+          description: DOM id the widget mounts into.
           name: containerId
           in: query
       responses:
