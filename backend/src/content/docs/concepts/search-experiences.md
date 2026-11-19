@@ -74,7 +74,7 @@ The summary appears in the search response as a field your frontend can render a
 Turn on **Query understanding** to have the AI read what the visitor typed before the search runs:
 
 - **Interakt indexes** — phrases like "under $200" or a product code become real filters on the index's fields, and the rest stays as the query.
-- **External indexes** — the question becomes search terms for that engine. "How do I apply for financial aid as a transfer student" becomes something like "apply financial aid transfer student": the key words and qualifiers stay, filler goes, names and codes stay as typed, and the visitor's language is kept. A phrase that already reads like search terms is sent unchanged. The visitor's own filters are sent as they are.
+- **External indexes** — the question becomes search terms for that engine. "How do I apply for financial aid as a transfer student" becomes something like "apply financial aid transfer student": the key words and qualifiers stay, filler goes, names and codes stay as typed, and the visitor's language is kept. A phrase that already reads like search terms is sent unchanged. Search terms are plain words: search syntax such as quotes, wildcards or OR is kept only where the visitor typed it, and a word the model tried to exclude is left out of the search rather than searched for. The visitor's own filters are sent as they are.
 
 In an experience with both, the two run at the same time.
 

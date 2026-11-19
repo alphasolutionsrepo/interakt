@@ -31,6 +31,7 @@ import { getConversationDetail } from './conversation-analytics.service';
 import { describePeriod, isValidTimeZone, previousPeriodIn } from './analytics-period';
 import { getExperienceSummaries, type ExperienceSummary } from './analytics-experience-summary.service';
 import { getFailedTurns, type FailedTurnsResult } from './analytics-failed-turns.service';
+import { FILTERS_ONLY_LABEL, searchedAs } from './search-query-fields';
 import type { AIUsageMetrics, OverviewMetrics, SearchTrendPoint, ToolUsageMetrics } from './analytics-query.service';
 
 /** compare_periods: the same figures for the period and the days just before it */
@@ -1287,6 +1288,13 @@ function triggerOf(event: { triggerType: string; triggerStep: string | null }): 
   return event.triggerStep && event.triggerStep !== 'search' ? `${event.triggerType}:${event.triggerStep}` : event.triggerType;
 }
 
+/** "searched as "…"" or "searched with filters only" for the Ask chat, when the query was changed. */
+function searchedAsText(searchedQuery: string | null | undefined): string | undefined {
+  const searched = searchedAs(searchedQuery);
+  if (!searched) return undefined;
+  return 'query' in searched ? `searched as "${searched.query}"` : FILTERS_ONLY_LABEL;
+}
+
 export function formatRecentSearchesForAI(
   data: Awaited<ReturnType<typeof getRecentSearchEvents>>
 ): string {
@@ -1298,8 +1306,8 @@ export function formatRecentSearchesForAI(
 
   for (const event of data) {
     const status = event.success ? '✓' : '✗';
-    const searchedAs = event.searchedQuery ? ` (searched as "${event.searchedQuery}")` : '';
-    result += `${status} [${triggerOf(event)}] "${event.query}"${searchedAs}
+    const searched = searchedAsText(event.searchedQuery);
+    result += `${status} [${triggerOf(event)}] "${event.query}"${searched ? ` (${searched})` : ''}
    - ${event.totalResults} results, ${event.durationMs}ms, ${event.searchType}
    - ${new Date(event.timestamp).toLocaleString()}\n`;
   }
@@ -1373,14 +1381,17 @@ By Search Type:
   }
 
   // What query understanding searched for instead of the visitor's words, most frequent first
-  const searchedAs = new Map<string, number>();
+  const searchedCounts = new Map<string, number>();
   for (const event of data) {
-    if (event.searchedQuery) searchedAs.set(event.searchedQuery, (searchedAs.get(event.searchedQuery) ?? 0) + 1);
+    const searched = searchedAs(event.searchedQuery);
+    if (!searched) continue;
+    const label = 'query' in searched ? `"${searched.query}"` : `(${FILTERS_ONLY_LABEL})`;
+    searchedCounts.set(label, (searchedCounts.get(label) ?? 0) + 1);
   }
-  if (searchedAs.size > 0) {
+  if (searchedCounts.size > 0) {
     result += `\nSearched as (query understanding changed the query):\n`;
-    for (const [searched, times] of [...searchedAs].sort((a, b) => b[1] - a[1]).slice(0, 5)) {
-      result += `- "${searched}": ${times} search${times === 1 ? '' : 'es'}\n`;
+    for (const [label, times] of [...searchedCounts].sort((a, b) => b[1] - a[1]).slice(0, 5)) {
+      result += `- ${label}: ${times} search${times === 1 ? '' : 'es'}\n`;
     }
   }
 
@@ -1390,7 +1401,8 @@ By Search Type:
     result += `\nSample Zero-Result Events:\n`;
     for (const event of zeroResultEvents) {
       const filterInfo = event.hasFilters ? ` [filters: ${event.filterFields?.join(', ') || 'yes'}]` : '';
-      const searchedInfo = event.searchedQuery ? ` [searched as "${event.searchedQuery}"]` : '';
+      const searched = searchedAsText(event.searchedQuery);
+      const searchedInfo = searched ? ` [${searched}]` : '';
       result += `- ${new Date(event.timestamp).toLocaleString()}: ${event.searchType}, ${triggerOf(event)}${filterInfo}${searchedInfo}\n`;
     }
   }

@@ -11,7 +11,14 @@
  */
 
 import { searchProvidersConfig } from '../../../../config/search-provider.config';
+
+// The provider classes are imported statically, not with require(): they load OpenTelemetry
+// and other packages that the server bundle may load as ES modules, and a require() of such a
+// module returns a promise instead of its exports. The providers index already loads both.
+import { AzureSearchProvider } from './azure-ai-search/azure-search.provider';
+import { ElasticsearchSearchProvider } from './elasticsearch/elasticsearch-search.provider';
 import { providerRegistry } from './search-provider.interface';
+
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('search-providers-init');
@@ -41,7 +48,6 @@ export function initializeSearchProviders(): void {
         // class with the factory (via registerProviderClass). Here we register
         // the SearchProvider (search-time interface) into the registry.
         if (providerDef.type === 'elasticsearch') {
-            const { ElasticsearchSearchProvider } = require('./elasticsearch/elasticsearch-search.provider');
             const esSearchProvider = new ElasticsearchSearchProvider();
             providerRegistry.register('elasticsearch', esSearchProvider, providerDef.isDefault);
 
@@ -52,7 +58,6 @@ export function initializeSearchProviders(): void {
         }
 
         if (providerDef.type === 'azure-ai-search') {
-            const { AzureSearchProvider } = require('./azure-ai-search/azure-search.provider');
             const azureSearchProvider = new AzureSearchProvider();
             providerRegistry.register('azure-ai-search', azureSearchProvider, providerDef.isDefault);
 

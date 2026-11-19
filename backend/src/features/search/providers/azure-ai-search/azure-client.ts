@@ -6,9 +6,6 @@
  * Thin wrapper around the @azure/search-documents SDK.
  * Provides lazy-initialized singleton clients for index and search operations.
  *
- * Prerequisites:
- *   npm install @azure/search-documents
- *
  * Environment variables:
  *   AZURE_SEARCH_ENDPOINT  - e.g., https://<service>.search.windows.net
  *   AZURE_SEARCH_API_KEY   - Admin API key for index management
@@ -17,30 +14,15 @@
 
 import 'server-only';
 
+// Imported statically, like the provider classes in init.ts: the SDK ships ES modules, and a
+// require() of such a package can return a promise instead of the module. Loading it at startup
+// also puts it under the CI start check.
+import { AzureKeyCredential, SearchClient, SearchIndexClient } from '@azure/search-documents';
+
 import { createLogger } from '@/shared/logger/logger';
 import { DEFAULT_API_VERSION } from './azure-constants';
 
 const logger = createLogger('azure-search-client');
-
-// Lazy-loaded SDK types — allows the rest of the codebase to compile
-// even if @azure/search-documents is not installed.
-let _SearchIndexClient: any = null;
-let _SearchClient: any = null;
-let _AzureKeyCredential: any = null;
-
-function loadSDK() {
-    if (_SearchIndexClient) return;
-    try {
-        const sdk = require('@azure/search-documents');
-        _SearchIndexClient = sdk.SearchIndexClient;
-        _SearchClient = sdk.SearchClient;
-        _AzureKeyCredential = sdk.AzureKeyCredential;
-    } catch {
-        throw new Error(
-            'Azure AI Search SDK not installed. Run: npm install @azure/search-documents'
-        );
-    }
-}
 
 // ============================================================================
 // CONFIGURATION
@@ -78,11 +60,10 @@ const searchClients = new Map<string, any>();
  */
 export function getIndexClient(): any {
     if (!indexClient) {
-        loadSDK();
         const config = getConfig();
-        indexClient = new _SearchIndexClient(
+        indexClient = new SearchIndexClient(
             config.endpoint,
-            new _AzureKeyCredential(config.apiKey),
+            new AzureKeyCredential(config.apiKey),
             { apiVersion: config.apiVersion }
         );
         logger.info('Azure SearchIndexClient initialized', { endpoint: config.endpoint });
@@ -95,12 +76,11 @@ export function getIndexClient(): any {
  */
 export function getSearchClient(indexName: string): any {
     if (!searchClients.has(indexName)) {
-        loadSDK();
         const config = getConfig();
-        const client = new _SearchClient(
+        const client = new SearchClient(
             config.endpoint,
             indexName,
-            new _AzureKeyCredential(config.apiKey),
+            new AzureKeyCredential(config.apiKey),
             { apiVersion: config.apiVersion }
         );
         searchClients.set(indexName, client);

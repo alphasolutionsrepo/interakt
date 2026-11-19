@@ -18,7 +18,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { searchIndexesApi } from '../api-client';
+import { searchIndexesApi, searchIndexFieldsApi } from '../api-client';
 import type {
     CreateSearchIndexDTO,
     UpdateSearchIndexDTO,
@@ -389,9 +389,6 @@ export function useClearCache() {
  * @deprecated Use useSearchIndexFields from useSearchIndexFields.ts instead
  */
 export function useFieldMappings(searchIndexId: string, options?: { enabled?: boolean }) {
-    // Import dynamically to avoid circular dependencies
-    const { searchIndexFieldsApi } = require('../api-client');
-    
     return useQuery({
         queryKey: [...searchIndexKeys.detail(searchIndexId), 'fields', 'list'],
         queryFn: () => searchIndexFieldsApi.list(searchIndexId),

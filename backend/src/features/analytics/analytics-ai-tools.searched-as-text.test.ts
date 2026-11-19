@@ -45,4 +45,18 @@ describe('search lookups in the Ask chat', () => {
     ], 'linen shirt');
     expect(text).not.toContain('Searched as');
   });
+
+  it('a search whose words all became filters reads "searched with filters only", in the list, the counts and the failed samples', () => {
+    const recent = formatRecentSearchesForAI([
+      { ...base, id: '1', query: 'red dresses under 50', searchedQuery: '' },
+    ]);
+    expect(recent).toContain('"red dresses under 50" (searched with filters only)');
+
+    const event = (id: string, searchedQuery: string | null) => ({
+      ...base, id, query: 'red dresses under 50', searchedQuery, isZeroResult: true, hasFilters: true, filterFields: ['color'],
+    });
+    const text = formatQuerySearchEventsForAI([event('1', ''), event('2', ''), event('3', 'red dresses')], 'red dresses under 50');
+    expect(text).toContain('- (searched with filters only): 2 searches\n- "red dresses": 1 search');
+    expect(text).toContain('[filters: color] [searched with filters only]');
+  });
 });
