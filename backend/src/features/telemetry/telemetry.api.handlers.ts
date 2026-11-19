@@ -110,7 +110,7 @@ export async function handleSetExperienceOverride(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiResponse.validationError(error);
+      return apiResponse.validationError(error, { operation: 'setExperienceOverrideTelemetry' });
     }
     return apiResponse.error('Failed to set telemetry experience override', 500, { operation: 'setExperienceOverrideTelemetry', err: error });
   }
@@ -223,7 +223,7 @@ export async function handleGetSpans(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiResponse.validationError(error);
+      return apiResponse.validationError(error, { operation: 'getSpans' });
     }
     if (error instanceof PeriodError) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'getSpans' });
     return apiResponse.error('Failed to get spans', 500, { operation: 'getSpans', err: error });
@@ -279,7 +279,7 @@ export async function handleGetSpanMetrics(request: NextRequest) {
     return apiResponse.success(metrics);
   } catch (error) {
     if (error instanceof PeriodError) return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'getSpanMetrics' });
-    if (error instanceof z.ZodError) return apiResponse.validationError(error);
+    if (error instanceof z.ZodError) return apiResponse.validationError(error, { operation: 'getSpanMetrics' });
     return apiResponse.error('Failed to get span metrics', 500, { operation: 'getSpanMetrics', err: error });
   }
 }

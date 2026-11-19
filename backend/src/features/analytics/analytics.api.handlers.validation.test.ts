@@ -12,8 +12,17 @@ vi.mock('@/db/index', () => ({ analyticsDB: null, db: {} }));
 vi.mock('@/shared/utils/auth-utils', () => ({ getCurrentUserId: async () => 'admin' }));
 
 import {
+  handleGetAIUsage,
+  handleGetDashboard,
+  handleGetInsights,
   handleGetOverview,
+  handleGetPerformanceMetrics,
   handleGetPopularQueries,
+  handleGetRecentSearches,
+  handleGetSearchTrends,
+  handleGetSearchTypeBreakdown,
+  handleGetToolUsage,
+  handleGetZeroResultQueries,
   handleHideFinding,
   handleSetExperienceOverride,
   handleUnhideFinding,
@@ -39,6 +48,29 @@ describe('analytics handlers: invalid parameters', () => {
     expect(String(body.message)).not.toContain('"code"');
     expect(String(body.error ?? '')).not.toContain('"code"');
     expect(String(body.message)).not.toMatch(/^Invalid parameters/);
+  });
+});
+
+describe('analytics handlers: every read handler that validates its parameters', () => {
+  it.each([
+    ['search trends', handleGetSearchTrends],
+    ['zero-result queries', handleGetZeroResultQueries],
+    ['search type breakdown', handleGetSearchTypeBreakdown],
+    ['performance metrics', handleGetPerformanceMetrics],
+    ['AI usage', handleGetAIUsage],
+    ['tool usage', handleGetToolUsage],
+    ['recent searches', handleGetRecentSearches],
+    ['insights', handleGetInsights],
+    ['dashboard', handleGetDashboard],
+  ])('%s: a bad timeRange answers 400 VALIDATION_ERROR with a coded field entry', async (_name, handler) => {
+    const res = await handler(new NextRequest('http://localhost/api/analytics/x?timeRange=yesterday'));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({ success: false, code: 'VALIDATION_ERROR', message: 'Some values are not valid' });
+    expect(body.fields).toEqual([
+      expect.objectContaining({ field: 'timeRange', code: 'invalid_value', message: expect.stringMatching(/^Choose one of: /) }),
+    ]);
   });
 });
 

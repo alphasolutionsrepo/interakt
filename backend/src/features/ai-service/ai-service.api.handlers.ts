@@ -208,13 +208,7 @@ export async function handleChatStream(request: NextRequest) {
     const validation = chatRequestBodySchema.safeParse(body);
 
     if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: 'Validation failed',
-        details: validation.error.issues,
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return apiResponse.validationError(validation.error, { operation: 'chatStream' });
     }
 
     const { messages, ...options } = validation.data;

@@ -144,6 +144,22 @@ describe('apiResponse.validationError', () => {
         expect(body.details).toEqual([{ field: 'name', code: 'too_small', message: "This field can't be empty." }]);
     });
 
+    it('logs the refusal with its context when given one, and answers the same', async () => {
+        const result = z.object({ pageSize: z.number().max(100) }).safeParse({ pageSize: 500 });
+        const zodError = !result.success ? result.error : (undefined as never);
+        logs.length = 0;
+        const quiet = await apiResponse.validationError(zodError).json();
+        expect(reported(logs)).toEqual([]);
+        const logged = apiResponse.validationError(zodError, { operation: 'getSpans' });
+        expect(logged.status).toBe(400);
+        const body = await logged.json();
+        expect({ ...body, requestId: undefined }).toEqual({ ...quiet, requestId: undefined });
+        expect(reported(logs)).toEqual([expect.objectContaining({
+            level: 'warn',
+            context: expect.objectContaining({ operation: 'getSpans', code: 'VALIDATION_ERROR' }),
+        })]);
+    });
+
     it('lists every problem with its code, nested paths dot-joined', async () => {
         const schema = z.object({ query: z.string(), pageSize: z.number().max(100), sort: z.object({ order: z.enum(['asc', 'desc']) }) });
         const result = schema.safeParse({ pageSize: 500, sort: { order: 'up' } });

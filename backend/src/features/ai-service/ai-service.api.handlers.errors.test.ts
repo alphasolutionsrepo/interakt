@@ -116,11 +116,16 @@ describe('a failed AI Provider playground call', () => {
 });
 
 describe('the playground chat stream with an invalid body', () => {
-  it('answers 400 with the problems as details, not 500', async () => {
+  it('answers 400 with the standard validation body, not 500, and logs the refusal for chatStream', async () => {
+    logs.length = 0;
     const res = await handleChatStream(post('/api/ai-service/chat/stream', { messages: 'hi' }));
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body).toMatchObject({ error: 'Validation failed' });
-    expect(body.details).toEqual([expect.objectContaining({ code: 'invalid_type', path: ['messages'] })]);
+    expect(body).toMatchObject({ success: false, code: 'VALIDATION_ERROR', message: 'Some values are not valid', requestId: expect.any(String) });
+    expect(body.fields).toEqual([expect.objectContaining({ field: 'messages', code: 'invalid_type', message: expect.any(String) })]);
+    expect(body.details).toBeUndefined();
+    expect(logs.filter((l) => l.level === 'warn')).toEqual([
+      expect.objectContaining({ message: 'Request rejected', context: expect.objectContaining({ operation: 'chatStream', code: 'VALIDATION_ERROR' }) }),
+    ]);
   });
 });

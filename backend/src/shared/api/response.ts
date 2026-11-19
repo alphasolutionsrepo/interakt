@@ -231,9 +231,11 @@ function explain(err: unknown, status: number): { answer: { status: number; body
 }
 
 /**
- * Validation error (Zod)
+ * Validation error (Zod): 400 with each field's code and message. With logContext the
+ * refusal is also logged as a warning (as refused() does), with that context.
  */
-function validationError(zodError: ZodError): NextResponse<APIErrorResponse> {
+function validationError(zodError: ZodError, logContext?: Record<string, unknown>): NextResponse<APIErrorResponse> {
+    if (logContext) return error(zodError, 400, logContext);
     return errorResponse(
         {
             code: 'VALIDATION_ERROR',
