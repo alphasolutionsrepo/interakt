@@ -29,7 +29,7 @@
 
 import 'server-only';
 
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 
 import { constraintCache, interpretationCache, rewriteCache } from './query-interpreter.cache';
 import {
@@ -40,7 +40,7 @@ import {
     toParameterContext,
     type InterpretedFilter,
 } from './query-interpreter.core';
-import { REWRITE_SCHEMA, buildRewritePrompt, parseRewrite, shouldRewrite } from './query-rewriter.core';
+import { REWRITE_SCHEMA, buildRewritePrompt, parseRewrite, plainSearchTerms, shouldRewrite } from './query-rewriter.core';
 import { DEFAULT_QUERY_UNDERSTANDING_TIMEOUT_MS, MAX_QUERY_UNDERSTANDING_TIMEOUT_MS } from './search-experience.types';
 
 import type {
@@ -116,8 +116,8 @@ export function resolveTimeoutMs(config?: SearchExperienceQueryUnderstandingConf
 
 /**
  * Run a step with this caller's own time limit. Past it, this rejects with
- * QueryStepTimeoutError at once. It never aborts anything: a model call shared through
- * the cache keeps running for the other callers that joined it.
+ * QueryStepTimeoutError at once. It never aborts anything itself: a model call shared
+ * through the cache keeps running while other callers still wait for it.
  */
 async function withTimeLimit<T>(timeoutMs: number, run: () => Promise<T>): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -132,18 +132,61 @@ async function withTimeLimit<T>(timeoutMs: number, run: () => Promise<T>): Promi
 }
 
 /**
- * Start a model call that callers share through the cache. It is owned by the cache
- * entry, not by whoever started it: its signal aborts only at the longest limit any
- * experience can set, so a hung provider cannot hold the cache key forever. It settles
- * then even if the provider ignores the signal, which keeps the failure out of the cache.
+ * Callers waiting on each shared model call, and the calls running for them. Usually one
+ * call; a cache invalidation while one runs can start a second under the same key.
  */
-function startSharedCall<T>(start: (signal: AbortSignal) => Promise<T>): Promise<T> {
+interface SharedCallWaiters {
+    waiters: number;
+    controllers: Set<AbortController>;
+}
+
+const sharedCalls = new Map<string, SharedCallWaiters>();
+
+/**
+ * Wait for a step whose model call is shared through the cache under `id`, with this
+ * caller's own time limit. When the last caller waiting for that call leaves (served, failed
+ * or past its limit), the call is aborted: nobody needs its answer any more.
+ */
+async function waitForSharedCall<T>(id: string, timeoutMs: number, run: () => Promise<T>): Promise<T> {
+    let entry = sharedCalls.get(id);
+    if (!entry) {
+        entry = { waiters: 0, controllers: new Set() };
+        sharedCalls.set(id, entry);
+    }
+    entry.waiters += 1;
+    try {
+        return await withTimeLimit(timeoutMs, run);
+    } finally {
+        entry.waiters -= 1;
+        if (entry.waiters === 0) {
+            for (const controller of entry.controllers) controller.abort(new QueryStepTimeoutError(timeoutMs));
+            if (sharedCalls.get(id) === entry) sharedCalls.delete(id);
+        }
+    }
+}
+
+/**
+ * Start the model call shared under `id`. Its signal aborts when no caller is waiting any
+ * more, or at the longest limit any experience can set as a backstop, so a hung provider
+ * cannot hold the cache key forever. It settles then even if the provider ignores the
+ * signal, which keeps the failure out of the cache. With no caller left by the time it
+ * would start, it does not start at all.
+ */
+function startSharedCall<T>(id: string, start: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const entry = sharedCalls.get(id);
+    if (!entry || entry.waiters === 0) {
+        return Promise.reject(new QueryStepTimeoutError(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS));
+    }
     const controller = new AbortController();
+    entry.controllers.add(controller);
     const backstop = setTimeout(
         () => controller.abort(new QueryStepTimeoutError(MAX_QUERY_UNDERSTANDING_TIMEOUT_MS)),
         MAX_QUERY_UNDERSTANDING_TIMEOUT_MS,
     );
-    return settleOnAbort(controller.signal, start(controller.signal)).finally(() => clearTimeout(backstop));
+    return settleOnAbort(controller.signal, start(controller.signal)).finally(() => {
+        clearTimeout(backstop);
+        entry.controllers.delete(controller);
+    });
 }
 
 /**
@@ -165,11 +208,20 @@ function settleOnAbort<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
 // concurrent dynamic imports the real module instead of its mock.
 let featureSwitches: Promise<typeof import('@/features/feature-switches/feature-switches.service')> | undefined;
 
-/** Whether AI summaries, which query understanding is part of, is on. */
-async function summariesAreaOn(): Promise<boolean> {
-    featureSwitches ??= import('@/features/feature-switches/feature-switches.service');
-    const { isAreaOn } = await featureSwitches;
-    return isAreaOn('ai-summaries');
+/**
+ * Whether AI summaries, which query understanding is part of, is on. Never throws: when the
+ * switch cannot be read, search runs as plain search, and the next search reads it again.
+ */
+export async function queryUnderstandingAreaOn(): Promise<boolean> {
+    try {
+        featureSwitches ??= import('@/features/feature-switches/feature-switches.service');
+        const { isAreaOn } = await featureSwitches;
+        return await isAreaOn('ai-summaries');
+    } catch (err) {
+        featureSwitches = undefined;
+        logger.warn('Could not read the AI summaries switch; searching without query understanding', { err });
+        return false;
+    }
 }
 
 /** The text of a completion; only text can carry the JSON we asked for. */
@@ -288,12 +340,15 @@ function fingerprint(value: string | undefined): string {
     return createHash('sha1').update(value).digest('hex').slice(0, 12);
 }
 
+// Per-process secret for query keys: the caches live in this process only
+const queryKeySecret = randomBytes(32);
+
 /**
- * The visitor's words as they go into a cache key: a digest, so the key (which the cache
- * may log) never carries the question. Full length, since each question needs its own entry.
+ * The cache key part for a visitor's query, exactly as typed. Cache keys are logged at
+ * debug level, so they carry this keyed hash instead of the visitor's words.
  */
-function queryKey(query: string): string {
-    return createHash('sha256').update(query.trim()).digest('hex');
+export function queryKeyPart(query: string): string {
+    return createHmac('sha256', queryKeySecret).update(query.trim()).digest('hex');
 }
 
 /**
@@ -337,7 +392,7 @@ export async function applyQueryInterpretation(options: {
     }
 
     // Query understanding is part of AI summaries: with that off, search runs as plain search
-    if (!(await summariesAreaOn())) {
+    if (!(await queryUnderstandingAreaOn())) {
         return { query, filters: clientFilters };
     }
 
@@ -401,7 +456,7 @@ export async function interpretQuery(
     const timeoutMs = resolveTimeoutMs(config);
     try {
         // Field loading counts toward the limit too: the search waits for all of it
-        const result = await withTimeLimit(timeoutMs, () => interpretWithModel(options, config));
+        const result = await waitForSharedCall(interpretationCallId(options, config), timeoutMs, () => interpretWithModel(options, config));
 
         if (result === NO_FILTERABLE_FIELDS) {
             return passthrough(query, startedAt, 'skipped');
@@ -436,6 +491,22 @@ export async function interpretQuery(
 /** The index has no fields to filter on, so there is nothing to ask the model. */
 const NO_FILTERABLE_FIELDS = Symbol('no filterable fields');
 
+/**
+ * Key on the index + experience/model: the same phrase can be interpreted differently
+ * depending on provider/model and per-experience instructions. The instructions are
+ * fingerprinted rather than assumed constant per experience — an admin can edit them,
+ * and without this the old interpretation would be served for the rest of the TTL.
+ * The query is keyed as typed, letter case included, like the rewrite's key: the cached
+ * effective query is searched as is, so codes and names keep this visitor's capitals.
+ */
+function interpretationCacheKey(options: InterpretQueryOptions, config: SearchExperienceQueryUnderstandingConfig): string {
+    return `${options.searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${queryKeyPart(options.query)}`;
+}
+
+function interpretationCallId(options: InterpretQueryOptions, config: SearchExperienceQueryUnderstandingConfig): string {
+    return `interpretation:${interpretationCacheKey(options, config)}`;
+}
+
 /** Load the index's fields and ask the model; null when the model gave nothing usable. */
 async function interpretWithModel(
     options: InterpretQueryOptions,
@@ -447,17 +518,11 @@ async function interpretWithModel(
         return NO_FILTERABLE_FIELDS;
     }
 
-    // Key on the index + experience/model: the same phrase can be interpreted differently
-    // depending on provider/model and per-experience instructions. The instructions are
-    // fingerprinted rather than assumed constant per experience — an admin can edit them,
-    // and without this the old interpretation would be served for the rest of the TTL.
-    // The query is kept as typed, letter case included, like the rewrite's key: the cached
-    // effective query is searched as is, so codes and names keep this visitor's capitals.
-    const cacheKey = `${searchIndexId}:${options.experienceId ?? 'no-exp'}:${options.providerId ?? 'default'}:${options.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${queryKey(query)}`;
+    const cacheKey = interpretationCacheKey(options, config);
     return interpretationCache.getOrSet<QueryInterpretation | null>(cacheKey, async () => {
         const systemPrompt = buildInterpreterPrompt(constraints, config.customInstructions);
 
-        const completion = await startSharedCall(signal => aiService.chat(
+        const completion = await startSharedCall(interpretationCallId(options, config), signal => aiService.chat(
             [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: query },
@@ -552,18 +617,19 @@ export async function rewriteQueryForExternalSearch(options: {
     const timeoutMs = resolveTimeoutMs(config);
     // Keyed on the words as typed, letter case included: the rewrite keeps codes and names as the
     // visitor wrote them, and "unchanged" is judged against this visitor's own words
-    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${queryKey(query)}`;
+    const cacheKey = `${experienceId ?? 'no-exp'}:${aiConfig.providerId ?? 'default'}:${aiConfig.modelId ?? 'default'}:${fingerprint(config.customInstructions)}:${queryKeyPart(query)}`;
 
     try {
         // Part of AI summaries, like filter interpretation
-        if (!(await summariesAreaOn())) {
+        if (!(await queryUnderstandingAreaOn())) {
             return done('skipped');
         }
 
         // A null result (nothing usable) is not kept: the cache treats null as a miss
-        const rewritten = await withTimeLimit(timeoutMs, () =>
+        const callId = `rewrite:${cacheKey}`;
+        const rewritten = await waitForSharedCall(callId, timeoutMs, () =>
             rewriteCache.getOrSet<string | null>(cacheKey, async () => {
-                const completion = await startSharedCall(signal => aiService.chat(
+                const completion = await startSharedCall(callId, signal => aiService.chat(
                     [
                         { role: 'system', content: buildRewritePrompt(config.customInstructions) },
                         { role: 'user', content: query },
@@ -591,7 +657,8 @@ export async function rewriteQueryForExternalSearch(options: {
                         },
                     },
                 ));
-                return parseRewrite(completionText(completion));
+                const terms = parseRewrite(completionText(completion));
+                return terms === null ? null : plainSearchTerms(terms, query.trim());
             }),
         );
 

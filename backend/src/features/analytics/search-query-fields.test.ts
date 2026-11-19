@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { searchQueryFields } from './search-query-fields';
+import { searchedAs, searchQueryFields } from './search-query-fields';
 
 describe('searchQueryFields', () => {
   it('keeps the visitor\'s words as the query and the changed query as searched', () => {
@@ -22,5 +22,14 @@ describe('searchQueryFields', () => {
     expect(searchQueryFields({ queryText: 'linen shirt', visitorQuery: '  ' })).toEqual({ queryText: 'linen shirt' });
     // Every word moved into filters: the visitor's question stays, the empty query searched beside it
     expect(searchQueryFields({ queryText: '', visitorQuery: 'shirts under 50' })).toEqual({ queryText: 'shirts under 50', searchedQuery: '' });
+  });
+});
+
+describe('searchedAs', () => {
+  it('reads an empty searched query as filters only, a missing one as unchanged', () => {
+    expect(searchedAs('minimal shirts')).toEqual({ query: 'minimal shirts' });
+    expect(searchedAs('')).toEqual({ filtersOnly: true });
+    expect(searchedAs(null)).toBeUndefined();
+    expect(searchedAs(undefined)).toBeUndefined();
   });
 });

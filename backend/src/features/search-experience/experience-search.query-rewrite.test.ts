@@ -291,6 +291,33 @@ describe('the query rewrite trace step', () => {
     expect(telemetry.steps.find((s) => s.name === 'query_understanding.rewrite')?.attributes[ATTR.QUERY_REWRITE_OUTCOME]).toBe('skipped');
   });
 
+  it('are both absent, and the search still runs with the visitor\'s words, when the AI summaries switch cannot be read', async () => {
+    const switches = await import('@/features/feature-switches/feature-switches.service');
+    const unreadable = vi.spyOn(switches, 'isAreaOn').mockRejectedValue(new Error('settings store down'));
+    try {
+      modelAnswers();
+      await search(experience());
+
+      expect(aiService.chat).not.toHaveBeenCalled();
+      expect(externalRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
+      expect(managedRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
+      expect(telemetry.steps.map((s) => s.name)).toEqual(['search_experience.search']);
+    } finally {
+      unreadable.mockRestore();
+    }
+  });
+
+  it('are both absent, and the query is sent as typed, with AI summaries off', async () => {
+    featureSwitchesStub.off.add('ai-summaries');
+    modelAnswers();
+    await search(experience());
+
+    expect(aiService.chat).not.toHaveBeenCalled();
+    expect(externalRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
+    expect(managedRequest()).toMatchObject({ query: QUESTION, filters: CLIENT_FILTERS });
+    expect(telemetry.steps.map((s) => s.name)).toEqual(['search_experience.search']);
+  });
+
   it('is absent, and the query is sent as typed, with query understanding off', async () => {
     modelAnswers();
     await search(experience({ enabled: false }, 'external'));

@@ -73,6 +73,7 @@ function stepFacts(span: SpanDetail): Array<[string, string | undefined]> {
     case 'query_understanding.rewrite':
       return [
         ['Outcome', attr(span, ATTR.QUERY_REWRITE_OUTCOME)],
+        ['Visitor’s words', attr(span, ATTR.QUERY_REWRITE_ORIGINAL)],
         ['Search terms', attr(span, ATTR.QUERY_REWRITE_REWRITTEN)],
       ];
     case 'ai.generate_embeddings':
