@@ -228,8 +228,6 @@ interface LookupInput {
   id?: string;
 }
 
-/** A chunk id: chunks are keyed by UUID. */
-
 /**
  * Retrieve a specific chunk by ID from a file_store data source.
  */
@@ -246,7 +244,6 @@ export async function executeFileStoreLookup(
   }
 
   // Chunk ids are UUIDs: anything else (a document name, say) can't be one
-  // Chunk ids are UUIDs; anything else can't be one of ours
   if (!isUuidShape(chunkId)) return noRecordFound(chunkId);
 
   try {
