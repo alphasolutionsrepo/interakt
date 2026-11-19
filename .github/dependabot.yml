@@ -1,7 +1,8 @@
 # Dependency updates.
 #
 # Security updates (PRs for dependencies with a published advisory) are switched on in the
-# repository settings and open as soon as an advisory appears. The version updates below are
+# repository settings and open as soon as an advisory appears, as one PR per npm project (the
+# `*-security` groups). The version updates below are
 # routine: once a month, each npm project gets at most two PRs, one for minor and patch updates
 # and one for major updates, and GitHub Actions updates come as one PR. To leave one major
 # update out of its group, comment `@dependabot ignore <dependency> major version` on the PR.
@@ -31,6 +32,9 @@ updates:
       backend-major:
         patterns: ["*"]
         update-types: [major]
+      backend-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: npm
     directory: /backend/widgets
@@ -49,6 +53,9 @@ updates:
       widgets-major:
         patterns: ["*"]
         update-types: [major]
+      widgets-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: npm
     directory: /demo-site
@@ -67,6 +74,9 @@ updates:
       demo-site-major:
         patterns: ["*"]
         update-types: [major]
+      demo-site-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: npm
     directory: /docs-site
@@ -85,6 +95,9 @@ updates:
       docs-site-major:
         patterns: ["*"]
         update-types: [major]
+      docs-site-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
