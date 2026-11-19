@@ -26,7 +26,9 @@ WORKDIR /app
 # Dependencies (full — needed to build)
 ############################
 FROM base AS deps
-COPY package.json package-lock.json ./
+# .npmrc sets legacy-peer-deps, as in CI and local installs; without it npm ci
+# stops on peer ranges some dependencies haven't widened yet.
+COPY package.json package-lock.json .npmrc ./
 COPY widgets/package.json widgets/package-lock.json ./widgets/
 RUN npm ci
 RUN npm --prefix widgets ci
@@ -47,7 +49,7 @@ RUN npm run build
 # Production deps (+ tsx for the migration scripts)
 ############################
 FROM base AS prod-deps
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --omit=dev \
  && npm install --no-save tsx@^4 \
  && npm cache clean --force

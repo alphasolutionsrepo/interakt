@@ -66,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The production Docker image builds again: it installs dependencies with the backend's `.npmrc`, as CI and local installs do. CI now builds the image on every PR.
 - An access token or ID that isn't a UUID no longer answers 500. A public API request with such a token answers 401, like an unknown token. An admin request with such an ID in its address answers 400 "That ID isn't valid.", and an unknown job or queue answers 404.
 - The server starts with the current OpenTelemetry packages: the startup step that sets up tracing and the search providers loads them as ES modules. CI now builds, migrates and starts the app on every PR.
 - The filter box on the AI Experiences, Search Experiences, Search Indexes, Data Sources, Tools and MCP Connections lists no longer loses focus while the list reloads.

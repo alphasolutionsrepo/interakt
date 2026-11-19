@@ -110,6 +110,18 @@ jobs:
       - name: Start
         run: bash scripts/start-check.sh
 
+  backend-image:
+    name: Backend · Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The production image the hosted copy is built from (az acr build uses the same
+      # Dockerfile). Installs and builds inside the image, so it catches files the
+      # Dockerfile leaves out.
+      - name: Build the image
+        run: docker build --file backend/docker/Dockerfile backend
+
   widgets:
     name: Widgets · lint · build · test
     runs-on: ubuntu-latest
