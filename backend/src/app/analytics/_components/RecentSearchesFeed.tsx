@@ -10,6 +10,8 @@ import { searchTriggerLabel } from '../_lib/search-trigger';
 import { isBrowseQuery } from './sections/dashboard-cards';
 import { ChartCard, formatCompact, formatMs } from './viz';
 
+import { FILTERS_ONLY_LABEL, searchedAs } from '@/features/analytics/search-query-fields';
+
 interface RecentSearchesFeedProps {
   data?: RecentSearchEvent[];
   isLoading?: boolean;
@@ -52,11 +54,7 @@ export function RecentSearchesFeed({ data, isLoading, refreshing }: RecentSearch
                     event.query
                   )}
                   <span className="ml-1.5 text-xs text-muted-foreground">{event.searchType}</span>
-                  {event.searchedQuery && (
-                    <span className="block truncate text-xs text-muted-foreground" title={event.searchedQuery}>
-                      searched as “{event.searchedQuery}”
-                    </span>
-                  )}
+                  <SearchedAs searchedQuery={event.searchedQuery} />
                 </td>
                 <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                   {searchTriggerLabel(event.triggerType, event.triggerStep)}
@@ -82,5 +80,17 @@ export function RecentSearchesFeed({ data, isLoading, refreshing }: RecentSearch
         </table>
       </div>
     </ChartCard>
+  );
+}
+
+/** Under the visitor's words: what was searched, when query understanding changed it. */
+function SearchedAs({ searchedQuery }: { searchedQuery?: string | null }) {
+  const searched = searchedAs(searchedQuery);
+  if (!searched) return null;
+  const text = 'query' in searched ? `searched as “${searched.query}”` : FILTERS_ONLY_LABEL;
+  return (
+    <span className="block truncate text-xs text-muted-foreground" title={'query' in searched ? searched.query : text}>
+      {text}
+    </span>
   );
 }

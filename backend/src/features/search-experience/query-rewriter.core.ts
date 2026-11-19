@@ -77,3 +77,77 @@ export function parseRewrite(content: string): string | null {
     if (trimmed.length === 0 || trimmed.length > MAX_REWRITE_LENGTH) return null;
     return trimmed;
 }
+
+/**
+ * Characters the external engines' simple query syntax reads as syntax (Elasticsearch
+ * simple_query_string, Azure AI Search simple): wildcards, OR, phrases, grouping,
+ * fuzziness, the escape character, and "+" (AND, inside a word too: "linen+shirt").
+ */
+const SYNTAX_CHARACTERS = ['*', '|', '"', '(', ')', '~', '\\', '+'];
+/** "-" means NOT only at the start of a word; inside one ("AB-12") it is part of the word. */
+const NOT_SIGN = '-';
+/** Words some engines read as operators when written in capitals. */
+const OPERATOR_WORDS = ['OR', 'AND', 'NOT'];
+/** Fuzziness or proximity with its number: "shirt~2", "\"linen shirt\"~3", "shirt~0.8". */
+const FUZZINESS = /~[\d.]*/g;
+
+/** Whether a word opens a group or phrase that it does not close itself. */
+function opensGroup(word: string): boolean {
+    const stripped = word.replace(/^[-+]+/, '');
+    if (stripped.startsWith('(')) return !stripped.includes(')');
+    if (stripped.startsWith('"')) return !stripped.slice(1).includes('"');
+    return false;
+}
+
+/**
+ * Keep search terms to plain words, as the prompt asks. A word the visitor typed, syntax
+ * and all, stays as they typed it (their spelling, when the model only changed its capitals);
+ * in any other word, search syntax is removed. A word the model excluded ("-used",
+ * "NOT wool", a negated group or phrase) is dropped with its sign, so the search widens
+ * rather than looking for what was meant to be left out.
+ * Returns null when no words are left; the caller then searches with the visitor's own words.
+ */
+export function plainSearchTerms(terms: string, visitorQuery: string): string | null {
+    const typed = visitorQuery.split(/\s+/).filter(Boolean);
+    const visitorWords = new Set(typed);
+    const visitorSpelling = new Map(typed.map((word) => [word.toLowerCase(), word]));
+    const words: string[] = [];
+    let negateNext = false;
+    let insideNegatedGroup = false;
+    for (const word of terms.split(/\s+/).filter(Boolean)) {
+        if (insideNegatedGroup) {
+            if (word.includes(')') || word.includes('"')) insideNegatedGroup = false;
+            continue;
+        }
+        if (negateNext) {
+            negateNext = false;
+            insideNegatedGroup = opensGroup(word);
+            continue;
+        }
+        if (visitorWords.has(word)) {
+            words.push(word);
+            continue;
+        }
+        if (word === 'NOT') {
+            negateNext = true;
+            continue;
+        }
+        if (OPERATOR_WORDS.includes(word)) continue;
+        const asTyped = visitorSpelling.get(word.toLowerCase());
+        if (asTyped !== undefined) {
+            words.push(asTyped);
+            continue;
+        }
+        if (word.replace(/^[+(]+/, '').startsWith(NOT_SIGN)) {
+            insideNegatedGroup = opensGroup(word.replace(/^[+(]+/, ''));
+            continue;
+        }
+        let plain = word.replace(FUZZINESS, ' ');
+        for (const char of SYNTAX_CHARACTERS) plain = plain.split(char).join(' ');
+        for (const piece of plain.split(/\s+/)) {
+            const rest = piece.replace(/^-+/, '');
+            if (rest.length > 0) words.push(rest);
+        }
+    }
+    return words.length > 0 ? words.join(' ') : null;
+}

@@ -61,9 +61,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A reindex stopped by a failing embedding model says so, from the provider's error. An AI call is not retried when its caller stops waiting.
 - Log lines keep a visitor's words (search and autocomplete queries, the AI summary, query understanding, Find Record values, zero-result retries, knowledge search, and the `LOG_ES_QUERIES` request log) only when the experience's telemetry level is Full. At Metadata or Off they log the length instead (`queryLength`), and filters by field without their values.
 - The search widget stops an AI summary that is still being written when the visitor closes the search (Esc, the close button or the backdrop) or the widget is removed from the page; reopening on the same query writes it again. The demo site stops it when the visitor leaves the page.
+- Query understanding for an external index searches with plain words: search syntax in the model's answer (quotes, wildcards, OR and similar) is kept only on words the visitor typed that way, a word the model excluded ("-used", "NOT wool") is left out rather than searched for, and an answer with no words left searches with the visitor's own words. With AI summaries off, traces record no query understanding steps, and the trace view shows the visitor's words beside the search terms. Latest searches and the Ask chat say "searched with filters only" when every word of a question became a filter.
 
 ### Fixed
 
+- The server starts with the current OpenTelemetry packages: the startup step that sets up tracing and the search providers loads them as ES modules. CI now builds, migrates and starts the app on every PR.
 - The filter box on the AI Experiences, Search Experiences, Search Indexes, Data Sources, Tools and MCP Connections lists no longer loses focus while the list reloads.
 - Find Record on an Azure AI Search index goes on to search by name when the id isn't a document key, as on Elasticsearch.
 - Find Record on an external Elasticsearch source also finds a record by the id its search results and lists of matches give (Elasticsearch's own document id).

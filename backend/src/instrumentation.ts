@@ -39,7 +39,7 @@ export async function register() {
       '@/features/telemetry'
     );
     initializeTelemetryConfig();
-    initializeTelemetry();
+    await initializeTelemetry();
 
     // Load per-experience telemetry overrides from DB (blocking to avoid race condition
     // where early requests ignore per-experience settings)
