@@ -84,6 +84,9 @@ const NOT_A_UUID = /invalid input syntax for type uuid/i;
  * A query refused because an ID in the request isn't a UUID: the request is wrong, and
  * nothing ran (Postgres rejects the value before running the query). Answered like the
  * routes that check their IDs first, without repeating the value.
+ *
+ * It can't tell a request's ID from a malformed UUID our own code passed by mistake: such a
+ * bug answers 400 and is logged as a warning with its cause, not as a 500 error.
  */
 function malformedId(err: Error): AppError | undefined {
     const refused = causeOfQuery(err, (code, cause) => code === INVALID_TEXT_REPRESENTATION && NOT_A_UUID.test(cause.message));
