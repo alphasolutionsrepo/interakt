@@ -18,6 +18,7 @@ import { getGlobalTopicGateCache } from '@/features/guardrails/topic-gate.cache'
 import { setupTopicGateEmbeddings } from '@/features/guardrails/topic-gate.service';
 import { setExperienceTelemetryOverride } from '@/features/telemetry';
 import { createLogger } from '@/shared/logger/logger';
+import { isUuidShape } from '@/shared/utils/uuid';
 
 const logger = createLogger('ai-experience-service');
 
@@ -152,6 +153,8 @@ export async function getAIExperienceBySlug(slug: string) {
 }
 
 export async function getAIExperienceByAccessToken(accessToken: string) {
+  // Tokens are UUIDs: anything else matches no experience (and Postgres would refuse the query)
+  if (!isUuidShape(accessToken)) return undefined;
   const cacheKey = `token:${accessToken}`;
   const cached = cache.get<AIExperienceWithTools>(cacheKey);
   if (cached) return cached;

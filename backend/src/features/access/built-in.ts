@@ -27,6 +27,7 @@ import { tools } from '@/db/schema/tools.schema';
 import { authenticateIngestionKey, hasBearerCredentials } from '@/features/ingestion-keys/ingestion-key.middleware';
 import { withRateLimit, type RateLimitConfig } from '@/shared/api/rate-limit';
 import { apiResponse } from '@/shared/api/response';
+import { isUuidShape } from '@/shared/utils/uuid';
 
 const TABLES = {
   'ai-experience': aiExperiences,
@@ -38,7 +39,6 @@ const TABLES = {
 
 export type BuiltInKind = keyof typeof TABLES;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const REFUSAL = BUILT_IN_REFUSAL;
 
@@ -61,7 +61,7 @@ export function checksBuiltInInHandler<T extends object>(route: T): T {
  * Ids that can't name a row aren't (the route answers them).
  */
 export async function builtInIds(kind: BuiltInKind, ids: readonly string[]): Promise<Set<string>> {
-  const valid = [...new Set(ids)].filter((id) => UUID.test(id));
+  const valid = [...new Set(ids)].filter(isUuidShape);
   if (valid.length === 0) return new Set();
   const table = TABLES[kind];
   // Marked rows, and (tools, indexes) rows a built-in experience uses: asked together

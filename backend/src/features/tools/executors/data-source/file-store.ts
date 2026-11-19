@@ -10,13 +10,15 @@
  * when the resolved data source is of type 'file_store'.
  */
 
+import { noRecordFound, type OperationResult } from './shared';
+
 import { trackSearch } from '@/features/analytics';
 import { getAnalyticsSourceContext } from '@/features/analytics/analytics-source-context';
 import { embed } from '@/features/embedding/embedding.service';
-import { getExperienceContext } from '@/features/search/search.service';
 import * as kbRepository from '@/features/knowledge-base/knowledge-base.repository';
+import { getExperienceContext } from '@/features/search/search.service';
 import { createLogger } from '@/shared/logger/logger';
-import { noRecordFound, type OperationResult } from './shared';
+import { isUuidShape } from '@/shared/utils/uuid';
 
 const logger = createLogger('file-store-executor');
 
@@ -226,9 +228,6 @@ interface LookupInput {
   id?: string;
 }
 
-/** A chunk id: chunks are keyed by UUID. */
-const CHUNK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Retrieve a specific chunk by ID from a file_store data source.
  */
@@ -245,7 +244,7 @@ export async function executeFileStoreLookup(
   }
 
   // Chunk ids are UUIDs: anything else (a document name, say) can't be one
-  if (!CHUNK_ID.test(chunkId)) return noRecordFound(chunkId);
+  if (!isUuidShape(chunkId)) return noRecordFound(chunkId);
 
   try {
     const chunk = await kbRepository.getChunkById(chunkId);
