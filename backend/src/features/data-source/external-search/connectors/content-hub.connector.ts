@@ -98,57 +98,72 @@ async function baseFilter(connection: ExternalConnection, settings: ContentHubSe
 
 /**
  * The most count requests one search spends on facet values, and how many run at once.
- * Content Hub has no aggregation, so a value is counted by its own filtered count. One
- * facet (the enumerate tool's case) is always counted: its values are capped at the
- * taxonomy listing size. A search experience asking for many facets at once gets them
- * listed without counts rather than hundreds of requests per search.
+ * Content Hub has no aggregation, so a value is counted by its own filtered count. The
+ * facets of a request are counted only when all of them fit the budget together: one
+ * facet (the enumerate tool's case) always does, since its values are capped at the
+ * taxonomy listing size; a search experience asking for many at once gets them listed
+ * without counts, in one fast request, rather than hundreds of calls per search.
  */
 const FACET_COUNT_BUDGET = 100;
 const FACET_COUNT_CONCURRENCY = 10;
 
+interface FacetValues {
+  field: string;
+  size: number;
+  values: Array<{ key: string; filter: ContentHubFilter }>;
+}
+
 /**
- * Facet values for a field: a taxonomy's items for a relation, an option list's values
- * for an option-list property, each counted within `scope` (the filter the results came
- * from) while the budget allows. Counted values come back largest first without the
- * empty ones; listed-only values keep their order with a count of 1.
+ * The values a field can be filtered on: a taxonomy's items for a relation, an option
+ * list's values for an option-list property, each with the filter that selects it.
  */
-async function facetFor(
-  settings: ContentHubSettings,
-  request: ExternalFacetRequest,
-  fields: Map<string, DataSourceField>,
-  scope: ContentHubFilter,
-  budget: { left: number },
-): Promise<ExternalFacet | undefined> {
+async function facetValues(settings: ContentHubSettings, request: ExternalFacetRequest, fields: Map<string, DataSourceField>): Promise<FacetValues | undefined> {
   const kind = fieldKind(fields.get(request.field), request.field);
   const size = request.size ?? 50;
-  let values: Array<{ key: string; filter: ContentHubFilter }>;
   if (kind.kind === 'relation') {
     const items = await listTaxonomyItems(settings, kind.target);
-    values = items.map((i) => ({ key: i.label, filter: { type: 'Relation', relation: request.field, id: i.id } }));
-  } else if (kind.kind === 'optionList') {
+    return { field: request.field, size, values: items.map((i) => ({ key: i.label, filter: { type: 'Relation', relation: request.field, id: i.id } })) };
+  }
+  if (kind.kind === 'optionList') {
     const options = await listOptionValues(settings, kind.list);
-    values = options.map((o) => ({ key: o.label, filter: { type: 'StringProperty', property_name: request.field, operator: 'Equals', value: o.identifier } }));
-  } else {
-    return undefined;
+    return { field: request.field, size, values: options.map((o) => ({ key: o.label, filter: { type: 'StringProperty', property_name: request.field, operator: 'Equals', value: o.identifier } })) };
   }
+  return undefined;
+}
 
-  if (values.length > budget.left) {
-    return { field: request.field, buckets: values.slice(0, size).map((v) => ({ key: v.key, count: 1 })) };
-  }
-  budget.left -= values.length;
-  // Counts change slowly; a repeated enumeration within the cache's lifetime costs nothing
-  const buckets = await cached(`${settings.host}\0facet\0${request.field}\0${JSON.stringify(scope)}`, async () => {
+/** The values as listed, each reported once. */
+function listedFacet(facet: FacetValues): ExternalFacet {
+  return { field: facet.field, buckets: facet.values.slice(0, facet.size).map((v) => ({ key: v.key, count: 1 })) };
+}
+
+/**
+ * The values counted within `scope` (the filter the results came from), largest first,
+ * without the empty ones. Counts change slowly, so a repeated enumeration within the
+ * cache's lifetime costs nothing.
+ */
+async function countedFacet(settings: ContentHubSettings, facet: FacetValues, scope: ContentHubFilter): Promise<ExternalFacet> {
+  const buckets = await cached(`${settings.host}\0facet\0${facet.field}\0${JSON.stringify(scope)}`, async () => {
     const counts: number[] = [];
-    for (let i = 0; i < values.length; i += FACET_COUNT_CONCURRENCY) {
-      const chunk = values.slice(i, i + FACET_COUNT_CONCURRENCY);
+    for (let i = 0; i < facet.values.length; i += FACET_COUNT_CONCURRENCY) {
+      const chunk = facet.values.slice(i, i + FACET_COUNT_CONCURRENCY);
       counts.push(...await Promise.all(chunk.map((v) => countEntities(settings, andFilters(scope, v.filter)!))));
     }
-    return values
+    return facet.values
       .map((v, i) => ({ key: v.key, count: counts[i] }))
       .filter((b) => b.count > 0)
       .sort((a, b) => b.count - a.count);
   });
-  return { field: request.field, buckets: buckets.slice(0, size) };
+  return { field: facet.field, buckets: buckets.slice(0, facet.size) };
+}
+
+/** The facets of one request: counted when they all fit the budget, listed otherwise. */
+async function facetsFor(settings: ContentHubSettings, requests: ExternalFacetRequest[], fields: Map<string, DataSourceField>, scope: ContentHubFilter): Promise<ExternalFacet[]> {
+  const listed = (await Promise.all(requests.map((r) => facetValues(settings, r, fields)))).filter((f): f is FacetValues => f !== undefined);
+  const total = listed.reduce((sum, f) => sum + f.values.length, 0);
+  if (total > FACET_COUNT_BUDGET) return listed.map(listedFacet);
+  const counted: ExternalFacet[] = [];
+  for (const facet of listed) counted.push(await countedFacet(settings, facet, scope));
+  return counted;
 }
 
 /**
@@ -274,12 +289,7 @@ export const contentHubConnector: ExternalSearchConnector = {
       source: { ...flattenContentHubEntity(entity, settings.culture), ...links.get(entity.id) },
     }));
 
-    const facets: ExternalFacet[] = [];
-    const budget = { left: FACET_COUNT_BUDGET };
-    for (const facetRequest of request.facets ?? []) {
-      const facet = await facetFor(settings, facetRequest, byName, scope, budget);
-      if (facet) facets.push(facet);
-    }
+    const facets = request.facets?.length ? await facetsFor(settings, request.facets, byName, scope) : [];
 
     return {
       hits,
