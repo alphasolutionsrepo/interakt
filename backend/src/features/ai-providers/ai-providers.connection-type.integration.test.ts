@@ -870,7 +870,15 @@ describe('API keys are encrypted where they are saved', () => {
     try {
       const res = await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${providerId}`), idParams(providerId));
       expect(res.status).toBe(200);
-      expect((await res.json()).data.hasApiKey).toBe(false);
+      // No usable key, and the page is told why
+      expect((await res.json()).data).toMatchObject({ hasApiKey: false, apiKeyUnreadable: true });
+      // A provider set to use a key that was never typed is not marked
+      expect((await createProvider({ providerKey: 'never-keyed', connectionType: 'openai_compatible', authType: 'api_key', baseUrl: gatewayUrl })).status).toBe(201);
+      const list = (await (await providersRoute.GET(new NextRequest('http://localhost/api/ai-providers'))).json()).data as Array<{ providerKey: string; hasApiKey: boolean; apiKeyUnreadable?: boolean }>;
+      expect(list.find((p) => p.providerKey === 'other-key-provider')).toMatchObject({ hasApiKey: false, apiKeyUnreadable: true });
+      const neverKeyed = list.find((p) => p.providerKey === 'never-keyed');
+      expect(neverKeyed).toMatchObject({ hasApiKey: false });
+      expect(neverKeyed?.apiKeyUnreadable).toBeUndefined();
       gateway.seen = [];
       const unreadable = expect.stringContaining('can\'t be decrypted with this server\'s encryption key');
 
@@ -902,7 +910,9 @@ describe('API keys are encrypted where they are saved', () => {
       expect((await storedKey(providerId))?.startsWith('enc:v1:')).toBe(true);
 
       // Entering the key again fixes it
-      expect((await updateProvider(providerId, { apiKey: 'gw-key' })).data.hasApiKey).toBe(true);
+      const rekeyed = (await updateProvider(providerId, { apiKey: 'gw-key' })).data;
+      expect(rekeyed.hasApiKey).toBe(true);
+      expect(rekeyed.apiKeyUnreadable).toBeUndefined();
       expect((await (await post(testConnectionRoute, providerId)).json()).data).toMatchObject({ success: true });
     } finally {
       vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64));
@@ -937,6 +947,9 @@ describe('API keys are encrypted where they are saved', () => {
       const later = await createProvider({ providerKey: 'empty-key-typed', connectionType: 'openai_compatible', authType: 'api_key', apiKey: '', baseUrl: gatewayUrl });
       expect(later.status).toBe(201);
       expect(await storedKey(later.data.id)).toBeNull();
+      const blank = await createProvider({ providerKey: 'blank-key-typed', connectionType: 'openai_compatible', authType: 'api_key', apiKey: '   ', baseUrl: gatewayUrl });
+      expect(blank.status).toBe(201);
+      expect(await storedKey(blank.data.id)).toBeNull();
 
       expect((await encryptStoredProviderKeys()).plain).toBeGreaterThanOrEqual(1);
       expect(await storedKey(plainId)).toBe('gw-key');

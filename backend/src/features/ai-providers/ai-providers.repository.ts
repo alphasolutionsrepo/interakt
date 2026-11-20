@@ -144,6 +144,18 @@ export async function storedKeyIsUnreadable(id: string): Promise<boolean> {
 }
 
 /**
+ * Of the given providers, the ones with a key saved, readable or not.
+ */
+export async function idsWithStoredKey(ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await db
+        .select({ id: aiProviders.id })
+        .from(aiProviders)
+        .where(and(inArray(aiProviders.id, ids), sql`${aiProviders.apiKey} IS NOT NULL`));
+    return new Set(rows.map((r) => r.id));
+}
+
+/**
  * Get provider by ID with models
  */
 export async function getProviderByIdWithModels(

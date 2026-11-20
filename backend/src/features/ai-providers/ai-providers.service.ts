@@ -129,6 +129,21 @@ function mapProviderToResponse(provider: AIProvider): AIProviderResponse {
 }
 
 /**
+ * Marks the providers whose saved key this server can't decrypt (it reads as no key):
+ * the page says to enter it again instead of showing it was never set. Reads the
+ * database only for providers set to use a key that have none readable.
+ */
+async function markUnreadableKeys<T extends AIProviderResponse>(responses: T[]): Promise<T[]> {
+  const ids = responses.filter((r) => r.authType === 'api_key' && !r.hasApiKey).map((r) => r.id);
+  if (ids.length === 0) return responses;
+  const stored = await repository.idsWithStoredKey(ids);
+  return responses.map((r) => (stored.has(r.id) ? { ...r, apiKeyUnreadable: true } : r));
+}
+
+const markUnreadableKey = async <T extends AIProviderResponse>(response: T): Promise<T> =>
+  (await markUnreadableKeys([response]))[0];
+
+/**
  * Map database model to API response
  */
 function mapModelToResponse(model: AIProviderModel): AIProviderModelResponse {
@@ -297,7 +312,7 @@ export async function getProviderById(id: string): Promise<AIProviderResponse | 
     async () => {
       const provider = await repository.getProviderById(id);
       if (!provider) return null;
-      return mapProviderToResponse(provider);
+      return markUnreadableKey(mapProviderToResponse(provider));
     }
   );
 }
@@ -354,7 +369,7 @@ export async function getProviderByIdWithModels(
     async () => {
       const provider = await repository.getProviderByIdWithModels(id);
       if (!provider) return null;
-      return mapProviderWithModelsToResponse(provider);
+      return markUnreadableKey(mapProviderWithModelsToResponse(provider));
     }
   );
 }
@@ -370,7 +385,7 @@ export async function getProviderByKey(
     async () => {
       const provider = await repository.getProviderByKey(providerKey);
       if (!provider) return null;
-      return mapProviderToResponse(provider);
+      return markUnreadableKey(mapProviderToResponse(provider));
     }
   );
 }
@@ -386,7 +401,7 @@ export async function getProviderByKeyWithModels(
     async () => {
       const provider = await repository.getProviderByKeyWithModels(providerKey);
       if (!provider) return null;
-      return mapProviderWithModelsToResponse(provider);
+      return markUnreadableKey(mapProviderWithModelsToResponse(provider));
     }
   );
 }
@@ -409,14 +424,14 @@ export async function listProviders(
           isEnabled: query.isEnabled,
           providerType: query.providerType,
         });
-        return providers.map(mapProviderWithModelsToResponse);
+        return markUnreadableKeys(providers.map(mapProviderWithModelsToResponse));
       }
 
       const providers = await repository.listProviders({
         isEnabled: query?.isEnabled,
         providerType: query?.providerType,
       });
-      return providers.map(mapProviderToResponse);
+      return markUnreadableKeys(providers.map(mapProviderToResponse));
     }
   );
 }
@@ -429,7 +444,7 @@ export async function getEnabledProviders(): Promise<AIProviderWithModelsRespons
     'providers:enabled:with-models',
     async () => {
       const providers = await repository.listProvidersWithModels({ isEnabled: true });
-      return providers.map(mapProviderWithModelsToResponse);
+      return markUnreadableKeys(providers.map(mapProviderWithModelsToResponse));
     }
   );
 }
@@ -498,7 +513,7 @@ export async function updateProvider(
       updatedFields: Object.keys(input),
     });
 
-    return mapProviderToResponse(updated);
+    return markUnreadableKey(mapProviderToResponse(updated));
   } catch (error) {
     // A key to type again is the admin's to fix: the handler answers it, nothing failed here
     if (!(error instanceof KeyForAnotherServerError)) logger.error('Failed to update AI provider', error as Error, { id });

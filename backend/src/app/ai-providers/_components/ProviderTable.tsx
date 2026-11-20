@@ -39,6 +39,7 @@ import {
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { ActionMenuItem, ActionSwitch } from '@/shared/access/ActionControls';
 import { useAccess } from '@/shared/access/useAccess';
+import { UNREADABLE_KEY_HELP } from '../_lib/key-status';
 
 interface ProviderTableProps {
   providers: AIProviderWithModelsResponse[];
@@ -172,9 +173,9 @@ export function ProviderTable({
                       </div>
                     )}
                     {showKeyWarning && (
-                      <div className="flex items-center gap-1.5 text-amber-600">
+                      <div className="flex items-center gap-1.5 text-amber-600" title={provider.apiKeyUnreadable ? UNREADABLE_KEY_HELP : undefined}>
                         <AlertCircle className="size-4" />
-                        <span className="text-xs font-medium">No API key</span>
+                        <span className="text-xs font-medium">{provider.apiKeyUnreadable ? 'API key unreadable' : 'No API key'}</span>
                       </div>
                     )}
                   </div>

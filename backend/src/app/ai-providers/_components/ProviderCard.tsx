@@ -29,6 +29,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { cn } from '@/lib/utils';
+import { UNREADABLE_KEY_HELP } from '../_lib/key-status';
 
 interface ProviderCardProps {
     provider: AIProviderWithModelsResponse;
@@ -203,6 +204,7 @@ export function ProviderCard({
 
                 {provider.authType === 'api_key' && (
                     <Badge
+                        title={provider.apiKeyUnreadable ? UNREADABLE_KEY_HELP : undefined}
                         variant="secondary"
                         className={cn(
                             "text-xs font-medium",
@@ -211,7 +213,7 @@ export function ProviderCard({
                                 : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50"
                         )}
                     >
-                        {provider.hasApiKey ? 'API Key Set' : 'No API Key'}
+                        {provider.hasApiKey ? 'API Key Set' : provider.apiKeyUnreadable ? 'API Key Unreadable' : 'No API Key'}
                     </Badge>
                 )}
             </div>

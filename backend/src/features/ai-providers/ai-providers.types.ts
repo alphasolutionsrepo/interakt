@@ -102,7 +102,9 @@ export interface AIProviderResponse {
   connectionType: AIConnectionType;
   authType: AIAuthType;
   baseUrl: string;
-  hasApiKey: boolean; // Indicates if API key is set, without exposing it
+  hasApiKey: boolean; // Indicates if a usable API key is set, without exposing it
+  /** A key is saved but this server can't decrypt it (SECRETS_ENCRYPTION_KEY changed): enter it again */
+  apiKeyUnreadable?: boolean;
   isEnabled: boolean;
   settings: AIProviderSettings;
   lastConnectionCheck: Date | null;

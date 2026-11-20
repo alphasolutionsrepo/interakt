@@ -38,6 +38,7 @@ import { Loader2, Eye, EyeOff } from 'lucide-react';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { useInlineError } from '@/shared/activity/useInlineError';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
+import { UNREADABLE_KEY_HELP } from '../_lib/key-status';
 
 // ============================================================================
 // Form Schema
@@ -397,6 +398,11 @@ export function ProviderFormDialog({
                                         {mode === 'edit' && provider?.hasApiKey && (
                                             <FormDescription>
                                                 Leave empty to keep the saved key. A base URL on another server needs the key again.
+                                            </FormDescription>
+                                        )}
+                                        {mode === 'edit' && provider?.apiKeyUnreadable && (
+                                            <FormDescription className="text-amber-700 dark:text-amber-300">
+                                                {UNREADABLE_KEY_HELP}
                                             </FormDescription>
                                         )}
                                         <FormMessage />
