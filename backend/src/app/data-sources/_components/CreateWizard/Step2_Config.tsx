@@ -93,6 +93,18 @@ const PROVIDER_COPY: Record<string, { url: string; urlPlaceholder: string; index
     url: 'Discover endpoint', urlPlaceholder: 'https://discover.sitecorecloud.io/discover/v2/<domain id>',
     index: 'Widget ID (rfk_id)', indexPlaceholder: 'rfk_global_search', auth: ['api_key', 'bearer', 'none'],
   },
+  content_hub: {
+    url: 'Content Hub URL', urlPlaceholder: 'https://your-tenant.sitecorecontenthub.cloud',
+    index: 'Entity definition', indexPlaceholder: 'M.Asset', auth: ['oauth_client_credentials', 'bearer'],
+  },
+};
+
+const AUTH_LABELS: Record<string, string> = {
+  api_key: 'API key',
+  basic: 'Basic',
+  bearer: 'Bearer token',
+  none: 'None',
+  oauth_client_credentials: 'OAuth client credentials',
 };
 
 function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props, 'dataSourceType'>) {
@@ -126,6 +138,7 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
               { value: 'elasticsearch', label: 'Elasticsearch' },
               { value: 'azure_ai_search', label: 'Azure AI Search' },
               { value: 'sitecore_search', label: 'Sitecore Search' },
+              { value: 'content_hub', label: 'Sitecore Content Hub' },
             ].map((p) => (
               <SelectItem key={p.value} value={p.value} className="rounded-lg">
                 {p.label}
@@ -196,10 +209,41 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
         </>
       )}
 
+      {provider === 'content_hub' && (
+        <>
+          <div className="space-y-1.5">
+            <Label>OAuth client ID secret</Label>
+            <Input
+              value={(providerSettings.clientIdSecretRef as string) ?? ''}
+              onChange={(e) => updateProviderSettings({ clientIdSecretRef: e.target.value })}
+              placeholder="e.g. contenthub_client_id"
+              className={`rounded-xl font-mono ${errors.clientIdSecretRef ? 'border-destructive' : ''}`}
+            />
+            <p className="text-xs text-muted-foreground">
+              Name of the vault secret holding the client ID of the OAuth client in Content Hub, bound to a read-only
+              integration user. The client secret is the secret referenced below.
+            </p>
+            {errors.clientIdSecretRef && <p className="text-xs text-destructive">{errors.clientIdSecretRef}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Culture</Label>
+            <Input
+              value={(providerSettings.culture as string) ?? ''}
+              onChange={(e) => updateProviderSettings({ culture: e.target.value })}
+              placeholder="en-US"
+              className="rounded-xl font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Multilingual properties are read in this culture. Leave empty for en-US.
+            </p>
+          </div>
+        </>
+      )}
+
       <div className="space-y-1.5">
         <Label>Auth Type</Label>
         <Select
-          value={((value.connection as Record<string, unknown>)?.authType as string) || 'api_key'}
+          value={((value.connection as Record<string, unknown>)?.authType as string) || copy.auth[0]}
           onValueChange={(v) => onChange({
             ...value,
             connection: { ...(value.connection as Record<string, unknown> || {}), authType: v },
@@ -210,7 +254,7 @@ function ExternalSearchIndexConfig({ value, onChange, errors }: Omit<Step2Props,
           </SelectTrigger>
           <SelectContent className="rounded-xl">
             {copy.auth.map((t) => (
-              <SelectItem key={t} value={t} className="rounded-lg capitalize">{t.replace('_', ' ')}</SelectItem>
+              <SelectItem key={t} value={t} className="rounded-lg">{AUTH_LABELS[t] ?? t}</SelectItem>
             ))}
           </SelectContent>
         </Select>

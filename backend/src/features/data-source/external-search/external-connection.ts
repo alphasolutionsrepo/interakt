@@ -18,6 +18,7 @@ const PROVIDER_KEYS: Record<ExternalSearchIndexConfig['provider'], string> = {
   elasticsearch: 'elasticsearch',
   azure_ai_search: 'azure-ai-search',
   sitecore_search: 'sitecore-search',
+  content_hub: 'content-hub',
 };
 
 /**
@@ -56,6 +57,26 @@ export async function resolveExternalConnection(
     indexName: conn.indexName,
     apiKey,
     authType: conn.authType,
-    providerSettings: config.providerSettings ?? {},
+    providerSettings: await resolveProviderSecrets(name, config.providerSettings ?? {}),
   };
+}
+
+/**
+ * Provider settings that name a vault secret are resolved here, next to the connection's
+ * own secret, so connectors only ever see values. Content Hub's OAuth client id is one:
+ * `clientIdSecretRef` (the bare secret name) becomes `clientId`.
+ *
+ * @throws Error when a referenced secret does not exist
+ */
+async function resolveProviderSecrets(name: string, settings: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const ref = settings.clientIdSecretRef;
+  if (typeof ref !== 'string' || !ref.trim()) return settings;
+  const clientId = await resolveSecret(ref.trim());
+  if (!clientId) {
+    throw new Error(
+      `Failed to resolve secret "${ref}" (the OAuth client id) for data source "${name}". ` +
+        'Check that a secret with exactly that name exists in the vault.',
+    );
+  }
+  return { ...settings, clientId };
 }

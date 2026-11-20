@@ -71,7 +71,8 @@ export const elasticsearchConnector: ExternalSearchConnector = {
         endpoint: connection.endpoint,
         indexName: connection.indexName,
         apiKey: connection.apiKey,
-        authType: connection.authType,
+        // OAuth client credentials belong to Content Hub; an engine here only knows a bearer token
+        authType: connection.authType === 'oauth_client_credentials' ? 'bearer' : connection.authType,
       },
       {
         query: request.query,

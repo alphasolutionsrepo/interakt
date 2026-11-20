@@ -22,6 +22,7 @@ import type {
   ExternalSearchRequest,
   ExternalSearchResult,
 } from './external-search.types';
+import { contentHubConnector } from './connectors/content-hub.connector';
 import { elasticsearchConnector, azureAISearchConnector } from './connectors/search-engine.connectors';
 import { sitecoreSearchConnector } from './connectors/sitecore-search.connector';
 
@@ -33,6 +34,7 @@ const CONNECTORS: Record<string, ExternalSearchConnector> = {
   [elasticsearchConnector.provider]: elasticsearchConnector,
   [azureAISearchConnector.provider]: azureAISearchConnector,
   [sitecoreSearchConnector.provider]: sitecoreSearchConnector,
+  [contentHubConnector.provider]: contentHubConnector,
 };
 
 export { resolveExternalConnection };

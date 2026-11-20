@@ -78,11 +78,33 @@ function checkSitecoreFixedFilters(
   });
 }
 
+/**
+ * A Content Hub source authenticating with client credentials needs the client id next to
+ * the secret, or every token request fails with a message blaming the secret.
+ */
+function checkContentHubClient(
+  config: { provider?: string; connection?: { authType?: string }; providerSettings?: Record<string, unknown> },
+  ctx: z.RefinementCtx,
+): void {
+  if (config.provider !== 'content_hub' || config.connection?.authType !== 'oauth_client_credentials') return;
+  const given = (key: string) => {
+    const value = config.providerSettings?.[key];
+    return typeof value === 'string' && value.trim().length > 0;
+  };
+  if (!given('clientIdSecretRef') && !given('clientId')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['providerSettings', 'clientIdSecretRef'],
+      message: 'Content Hub needs the OAuth client id (the name of a vault secret holding it) when authenticating with client credentials',
+    });
+  }
+}
+
 const externalSearchIndexConfigSchema = z.object({
-  provider: z.enum(['elasticsearch', 'azure_ai_search', 'sitecore_search']),
+  provider: z.enum(['elasticsearch', 'azure_ai_search', 'sitecore_search', 'content_hub']),
   connection: z.object({
     url: z.string().url(),
-    authType: z.enum(['api_key', 'basic', 'bearer', 'none']),
+    authType: z.enum(['api_key', 'basic', 'bearer', 'none', 'oauth_client_credentials']),
     credentials: z.object({
       /**
        * Name of a secret in the vault — the bare name, not a `{{secret:...}}` template.
@@ -115,7 +137,7 @@ const externalSearchIndexConfigSchema = z.object({
   profileSampleSize: z.number().int().min(0).max(500).optional(),
   // Connector-specific settings (e.g. Sitecore entity and fixed filters).
   providerSettings: z.object({ fixedFilters: z.array(fixedFilterSchema).optional() }).passthrough().optional(),
-}).superRefine(checkSitecoreFixedFilters);
+}).superRefine(checkSitecoreFixedFilters).superRefine(checkContentHubClient);
 
 const fileStoreConfigSchema = z.object({
   chunkingStrategy: z.enum(['page', 'paragraph', 'token_count', 'semantic']),

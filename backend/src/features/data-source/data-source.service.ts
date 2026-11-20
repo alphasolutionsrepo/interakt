@@ -8,6 +8,7 @@ import type {
 
 // The cache module itself, not the search-experience barrel, which imports this service back
 import { resolveExternalConnection } from './external-search/external-connection';
+import { countContentHub, discoverContentHubFields, probeContentHub, sampleContentHub } from './external-search/connectors/content-hub.connector';
 import { discoverSitecoreFields, sampleSitecore } from './external-search/connectors/sitecore-search.connector';
 import { FixedFilterError, sitecoreFixedFilters } from './external-search/connectors/sitecore-search.request';
 import { ExternalSearchError } from './external-search/external-search.types';
@@ -378,7 +379,9 @@ async function checkExternalIndexHealth(
   // query, so it is probed with one instead of a bare HEAD/GET.
   const connectivityResult = config.provider === 'sitecore_search'
     ? await probeSitecore(config, now)
-    : await probeExternalConnection(config, now);
+    : config.provider === 'content_hub'
+      ? await probeContentHubSource(config, now)
+      : await probeExternalConnection(config, now);
   if (connectivityResult.status !== 'healthy') {
     return connectivityResult;
   }
@@ -388,7 +391,7 @@ async function checkExternalIndexHealth(
   let storageSizeBytes: number | undefined;
   let statsNote = '';
   try {
-    const stats = await fetchExternalIndexStats(config);
+    const stats = await fetchExternalIndexStats(config, storedFields);
     if (stats) {
       documentCount = stats.documentCount;
       storageSizeBytes = stats.storageSizeBytes;
@@ -538,6 +541,28 @@ async function probeSitecore(config: ExternalSearchIndexConfig, now: string): Pr
   }
 }
 
+/**
+ * Read the entity definition: proves the host, the OAuth client, its user and the
+ * definition name together, and does not depend on any entity being visible.
+ */
+async function probeContentHubSource(config: ExternalSearchIndexConfig, now: string): Promise<HealthCheckResult> {
+  try {
+    const connection = await resolveExternalConnection('Content Hub', config);
+    const probed = await probeContentHub(connection);
+    return {
+      status: 'healthy',
+      message: `Content Hub definition '${probed.definition}'${probed.label ? ` (${probed.label})` : ''} is readable`,
+      checkedAt: now,
+    };
+  } catch (err) {
+    return {
+      status: 'error',
+      message: `Cannot read Content Hub: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      checkedAt: now,
+    };
+  }
+}
+
 // ============================================================================
 // SHARED HELPERS
 // ============================================================================
@@ -582,12 +607,17 @@ interface IndexStats {
 }
 
 /** Sitecore is counted after discovery, with its fixed filters (checkExternalIndexHealth). */
-async function fetchExternalIndexStats(config: ExternalSearchIndexConfig): Promise<IndexStats | null> {
+/** @param storedFields - the source's fields, so Content Hub's fixed filters translate by field kind */
+async function fetchExternalIndexStats(config: ExternalSearchIndexConfig, storedFields?: DataSourceField[]): Promise<IndexStats | null> {
   switch (config.provider) {
     case 'elasticsearch':
       return fetchElasticsearchStats(config);
     case 'azure_ai_search':
       return fetchAzureAISearchStats(config);
+    case 'content_hub': {
+      const connection = await resolveExternalConnection('Content Hub', config);
+      return { documentCount: await countContentHub(connection, storedFields), storageSizeBytes: 0 };
+    }
     default:
       return null;
   }
@@ -727,6 +757,10 @@ async function discoverExternalFields(
       const connection = await resolveExternalConnection('Sitecore Search', config);
       return { fields: await discoverSitecoreFields(connection, storedFields), discoveredFrom: 'sample' };
     }
+    case 'content_hub': {
+      const connection = await resolveExternalConnection('Content Hub', config);
+      return { fields: await discoverContentHubFields(connection), discoveredFrom: 'mapping' };
+    }
     default:
       return { fields: [] };
   }
@@ -757,6 +791,10 @@ async function fetchDocumentSample(
     case 'sitecore_search': {
       const connection = await resolveExternalConnection('Sitecore Search', config);
       return (await sampleSitecore(connection, sampleSize, { fields })).items;
+    }
+    case 'content_hub': {
+      const connection = await resolveExternalConnection('Content Hub', config);
+      return sampleContentHub(connection, sampleSize, fields);
     }
     default:
       return [];

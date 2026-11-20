@@ -76,6 +76,8 @@ export function externalFormToConfig(form: Config, base: Config = {}): Config {
     healthCheck: base.healthCheck ?? { enabled: true, intervalMs: 60000 },
     ...(provider === 'sitecore_search'
       ? { providerSettings: { ...baseSettings, entity: 'content', ...providerSettings, fixedFilters } }
-      : { providerSettings: undefined }),
+      : provider === 'content_hub'
+        ? { providerSettings: { ...baseSettings, ...providerSettings } }
+        : { providerSettings: undefined }),
   };
 }

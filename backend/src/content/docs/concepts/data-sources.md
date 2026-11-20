@@ -54,6 +54,20 @@ Use this when you already have a search backbone and you don't want to copy data
 - **Auth** — the API key from Sitecore's Developer Resources, stored as a secret.
 - **Fixed filters** — `attribute = value` lines added to every query, e.g. `environment = prod`. Values are sent as the attribute's type seen in the sample (text, a number or true/false), from the source's next health check; until then, and for an attribute the sample had no value for, they're sent as written. Filters set through the API may also use `neq`, `gt`/`gte`/`lt`/`lte`, `in`, `nin`, `range`, `and`, `or` and `not`. Fixed filters are checked when the source is saved, and a filter that needs fixing (for example a `range` with no bounds) is named in the error.
 
+#### Sitecore Content Hub
+- **URL** — the tenant host, e.g. `https://your-tenant.sitecorecontenthub.cloud`.
+- **Entity definition** — the definition this source searches, e.g. `M.Asset` for the DAM or `M.PCM.Product` for PCM. One source per definition: each module has its own fields, statuses and vocabulary, and an experience links the sources it needs.
+- **Auth** — *OAuth client credentials*: create an OAuth client in Content Hub bound to a read-only integration user and store its client ID and client secret as two secrets in the vault; enter the client ID secret's name under *OAuth client ID secret* and the client secret's name under *Secret reference*. Interakt mints and caches tokens itself. A pre-minted *bearer token* also works for a quick trial.
+- **Culture** — the culture multilingual properties are read in (default `en-US`).
+
+**Fields.** Content Hub has a schema API, so discovery reads the entity definition itself rather than a sample: properties are typed from the definition, string properties marked for full-text search are searchable, option-list properties are facetable, and relations the entity is the child of (asset type, lifecycle status, category, community) are filterable, facetable when they point at a taxonomy. Relations the entity is the parent of (its public links, variants) are not exposed. A sample of entities then profiles the values. The integration user's permissions apply to everything: what it cannot read, Interakt cannot see.
+
+**Searching.** Full text runs within the definition. Filters on relations take an item's name ("Cabinets", "Approved") or its entity id; a name is resolved through the taxonomy, and a name that matches nothing is reported rather than guessed. Option-list properties take the label or the identifier; string properties support equals, contains and starts-with; dates support comparisons and ranges. Facet values are the taxonomy's items or the option list's values (without counts). Numbers, booleans and exists/missing cannot be filtered on. Sorting works on the system fields and on properties, not on relations.
+
+- **Fixed filters** — filter clauses in `providerSettings.fixedFilters` (through the API) applied to every search, for example lifecycle status Approved, or not restricted.
+
+Current limits: relations the entity is the parent of are not browsable; relations Content Hub does not return on search hits show as empty in the field profile even though they filter correctly; one search page costs one request, plus one per taxonomy or option list the first time it is used.
+
 Sitecore ranks results itself; Interakt searches it as is. Current limits:
 - No `contains`, `prefix`, `exists` or `missing` filters. A search experience refuses such a filter rather than return unfiltered results: with Sitecore as its only source the request fails with `400 INVALID_FILTER`; next to other sources, Sitecore sits that search out and the response is marked `partial`. AI tools search without the filter and tell the assistant which one was not applied.
 - No highlights and no autocomplete. Relevance scores are derived from rank.

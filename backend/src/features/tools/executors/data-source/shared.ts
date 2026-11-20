@@ -40,7 +40,7 @@ export interface ResolvedExternalSource {
   indexName: string;
   apiKey: string;
   /** How the credential is presented (api_key / basic / bearer / none). */
-  authType: 'api_key' | 'basic' | 'bearer' | 'none';
+  authType: 'api_key' | 'basic' | 'bearer' | 'none' | 'oauth_client_credentials';
   /** Connector-specific settings (e.g. Sitecore entity and fixed filters). */
   providerSettings: Record<string, unknown>;
   dataSourceId: string;

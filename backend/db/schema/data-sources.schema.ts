@@ -48,10 +48,14 @@ export interface SearchIndexDataSourceConfig {
  * Config for type: search_index_external (connect to existing)
  */
 export interface ExternalSearchIndexConfig {
-  provider: 'elasticsearch' | 'azure_ai_search' | 'sitecore_search';
+  provider: 'elasticsearch' | 'azure_ai_search' | 'sitecore_search' | 'content_hub';
   connection: {
     url: string;
-    authType: 'api_key' | 'basic' | 'bearer' | 'none';
+    /**
+     * `oauth_client_credentials`: the secret is an OAuth client secret; the connector mints
+     * and caches a bearer token from it (client id in `providerSettings.clientId`).
+     */
+    authType: 'api_key' | 'basic' | 'bearer' | 'none' | 'oauth_client_credentials';
     credentials: {
       /**
        * Name of a secret in the vault — e.g. `my_es_key`.
@@ -95,6 +99,11 @@ export interface ExternalSearchIndexConfig {
    * Connector-specific settings the shared connection fields don't cover.
    * Sitecore Search: `entity` (default 'content'), `fixedFilters` (FilterClause[]
    * ANDed into every request, e.g. environment = prod), `pageUri`, `locale`.
+   * Content Hub: `clientIdSecretRef` (name of the vault secret holding the OAuth client id;
+   * the connection's secret is the client secret), `clientId` (the id as a plain value, for
+   * configuration through the API), `culture` (default 'en-US', the culture multilingual
+   * properties are read in). The connection URL is the tenant host and the index name is
+   * the entity definition (e.g. `M.Asset`).
    */
   providerSettings?: Record<string, unknown>;
 }

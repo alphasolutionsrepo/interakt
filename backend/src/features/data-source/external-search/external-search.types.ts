@@ -41,14 +41,15 @@ export class ExternalSearchError extends Error {
 
 /** Connection details resolved from a data source (credentials already decrypted). */
 export interface ExternalConnection {
-  /** Connector key, e.g. 'elasticsearch', 'azure-ai-search', 'sitecore-search' */
+  /** Connector key, e.g. 'elasticsearch', 'azure-ai-search', 'sitecore-search', 'content-hub' */
   provider: string;
-  /** Base URL of the engine (or, for Sitecore, the full discover URL) */
+  /** Base URL of the engine (for Sitecore Search the full discover URL; for Content Hub the tenant host) */
   endpoint: string;
-  /** Index name (or, for Sitecore, the widget id) */
+  /** Index name (for Sitecore Search the widget id; for Content Hub the entity definition name) */
   indexName: string;
+  /** The vault secret: an API key, a bearer token, or an OAuth client secret */
   apiKey: string;
-  authType: 'api_key' | 'basic' | 'bearer' | 'none';
+  authType: 'api_key' | 'basic' | 'bearer' | 'none' | 'oauth_client_credentials';
   /** Connector-specific settings from the data source config */
   providerSettings: Record<string, unknown>;
 }
