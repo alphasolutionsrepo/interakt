@@ -50,6 +50,9 @@ const DEFAULT_CONFIG: SynthesisConfig = {
   maxTokens: 1000,
 };
 
+/** Fixed reply when a direct response has no text of its own, or the output filter fails. */
+const DEFAULT_DIRECT_FALLBACK = "I'm here to help! What can I do for you?";
+
 // ============================================================================
 // MODULE ENTRY POINT
 // ============================================================================
@@ -57,12 +60,14 @@ const DEFAULT_CONFIG: SynthesisConfig = {
 /**
  * Synthesize the final response from action results and persona config.
  * Emits preset + content events via emit callback.
+ * `filterOutput` (output safety rules) is applied to the written text before it is emitted.
  */
 export async function synthesizeResponse(
   input: SynthesisInput,
   deps: SynthesisDeps,
   emit: (event: PipelineStreamEvent) => void,
   config: Partial<SynthesisConfig> = {},
+  filterOutput?: (text: string) => Promise<string>,
 ): Promise<ModuleResult<SynthesisResult>> {
   const startTime = Date.now();
   const cfg = { ...DEFAULT_CONFIG, ...config };
@@ -86,6 +91,11 @@ export async function synthesizeResponse(
       // Full synthesis from action results
       responseText = await synthesizeFromResults(input, preset, deps.chat, cfg);
     }
+
+    // Output rules run on the AI-written text before anything leaves this step. If the
+    // filter fails the catch below never sends the unchecked text: the fallback is
+    // filtered too (it can be the planner's clarification question), or fixed text.
+    if (filterOutput) responseText = await filterOutput(responseText);
 
     // Emit content
     emit({ type: 'content', text: responseText });
@@ -126,7 +136,15 @@ export async function synthesizeResponse(
 
     // Fallback: prefer a provider-error-aware message (TPM, context length) when
     // the failure was an LLM call; otherwise fall back to the result-aware default.
-    const fallbackText = classifyLlmFailure(err) ?? generateFallback(input);
+    let fallbackText = classifyLlmFailure(err) ?? generateFallback(input);
+    if (filterOutput) {
+      try {
+        fallbackText = await filterOutput(fallbackText);
+      } catch (filterError) {
+        logger.error('Output filter failed on synthesis fallback', filterError as Error);
+        fallbackText = DEFAULT_DIRECT_FALLBACK;
+      }
+    }
     emit({ type: 'content', text: fallbackText });
 
     return {
@@ -577,7 +595,7 @@ async function synthesizeDirectResponse(
 
 function generateFallback(input: SynthesisInput): string {
   if (input.directResponse) {
-    return input.clarificationQuestion ?? "I'm here to help! What can I do for you?";
+    return input.clarificationQuestion ?? DEFAULT_DIRECT_FALLBACK;
   }
 
   const successCount = input.actionResults.filter((a) => a.result.success).length;

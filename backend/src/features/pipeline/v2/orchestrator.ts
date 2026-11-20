@@ -63,6 +63,11 @@ export interface V2PipelineInput {
   onEvent: (event: PipelineStreamEvent) => void;
   /** Aborted when the visitor leaves: the turn stops at once (TurnAbandonedError); its time running out stops it too */
   signal?: AbortSignal;
+  /**
+   * Output safety rules. Applied to the AI-written answer before it is streamed,
+   * so the visitor, the saved message and the trace all carry the filtered text.
+   */
+  filterOutput?: (text: string) => Promise<string>;
 }
 
 export interface V2PipelineResult {
@@ -156,7 +161,8 @@ function trackUsage(chatFn: ChatFn, usage: TokenUsage, experienceId: string, fea
  * Run the complete V2 deterministic pipeline.
  *
  * Flow: S2 → D1 → D2 → D3 → D4 → post-turn triggers
- * (S1 input guardrail and S3 output guardrail run in the chat-pipeline wrapper)
+ * (The input guardrail runs in the chat-pipeline wrapper; the output rules are passed in
+ * as `filterOutput` and applied inside D3, before the answer is streamed or saved)
  */
 export async function runV2Pipeline(
   input: V2PipelineInput,
@@ -613,6 +619,7 @@ export async function runV2Pipeline(
         onEvent,
         // The answer is written by the experience's model, like every other step
         { providerId: turnContext.providerId ?? undefined, modelId: turnContext.modelId ?? undefined },
+        input.filterOutput,
       );
       if (result.data) {
         span.setAttribute('alpha.v2.preset', result.data.preset);

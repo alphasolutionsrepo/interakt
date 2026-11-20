@@ -30,6 +30,7 @@ import { classifyMessage } from '@/features/guardrails/message-classifier';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { withSpan } from '@/features/telemetry';
 import { ATTR } from '@/features/telemetry/attribute-keys';
+import { applyOutputGuardrail, DEFAULT_OUTPUT_BLOCK_MESSAGE, outputGuardrailDecision } from '@/features/guardrails/output-guardrail';
 
 import * as sessionsService from '@/features/sessions/sessions.service';
 import type { TopicGateRuleConfig } from '@/features/guardrails/topic-gate.service';
@@ -129,9 +130,11 @@ async function _runChatPipeline(input: ChatPipelineInput): Promise<ChatPipelineR
  *
  * Serves every budget preset: the resolved ExecutionPolicy
  * decides how many planning rounds are permitted, the tool ceiling, and whether
- * persona instructions reach planning. Guardrails wrap the engine here (S1 in,
- * S3 out) rather than living inside it, so they apply identically under any
- * policy.
+ * persona instructions reach planning. The input rules run here before the
+ * engine. The output rules are built here as one filter and applied to every
+ * AI-written answer before it is streamed or saved (inside the engine's
+ * synthesis step, and on the greeting / off-topic short-circuit below), so they
+ * apply identically under any policy.
  */
 async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipelineResult> {
   const { experience, message, onEvent } = input;
@@ -163,6 +166,27 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
   // than passed over in silence, because "locked with nothing configured" is a
   // misconfiguration an operator needs told about.
   const guardrailsEnforced = guardrailConfig?.enforced === true;
+
+  // Output rules: one filter for the turn, applied to AI-written text before it is
+  // streamed or saved. Without a stage to run it returns the text as is.
+  const outputDecision = outputGuardrailDecision(guardrailConfig);
+  const filterOutput = async (text: string): Promise<string> => {
+    if (!outputDecision.run || !text) return text;
+    return withSpan(
+      {
+        name: 'pipeline.v2.output_guardrail',
+        experienceId: experience.id,
+        attributes: { [ATTR.PIPELINE_PHASE]: 'output_guardrail' },
+      },
+      async (span) => {
+        const result = applyOutputGuardrail(guardrailConfig, text);
+        span.setAttribute('alpha.v2.guardrail.output_outcome', result.outcome);
+        span.setAttribute('alpha.v2.guardrail.output_fired_rules', result.firedRules.join(', '));
+        span.setAttribute('alpha.v2.guardrail.forced_by_policy', result.forcedByPolicy);
+        return result.text;
+      },
+    );
+  };
   const inputRules = (guardrailConfig?.inputGuardrail?.rules ?? []) as unknown[];
   const inputDecision = guardrailDecision(guardrailsEnforced, guardrailConfig?.inputGuardrail);
   const inputForcedByPolicy = inputDecision.forcedByPolicy;
@@ -361,9 +385,20 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
               modelId: experience.modelId ?? undefined,
             },
           );
-          synthSpan.setAttribute('alpha.v2.guardrail.response_length', text.length);
-          synthSpan.setAttribute('alpha.v2.guardrail.response_text', text.length > 2000 ? text.slice(0, 2000) + '…' : text);
-          return text;
+          // Output rules apply to this reply too, before it is traced, saved or sent
+          // A filter that fails sends the block message, never the unchecked text
+          let safeText: string;
+          try {
+            safeText = await filterOutput(text);
+          } catch (error) {
+            logger.error('Output filter failed on short-circuit reply', error as Error, {
+              experienceId: experience.id,
+            });
+            safeText = guardrailConfig?.outputGuardrail?.onBlock?.message ?? DEFAULT_OUTPUT_BLOCK_MESSAGE;
+          }
+          synthSpan.setAttribute('alpha.v2.guardrail.response_length', safeText.length);
+          synthSpan.setAttribute('alpha.v2.guardrail.response_text', safeText.length > 2000 ? safeText.slice(0, 2000) + '…' : safeText);
+          return safeText;
         },
       );
 
@@ -448,6 +483,7 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
       sessionId: input.sessionId ?? '',
       onEvent,
       signal: input.signal,
+      filterOutput,
     },
     deps,
     {
@@ -459,29 +495,7 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
     },
   );
 
-  // ── S3: Output Guardrail ─────────────────────────────────────────────
-  let responseText = result.responseText;
-
-  // Same lock as the input side: a locked experience applies the configured output rules
-  // whether or not the stage is switched on.
   const outputRules = (guardrailConfig?.outputGuardrail?.rules ?? []) as unknown[];
-  const outputDecision = guardrailDecision(
-    guardrailConfig?.enforced === true,
-    guardrailConfig?.outputGuardrail,
-  );
-
-  if (outputDecision.run && responseText) {
-    const outputResult = evaluateOutputGuardrailRules(
-      guardrailConfig!.outputGuardrail.rules ?? [],
-      responseText,
-    );
-    if (outputResult.blocked) {
-      responseText = guardrailConfig!.outputGuardrail.onBlock?.message
-        ?? 'The response was blocked by content policy.';
-    } else if (outputResult.redactedText) {
-      responseText = outputResult.redactedText;
-    }
-  }
 
   // Guardrails locked on with no rules at all is a misconfiguration: the experience claims
   // enforcement and there is nothing to enforce. Warn rather than let it carry a promise with
@@ -495,7 +509,7 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
 
   return {
     sessionId: result.sessionId,
-    responseText,
+    responseText: result.responseText,
     usage: result.usage,
   };
 }
@@ -531,102 +545,4 @@ async function resolveSession(
     session: newSession,
     messages: [],
   };
-}
-
-// ============================================================================
-// GUARDRAIL EVALUATION (shared between V1 step handlers and V2 wrapper)
-// ============================================================================
-
-interface GuardrailRule {
-  id: string;
-  name: string;
-  type: string;
-  config: Record<string, unknown>;
-  action: 'block' | 'warn' | 'redact' | 'reroute';
-  enabled: boolean;
-  priority: number;
-}
-
-/**
- * Evaluate output guardrail rules. Returns block/redact result.
- */
-function evaluateOutputGuardrailRules(
-  rules: GuardrailRule[],
-  text: string,
-): { blocked: boolean; redactedText?: string } {
-  const enabledRules = rules
-    .filter(r => r.enabled)
-    .sort((a, b) => a.priority - b.priority);
-
-  let currentText = text;
-
-  for (const rule of enabledRules) {
-    if (rule.action === 'block' && evaluateRule(rule, currentText)) {
-      return { blocked: true };
-    }
-    if (rule.action === 'redact') {
-      const redacted = tryRedact(rule, currentText);
-      if (redacted !== null) {
-        currentText = redacted;
-      }
-    }
-  }
-
-  if (currentText !== text) {
-    return { blocked: false, redactedText: currentText };
-  }
-  return { blocked: false };
-}
-
-function evaluateRule(rule: GuardrailRule, text: string): boolean {
-  switch (rule.type) {
-    case 'blocklist': {
-      const terms = rule.config.terms as string[] | undefined;
-      if (!terms?.length) return false;
-      const lower = text.toLowerCase();
-      return terms.some(t => lower.includes(t.toLowerCase()));
-    }
-    case 'max_length': {
-      const maxChars = rule.config.maxChars as number | undefined;
-      if (!maxChars) return false;
-      return text.length > maxChars;
-    }
-    case 'regex_filter': {
-      const pattern = rule.config.pattern as string | undefined;
-      if (!pattern) return false;
-      try {
-        const flags = (rule.config.flags as string) ?? 'i';
-        return new RegExp(pattern, flags).test(text);
-      } catch {
-        return false;
-      }
-    }
-    default:
-      return false;
-  }
-}
-
-function tryRedact(rule: GuardrailRule, text: string): string | null {
-  switch (rule.type) {
-    case 'max_length': {
-      const maxChars = rule.config.maxChars as number | undefined;
-      if (!maxChars || text.length <= maxChars) return null;
-      return text.slice(0, maxChars) + '...';
-    }
-    case 'regex_filter': {
-      const pattern = rule.config.pattern as string | undefined;
-      if (!pattern) return null;
-      try {
-        const flags = (rule.config.flags as string) ?? 'gi';
-        const replacement = (rule.config.replacement as string) ?? '[REDACTED]';
-        const regex = new RegExp(pattern, flags);
-        if (!regex.test(text)) return null;
-        return text.replace(regex, replacement);
-      } catch {
-        return null;
-      }
-    }
-    default:
-      return null;
-  }
 }
