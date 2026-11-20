@@ -39,7 +39,6 @@ import {
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { ActionMenuItem, ActionSwitch } from '@/shared/access/ActionControls';
 import { useAccess } from '@/shared/access/useAccess';
-import { keyLocation } from '../_lib/key-source';
 
 interface ProviderTableProps {
   providers: AIProviderWithModelsResponse[];
@@ -176,11 +175,6 @@ export function ProviderTable({
                       <div className="flex items-center gap-1.5 text-amber-600">
                         <AlertCircle className="size-4" />
                         <span className="text-xs font-medium">No API key</span>
-                      </div>
-                    )}
-                    {requiresApiKey && provider.apiKeySecret && (
-                      <div className="text-xs text-muted-foreground" title={keyLocation(provider) ?? undefined}>
-                        Key: <code>{provider.apiKeySecret}</code>
                       </div>
                     )}
                   </div>
