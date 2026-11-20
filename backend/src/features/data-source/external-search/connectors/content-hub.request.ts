@@ -318,3 +318,83 @@ export function contentHubFixedFilters(connection: ExternalConnection): FilterCl
   const fixed = connection.providerSettings?.fixedFilters;
   return Array.isArray(fixed) ? (fixed as FilterClause[]) : [];
 }
+
+// ============================================================================
+// RANKING
+// ============================================================================
+
+/**
+ * Content Hub's search APIs do not score. SearchAfter returns the entities a FullText
+ * filter matches in whatever order the sort names (the identifier by default), so a text
+ * search for "kitchen" would list the right assets in an arbitrary order. The connector
+ * ranks a text search itself: it reads the matching entities' text properties, orders them
+ * by how the query words appear in them, and loads the winning page in full.
+ */
+
+/** The properties the ranking reads: what FullText searches, plus titles and descriptions. */
+export function rankingProperties(fields: DataSourceField[] | undefined): string[] {
+  return (fields ?? [])
+    .filter((f) => f.type === 'text' && (f.providerType ?? '').startsWith('String'))
+    .filter((f) => f.isSearchable || f.role === 'title' || f.role === 'description')
+    .map((f) => f.name);
+}
+
+const TITLE_WHOLE_WORD = 4;
+const TITLE_PART = 2;
+const TEXT_WHOLE_WORD = 1;
+const TEXT_PART = 0.5;
+const PHRASE_IN_TITLE = 3;
+const PHRASE_IN_TEXT = 1;
+
+function textOf(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(textOf).join(' ');
+  if (value && typeof value === 'object') return textOf(Object.values(value as Record<string, unknown>));
+  return '';
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** How well one record's text answers the query words; 0 when none of them appear. */
+export function rankScore(record: Record<string, unknown>, words: string[], fields: DataSourceField[] | undefined): number {
+  const titles = new Set((fields ?? []).filter((f) => f.role === 'title').map((f) => f.name));
+  const properties = rankingProperties(fields);
+  const read = (names: Iterable<string>) =>
+    Array.from(names).map((name) => textOf(record[name])).join(' ').replace(/<[^>]+>/g, ' ').toLowerCase();
+  // Without a schema, every string value counts as text
+  const title = read(titles);
+  const text = properties.length > 0
+    ? read(properties.filter((name) => !titles.has(name)))
+    : read(Object.keys(record).filter((name) => !titles.has(name) && typeof record[name] === 'string'));
+
+  let score = 0;
+  for (const word of words) {
+    const lower = word.toLowerCase();
+    const whole = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(lower)}($|[^\\p{L}\\p{N}])`, 'u');
+    if (whole.test(title)) score += TITLE_WHOLE_WORD;
+    else if (title.includes(lower)) score += TITLE_PART;
+    if (whole.test(text)) score += TEXT_WHOLE_WORD;
+    else if (text.includes(lower)) score += TEXT_PART;
+  }
+  if (words.length > 1) {
+    const phrase = words.join(' ').toLowerCase();
+    if (title.includes(phrase)) score += PHRASE_IN_TITLE;
+    else if (text.includes(phrase)) score += PHRASE_IN_TEXT;
+  }
+  return score;
+}
+
+/** Records ordered by rankScore, best first; equal scores keep their incoming order. */
+export function rankByWords<T>(
+  items: T[],
+  recordOf: (item: T) => Record<string, unknown>,
+  words: string[],
+  fields: DataSourceField[] | undefined,
+): T[] {
+  return items
+    .map((item, index) => ({ item, index, score: rankScore(recordOf(item), words, fields) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.item);
+}

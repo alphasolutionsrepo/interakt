@@ -30,6 +30,7 @@ import {
   CONTENT_HUB,
   CONTENT_HUB_MAX_TAKE,
   andFilters,
+  countEntities,
   contentHubSettings,
   definitionFilter,
   getEntityDefinition,
@@ -40,11 +41,13 @@ import {
   type ContentHubSettings,
 } from './content-hub.client';
 import {
+  cached,
   listOptionValues,
   listTaxonomyItems,
   publicPreviewUrls,
   relatedPreviewUrls,
   resolveDetailPath,
+  resolveLazyRelations,
   resolveOptionIdentifiers,
   resolveRelationIds,
 } from './content-hub.lookups';
@@ -53,6 +56,8 @@ import {
   fieldKind,
   fullTextFilter,
   queryWords,
+  rankByWords,
+  rankingProperties,
   translateContentHubFilters,
   translateContentHubSort,
   type ContentHubResolver,
@@ -92,22 +97,58 @@ async function baseFilter(connection: ExternalConnection, settings: ContentHubSe
 }
 
 /**
- * Facet values for a field: a taxonomy's items for a relation, an option list's values
- * for an option-list property. Counts are not available from Content Hub; each value is
- * reported once so enumeration still lists what can be filtered on.
+ * The most count requests one search spends on facet values, and how many run at once.
+ * Content Hub has no aggregation, so a value is counted by its own filtered count. One
+ * facet (the enumerate tool's case) is always counted: its values are capped at the
+ * taxonomy listing size. A search experience asking for many facets at once gets them
+ * listed without counts rather than hundreds of requests per search.
  */
-async function facetFor(settings: ContentHubSettings, request: ExternalFacetRequest, fields: Map<string, DataSourceField>): Promise<ExternalFacet | undefined> {
+const FACET_COUNT_BUDGET = 100;
+const FACET_COUNT_CONCURRENCY = 10;
+
+/**
+ * Facet values for a field: a taxonomy's items for a relation, an option list's values
+ * for an option-list property, each counted within `scope` (the filter the results came
+ * from) while the budget allows. Counted values come back largest first without the
+ * empty ones; listed-only values keep their order with a count of 1.
+ */
+async function facetFor(
+  settings: ContentHubSettings,
+  request: ExternalFacetRequest,
+  fields: Map<string, DataSourceField>,
+  scope: ContentHubFilter,
+  budget: { left: number },
+): Promise<ExternalFacet | undefined> {
   const kind = fieldKind(fields.get(request.field), request.field);
   const size = request.size ?? 50;
+  let values: Array<{ key: string; filter: ContentHubFilter }>;
   if (kind.kind === 'relation') {
     const items = await listTaxonomyItems(settings, kind.target);
-    return { field: request.field, buckets: items.slice(0, size).map((i) => ({ key: i.label, count: 1 })) };
-  }
-  if (kind.kind === 'optionList') {
+    values = items.map((i) => ({ key: i.label, filter: { type: 'Relation', relation: request.field, id: i.id } }));
+  } else if (kind.kind === 'optionList') {
     const options = await listOptionValues(settings, kind.list);
-    return { field: request.field, buckets: options.slice(0, size).map((o) => ({ key: o.label, count: 1 })) };
+    values = options.map((o) => ({ key: o.label, filter: { type: 'StringProperty', property_name: request.field, operator: 'Equals', value: o.identifier } }));
+  } else {
+    return undefined;
   }
-  return undefined;
+
+  if (values.length > budget.left) {
+    return { field: request.field, buckets: values.slice(0, size).map((v) => ({ key: v.key, count: 1 })) };
+  }
+  budget.left -= values.length;
+  // Counts change slowly; a repeated enumeration within the cache's lifetime costs nothing
+  const buckets = await cached(`${settings.host}\0facet\0${request.field}\0${JSON.stringify(scope)}`, async () => {
+    const counts: number[] = [];
+    for (let i = 0; i < values.length; i += FACET_COUNT_CONCURRENCY) {
+      const chunk = values.slice(i, i + FACET_COUNT_CONCURRENCY);
+      counts.push(...await Promise.all(chunk.map((v) => countEntities(settings, andFilters(scope, v.filter)!))));
+    }
+    return values
+      .map((v, i) => ({ key: v.key, count: counts[i] }))
+      .filter((b) => b.count > 0)
+      .sort((a, b) => b.count - a.count);
+  });
+  return { field: request.field, buckets: buckets.slice(0, size) };
 }
 
 /**
@@ -170,30 +211,62 @@ export const contentHubConnector: ExternalSearchConnector = {
     // the start, bounded by the largest page the API allows.
     const take = Math.min(request.offset + request.limit, CONTENT_HUB_MAX_TAKE);
     const wantImage = !fields || fields.some((f) => f.name === CONTENT_HUB_IMAGE_FIELD.name);
-    const run = (filter: ContentHubFilter) => searchAfter(settings, {
-      filter,
-      take,
-      sorting: sort.sorting,
-      properties: request.selectFields?.length ? request.selectFields : 'all',
-      relations: 'all',
+    const load = {
+      properties: request.selectFields?.length ? request.selectFields : 'all' as const,
+      relations: 'all' as const,
       cultures: [settings.culture],
       // The preview as a signed link: the image when the asset has no public link
       renditions: wantImage && !settings.imageRelation ? [PREVIEW_RENDITION] : undefined,
-    });
+    };
+    const run = (filter: ContentHubFilter) => searchAfter(settings, { filter, take, sorting: sort.sorting, ...load });
+
+    const withText = andFilters(base, fullTextFilter(words))!;
+    let scope = withText;
+    let page: Awaited<ReturnType<typeof run>>;
+    let entities: ContentHubEntity[];
+
+    if (words.length > 0 && !request.sort?.length) {
+      // Content Hub does not score, so a text search is ranked here: the text of up to a
+      // full page of matches is read first (cheap: a few properties, no relations), ordered
+      // by how the words appear in it, and only the entities on the requested page are then
+      // loaded in full. An explicit sort is honoured as given instead.
+      const ranking = rankingProperties(fields);
+      page = await searchAfter(settings, {
+        filter: withText,
+        take: CONTENT_HUB_MAX_TAKE,
+        sorting: sort.sorting,
+        properties: ranking.length > 0 ? ranking : 'all',
+        relations: 'none',
+        cultures: [settings.culture],
+      });
+      const ordered = rankByWords(page.items, (entity) => flattenContentHubEntity(entity, settings.culture), words, fields);
+      const ids = ordered.slice(request.offset, request.offset + request.limit).map((entity) => entity.id);
+      if (ids.length > 0) {
+        const full = await searchAfter(settings, { filter: { type: 'IdIn', ids }, take: ids.length, ...load });
+        const byId = new Map(full.items.map((entity) => [entity.id, entity]));
+        entities = ids.map((id) => byId.get(id)).filter((entity): entity is ContentHubEntity => entity !== undefined);
+        page = { ...page, took: page.took + full.took };
+      } else {
+        entities = [];
+      }
+    } else {
+      page = await run(withText);
+      entities = page.items.slice(request.offset, request.offset + request.limit);
+    }
 
     // Text and filters together first. When that finds nothing and both were given, the
     // filters alone decide: the planner's query text often restates the filters in words the
     // entities never contain ("Brandco products Retired"), and an empty answer for a filter
     // that matches thousands of entities would be wrong.
-    let page = await run(andFilters(base, fullTextFilter(words))!);
     if (page.total === 0 && words.length > 0 && requested.filter) {
       page = await run(base);
+      scope = base;
+      entities = page.items.slice(request.offset, request.offset + request.limit);
       if (page.total > 0) {
         unappliedFilters.push({ field: 'query', reason: `the text "${words.join(' ')}" matched none of the entities the filters select; results are the filters alone` });
       }
     }
 
-    const entities = page.items.slice(request.offset, request.offset + request.limit);
     const links = await enrichments(settings, entities, fields);
     const hits = entities.map((entity, i) => ({
       id: String(entity.id),
@@ -202,8 +275,9 @@ export const contentHubConnector: ExternalSearchConnector = {
     }));
 
     const facets: ExternalFacet[] = [];
+    const budget = { left: FACET_COUNT_BUDGET };
     for (const facetRequest of request.facets ?? []) {
-      const facet = await facetFor(settings, facetRequest, byName);
+      const facet = await facetFor(settings, facetRequest, byName, scope, budget);
       if (facet) facets.push(facet);
     }
 
@@ -249,7 +323,8 @@ export async function countContentHub(connection: ExternalConnection, fields?: D
 
 /**
  * A sample of entities for field profiling, with every property and relation loaded.
- * One page at most: SearchAfter caps a page at 100.
+ * One page at most: SearchAfter caps a page at 100. Relations the page did not inline are
+ * read separately, which may shorten the sample (see resolveLazyRelations).
  */
 export async function sampleContentHub(connection: ExternalConnection, size: number, fields?: DataSourceField[]): Promise<Record<string, unknown>[]> {
   const settings = contentHubSettings(connection);
@@ -260,7 +335,8 @@ export async function sampleContentHub(connection: ExternalConnection, size: num
     relations: 'all',
     cultures: [settings.culture],
   });
-  return page.items.map((entity) => flattenContentHubEntity(entity, settings.culture));
+  const entities = await resolveLazyRelations(settings, page.items, fields);
+  return entities.map((entity) => flattenContentHubEntity(entity, settings.culture));
 }
 
 export type { ContentHubSettings };

@@ -76,6 +76,21 @@ describe('inferContentHubFields', () => {
     });
   });
 
+  it('names a title when no member is called so: the first searchable text ending in Name or Title', () => {
+    expect(fields.filter((f) => f.role === 'title').map((f) => f.name)).toEqual([]);
+    const named: ContentHubDefinition = {
+      ...PRODUCT,
+      member_groups: [{ name: 'General', members: [
+        { name: 'Acme.PCM.BrandName', type: 'String', labels: {} },
+        { name: 'Acme.PCM.ProductName', type: 'String', labels: {}, included_in_content: true },
+        { name: 'Title', type: 'String', labels: {} },
+      ] }],
+    };
+    expect(inferContentHubFields(named).filter((f) => f.role === 'title').map((f) => f.name)).toEqual(['Title']);
+    named.member_groups![0].members!.pop();
+    expect(inferContentHubFields(named).filter((f) => f.role === 'title').map((f) => f.name)).toEqual(['Acme.PCM.ProductName']);
+  });
+
   it('keeps child relations as filterable fields, facetable when they point at a taxonomy', () => {
     expect(byName.get('Acme.PCM.Category')).toMatchObject({
       type: 'text',

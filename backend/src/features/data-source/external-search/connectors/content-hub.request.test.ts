@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { fieldKind, fullTextFilter, queryWords, translateContentHubFilters, translateContentHubSort, type ContentHubResolver } from './content-hub.request';
+import { fieldKind, fullTextFilter, queryWords, rankByWords, rankScore, rankingProperties, translateContentHubFilters, translateContentHubSort, type ContentHubResolver } from './content-hub.request';
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 
@@ -171,5 +171,58 @@ describe('translateContentHubSort', () => {
 
   it('sorts by identifier alone when nothing is asked', () => {
     expect(translateContentHubSort(undefined, FIELDS).sorting).toEqual([{ field: 'identifier', order: 'Asc' }]);
+  });
+});
+
+describe('ranking', () => {
+  const text = (name: string, extra: Partial<DataSourceField> = {}): DataSourceField => ({
+    name, displayName: name, type: 'text', providerType: 'String', role: null,
+    isSearchable: false, isFacetable: false, isFilterable: true, isRetrievable: true, isSortable: true, ...extra,
+  });
+  const fields: DataSourceField[] = [
+    text('Title', { role: 'title', isSearchable: true }),
+    text('Description', { role: 'description' }),
+    text('Notes', { isSearchable: true }),
+    text('Code'),
+    { ...text('Category'), providerType: 'Relation:Acme.Category', role: 'category' },
+  ];
+
+  it('ranks on searchable text, titles and descriptions, never relations', () => {
+    expect(rankingProperties(fields)).toEqual(['Title', 'Description', 'Notes']);
+    expect(rankingProperties(undefined)).toEqual([]);
+  });
+
+  it('prefers whole words in the title, then the text, then partial matches', () => {
+    const words = ['kitchen'];
+    expect(rankScore({ Title: 'Marina Kitchen 02' }, words, fields)).toBe(4);
+    expect(rankScore({ Title: 'Kitchenette' }, words, fields)).toBe(2);
+    expect(rankScore({ Title: 'Great room', Description: 'View into the <b>kitchen</b>' }, words, fields)).toBe(1);
+    expect(rankScore({ Title: 'Great room', Notes: 'kitchens' }, words, fields)).toBe(0.5);
+    expect(rankScore({ Title: 'Great room', Code: 'kitchen' }, words, fields)).toBe(0);
+    expect(rankScore({ Title: 'Great room', Category: 'kitchen' }, words, fields)).toBe(0);
+  });
+
+  it('rewards the phrase and is case-insensitive', () => {
+    const words = ['gas', 'range'];
+    expect(rankScore({ Title: 'GAS RANGE 30 inch' }, words, fields)).toBe(4 + 4 + 3);
+    expect(rankScore({ Title: 'Range, gas' }, words, fields)).toBe(4 + 4);
+  });
+
+  it('reads multilingual and array values', () => {
+    expect(rankScore({ Title: { 'en-US': 'Venice cabinet' }, Notes: ['venice', 'harbor'] }, ['venice'], fields)).toBe(5);
+  });
+
+  it('orders best first and keeps the incoming order for ties', () => {
+    const items = [
+      { id: 1, Title: 'Great room' },
+      { id: 2, Title: 'Kitchen island' },
+      { id: 3, Title: 'Foyer', Description: 'kitchen beyond' },
+      { id: 4, Title: 'Kitchen' },
+    ];
+    expect(rankByWords(items, (i) => i, ['kitchen'], fields).map((i) => i.id)).toEqual([2, 4, 3, 1]);
+  });
+
+  it('falls back to every string value without a schema', () => {
+    expect(rankScore({ anything: 'a kitchen here' }, ['kitchen'], undefined)).toBe(1);
   });
 });

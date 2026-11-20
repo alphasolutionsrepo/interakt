@@ -66,6 +66,31 @@ describe('mergeOperatorFieldEdits', () => {
     expect(mergeOperatorFieldEdits(schema([]), discovered)).toBe(discovered);
   });
 
+  it('keeps a capability the operator switched off, and never switches one on', () => {
+    // A tenant with ninety taxonomies offers ninety facets; the seven an operator kept are
+    // curation, and a health check must not hand the planner all ninety again.
+    const stored = schema([
+      { name: 'colour', type: 'text', isFacetable: false, isFilterable: true, isSearchable: true },
+      { name: 'notes', type: 'text', isFacetable: true, isSearchable: true },
+    ]);
+    const discovered = schema([
+      { name: 'colour', type: 'text', isFacetable: true, isFilterable: true, isSearchable: true },
+      { name: 'notes', type: 'text', isFacetable: false, isSearchable: false },
+    ]);
+
+    const merged = mergeOperatorFieldEdits(stored, discovered);
+
+    expect(merged.fields[0]).toMatchObject({ isFacetable: false, isFilterable: true, isSearchable: true });
+    expect(merged.fields[1]).toMatchObject({ isFacetable: false, isSearchable: false });
+  });
+
+  it('keeps the stored order and appends fields the index added', () => {
+    const stored = schema([{ name: 'c', type: 'text' }, { name: 'a', type: 'text' }]);
+    const discovered = schema([{ name: 'a', type: 'text' }, { name: 'b', type: 'text' }, { name: 'c', type: 'text' }]);
+
+    expect(mergeOperatorFieldEdits(stored, discovered).fields.map((f) => f.name)).toEqual(['c', 'a', 'b']);
+  });
+
   it('leaves every other field alone', () => {
     const stored = schema([{ name: 'a', type: 'text', description: 'kept' }]);
     const discovered = schema([

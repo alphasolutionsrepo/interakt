@@ -13,6 +13,7 @@
 import 'server-only';
 
 import {
+  CONTENT_HUB_MAX_TAKE,
   contentHubRequest,
   getRelationIds,
   orFilters,
@@ -30,8 +31,11 @@ import {
   portalUrl,
   publicLinkUrl,
   PUBLIC_LINK_RELATION,
+  relatedEntities,
   type ContentHubPortalPage,
 } from './content-hub.schema';
+
+import type { DataSourceField } from '@/db/schema/data-sources.schema';
 
 const CACHE_TTL_MS = 10 * 60_000;
 /** The most taxonomy items listed for a facet: SearchAfter's page cap. */
@@ -40,7 +44,8 @@ const TAXONOMY_LIST_LIMIT = 100;
 interface CacheEntry<T> { value: T; expiresAt: number }
 const cache = new Map<string, CacheEntry<unknown>>();
 
-function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+/** A lookup remembered for the cache TTL: taxonomy listings, labels, facet counts. */
+export function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expiresAt) return Promise.resolve(hit.value as T);
   return load().then((value) => {
@@ -62,10 +67,25 @@ export interface ContentHubItem {
 
 const LABEL_PROPERTIES = ['TaxonomyLabel', 'Label', 'Name', 'Title', 'StatusValue', 'TaxonomyName', 'ProductFamilyName'];
 
-function itemLabel(record: Record<string, unknown>): string {
-  for (const key of LABEL_PROPERTIES) {
+/**
+ * An item's display name: the usual label properties first, then any text property whose
+ * name ends in Label, Name or Title (a custom taxonomy names its own, "ProductStatusName"),
+ * else the identifier.
+ */
+export function itemLabel(record: Record<string, unknown>): string {
+  const text = (key: string): string | undefined => {
     const value = record[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  };
+  for (const key of LABEL_PROPERTIES) {
+    const value = text(key);
+    if (value) return value;
+  }
+  for (const key of Object.keys(record)) {
+    if (/(label|name|title)$/i.test(key) && !/^(identifier|id)$/i.test(key)) {
+      const value = text(key);
+      if (value) return value;
+    }
   }
   return String(record.identifier ?? record.id ?? '');
 }
@@ -75,7 +95,7 @@ async function listDefinition(settings: ContentHubSettings, definition: string, 
   const page = await searchAfter(settings, {
     filter: filter ? { type: 'Logical', operator: 'And', left: base, right: filter } : base,
     take,
-    properties: LABEL_PROPERTIES,
+    properties: 'all',
     relations: 'none',
     cultures: [settings.culture],
   });
@@ -88,6 +108,10 @@ async function listDefinition(settings: ContentHubSettings, definition: string, 
 /** The items of a taxonomy (or any definition), one page: for facet values. */
 export function listTaxonomyItems(settings: ContentHubSettings, definition: string): Promise<ContentHubItem[]> {
   return cached(`${settings.host}\0tax\0${definition}`, () => listDefinition(settings, definition));
+}
+
+function compact(s: string): string {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
 function sameText(a: string, b: string): boolean {
@@ -119,12 +143,23 @@ export function resolveRelationIds(settings: ContentHubSettings, definition: str
   const text = typeof value === 'string' ? value.trim() : String(value ?? '');
   if (!text) return Promise.resolve([]);
   return cached(`${settings.host}\0rel\0${definition}\0${text.toLowerCase()}`, async () => {
-    const candidates = await listDefinition(settings, definition, { type: 'FullText', value: text, operator: 'Equals' }, MAX_IDS_PER_NAME);
-    const byIdentifier = candidates.filter((c) => c.identifier === text);
-    if (byIdentifier.length) return byIdentifier.map((c) => c.id);
-    const exact = candidates.filter((c) => sameText(c.label, text));
-    if (exact.length) return exact.map((c) => c.id);
-    return candidates.filter((c) => startsWithName(c.label, text)).map((c) => c.id);
+    const match = (candidates: ContentHubItem[]): number[] => {
+      const byIdentifier = candidates.filter((c) => c.identifier === text);
+      if (byIdentifier.length) return byIdentifier.map((c) => c.id);
+      const exact = candidates.filter((c) => sameText(c.label, text));
+      if (exact.length) return exact.map((c) => c.id);
+      // "Under Review" for an item labelled "UnderReview": letters and digits alone
+      const loose = candidates.filter((c) => compact(c.label) === compact(text));
+      if (loose.length) return loose.map((c) => c.id);
+      return candidates.filter((c) => startsWithName(c.label, text)).map((c) => c.id);
+    };
+    // An identifier ("M.PCM.ProductStatus.Created") is not full-text indexed as a whole;
+    // its last segment usually is
+    const lastSegment = text.includes('.') ? text.slice(text.lastIndexOf('.') + 1) : undefined;
+    const found = match(await listDefinition(settings, definition, { type: 'FullText', value: lastSegment ?? text, operator: 'Equals' }, MAX_IDS_PER_NAME));
+    if (found.length) return found;
+    // Small taxonomies may not be full-text indexed at all: their listing is cheap and cached
+    return match(await listTaxonomyItems(settings, definition));
   });
 }
 
@@ -298,4 +333,79 @@ export async function resolveOptionIdentifiers(settings: ContentHubSettings, lis
   const options = await listOptionValues(settings, list);
   if (options.some((o) => o.identifier === text)) return [text];
   return options.filter((o) => sameText(o.label, text)).map((o) => o.identifier);
+}
+
+// ============================================================================
+// LAZY RELATIONS
+// ============================================================================
+
+/**
+ * Relation reads one sample may spend. Discovery and health checks sample, and the
+ * tenant's rate limit is shared with everyone searching it, so the sample shrinks to
+ * what this budget resolves rather than the budget growing with the sample.
+ */
+const SAMPLE_RELATION_BUDGET = 150;
+
+/**
+ * Content Hub inlines a hit's relations on some definitions (an asset's taxonomies) and
+ * never on others (a product's), whatever load option is asked for. A sample that leaves
+ * such a relation out profiles it as empty on every entity, and the planner then avoids
+ * the one filter the users want. So the taxonomy relations the sample did not get are read
+ * one by one, for as many entities as the budget covers, and only those entities are
+ * returned: a smaller sample measured truthfully beats a larger one measured wrong.
+ */
+export async function resolveLazyRelations(
+  settings: ContentHubSettings,
+  entities: ContentHubEntity[],
+  fields: DataSourceField[] | undefined,
+  budget = SAMPLE_RELATION_BUDGET,
+): Promise<ContentHubEntity[]> {
+  const lazy = (fields ?? [])
+    .filter((f) => f.isFacetable && f.providerType?.startsWith('Relation'))
+    .map((f) => ({ name: f.name, many: f.providerType!.includes('[]'), target: f.providerType!.slice(f.providerType!.indexOf(':') + 1) }))
+    .filter((r) => entities.some((e) => e.relations?.[r.name] !== undefined && relatedEntities(e.relations[r.name]).length === 0));
+  if (lazy.length === 0 || entities.length === 0) return entities;
+
+  const subset = entities.slice(0, Math.max(1, Math.min(entities.length, Math.floor(budget / lazy.length))));
+  const labels = new Map<string, Map<number, string>>();
+  await Promise.all(Array.from(new Set(lazy.map((r) => r.target))).map(async (target) => {
+    const items = await listTaxonomyItems(settings, target).catch(() => []);
+    labels.set(target, new Map(items.map((i): [number, string] => [i.id, i.label])));
+  }));
+
+  const read = await Promise.all(subset.map(async (entity) => {
+    const ids = new Map<string, number[]>();
+    await Promise.all(lazy.map(async (r) => {
+      if (relatedEntities(entity.relations?.[r.name]).length > 0) return;
+      ids.set(r.name, await getRelationIds(settings, entity.id, r.name).catch(() => []));
+    }));
+    return { entity, ids };
+  }));
+
+  // The listing is capped, so a large taxonomy's items past the cap are read by id
+  await Promise.all(lazy.map(async (r) => {
+    const known = labels.get(r.target)!;
+    const missing = [...new Set(read.flatMap(({ ids }) => ids.get(r.name) ?? []))].filter((id) => !known.has(id));
+    for (let i = 0; i < missing.length; i += CONTENT_HUB_MAX_TAKE) {
+      const items = await listDefinition(settings, r.target, { type: 'IdIn', ids: missing.slice(i, i + CONTENT_HUB_MAX_TAKE) }).catch(() => []);
+      for (const item of items) known.set(item.id, item.label);
+    }
+  }));
+
+  const related = (target: string, id: number) => ({
+    href: `${settings.host}/api/entities/${id}`,
+    // The label when known, else the id: what an inlined relation shows too
+    ...(labels.get(target)?.has(id) ? { properties: { TaxonomyLabel: labels.get(target)!.get(id) } } : {}),
+  });
+
+  return read.map(({ entity, ids }) => {
+    const relations = { ...entity.relations };
+    for (const r of lazy) {
+      const found = ids.get(r.name);
+      if (!found) continue;
+      const parents = found.map((id) => related(r.target, id));
+      relations[r.name] = r.many ? { parents } : { parent: parents[0] };
+    }
+    return { ...entity, relations };
+  });
 }

@@ -198,6 +198,12 @@ export async function performHealthCheck(id: string): Promise<HealthCheckResult>
  * typed it, it is rendered into the planning prompt, and nothing can regenerate it. It is
  * matched by field name, which is the only stable identity a field has across two reads.
  *
+ * A capability an operator switched off is the other exception. An index may offer a
+ * hundred facetable fields of which seven are worth offering the planner; that choice is
+ * curation, and a health check must not undo it. So a flag false in the stored schema stays
+ * false: an operator narrows what the index offers, and never widens it. The stored order
+ * of the fields is kept for the same reason.
+ *
  * A field that disappeared from the index does not come back: its description goes with it,
  * because advertising a field the index no longer has is how the planner ends up filtering
  * on something that cannot match.
@@ -211,23 +217,34 @@ export function mergeOperatorFieldEdits(
 
   if (discovered.discoveredFrom === 'sample') return mergeSampledSchema(previous, discovered);
 
-  const descriptions = new Map(
-    previous
-      .filter((f) => typeof f.description === 'string' && f.description.trim() !== '')
-      .map((f) => [f.name, f.description as string]),
-  );
-  if (descriptions.size === 0) return discovered;
+  const byName = new Map(previous.map((f) => [f.name, f]));
+  const position = new Map(previous.map((f, i) => [f.name, i]));
+  // The operator's order is curation too: the facets a widget shows first are the first
+  // facetable fields. Fields the index added since go last, in its order.
+  const ordered = discovered.fields
+    .map((field, i) => ({ field, rank: position.get(field.name) ?? previous.length + i }))
+    .sort((a, b) => a.rank - b.rank)
+    .map((entry) => entry.field);
 
   return {
     ...discovered,
-    fields: discovered.fields.map((field) => {
+    fields: ordered.map((field) => {
+      const before = byName.get(field.name);
+      if (!before) return field;
+      const merged = { ...field };
       // A description rediscovery somehow supplied wins — it is fresher by definition.
-      if (field.description) return field;
-      const carried = descriptions.get(field.name);
-      return carried ? { ...field, description: carried } : field;
+      const description = before.description?.trim();
+      if (!field.description && description) merged.description = before.description;
+      for (const flag of NARROWABLE_FLAGS) {
+        if (before[flag] === false && field[flag] !== false) merged[flag] = false;
+      }
+      return merged;
     }),
   };
 }
+
+/** Capabilities an operator may switch off on a field the index offers them on. */
+const NARROWABLE_FLAGS = ['isSearchable', 'isFacetable', 'isFilterable', 'isSortable', 'isRetrievable'] as const;
 
 /**
  * Merge a rediscovery that was inferred from sampled results.

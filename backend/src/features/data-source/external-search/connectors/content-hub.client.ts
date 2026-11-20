@@ -442,6 +442,16 @@ export async function searchAfter(settings: ContentHubSettings, input: SearchAft
   };
 }
 
+/** How many entities match a filter: a SearchAfter call that loads nothing. */
+export async function countEntities(settings: ContentHubSettings, filter: ContentHubFilter): Promise<number> {
+  const { json } = await contentHubRequest<{ total_items?: number }>(settings, '/api/entities/searchafter', {
+    method: 'POST',
+    headers: { 'X-ApiVersion': '2' },
+    body: { filter, take: 0, sorting: [{ field: 'identifier', order: 'Asc' }], load_configuration: { load_entities: false } },
+  });
+  return json.total_items ?? 0;
+}
+
 /**
  * One page of the V1 query API (`GET /api/entities/query`). Its expression language is
  * limited (equality, full text, parent-by-id), but it is the one call that lists the public

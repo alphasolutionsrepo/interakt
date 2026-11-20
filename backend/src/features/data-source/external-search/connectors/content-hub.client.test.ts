@@ -13,6 +13,7 @@ import { ExternalSearchError } from '../external-search.types';
 
 import {
   contentHubRequest,
+  countEntities,
   contentHubSettings,
   getContentHubToken,
   resetContentHubTokens,
@@ -150,5 +151,16 @@ describe('searchAfter', () => {
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>)['X-ApiVersion']).toBe('2');
     expect(JSON.parse(String(init.body))).toMatchObject({ filter: { type: 'DefinitionName', name: 'M.Asset' }, take: 1, renditions: ['None'] });
+  });
+});
+
+describe('countEntities', () => {
+  it('asks for the total without loading entities', async () => {
+    fetchMock.mockResolvedValueOnce(TOKEN.clone()).mockResolvedValueOnce(json(200, { items: [], total_items: 24 }));
+    const total = await countEntities(contentHubSettings(connection()), { type: 'DefinitionName', name: 'M.Asset' });
+    expect(total).toBe(24);
+    const [url, init] = fetchMock.mock.calls[1];
+    expect(url).toBe('https://tenant.example/api/entities/searchafter');
+    expect(JSON.parse(String(init.body))).toMatchObject({ take: 0, load_configuration: { load_entities: false } });
   });
 });

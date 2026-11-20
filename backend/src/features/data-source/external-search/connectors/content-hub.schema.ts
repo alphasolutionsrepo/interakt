@@ -239,6 +239,13 @@ export function inferContentHubFields(definition: ContentHubDefinition, culture 
       seen.add(member.name);
     }
   }
+  // A definition without a member called Title or Name still has one that acts as the title
+  // (ProductName, FamilyName): the first text property named so, searched by FullText first
+  if (!fields.some((f) => f.role === 'title')) {
+    const candidates = fields.filter((f) => f.type === 'text' && f.providerType?.startsWith('String') && /(name|title)$/i.test(f.name.split('.').pop() ?? ''));
+    const title = candidates.find((f) => f.isSearchable) ?? candidates[0];
+    if (title) title.role = 'title';
+  }
   return fields;
 }
 
@@ -302,8 +309,8 @@ export function relatedEntities(value: ContentHubRelationValue | undefined): Con
 /**
  * Flatten an entity into one record: system fields, properties for the culture (option
  * lists as their label), and each loaded relation as its parents' labels (a single value
- * for one parent, a list for many). Relations that were not loaded are left out rather
- * than reported empty, so profiling does not count them as null.
+ * for one parent, a list for many). Relations that were not loaded are left out: a sample
+ * reads them first (resolveLazyRelations) so profiling never measures them as empty.
  */
 export function flattenContentHubEntity(entity: ContentHubEntity, culture = 'en-US'): Record<string, unknown> {
   const record: Record<string, unknown> = {
