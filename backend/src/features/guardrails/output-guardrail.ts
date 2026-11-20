@@ -2,7 +2,7 @@
 
 /**
  * Output safety rules: blocklist, max length and regex filters applied to
- * AI-written text. Called before the text is streamed, saved or traced.
+ * AI-written text. Called before the text is streamed or saved.
  */
 
 import { blocklistTerms, ruleMatches } from './rule-match';

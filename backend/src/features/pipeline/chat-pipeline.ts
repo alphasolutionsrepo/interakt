@@ -168,7 +168,7 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
   const guardrailsEnforced = guardrailConfig?.enforced === true;
 
   // Output rules: one filter for the turn, applied to AI-written text before it is
-  // streamed, saved or traced. Without a stage to run it returns the text as is.
+  // streamed or saved. Without a stage to run it returns the text as is.
   const outputDecision = outputGuardrailDecision(guardrailConfig);
   const filterOutput = async (text: string): Promise<string> => {
     if (!outputDecision.run || !text) return text;
