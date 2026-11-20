@@ -19,7 +19,7 @@ import type { Span } from '@opentelemetry/api';
 import { withSpan , ATTR } from '@/features/telemetry';
 import type { AIFeature } from '@/features/analytics/analytics.types';
 import { withExperienceContext } from '@/features/search/search.service';
-import { assembleContext } from './context-assembly';
+import { assembleContext, createProductionSessionLoader } from './context-assembly';
 import { planTurn } from './turn-planner';
 import { executeLoop } from './execution-loop';
 import { synthesizeResponse } from './response-synthesis';
@@ -934,37 +934,7 @@ export function createProductionV2Deps(): V2PipelineDeps {
 
   return {
     contextAssembly: {
-      sessionLoader: {
-        async getSessionWithWindow(sessionId, windowSize) {
-          const { getSessionWithWindow } = await import('@/features/sessions/sessions.service');
-          const result = await getSessionWithWindow(sessionId, windowSize);
-          if (!result) return null;
-          return {
-            session: {
-              id: result.session.id,
-              summary: (result.session as any).summary ?? null,
-              facts: (result.session as any).facts as Record<string, string> | null ?? null,
-              pipelineState: (result.session as any).pipelineState as Record<string, unknown> | null ?? null,
-              userContext: (result.session as any).userContext as { userId?: string } | null ?? null,
-              messageCount: (result.session as any).messageCount ?? 0,
-              status: result.session.status,
-            },
-            messages: result.messages.map((m: any) => ({
-              role: m.role,
-              content: m.content,
-              createdAt: m.createdAt,
-            })),
-          };
-        },
-        async createSession(expId, ttlMinutes) {
-          const { createSession } = await import('@/features/sessions/sessions.service');
-          const newSession = await createSession({ aiExperienceId: expId, ttlMinutes });
-          return {
-            session: { id: newSession.id, summary: null, facts: null, pipelineState: null, userContext: null, messageCount: 0, status: 'active' },
-            messages: [],
-          };
-        },
-      },
+      sessionLoader: createProductionSessionLoader(),
       dataSchemaLoader: {
         async loadFieldSchema(dataSourceId) {
           const ds = await readDataSource(dataSourceId);

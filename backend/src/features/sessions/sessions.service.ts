@@ -77,13 +77,24 @@ export async function getSessionById(id: string) {
 /**
  * Get a session with its sliding window of recent messages.
  * This is the primary load path — called at the start of every turn.
+ * A session that belongs to another experience is treated like an unknown one (null).
  */
 export async function getSessionWithWindow(
   sessionId: string,
   windowSize: number,
+  experienceId: string,
 ): Promise<SessionWithMessages | null> {
   const session = await getSessionById(sessionId);
   if (!session) return null;
+
+  if (session.aiExperienceId !== experienceId) {
+    logger.info('Session belongs to another experience', {
+      sessionId,
+      sessionExperienceId: session.aiExperienceId,
+      experienceId,
+    });
+    return null;
+  }
 
   const messages = await repository.loadMessageWindow(sessionId, windowSize);
 
