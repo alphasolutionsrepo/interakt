@@ -1012,4 +1012,16 @@ describe('API keys are encrypted where they are saved', () => {
       vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64));
     }
   });
+
+  it('shows an empty key saved before encryption as no key, not as unreadable', async () => {
+    const providerId = await plainProvider('empty-legacy-key', '');
+    const shown = async () => (await (await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${providerId}`), idParams(providerId))).json()).data;
+    expect(await shown()).toMatchObject({ hasApiKey: false });
+    expect((await shown()).apiKeyUnreadable).toBeUndefined();
+    // Startup leaves it alone, so it stays no key
+    await encryptStoredProviderKeys();
+    expect(await storedKey(providerId)).toBe('');
+    await updateProvider(providerId, { description: 'clears the cached answer' });
+    expect((await shown()).apiKeyUnreadable).toBeUndefined();
+  });
 });

@@ -32,7 +32,8 @@ export async function encryptStoredProviderKeys(): Promise<ProviderKeyEncryption
     const rows = await db
       .select({ id: aiProviders.id, providerKey: aiProviders.providerKey, stored: sql<string>`${aiProviders.apiKey}` })
       .from(aiProviders)
-      .where(isNotNull(aiProviders.apiKey));
+      // An empty key is no key: nothing to encrypt
+      .where(and(isNotNull(aiProviders.apiKey), sql`${aiProviders.apiKey} <> ''`));
 
     const canEncrypt = encryptionKeyIsSet();
     const unreadable: string[] = [];
