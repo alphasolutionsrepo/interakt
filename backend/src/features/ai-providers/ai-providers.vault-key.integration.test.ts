@@ -372,3 +372,17 @@ describe('saving a provider\'s key', () => {
   });
 });
 
+describe('the vault and the providers that use its secrets', () => {
+  it('refuses to delete a secret a provider uses, naming the provider', async () => {
+    const { listSecrets, deleteSecret } = await import('@/features/secrets/secrets.service');
+    await createSecret({ name: 'in_use_by_provider', value: 'vault-key' });
+    await providerWithSecret('in_use_by_provider');
+    const [secret] = await listSecrets('in_use_by_provider');
+    await expect(deleteSecret(secret.id)).rejects.toMatchObject({
+      name: 'SecretInUseError',
+      message: expect.stringMatching(/AI provider "Campus gateway \d+"/),
+      references: [expect.objectContaining({ type: 'ai_provider' })],
+    });
+  });
+});
+

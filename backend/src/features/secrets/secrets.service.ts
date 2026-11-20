@@ -14,9 +14,16 @@ const logger = createLogger('secrets-service');
  * connections still reference it. Carries the referrers so the API layer can
  * report a 409 with actionable detail.
  */
+const REFERENCE_LABELS: Record<SecretReference['type'], string> = {
+  tool: 'tool',
+  data_source: 'data source',
+  mcp_connection: 'MCP connection',
+  ai_provider: 'AI provider',
+};
+
 export class SecretInUseError extends Error {
   constructor(public readonly references: SecretReference[]) {
-    const summary = references.map((r) => `${r.type} "${r.name}"`).join(', ');
+    const summary = references.map((r) => `${REFERENCE_LABELS[r.type]} "${r.name}"`).join(', ');
     super(`Secret is still referenced by ${references.length} config(s): ${summary}. Remove the references before deleting.`);
     this.name = 'SecretInUseError';
   }
