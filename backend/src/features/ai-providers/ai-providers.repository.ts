@@ -274,6 +274,36 @@ export async function updateProvider(
 }
 
 /**
+ * Saved keys still on the provider row (from before keys moved to the Secrets Vault):
+ * the stored value as it is, for the startup step that moves them.
+ */
+export async function listProvidersWithKeyOnRow(executor: DbExecutor = db): Promise<Array<Pick<AIProvider, 'id' | 'providerKey' | 'displayName' | 'apiKeySecret'> & { apiKey: string }>> {
+    const rows = await executor
+        .select({ id: aiProviders.id, providerKey: aiProviders.providerKey, displayName: aiProviders.displayName, apiKeySecret: aiProviders.apiKeySecret, apiKey: aiProviders.apiKey })
+        .from(aiProviders)
+        .where(sql`${aiProviders.apiKey} IS NOT NULL AND ${aiProviders.apiKey} <> ''`);
+    return rows as Array<Pick<AIProvider, 'id' | 'providerKey' | 'displayName' | 'apiKeySecret'> & { apiKey: string }>;
+}
+
+/**
+ * Write a provider's key fields only if the key on its row is still the one read (another
+ * server instance, or an admin saving a new key, may have changed it). Returns whether it did.
+ */
+export async function updateKeyFieldsIfKeyUnchanged(
+    id: string,
+    keyRead: string,
+    fields: Pick<UpdateAIProvider, 'apiKey' | 'apiKeySecret' | 'apiKeySecretManaged'>,
+    executor: DbExecutor = db
+): Promise<boolean> {
+    const updated = await executor
+        .update(aiProviders)
+        .set({ ...fields, updatedAt: new Date() })
+        .where(and(eq(aiProviders.id, id), eq(aiProviders.apiKey, keyRead)))
+        .returning({ id: aiProviders.id });
+    return updated.length > 0;
+}
+
+/**
  * Update provider connection status
  */
 export async function updateProviderConnectionStatus(

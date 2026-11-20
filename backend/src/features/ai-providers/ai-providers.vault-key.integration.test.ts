@@ -29,6 +29,7 @@ import * as testConnectionRoute from '@/app/api/ai-providers/[id]/test-connectio
 import * as providersRoute from '@/app/api/ai-providers/route';
 import { ADMIN_ROLE_ID, ALL_PERMISSIONS } from '@/features/access/permissions';
 import { generateEmbeddings, generateText, streamChat } from '@/features/ai-service/ai-service.service';
+import { moveProviderKeysToVault } from '@/features/ai-providers/provider-key-migration';
 import { checkAIProvidersHealth } from '@/features/health/health.service';
 import { decrypt } from '@/features/secrets/secrets.encryption';
 import { createSecret } from '@/features/secrets/secrets.service';
@@ -383,6 +384,94 @@ describe('the vault and the providers that use its secrets', () => {
       message: expect.stringMatching(/AI provider "Campus gateway \d+"/),
       references: [expect.objectContaining({ type: 'ai_provider' })],
     });
+  });
+});
+
+describe('keys saved on providers before the vault held them, at startup', () => {
+  const row = async (id: string) =>
+    (await testDb.db.execute(sql`SELECT api_key, api_key_secret, api_key_secret_managed FROM ai_providers WHERE id = ${id}`)).rows[0];
+  const secretValue = async (name: string) => {
+    const found = (await testDb.db.execute(sql`SELECT encrypted_value FROM secrets WHERE name = ${name}`)).rows[0] as { encrypted_value: string } | undefined;
+    return found ? decrypt(found.encrypted_value) : undefined;
+  };
+  /** Earlier tests' keys on rows are moved first, so a test's own counts are its own */
+  beforeEach(async () => { await moveProviderKeysToVault(); });
+
+  it('move into the vault as the provider\'s own secret once, and keep working', async () => {
+    const p = await providerWithSecret(null, { apiKey: 'vault-key' });
+    expect(await moveProviderKeysToVault()).toEqual({ moved: 1, left: 0 });
+    const name = `ai_provider_${p.providerKey.replace(/-/g, '_')}`;
+    expect(await row(p.providerId)).toEqual({ api_key: null, api_key_secret: name, api_key_secret_managed: true });
+    expect(await secretValue(name)).toBe('vault-key');
+    expect(await moveProviderKeysToVault()).toEqual({ moved: 0, left: 0 });
+
+    expect((await generateText('Say hi', { providerId: p.providerId, modelId: p.chatModelId })).text).toBe('Hi from the gateway');
+    expect(gateway.seen.at(-1)).toMatchObject({ auth: 'Bearer vault-key' });
+  });
+
+  it('take the next free name when the vault has one by that name already', async () => {
+    const p = await providerWithSecret(null, { apiKey: 'vault-key' });
+    const name = `ai_provider_${p.providerKey.replace(/-/g, '_')}`;
+    await createSecret({ name, value: 'someone-elses' });
+    await moveProviderKeysToVault();
+    expect(await row(p.providerId)).toMatchObject({ api_key_secret: `${name}_2` });
+    expect(await secretValue(name)).toBe('someone-elses');
+  });
+
+  it('only empty the old key when the provider already names a vault secret', async () => {
+    await createSecret({ name: `kept_${n + 1}`, value: 'vault-key' });
+    const p = await providerWithSecret(`kept_${n + 1}`, { apiKey: 'stale-key' });
+    expect(await moveProviderKeysToVault()).toEqual({ moved: 1, left: 0 });
+    expect(await row(p.providerId)).toEqual({ api_key: null, api_key_secret: `kept_${n}`, api_key_secret_managed: false });
+  });
+
+  it('stay on the provider, still working, when no encryption key is set; a warning is logged', async () => {
+    const p = await providerWithSecret(null, { apiKey: 'vault-key' });
+    vi.stubEnv('SECRETS_ENCRYPTION_KEY', '');
+    expect(await moveProviderKeysToVault()).toEqual({ moved: 0, left: 1 });
+    expect(await row(p.providerId)).toMatchObject({ api_key: 'vault-key', api_key_secret: null });
+    expect((await generateText('Say hi', { providerId: p.providerId, modelId: p.chatModelId })).text).toBe('Hi from the gateway');
+  });
+
+  it('leave a key changed while startup ran to the change, with no secret made for the old one', async () => {
+    const p = await providerWithSecret(null, { apiKey: 'vault-key' });
+    const realTransaction = testDb.db.transaction.bind(testDb.db);
+    const spy = vi.spyOn(testDb.db, 'transaction').mockImplementationOnce((async (work: (tx: unknown) => Promise<unknown>) => {
+      // An admin saves a new key between startup reading the row and moving it
+      await testDb.db.execute(sql`UPDATE ai_providers SET api_key = 'typed-meanwhile' WHERE id = ${p.providerId}`);
+      return realTransaction(work as never);
+    }) as never);
+    try {
+      expect(await moveProviderKeysToVault()).toEqual({ moved: 0, left: 0 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await row(p.providerId)).toMatchObject({ api_key: 'typed-meanwhile', api_key_secret: null });
+    expect(await secretValue(`ai_provider_${p.providerKey.replace(/-/g, '_')}`)).toBeUndefined();
+    // The next start moves the new one
+    expect(await moveProviderKeysToVault()).toEqual({ moved: 1, left: 0 });
+  });
+
+  it('never stop the server: a database failure is logged and nothing changes', async () => {
+    const p = await providerWithSecret(null, { apiKey: 'vault-key' });
+    const spy = vi.spyOn(testDb.db, 'select').mockImplementation((() => { throw new Error('connection refused'); }) as never);
+    try {
+      await expect(moveProviderKeysToVault()).resolves.toEqual({ moved: 0, left: 0 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await row(p.providerId)).toMatchObject({ api_key: 'vault-key' });
+  });
+
+  it('leave a key it could not move on the provider, still working', async () => {
+    const p = await providerWithSecret(null, { apiKey: 'vault-key' });
+    const spy = vi.spyOn(testDb.db, 'transaction').mockImplementationOnce((async () => { throw new Error('write refused'); }) as never);
+    try {
+      expect(await moveProviderKeysToVault()).toEqual({ moved: 0, left: 1 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await row(p.providerId)).toMatchObject({ api_key: 'vault-key', api_key_secret: null });
   });
 });
 

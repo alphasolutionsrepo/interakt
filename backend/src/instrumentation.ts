@@ -56,6 +56,10 @@ export async function register() {
     const { runStartupSeeding } = await import('@/shared/seeders');
     await runStartupSeeding();
 
+    // Move AI provider keys saved on the provider (before the Secrets Vault held them) into the vault
+    const { moveProviderKeysToVault } = await import('@/features/ai-providers/provider-key-migration');
+    await moveProviderKeysToVault();
+
     // Report configuration retired by the chat-pipeline consolidation. Logs only —
     // never mutates data, never blocks startup.
     const { runUpgradePreflight } = await import('@/shared/setup/upgrade-preflight');
