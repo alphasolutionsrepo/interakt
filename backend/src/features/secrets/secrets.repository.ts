@@ -2,43 +2,48 @@
 
 import { SECRET_REFERENCE_FIELDS } from './secret-template';
 import { eq, like, desc, sql } from 'drizzle-orm';
-import { secrets, tools, dataSources, mcpConnections } from '@/db/schema';
+import { secrets, tools, dataSources, mcpConnections, aiProviders } from '@/db/schema';
 import { db } from '@/db/index';
+import type { DbExecutor } from '@/shared/db/executor';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('secrets-repository');
 
 export interface SecretReference {
-  type: 'tool' | 'data_source' | 'mcp_connection';
+  type: 'tool' | 'data_source' | 'mcp_connection' | 'ai_provider';
   id: string;
   name: string;
 }
 
 /**
  * Find every config that references a secret by name, across tools, data
- * sources, and MCP connections. Matches the two canonical reference forms in
+ * sources, MCP connections and AI providers (their api_key_secret column). Matches the two
+ * canonical reference forms in
  * the serialized JSON config: the `{{secret:name}}` template (tools) and a
  * field named in SECRET_REFERENCE_FIELDS (data sources, MCP, HTTP-API auth, web search). Secret names are constrained to `[a-z][a-z0-9_]*`, so the
  * name needs no regex escaping. Whitespace is tolerated for hand-edited rows.
  */
-export async function findSecretReferences(name: string): Promise<SecretReference[]> {
+export async function findSecretReferences(name: string, executor: DbExecutor = db): Promise<SecretReference[]> {
   const fields = SECRET_REFERENCE_FIELDS.join('|');
   const pattern = `(\\{\\{\\s*secret\\s*:\\s*${name}\\s*\\}\\}|"(${fields})"\\s*:\\s*"${name}")`;
 
   try {
-    const [toolRows, dataSourceRows, mcpRows] = await Promise.all([
-      db.select({ id: tools.id, name: tools.name }).from(tools)
+    const [toolRows, dataSourceRows, mcpRows, providerRows] = await Promise.all([
+      executor.select({ id: tools.id, name: tools.name }).from(tools)
         .where(sql`${tools.executorConfig}::text ~ ${pattern}`),
-      db.select({ id: dataSources.id, name: dataSources.name }).from(dataSources)
+      executor.select({ id: dataSources.id, name: dataSources.name }).from(dataSources)
         .where(sql`${dataSources.config}::text ~ ${pattern}`),
-      db.select({ id: mcpConnections.id, name: mcpConnections.name }).from(mcpConnections)
+      executor.select({ id: mcpConnections.id, name: mcpConnections.name }).from(mcpConnections)
         .where(sql`${mcpConnections.authConfig}::text ~ ${pattern}`),
+      executor.select({ id: aiProviders.id, name: aiProviders.displayName }).from(aiProviders)
+        .where(eq(aiProviders.apiKeySecret, name)),
     ]);
 
     return [
       ...toolRows.map((r) => ({ type: 'tool' as const, id: r.id, name: r.name })),
       ...dataSourceRows.map((r) => ({ type: 'data_source' as const, id: r.id, name: r.name })),
       ...mcpRows.map((r) => ({ type: 'mcp_connection' as const, id: r.id, name: r.name })),
+      ...providerRows.map((r) => ({ type: 'ai_provider' as const, id: r.id, name: r.name })),
     ];
   } catch (error) {
     logger.error('Failed to find secret references', error as Error, { name });
@@ -58,9 +63,9 @@ export async function getSecretById(id: string) {
   }
 }
 
-export async function getSecretByName(name: string) {
+export async function getSecretByName(name: string, executor: DbExecutor = db) {
   try {
-    const result = await db.query.secrets.findFirst({
+    const result = await executor.query.secrets.findFirst({
       where: eq(secrets.name, name),
     });
     return result || null;
@@ -96,9 +101,9 @@ export async function createSecret(data: {
   encryptedValue: string;
   description?: string;
   createdBy?: string;
-}) {
+}, executor: DbExecutor = db) {
   try {
-    const [created] = await db.insert(secrets).values({
+    const [created] = await executor.insert(secrets).values({
       name: data.name,
       encryptedValue: data.encryptedValue,
       description: data.description,
@@ -115,9 +120,9 @@ export async function updateSecret(id: string, data: {
   encryptedValue?: string;
   description?: string;
   updatedBy?: string;
-}) {
+}, executor: DbExecutor = db) {
   try {
-    const [updated] = await db.update(secrets)
+    const [updated] = await executor.update(secrets)
       .set({
         ...data,
         updatedAt: new Date(),
@@ -131,9 +136,9 @@ export async function updateSecret(id: string, data: {
   }
 }
 
-export async function deleteSecret(id: string) {
+export async function deleteSecret(id: string, executor: DbExecutor = db) {
   try {
-    const [deleted] = await db.delete(secrets)
+    const [deleted] = await executor.delete(secrets)
       .where(eq(secrets.id, id))
       .returning();
     return deleted || null;

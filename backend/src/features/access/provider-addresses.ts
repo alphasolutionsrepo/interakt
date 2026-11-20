@@ -1,9 +1,9 @@
 // src/features/access/provider-addresses.ts
 
 /**
- * An AI provider's address can name an internal host and carry a password, so only roles that
- * view providers get it. Everyone else who reads providers (to pick a model, or on the health
- * page) gets them without it.
+ * An AI provider's address can name an internal host and carry a password, and its key's vault
+ * secret is named on it, so only roles that view providers get them. Everyone else who reads
+ * providers (to pick a model, or on the health page) gets them without.
  */
 
 import 'server-only';
@@ -15,8 +15,11 @@ import { withoutFields } from './redact';
 import { checkAccess, SIGNED_IN, withPermission } from './route-guard';
 import { can } from './user-access';
 
-/** The fields that carry a provider's address (health adds the URL it tested, and the search engine's endpoint). */
-const ADDRESS_FIELDS: ReadonlySet<string> = new Set(['baseUrl', 'endpointTested', 'endpoint']);
+/**
+ * The fields that carry a provider's address (health adds the URL it tested, and the search
+ * engine's endpoint), and the name of the vault secret holding its key.
+ */
+const ADDRESS_FIELDS: ReadonlySet<string> = new Set(['baseUrl', 'endpointTested', 'endpoint', 'apiKeySecret']);
 
 export function withoutProviderAddresses<T>(value: T): T {
   return withoutFields(value, ADDRESS_FIELDS);

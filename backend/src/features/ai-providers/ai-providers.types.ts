@@ -103,6 +103,10 @@ export interface AIProviderResponse {
   authType: AIAuthType;
   baseUrl: string;
   hasApiKey: boolean; // Indicates if API key is set, without exposing it
+  /** Name of the Secrets Vault secret holding the key (never its value) */
+  apiKeySecret: string | null;
+  /** The secret was made for this provider from a typed key (false: one the admin chose) */
+  apiKeySecretManaged: boolean;
   isEnabled: boolean;
   settings: AIProviderSettings;
   lastConnectionCheck: Date | null;

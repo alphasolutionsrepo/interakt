@@ -38,8 +38,9 @@ these are your responsibility to set correctly, not defaults to ship to producti
 
 - **Secrets.** `SECRETS_ENCRYPTION_KEY`, `AUTH_SECRET`/`NEXTAUTH_SECRET`, and all provider
   API keys must be strong, unique, and kept out of version control. `.env*` is gitignored;
-  keep it that way. The secrets vault encrypts stored credentials with AES-256-GCM using
-  `SECRETS_ENCRYPTION_KEY` — protect that key accordingly.
+  keep it that way. The secrets vault, which also holds AI provider API keys, encrypts
+  stored credentials with AES-256-GCM using `SECRETS_ENCRYPTION_KEY` — protect that key
+  accordingly.
 - **Admin credentials.** Change the default admin email/password in
   `setup/setup.config.yaml` before exposing an instance.
 - **Public experience APIs** (`/api/v1/...`) are gated by per-experience access tokens with

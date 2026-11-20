@@ -9,6 +9,16 @@ import { classifyLlmFailure } from './fallback-messages';
  * the person who could fix it never hears about it.
  */
 describe('classifyLlmFailure', () => {
+  it('names a provider key that can\'t be read as one an administrator must check, naming nothing else', () => {
+    const err = Object.assign(
+      new Error('The API key for "Campus gateway" (Secrets Vault secret "campus_key") can\'t be decrypted with this server\'s encryption key. Restore the previous SECRETS_ENCRYPTION_KEY, or enter the key again on the AI Providers page.'),
+      { code: 'PROVIDER_KEY_UNAVAILABLE' },
+    );
+    const msg = classifyLlmFailure(err);
+    expect(msg).toMatch(/API key can't be read.*AI Providers page/);
+    expect(msg).not.toMatch(/SECRETS_ENCRYPTION_KEY|Campus gateway|campus_key|decrypt/);
+  });
+
   it('names a rate limit as a rate limit', () => {
     const msg = classifyLlmFailure(
       new Error('Rate limit reached for gpt-4o on tokens per min (TPM): Limit 30000'),

@@ -6,6 +6,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { assertMayWriteSecretConfig } from '@/features/access/secret-references';
 import { AdapterError } from '@/features/ai-service/adapters/types';
 import { apiResponse } from '@/shared/api/response';
 import { createLogger } from '@/shared/logger/logger';
@@ -48,6 +49,10 @@ export async function handleCreateProvider(request: NextRequest) {
     if (!validation.success) {
       return apiResponse.validationError(validation.error);
     }
+
+    // Choosing a vault secret sends its value to this provider's server: only a role that can
+    // manage secrets may (a typed key is the admin's own)
+    await assertMayWriteSecretConfig({ apiKeySecret: validation.data.apiKeySecret });
 
     const provider = await service.createProvider(validation.data);
 
@@ -207,6 +212,10 @@ export async function handleUpdateProvider(
     if (!bodyValidation.success) {
       return apiResponse.validationError(bodyValidation.error);
     }
+
+    // Choosing a vault secret sends its value to this provider's server: only a role that can
+    // manage secrets may (a typed key is the admin's own)
+    await assertMayWriteSecretConfig({ apiKeySecret: bodyValidation.data.apiKeySecret });
 
     const provider = await service.updateProvider(idValidation.data.id, bodyValidation.data);
 

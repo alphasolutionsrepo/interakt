@@ -29,6 +29,7 @@ vi.mock('@/features/telemetry', () => ({ initializeTelemetryConfig: vi.fn(), ini
 vi.mock('@/features/search/providers', () => ({ initializeSearchProviders: vi.fn() }));
 vi.mock('@/shared/seeders', () => ({ runStartupSeeding: vi.fn() }));
 vi.mock('@/shared/setup/upgrade-preflight', () => ({ runUpgradePreflight: vi.fn() }));
+vi.mock('@/features/ai-providers/provider-key-migration', () => ({ moveProviderKeysToVault: vi.fn() }));
 vi.mock('@/shared/setup/admin-seed', () => ({ seedAdminFromYaml: vi.fn() }));
 vi.mock('@/features/jobs', () => ({ startJobs: vi.fn(async () => undefined) }));
 
