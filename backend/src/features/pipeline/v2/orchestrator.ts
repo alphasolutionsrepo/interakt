@@ -372,7 +372,7 @@ export async function runV2Pipeline(
       break;
     }
     // A setup or provider problem (unreadable key, billing, rate limit) is named; anything else gets the plain answer
-    const failure = planResult.cause instanceof Error ? classifyLlmFailure(planResult.cause) : null;
+    const failure = planResult.cause instanceof Error ? classifyLlmFailure(planResult.cause, { stage: 'planning' }) : null;
     const errorText = failure ?? "I'm having trouble understanding your request right now. Could you try again?";
     parentSpan.setAttribute('alpha.v2.outcome', 'plan_failed');
     onEvent({ type: 'content', text: errorText });

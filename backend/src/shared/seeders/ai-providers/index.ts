@@ -184,10 +184,13 @@ async function seedSingleProvider(
             }
 
             // Delete existing provider (cascades to models), and its own key secret unless something else uses it
-            await db.delete(aiProviders).where(eq(aiProviders.id, existingProvider.id));
-            if (existingProvider.apiKeySecretManaged && existingProvider.apiKeySecret) {
-                await deleteSecretIfUnused(existingProvider.apiKeySecret);
-            }
+            // (together, as when the provider is deleted: both go or neither)
+            await db.transaction(async (tx) => {
+                await tx.delete(aiProviders).where(eq(aiProviders.id, existingProvider.id));
+                if (existingProvider.apiKeySecretManaged && existingProvider.apiKeySecret) {
+                    await deleteSecretIfUnused(existingProvider.apiKeySecret, tx);
+                }
+            });
             logger.info('Deleted existing provider for force reseed', { providerKey });
         } else if (registryEntry && registryEntry.checksum !== checksum) {
             // Seed data changed but provider exists - warn and skip

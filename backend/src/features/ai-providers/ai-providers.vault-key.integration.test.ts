@@ -443,6 +443,50 @@ describe('saving a provider\'s key', () => {
   });
 });
 
+describe('editing a provider that already has a key', () => {
+  const noSecretsRole = () => {
+    accessStub.access = {
+      userId: 'manager', roleId: 'provider-managers', roleName: 'Provider managers', isAdmin: false,
+      permissions: new Set(ALL_PERMISSIONS.filter((p) => p !== 'secrets:manage')),
+    };
+  };
+  const put = async (id: string, body: Record<string, unknown>) =>
+    (await providerRoute.PUT(new NextRequest(`http://localhost/api/ai-providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }), idParams(id))).status;
+  const stored = async (id: string) =>
+    (await testDb.db.execute(sql`SELECT display_name, connection_type, settings FROM ai_providers WHERE id = ${id}`)).rows[0];
+
+  it('needs a role that can manage secrets when the provider keeps a chosen secret, whatever the edit changes', async () => {
+    await createSecret({ name: 'edit_guard_key', value: 'vault-key' });
+    const p = await providerWithSecret('edit_guard_key');
+    const before = await stored(p.providerId);
+
+    noSecretsRole();
+    for (const edit of [{ connectionType: 'ollama' }, { settings: { temperature: 0.1 } }, { displayName: 'Renamed' }]) {
+      expect(await put(p.providerId, edit)).toBe(403);
+    }
+    expect(await stored(p.providerId)).toEqual(before);
+
+    accessStub.reset();
+    expect(await put(p.providerId, { displayName: 'Renamed by admin' })).toBe(200);
+  });
+
+  it('needs no such role when the secret is the provider\'s own, made from a key typed on it', async () => {
+    noSecretsRole();
+    const res = await providersRoute.POST(new NextRequest('http://localhost/api/ai-providers', {
+      method: 'POST',
+      body: JSON.stringify({ displayName: 'Own key', providerKey: 'campus-gw-own-edit', providerType: 'local', connectionType: 'openai_compatible', authType: 'api_key', baseUrl: gatewayUrl, isEnabled: true, apiKey: 'vault-key' }),
+    }));
+    const id = (await res.json()).data.id as string;
+    expect(await put(id, { displayName: 'Renamed', connectionType: 'ollama' })).toBe(200);
+    expect(await stored(id)).toMatchObject({ display_name: 'Renamed', connection_type: 'ollama' });
+  });
+
+  it('still answers 404 for a provider that does not exist, to a role that cannot manage secrets', async () => {
+    noSecretsRole();
+    expect(await put('00000000-0000-4000-8000-000000000000', { displayName: 'Nobody' })).toBe(404);
+  });
+});
+
 describe('the health check when a provider\'s secret can\'t be read at all', () => {
   it('marks that provider unhealthy and still answers, instead of failing the whole check', async () => {
     await createSecret({ name: `health_db_key_${n + 1}`, value: 'vault-key' });

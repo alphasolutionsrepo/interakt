@@ -290,6 +290,25 @@ describe('V2 Pipeline Orchestrator', () => {
     });
   });
 
+  describe('planning failure: what the visitor is told', () => {
+    const answerFor = async (error: Error) => {
+      const deps = makeDeps();
+      deps.turnPlanner = { chat: vi.fn().mockRejectedValue(error) };
+      return (await runV2Pipeline(makeInput(), deps)).responseText;
+    };
+
+    it('names a rate limit without blaming a tool, since none has run', async () => {
+      const text = await answerFor(new Error('Rate limit reached for requests'));
+      expect(text).toMatch(/per-minute token limit/i);
+      expect(text).not.toMatch(/tool/i);
+    });
+
+    it('names a billing problem as one, and any other failure with the plain answer', async () => {
+      expect(await answerFor(new Error('insufficient_quota'))).toMatch(/no remaining credit/i);
+      expect(await answerFor(new Error('socket hang up'))).toContain('trouble understanding');
+    });
+  });
+
   describe('context assembly failure', () => {
     it('fails the turn with the error as its cause, marks the step failed, sends no error text of its own, and stops its timer', async () => {
       const deps = makeDeps();
