@@ -26,6 +26,7 @@ vi.mock('@/features/prompt-templates', () => ({
 }));
 
 import { runV2Pipeline } from './orchestrator';
+import { classifyLlmFailure } from '../fallback-messages';
 import type { V2PipelineInput, V2PipelineDeps } from './orchestrator';
 import type { PipelineStreamEvent } from '../pipeline.types';
 import { abortedRequestError } from '@/features/ai-service/adapters/types';
@@ -268,6 +269,24 @@ describe('V2 Pipeline Orchestrator', () => {
       expect(result.responseText).toContain('trouble understanding');
       // Should still persist the fallback
       expect(deps.persistence.addMessages).toHaveBeenCalled();
+    });
+
+    it('tells the visitor the provider key is unreadable (not "try again") when the planner fails on it, in the answer and the saved message', async () => {
+      const unreadable = Object.assign(new Error('The API key for "Campus gateway" (Secrets Vault secret "ai_provider_campus") can\'t be decrypted'), { code: 'PROVIDER_KEY_UNAVAILABLE' });
+      const deps = makeDeps();
+      deps.turnPlanner = { chat: vi.fn().mockRejectedValue(unreadable) };
+      const input = makeInput();
+
+      const result = await runV2Pipeline(input, deps);
+
+      const expected = classifyLlmFailure(unreadable)!;
+      expect(expected).toMatch(/API key can't be read/);
+      expect(expected).not.toContain('ai_provider_campus');
+      expect(result.responseText).toBe(expected);
+      const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
+      expect(events.find((e: PipelineStreamEvent) => e.type === 'content')).toMatchObject({ text: expected });
+      const [, messages] = (deps.persistence.addMessages as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(messages[1].content).toBe(expected);
     });
   });
 

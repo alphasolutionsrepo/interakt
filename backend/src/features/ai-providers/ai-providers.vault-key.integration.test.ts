@@ -32,6 +32,7 @@ import { generateEmbeddings, generateText, streamChat } from '@/features/ai-serv
 import { moveProviderKeysToVault } from '@/features/ai-providers/provider-key-migration';
 import { checkAIProvidersHealth } from '@/features/health/health.service';
 import { decrypt } from '@/features/secrets/secrets.encryption';
+import * as secretsRepository from '@/features/secrets/secrets.repository';
 import { createSecret } from '@/features/secrets/secrets.service';
 import { accessStub } from '@/shared/test/access-stub';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
@@ -263,6 +264,45 @@ describe('saving a provider\'s key', () => {
     expect(updated.body.data).toMatchObject({ apiKeySecret: 'ai_provider_campus_gw_c', apiKeySecretManaged: true });
     expect(await secretValue('ai_provider_campus_gw_c')).toBe('vault-key');
     expect((await testDb.db.execute(sql`SELECT count(*)::int AS n FROM secrets`)).rows[0]).toEqual(before);
+  });
+
+  it('leaves the provider\'s own secret alone when another provider chose it, and puts a typed key in a new secret of its own', async () => {
+    const owner = (await create({ providerKey: 'campus-gw-sh', apiKey: 'vault-key' })).body.data;
+    const other = (await create({ providerKey: 'campus-gw-sh2', apiKeySecret: 'ai_provider_campus_gw_sh' })).body.data;
+
+    const updated = await update(owner.id, { apiKey: 'new-key' });
+    expect(updated.body.data).toMatchObject({ apiKeySecret: 'ai_provider_campus_gw_sh_2', apiKeySecretManaged: true });
+    expect(await secretValue('ai_provider_campus_gw_sh')).toBe('vault-key');
+    expect(await secretValue('ai_provider_campus_gw_sh_2')).toBe('new-key');
+    expect(await row(other.id)).toMatchObject({ api_key_secret: 'ai_provider_campus_gw_sh', api_key_secret_managed: false });
+
+    // The provider that chose it still reads the old value, and deleting the owner takes only its new secret
+    await generateText('Say hi', { providerId: other.id, modelId: await chatModel(other.id) });
+    expect(gateway.seen.at(-1)?.auth).toBe('Bearer vault-key');
+    expect(await remove(owner.id)).toBe(200);
+    expect(await secretValue('ai_provider_campus_gw_sh_2')).toBeUndefined();
+    expect(await secretValue('ai_provider_campus_gw_sh')).toBe('vault-key');
+  });
+
+  it('leaves the provider\'s own secret alone when an MCP connection uses it', async () => {
+    const owner = (await create({ providerKey: 'campus-gw-mcp', apiKey: 'first-key' })).body.data;
+    await testDb.db.execute(sql`INSERT INTO mcp_connections (name, slug, server_url, auth_config)
+      VALUES ('Remote', 'remote-vault-test', 'http://127.0.0.1:9/mcp', ${JSON.stringify({ type: 'bearer', secretRef: 'ai_provider_campus_gw_mcp' })}::jsonb)`);
+
+    const updated = await update(owner.id, { apiKey: 'vault-key' });
+    expect(updated.body.data.apiKeySecret).toBe('ai_provider_campus_gw_mcp_2');
+    expect(await secretValue('ai_provider_campus_gw_mcp')).toBe('first-key');
+    expect(await secretValue('ai_provider_campus_gw_mcp_2')).toBe('vault-key');
+  });
+
+  it('saves nothing when the lookup of what uses the own secret fails', async () => {
+    const owner = (await create({ providerKey: 'campus-gw-lk', apiKey: 'first-key' })).body.data;
+    const lookup = vi.spyOn(secretsRepository, 'findSecretReferences').mockRejectedValueOnce(new Error('lookup down'));
+    const failed = await update(owner.id, { apiKey: 'vault-key' });
+    lookup.mockRestore();
+    expect(failed.status).toBeGreaterThanOrEqual(500);
+    expect(await secretValue('ai_provider_campus_gw_lk')).toBe('first-key');
+    expect(await row(owner.id)).toMatchObject({ api_key_secret: 'ai_provider_campus_gw_lk' });
   });
 
   it('keeps the key when the form sends an empty one, and on edits that leave it out', async () => {
