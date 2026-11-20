@@ -971,4 +971,16 @@ describe('API keys are encrypted where they are saved', () => {
     }
     expect(await storedKey(providerId)).toBe('gw-key');
   });
+
+  it('startup leaves a key it could not encrypt as it is, and counts it as plain', async () => {
+    await encryptStoredProviderKeys(); // earlier tests' plain keys: this row is then the only one
+    const providerId = await plainProvider('startup-write-fails', 'gw-key');
+    const spy = vi.spyOn(testDb.db, 'update').mockImplementation((() => { throw new Error('write refused'); }) as never);
+    try {
+      await expect(encryptStoredProviderKeys()).resolves.toMatchObject({ encrypted: 0, plain: 1 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await storedKey(providerId)).toBe('gw-key');
+  });
 });
