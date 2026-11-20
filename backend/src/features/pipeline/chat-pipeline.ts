@@ -527,7 +527,7 @@ async function resolveSession(
 
   // Try loading existing session
   if (sessionId) {
-    const existing = await sessionsService.getSessionWithWindow(sessionId, windowSize);
+    const existing = await sessionsService.getSessionWithWindow(sessionId, windowSize, experienceId);
     if (existing && existing.session.status === 'active') {
       return existing;
     }

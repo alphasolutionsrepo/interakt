@@ -47,6 +47,7 @@ export interface SessionLoader {
   getSessionWithWindow(
     sessionId: string,
     windowSize: number,
+    experienceId: string,
   ): Promise<SessionData | null>;
 
   createSession(
@@ -281,6 +282,7 @@ async function loadSession(
     const existing = await sessionLoader.getSessionWithWindow(
       input.sessionId,
       config.maxConversationMessages,
+      input.experienceId,
     );
 
     if (existing && existing.session.status === 'active') {
@@ -522,9 +524,9 @@ async function loadEpisodicMemories(
 export function createProductionSessionLoader(): SessionLoader {
   // Lazy import to avoid circular dependencies and keep module testable
   return {
-    async getSessionWithWindow(sessionId, windowSize) {
+    async getSessionWithWindow(sessionId, windowSize, experienceId) {
       const { getSessionWithWindow } = await import('@/features/sessions/sessions.service');
-      const result = await getSessionWithWindow(sessionId, windowSize);
+      const result = await getSessionWithWindow(sessionId, windowSize, experienceId);
       if (!result) return null;
 
       return {
