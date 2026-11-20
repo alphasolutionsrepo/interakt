@@ -581,3 +581,32 @@ describe('relaxed constraints reach the answer', () => {
     expect(systemPrompt).not.toContain('filters were dropped');
   });
 });
+
+describe('output filter', () => {
+  it('sends only the filtered text: the content event and the result carry the block text', async () => {
+    const emit = vi.fn();
+    const filterOutput = vi.fn().mockResolvedValue('BLOCKED BY OUTPUT RULE');
+
+    const result = await synthesizeResponse(
+      makeInput(), makeDeps('The raw unchecked answer'), emit, {}, filterOutput,
+    );
+
+    expect(filterOutput).toHaveBeenCalledWith('The raw unchecked answer');
+    const contents = emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'content');
+    expect(contents).toEqual([{ type: 'content', text: 'BLOCKED BY OUTPUT RULE' }]);
+    expect(result.data?.responseText).toBe('BLOCKED BY OUTPUT RULE');
+    expect(JSON.stringify(emit.mock.calls)).not.toContain('raw unchecked');
+  });
+
+  it('never sends the unchecked text when the filter fails', async () => {
+    const emit = vi.fn();
+    const filterOutput = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const result = await synthesizeResponse(
+      makeInput(), makeDeps('The raw unchecked answer'), emit, {}, filterOutput,
+    );
+
+    expect(JSON.stringify(emit.mock.calls)).not.toContain('raw unchecked');
+    expect(result.data?.responseText).not.toContain('raw unchecked');
+  });
+});

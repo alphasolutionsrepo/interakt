@@ -17,6 +17,7 @@ import { detectGreeting } from './greeting-detector';
 import { evaluateDualCluster } from './topic-gate.service';
 import type { TopicGateRuleConfig } from './topic-gate.service';
 import type { ClassificationResult } from './message-classification.types';
+import { ruleMatches } from './rule-match';
 
 const logger = createLogger('message-classifier');
 
@@ -55,39 +56,11 @@ function evaluateHardBlockRules(rules: GuardrailRule[], message: string): boolea
     .sort((a, b) => a.priority - b.priority);
 
   for (const rule of enabledRules) {
-    if (evaluateRule(rule, message) && rule.action === 'block') {
+    if (ruleMatches(rule, message) && rule.action === 'block') {
       return true;
     }
   }
   return false;
-}
-
-function evaluateRule(rule: GuardrailRule, text: string): boolean {
-  switch (rule.type) {
-    case 'blocklist': {
-      const terms = rule.config.terms as string[] | undefined;
-      if (!terms?.length) return false;
-      const lower = text.toLowerCase();
-      return terms.some((t) => lower.includes(t.toLowerCase()));
-    }
-    case 'max_length': {
-      const maxChars = rule.config.maxChars as number | undefined;
-      if (!maxChars) return false;
-      return text.length > maxChars;
-    }
-    case 'regex_filter': {
-      const pattern = rule.config.pattern as string | undefined;
-      if (!pattern) return false;
-      try {
-        const flags = (rule.config.flags as string) ?? 'i';
-        return new RegExp(pattern, flags).test(text);
-      } catch {
-        return false;
-      }
-    }
-    default:
-      return false;
-  }
 }
 
 // ============================================================================

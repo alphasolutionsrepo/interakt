@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getSessionWithWindow: vi.fn(),
   extractMemoriesFromSession: vi.fn(),
   summarizeSession: vi.fn(),
+  addMessages: vi.fn(),
 }));
 
 vi.mock('@/shared/logger/logger', () => ({
@@ -35,7 +36,7 @@ vi.mock('@/features/data-source/data-source.service', () => ({ getDataSourceById
 vi.mock('@/features/sessions/sessions.service', () => ({
   getSessionWithWindow: mocks.getSessionWithWindow,
   createSession: vi.fn().mockResolvedValue({ id: 'session-1' }),
-  addMessages: vi.fn().mockResolvedValue(undefined),
+  addMessages: mocks.addMessages,
   updateSession: vi.fn().mockResolvedValue(undefined),
   shouldSummarize: vi.fn().mockReturnValue(true),
 }));
@@ -136,6 +137,7 @@ describe('runChatPipeline model choice', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.chat.mockReset();
+    mocks.addMessages.mockReset().mockResolvedValue(undefined);
     mocks.getSessionWithWindow.mockResolvedValue(null);
     mocks.extractMemoriesFromSession.mockResolvedValue({ stored: 0, extracted: 0 });
     mocks.summarizeSession.mockResolvedValue({ performed: false });
@@ -226,4 +228,52 @@ describe('runChatPipeline model choice', () => {
       expect(chatOptions()).toEqual([expect.objectContaining({ feature: 'lightweight-synthesis', ...EXPERIENCE_MODEL })]);
     },
   );
+
+  describe('output safety rules', () => {
+    const OUTPUT_BLOCK = {
+      inputGuardrail: { enabled: false, rules: [], onBlock: { message: '' } },
+      outputGuardrail: {
+        enabled: true,
+        rules: [{ id: 'r1', name: 'short', type: 'max_length', config: { maxChars: 20 }, action: 'block', enabled: true, priority: 1 }],
+        onBlock: { message: 'BLOCKED BY OUTPUT RULE' },
+      },
+    };
+
+    it('the visitor, the saved message and the result carry only the block message', async () => {
+      scriptSearchTurn();
+      const onEvent = vi.fn();
+
+      const result = await runChatPipeline({ experience: makeExperience(OUTPUT_BLOCK), message: 'Search for red shoes', onEvent });
+
+      expect(result.responseText).toBe('BLOCKED BY OUTPUT RULE');
+      const events = onEvent.mock.calls.map(([e]) => e);
+      expect(events.filter((e) => e.type === 'content')).toEqual([{ type: 'content', text: 'BLOCKED BY OUTPUT RULE' }]);
+      const saved = mocks.addMessages.mock.calls[0][1];
+      expect(saved[1].content).toBe('BLOCKED BY OUTPUT RULE');
+      expect(JSON.stringify([events, saved])).not.toContain('red shoes for you');
+    });
+
+    it('filters the reply to a greeting before it is saved and sent', async () => {
+      mocks.classifyMessage.mockResolvedValue({ classification: 'greeting', debug: { greetingRegexMatched: true, domainFilterEnabled: false } });
+      mocks.chat.mockResolvedValueOnce(chatResult('Hello there! How can I help you today?'));
+      const onEvent = vi.fn();
+      const experience = makeExperience({
+        ...OUTPUT_BLOCK,
+        inputGuardrail: { enabled: true, rules: [{ type: 'blocklist', enabled: true, config: { terms: [] } }], onBlock: { message: '' } },
+      });
+
+      const result = await runChatPipeline({ experience, message: 'hi', onEvent });
+
+      expect(result.responseText).toBe('BLOCKED BY OUTPUT RULE');
+      const events = onEvent.mock.calls.map(([e]) => e);
+      expect(events.filter((e) => e.type === 'content')).toEqual([{ type: 'content', text: 'BLOCKED BY OUTPUT RULE' }]);
+      expect(mocks.addMessages.mock.calls[0][1][1].content).toBe('BLOCKED BY OUTPUT RULE');
+    });
+
+    it('leaves answers alone when no output rule is switched on', async () => {
+      scriptSearchTurn();
+      const result = await runChatPipeline({ experience: makeExperience(), message: 'Search for red shoes', onEvent: vi.fn() });
+      expect(result.responseText).toBe('I found some red shoes for you!');
+    });
+  });
 });

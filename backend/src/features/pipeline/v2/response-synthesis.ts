@@ -57,12 +57,14 @@ const DEFAULT_CONFIG: SynthesisConfig = {
 /**
  * Synthesize the final response from action results and persona config.
  * Emits preset + content events via emit callback.
+ * `filterOutput` (output safety rules) is applied to the written text before it is emitted.
  */
 export async function synthesizeResponse(
   input: SynthesisInput,
   deps: SynthesisDeps,
   emit: (event: PipelineStreamEvent) => void,
   config: Partial<SynthesisConfig> = {},
+  filterOutput?: (text: string) => Promise<string>,
 ): Promise<ModuleResult<SynthesisResult>> {
   const startTime = Date.now();
   const cfg = { ...DEFAULT_CONFIG, ...config };
@@ -86,6 +88,10 @@ export async function synthesizeResponse(
       // Full synthesis from action results
       responseText = await synthesizeFromResults(input, preset, deps.chat, cfg);
     }
+
+    // Output rules run on the AI-written text before anything leaves this step. If the
+    // filter fails the catch below sends the fixed fallback, never the unchecked text.
+    if (filterOutput) responseText = await filterOutput(responseText);
 
     // Emit content
     emit({ type: 'content', text: responseText });

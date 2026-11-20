@@ -66,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Output safety rules on an AI experience now apply before the answer reaches the visitor, is saved to the conversation or written to traces, and also to replies to greetings and off-topic questions. Before, the visitor got the unchecked answer.
 - The production Docker image builds again: it installs dependencies with the backend's `.npmrc`, as CI and local installs do. CI now builds the image, migrates with it and starts it on every PR.
 - An access token or ID that isn't a UUID no longer answers 500. A public API request with such a token answers 401, like an unknown token. An admin request with such an ID in its address answers 400 "That ID isn't valid.", and an unknown job or queue answers 404.
 - The server starts with the current OpenTelemetry packages: the startup step that sets up tracing and the search providers loads them as ES modules. CI now builds, migrates and starts the app on every PR.
