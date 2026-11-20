@@ -9,6 +9,16 @@ import { classifyLlmFailure } from './fallback-messages';
  * the person who could fix it never hears about it.
  */
 describe('classifyLlmFailure', () => {
+  it('names a provider key that can\'t be read as one an administrator must check, naming nothing else', () => {
+    const err = Object.assign(
+      new Error('The API key for "Campus gateway" (Secrets Vault secret "campus_key") can\'t be decrypted with this server\'s encryption key. Restore the previous SECRETS_ENCRYPTION_KEY, or enter the key again on the AI Providers page.'),
+      { code: 'PROVIDER_KEY_UNAVAILABLE' },
+    );
+    const msg = classifyLlmFailure(err);
+    expect(msg).toMatch(/API key can't be read.*AI Providers page/);
+    expect(msg).not.toMatch(/SECRETS_ENCRYPTION_KEY|Campus gateway|campus_key|decrypt/);
+  });
+
   it('names a rate limit as a rate limit', () => {
     const msg = classifyLlmFailure(
       new Error('Rate limit reached for gpt-4o on tokens per min (TPM): Limit 30000'),
@@ -47,6 +57,18 @@ describe('classifyLlmFailure', () => {
 
   it('keeps the context-window case distinct', () => {
     expect(classifyLlmFailure(new Error('context_length_exceeded'))).toMatch(/context window/i);
+  });
+
+  it('at planning, names the limits without blaming a tool, since none has run', () => {
+    const rate = classifyLlmFailure(new Error('Rate limit reached for requests'), { stage: 'planning' });
+    expect(rate).toMatch(/per-minute token limit/i);
+    expect(rate).not.toMatch(/tool/i);
+    const context = classifyLlmFailure(new Error('context_length_exceeded'), { stage: 'planning' });
+    expect(context).toMatch(/context window/i);
+    expect(context).not.toMatch(/tool/i);
+    // Other failures read the same at either stage
+    expect(classifyLlmFailure(new Error('insufficient_quota'), { stage: 'planning' })).toBe(classifyLlmFailure(new Error('insufficient_quota')));
+    expect(classifyLlmFailure(new Error('socket hang up'), { stage: 'planning' })).toBeNull();
   });
 
   it('returns null for anything it cannot identify, so the generic fallback applies', () => {

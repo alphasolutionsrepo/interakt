@@ -61,7 +61,7 @@ Click **Add Provider**, then:
 - **Display name** — any name, for example "Campus AI". The **provider key** is made from it; you can change the key before saving.
 - **Connection type** — OpenAI-compatible or Ollama.
 - **Base URL** — for OpenAI-compatible, the address up to and including `/v1` (`https://api.openai.com/v1`, or your gateway's, such as `https://ai.example.edu/v1`). For Ollama, its address without `/v1` (`http://localhost:11434`).
-- **Authentication** — **API key** sends it as `Authorization: Bearer <key>`; **None** for a service that needs no key. Once saved, the key is never shown again. When you edit the provider, leave the key empty to keep it; a base URL on another server needs the key typed again.
+- **Authentication** — **API key** sends it as `Authorization: Bearer <key>`; **None** for a service that needs no key. The key is kept encrypted in the [Secrets Vault](secrets): enter it on the provider (Interakt saves it as the vault secret `ai_provider_<provider key>`), or choose a secret already in the vault (needs a role that can manage secrets, and so does editing a provider that uses a chosen secret; a provider with its own entered key needs no such role). Once saved, the key is never shown again. When you edit the provider, leave the key empty to keep it; a base URL on another server needs the key entered, or its secret chosen, again.
 
 ### Models
 **Discover Models** reads the models the provider offers: Ollama's pulled models, or an OpenAI-compatible service's `/v1/models` list. New text and embedding models are added, with the context size the service reports. A model's type comes from what the provider says about it where it does (Ollama's capabilities; the capabilities or output modalities in an OpenAI-compatible list, as Azure OpenAI, OpenRouter and some gateways give them); otherwise from its name. Models that are neither text nor embedding models, such as image or routing-only models, are not added. For Ollama, models it no longer has are hidden. For an OpenAI-compatible service, models an earlier discovery added are hidden once it stops listing them; models you added by hand stay. A model Discover Models hid comes back on when the provider lists it again; a model you switched off stays off, and Discover Models names it. On a provider set as Cloud, new models are added switched off, so you switch on the ones you want. A few OpenAI models known not to answer chat are skipped (`babbage-002`, `davinci-002`, `gpt-3.5-turbo-instruct`, `o1-pro`, `o3-pro`, `computer-use-preview`); others that can't chat are added switched off on a Cloud provider like the rest. When Ollama lists no models at all, nothing is hidden. For Ollama, the context size and an embedding model's dimensions come from Ollama's model details. On an OpenAI-compatible provider set as Local (self-hosted), a new embedding model's dimensions are read from one short embedding request; otherwise, or when the service doesn't answer, Discover Models says to set them on the model. You can add any model by hand.
@@ -131,7 +131,7 @@ Use Ollama for development and demos where data sensitivity or budget rules out 
 
 ## Where to go next
 
-- [Secrets](secrets) — sometimes provider credentials are referenced through secrets.
+- [Secrets](secrets) — where provider keys are kept.
 - [Search indexes](search-indexes) — picking an embedding model.
 - [Chat experiences](chat-experiences) — picking a chat model.
 - [Test → AI models](playground) — testing provider responses.

@@ -36,6 +36,8 @@ import type {
   AIModelType,
 } from './ai-providers.types';
 import { defaultConnectionType, type AIConnectionType } from './ai-providers.validation';
+import { applyKeyChange, hasSavedKey, keyChangeFrom, ProviderKeyError, withProviderKey } from './provider-key';
+import { deleteSecretIfUnused } from '@/features/secrets/secrets.service';
 import { canShortenVectorsByDefault } from './shortenable-embeddings';
 
 import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
@@ -73,8 +75,7 @@ function mapProviderDtoToInsert(
     connectionType: input.connectionType ?? defaultConnectionType(input.providerKey),
     authType: input.authType,
     baseUrl: input.baseUrl,
-    // No authentication, no key: a typed one would otherwise be sent
-    apiKey: input.authType === 'none' ? null : input.apiKey ?? null,
+    // The key goes to the Secrets Vault (applyKeyChange); the row only names its secret
     isEnabled: input.isEnabled ?? false,
     settings: input.settings ?? {},
   };
@@ -117,7 +118,10 @@ function mapProviderToResponse(provider: AIProvider): AIProviderResponse {
     connectionType: provider.connectionType,
     authType: provider.authType as AIProviderResponse['authType'],
     baseUrl: provider.baseUrl,
-    hasApiKey: !!provider.apiKey, // Don't expose actual key
+    hasApiKey: hasSavedKey(provider), // Don't expose actual key
+    // The vault secret holding the key (a name, never the value), and whether it was made for this provider
+    apiKeySecret: provider.apiKeySecret ?? null,
+    apiKeySecretManaged: provider.apiKeySecretManaged ?? false,
     isEnabled: provider.isEnabled,
     settings: provider.settings ?? {},
     lastConnectionCheck: provider.lastConnectionCheck,
@@ -228,8 +232,12 @@ export async function createProvider(
       throw new Error(`Provider with key "${input.providerKey}" already exists`);
     }
 
-    // Create provider
-    const provider = await repository.createProvider(mapProviderDtoToInsert(input));
+    // The provider and its key secret are saved together: no provider without its key, or the reverse
+    const change = keyChangeFrom(input);
+    const provider = await repository.inTransaction(async (tx) => {
+      const { fields } = await applyKeyChange(change, input, tx);
+      return repository.createProvider({ ...mapProviderDtoToInsert(input), ...fields }, tx);
+    });
 
     await clearProviderCache();
 
@@ -241,44 +249,6 @@ export async function createProvider(
     return mapProviderToResponse(provider);
   } catch (error) {
     logger.error('Failed to create AI provider', error as Error);
-    throw error;
-  }
-}
-
-/**
- * Create provider with initial models
- */
-export async function createProviderWithModels(
-  input: CreateAIProviderInput,
-  models: CreateAIModelInput[]
-): Promise<AIProviderWithModelsResponse> {
-  try {
-    // Check if provider key already exists
-    const exists = await repository.providerKeyExists(input.providerKey);
-    if (exists) {
-      throw new Error(`Provider with key "${input.providerKey}" already exists`);
-    }
-
-    // We need to create provider first to get its ID
-    const providerData = mapProviderDtoToInsert(input);
-
-    // Use transaction to create provider and models together
-    const result = await repository.createProviderWithModels(
-      providerData,
-      models.map((m) => mapModelDtoToInsert(m, '')) // providerId will be set in transaction
-    );
-
-    await clearProviderCache();
-
-    logger.info('Created AI provider with models', {
-      providerId: result.id,
-      providerKey: result.providerKey,
-      modelCount: result.models.length,
-    });
-
-    return mapProviderWithModelsToResponse(result);
-  } catch (error) {
-    logger.error('Failed to create AI provider with models', error as Error);
     throw error;
   }
 }
@@ -419,7 +389,7 @@ function serverOf(baseUrl: string): string {
 /** A provider moved to another server without its API key typed again. */
 export class KeyForAnotherServerError extends Error {
   constructor() {
-    super('Enter the API key again: the new base URL is on a different server than the one the saved key was entered for');
+    super('Enter the API key again, or choose its vault secret again: the new base URL is on a different server than the one the saved key was entered for');
     this.name = 'KeyForAnotherServerError';
   }
 }
@@ -446,21 +416,25 @@ export async function updateProvider(
     if (input.baseUrl !== undefined) updateData.baseUrl = input.baseUrl;
     if (input.connectionType !== undefined) updateData.connectionType = input.connectionType;
     if (input.authType !== undefined) updateData.authType = input.authType;
-    // No authentication: the saved key goes too, or requests would still carry it
-    const dropsKey = input.authType === 'none';
-    // An empty key keeps the saved one (the form sends one when nothing was typed); null removes it
-    const newKey = !dropsKey && typeof input.apiKey === 'string' && input.apiKey.trim() !== '' ? input.apiKey : undefined;
-    if (newKey !== undefined) updateData.apiKey = newKey;
-    else if (input.apiKey === null || dropsKey) updateData.apiKey = null;
-    // A saved key goes only to the server it was entered for: another server needs it typed again
-    if (input.baseUrl !== undefined && existing.apiKey && newKey === undefined && updateData.apiKey !== null
+    // No authentication removes the key, or requests would still carry it; an empty typed key
+    // keeps the saved one (the form sends one when nothing was typed); null removes it
+    const change = keyChangeFrom(input);
+    // A saved key goes only to the server it was entered for: another server needs it typed,
+    // or its vault secret chosen, again
+    if (input.baseUrl !== undefined && hasSavedKey(existing) && change.kind === 'keep'
         && serverOf(input.baseUrl) !== serverOf(existing.baseUrl)) {
       throw new KeyForAnotherServerError();
     }
     if (input.isEnabled !== undefined) updateData.isEnabled = input.isEnabled;
     if (input.settings !== undefined) updateData.settings = input.settings;
 
-    const updated = await repository.updateProvider(id, updateData);
+    // The provider and its key secret are saved together; its own secret, no longer used, goes
+    const updated = await repository.inTransaction(async (tx) => {
+      const { fields, noLongerUsed } = await applyKeyChange(change, { ...existing, displayName: input.displayName ?? existing.displayName }, tx);
+      const row = await repository.updateProvider(id, { ...updateData, ...fields }, tx);
+      if (noLongerUsed) await deleteSecretIfUnused(noLongerUsed, tx);
+      return row;
+    });
 
     await clearProviderCache(id, existing.providerKey);
 
@@ -501,7 +475,11 @@ export async function deleteProvider(id: string): Promise<void> {
       throw new Error(`Provider with ID "${id}" not found`);
     }
 
-    await repository.deleteProvider(id);
+    // Its own key secret goes with it, unless something else uses that secret too
+    await repository.inTransaction(async (tx) => {
+      await repository.deleteProvider(id, tx);
+      if (existing.apiKeySecretManaged && existing.apiKeySecret) await deleteSecretIfUnused(existing.apiKeySecret, tx);
+    });
     await clearProviderCache(id, existing.providerKey);
     await clearSystemDefaultsCache(); // Defaults might reference this provider
 
@@ -886,12 +864,23 @@ export async function testConnection(providerId: string): Promise<ConnectionTest
   const startTime = Date.now();
 
   try {
-    const provider = await repository.getProviderById(providerId);
-    if (!provider) {
+    const stored = await repository.getProviderById(providerId);
+    if (!stored) {
       throw new Error(`Provider with ID "${providerId}" not found`);
     }
 
     let result: ConnectionTestResult;
+    let provider: AIProvider;
+    try {
+      // Its API key, read from the Secrets Vault
+      provider = await withProviderKey(stored);
+    } catch (error) {
+      if (!(error instanceof ProviderKeyError)) throw error;
+      result = { providerId, providerKey: stored.providerKey, success: false, message: error.message, responseTimeMs: 0, testedAt: new Date() };
+      // The stored status is shown to every role that reads providers: the details stay in this answer
+      await repository.updateProviderConnectionStatus(providerId, 'error: API key unavailable');
+      return result;
+    }
 
     // Test based on provider type
     if (connectionTypeOf(provider) === 'ollama') {
@@ -1073,10 +1062,12 @@ export async function discoverModels(
   options: { timeoutMs?: number } = {}
 ): Promise<ModelDiscoveryResult> {
   try {
-    const provider = await repository.getProviderById(providerId);
-    if (!provider) {
+    const stored = await repository.getProviderById(providerId);
+    if (!stored) {
       throw new Error(`Provider with ID "${providerId}" not found`);
     }
+    // Its API key, read from the Secrets Vault (every request discovery makes sends it)
+    const provider = await withProviderKey(stored);
     const timeoutMs = options.timeoutMs ?? 30000;
     const report = connectionTypeOf(provider) === 'ollama'
       ? await readOllamaModels(provider, timeoutMs)

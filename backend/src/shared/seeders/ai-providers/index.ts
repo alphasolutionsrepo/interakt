@@ -10,6 +10,7 @@
 import { createLogger } from '@/shared/logger/logger';
 import { db } from '@/db/index';
 import { aiProviders, aiProviderModels, systemDefaults } from '@/db/schema/ai-providers.schema';
+import { deleteSecretIfUnused } from '@/features/secrets/secrets.service';
 import { eq } from 'drizzle-orm';
 import { discoverModels } from '@/features/ai-providers/ai-providers.service';
 import * as registryService from '../seed-registry.service';
@@ -182,8 +183,14 @@ async function seedSingleProvider(
                 };
             }
 
-            // Delete existing provider (cascades to models)
-            await db.delete(aiProviders).where(eq(aiProviders.id, existingProvider.id));
+            // Delete existing provider (cascades to models), and its own key secret unless something else uses it
+            // (together, as when the provider is deleted: both go or neither)
+            await db.transaction(async (tx) => {
+                await tx.delete(aiProviders).where(eq(aiProviders.id, existingProvider.id));
+                if (existingProvider.apiKeySecretManaged && existingProvider.apiKeySecret) {
+                    await deleteSecretIfUnused(existingProvider.apiKeySecret, tx);
+                }
+            });
             logger.info('Deleted existing provider for force reseed', { providerKey });
         } else if (registryEntry && registryEntry.checksum !== checksum) {
             // Seed data changed but provider exists - warn and skip

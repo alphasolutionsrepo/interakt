@@ -26,6 +26,7 @@ vi.mock('@/features/prompt-templates', () => ({
 }));
 
 import { runV2Pipeline } from './orchestrator';
+import { classifyLlmFailure } from '../fallback-messages';
 import type { V2PipelineInput, V2PipelineDeps } from './orchestrator';
 import type { PipelineStreamEvent } from '../pipeline.types';
 import { abortedRequestError } from '@/features/ai-service/adapters/types';
@@ -191,6 +192,22 @@ describe('V2 Pipeline Orchestrator', () => {
     });
   });
 
+  describe('output filter', () => {
+    it('streams, saves and returns the filtered answer, never the written one', async () => {
+      const input = makeInput({ filterOutput: async () => 'BLOCKED BY OUTPUT RULE' });
+      const deps = makeDeps();
+
+      const result = await runV2Pipeline(input, deps);
+
+      expect(result.responseText).toBe('BLOCKED BY OUTPUT RULE');
+      const [, messages] = (deps.persistence.addMessages as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(messages[1].content).toBe('BLOCKED BY OUTPUT RULE');
+      const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
+      expect(events.filter((e) => e.type === 'content')).toEqual([{ type: 'content', text: 'BLOCKED BY OUTPUT RULE' }]);
+      expect(JSON.stringify(events)).not.toContain('red shoes for you');
+    });
+  });
+
   describe('model choice', () => {
     it("uses the experience's model for every AI call in the turn, the answer included", async () => {
       const deps = makeDeps();
@@ -268,6 +285,43 @@ describe('V2 Pipeline Orchestrator', () => {
       expect(result.responseText).toContain('trouble understanding');
       // Should still persist the fallback
       expect(deps.persistence.addMessages).toHaveBeenCalled();
+    });
+
+    it('tells the visitor the provider key is unreadable (not "try again") when the planner fails on it, in the answer and the saved message', async () => {
+      const unreadable = Object.assign(new Error('The API key for "Campus gateway" (Secrets Vault secret "ai_provider_campus") can\'t be decrypted'), { code: 'PROVIDER_KEY_UNAVAILABLE' });
+      const deps = makeDeps();
+      deps.turnPlanner = { chat: vi.fn().mockRejectedValue(unreadable) };
+      const input = makeInput();
+
+      const result = await runV2Pipeline(input, deps);
+
+      const expected = classifyLlmFailure(unreadable)!;
+      expect(expected).toMatch(/API key can't be read/);
+      expect(expected).not.toContain('ai_provider_campus');
+      expect(result.responseText).toBe(expected);
+      const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
+      expect(events.find((e: PipelineStreamEvent) => e.type === 'content')).toMatchObject({ text: expected });
+      const [, messages] = (deps.persistence.addMessages as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(messages[1].content).toBe(expected);
+    });
+  });
+
+  describe('planning failure: what the visitor is told', () => {
+    const answerFor = async (error: Error) => {
+      const deps = makeDeps();
+      deps.turnPlanner = { chat: vi.fn().mockRejectedValue(error) };
+      return (await runV2Pipeline(makeInput(), deps)).responseText;
+    };
+
+    it('names a rate limit without blaming a tool, since none has run', async () => {
+      const text = await answerFor(new Error('Rate limit reached for requests'));
+      expect(text).toMatch(/per-minute token limit/i);
+      expect(text).not.toMatch(/tool/i);
+    });
+
+    it('names a billing problem as one, and any other failure with the plain answer', async () => {
+      expect(await answerFor(new Error('insufficient_quota'))).toMatch(/no remaining credit/i);
+      expect(await answerFor(new Error('socket hang up'))).toContain('trouble understanding');
     });
   });
 

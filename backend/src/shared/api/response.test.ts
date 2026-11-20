@@ -85,6 +85,17 @@ describe('apiResponse.error', () => {
         expect(reported(logs)).toEqual([expect.objectContaining({ level: 'error', context: expect.objectContaining({ code: 'PROVIDER_DISABLED' }) })]);
     });
 
+    it('answers visitors a provider key that can\'t be read as the service being unavailable, naming nothing', async () => {
+        const unreadable = Object.assign(new Error('The API key for "Campus gateway" (Secrets Vault secret "campus_key") can\'t be decrypted with this server\'s encryption key. Restore the previous SECRETS_ENCRYPTION_KEY, or enter the key again on the AI Providers page.'), { name: 'AIServiceError', code: 'PROVIDER_KEY_UNAVAILABLE' });
+        const response = await publicRoute(async () => apiResponse.error(unreadable))();
+        const body = await response.json();
+        expect(response.status).toBe(503);
+        expect(body).toMatchObject({ code: 'INTERNAL_ERROR', message: PUBLIC_FAILURE_MESSAGE });
+        expect(JSON.stringify(body)).not.toMatch(/SECRETS_ENCRYPTION_KEY|Campus gateway|campus_key|decrypt/);
+        // An admin is told the cause
+        expect((await apiResponse.error(unreadable).json()).message).toContain('SECRETS_ENCRYPTION_KEY');
+    });
+
     it('answers visitors a search whose embedding provider is disabled as the service being unavailable, and tells admins', async () => {
         const { SearchError } = await import('@/features/search/search.types');
         // As getQueryEmbedding wraps it for a hybrid or semantic search

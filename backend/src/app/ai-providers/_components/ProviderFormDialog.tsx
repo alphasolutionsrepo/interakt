@@ -34,9 +34,14 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff, ShieldAlert } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useQuery } from '@tanstack/react-query';
+import { chosenSecretOf, initialKeySource, keyFieldsToSend, providerEditLock, typedKeyMissing } from '../_lib/key-source';
+import { secretsApi } from '@/app/secrets/_lib/api-client';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { useInlineError } from '@/shared/activity/useInlineError';
+import { useAccess } from '@/shared/access/useAccess';
 import { ProblemAlert } from '@/shared/ui/custom/ProblemAlert';
 
 // ============================================================================
@@ -60,14 +65,22 @@ const providerFormSchema = z.object({
     baseUrl: z.string()
         .url('Must be a valid URL')
         .max(500, 'URL too long'),
+    // Where the key comes from: typed here (saved in the Secrets Vault), or a vault secret
+    keySource: z.enum(['typed', 'secret']).default('typed'),
     apiKey: z.string()
         .max(500, 'API key too long')
         .optional()
         .nullable(),
+    apiKeySecret: z.string().optional().nullable(),
     isEnabled: z.boolean().default(false),
-});
+}).refine(
+    (d) => d.authType !== 'api_key' || d.keySource !== 'secret' || !!d.apiKeySecret,
+    { message: 'Choose a secret from the vault', path: ['apiKeySecret'] },
+);
 
 type ProviderFormData = z.output<typeof providerFormSchema>;
+/** What the form sends: the key as keyFieldsToSend decides, never both a key and a secret */
+export type ProviderFormPayload = Omit<ProviderFormData, 'keySource' | 'apiKey' | 'apiKeySecret'> & { apiKey?: string; apiKeySecret?: string };
 type ProviderFormInput = z.input<typeof providerFormSchema>;
 type ConnectionType = ProviderFormData['connectionType'];
 
@@ -100,7 +113,7 @@ interface ProviderFormDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     provider?: AIProviderWithModelsResponse | null;
-    onSubmit: (data: ProviderFormData) => Promise<void>;
+    onSubmit: (data: ProviderFormPayload) => Promise<void>;
     isSubmitting?: boolean;
     mode: 'create' | 'edit';
 }
@@ -115,6 +128,8 @@ export function ProviderFormDialog({
 }: ProviderFormDialogProps) {
     const [showApiKey, setShowApiKey] = useState(false);
     const inline = useInlineError();
+    // Choosing a vault secret sends its value to this provider's server: it needs secrets:manage
+    const canChooseSecret = useAccess().can('secrets:manage');
 
     const form = useForm<ProviderFormInput, unknown, ProviderFormData>({
         resolver: zodResolver(providerFormSchema),
@@ -126,7 +141,9 @@ export function ProviderFormDialog({
             connectionType: 'openai_compatible',
             authType: 'api_key',
             baseUrl: '',
+            keySource: 'typed',
             apiKey: '',
+            apiKeySecret: '',
             isEnabled: false,
         },
     });
@@ -142,7 +159,9 @@ export function ProviderFormDialog({
                 connectionType: provider.connectionType,
                 authType: provider.authType,
                 baseUrl: provider.baseUrl,
+                keySource: initialKeySource(provider),
                 apiKey: '', // Don't prefill API key for security
+                apiKeySecret: chosenSecretOf(provider),
                 isEnabled: provider.isEnabled,
             });
         } else if (mode === 'create') {
@@ -154,7 +173,9 @@ export function ProviderFormDialog({
                 connectionType: 'openai_compatible',
                 authType: 'api_key',
                 baseUrl: '',
+                keySource: 'typed',
                 apiKey: '',
+                apiKeySecret: '',
                 isEnabled: false,
             });
         }
@@ -169,7 +190,16 @@ export function ProviderFormDialog({
     const handleSubmit = async (data: ProviderFormData) => {
         inline.clear();
         try {
-            await onSubmit(data);
+            const { keySource, apiKey, apiKeySecret, ...rest } = data;
+            const saved = mode === 'edit' ? provider : null;
+            if (rest.authType === 'api_key' && typedKeyMissing({ source: keySource, apiKey, provider: saved })) {
+                form.setError('apiKey', { message: `Enter the key to use instead of the vault secret ${chosenSecretOf(saved)}` });
+                return;
+            }
+            const key = rest.authType === 'api_key'
+                ? keyFieldsToSend({ source: keySource, apiKey, apiKeySecret, baseUrl: rest.baseUrl, provider: mode === 'edit' ? provider : null })
+                : {};
+            await onSubmit({ ...rest, ...key });
             onOpenChange(false);
         } catch (err) {
             inline.capture(mode === 'create' ? 'Create provider' : 'Update provider', err, form);
@@ -178,6 +208,18 @@ export function ProviderFormDialog({
 
     const connectionType = form.watch('connectionType');
     const authType = form.watch('authType');
+    const keySource = form.watch('keySource');
+    const providerKey = form.watch('providerKey');
+    // The vault's secrets, to choose one by name (only for a role that may)
+    const vaultSecrets = useQuery({
+        queryKey: ['secrets', 'list', { search: undefined }],
+        queryFn: () => secretsApi.list(),
+        enabled: open && canChooseSecret && authType === 'api_key' && keySource === 'secret',
+    });
+    // A provider using a vault secret an admin chose changes only for a role that can manage secrets
+    const lockedReason = mode === 'edit' ? providerEditLock(provider, canChooseSecret) : null;
+    // Where a typed key is kept: the provider's own vault secret, or the one it will get
+    const ownSecret = provider?.apiKeySecretManaged ? provider.apiKeySecret : null;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -195,6 +237,13 @@ export function ProviderFormDialog({
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                        {lockedReason && (
+                            <Alert>
+                                <ShieldAlert className="h-4 w-4" />
+                                <AlertDescription className="text-xs">{lockedReason}</AlertDescription>
+                            </Alert>
+                        )}
+                        <fieldset disabled={!!lockedReason} className="m-0 min-w-0 space-y-4 border-0 p-0">
                         {/* Provider Key (only for create) */}
                         {mode === 'create' && (
                             <FormField
@@ -361,8 +410,37 @@ export function ProviderFormDialog({
                             )}
                         />
 
-                        {/* API Key */}
+                        {/* API Key: typed (saved in the Secrets Vault) or a vault secret */}
                         {authType === 'api_key' && (
+                            <FormField
+                                control={form.control}
+                                name="keySource"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>API key from</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="typed">A key entered here</SelectItem>
+                                                <SelectItem value="secret" disabled={!canChooseSecret}>A secret in the Secrets Vault</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        {!canChooseSecret && (
+                                            <FormDescription>
+                                                Choosing a vault secret needs a role that can manage secrets (Admin → Roles).
+                                            </FormDescription>
+                                        )}
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        )}
+
+                        {authType === 'api_key' && keySource === 'typed' && (
                             <FormField
                                 control={form.control}
                                 name="apiKey"
@@ -394,11 +472,43 @@ export function ProviderFormDialog({
                                                 </Button>
                                             </div>
                                         </FormControl>
-                                        {mode === 'edit' && provider?.hasApiKey && (
-                                            <FormDescription>
-                                                Leave empty to keep the saved key. A base URL on another server needs the key again.
-                                            </FormDescription>
-                                        )}
+                                        <FormDescription>
+                                            {mode === 'edit' && chosenSecretOf(provider)
+                                                ? <>Enter the key to use instead of the vault secret <code>{chosenSecretOf(provider)}</code>.</>
+                                                : mode === 'edit' && provider?.hasApiKey
+                                                ? <>Leave empty to keep the saved key{provider.apiKeySecret ? <> (vault secret <code>{provider.apiKeySecret}</code>)</> : null}. A base URL on another server needs the key again.</>
+                                                : <>Saved in the Secrets Vault as <code>{ownSecret ?? `ai_provider_${(providerKey || 'provider-key').replace(/-/g, '_')}`}</code>.</>}
+                                        </FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        )}
+
+                        {authType === 'api_key' && keySource === 'secret' && (
+                            <FormField
+                                control={form.control}
+                                name="apiKeySecret"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Vault secret</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder={vaultSecrets.isLoading ? 'Loading secrets…' : 'Choose a secret'} />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                {(vaultSecrets.data ?? []).map((s) => (
+                                                    <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormDescription>
+                                            {vaultSecrets.data && vaultSecrets.data.length === 0
+                                                ? 'The Secrets Vault has no secrets yet: add one there (Admin → Secrets Vault), or enter a key here instead.'
+                                                : 'Its value is sent to this provider as the API key. A base URL on another server needs it chosen again.'}
+                                        </FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -427,6 +537,8 @@ export function ProviderFormDialog({
                             )}
                         />
 
+                        </fieldset>
+
                         <ProblemAlert error={inline.error} hideFields={inline.hideFields} onDismiss={inline.clear} />
 
                         <DialogFooter>
@@ -437,7 +549,7 @@ export function ProviderFormDialog({
                             >
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={isSubmitting}>
+                            <Button type="submit" disabled={isSubmitting || !!lockedReason}>
                                 {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                                 {mode === 'create' ? 'Create Provider' : 'Save Changes'}
                             </Button>

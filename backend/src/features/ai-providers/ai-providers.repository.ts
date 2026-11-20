@@ -21,6 +21,7 @@ import type {
     SystemDefaultsWithDetails,
 } from '@/db/schema/ai-providers.schema';
 import type { AIModelType, AIProviderType } from './ai-providers.types';
+import type { DbExecutor } from '@/shared/db/executor';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ai-providers-repository');
@@ -30,13 +31,21 @@ const logger = createLogger('ai-providers-repository');
 // ============================================================================
 
 /**
+ * Run work in one database transaction (a provider and its key secret are saved together).
+ */
+export function inTransaction<T>(work: (tx: DbExecutor) => Promise<T>): Promise<T> {
+    return db.transaction(work);
+}
+
+/**
  * Create a new AI provider
  */
 export async function createProvider(
-    data: Omit<NewAIProvider, 'id' | 'createdAt' | 'updatedAt'>
+    data: Omit<NewAIProvider, 'id' | 'createdAt' | 'updatedAt'>,
+    executor: DbExecutor = db
 ): Promise<AIProvider> {
     try {
-        const [created] = await db
+        const [created] = await executor
             .insert(aiProviders)
             .values(data)
             .returning();
@@ -53,56 +62,6 @@ export async function createProvider(
     }
 }
 
-/**
- * Create provider with models (transactional)
- */
-export async function createProviderWithModels(
-    providerData: Omit<NewAIProvider, 'id' | 'createdAt' | 'updatedAt'>,
-    modelsData: Omit<NewAIProviderModel, 'id' | 'providerId' | 'createdAt' | 'updatedAt'>[]
-): Promise<AIProviderWithModels> {
-    return await db.transaction(async (tx) => {
-        try {
-            // Insert provider
-            const [provider] = await tx
-                .insert(aiProviders)
-                .values(providerData)
-                .returning();
-
-            logger.info('Created AI provider in transaction', {
-                providerId: provider.id,
-                providerKey: provider.providerKey,
-            });
-
-            // Insert models
-            let models: AIProviderModel[] = [];
-            if (modelsData.length > 0) {
-                models = await tx
-                    .insert(aiProviderModels)
-                    .values(
-                        modelsData.map((model) => ({
-                            ...model,
-                            providerId: provider.id,
-                        }))
-                    )
-                    .returning();
-
-                logger.info('Created AI provider models', {
-                    providerId: provider.id,
-                    modelCount: models.length,
-                });
-            }
-
-            return {
-                ...provider,
-                models,
-            };
-        } catch (error) {
-            logger.error('Failed to create provider with models', error as Error);
-            throw error;
-        }
-    });
-}
-
 // ============================================================================
 // PROVIDER: READ OPERATIONS
 // ============================================================================
@@ -110,9 +69,9 @@ export async function createProviderWithModels(
 /**
  * Get provider by ID
  */
-export async function getProviderById(id: string): Promise<AIProvider | null> {
+export async function getProviderById(id: string, executor: DbExecutor = db): Promise<AIProvider | null> {
     try {
-        const provider = await db.query.aiProviders.findFirst({
+        const provider = await executor.query.aiProviders.findFirst({
             where: eq(aiProviders.id, id),
         });
 
@@ -285,10 +244,11 @@ export async function providerKeyExists(
  */
 export async function updateProvider(
     id: string,
-    data: UpdateAIProvider
+    data: UpdateAIProvider,
+    executor: DbExecutor = db
 ): Promise<AIProvider> {
     try {
-        const [updated] = await db
+        const [updated] = await executor
             .update(aiProviders)
             .set({
                 ...data,
@@ -311,6 +271,36 @@ export async function updateProvider(
         logger.error('Failed to update provider', error as Error, { id });
         throw error;
     }
+}
+
+/**
+ * Saved keys still on the provider row (from before keys moved to the Secrets Vault):
+ * the stored value as it is, for the startup step that moves them.
+ */
+export async function listProvidersWithKeyOnRow(executor: DbExecutor = db): Promise<Array<Pick<AIProvider, 'id' | 'providerKey' | 'displayName' | 'apiKeySecret'> & { apiKey: string }>> {
+    const rows = await executor
+        .select({ id: aiProviders.id, providerKey: aiProviders.providerKey, displayName: aiProviders.displayName, apiKeySecret: aiProviders.apiKeySecret, apiKey: aiProviders.apiKey })
+        .from(aiProviders)
+        .where(sql`${aiProviders.apiKey} IS NOT NULL AND ${aiProviders.apiKey} <> ''`);
+    return rows as Array<Pick<AIProvider, 'id' | 'providerKey' | 'displayName' | 'apiKeySecret'> & { apiKey: string }>;
+}
+
+/**
+ * Write a provider's key fields only if the key on its row is still the one read (another
+ * server instance, or an admin saving a new key, may have changed it). Returns whether it did.
+ */
+export async function updateKeyFieldsIfKeyUnchanged(
+    id: string,
+    keyRead: string,
+    fields: Pick<UpdateAIProvider, 'apiKey' | 'apiKeySecret' | 'apiKeySecretManaged'>,
+    executor: DbExecutor = db
+): Promise<boolean> {
+    const updated = await executor
+        .update(aiProviders)
+        .set({ ...fields, updatedAt: new Date() })
+        .where(and(eq(aiProviders.id, id), eq(aiProviders.apiKey, keyRead)))
+        .returning({ id: aiProviders.id });
+    return updated.length > 0;
 }
 
 /**
@@ -345,9 +335,9 @@ export async function updateProviderConnectionStatus(
 /**
  * Delete a provider (cascades to models)
  */
-export async function deleteProvider(id: string): Promise<void> {
+export async function deleteProvider(id: string, executor: DbExecutor = db): Promise<void> {
     try {
-        const result = await db
+        const result = await executor
             .delete(aiProviders)
             .where(eq(aiProviders.id, id))
             .returning({ id: aiProviders.id });

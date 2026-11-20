@@ -11,24 +11,46 @@
 
 import crypto from 'crypto';
 
+import { AppError } from '../../shared/errors/app-error';
+
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
+const KEY_HINT = 'Set SECRETS_ENCRYPTION_KEY on the server to 64 hex characters (generate one with: openssl rand -hex 32), then restart.';
+
+/**
+ * The server can't encrypt or decrypt: SECRETS_ENCRYPTION_KEY is missing or malformed.
+ * A setup problem on our side, so the admin sees what to set instead of a generic error.
+ */
+export class EncryptionKeyError extends AppError {
+  constructor(message: string) {
+    super(message, { code: 'ENCRYPTION_KEY_NOT_SET', status: 500, hint: KEY_HINT, ourSide: true });
+    this.name = 'EncryptionKeyError';
+  }
+}
+
 function getMasterKey(): Buffer {
   const key = process.env.SECRETS_ENCRYPTION_KEY;
   if (!key) {
-    throw new Error(
-      'SECRETS_ENCRYPTION_KEY environment variable is not set. ' +
-      'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
-    );
+    throw new EncryptionKeyError('The server has no encryption key set, so secrets and API keys can\'t be saved or read.');
   }
   // Accept hex-encoded 32-byte key
   const keyBuffer = Buffer.from(key, 'hex');
   if (keyBuffer.length !== 32) {
-    throw new Error('SECRETS_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+    throw new EncryptionKeyError('The server\'s encryption key isn\'t 64 hex characters, so secrets and API keys can\'t be saved or read.');
   }
   return keyBuffer;
+}
+
+/** Whether a valid SECRETS_ENCRYPTION_KEY is set (nothing is thrown). */
+export function encryptionKeyIsSet(): boolean {
+  try {
+    getMasterKey();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
