@@ -66,6 +66,8 @@ Use this when you already have a search backbone and you don't want to copy data
 
 - **Fixed filters** — filter clauses in `providerSettings.fixedFilters` (through the API) applied to every search, for example lifecycle status Approved, or not restricted.
 
+**Links and images.** Every hit carries `url`, the entity's page in the Content Hub portal, found from the tenant's own portal pages (`deepLinkPath` in the provider settings overrides the path). Definitions with public links (assets) also carry `image_url`: the public link of the preview rendition when one exists, else the signed preview link Content Hub issues to the integration user, which expires after some hours and is refreshed on every search. For entities whose picture is a related asset, set `imageRelation` (for example a product's master-asset relation) and the related asset's preview is used; that costs one request per hit the first time, then it is cached. Use the `url` field with the *link* role and `image_url` with the *image* role in display configuration.
+
 Current limits: relations the entity is the parent of are not browsable; relations Content Hub does not return on search hits show as empty in the field profile even though they filter correctly; one search page costs one request, plus one per taxonomy or option list the first time it is used.
 
 Sitecore ranks results itself; Interakt searches it as is. Current limits:

@@ -33,11 +33,21 @@ import {
   contentHubSettings,
   definitionFilter,
   getEntityDefinition,
+  renditionHref,
   searchAfter,
+  type ContentHubEntity,
   type ContentHubFilter,
   type ContentHubSettings,
 } from './content-hub.client';
-import { listOptionValues, listTaxonomyItems, resolveOptionIdentifiers, resolveRelationIds } from './content-hub.lookups';
+import {
+  listOptionValues,
+  listTaxonomyItems,
+  publicPreviewUrls,
+  relatedPreviewUrls,
+  resolveDetailPath,
+  resolveOptionIdentifiers,
+  resolveRelationIds,
+} from './content-hub.lookups';
 import {
   contentHubFixedFilters,
   fieldKind,
@@ -47,7 +57,13 @@ import {
   translateContentHubSort,
   type ContentHubResolver,
 } from './content-hub.request';
-import { flattenContentHubEntity, inferContentHubFields } from './content-hub.schema';
+import {
+  CONTENT_HUB_IMAGE_FIELD,
+  CONTENT_HUB_URL_FIELD,
+  flattenContentHubEntity,
+  inferContentHubFields,
+  portalUrl,
+} from './content-hub.schema';
 
 import type { DataSourceField } from '@/db/schema/data-sources.schema';
 
@@ -94,6 +110,42 @@ async function facetFor(settings: ContentHubSettings, request: ExternalFacetRequ
   return undefined;
 }
 
+/**
+ * The portal link and preview image of each hit, as `url` and `image_url`. Images come from
+ * the entity's own public links when its definition has them (assets), or from the asset
+ * its image relation points at (a product's master asset). Skipped when the source's
+ * schema does not carry the field, so a source that hides images pays no requests for them.
+ */
+async function enrichments(settings: ContentHubSettings, entities: ContentHubEntity[], fields?: DataSourceField[]): Promise<Map<number, Record<string, string>>> {
+  const result = new Map<number, Record<string, string>>();
+  if (entities.length === 0) return result;
+  const names = new Set((fields ?? []).map((f) => f.name));
+  const wantUrl = !fields || names.has(CONTENT_HUB_URL_FIELD.name);
+  const wantImage = !fields || names.has(CONTENT_HUB_IMAGE_FIELD.name);
+
+  const [path, images] = await Promise.all([
+    wantUrl ? resolveDetailPath(settings).catch(() => undefined) : Promise.resolve(undefined),
+    wantImage
+      ? (settings.imageRelation
+        ? relatedPreviewUrls(settings, settings.imageRelation, entities)
+        : publicPreviewUrls(settings, entities)).catch(() => new Map<number, string>())
+      : Promise.resolve(new Map<number, string>()),
+  ]);
+  for (const entity of entities) {
+    const extra: Record<string, string> = {};
+    if (path) extra[CONTENT_HUB_URL_FIELD.name] = portalUrl(settings.host, settings.culture, path, entity.id);
+    // A public link is permanent; the signed preview link expires in hours but exists for
+    // every asset with a rendition, so it covers the ones no public link was made for
+    const image = images.get(entity.id) ?? (wantImage && !settings.imageRelation ? renditionHref(entity, PREVIEW_RENDITION) : undefined);
+    if (image) extra[CONTENT_HUB_IMAGE_FIELD.name] = image;
+    result.set(entity.id, extra);
+  }
+  return result;
+}
+
+/** The rendition used as an entity's picture. */
+const PREVIEW_RENDITION = 'preview';
+
 export const contentHubConnector: ExternalSearchConnector = {
   provider: 'content-hub',
   displayName: CONTENT_HUB,
@@ -117,6 +169,7 @@ export const contentHubConnector: ExternalSearchConnector = {
     // SearchAfter pages by cursor, not offset: a later page is fetched by over-reading from
     // the start, bounded by the largest page the API allows.
     const take = Math.min(request.offset + request.limit, CONTENT_HUB_MAX_TAKE);
+    const wantImage = !fields || fields.some((f) => f.name === CONTENT_HUB_IMAGE_FIELD.name);
     const run = (filter: ContentHubFilter) => searchAfter(settings, {
       filter,
       take,
@@ -124,6 +177,8 @@ export const contentHubConnector: ExternalSearchConnector = {
       properties: request.selectFields?.length ? request.selectFields : 'all',
       relations: 'all',
       cultures: [settings.culture],
+      // The preview as a signed link: the image when the asset has no public link
+      renditions: wantImage && !settings.imageRelation ? [PREVIEW_RENDITION] : undefined,
     });
 
     // Text and filters together first. When that finds nothing and both were given, the
@@ -138,10 +193,12 @@ export const contentHubConnector: ExternalSearchConnector = {
       }
     }
 
-    const hits = page.items.slice(request.offset, request.offset + request.limit).map((entity, i) => ({
+    const entities = page.items.slice(request.offset, request.offset + request.limit);
+    const links = await enrichments(settings, entities, fields);
+    const hits = entities.map((entity, i) => ({
       id: String(entity.id),
       score: Math.max(0, 1 - (request.offset + i) / Math.max(page.total, 1)),
-      source: flattenContentHubEntity(entity, settings.culture),
+      source: { ...flattenContentHubEntity(entity, settings.culture), ...links.get(entity.id) },
     }));
 
     const facets: ExternalFacet[] = [];
@@ -180,7 +237,7 @@ export async function probeContentHub(connection: ExternalConnection): Promise<{
 /** The source's fields, from its entity definition. */
 export async function discoverContentHubFields(connection: ExternalConnection): Promise<DataSourceField[]> {
   const settings = contentHubSettings(connection);
-  return inferContentHubFields(await getEntityDefinition(settings), settings.culture);
+  return inferContentHubFields(await getEntityDefinition(settings), settings.culture, { imageRelation: settings.imageRelation });
 }
 
 /** How many entities of the definition the integration user can see, within the fixed filters. */

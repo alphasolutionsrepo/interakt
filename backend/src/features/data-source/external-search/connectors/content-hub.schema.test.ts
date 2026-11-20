@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { ContentHubDefinition, ContentHubEntity } from './content-hub.client';
 import { andFilters, buildSearchAfterBody, orFilters } from './content-hub.client';
-import { flattenContentHubEntity, hrefName, inferContentHubFields } from './content-hub.schema';
+import { fileKeysOf, flattenContentHubEntity, hrefName, inferContentHubFields, pickDetailPage, portalUrl, publicLinkUrl } from './content-hub.schema';
 
 /** A trimmed product definition, as GET /api/entitydefinitions/M.PCM.Product answers. */
 const PRODUCT: ContentHubDefinition = {
@@ -41,7 +41,7 @@ describe('inferContentHubFields', () => {
 
   it('starts with the system fields, then properties and child relations in definition order', () => {
     expect(fields.map((f) => f.name)).toEqual([
-      'id', 'identifier', 'created_on', 'modified_on',
+      'id', 'identifier', 'created_on', 'modified_on', 'url',
       'ProductNumber', 'Acme.PCM.ProductDescription', 'Acme.PCM.Product.ItemStatus', 'Acme.PCM.HideFromCustomer', 'Acme.PCM.Sizes',
       'Acme.PCM.Category', 'AssignedUserToProduct',
       'Acme.PCM.ActivationDate', 'Acme.PCM.Price',
@@ -96,6 +96,44 @@ describe('inferContentHubFields', () => {
 
   it('treats HTML properties as descriptions that cannot be sorted', () => {
     expect(byName.get('Acme.PCM.ProductDescription')).toMatchObject({ role: 'description', isSortable: false });
+  });
+});
+
+describe('portal pages and links', () => {
+  const pages = [
+    { identifier: 'Portal.Page.AssetDetail', path: 'asset', definition: 'M.Asset', route: 'editorialrender', visible: true },
+    { identifier: 'Portal.Page.BasicAsset', path: 'basic-Asset', definition: 'M.Asset', route: 'editorialrender', visible: false },
+    { identifier: 'Portal.Page.AssetDetailVideo', path: 'asset-video', definition: 'M.Asset', route: 'editorialrender', visible: true },
+    { identifier: 'Portal.Page.ConfirmDownload', path: 'confirm-download', definition: 'M.Asset', route: 'editorialrender', visible: true },
+    { identifier: 'Portal.Page.AssetMassEdit', path: 'a', definition: 'M.Asset', route: 'massedit', visible: true, template: true },
+    { identifier: 'Portal.Page.Products.ProductCreation', path: 'ch-productcreation', definition: 'M.PCM.Product', route: 'editorialrender', visible: true },
+    { identifier: 'Portal.Page.Products.ProductDetails', path: 'ch-productdetails', definition: 'M.PCM.Product', route: 'editorialrender', visible: true },
+  ];
+
+  it('picks the visible, non-template detail page with the shortest path', () => {
+    expect(pickDetailPage(pages, 'M.Asset')?.path).toBe('asset');
+    expect(pickDetailPage(pages, 'M.PCM.Product')?.path).toBe('ch-productdetails');
+    expect(pickDetailPage(pages, 'M.Nothing')).toBeUndefined();
+  });
+
+  it('builds portal and public-link URLs', () => {
+    expect(portalUrl('https://tenant.example', 'en-US', '/asset/', 544)).toBe('https://tenant.example/en-us/asset/544');
+    expect(publicLinkUrl('https://tenant.example', 'abc123', 'v9')).toBe('https://tenant.example/api/public/content/abc123?v=v9');
+    expect(publicLinkUrl('https://tenant.example', 'abc123')).toBe('https://tenant.example/api/public/content/abc123');
+  });
+
+  it('reads the preview and original storage keys of an asset', () => {
+    expect(fileKeysOf({ id: 1, properties: { Renditions: { preview: { locations: { local: ['local-p'] } } }, MainFile: { locations: { local: ['local-o'] } } } })).toEqual({ preview: 'local-p', original: 'local-o' });
+    expect(fileKeysOf({ id: 2 })).toEqual({ preview: undefined, original: undefined });
+  });
+
+  it('adds the link field to every definition and the image field to ones with public links or an image relation', () => {
+    const names = inferContentHubFields(PRODUCT).map((f) => f.name);
+    expect(names).toContain('url');
+    expect(names).not.toContain('image_url');
+    expect(inferContentHubFields(PRODUCT, 'en-US', { imageRelation: 'ProductToMasterAsset' }).map((f) => f.name)).toContain('image_url');
+    const asset: ContentHubDefinition = { name: 'M.Asset', member_groups: [{ members: [{ name: 'AssetToPublicLink', type: 'Relation', role: 'Parent' }] }] };
+    expect(inferContentHubFields(asset).map((f) => f.name)).toContain('image_url');
   });
 });
 

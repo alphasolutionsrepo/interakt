@@ -45,6 +45,10 @@ export interface ContentHubSettings {
   secret: string;
   /** Culture multilingual properties are read in */
   culture: string;
+  /** Portal path of the entity's detail page, when the admin sets it instead of discovery finding it */
+  deepLinkPath?: string;
+  /** For entities whose image is a related asset (a product's master asset): the relation to it */
+  imageRelation?: string;
 }
 
 /**
@@ -60,6 +64,8 @@ export function contentHubSettings(connection: ExternalConnection): ContentHubSe
     clientId: typeof s.clientId === 'string' ? s.clientId.trim() : '',
     secret: connection.apiKey,
     culture: typeof s.culture === 'string' && s.culture.trim() ? s.culture.trim() : 'en-US',
+    deepLinkPath: typeof s.deepLinkPath === 'string' && s.deepLinkPath.trim() ? s.deepLinkPath.trim() : undefined,
+    imageRelation: typeof s.imageRelation === 'string' && s.imageRelation.trim() ? s.imageRelation.trim() : undefined,
   };
 }
 
@@ -351,6 +357,8 @@ export interface SearchAfterInput {
   relations?: ContentHubLoad;
   /** Cultures multilingual properties are returned in */
   cultures?: string[];
+  /** Renditions to return as signed delivery links (e.g. 'preview'); none by default */
+  renditions?: string[];
 }
 
 /** An entity as SearchAfter returns it (the parts the connector reads). */
@@ -363,7 +371,14 @@ export interface ContentHubEntity {
   entitydefinition?: { href?: string };
   properties?: Record<string, unknown>;
   relations?: Record<string, ContentHubRelationValue>;
-  renditions?: Record<string, unknown>;
+  /** Requested renditions as signed, time-limited delivery links */
+  renditions?: Record<string, Array<{ href?: string }> | undefined>;
+}
+
+/** The signed delivery link of a rendition on an entity, when it was requested and exists. */
+export function renditionHref(entity: ContentHubEntity, rendition: string): string | undefined {
+  const href = entity.renditions?.[rendition]?.[0]?.href;
+  return typeof href === 'string' && href ? href : undefined;
 }
 
 /** A relation on an entity: inlined parent(s) or children when loaded, else only a link. */
@@ -408,7 +423,7 @@ export function buildSearchAfterBody(input: SearchAfterInput): Record<string, un
       property_option: loadOption(input.properties, 'properties'),
       relation_option: loadOption(input.relations, 'relations'),
     },
-    renditions: ['None'],
+    renditions: input.renditions?.length ? input.renditions : ['None'],
   };
 }
 
@@ -425,6 +440,32 @@ export async function searchAfter(settings: ContentHubSettings, input: SearchAft
     lastHitData: json.last_hit_data,
     took,
   };
+}
+
+/**
+ * One page of the V1 query API (`GET /api/entities/query`). Its expression language is
+ * limited (equality, full text, parent-by-id), but it is the one call that lists the public
+ * links of many assets at once: `Parent('AssetToPublicLink').id==N OR ...`.
+ */
+export async function queryEntitiesV1(
+  settings: ContentHubSettings,
+  query: string,
+  options: { take?: number; members?: string[] } = {},
+): Promise<{ items: ContentHubEntity[]; total: number }> {
+  const params = new URLSearchParams({ query, take: String(Math.min(options.take ?? CONTENT_HUB_MAX_TAKE, CONTENT_HUB_MAX_TAKE)) });
+  if (options.members?.length) params.set('members', options.members.join(','));
+  const { json } = await contentHubRequest<{ items?: ContentHubEntity[]; total_items?: number }>(settings, `/api/entities/query?${params}`);
+  return { items: json.items ?? [], total: json.total_items ?? 0 };
+}
+
+/** The entities a relation of one entity points at (ids only), read directly. */
+export async function getRelationIds(settings: ContentHubSettings, entityId: number, relation: string): Promise<number[]> {
+  const { json } = await contentHubRequest<{ parent?: { href?: string }; parents?: Array<{ href?: string }>; child?: { href?: string }; children?: Array<{ href?: string }> }>(
+    settings,
+    `/api/entities/${entityId}/relations/${encodeURIComponent(relation)}`,
+  );
+  const related = json.parents ?? json.children ?? (json.parent ? [json.parent] : json.child ? [json.child] : []);
+  return related.map((r) => Number(r.href?.split('/').pop())).filter((id) => Number.isInteger(id));
 }
 
 /** The definition filter every query on a source starts from. */

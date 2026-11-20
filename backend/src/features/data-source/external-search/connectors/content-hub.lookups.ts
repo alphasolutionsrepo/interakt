@@ -14,11 +14,24 @@ import 'server-only';
 
 import {
   contentHubRequest,
+  getRelationIds,
+  orFilters,
+  queryEntitiesV1,
+  renditionHref,
   searchAfter,
+  type ContentHubEntity,
   type ContentHubFilter,
   type ContentHubSettings,
 } from './content-hub.client';
-import { flattenContentHubEntity } from './content-hub.schema';
+import {
+  fileKeysOf,
+  flattenContentHubEntity,
+  pickDetailPage,
+  portalUrl,
+  publicLinkUrl,
+  PUBLIC_LINK_RELATION,
+  type ContentHubPortalPage,
+} from './content-hub.schema';
 
 const CACHE_TTL_MS = 10 * 60_000;
 /** The most taxonomy items listed for a facet: SearchAfter's page cap. */
@@ -134,6 +147,148 @@ export function listOptionValues(settings: ContentHubSettings, list: string): Pr
       ]);
     return flatten(json.values ?? []);
   });
+}
+
+// ============================================================================
+// PORTAL LINKS
+// ============================================================================
+
+/**
+ * The portal path of a definition's detail page, from the tenant's own page entities
+ * (`Portal.Page` carries the path and the definition it shows). The admin's
+ * `deepLinkPath` wins when set. Undefined when the portal has no page for the definition.
+ */
+export function resolveDetailPath(settings: ContentHubSettings, definition = settings.definition): Promise<string | undefined> {
+  if (settings.deepLinkPath) return Promise.resolve(settings.deepLinkPath);
+  return cached(`${settings.host}\0page\0${definition}`, async () => {
+    const page = await searchAfter(settings, {
+      filter: { type: 'Logical', operator: 'And', left: { type: 'DefinitionName', name: 'Portal.Page' }, right: { type: 'StringProperty', property_name: 'Page.Definition', operator: 'Equals', value: definition } },
+      take: 100,
+      properties: ['Page.Path', 'Page.Definition', 'Page.RouteName', 'Page.IsVisible', 'Page.IsTemplate'],
+      relations: 'none',
+      // Page.Path is multilingual: without a culture it comes back empty
+      cultures: [settings.culture],
+    });
+    const pages: ContentHubPortalPage[] = page.items.map((e) => {
+      const p = flattenContentHubEntity(e, settings.culture);
+      return {
+        identifier: e.identifier,
+        path: typeof p['Page.Path'] === 'string' ? p['Page.Path'] : undefined,
+        definition: typeof p['Page.Definition'] === 'string' ? p['Page.Definition'] : undefined,
+        route: typeof p['Page.RouteName'] === 'string' ? p['Page.RouteName'] : undefined,
+        visible: typeof p['Page.IsVisible'] === 'boolean' ? p['Page.IsVisible'] : undefined,
+        template: typeof p['Page.IsTemplate'] === 'boolean' ? p['Page.IsTemplate'] : undefined,
+      };
+    });
+    return pickDetailPage(pages, definition)?.path;
+  });
+}
+
+/** The portal URL of an entity of the source's definition, when the portal has a page for it. */
+export async function entityUrl(settings: ContentHubSettings, id: number): Promise<string | undefined> {
+  const path = await resolveDetailPath(settings);
+  return path ? portalUrl(settings.host, settings.culture, path, id) : undefined;
+}
+
+// ============================================================================
+// PUBLIC LINKS (IMAGES)
+// ============================================================================
+
+/**
+ * Public preview URLs for a batch of assets, by asset id. One V1 query lists the links of
+ * up to a page of assets; each link is matched to its asset by storage key, since the
+ * link's own relation to the asset is never returned by search. Preview links win over
+ * originals. Results are cached per asset.
+ */
+export async function publicPreviewUrls(settings: ContentHubSettings, assets: ContentHubEntity[]): Promise<Map<number, string>> {
+  const urls = new Map<number, string>();
+  const pending: ContentHubEntity[] = [];
+  for (const asset of assets) {
+    const hit = cache.get(`${settings.host}\0link\0${asset.id}`);
+    if (hit && Date.now() < hit.expiresAt) {
+      if (hit.value) urls.set(asset.id, hit.value as string);
+    } else {
+      pending.push(asset);
+    }
+  }
+  if (pending.length === 0) return urls;
+
+  const keyToAsset = new Map<string, { id: number; preview: boolean }>();
+  for (const asset of pending) {
+    const keys = fileKeysOf(asset);
+    if (keys.preview) keyToAsset.set(keys.preview, { id: asset.id, preview: true });
+    if (keys.original) keyToAsset.set(keys.original, { id: asset.id, preview: false });
+  }
+  const query = `Definition.Name=='M.PublicLink' AND (${pending.map((a) => `Parent('${PUBLIC_LINK_RELATION}').id==${a.id}`).join(' OR ')})`;
+  const { items } = await queryEntitiesV1(settings, query, { take: 100, members: ['FileKey', 'RelativeUrl', 'VersionHash', 'Status', 'Resource'] });
+
+  const found = new Map<number, { url: string; preview: boolean }>();
+  for (const link of items) {
+    const p = link.properties ?? {};
+    if (p.Status !== 'Completed' || typeof p.RelativeUrl !== 'string' || typeof p.FileKey !== 'string') continue;
+    const owner = keyToAsset.get(p.FileKey);
+    if (!owner) continue;
+    const current = found.get(owner.id);
+    if (!current || (owner.preview && !current.preview)) {
+      found.set(owner.id, { url: publicLinkUrl(settings.host, p.RelativeUrl, typeof p.VersionHash === 'string' ? p.VersionHash : undefined), preview: owner.preview });
+    }
+  }
+  for (const asset of pending) {
+    const url = found.get(asset.id)?.url;
+    cache.set(`${settings.host}\0link\0${asset.id}`, { value: url ?? null, expiresAt: Date.now() + CACHE_TTL_MS });
+    if (url) urls.set(asset.id, url);
+  }
+  return urls;
+}
+
+/**
+ * Preview URLs for entities whose image is a related asset (a product's master asset): the
+ * relation is read per entity (search never inlines it), then the assets' public links are
+ * fetched in one batch. Cached per entity.
+ */
+export async function relatedPreviewUrls(settings: ContentHubSettings, relation: string, entities: ContentHubEntity[]): Promise<Map<number, string>> {
+  const urls = new Map<number, string>();
+  const pending: ContentHubEntity[] = [];
+  for (const entity of entities) {
+    const hit = cache.get(`${settings.host}\0rel-link\0${relation}\0${entity.id}`);
+    if (hit && Date.now() < hit.expiresAt) {
+      if (hit.value) urls.set(entity.id, hit.value as string);
+    } else {
+      pending.push(entity);
+    }
+  }
+  if (pending.length === 0) return urls;
+
+  const assetIdOf = new Map<number, number>();
+  await Promise.all(pending.map(async (entity) => {
+    try {
+      const [assetId] = await getRelationIds(settings, entity.id, relation);
+      if (assetId) assetIdOf.set(entity.id, assetId);
+    } catch {
+      // No image is a normal state; a failed relation read must not fail the search
+    }
+  }));
+  const assetIds = [...new Set(assetIdOf.values())];
+  let assets: ContentHubEntity[] = [];
+  if (assetIds.length) {
+    const page = await searchAfter(settings, {
+      filter: orFilters([{ type: 'IdIn', ids: assetIds }])!,
+      take: 100,
+      properties: ['Renditions', 'MainFile'],
+      relations: 'none',
+      renditions: ['preview'],
+    });
+    assets = page.items;
+  }
+  const previews = assets.length ? await publicPreviewUrls(settings, assets) : new Map<number, string>();
+  const signed = new Map(assets.map((a) => [a.id, renditionHref(a, 'preview')]));
+  for (const entity of pending) {
+    const assetId = assetIdOf.get(entity.id);
+    const url = assetId ? previews.get(assetId) ?? signed.get(assetId) : undefined;
+    cache.set(`${settings.host}\0rel-link\0${relation}\0${entity.id}`, { value: url ?? null, expiresAt: Date.now() + CACHE_TTL_MS });
+    if (url) urls.set(entity.id, url);
+  }
+  return urls;
 }
 
 /** The identifiers an option-list value named `value` stands for: by identifier, else by label. */

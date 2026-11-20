@@ -58,6 +58,76 @@ export const CONTENT_HUB_SYSTEM_FIELDS: DataSourceField[] = [
   },
 ];
 
+/** The portal page an entity opens on: a link on every hit. */
+export const CONTENT_HUB_URL_FIELD: DataSourceField = {
+  name: 'url', displayName: 'Portal link', type: 'url', providerType: 'Portal', role: 'url',
+  isSearchable: false, isFacetable: false, isFilterable: false, isRetrievable: true, isSortable: false,
+  description: 'Link to the entity in the Content Hub portal',
+};
+
+/** A public preview of the entity's image (its own, or its image relation's). */
+export const CONTENT_HUB_IMAGE_FIELD: DataSourceField = {
+  name: 'image_url', displayName: 'Preview image', type: 'image_url', providerType: 'PublicLink', role: 'image',
+  isSearchable: false, isFacetable: false, isFilterable: false, isRetrievable: true, isSortable: false,
+  description: 'Public link to the preview rendition, when one exists',
+};
+
+/** Content Hub's relation from an asset to its public links. */
+export const PUBLIC_LINK_RELATION = 'AssetToPublicLink';
+
+/** Whether the definition's entities carry public links themselves (assets do). */
+export function hasPublicLinks(definition: ContentHubDefinition): boolean {
+  return (definition.member_groups ?? []).some((g) => (g.members ?? []).some((m) => m.name === PUBLIC_LINK_RELATION));
+}
+
+// ============================================================================
+// PORTAL PAGES
+// ============================================================================
+
+/** A portal page, the parts needed to choose an entity's detail page. */
+export interface ContentHubPortalPage {
+  identifier?: string;
+  path?: string;
+  definition?: string;
+  route?: string;
+  visible?: boolean;
+  template?: boolean;
+}
+
+const NOT_A_DETAIL_PAGE = /creat|massedit|mass-edit|modal|test|before|import|usage|confirm|video|basic|search|overview|edit/i;
+
+/**
+ * The page that shows one entity of a definition. Tenants carry many pages per definition
+ * (creation forms, mass edits, modals, experiments); the detail page is the visible,
+ * non-template one rendered as an entity page whose name does not say otherwise, and among
+ * those the one with the shortest path ("asset", "ch-productdetails").
+ */
+export function pickDetailPage(pages: ContentHubPortalPage[], definition: string): ContentHubPortalPage | undefined {
+  const candidates = pages.filter((p) => p.definition === definition && p.path && p.visible !== false && p.template !== true
+    && (p.route === undefined || p.route === 'editorialrender' || p.route === 'detail'));
+  const named = candidates.filter((p) => !NOT_A_DETAIL_PAGE.test(`${p.identifier ?? ''} ${p.path ?? ''}`));
+  const pool = named.length ? named : candidates;
+  return [...pool].sort((a, b) => (a.path!.length - b.path!.length) || a.path!.localeCompare(b.path!))[0];
+}
+
+/** The URL of an entity's page: `<host>/<culture>/<path>/<id>`. */
+export function portalUrl(host: string, culture: string, path: string, id: number): string {
+  return `${host}/${culture.toLowerCase()}/${path.replace(/^\/+|\/+$/g, '')}/${id}`;
+}
+
+/** The public URL of a public link: the tenant's CDN path with the version hash. */
+export function publicLinkUrl(host: string, relativeUrl: string, versionHash?: string): string {
+  return `${host}/api/public/content/${relativeUrl}${versionHash ? `?v=${versionHash}` : ''}`;
+}
+
+/** The storage key of an entity's preview rendition, else its main file: what public links are keyed by. */
+export function fileKeysOf(entity: ContentHubEntity): { preview?: string; original?: string } {
+  const props = entity.properties ?? {};
+  const renditions = props.Renditions as { preview?: { locations?: { local?: string[] } } } | undefined;
+  const main = props.MainFile as { locations?: { local?: string[] } } | undefined;
+  return { preview: renditions?.preview?.locations?.local?.[0], original: main?.locations?.local?.[0] };
+}
+
 function label(member: { name: string; labels?: Record<string, string> }, culture: string): string {
   const text = member.labels?.[culture] ?? Object.values(member.labels ?? {})[0] ?? humanize(member.name);
   return text.length > MAX_DISPLAY_NAME ? text.slice(0, MAX_DISPLAY_NAME) : text;
@@ -151,8 +221,9 @@ function relationField(member: ContentHubMember, culture: string): DataSourceFie
  * the entity is the parent of (its children: public links, variants) are never inlined by
  * search and are left out.
  */
-export function inferContentHubFields(definition: ContentHubDefinition, culture = 'en-US'): DataSourceField[] {
-  const fields: DataSourceField[] = [...CONTENT_HUB_SYSTEM_FIELDS];
+export function inferContentHubFields(definition: ContentHubDefinition, culture = 'en-US', options: { imageRelation?: string } = {}): DataSourceField[] {
+  const fields: DataSourceField[] = [...CONTENT_HUB_SYSTEM_FIELDS, CONTENT_HUB_URL_FIELD];
+  if (hasPublicLinks(definition) || options.imageRelation) fields.push(CONTENT_HUB_IMAGE_FIELD);
   const seen = new Set(fields.map((f) => f.name));
 
   for (const group of definition.member_groups ?? []) {

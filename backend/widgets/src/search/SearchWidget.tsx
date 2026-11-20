@@ -762,8 +762,13 @@ function resolveField(displayConfig: DisplayConfig | null, role: DisplayFieldRol
   return match?.fieldName;
 }
 
-/** Supports dot-paths like `product.name` — matches the backend's getFieldValue behaviour. */
+/**
+ * Supports dot-paths like `product.name` — matches the backend's getFieldValue behaviour.
+ * A key present verbatim wins: some engines name fields with dots (`Vendor.Product.Name`),
+ * and reading those as a path finds nothing.
+ */
 function getFieldValue(source: Record<string, unknown>, fieldName: string): unknown {
+  if (fieldName in source) return source[fieldName];
   const parts = fieldName.split('.');
   let v: unknown = source;
   for (const part of parts) {

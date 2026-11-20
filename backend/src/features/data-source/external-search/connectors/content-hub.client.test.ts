@@ -119,7 +119,17 @@ describe('contentHubRequest', () => {
     fetchMock.mockResolvedValueOnce(json(404, {}));
     await expect(contentHubRequest(settings, '/api/entitydefinitions/Nope')).rejects.toMatchObject({ status: 404, message: /entity definition name/ });
     fetchMock.mockResolvedValueOnce(json(429, {}));
-    await expect(contentHubRequest(settings, '/api/x')).rejects.toMatchObject({ status: 429, message: /rate limit/ });
+    await expect(contentHubRequest(settings, '/api/x', {}, true, 0)).rejects.toMatchObject({ status: 429, message: /rate limit/ });
+  });
+
+  it('waits out a 429 and retries', async () => {
+    fetchMock
+      .mockResolvedValueOnce(TOKEN.clone())
+      .mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'Retry-After': '1' } }))
+      .mockResolvedValueOnce(json(200, { ok: true }));
+    const { json: body } = await contentHubRequest<{ ok: boolean }>(contentHubSettings(connection()), '/api/x');
+    expect(body.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('reports a non-JSON answer', async () => {

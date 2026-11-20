@@ -692,6 +692,11 @@ function rankEntries(
 }
 
 function fieldValue(source: Record<string, unknown>, path: string): unknown {
+  // A key present verbatim wins: some engines name fields with dots (`Vendor.Product.Name`)
+  if (path in source) {
+    const direct = source[path];
+    return Array.isArray(direct) ? direct[0] : direct;
+  }
   let value: unknown = source;
   for (const part of path.split('.')) {
     if (value === null || typeof value !== 'object') return undefined;
