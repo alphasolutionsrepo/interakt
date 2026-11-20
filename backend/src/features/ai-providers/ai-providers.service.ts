@@ -877,7 +877,8 @@ export async function testConnection(providerId: string): Promise<ConnectionTest
     } catch (error) {
       if (!(error instanceof ProviderKeyError)) throw error;
       result = { providerId, providerKey: stored.providerKey, success: false, message: error.message, responseTimeMs: 0, testedAt: new Date() };
-      await repository.updateProviderConnectionStatus(providerId, `error: ${result.message}`);
+      // The stored status is shown to every role that reads providers: the details stay in this answer
+      await repository.updateProviderConnectionStatus(providerId, 'error: API key unavailable');
       return result;
     }
 

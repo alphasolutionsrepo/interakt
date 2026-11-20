@@ -121,7 +121,12 @@ describe('a provider whose API key is a vault secret', () => {
     expect(await read(streamChat([{ role: 'user', content: 'Say hi' }], { providerId: p.providerId, modelId: p.chatModelId }))).toBe('Hi from the gateway');
     await generateEmbeddings(['a text'], { providerId: p.providerId, modelId: p.embedModelId, feature: 'search_query' });
     expect((await (await post(testConnectionRoute, p.providerId)).json()).data).toMatchObject({ success: true });
+    // A new embedding model (not saved yet) is what discovery probes
+    await testDb.db.execute(sql`DELETE FROM ai_provider_models WHERE provider_id = ${p.providerId} AND model_key = 'campus-embed'`);
+    const beforeDiscovery = gateway.seen.length;
     expect((await post(discoverRoute, p.providerId)).status).toBe(200);
+    // Discovery asks a local provider's new embedding model for its vector size, with the key
+    expect(gateway.seen.slice(beforeDiscovery).map((r) => r.path)).toEqual(expect.arrayContaining(['/v1/models', '/v1/embeddings']));
     expect(await healthOf(p.providerKey)).toMatchObject({ healthy: true });
 
     expect(gateway.seen.length).toBeGreaterThanOrEqual(6);
@@ -182,7 +187,8 @@ describe.each([
 
     expect((await (await post(testConnectionRoute, p.providerId)).json()).data).toMatchObject({ success: false, message });
     const status = (await testDb.db.execute(sql`SELECT last_connection_status FROM ai_providers WHERE id = ${p.providerId}`)).rows[0] as { last_connection_status: string };
-    expect(status.last_connection_status).toMatch(/^error: /);
+    // Every role that reads providers sees the stored status: it names nothing
+    expect(status.last_connection_status).toBe('error: API key unavailable');
 
     const discovery = await post(discoverRoute, p.providerId);
     expect(discovery.status).toBe(400);
@@ -286,6 +292,22 @@ describe('saving a provider\'s key', () => {
     expect(again.body.data).toMatchObject({ apiKeySecret: 'ai_provider_campus_gw_own', apiKeySecretManaged: true });
     expect(await remove(body.data.id)).toBe(200);
     expect(await secretValue('ai_provider_campus_gw_own')).toBeUndefined();
+  });
+
+  it('names the key\'s secret only to roles that view providers, not to those that only pick models', async () => {
+    const { body } = await create({ providerKey: 'campus-gw-readers', apiKey: 'vault-key' });
+    const listed = async () => ((await (await providersRoute.GET(new NextRequest('http://localhost/api/ai-providers'))).json()).data as Array<Record<string, unknown>>)
+      .find((p) => p.id === body.data.id)!;
+    expect((await listed()).apiKeySecret).toBe('ai_provider_campus_gw_readers');
+
+    accessStub.access = {
+      userId: 'picker', roleId: 'model-pickers', roleName: 'Model pickers', isAdmin: false,
+      permissions: new Set(['playground:use'] as const),
+    };
+    const forPicker = await listed();
+    expect(forPicker).toMatchObject({ hasApiKey: true });
+    expect(forPicker).not.toHaveProperty('apiKeySecret');
+    expect(JSON.stringify(forPicker)).not.toContain('ai_provider_campus_gw_readers');
   });
 
   it('refuses a secret the vault doesn\'t have, and a key and a secret together, saving nothing', async () => {
