@@ -996,4 +996,20 @@ describe('API keys are encrypted where they are saved', () => {
     }
     expect(await storedKey(providerId)).toBe('gw-key');
   });
+
+  it('an Ollama provider behind a proxy that checks keys: Test Connection and Discover Models name an unreadable key, sending nothing', async () => {
+    const { data } = await createProvider({ providerKey: 'ollama-proxied-unreadable', connectionType: 'ollama', authType: 'api_key', apiKey: 'ol-key', baseUrl: ollamaUrl });
+    vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'c'.repeat(64));
+    try {
+      ollama.seen = [];
+      const unreadable = expect.stringContaining('can\'t be decrypted with this server\'s encryption key');
+      expect((await (await post(testConnectionRoute, data.id)).json()).data).toMatchObject({ success: false, message: unreadable });
+      const discovery = await post(discoverRoute, data.id);
+      expect(discovery.status).toBe(400);
+      expect(await discovery.json()).toMatchObject({ code: 'PROVIDER_KEY_UNREADABLE', message: unreadable });
+      expect(ollama.seen).toEqual([]);
+    } finally {
+      vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64));
+    }
+  });
 });

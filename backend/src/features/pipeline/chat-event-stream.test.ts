@@ -638,3 +638,37 @@ describe('chatEventStream when the visitor closes the chat', () => {
     expect(await timersLeft()).toBe(0);
   });
 });
+
+describe('a chat whose provider key the server cannot decrypt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.chat.mockReset();
+    mocks.getSessionWithWindow.mockResolvedValue(null);
+    mocks.createSession.mockResolvedValue({ id: 'session-1' });
+    mocks.addMessages.mockResolvedValue(undefined);
+    mocks.updateSession.mockResolvedValue(undefined);
+    mocks.discardEmptySession.mockResolvedValue(undefined);
+    mocks.flushTelemetry.mockResolvedValue(undefined);
+    mocks.chat.mockRejectedValue(Object.assign(
+      new Error('The saved API key for "Campus gateway" can\'t be decrypted with this server\'s encryption key. Restore the previous SECRETS_ENCRYPTION_KEY, or enter the API key again on the AI Providers page.'),
+      { name: 'AIServiceError', code: 'PROVIDER_KEY_UNREADABLE' }
+    ));
+  });
+
+  async function turn(asVisitor: boolean): Promise<string> {
+    const res = await publicRoute(async () => {
+      if (!asVisitor) markAdminCaller();
+      return chatEventStream({ experience: makeExperience(), message: 'Search for red shoes', sessionId: 'session-1' });
+    })();
+    return drain(res.body!.getReader());
+  }
+
+  // The planner's call fails first: the turn gives its usual answer to a failed plan
+  it.each([['a visitor', true], ['an admin testing the experience', false]])(
+    'gives %s the usual answer to a failed plan, naming nothing about the key', async (_who, asVisitor) => {
+      const sent = await turn(asVisitor);
+      expect(sent).toContain(JSON.stringify({ type: 'content', text: "I'm having trouble understanding your request right now. Could you try again?" }));
+      expect(sent).not.toMatch(/SECRETS_ENCRYPTION_KEY|Campus gateway|decrypt/);
+    });
+});
+

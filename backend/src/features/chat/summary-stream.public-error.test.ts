@@ -88,3 +88,27 @@ describe('a summary whose AI setup is broken (a disabled provider)', () => {
     expect(event.message).toBe('Provider is disabled: openai');
   });
 });
+
+describe('a summary whose provider key the server cannot decrypt', () => {
+  const unreadable = () => Object.assign(
+    new Error('The saved API key for "Campus gateway" can\'t be decrypted with this server\'s encryption key. Restore the previous SECRETS_ENCRYPTION_KEY, or enter the API key again on the AI Providers page.'),
+    { name: 'AIServiceError', code: 'PROVIDER_KEY_UNREADABLE' }
+  );
+
+  it('sends a visitor the plain message, naming nothing', async () => {
+    model.failure = unreadable;
+    const event = await errorEvent(false);
+    model.failure = undefined;
+
+    expect(event).toMatchObject({ type: 'error', code: 'INTERNAL_ERROR', message: PUBLIC_FAILURE_MESSAGE });
+    expect(JSON.stringify(event)).not.toMatch(/SECRETS_ENCRYPTION_KEY|Campus gateway|decrypt/);
+  });
+
+  it('tells an admin what to fix', async () => {
+    model.failure = unreadable;
+    const event = await errorEvent(true);
+    model.failure = undefined;
+
+    expect(event.message).toContain('SECRETS_ENCRYPTION_KEY');
+  });
+});
