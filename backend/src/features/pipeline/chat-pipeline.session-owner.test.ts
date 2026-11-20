@@ -136,9 +136,13 @@ async function messagesOf(sessionId: string) {
 }
 
 async function turnForB(message: string, guardrailConfig: unknown = null) {
+  return turnFor(expB, message, guardrailConfig);
+}
+
+async function turnFor(experienceId: string, message: string, guardrailConfig: unknown = null) {
   const events: Array<{ type: string; sessionId?: string }> = [];
   await runChatPipeline({
-    experience: { ...makeExperience(guardrailConfig), id: expB },
+    experience: { ...makeExperience(guardrailConfig), id: experienceId },
     message,
     sessionId: sessionA,
     onEvent: (e) => events.push(e as never),
@@ -193,5 +197,19 @@ describe('a chat turn with another experience\'s session id', () => {
     expect(await messagesOf(sessionA)).toEqual(['assistant:A answer', 'user:A question']);
     expect(await messagesOf(doneId)).toContain('assistant:Hi! How can I help?');
     expect(JSON.stringify(mocks.chat.mock.calls)).not.toContain('A question');
+  });
+});
+
+describe('a chat turn with its own experience\'s session id', () => {
+  it('continues that conversation', async () => {
+    scriptSearchTurn();
+
+    const doneId = await turnFor(expA, 'Search for red shoes');
+
+    expect(doneId).toBe(sessionA);
+    const saved = await messagesOf(sessionA);
+    expect(saved).toEqual(expect.arrayContaining(['user:A question', 'assistant:A answer', 'user:Search for red shoes']));
+    // The model saw the earlier turn
+    expect(JSON.stringify(mocks.chat.mock.calls)).toContain('A question');
   });
 });
