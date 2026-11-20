@@ -74,8 +74,8 @@ function mapProviderDtoToInsert(
     connectionType: input.connectionType ?? defaultConnectionType(input.providerKey),
     authType: input.authType,
     baseUrl: input.baseUrl,
-    // No authentication, no key: a typed one would otherwise be sent
-    apiKey: input.authType === 'none' ? null : input.apiKey ?? null,
+    // No authentication, no key: a typed one would otherwise be sent. An empty one is no key.
+    apiKey: input.authType === 'none' || !input.apiKey?.trim() ? null : input.apiKey,
     isEnabled: input.isEnabled ?? false,
     settings: input.settings ?? {},
   };
@@ -308,10 +308,17 @@ export async function getProviderById(id: string): Promise<AIProviderResponse | 
  * instead of the provider refusing a request sent without one. Null when the key is fine.
  */
 export async function unreadableKeyError(
-  provider: Pick<AIProvider, 'id' | 'providerKey' | 'displayName' | 'apiKey'>
+  provider: Pick<AIProvider, 'id' | 'providerKey' | 'displayName' | 'authType' | 'apiKey'>
 ): Promise<AIServiceError | null> {
-  if (provider.apiKey) return null;
-  if (!(await repository.storedKeyIsUnreadable(provider.id))) return null;
+  // Only a provider set to use a key can have one saved (no authentication removes it)
+  if (provider.apiKey || provider.authType !== 'api_key') return null;
+  try {
+    if (!(await repository.storedKeyIsUnreadable(provider.id))) return null;
+  } catch (error) {
+    // The check is only there to name the cause: the call goes ahead as it did before
+    logger.warn('Could not check whether a saved AI provider key can be decrypted', { providerId: provider.id, error: (error as Error).message });
+    return null;
+  }
   return new AIServiceError(
     `The saved API key for "${provider.displayName}" can't be decrypted with this server's encryption key. ` +
       'Restore the previous SECRETS_ENCRYPTION_KEY, or enter the API key again on the AI Providers page.',
@@ -472,8 +479,10 @@ export async function updateProvider(
     const newKey = !dropsKey && typeof input.apiKey === 'string' && input.apiKey.trim() !== '' ? input.apiKey : undefined;
     if (newKey !== undefined) updateData.apiKey = newKey;
     else if (input.apiKey === null || dropsKey) updateData.apiKey = null;
-    // A saved key goes only to the server it was entered for: another server needs it typed again
-    if (input.baseUrl !== undefined && existing.apiKey && newKey === undefined && updateData.apiKey !== null
+    // A saved key goes only to the server it was entered for: another server needs it typed again.
+    // One this server can't decrypt still counts as saved: it would work again once the key is restored.
+    const hasSavedKey = !!existing.apiKey || (existing.authType === 'api_key' && await repository.storedKeyIsUnreadable(id));
+    if (input.baseUrl !== undefined && hasSavedKey && newKey === undefined && updateData.apiKey !== null
         && serverOf(input.baseUrl) !== serverOf(existing.baseUrl)) {
       throw new KeyForAnotherServerError();
     }

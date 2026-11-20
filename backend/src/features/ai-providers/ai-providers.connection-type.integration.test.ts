@@ -26,7 +26,7 @@ import * as providerRoute from '@/app/api/ai-providers/[id]/route';
 import * as testConnectionRoute from '@/app/api/ai-providers/[id]/test-connection/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
 import { encryptStoredProviderKeys } from '@/features/ai-providers/provider-key-encryption';
-import { generateText, streamChat } from '@/features/ai-service/ai-service.service';
+import { generateEmbeddings, generateText, streamChat } from '@/features/ai-service/ai-service.service';
 import { checkAIProvidersHealth } from '@/features/health/health.service';
 import { sql } from 'drizzle-orm';
 
@@ -882,6 +882,15 @@ describe('API keys are encrypted where they are saved', () => {
       expect(await discovery.json()).toMatchObject({ code: 'PROVIDER_KEY_UNREADABLE', message: unreadable });
       // Chat, summaries and embeddings (the AI service)
       await expect(generateText('Say hi', { providerId, modelId })).rejects.toMatchObject({ code: 'PROVIDER_KEY_UNREADABLE', message: unreadable });
+      const streamed = (async () => { for await (const chunk of streamChat([{ role: 'user', content: 'Say hi' }], { providerId, modelId })) void chunk; })();
+      await expect(streamed).rejects.toMatchObject({ code: 'PROVIDER_KEY_UNREADABLE', message: unreadable });
+      await expect(generateEmbeddings(['a text'], { providerId, modelId, feature: 'search_query' })).rejects.toMatchObject({ code: 'PROVIDER_KEY_UNREADABLE', message: unreadable });
+      // Moving it to another server still needs the key typed again, and the saved one stays
+      const before = await storedKey(providerId);
+      const moved = await providerRoute.PUT(new NextRequest(`http://localhost/api/ai-providers/${providerId}`, { method: 'PUT', body: JSON.stringify({ baseUrl: 'https://elsewhere.example/v1' }) }), idParams(providerId));
+      expect(moved.status).toBe(400);
+      expect((await moved.json()).message).toContain('Enter the API key again');
+      expect(await storedKey(providerId)).toBe(before);
       // None of them called the provider without its key
       expect(gateway.seen).toEqual([]);
       // The health check (it checks other tests' providers too, so their calls aren't counted)
@@ -923,8 +932,11 @@ describe('API keys are encrypted where they are saved', () => {
       expect(await update.json()).toMatchObject({ code: 'ENCRYPTION_KEY_NOT_SET' });
       expect(await storedKey(plainId)).toBe(before);
 
-      // A provider without a key needs no encryption
+      // A provider without a key needs no encryption, also when the form sends an empty key
       expect((await createProvider({ providerKey: 'no-key-needed', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl })).status).toBe(201);
+      const later = await createProvider({ providerKey: 'empty-key-typed', connectionType: 'openai_compatible', authType: 'api_key', apiKey: '', baseUrl: gatewayUrl });
+      expect(later.status).toBe(201);
+      expect(await storedKey(later.data.id)).toBeNull();
 
       expect((await encryptStoredProviderKeys()).plain).toBeGreaterThanOrEqual(1);
       expect(await storedKey(plainId)).toBe('gw-key');
@@ -947,5 +959,16 @@ describe('API keys are encrypted where they are saved', () => {
     }) as never);
     expect((await encryptStoredProviderKeys()).encrypted).toBe(0);
     expect(await storedKey(providerId)).toBe('typed-meanwhile');
+  });
+
+  it('startup never stops the server: a database failure is logged and nothing is changed', async () => {
+    const providerId = await plainProvider('startup-db-down', 'gw-key');
+    const spy = vi.spyOn(testDb.db, 'select').mockImplementation((() => { throw new Error('connection refused'); }) as never);
+    try {
+      await expect(encryptStoredProviderKeys()).resolves.toEqual({ encrypted: 0, plain: 0, unreadable: 0 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await storedKey(providerId)).toBe('gw-key');
   });
 });
