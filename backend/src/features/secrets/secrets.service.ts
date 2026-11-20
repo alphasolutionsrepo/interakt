@@ -154,6 +154,11 @@ export async function putSecretValue(
   }
 }
 
+/** Every config that names the secret (tools, data sources, MCP connections, AI providers); throws when the lookup fails */
+export async function findSecretReferences(name: string, executor?: DbExecutor): Promise<SecretReference[]> {
+  return repository.findSecretReferences(name, executor);
+}
+
 /**
  * Delete a secret nothing uses any more (no tool, data source, MCP connection or AI provider
  * names it). Returns whether it was deleted. Runs in the caller's transaction when given one,

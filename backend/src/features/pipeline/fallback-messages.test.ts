@@ -59,6 +59,18 @@ describe('classifyLlmFailure', () => {
     expect(classifyLlmFailure(new Error('context_length_exceeded'))).toMatch(/context window/i);
   });
 
+  it('at planning, names the limits without blaming a tool, since none has run', () => {
+    const rate = classifyLlmFailure(new Error('Rate limit reached for requests'), { stage: 'planning' });
+    expect(rate).toMatch(/per-minute token limit/i);
+    expect(rate).not.toMatch(/tool/i);
+    const context = classifyLlmFailure(new Error('context_length_exceeded'), { stage: 'planning' });
+    expect(context).toMatch(/context window/i);
+    expect(context).not.toMatch(/tool/i);
+    // Other failures read the same at either stage
+    expect(classifyLlmFailure(new Error('insufficient_quota'), { stage: 'planning' })).toBe(classifyLlmFailure(new Error('insufficient_quota')));
+    expect(classifyLlmFailure(new Error('socket hang up'), { stage: 'planning' })).toBeNull();
+  });
+
   it('returns null for anything it cannot identify, so the generic fallback applies', () => {
     expect(classifyLlmFailure(new Error('socket hang up'))).toBeNull();
     expect(classifyLlmFailure(new Error(''))).toBeNull();

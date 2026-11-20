@@ -660,11 +660,12 @@ describe('a chat whose provider key can\'t be read', () => {
     return drain(res.body!.getReader());
   }
 
-  // The planner's call fails first: the turn gives its usual answer to a failed plan
+  // The planner's call fails first: the turn says the key can't be read, not "try again"
   it.each([['a visitor', true], ['an admin testing the experience', false]])(
-    'gives %s the usual answer to a failed plan, naming nothing about the key', async (_who, asVisitor) => {
+    'tells %s the provider\'s key can\'t be read, naming nothing about the key', async (_who, asVisitor) => {
       const sent = await turn(asVisitor);
-      expect(sent).toContain(JSON.stringify({ type: 'content', text: "I'm having trouble understanding your request right now. Could you try again?" }));
+      expect(sent).toContain("the provider's API key can't be read");
+      expect(sent).not.toContain('trouble understanding');
       expect(sent).not.toMatch(/SECRETS_ENCRYPTION_KEY|Campus gateway|campus_key|decrypt/);
     });
 });
