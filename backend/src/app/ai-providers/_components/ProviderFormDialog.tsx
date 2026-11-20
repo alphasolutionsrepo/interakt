@@ -34,9 +34,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff, ShieldAlert } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useQuery } from '@tanstack/react-query';
-import { chosenSecretOf, initialKeySource, keyFieldsToSend, typedKeyMissing } from '../_lib/key-source';
+import { chosenSecretOf, initialKeySource, keyFieldsToSend, providerEditLock, typedKeyMissing } from '../_lib/key-source';
 import { secretsApi } from '@/app/secrets/_lib/api-client';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { useInlineError } from '@/shared/activity/useInlineError';
@@ -215,6 +216,8 @@ export function ProviderFormDialog({
         queryFn: () => secretsApi.list(),
         enabled: open && canChooseSecret && authType === 'api_key' && keySource === 'secret',
     });
+    // A provider using a vault secret an admin chose changes only for a role that can manage secrets
+    const lockedReason = mode === 'edit' ? providerEditLock(provider, canChooseSecret) : null;
     // Where a typed key is kept: the provider's own vault secret, or the one it will get
     const ownSecret = provider?.apiKeySecretManaged ? provider.apiKeySecret : null;
 
@@ -234,6 +237,13 @@ export function ProviderFormDialog({
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                        {lockedReason && (
+                            <Alert>
+                                <ShieldAlert className="h-4 w-4" />
+                                <AlertDescription className="text-xs">{lockedReason}</AlertDescription>
+                            </Alert>
+                        )}
+                        <fieldset disabled={!!lockedReason} className="m-0 min-w-0 space-y-4 border-0 p-0">
                         {/* Provider Key (only for create) */}
                         {mode === 'create' && (
                             <FormField
@@ -527,6 +537,8 @@ export function ProviderFormDialog({
                             )}
                         />
 
+                        </fieldset>
+
                         <ProblemAlert error={inline.error} hideFields={inline.hideFields} onDismiss={inline.clear} />
 
                         <DialogFooter>
@@ -537,7 +549,7 @@ export function ProviderFormDialog({
                             >
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={isSubmitting}>
+                            <Button type="submit" disabled={isSubmitting || !!lockedReason}>
                                 {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                                 {mode === 'create' ? 'Create Provider' : 'Save Changes'}
                             </Button>

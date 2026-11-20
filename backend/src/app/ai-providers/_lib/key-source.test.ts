@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { chosenSecretOf, initialKeySource, keyFieldsToSend, keyLocation, typedKeyMissing } from './key-source';
+import { chosenSecretOf, initialKeySource, keyFieldsToSend, keyLocation, providerEditLock, typedKeyMissing } from './key-source';
 
 const own = { apiKeySecret: 'ai_provider_gw', apiKeySecretManaged: true, baseUrl: 'https://a.example/v1' };
 const chosen = { apiKeySecret: 'shared_key', apiKeySecretManaged: false, baseUrl: 'https://a.example/v1' };
@@ -45,5 +45,27 @@ describe('switching from a chosen vault secret to a key entered here', () => {
     // The provider's own secret (from a typed key) is kept by an empty field, as before
     expect(typedKeyMissing({ source: 'typed', apiKey: '', provider: own })).toBe(false);
     expect(typedKeyMissing({ source: 'secret', apiKey: '', provider: chosen })).toBe(false);
+  });
+});
+
+describe('when a provider is locked for a user', () => {
+  it('locks one using a chosen vault secret for a role that cannot manage secrets, naming the secret and the permission', () => {
+    const note = providerEditLock(chosen, false);
+    expect(note).toContain('"shared_key"');
+    expect(note).toContain('Manage secrets and ingestion keys');
+  });
+
+  it('is open with the permission', () => {
+    expect(providerEditLock(chosen, true)).toBeNull();
+  });
+
+  it('is open for a provider whose secret came from its own typed key', () => {
+    expect(providerEditLock(own, false)).toBeNull();
+  });
+
+  it('is open for a provider with no secret, and for a new provider', () => {
+    expect(providerEditLock({ apiKeySecret: null, apiKeySecretManaged: false, baseUrl: 'https://a.example/v1' }, false)).toBeNull();
+    expect(providerEditLock(null, false)).toBeNull();
+    expect(providerEditLock(undefined, false)).toBeNull();
   });
 });
