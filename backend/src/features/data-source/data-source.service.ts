@@ -548,7 +548,7 @@ async function resolveCredentials(config: ExternalSearchIndexConfig): Promise<st
 
   const resolved = await resolveSecret(secretRef);
   if (!resolved) {
-    logger.warn('Failed to resolve secret reference — ensure the secret exists in the vault', { secretRef });
+    throw new Error(`The secret "${secretRef}" used for this data source's connection is missing from the Secrets Vault or can't be read`);
   }
   return resolved;
 }

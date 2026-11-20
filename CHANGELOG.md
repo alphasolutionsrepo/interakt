@@ -67,6 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A tool, MCP connection or search index whose settings name a secret that is missing from the Secrets Vault fails with a message naming the secret, instead of sending the request without it.
 - Output safety rules on an AI experience now apply before the answer reaches the visitor or is saved to the conversation, and also to replies to greetings and off-topic questions. Before, the visitor got the unchecked answer. A blocklist output rule set to redact now replaces the listed words; before, it changed nothing.
 - The production Docker image builds again: it installs dependencies with the backend's `.npmrc`, as CI and local installs do. CI now builds the image, migrates with it and starts it on every PR.
 - An access token or ID that isn't a UUID no longer answers 500. A public API request with such a token answers 401, like an unknown token. An admin request with such an ID in its address answers 400 "That ID isn't valid.", and an unknown job or queue answers 404.

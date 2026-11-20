@@ -9,7 +9,7 @@
 
 import type { ToolExecutionResult } from '../tools.executor';
 
-import { FIXED_HOST_MESSAGE, INPUT_PATTERN, resolveUrlTemplate, unresolvedSecretNames, urlProblemMessage } from './http-url';
+import { FIXED_HOST_MESSAGE, INPUT_PATTERN, resolveUrlTemplate, urlProblemMessage } from './http-url';
 
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
@@ -129,12 +129,6 @@ export async function executeHttpApi(
     return { success: false, error: 'HTTP API config is missing responseMapping.resultsPath' };
   }
 
-  // A {{secret:name}} still in the URL means the vault has no secret by that name, or it can't be decrypted (names only)
-  const missing = unresolvedSecretNames(cfg.baseUrl);
-  if (missing.length > 0) {
-    return { success: false, error: `HTTP API baseUrl: The secret "${missing[0]}" used in the URL is missing from the Secrets Vault or can't be read` };
-  }
-
   // 1. Fill {{input.field}} templates in the URL, query parameters, headers and body
   const filledUrl = resolveUrlTemplate(cfg.baseUrl, input);
   if ('problem' in filledUrl) {
@@ -167,7 +161,7 @@ export async function executeHttpApi(
   if (auth && auth.type !== 'none' && auth.key && auth.valueRef) {
     const secretValue = await resolveSecret(auth.valueRef);
     if (secretValue == null) {
-      return { success: false, error: `Authentication secret "${auth.valueRef}" not found` };
+      return { success: false, error: `The secret "${auth.valueRef}" used for authentication is missing from the Secrets Vault or can't be read` };
     }
     if (auth.type === 'header') {
       headers[auth.key] = secretValue;

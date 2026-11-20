@@ -17,9 +17,6 @@
 import type { McpAuthConfig, DiscoveredMcpTool, DiscoveredToolCatalog } from '@/db/schema/mcp-connections.schema';
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
-import { createLogger } from '@/shared/logger/logger';
-
-const logger = createLogger('mcp-client');
 
 const PROTOCOL_VERSION = '2025-06-18';
 const CLIENT_INFO = { name: 'interakt', version: '0.1.0' };
@@ -72,9 +69,9 @@ async function buildAuthHeaders(authConfig?: McpAuthConfig | null): Promise<Reco
   if (!authConfig.secretRef) return {};
 
   const token = await resolveSecret(authConfig.secretRef);
+  // Calling the server without its credentials would look like a server fault
   if (!token) {
-    logger.warn('MCP auth secret could not be resolved', { secretRef: authConfig.secretRef });
-    return {};
+    throw new Error(`The secret "${authConfig.secretRef}" used for this connection's authentication is missing from the Secrets Vault or can't be read`);
   }
 
   if (authConfig.type === 'bearer') {
