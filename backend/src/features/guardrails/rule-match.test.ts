@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 
-import { ruleMatches } from './rule-match';
+import { blocklistTerms, ruleMatches } from './rule-match';
+
+describe('blocklistTerms', () => {
+  it('keeps only non-empty strings and tolerates a missing or invalid list', () => {
+    expect(blocklistTerms({ terms: ['a', '', null, 5, 'b'] })).toEqual(['a', 'b']);
+    expect(blocklistTerms({})).toEqual([]);
+    expect(blocklistTerms({ terms: 'a' })).toEqual([]);
+  });
+});
 
 describe('ruleMatches', () => {
   it('blocklist matches any term, ignoring case', () => {

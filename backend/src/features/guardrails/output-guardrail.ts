@@ -5,7 +5,7 @@
  * AI-written text. Called before the text is streamed, saved or traced.
  */
 
-import { ruleMatches } from './rule-match';
+import { blocklistTerms, ruleMatches } from './rule-match';
 
 import type { GuardrailConfig, GuardrailRule } from '@/db/schema';
 import { guardrailDecision } from '@/features/ai-experience/execution-policy';
@@ -108,6 +108,18 @@ function tryRedact(rule: GuardrailRule, text: string): string | null {
       } catch {
         return null;
       }
+    }
+    case 'blocklist': {
+      const terms = blocklistTerms(rule.config);
+      if (!terms.length) return null;
+      const replacement = typeof rule.config.replacement === 'string' ? rule.config.replacement : '[REDACTED]';
+      // Longest first, so a term that contains another is replaced whole
+      const pattern = [...terms]
+        .sort((a, b) => b.length - a.length)
+        .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|');
+      const redacted = text.replace(new RegExp(pattern, 'gi'), () => replacement);
+      return redacted === text ? null : redacted;
     }
     default:
       return null;

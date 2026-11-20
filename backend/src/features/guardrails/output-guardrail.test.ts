@@ -137,4 +137,45 @@ describe('applyOutputGuardrail', () => {
     const cfg = config([rule({ id: 'rule-x', name: '', config: { terms: ['bad'] } })]);
     expect(applyOutputGuardrail(cfg, 'bad').firedRules).toEqual(['rule-x']);
   });
+  describe('blocklist rule set to redact', () => {
+    const redactRule = (config: Record<string, unknown>) =>
+      rule({ action: 'redact', name: 'words', config });
+
+    it('replaces every case-variant occurrence with [REDACTED]', () => {
+      const cfg = config([redactRule({ terms: ['secret'] })]);
+      const result = applyOutputGuardrail(cfg, 'Secret, SECRET and secret.');
+      expect(result.text).toBe('[REDACTED], [REDACTED] and [REDACTED].');
+      expect(result.outcome).toBe('redacted');
+      expect(result.firedRules).toContain('words');
+    });
+
+    it('uses the configured replacement literally', () => {
+      const cfg = config([redactRule({ terms: ['secret'], replacement: '$&***' })]);
+      expect(applyOutputGuardrail(cfg, 'a secret').text).toBe('a $&***');
+    });
+
+    it('treats terms as plain text, not patterns', () => {
+      const cfg = config([redactRule({ terms: ['a.c'] })]);
+      expect(applyOutputGuardrail(cfg, 'abc a.c').text).toBe('abc [REDACTED]');
+    });
+
+    it('passes the text through when no term matches', () => {
+      const cfg = config([redactRule({ terms: ['secret'] })]);
+      expect(applyOutputGuardrail(cfg, 'all fine')).toMatchObject({
+        text: 'all fine', outcome: 'passed', firedRules: [],
+      });
+    });
+
+    it('ignores non-string and empty terms', () => {
+      const cfg = config([redactRule({ terms: [null, 42, '', 'secret'] })]);
+      expect(applyOutputGuardrail(cfg, 'a secret 42').text).toBe('a [REDACTED] 42');
+      const none = config([redactRule({ terms: [null, ''] })]);
+      expect(applyOutputGuardrail(none, 'anything').outcome).toBe('passed');
+    });
+
+    it('replaces the longer term whole when terms overlap', () => {
+      const cfg = config([redactRule({ terms: ['card', 'card number'] })]);
+      expect(applyOutputGuardrail(cfg, 'your card number and card').text).toBe('your [REDACTED] and [REDACTED]');
+    });
+  });
 });
