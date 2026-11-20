@@ -29,6 +29,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { cn } from '@/lib/utils';
+import { keyLocation } from '../_lib/key-source';
 
 interface ProviderCardProps {
     provider: AIProviderWithModelsResponse;
@@ -203,6 +204,7 @@ export function ProviderCard({
 
                 {provider.authType === 'api_key' && (
                     <Badge
+                        title={keyLocation(provider) ?? undefined}
                         variant="secondary"
                         className={cn(
                             "text-xs font-medium",

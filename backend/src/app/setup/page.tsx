@@ -366,8 +366,8 @@ export default function SetupDemoPage() {
               />
               <p className="text-xs text-muted-foreground">
                 {selected.hasStoredKey
-                  ? 'A key is already stored on this provider. Enter a new one only to replace it.'
-                  : 'Stored on the provider record (not in any file). Used to embed the catalog and answer chats.'}
+                  ? 'A key is already saved for this provider. Enter a new one only to replace it.'
+                  : 'Saved encrypted in the Secrets Vault (not in any file). Used to embed the catalog and answer chats.'}
               </p>
 
               {/* Models — free text with sensible defaults. */}
