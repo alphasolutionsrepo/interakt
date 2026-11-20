@@ -74,6 +74,7 @@ const listen = (server: http.Server) => new Promise<string>((resolve) =>
   server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
 
 beforeAll(async () => {
+  vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64)); // provider keys are saved in the Secrets Vault
   testDb = await createAppTestDb();
   gatewayServer = http.createServer((req, res) => {
     gateway.seen.push({ at: Date.now(), path: req.url ?? '', auth: req.headers.authorization });

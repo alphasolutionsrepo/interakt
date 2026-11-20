@@ -24,10 +24,15 @@ vi.mock('@/features/access/access.service', async () => (await import('@/shared/
 vi.mock('@/features/ai-service/ai-service.analytics', () => ({ trackUsage: vi.fn(), updateRealtimeMetrics: vi.fn() }));
 
 import * as discoverRoute from '@/app/api/ai-providers/[id]/discover-models/route';
+import * as providerRoute from '@/app/api/ai-providers/[id]/route';
 import * as testConnectionRoute from '@/app/api/ai-providers/[id]/test-connection/route';
+import * as providersRoute from '@/app/api/ai-providers/route';
+import { ADMIN_ROLE_ID, ALL_PERMISSIONS } from '@/features/access/permissions';
 import { generateEmbeddings, generateText, streamChat } from '@/features/ai-service/ai-service.service';
 import { checkAIProvidersHealth } from '@/features/health/health.service';
+import { decrypt } from '@/features/secrets/secrets.encryption';
 import { createSecret } from '@/features/secrets/secrets.service';
+import { accessStub } from '@/shared/test/access-stub';
 import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 // ── Stand-ins ────────────────────────────────────────────────────────────────
@@ -78,7 +83,7 @@ beforeAll(async () => {
 
 afterAll(async () => { gatewayServer.close(); ollamaServer.close(); await testDb.close(); });
 beforeEach(() => { gateway.seen = []; ollama.seen = []; });
-afterEach(() => { vi.stubEnv('SECRETS_ENCRYPTION_KEY', KEY); });
+afterEach(() => { vi.stubEnv('SECRETS_ENCRYPTION_KEY', KEY); accessStub.reset(); });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -194,3 +199,176 @@ describe.each([
     expect(health).toMatchObject({ responseTimeMs: 0 });
   });
 });
+
+// ── Saving ───────────────────────────────────────────────────────────────────
+
+describe('saving a provider\'s key', () => {
+  const create = async (body: Record<string, unknown>) => {
+    const res = await providersRoute.POST(new NextRequest('http://localhost/api/ai-providers', {
+      method: 'POST',
+      body: JSON.stringify({ displayName: `Saved ${++n}`, providerType: 'local', connectionType: 'openai_compatible', authType: 'api_key', baseUrl: gatewayUrl, isEnabled: true, ...body }),
+    }));
+    return { status: res.status, body: await res.json() };
+  };
+  const update = async (id: string, body: Record<string, unknown>) => {
+    const res = await providerRoute.PUT(new NextRequest(`http://localhost/api/ai-providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }), idParams(id));
+    return { status: res.status, body: await res.json() };
+  };
+  const remove = async (id: string) =>
+    (await providerRoute.DELETE(new NextRequest(`http://localhost/api/ai-providers/${id}`, { method: 'DELETE' }), idParams(id))).status;
+  const row = async (id: string) =>
+    (await testDb.db.execute(sql`SELECT api_key, api_key_secret, api_key_secret_managed FROM ai_providers WHERE id = ${id}`)).rows[0] as { api_key: string | null; api_key_secret: string | null; api_key_secret_managed: boolean } | undefined;
+  const secretValue = async (name: string) => {
+    const found = (await testDb.db.execute(sql`SELECT encrypted_value FROM secrets WHERE name = ${name}`)).rows[0] as { encrypted_value: string } | undefined;
+    return found ? decrypt(found.encrypted_value) : undefined;
+  };
+  const chatModel = async (providerId: string) => ((await testDb.db.execute(sql`INSERT INTO ai_provider_models (provider_id, model_key, display_name, model_type, is_available)
+    VALUES (${providerId}, 'campus-chat', 'Campus chat', 'chat', true) RETURNING id`)).rows[0] as { id: number }).id;
+
+  it('stores a typed key in the vault as ai_provider_<key>, keeps only its name on the provider, and sends it', async () => {
+    const { status, body } = await create({ providerKey: 'campus-gw-a', apiKey: 'vault-key' });
+    expect(status).toBe(201);
+    expect(body.data).toMatchObject({ hasApiKey: true, apiKeySecret: 'ai_provider_campus_gw_a', apiKeySecretManaged: true });
+    expect(JSON.stringify(body)).not.toContain('vault-key');
+    expect(await row(body.data.id)).toEqual({ api_key: null, api_key_secret: 'ai_provider_campus_gw_a', api_key_secret_managed: true });
+    expect(await secretValue('ai_provider_campus_gw_a')).toBe('vault-key');
+
+    const list = JSON.stringify(await (await providersRoute.GET(new NextRequest('http://localhost/api/ai-providers'))).json());
+    expect(list).toContain('ai_provider_campus_gw_a');
+    expect(list).not.toContain('vault-key');
+
+    await generateText('Say hi', { providerId: body.data.id, modelId: await chatModel(body.data.id) });
+    expect(gateway.seen.at(-1)).toMatchObject({ path: '/v1/chat/completions', auth: 'Bearer vault-key' });
+  });
+
+  it('takes the next free name when the vault already has one by that name, and leaves that secret alone', async () => {
+    await createSecret({ name: 'ai_provider_campus_gw_b', value: 'someone-elses' });
+    const { body } = await create({ providerKey: 'campus-gw-b', apiKey: 'vault-key' });
+    expect(body.data.apiKeySecret).toBe('ai_provider_campus_gw_b_2');
+    expect(await secretValue('ai_provider_campus_gw_b')).toBe('someone-elses');
+    expect(await secretValue('ai_provider_campus_gw_b_2')).toBe('vault-key');
+  });
+
+  it('replaces the value of the provider\'s own secret when a new key is typed, without making another', async () => {
+    const { body } = await create({ providerKey: 'campus-gw-c', apiKey: 'first-key' });
+    const before = (await testDb.db.execute(sql`SELECT count(*)::int AS n FROM secrets`)).rows[0] as { n: number };
+    const updated = await update(body.data.id, { apiKey: 'vault-key' });
+    expect(updated.body.data).toMatchObject({ apiKeySecret: 'ai_provider_campus_gw_c', apiKeySecretManaged: true });
+    expect(await secretValue('ai_provider_campus_gw_c')).toBe('vault-key');
+    expect((await testDb.db.execute(sql`SELECT count(*)::int AS n FROM secrets`)).rows[0]).toEqual(before);
+  });
+
+  it('keeps the key when the form sends an empty one, and on edits that leave it out', async () => {
+    const { body } = await create({ providerKey: 'campus-gw-d', apiKey: 'vault-key' });
+    await update(body.data.id, { apiKey: '', displayName: 'Renamed' });
+    await update(body.data.id, { isEnabled: false });
+    expect(await row(body.data.id)).toMatchObject({ api_key_secret: 'ai_provider_campus_gw_d', api_key_secret_managed: true });
+    expect(await secretValue('ai_provider_campus_gw_d')).toBe('vault-key');
+  });
+
+  it('uses a chosen vault secret, and never deletes it; choosing one drops the provider\'s own secret when unused', async () => {
+    await createSecret({ name: 'shared_gateway_key', value: 'vault-key' });
+    const { body } = await create({ providerKey: 'campus-gw-e', apiKey: 'own-key' });
+    expect(await secretValue('ai_provider_campus_gw_e')).toBe('own-key');
+
+    const chosen = await update(body.data.id, { apiKeySecret: 'shared_gateway_key' });
+    expect(chosen.body.data).toMatchObject({ hasApiKey: true, apiKeySecret: 'shared_gateway_key', apiKeySecretManaged: false });
+    expect(await secretValue('ai_provider_campus_gw_e')).toBeUndefined();
+
+    expect(await remove(body.data.id)).toBe(200);
+    expect(await secretValue('shared_gateway_key')).toBe('vault-key');
+  });
+
+  it('refuses a secret the vault doesn\'t have, and a key and a secret together, saving nothing', async () => {
+    const missing = await create({ providerKey: 'campus-gw-f', apiKeySecret: 'no_such_secret' });
+    expect(missing.status).toBe(400);
+    expect(missing.body).toMatchObject({ code: 'VALIDATION_ERROR', fields: [expect.objectContaining({ field: 'apiKeySecret' })] });
+    const both = await create({ providerKey: 'campus-gw-f', apiKey: 'vault-key', apiKeySecret: 'shared_gateway_key' });
+    expect(both.status).toBe(400);
+    expect((await testDb.db.execute(sql`SELECT 1 FROM ai_providers WHERE provider_key = 'campus-gw-f'`)).rows).toHaveLength(0);
+    expect(await secretValue('ai_provider_campus_gw_f')).toBeUndefined();
+  });
+
+  it('removes the key, and its own secret, when authentication is set to none or the key to null', async () => {
+    const a = (await create({ providerKey: 'campus-gw-g', apiKey: 'vault-key' })).body.data;
+    expect((await update(a.id, { authType: 'none', apiKey: 'ignored' })).body.data).toMatchObject({ hasApiKey: false, apiKeySecret: null });
+    expect(await secretValue('ai_provider_campus_gw_g')).toBeUndefined();
+
+    const b = (await create({ providerKey: 'campus-gw-h', apiKey: 'vault-key' })).body.data;
+    expect((await update(b.id, { apiKey: null })).body.data).toMatchObject({ hasApiKey: false, apiKeySecret: null });
+    expect(await secretValue('ai_provider_campus_gw_h')).toBeUndefined();
+  });
+
+  it('asks for the key, or its secret, again when the base URL moves to another server', async () => {
+    await createSecret({ name: 'moving_key', value: 'vault-key' });
+    for (const keyed of [{ apiKey: 'vault-key' }, { apiKeySecret: 'moving_key' }]) {
+      const { body } = await create({ providerKey: `campus-gw-move-${++n}`, ...keyed });
+      const moved = await update(body.data.id, { baseUrl: 'https://elsewhere.example/v1' });
+      expect(moved.status).toBe(400);
+      expect(moved.body.message).toMatch(/Enter the API key again, or choose its vault secret again/);
+      expect((await update(body.data.id, { baseUrl: 'https://elsewhere.example/v1', ...keyed })).status).toBe(200);
+      // Another path on the same server keeps it
+      expect((await update(body.data.id, { baseUrl: 'https://elsewhere.example/v2' })).status).toBe(200);
+    }
+  });
+
+  it('deletes the provider\'s own secret with it, unless something else uses that secret', async () => {
+    const a = (await create({ providerKey: 'campus-gw-i', apiKey: 'vault-key' })).body.data;
+    expect(await remove(a.id)).toBe(200);
+    expect(await secretValue('ai_provider_campus_gw_i')).toBeUndefined();
+
+    const b = (await create({ providerKey: 'campus-gw-j', apiKey: 'vault-key' })).body.data;
+    await createSecret({ name: 'other_j', value: 'x' });
+    const c = (await create({ providerKey: 'campus-gw-k', apiKeySecret: 'ai_provider_campus_gw_j' })).body.data;
+    expect(c.apiKeySecret).toBe('ai_provider_campus_gw_j');
+    expect(await remove(b.id)).toBe(200);
+    expect(await secretValue('ai_provider_campus_gw_j')).toBe('vault-key');
+  });
+
+  it('with no usable encryption key, refuses a typed key with what to set, and writes nothing', async () => {
+    const existing = (await create({ providerKey: 'campus-gw-l', apiKey: 'vault-key' })).body.data;
+    vi.stubEnv('SECRETS_ENCRYPTION_KEY', '');
+    const refused = await create({ providerKey: 'campus-gw-m', apiKey: 'vault-key' });
+    expect(refused.status).toBe(500);
+    expect(refused.body).toMatchObject({ code: 'ENCRYPTION_KEY_NOT_SET', hint: expect.stringContaining('SECRETS_ENCRYPTION_KEY') });
+    expect((await testDb.db.execute(sql`SELECT 1 FROM ai_providers WHERE provider_key = 'campus-gw-m'`)).rows).toHaveLength(0);
+
+    const refusedUpdate = await update(existing.id, { apiKey: 'new-key', displayName: 'Not renamed' });
+    expect(refusedUpdate.status).toBe(500);
+    expect((await testDb.db.execute(sql`SELECT display_name FROM ai_providers WHERE id = ${existing.id}`)).rows[0]).toEqual({ display_name: existing.displayName });
+
+    // A provider without a key needs no encryption
+    expect((await create({ providerKey: 'campus-gw-n', authType: 'none' })).status).toBe(201);
+    vi.stubEnv('SECRETS_ENCRYPTION_KEY', KEY);
+    expect(await secretValue('ai_provider_campus_gw_l')).toBe('vault-key');
+  });
+
+  it('writes the provider and its secret together: when the save fails, neither is kept', async () => {
+    const realTransaction = testDb.db.transaction.bind(testDb.db);
+    const spy = vi.spyOn(testDb.db, 'transaction').mockImplementation((async (work: (tx: unknown) => Promise<unknown>) =>
+      realTransaction(async (tx) => { await work(tx); throw new Error('the database went away'); })) as never);
+    try {
+      expect((await create({ providerKey: 'campus-gw-o', apiKey: 'vault-key' })).status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await testDb.db.execute(sql`SELECT 1 FROM ai_providers WHERE provider_key = 'campus-gw-o'`)).rows).toHaveLength(0);
+    expect(await secretValue('ai_provider_campus_gw_o')).toBeUndefined();
+  });
+
+  it('lets only a role that can manage secrets choose a vault secret; a typed key needs no such role', async () => {
+    await createSecret({ name: 'guarded_key', value: 'vault-key' });
+    accessStub.access = {
+      userId: 'manager', roleId: 'provider-managers', roleName: 'Provider managers', isAdmin: false,
+      permissions: new Set(ALL_PERMISSIONS.filter((p) => p !== 'secrets:manage')),
+    };
+    const chosen = await create({ providerKey: 'campus-gw-p', apiKeySecret: 'guarded_key' });
+    expect(chosen.status).toBe(403);
+    const typed = await create({ providerKey: 'campus-gw-p', apiKey: 'their-own-key' });
+    expect(typed.status).toBe(201);
+    expect((await update(typed.body.data.id, { apiKeySecret: 'guarded_key' })).status).toBe(403);
+    expect((await update(typed.body.data.id, { apiKey: 'another-own-key' })).status).toBe(200);
+    expect(ADMIN_ROLE_ID).not.toBe('provider-managers');
+  });
+});
+

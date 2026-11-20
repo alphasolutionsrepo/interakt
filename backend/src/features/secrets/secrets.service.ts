@@ -5,6 +5,7 @@ import * as repository from './secrets.repository';
 import type { SecretReference } from './secrets.repository';
 import { encrypt, decrypt } from './secrets.encryption';
 import type { CreateSecretDTO, UpdateSecretDTO, SecretMetadataResponse } from './secrets.types';
+import type { DbExecutor } from '@/shared/db/executor';
 
 const logger = createLogger('secrets-service');
 
@@ -113,6 +114,50 @@ export async function deleteSecret(id: string, userId?: string): Promise<boolean
   if (!deleted) return false;
 
   logger.info('Deleted secret', { secretId: id, name: existing.name, userId });
+  return true;
+}
+
+// ============================================================================
+// SECRETS OTHER FEATURES KEEP FOR THEIR CONFIG (an AI provider's key)
+// ============================================================================
+
+/** Whether the vault has a secret by this name. */
+export async function secretExists(name: string, executor?: DbExecutor): Promise<boolean> {
+  return (await repository.getSecretByName(name, executor)) !== null;
+}
+
+/**
+ * Store a value under a name: the secret's value is replaced when it exists, created
+ * otherwise. Encrypts first, so with no usable SECRETS_ENCRYPTION_KEY nothing is written
+ * (EncryptionKeyError). Runs in the caller's transaction when given one.
+ */
+export async function putSecretValue(
+  name: string,
+  value: string,
+  options: { description?: string; executor?: DbExecutor } = {}
+): Promise<void> {
+  const encryptedValue = encrypt(value);
+  const existing = await repository.getSecretByName(name, options.executor);
+  if (existing) {
+    await repository.updateSecret(existing.id, { encryptedValue }, options.executor);
+    logger.info('Updated secret value', { secretId: existing.id, name });
+  } else {
+    const created = await repository.createSecret({ name, encryptedValue, description: options.description }, options.executor);
+    logger.info('Created secret', { secretId: created.id, name });
+  }
+}
+
+/**
+ * Delete a secret nothing uses any more (no tool, data source, MCP connection or AI provider
+ * names it). Returns whether it was deleted. Runs in the caller's transaction when given one,
+ * so references changed in that transaction count.
+ */
+export async function deleteSecretIfUnused(name: string, executor?: DbExecutor): Promise<boolean> {
+  const existing = await repository.getSecretByName(name, executor);
+  if (!existing) return false;
+  if ((await repository.findSecretReferences(name, executor)).length > 0) return false;
+  await repository.deleteSecret(existing.id, executor);
+  logger.info('Deleted unused secret', { secretId: existing.id, name });
   return true;
 }
 
