@@ -40,6 +40,7 @@ import { canShortenVectorsByDefault } from './shortenable-embeddings';
 
 import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
 import { AdapterError, errorFromResponse, noAnswerError } from '@/features/ai-service/adapters/types';
+import { AIServiceError } from '@/features/ai-service/ai-service.types';
 import { CacheManager } from '@/shared/cache/cache-manager';
 import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
 import { createLogger } from '@/shared/logger/logger';
@@ -298,6 +299,25 @@ export async function getProviderById(id: string): Promise<AIProviderResponse | 
       if (!provider) return null;
       return mapProviderToResponse(provider);
     }
+  );
+}
+
+/**
+ * A saved key this server can't decrypt (SECRETS_ENCRYPTION_KEY changed or missing) reads
+ * as no key. Callers about to use the key ask this first, so the admin is told the cause
+ * instead of the provider refusing a request sent without one. Null when the key is fine.
+ */
+export async function unreadableKeyError(
+  provider: Pick<AIProvider, 'id' | 'providerKey' | 'displayName' | 'apiKey'>
+): Promise<AIServiceError | null> {
+  if (provider.apiKey) return null;
+  if (!(await repository.storedKeyIsUnreadable(provider.id))) return null;
+  return new AIServiceError(
+    `The saved API key for "${provider.displayName}" can't be decrypted with this server's encryption key. ` +
+      'Restore the previous SECRETS_ENCRYPTION_KEY, or enter the API key again on the AI Providers page.',
+    'PROVIDER_KEY_UNREADABLE',
+    provider.id,
+    provider.providerKey
   );
 }
 
@@ -893,8 +913,10 @@ export async function testConnection(providerId: string): Promise<ConnectionTest
 
     let result: ConnectionTestResult;
 
-    // Test based on provider type
-    if (connectionTypeOf(provider) === 'ollama') {
+    const keyError = await unreadableKeyError(provider);
+    if (keyError) {
+      result = { providerId, providerKey: provider.providerKey, success: false, message: keyError.message, responseTimeMs: 0, testedAt: new Date() };
+    } else if (connectionTypeOf(provider) === 'ollama') {
       result = await testOllamaConnection(provider);
     } else {
       result = await testOpenAICompatibleConnection(provider);
@@ -1077,6 +1099,8 @@ export async function discoverModels(
     if (!provider) {
       throw new Error(`Provider with ID "${providerId}" not found`);
     }
+    const keyError = await unreadableKeyError(provider);
+    if (keyError) throw keyError;
     const timeoutMs = options.timeoutMs ?? 30000;
     const report = connectionTypeOf(provider) === 'ollama'
       ? await readOllamaModels(provider, timeoutMs)

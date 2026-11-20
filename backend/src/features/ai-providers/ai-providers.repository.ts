@@ -21,6 +21,7 @@ import type {
     SystemDefaultsWithDetails,
 } from '@/db/schema/ai-providers.schema';
 import type { AIModelType, AIProviderType } from './ai-providers.types';
+import { isSealed, unseal } from '@/features/secrets/sealed-value';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ai-providers-repository');
@@ -120,6 +121,25 @@ export async function getProviderById(id: string): Promise<AIProvider | null> {
     } catch (error) {
         logger.error('Failed to get provider by ID', error as Error, { id });
         throw error;
+    }
+}
+
+/**
+ * Whether the provider's saved API key is encrypted with a key this server doesn't have
+ * (SECRETS_ENCRYPTION_KEY changed or missing). Such a key reads as null.
+ */
+export async function storedKeyIsUnreadable(id: string): Promise<boolean> {
+    // The stored text as it is: a sql field skips the column's decryption
+    const [row] = await db
+        .select({ stored: sql<string | null>`${aiProviders.apiKey}` })
+        .from(aiProviders)
+        .where(eq(aiProviders.id, id));
+    if (!row?.stored || !isSealed(row.stored)) return false;
+    try {
+        unseal(row.stored);
+        return false;
+    } catch {
+        return true;
     }
 }
 

@@ -10,7 +10,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 const providers = vi.hoisted(() => ({
   list: [{ id: 'p1', providerKey: 'ollama', displayName: 'Ollama', baseUrl: 'http://10.0.0.5:11434', isEnabled: true }],
 }));
-vi.mock('@/features/ai-providers/ai-providers.repository', () => ({ listProviders: async () => providers.list }));
+vi.mock('@/features/ai-providers/ai-providers.repository', () => ({ listProviders: async () => providers.list, storedKeyIsUnreadable: async () => false }));
 const realFetch = globalThis.fetch;
 const stubFetch = vi.fn(async () => new Response('{}', { status: 200 })) as typeof fetch;
 globalThis.fetch = stubFetch;

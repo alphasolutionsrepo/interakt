@@ -31,6 +31,7 @@ vi.mock('@/shared/setup/auto-migrate', () => ({ runDevMigrations: vi.fn() }));
 vi.mock('@/features/analytics', () => ({ initializeAnalyticsConfig: vi.fn(), startAnalyticsCollector: vi.fn() }));
 vi.mock('@/shared/seeders', () => ({ runStartupSeeding: vi.fn() }));
 vi.mock('@/shared/setup/upgrade-preflight', () => ({ runUpgradePreflight: vi.fn() }));
+vi.mock('@/features/ai-providers/provider-key-encryption', () => ({ encryptStoredProviderKeys: vi.fn() }));
 vi.mock('@/shared/setup/admin-seed', () => ({ seedAdminFromYaml: vi.fn() }));
 vi.mock('@/features/jobs', () => ({ startJobs: vi.fn(async () => undefined) }));
 

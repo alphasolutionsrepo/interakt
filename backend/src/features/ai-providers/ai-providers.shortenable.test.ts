@@ -15,6 +15,7 @@ vi.mock('@/shared/cache/cache-manager', () => ({
   },
 }));
 vi.mock('./ai-providers.repository', () => ({
+  storedKeyIsUnreadable: async () => false,
   getProviderById: vi.fn(async () => ({ id: 'p', providerKey: 'ollama', baseUrl: 'http://localhost:11434' })),
   modelKeyExists: vi.fn(async () => false),
   listModelsByProvider: vi.fn(async () => []),

@@ -28,6 +28,7 @@ vi.mock('@/features/prompt-templates', () => ({
 const usage = vi.hoisted(() => ({ trackUsage: vi.fn(), updateRealtimeMetrics: vi.fn() }));
 vi.mock('@/features/ai-service/ai-service.analytics', () => usage);
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
+  unreadableKeyError: async () => null,
   getProviderConfigById: async () => ({ id: 'p1', providerKey: 'ollama', isEnabled: true, baseUrl: 'http://model.test', settings: {} }),
   getModelById: async () => ({ id: 1, modelKey: 'qwen2.5:14b', capabilities: {} }),
   getProviderByKey: vi.fn(),

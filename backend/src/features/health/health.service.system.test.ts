@@ -19,6 +19,7 @@ vi.mock('@/features/search/providers', () => ({
   }),
 }));
 vi.mock('@/features/ai-providers/ai-providers.repository', () => ({
+  storedKeyIsUnreadable: async () => false,
   listProviders: async () => [{ id: 'p1', providerKey: 'ollama', displayName: 'Ollama', baseUrl: 'http://10.0.0.5:11434', isEnabled: true }],
 }));
 const realFetch = globalThis.fetch;

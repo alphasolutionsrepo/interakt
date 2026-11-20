@@ -14,7 +14,7 @@ import { classifyUpstream, explainSearchServiceText, findAIServiceError, isAIPro
 import { fieldErrorsFromIssues } from '@/shared/validation/validation-messages';
 
 // AIServiceError codes that point at our own configuration
-const AI_CONFIG_CODES = new Set(['PROVIDER_NOT_FOUND', 'MODEL_NOT_FOUND', 'PROVIDER_DISABLED']);
+const AI_CONFIG_CODES = new Set(['PROVIDER_NOT_FOUND', 'MODEL_NOT_FOUND', 'PROVIDER_DISABLED', 'PROVIDER_KEY_UNREADABLE']);
 
 /**
  * Whatever was thrown, as an AppError. Errors we don't recognise become INTERNAL_ERROR

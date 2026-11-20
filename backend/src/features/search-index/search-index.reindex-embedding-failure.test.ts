@@ -55,6 +55,7 @@ vi.mock('@/features/search/providers', () => ({
 vi.mock('@/features/ai-service/ai-service.analytics', () => ({ trackUsage: vi.fn(), updateRealtimeMetrics: vi.fn() }));
 // The index's embedding model, on a local Ollama
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
+    unreadableKeyError: async () => null,
     getProviderConfigById: async () => ({ id: 'p1', providerKey: 'ollama', isEnabled: true, baseUrl: 'http://127.0.0.1:11434', settings: {} }),
     getModelById: async () => ({ id: 1, modelKey: 'nomic-embed-text', capabilities: {} }),
     getProviderByKey: vi.fn(),

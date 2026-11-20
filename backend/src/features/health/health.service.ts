@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import { aiProvidersConfig, elasticsearchConfig, getProviderHealthConfig, type StatusPageResponse } from '@/config';
 import { db } from '@/db/index';
 import * as aiProvidersRepo from '@/features/ai-providers/ai-providers.repository';
+import { unreadableKeyError } from '@/features/ai-providers/ai-providers.service';
 import { defaultConnectionType, type AIConnectionType } from '@/features/ai-providers/ai-providers.validation';
 import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
 import { getDefaultSearchEngineProvider } from '@/features/search/providers';
@@ -327,7 +328,10 @@ export async function checkAIProvidersHealth(): Promise<ServiceHealth> {
     // Check all providers in parallel
     const healthResults = await Promise.all(
       providers.map(async (provider) => {
-        const result = await checkProviderHealth({
+        const keyError = await unreadableKeyError(provider);
+        const result = keyError
+          ? { healthy: false, message: keyError.message, responseTimeMs: 0, endpointTested: provider.baseUrl }
+          : await checkProviderHealth({
           id: provider.id,
           providerKey: provider.providerKey,
           baseUrl: provider.baseUrl,

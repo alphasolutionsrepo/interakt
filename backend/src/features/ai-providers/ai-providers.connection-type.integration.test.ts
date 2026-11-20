@@ -828,6 +828,12 @@ describe('API keys are encrypted where they are saved', () => {
     const body = (await res.json()).data;
     expect(body.hasApiKey).toBe(true);
     expect(JSON.stringify(body)).not.toContain('gw-key');
+    const list = await providersRoute.GET(new NextRequest('http://localhost/api/ai-providers'));
+    expect(list.status).toBe(200);
+    const listed = JSON.stringify(await list.json());
+    expect(listed).toContain('encrypted-key-provider');
+    expect(listed).not.toContain('gw-key');
+    expect(listed).not.toContain('enc:v1:');
 
     await generateText('Say hi', { providerId, modelId });
     expect(gateway.seen.at(-1)).toMatchObject({ path: '/v1/chat/completions', auth: 'Bearer gw-key' });
@@ -858,15 +864,37 @@ describe('API keys are encrypted where they are saved', () => {
     expect(gateway.seen.at(-1)).toMatchObject({ path: '/v1/chat/completions', auth: 'Bearer gw-key' });
   });
 
-  it('reads a key encrypted with another key as no key, and startup reports it', async () => {
-    const { providerId } = await gatewayWithModel('other-key-provider');
+  it('with a key encrypted under another key: the page loads, and every use of the key says it can\'t be decrypted, sending nothing', async () => {
+    const { providerId, modelId } = await gatewayWithModel('other-key-provider');
     vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'c'.repeat(64));
     try {
       const res = await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${providerId}`), idParams(providerId));
       expect(res.status).toBe(200);
       expect((await res.json()).data.hasApiKey).toBe(false);
+      gateway.seen = [];
+      const unreadable = expect.stringContaining('can\'t be decrypted with this server\'s encryption key');
+
+      // Test Connection
+      expect((await (await post(testConnectionRoute, providerId)).json()).data).toMatchObject({ success: false, message: unreadable });
+      // Discover Models
+      const discovery = await post(discoverRoute, providerId);
+      expect(discovery.status).toBe(400);
+      expect(await discovery.json()).toMatchObject({ code: 'PROVIDER_KEY_UNREADABLE', message: unreadable });
+      // Chat, summaries and embeddings (the AI service)
+      await expect(generateText('Say hi', { providerId, modelId })).rejects.toMatchObject({ code: 'PROVIDER_KEY_UNREADABLE', message: unreadable });
+      // None of them called the provider without its key
+      expect(gateway.seen).toEqual([]);
+      // The health check (it checks other tests' providers too, so their calls aren't counted)
+      const health = await checkAIProvidersHealth();
+      const mine = (health.details!.providers as Array<{ key: string; healthy: boolean; message: string; responseTimeMs: number }>).find((p) => p.key === 'other-key-provider');
+      expect(mine).toMatchObject({ healthy: false, message: unreadable, responseTimeMs: 0 });
+
       expect((await encryptStoredProviderKeys()).unreadable).toBeGreaterThanOrEqual(1);
       expect((await storedKey(providerId))?.startsWith('enc:v1:')).toBe(true);
+
+      // Entering the key again fixes it
+      expect((await updateProvider(providerId, { apiKey: 'gw-key' })).data.hasApiKey).toBe(true);
+      expect((await (await post(testConnectionRoute, providerId)).json()).data).toMatchObject({ success: true });
     } finally {
       vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64));
     }
@@ -888,6 +916,13 @@ describe('API keys are encrypted where they are saved', () => {
       });
       expect((await testDb.db.execute(sql`SELECT 1 FROM ai_providers WHERE provider_key = 'no-encryption'`)).rows).toHaveLength(0);
 
+      // Typing a new key into an existing provider is refused the same way, and the saved one stays
+      const before = await storedKey(plainId);
+      const update = await providerRoute.PUT(new NextRequest(`http://localhost/api/ai-providers/${plainId}`, { method: 'PUT', body: JSON.stringify({ apiKey: 'gw-key-new' }) }), idParams(plainId));
+      expect(update.status).toBe(500);
+      expect(await update.json()).toMatchObject({ code: 'ENCRYPTION_KEY_NOT_SET' });
+      expect(await storedKey(plainId)).toBe(before);
+
       // A provider without a key needs no encryption
       expect((await createProvider({ providerKey: 'no-key-needed', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl })).status).toBe(201);
 
@@ -896,5 +931,21 @@ describe('API keys are encrypted where they are saved', () => {
     } finally {
       vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64));
     }
+  });
+
+  it('startup leaves a key changed while it ran as it is, and does not count it', async () => {
+    await encryptStoredProviderKeys(); // earlier tests' plain keys: this row is then the only one
+    const providerId = await plainProvider('changed-during-startup', 'gw-key');
+    const realUpdate = testDb.db.update.bind(testDb.db);
+    const spy = vi.spyOn(testDb.db, 'update').mockImplementation(((table: Parameters<typeof realUpdate>[0]) => {
+      spy.mockRestore();
+      // An admin saves a new key between startup reading the row and writing it
+      return { set: (values: Record<string, unknown>) => ({ where: (where: unknown) => ({ returning: async (fields: unknown) => {
+        await testDb.db.execute(sql`UPDATE ai_providers SET api_key = 'typed-meanwhile' WHERE id = ${providerId}`);
+        return realUpdate(table).set(values).where(where as never).returning(fields as never);
+      } }) }) };
+    }) as never);
+    expect((await encryptStoredProviderKeys()).encrypted).toBe(0);
+    expect(await storedKey(providerId)).toBe('typed-meanwhile');
   });
 });

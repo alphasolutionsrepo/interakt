@@ -20,6 +20,7 @@ vi.mock('./ai-service.analytics', () => ({ trackUsage: vi.fn(), updateRealtimeMe
 /** The model row the AI service resolves: the registered size, and whether it can shorten vectors */
 const model = vi.hoisted(() => ({ modelKey: 'qwen3-embedding:4b', dimensions: 1536 as number | null, canShortenVectors: true }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
+  unreadableKeyError: async () => null,
   getProviderConfigById: async () => ({ id: 'prov-1', providerKey: 'ollama', isEnabled: true, baseUrl: 'http://model.test', settings: {} }),
   getModelById: async () => ({ id: 7, capabilities: {}, ...model }),
   getProviderByKey: vi.fn(),

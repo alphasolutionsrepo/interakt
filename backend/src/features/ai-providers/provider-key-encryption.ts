@@ -51,11 +51,12 @@ export async function encryptStoredProviderKeys(): Promise<ProviderKeyEncryption
       }
       try {
         // Only if unchanged since it was read (another replica, or an admin saving a new key)
-        await db
+        const updated = await db
           .update(aiProviders)
           .set({ apiKey: row.stored })
-          .where(and(eq(aiProviders.id, row.id), sql`${aiProviders.apiKey} = ${row.stored}`));
-        result.encrypted++;
+          .where(and(eq(aiProviders.id, row.id), sql`${aiProviders.apiKey} = ${row.stored}`))
+          .returning({ id: aiProviders.id });
+        result.encrypted += updated.length;
       } catch (error) {
         result.plain++;
         logger.error('Could not encrypt a saved AI provider key', error as Error, { providerKey: row.providerKey });

@@ -14,6 +14,7 @@ const logs = vi.hoisted(() => [] as LogLine[]);
 vi.mock('@/shared/logger/logger', async () => (await import('@/shared/test/log-recorder')).recordingLogger(logs));
 vi.mock('./ai-service.analytics', () => ({ trackUsage: vi.fn(), updateRealtimeMetrics: vi.fn() }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
+  unreadableKeyError: async () => null,
   getProviderConfigById: async () => ({ id: 'prov-1', providerKey: 'ollama', isEnabled: true, baseUrl: 'http://model.test', settings: {} }),
   getModelById: async () => ({ id: 7, modelKey: 'qwen2.5:14b', capabilities: {} }),
   getProviderByKey: vi.fn(),

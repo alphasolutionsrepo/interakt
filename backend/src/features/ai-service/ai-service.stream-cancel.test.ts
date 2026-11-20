@@ -29,6 +29,7 @@ vi.mock('@/features/telemetry/telemetry.config', async (importOriginal) => ({
 
 const provider = vi.hoisted(() => ({ key: 'ollama' }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
+  unreadableKeyError: async () => null,
   getProviderConfigById: async () => ({
     id: 'prov-1', providerKey: provider.key, isEnabled: true, baseUrl: 'http://model.test', settings: {},
   }),

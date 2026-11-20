@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createLogger } from '@/shared/logger/logger';
 import {
     getProviderConfigById,
+    unreadableKeyError,
     getProviderByKey,
     getModelById,
     getResolvedDefaults,
@@ -142,6 +143,9 @@ async function resolveProviderConfig(
             provider.providerKey
         );
     }
+
+    const keyError = await unreadableKeyError(provider);
+    if (keyError) throw keyError;
 
     // Load model details
     const model = await getModelById(modelId);

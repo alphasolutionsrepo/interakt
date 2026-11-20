@@ -12,6 +12,7 @@ vi.mock('./ai-service.analytics', () => ({ trackUsage: vi.fn(), updateRealtimeMe
 
 const stored = vi.hoisted(() => ({ providerKey: 'ollama' }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
+  unreadableKeyError: async () => null,
   // No connectionType: saved in the cache before the field existed
   getProviderConfigById: async () => ({ id: 'prov-1', providerKey: stored.providerKey, isEnabled: true, baseUrl: 'http://model.test', settings: {} }),
   getModelById: async () => ({ id: 7, modelKey: 'm', capabilities: {} }),

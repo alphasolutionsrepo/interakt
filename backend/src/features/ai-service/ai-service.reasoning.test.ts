@@ -13,6 +13,7 @@ vi.mock('./ai-service.analytics', () => ({ trackUsage: vi.fn(), updateRealtimeMe
 
 const stored = vi.hoisted(() => ({ providerKey: 'ollama', capabilities: {} as Record<string, unknown> }));
 vi.mock('@/features/ai-providers/ai-providers.service', () => ({
+  unreadableKeyError: async () => null,
   getProviderConfigById: async () => ({
     id: 'prov-1', providerKey: stored.providerKey, isEnabled: true, baseUrl: 'http://model.test', settings: {},
   }),
