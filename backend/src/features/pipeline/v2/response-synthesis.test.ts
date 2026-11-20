@@ -581,3 +581,81 @@ describe('relaxed constraints reach the answer', () => {
     expect(systemPrompt).not.toContain('filters were dropped');
   });
 });
+
+describe('output filter', () => {
+  it('sends only the filtered text: the content event and the result carry the block text', async () => {
+    const emit = vi.fn();
+    const filterOutput = vi.fn().mockResolvedValue('BLOCKED BY OUTPUT RULE');
+
+    const result = await synthesizeResponse(
+      makeInput(), makeDeps('The raw unchecked answer'), emit, {}, filterOutput,
+    );
+
+    expect(filterOutput).toHaveBeenCalledWith('The raw unchecked answer');
+    const contents = emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'content');
+    expect(contents).toEqual([{ type: 'content', text: 'BLOCKED BY OUTPUT RULE' }]);
+    expect(result.data?.responseText).toBe('BLOCKED BY OUTPUT RULE');
+    expect(JSON.stringify(emit.mock.calls)).not.toContain('raw unchecked');
+  });
+
+  it('never sends the unchecked text when the filter fails', async () => {
+    const emit = vi.fn();
+    const filterOutput = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const result = await synthesizeResponse(
+      makeInput(), makeDeps('The raw unchecked answer'), emit, {}, filterOutput,
+    );
+
+    expect(JSON.stringify(emit.mock.calls)).not.toContain('raw unchecked');
+    expect(result.data?.responseText).not.toContain('raw unchecked');
+  });
+
+  it('sends exactly the fixed text when the filter throws on the main path and again on the fallback', async () => {
+    const emit = vi.fn();
+    const filterOutput = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const result = await synthesizeResponse(
+      makeInput({ directResponse: true, actionResults: [] }), makeDeps('The raw unchecked answer'), emit, {}, filterOutput,
+    );
+
+    // Main path filter throws, the catch filters its own fallback text, which throws again
+    expect(filterOutput).toHaveBeenCalledTimes(2);
+    expect(filterOutput).toHaveBeenNthCalledWith(1, 'The raw unchecked answer');
+    expect(filterOutput.mock.calls[1][0]).not.toContain('raw unchecked');
+    const contents = emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'content');
+    expect(contents).toEqual([{ type: 'content', text: "I'm here to help! What can I do for you?" }]);
+    expect(result.data?.responseText).toBe("I'm here to help! What can I do for you?");
+  });
+
+  describe('when the chat call fails', () => {
+    const failingDeps = (): SynthesisDeps => ({ chat: vi.fn().mockRejectedValue(new Error('provider down')) });
+    const directInput = () => makeInput({
+      directResponse: true,
+      actionResults: [],
+      clarificationQuestion: 'Is your secret plan ready?',
+    });
+    const contentTexts = (emit: ReturnType<typeof vi.fn>) =>
+      emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'content').map((e) => (e as { text: string }).text);
+
+    it('filters the planner-written clarification question before it is sent', async () => {
+      const emit = vi.fn();
+      const filterOutput = vi.fn(async (t: string) => t.replace('secret', '[REDACTED]'));
+
+      const result = await synthesizeResponse(directInput(), failingDeps(), emit, {}, filterOutput);
+
+      expect(contentTexts(emit)).toEqual(['Is your [REDACTED] plan ready?']);
+      expect(result.data?.responseText).toBe('Is your [REDACTED] plan ready?');
+    });
+
+    it('sends the fixed text when the filter fails too', async () => {
+      const emit = vi.fn();
+      const filterOutput = vi.fn().mockRejectedValue(new Error('filter boom'));
+
+      const result = await synthesizeResponse(directInput(), failingDeps(), emit, {}, filterOutput);
+
+      expect(contentTexts(emit)).toEqual(["I'm here to help! What can I do for you?"]);
+      expect(result.data?.responseText).toBe("I'm here to help! What can I do for you?");
+      expect(JSON.stringify(emit.mock.calls)).not.toContain('secret plan');
+    });
+  });
+});

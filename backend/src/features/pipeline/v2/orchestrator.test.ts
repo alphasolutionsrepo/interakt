@@ -192,6 +192,22 @@ describe('V2 Pipeline Orchestrator', () => {
     });
   });
 
+  describe('output filter', () => {
+    it('streams, saves and returns the filtered answer, never the written one', async () => {
+      const input = makeInput({ filterOutput: async () => 'BLOCKED BY OUTPUT RULE' });
+      const deps = makeDeps();
+
+      const result = await runV2Pipeline(input, deps);
+
+      expect(result.responseText).toBe('BLOCKED BY OUTPUT RULE');
+      const [, messages] = (deps.persistence.addMessages as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(messages[1].content).toBe('BLOCKED BY OUTPUT RULE');
+      const events = (input.onEvent as ReturnType<typeof vi.fn>).mock.calls.map(([e]: [PipelineStreamEvent]) => e);
+      expect(events.filter((e) => e.type === 'content')).toEqual([{ type: 'content', text: 'BLOCKED BY OUTPUT RULE' }]);
+      expect(JSON.stringify(events)).not.toContain('red shoes for you');
+    });
+  });
+
   describe('model choice', () => {
     it("uses the experience's model for every AI call in the turn, the answer included", async () => {
       const deps = makeDeps();
