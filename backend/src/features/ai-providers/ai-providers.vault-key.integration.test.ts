@@ -280,6 +280,14 @@ describe('saving a provider\'s key', () => {
     expect(await secretValue('shared_gateway_key')).toBe('vault-key');
   });
 
+  it('keeps the provider\'s own secret its own when that secret is chosen again, so it still goes with the provider', async () => {
+    const { body } = await create({ providerKey: 'campus-gw-own', apiKey: 'vault-key' });
+    const again = await update(body.data.id, { baseUrl: 'https://elsewhere.example/v1', apiKeySecret: 'ai_provider_campus_gw_own' });
+    expect(again.body.data).toMatchObject({ apiKeySecret: 'ai_provider_campus_gw_own', apiKeySecretManaged: true });
+    expect(await remove(body.data.id)).toBe(200);
+    expect(await secretValue('ai_provider_campus_gw_own')).toBeUndefined();
+  });
+
   it('refuses a secret the vault doesn\'t have, and a key and a secret together, saving nothing', async () => {
     const missing = await create({ providerKey: 'campus-gw-f', apiKeySecret: 'no_such_secret' });
     expect(missing.status).toBe(400);

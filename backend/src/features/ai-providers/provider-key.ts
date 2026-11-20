@@ -116,9 +116,11 @@ export async function applyKeyChange(
       return { fields: { apiKey: null, apiKeySecret: null, apiKeySecretManaged: false }, noLongerUsed: ownSecret };
     case 'chosen': {
       if (!(await secretExists(change.name, tx))) throw new UnknownKeySecretError(change.name);
+      // Choosing its own secret again (say, with a new base URL) keeps it the provider's own
+      const stillOwn = ownSecret === change.name;
       return {
-        fields: { apiKey: null, apiKeySecret: change.name, apiKeySecretManaged: false },
-        noLongerUsed: ownSecret !== change.name ? ownSecret : undefined,
+        fields: { apiKey: null, apiKeySecret: change.name, apiKeySecretManaged: stillOwn },
+        noLongerUsed: stillOwn ? undefined : ownSecret,
       };
     }
     case 'typed': {
