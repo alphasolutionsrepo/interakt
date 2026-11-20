@@ -7,6 +7,11 @@
  */
 export const SECRET_TEMPLATE_PATTERN = /\{\{secret:([a-z][a-z0-9_]*)\}\}/g;
 
+/** The one wording for a secret a setting names that the vault can't give. Names only, never values. */
+export function missingSecretMessage(name: string, usedFor: string): string {
+  return `The secret "${name}" used ${usedFor} is missing from the Secrets Vault or can't be read`;
+}
+
 /**
  * Config fields whose value is a bare secret name (MCP and data source auth, HTTP tool auth,
  * the web search key). Shared by the delete check (secrets.repository findSecretReferences)
