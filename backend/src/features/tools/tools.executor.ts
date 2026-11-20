@@ -17,7 +17,7 @@
  * 7. Full OTel tracing across entire lifecycle
  */
 
-import { SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
+import { missingSecretMessage, SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
 import { classifyUpstream, failedAtAIProvider, findAIServiceError, shardsUnavailable } from '@/shared/errors/upstream';
@@ -578,7 +578,11 @@ export async function executeTool(
       const configSource = (tool.executorConfig as Record<string, unknown> | null) ?? {};
       const { config: resolvedConfig, unresolved } = await resolveSecretRefs(configSource);
       if (unresolved.length > 0) {
-        // Nothing is sent with a placeholder in place of the secret, and a retry can't help
+        // Nothing is sent with a placeholder in place of the secret, and a retry can't help.
+        // Like an error the executor returns, this skips the fallback (see the result.success branch below)
+        logger.warn('Tool not run: a secret in its settings is missing from the vault', {
+          toolId: tool.id, toolSlug: tool.slug, secrets: unresolved,
+        });
         const durationMs = Date.now() - start;
         span.setAttribute(ATTR.TOOL_SUCCESS, false);
         span.setAttribute(ATTR.TOOL_DURATION_MS, durationMs);
@@ -586,7 +590,7 @@ export async function executeTool(
         return {
           success: false,
           error: unresolved
-            .map((name) => `The secret "${name}" used in this tool's settings is missing from the Secrets Vault or can't be read`)
+            .map((name) => missingSecretMessage(name, "in this tool's settings"))
             .join('. '),
           durationMs,
           retriesUsed: 0,

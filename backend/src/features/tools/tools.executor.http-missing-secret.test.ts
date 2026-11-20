@@ -9,8 +9,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
 vi.mock('@/shared/logger/logger', () => ({
-  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() }),
 }));
 vi.mock('@/features/telemetry', () => ({
   withSpan: vi.fn((_opts: unknown, fn: (span: unknown) => unknown) =>
@@ -30,7 +31,7 @@ import { executeTool } from './tools.executor';
 
 const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ items: [] }), { status: 200 }));
 beforeEach(() => { vi.stubGlobal('fetch', fetchMock); });
-afterEach(() => { vi.unstubAllGlobals(); fetchMock.mockClear(); getToolById.mockReset(); });
+afterEach(() => { warn.mockClear(); vi.unstubAllGlobals(); fetchMock.mockClear(); getToolById.mockReset(); });
 
 const httpTool = (baseUrl: string, extra: Record<string, unknown> = {}) => ({
   id: 'tool-1',
@@ -87,6 +88,12 @@ describe('a tool whose settings name a secret the vault can\'t give', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('logs the tool and the secret names, never a value', async () => {
+    getToolById.mockResolvedValue(httpTool(url, { headers: { A: '{{secret:gone_key}}', B: '{{secret:orders_host}}' } }));
+    await executeTool('tool-1', {});
+    expect(warn).toHaveBeenCalledWith(expect.any(String), { toolId: 'tool-1', toolSlug: 'orders', secrets: ['gone_key'] });
+  });
+
   it('names every missing secret, and never a value', async () => {
     getToolById.mockResolvedValue(httpTool(url, { headers: { A: '{{secret:gone_key}}', B: '{{secret:orders_host}}', C: '{{secret:gone_two}}' } }));
     const result = await executeTool('tool-1', {});
@@ -111,6 +118,19 @@ describe('a tool whose settings name a secret the vault can\'t give', () => {
     const result = await executeTool('tool-1', { query: 'x' });
     expect(result.success).toBe(false);
     expect(result.error).toBe(MISSING);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('a web search tool whose API key secret the vault can\'t give', () => {
+  it('fails naming the secret, and sends nothing', async () => {
+    getToolById.mockResolvedValue({
+      ...httpTool('https://api.example.com/orders'), executorType: 'web_search',
+      executorConfig: { apiKeySecret: 'gone_key' }, inputSchema: null,
+    });
+    const result = await executeTool('tool-1', { query: 'x' });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('The secret "gone_key" used as the web search API key is missing from the Secrets Vault or can\'t be read');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

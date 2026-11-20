@@ -15,6 +15,7 @@
  */
 
 import type { McpAuthConfig, DiscoveredMcpTool, DiscoveredToolCatalog } from '@/db/schema/mcp-connections.schema';
+import { missingSecretMessage } from '@/features/secrets/secret-template';
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
 
@@ -71,7 +72,7 @@ async function buildAuthHeaders(authConfig?: McpAuthConfig | null): Promise<Reco
   const token = await resolveSecret(authConfig.secretRef);
   // Calling the server without its credentials would look like a server fault
   if (!token) {
-    throw new Error(`The secret "${authConfig.secretRef}" used for this connection's authentication is missing from the Secrets Vault or can't be read`);
+    throw new Error(missingSecretMessage(authConfig.secretRef, "for this connection's authentication"));
   }
 
   if (authConfig.type === 'bearer') {

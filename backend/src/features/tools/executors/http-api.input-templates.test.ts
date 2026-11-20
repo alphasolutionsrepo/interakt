@@ -142,3 +142,12 @@ describe('a URL that is not a full URL', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('an authentication secret the vault can\'t give', () => {
+  it('fails naming the secret, and sends nothing', async () => {
+    const result = await executeHttpApi(tool({ authentication: { type: 'header', key: 'X-Api-Key', valueRef: 'gone_key' } }), {});
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('The secret "gone_key" used for authentication is missing from the Secrets Vault or can\'t be read');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

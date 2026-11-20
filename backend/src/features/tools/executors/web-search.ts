@@ -8,6 +8,7 @@
 
 import type { ToolExecutionResult } from '../tools.executor';
 
+import { missingSecretMessage } from '@/features/secrets/secret-template';
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
 
@@ -76,7 +77,7 @@ export async function executeWebSearch(
 
   const apiKey = await resolveSecret(secretName);
   if (!apiKey) {
-    return { success: false, error: `Secret "${secretName}" not found in vault` };
+    return { success: false, error: missingSecretMessage(secretName, 'as the web search API key') };
   }
 
   // Allow the caller to override maxResults at runtime

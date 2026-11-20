@@ -19,13 +19,13 @@ vi.mock('@/features/tools/tools.service', () => ({}));
 
 import { performHealthCheck } from './data-source.service';
 
-const source = (secretRef: string) => ({
+const source = (secretRef: string, authType = 'api_key', provider = 'elasticsearch') => ({
   id: 'ds-1',
   type: 'search_index_external',
   config: {
-    provider: 'elasticsearch',
+    provider,
     connection: {
-      url: 'https://es.example.com', indexName: 'docs', authType: 'api_key', credentials: { secretRef },
+      url: 'https://es.example.com', indexName: 'docs', authType, credentials: { secretRef },
     },
   },
   schema: null,
@@ -44,8 +44,27 @@ describe('health check on an external Elasticsearch source with a credentials se
   it('names the missing secret and sends no index request without the key', async () => {
     repository.getDataSourceById.mockResolvedValue(source('gone_key'));
     const result = await performHealthCheck('ds-1');
+    expect(result.status).toBe('error');
     expect(result.message).toContain('The secret "gone_key" used for this data source\'s connection is missing from the Secrets Vault');
     expect(indexRequests()).toHaveLength(0);
+  });
+
+  it('does the same for Azure AI Search, which shares the check', async () => {
+    repository.getDataSourceById.mockResolvedValue(source('gone_key', 'api_key', 'azure_ai_search'));
+    const result = await performHealthCheck('ds-1');
+    expect(result.status).toBe('error');
+    expect(result.message).toContain('The secret "gone_key"');
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/indexes'))).toHaveLength(0);
+  });
+
+  it('ignores a leftover secret name when the source has no authentication', async () => {
+    repository.getDataSourceById.mockResolvedValue(source('gone_key', 'none'));
+    const result = await performHealthCheck('ds-1');
+    expect(result.status).toBe('healthy');
+    expect(result.message).not.toContain('gone_key');
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes('_stats'));
+    expect(call).toBeDefined();
+    expect((call?.[1]?.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
   it('sends the key when the vault has the secret', async () => {

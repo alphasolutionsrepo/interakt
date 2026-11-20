@@ -11,6 +11,7 @@ import type { ToolExecutionResult } from '../tools.executor';
 
 import { FIXED_HOST_MESSAGE, INPUT_PATTERN, resolveUrlTemplate, urlProblemMessage } from './http-url';
 
+import { missingSecretMessage } from '@/features/secrets/secret-template';
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
 
@@ -161,7 +162,7 @@ export async function executeHttpApi(
   if (auth && auth.type !== 'none' && auth.key && auth.valueRef) {
     const secretValue = await resolveSecret(auth.valueRef);
     if (secretValue == null) {
-      return { success: false, error: `The secret "${auth.valueRef}" used for authentication is missing from the Secrets Vault or can't be read` };
+      return { success: false, error: missingSecretMessage(auth.valueRef, 'for authentication') };
     }
     if (auth.type === 'header') {
       headers[auth.key] = secretValue;
