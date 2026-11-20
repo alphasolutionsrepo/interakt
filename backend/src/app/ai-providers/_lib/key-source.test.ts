@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { chosenSecretOf, initialKeySource, keyFieldsToSend, keyLocation } from './key-source';
+import { chosenSecretOf, initialKeySource, keyFieldsToSend, keyLocation, typedKeyMissing } from './key-source';
 
 const own = { apiKeySecret: 'ai_provider_gw', apiKeySecretManaged: true, baseUrl: 'https://a.example/v1' };
 const chosen = { apiKeySecret: 'shared_key', apiKeySecretManaged: false, baseUrl: 'https://a.example/v1' };
@@ -35,5 +35,15 @@ describe('where the card says a provider\'s key is kept', () => {
     expect(keyLocation({ hasApiKey: true, apiKeySecret: 'ai_provider_gw' })).toBe('Kept in the Secrets Vault as ai_provider_gw');
     expect(keyLocation({ hasApiKey: true, apiKeySecret: null })).toMatch(/moves to the Secrets Vault/);
     expect(keyLocation({ hasApiKey: false, apiKeySecret: null })).toBeNull();
+  });
+});
+
+describe('switching from a chosen vault secret to a key entered here', () => {
+  it('needs a key, so an empty field never quietly keeps the secret', () => {
+    expect(typedKeyMissing({ source: 'typed', apiKey: '', provider: chosen })).toBe(true);
+    expect(typedKeyMissing({ source: 'typed', apiKey: 'sk-new', provider: chosen })).toBe(false);
+    // The provider's own secret (from a typed key) is kept by an empty field, as before
+    expect(typedKeyMissing({ source: 'typed', apiKey: '', provider: own })).toBe(false);
+    expect(typedKeyMissing({ source: 'secret', apiKey: '', provider: chosen })).toBe(false);
   });
 });

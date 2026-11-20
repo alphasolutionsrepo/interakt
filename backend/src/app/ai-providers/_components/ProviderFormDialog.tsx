@@ -36,7 +36,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { chosenSecretOf, initialKeySource, keyFieldsToSend } from '../_lib/key-source';
+import { chosenSecretOf, initialKeySource, keyFieldsToSend, typedKeyMissing } from '../_lib/key-source';
 import { secretsApi } from '@/app/secrets/_lib/api-client';
 import type { AIProviderWithModelsResponse } from '@/features/ai-providers';
 import { useInlineError } from '@/shared/activity/useInlineError';
@@ -190,6 +190,11 @@ export function ProviderFormDialog({
         inline.clear();
         try {
             const { keySource, apiKey, apiKeySecret, ...rest } = data;
+            const saved = mode === 'edit' ? provider : null;
+            if (rest.authType === 'api_key' && typedKeyMissing({ source: keySource, apiKey, provider: saved })) {
+                form.setError('apiKey', { message: `Enter the key to use instead of the vault secret ${chosenSecretOf(saved)}` });
+                return;
+            }
             const key = rest.authType === 'api_key'
                 ? keyFieldsToSend({ source: keySource, apiKey, apiKeySecret, baseUrl: rest.baseUrl, provider: mode === 'edit' ? provider : null })
                 : {};
@@ -458,7 +463,9 @@ export function ProviderFormDialog({
                                             </div>
                                         </FormControl>
                                         <FormDescription>
-                                            {mode === 'edit' && provider?.hasApiKey
+                                            {mode === 'edit' && chosenSecretOf(provider)
+                                                ? <>Enter the key to use instead of the vault secret <code>{chosenSecretOf(provider)}</code>.</>
+                                                : mode === 'edit' && provider?.hasApiKey
                                                 ? <>Leave empty to keep the saved key{provider.apiKeySecret ? <> (vault secret <code>{provider.apiKeySecret}</code>)</> : null}. A base URL on another server needs the key again.</>
                                                 : <>Saved in the Secrets Vault as <code>{ownSecret ?? `ai_provider_${(providerKey || 'provider-key').replace(/-/g, '_')}`}</code>.</>}
                                         </FormDescription>

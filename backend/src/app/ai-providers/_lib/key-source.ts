@@ -45,3 +45,11 @@ export function keyLocation(provider: Pick<AIProviderResponse, 'hasApiKey' | 'ap
     ? `Kept in the Secrets Vault as ${provider.apiKeySecret}`
     : 'Saved on the provider; it moves to the Secrets Vault when the server next starts with an encryption key set';
 }
+
+/**
+ * Switching from a vault secret the admin chose to "a key entered here" needs a key: an empty
+ * one would keep the chosen secret, which isn't what the form shows.
+ */
+export function typedKeyMissing(input: { source: KeySource; apiKey?: string | null; provider?: SavedKey | null }): boolean {
+  return input.source === 'typed' && !(input.apiKey ?? '').trim() && !!chosenSecretOf(input.provider);
+}

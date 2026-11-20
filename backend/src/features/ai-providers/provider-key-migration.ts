@@ -11,6 +11,7 @@
 import * as repository from './ai-providers.repository';
 import { applyKeyChange } from './provider-key';
 import { encryptionKeyIsSet } from '@/features/secrets/secrets.encryption';
+import { PG_UNIQUE_VIOLATION, pgCode } from '@/shared/db/pg-error';
 import { createLogger } from '@/shared/logger/logger';
 
 const logger = createLogger('ai-provider-key-migration');
@@ -50,7 +51,8 @@ export async function moveProviderKeysToVault(): Promise<ProviderKeyMoveResult> 
         });
         result.moved++;
       } catch (error) {
-        if (error instanceof KeyChangedMeanwhile) continue;
+        // Another instance moved it first (its row changed, or it took the secret's name)
+        if (error instanceof KeyChangedMeanwhile || pgCode(error) === PG_UNIQUE_VIOLATION) continue;
         result.left++;
         logger.error('Could not move an AI provider key into the Secrets Vault', error as Error, { providerKey: provider.providerKey });
       }

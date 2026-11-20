@@ -159,8 +159,8 @@ describe('a provider whose API key is a vault secret', () => {
 });
 
 describe.each([
-  ['is gone from the vault', 'missing', "which doesn't exist"],
-  ['can\'t be decrypted (the encryption key changed)', 'unreadable', "can't be decrypted with this server's encryption key"],
+  ['is gone from the vault', 'missing', /which doesn't exist/],
+  ['can\'t be decrypted (the encryption key changed)', 'unreadable', /can't be decrypted with this server's encryption key/],
 ] as const)('a provider whose key secret %s', (_label, kind, says) => {
   async function brokenProvider() {
     const name = `broken_key_${n + 1}`;
@@ -174,7 +174,7 @@ describe.each([
 
   it('names the secret and what to do on every path an admin sees, and calls nothing', async () => {
     const p = await brokenProvider();
-    const message = expect.stringMatching(new RegExp(`"Campus gateway \\d+".*"broken_key_\\d+".*${says.replace(/[()]/g, '\\$&')}`));
+    const message = expect.stringMatching(new RegExp(`"Campus gateway \\d+".*"broken_key_\\d+".*${says.source}`));
 
     await expect(generateText('Say hi', { providerId: p.providerId, modelId: p.chatModelId })).rejects.toMatchObject({ code: 'PROVIDER_KEY_UNAVAILABLE', message });
     await expect(read(streamChat([{ role: 'user', content: 'Say hi' }], { providerId: p.providerId, modelId: p.chatModelId }))).rejects.toMatchObject({ code: 'PROVIDER_KEY_UNAVAILABLE' });
@@ -450,6 +450,20 @@ describe('keys saved on providers before the vault held them, at startup', () =>
     expect(await secretValue(`ai_provider_${p.providerKey.replace(/-/g, '_')}`)).toBeUndefined();
     // The next start moves the new one
     expect(await moveProviderKeysToVault()).toEqual({ moved: 1, left: 0 });
+  });
+
+  it('count a key another instance starting at the same time moved first as nobody\'s failure', async () => {
+    const p = await providerWithSecret(null, { apiKey: 'vault-key' });
+    // The other instance took the secret's name between this one's check and its write
+    const spy = vi.spyOn(testDb.db, 'transaction').mockImplementationOnce((async () => {
+      throw Object.assign(new Error('duplicate key value violates unique constraint "secrets_name_unique"'), { code: '23505' });
+    }) as never);
+    try {
+      expect(await moveProviderKeysToVault()).toEqual({ moved: 0, left: 0 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await row(p.providerId)).toMatchObject({ api_key: 'vault-key' });
   });
 
   it('never stop the server: a database failure is logged and nothing changes', async () => {
