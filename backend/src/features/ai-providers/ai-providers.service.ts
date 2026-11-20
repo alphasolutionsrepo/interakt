@@ -36,6 +36,7 @@ import type {
   AIModelType,
 } from './ai-providers.types';
 import { defaultConnectionType, type AIConnectionType } from './ai-providers.validation';
+import { ProviderKeyError, withProviderKey } from './provider-key';
 import { canShortenVectorsByDefault } from './shortenable-embeddings';
 
 import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
@@ -886,12 +887,22 @@ export async function testConnection(providerId: string): Promise<ConnectionTest
   const startTime = Date.now();
 
   try {
-    const provider = await repository.getProviderById(providerId);
-    if (!provider) {
+    const stored = await repository.getProviderById(providerId);
+    if (!stored) {
       throw new Error(`Provider with ID "${providerId}" not found`);
     }
 
     let result: ConnectionTestResult;
+    let provider: AIProvider;
+    try {
+      // Its API key, read from the Secrets Vault
+      provider = await withProviderKey(stored);
+    } catch (error) {
+      if (!(error instanceof ProviderKeyError)) throw error;
+      result = { providerId, providerKey: stored.providerKey, success: false, message: error.message, responseTimeMs: 0, testedAt: new Date() };
+      await repository.updateProviderConnectionStatus(providerId, `error: ${result.message}`);
+      return result;
+    }
 
     // Test based on provider type
     if (connectionTypeOf(provider) === 'ollama') {
@@ -1073,10 +1084,12 @@ export async function discoverModels(
   options: { timeoutMs?: number } = {}
 ): Promise<ModelDiscoveryResult> {
   try {
-    const provider = await repository.getProviderById(providerId);
-    if (!provider) {
+    const stored = await repository.getProviderById(providerId);
+    if (!stored) {
       throw new Error(`Provider with ID "${providerId}" not found`);
     }
+    // Its API key, read from the Secrets Vault (every request discovery makes sends it)
+    const provider = await withProviderKey(stored);
     const timeoutMs = options.timeoutMs ?? 30000;
     const report = connectionTypeOf(provider) === 'ollama'
       ? await readOllamaModels(provider, timeoutMs)

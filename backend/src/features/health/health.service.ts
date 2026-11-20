@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import { aiProvidersConfig, elasticsearchConfig, getProviderHealthConfig, type StatusPageResponse } from '@/config';
 import { db } from '@/db/index';
 import * as aiProvidersRepo from '@/features/ai-providers/ai-providers.repository';
+import { ProviderKeyError, withProviderKey } from '@/features/ai-providers/provider-key';
 import { defaultConnectionType, type AIConnectionType } from '@/features/ai-providers/ai-providers.validation';
 import { ollamaHeaders } from '@/features/ai-service/adapters/ollama-headers';
 import { getDefaultSearchEngineProvider } from '@/features/search/providers';
@@ -326,7 +327,24 @@ export async function checkAIProvidersHealth(): Promise<ServiceHealth> {
 
     // Check all providers in parallel
     const healthResults = await Promise.all(
-      providers.map(async (provider) => {
+      providers.map(async (stored) => {
+        let provider: typeof stored;
+        try {
+          // Its API key, read from the Secrets Vault
+          provider = await withProviderKey(stored);
+        } catch (error) {
+          if (!(error instanceof ProviderKeyError)) throw error;
+          // Every signed-in user sees health: the AI Providers page has the details
+          return {
+            providerId: stored.id,
+            providerKey: stored.providerKey,
+            displayName: stored.displayName,
+            healthy: false,
+            message: 'API key unavailable: see the AI Providers page',
+            responseTimeMs: 0,
+            endpointTested: stored.baseUrl,
+          };
+        }
         const result = await checkProviderHealth({
           id: provider.id,
           providerKey: provider.providerKey,

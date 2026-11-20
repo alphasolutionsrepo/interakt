@@ -114,7 +114,10 @@ export const aiProviders = pgTable('ai_providers', {
 
   // Connection configuration
   baseUrl: varchar('base_url', { length: 500 }).notNull(),
-  apiKey: varchar('api_key', { length: 500 }), // Nullable - only for cloud providers
+  // Kept for keys saved before the vault held them; emptied when they move to the vault at startup
+  apiKey: varchar('api_key', { length: 500 }),
+  // Name of the Secrets Vault secret holding the API key (the key itself is never on this row)
+  apiKeySecret: varchar('api_key_secret', { length: 100 }),
 
   // Status
   isEnabled: boolean('is_enabled').default(true).notNull(),

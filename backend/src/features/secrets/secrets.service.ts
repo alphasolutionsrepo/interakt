@@ -120,18 +120,33 @@ export async function deleteSecret(id: string, userId?: string): Promise<boolean
 // RUNTIME RESOLUTION (used by tool executors)
 // ============================================================================
 
+/** A secret's value, or why there is none: no secret by that name, or one this server can't decrypt */
+export type SecretRead =
+  | { status: 'found'; value: string }
+  | { status: 'missing' }
+  | { status: 'unreadable' };
+
 /**
- * Resolve a secret reference to its decrypted value.
+ * Read a secret's value by name, saying why when there is none. "unreadable" covers a value
+ * encrypted with another SECRETS_ENCRYPTION_KEY, a damaged value, and no key set.
+ */
+export async function readSecret(name: string): Promise<SecretRead> {
+  const secret = await repository.getSecretByName(name);
+  if (!secret) return { status: 'missing' };
+
+  try {
+    return { status: 'found', value: decrypt(secret.encryptedValue) };
+  } catch (error) {
+    logger.error('Failed to decrypt secret', error as Error, { name });
+    return { status: 'unreadable' };
+  }
+}
+
+/**
+ * Resolve a secret reference to its decrypted value, or null when there is none.
  * Used at tool execution time to resolve {{secret:name}} references.
  */
 export async function resolveSecret(name: string): Promise<string | null> {
-  const secret = await repository.getSecretByName(name);
-  if (!secret) return null;
-
-  try {
-    return decrypt(secret.encryptedValue);
-  } catch (error) {
-    logger.error('Failed to decrypt secret', error as Error, { name });
-    return null;
-  }
+  const read = await readSecret(name);
+  return read.status === 'found' ? read.value : null;
 }
