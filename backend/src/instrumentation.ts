@@ -56,6 +56,10 @@ export async function register() {
     const { runStartupSeeding } = await import('@/shared/seeders');
     await runStartupSeeding();
 
+    // Encrypt AI provider keys saved before keys were encrypted. Logs only on failure.
+    const { encryptStoredProviderKeys } = await import('@/features/ai-providers/provider-key-encryption');
+    await encryptStoredProviderKeys();
+
     // Report configuration retired by the chat-pipeline consolidation. Logs only —
     // never mutates data, never blocks startup.
     const { runUpgradePreflight } = await import('@/shared/setup/upgrade-preflight');

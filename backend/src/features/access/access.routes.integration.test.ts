@@ -94,7 +94,10 @@ import { findSecretReferences } from '@/features/secrets/secrets.repository';
 const EDITOR = '00000000-0000-4000-8000-000000000002';
 const VIEWER = '00000000-0000-4000-8000-000000000003';
 
-beforeAll(async () => { testDb = await createAppTestDb(); }, 60_000);
+beforeAll(async () => {
+  vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64)); // provider keys are encrypted when saved
+  testDb = await createAppTestDb();
+}, 60_000);
 afterAll(() => testDb.close());
 
 let n = 0;

@@ -1,0 +1,1 @@
+ALTER TABLE "ai_providers" ALTER COLUMN "api_key" SET DATA TYPE text;

@@ -30,6 +30,7 @@ import {
   aiProviderTypeEnum,
   aiConnectionTypeEnum,
 } from './enums.schema';
+import { encryptedText } from './encrypted-text';
 
 // ============================================================================
 // TYPES FOR JSON FIELDS
@@ -114,7 +115,7 @@ export const aiProviders = pgTable('ai_providers', {
 
   // Connection configuration
   baseUrl: varchar('base_url', { length: 500 }).notNull(),
-  apiKey: varchar('api_key', { length: 500 }), // Nullable - only for cloud providers
+  apiKey: encryptedText('api_key'), // Encrypted at rest; nullable - only for cloud providers
 
   // Status
   isEnabled: boolean('is_enabled').default(true).notNull(),

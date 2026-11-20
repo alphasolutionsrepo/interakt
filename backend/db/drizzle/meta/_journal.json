@@ -302,6 +302,13 @@
       "when": 1794949152074,
       "tag": "0042_model_hidden_by_discovery",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795133890638,
+      "tag": "0043_encrypt_provider_api_key",
+      "breakpoints": true
     }
   ]
 }

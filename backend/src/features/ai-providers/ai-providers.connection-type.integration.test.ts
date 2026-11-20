@@ -25,6 +25,7 @@ import * as modelRoute from '@/app/api/ai-provider-models/[id]/route';
 import * as providerRoute from '@/app/api/ai-providers/[id]/route';
 import * as testConnectionRoute from '@/app/api/ai-providers/[id]/test-connection/route';
 import * as providersRoute from '@/app/api/ai-providers/route';
+import { encryptStoredProviderKeys } from '@/features/ai-providers/provider-key-encryption';
 import { generateText, streamChat } from '@/features/ai-service/ai-service.service';
 import { checkAIProvidersHealth } from '@/features/health/health.service';
 import { sql } from 'drizzle-orm';
@@ -74,6 +75,7 @@ const listen = (server: http.Server) => new Promise<string>((resolve) =>
   server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
 
 beforeAll(async () => {
+  vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64)); // provider keys are encrypted when saved
   testDb = await createAppTestDb();
   gatewayServer = http.createServer((req, res) => {
     gateway.seen.push({ at: Date.now(), path: req.url ?? '', auth: req.headers.authorization });
@@ -801,5 +803,98 @@ describe("discovery reads what the provider says about each model, before guessi
     expect(saved['router/vectors-small'].modelType).toBe('embedding');
     expect(saved['house-chat'].modelType).toBe('chat');
     expect(saved['router/writer']).toMatchObject({ modelType: 'chat', capabilities: expect.objectContaining({ contextWindow: 65536 }) });
+  });
+});
+
+describe('API keys are encrypted where they are saved', () => {
+  const storedKey = async (providerId: string) =>
+    ((await testDb.db.execute(sql`SELECT api_key FROM ai_providers WHERE id = ${providerId}`)).rows[0] as { api_key: string | null }).api_key;
+  const chatModelOf = async (providerId: string) =>
+    ((await testDb.db.execute(sql`SELECT id FROM ai_provider_models WHERE provider_id = ${providerId} AND model_key = 'campus-chat'`)).rows[0] as { id: number }).id;
+  /** A provider row as saved before keys were encrypted: the key in plain text */
+  async function plainProvider(providerKey: string, apiKey: string) {
+    const row = (await testDb.db.execute(sql`INSERT INTO ai_providers (provider_key, display_name, provider_type, connection_type, auth_type, base_url, api_key, is_enabled)
+      VALUES (${providerKey}, ${providerKey}, 'local', 'openai_compatible', 'api_key', ${gatewayUrl}, ${apiKey}, true) RETURNING id`)).rows[0] as { id: string };
+    return row.id;
+  }
+
+  it('saves the key encrypted, never sends it back, and still sends it to the provider', async () => {
+    const { providerId, modelId } = await gatewayWithModel('encrypted-key-provider');
+    const stored = await storedKey(providerId);
+    expect(stored?.startsWith('enc:v1:')).toBe(true);
+    expect(stored).not.toContain('gw-key');
+
+    const res = await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${providerId}`), idParams(providerId));
+    const body = (await res.json()).data;
+    expect(body.hasApiKey).toBe(true);
+    expect(JSON.stringify(body)).not.toContain('gw-key');
+
+    await generateText('Say hi', { providerId, modelId });
+    expect(gateway.seen.at(-1)).toMatchObject({ path: '/v1/chat/completions', auth: 'Bearer gw-key' });
+  });
+
+  it('encrypts a key typed in again on update', async () => {
+    const { providerId } = await gatewayWithModel('rekeyed-provider');
+    expect((await updateProvider(providerId, { apiKey: 'gw-key-2' })).data.hasApiKey).toBe(true);
+    const stored = await storedKey(providerId);
+    expect(stored?.startsWith('enc:v1:')).toBe(true);
+    expect(stored).not.toContain('gw-key-2');
+  });
+
+  it('keeps using a key saved before encryption, and startup encrypts it once', async () => {
+    const providerId = await plainProvider('plain-key-provider', 'gw-key');
+    gateway.models = [{ id: 'campus-chat', object: 'model' }];
+    await post(discoverRoute, providerId);
+    expect(gateway.seen.at(-1)).toMatchObject({ path: '/v1/models', auth: 'Bearer gw-key' });
+
+    const first = await encryptStoredProviderKeys();
+    expect(first.encrypted).toBeGreaterThanOrEqual(1);
+    const stored = await storedKey(providerId);
+    expect(stored?.startsWith('enc:v1:')).toBe(true);
+    expect(stored).not.toContain('gw-key');
+    expect((await encryptStoredProviderKeys()).encrypted).toBe(0);
+
+    await generateText('Say hi', { providerId, modelId: await chatModelOf(providerId) });
+    expect(gateway.seen.at(-1)).toMatchObject({ path: '/v1/chat/completions', auth: 'Bearer gw-key' });
+  });
+
+  it('reads a key encrypted with another key as no key, and startup reports it', async () => {
+    const { providerId } = await gatewayWithModel('other-key-provider');
+    vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'c'.repeat(64));
+    try {
+      const res = await providerRoute.GET(new NextRequest(`http://localhost/api/ai-providers/${providerId}`), idParams(providerId));
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.hasApiKey).toBe(false);
+      expect((await encryptStoredProviderKeys()).unreadable).toBeGreaterThanOrEqual(1);
+      expect((await storedKey(providerId))?.startsWith('enc:v1:')).toBe(true);
+    } finally {
+      vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64));
+    }
+  });
+
+  it('with no encryption key set, refuses to save a key and says what to set; plain keys stay as they are', async () => {
+    const plainId = await plainProvider('plain-without-encryption', 'gw-key');
+    vi.stubEnv('SECRETS_ENCRYPTION_KEY', '');
+    try {
+      const res = await providersRoute.POST(new NextRequest('http://localhost/api/ai-providers', {
+        method: 'POST',
+        body: JSON.stringify({ providerKey: 'no-encryption', displayName: 'No encryption', providerType: 'local', connectionType: 'openai_compatible', authType: 'api_key', apiKey: 'gw-key', baseUrl: gatewayUrl }),
+      }));
+      expect(res.status).toBe(500);
+      expect(await res.json()).toMatchObject({
+        code: 'ENCRYPTION_KEY_NOT_SET',
+        message: expect.stringContaining('has no encryption key set'),
+        hint: expect.stringContaining('SECRETS_ENCRYPTION_KEY'),
+      });
+      expect((await testDb.db.execute(sql`SELECT 1 FROM ai_providers WHERE provider_key = 'no-encryption'`)).rows).toHaveLength(0);
+
+      // A provider without a key needs no encryption
+      expect((await createProvider({ providerKey: 'no-key-needed', connectionType: 'ollama', authType: 'none', baseUrl: ollamaUrl })).status).toBe(201);
+
+      expect((await encryptStoredProviderKeys()).plain).toBeGreaterThanOrEqual(1);
+      expect(await storedKey(plainId)).toBe('gw-key');
+    } finally {
+      vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64));
+    }
   });
 });
