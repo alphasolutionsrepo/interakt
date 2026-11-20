@@ -213,9 +213,19 @@ export async function handleUpdateProvider(
       return apiResponse.validationError(bodyValidation.error);
     }
 
-    // Choosing a vault secret sends its value to this provider's server: only a role that can
-    // manage secrets may (a typed key is the admin's own)
-    await assertMayWriteSecretConfig({ apiKeySecret: bodyValidation.data.apiKeySecret });
+    const existing = await service.getProviderConfigById(idValidation.data.id);
+    if (!existing) {
+      // Answered as the service answers it (below), before any access question about its secret
+      throw new Error(`Provider with ID "${idValidation.data.id}" not found`);
+    }
+
+    // A chosen vault secret sends its value to this provider's server: choosing one, or editing
+    // a provider that keeps one, needs a role that can manage secrets. The provider's own secret
+    // (made from a key typed on it) is the editor's own and counts only when the new config names one.
+    const storedChosen = existing.apiKeySecret && !existing.apiKeySecretManaged
+      ? { apiKeySecret: existing.apiKeySecret }
+      : null;
+    await assertMayWriteSecretConfig(storedChosen, { apiKeySecret: bodyValidation.data.apiKeySecret });
 
     const provider = await service.updateProvider(idValidation.data.id, bodyValidation.data);
 

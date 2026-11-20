@@ -53,3 +53,15 @@ export function keyLocation(provider: Pick<AIProviderResponse, 'hasApiKey' | 'ap
 export function typedKeyMissing(input: { source: KeySource; apiKey?: string | null; provider?: SavedKey | null }): boolean {
   return input.source === 'typed' && !(input.apiKey ?? '').trim() && !!chosenSecretOf(input.provider);
 }
+
+/**
+ * Why a saved provider can't be edited by this user, or null when it can. One that uses a vault
+ * secret an admin chose changes only for a role that can manage secrets (the server checks it
+ * too); one with its own typed key, a new one, and one with no key stay open.
+ */
+export function providerEditLock(provider: SavedKey | null | undefined, canManageSecrets: boolean): string | null {
+  if (canManageSecrets || !chosenSecretOf(provider)) return null;
+  return `This provider uses the vault secret "${chosenSecretOf(provider)}", chosen by a role that can manage secrets. `
+    + 'Only a role that can manage secrets can change this provider. '
+    + 'Ask an Admin, or have one give your role the "Manage secrets and ingestion keys" permission in Roles.';
+}
