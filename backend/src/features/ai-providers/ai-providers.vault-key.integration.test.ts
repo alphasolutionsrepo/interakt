@@ -373,6 +373,19 @@ describe('saving a provider\'s key', () => {
   });
 });
 
+describe('the health check when a provider\'s secret can\'t be read at all', () => {
+  it('marks that provider unhealthy and still answers, instead of failing the whole check', async () => {
+    await createSecret({ name: `health_db_key_${n + 1}`, value: 'vault-key' });
+    const p = await providerWithSecret(`health_db_key_${n + 1}`);
+    const spy = vi.spyOn(testDb.db.query.secrets, 'findFirst').mockRejectedValue(new Error('connection reset'));
+    try {
+      expect(await healthOf(p.providerKey)).toMatchObject({ healthy: false, message: 'API key unavailable: see the AI Providers page', responseTimeMs: 0 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 describe('the vault and the providers that use its secrets', () => {
   it('refuses to delete a secret a provider uses, naming the provider', async () => {
     const { listSecrets, deleteSecret } = await import('@/features/secrets/secrets.service');

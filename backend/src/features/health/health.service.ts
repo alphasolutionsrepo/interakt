@@ -333,8 +333,9 @@ export async function checkAIProvidersHealth(): Promise<ServiceHealth> {
           // Its API key, read from the Secrets Vault
           provider = await withProviderKey(stored);
         } catch (error) {
-          if (!(error instanceof ProviderKeyError)) throw error;
+          // A secret that is gone or unreadable, or a failed read of it: this provider only.
           // Every signed-in user sees health: the AI Providers page has the details
+          if (!(error instanceof ProviderKeyError)) logger.error('Could not read an AI provider key for the health check', error as Error, { providerKey: stored.providerKey });
           return {
             providerId: stored.id,
             providerKey: stored.providerKey,
