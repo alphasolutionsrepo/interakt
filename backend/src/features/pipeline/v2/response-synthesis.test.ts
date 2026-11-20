@@ -609,4 +609,36 @@ describe('output filter', () => {
     expect(JSON.stringify(emit.mock.calls)).not.toContain('raw unchecked');
     expect(result.data?.responseText).not.toContain('raw unchecked');
   });
+
+  describe('when the chat call fails', () => {
+    const failingDeps = (): SynthesisDeps => ({ chat: vi.fn().mockRejectedValue(new Error('provider down')) });
+    const directInput = () => makeInput({
+      directResponse: true,
+      actionResults: [],
+      clarificationQuestion: 'Is your secret plan ready?',
+    });
+    const contentTexts = (emit: ReturnType<typeof vi.fn>) =>
+      emit.mock.calls.map(([e]: [PipelineStreamEvent]) => e).filter((e) => e.type === 'content').map((e) => (e as { text: string }).text);
+
+    it('filters the planner-written clarification question before it is sent', async () => {
+      const emit = vi.fn();
+      const filterOutput = vi.fn(async (t: string) => t.replace('secret', '[REDACTED]'));
+
+      const result = await synthesizeResponse(directInput(), failingDeps(), emit, {}, filterOutput);
+
+      expect(contentTexts(emit)).toEqual(['Is your [REDACTED] plan ready?']);
+      expect(result.data?.responseText).toBe('Is your [REDACTED] plan ready?');
+    });
+
+    it('sends the fixed text when the filter fails too', async () => {
+      const emit = vi.fn();
+      const filterOutput = vi.fn().mockRejectedValue(new Error('filter boom'));
+
+      const result = await synthesizeResponse(directInput(), failingDeps(), emit, {}, filterOutput);
+
+      expect(contentTexts(emit)).toEqual(["I'm here to help! What can I do for you?"]);
+      expect(result.data?.responseText).toBe("I'm here to help! What can I do for you?");
+      expect(JSON.stringify(emit.mock.calls)).not.toContain('secret plan');
+    });
+  });
 });

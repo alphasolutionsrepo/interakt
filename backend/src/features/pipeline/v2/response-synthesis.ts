@@ -50,6 +50,9 @@ const DEFAULT_CONFIG: SynthesisConfig = {
   maxTokens: 1000,
 };
 
+/** Fixed reply when a direct response has no text of its own, or the output filter fails. */
+const DEFAULT_DIRECT_FALLBACK = "I'm here to help! What can I do for you?";
+
 // ============================================================================
 // MODULE ENTRY POINT
 // ============================================================================
@@ -90,7 +93,8 @@ export async function synthesizeResponse(
     }
 
     // Output rules run on the AI-written text before anything leaves this step. If the
-    // filter fails the catch below sends the fixed fallback, never the unchecked text.
+    // filter fails the catch below never sends the unchecked text: the fallback is
+    // filtered too (it can be the planner's clarification question), or fixed text.
     if (filterOutput) responseText = await filterOutput(responseText);
 
     // Emit content
@@ -132,7 +136,15 @@ export async function synthesizeResponse(
 
     // Fallback: prefer a provider-error-aware message (TPM, context length) when
     // the failure was an LLM call; otherwise fall back to the result-aware default.
-    const fallbackText = classifyLlmFailure(err) ?? generateFallback(input);
+    let fallbackText = classifyLlmFailure(err) ?? generateFallback(input);
+    if (filterOutput) {
+      try {
+        fallbackText = await filterOutput(fallbackText);
+      } catch (filterError) {
+        logger.error('Output filter failed on synthesis fallback', filterError as Error);
+        fallbackText = DEFAULT_DIRECT_FALLBACK;
+      }
+    }
     emit({ type: 'content', text: fallbackText });
 
     return {
@@ -583,7 +595,7 @@ async function synthesizeDirectResponse(
 
 function generateFallback(input: SynthesisInput): string {
   if (input.directResponse) {
-    return input.clarificationQuestion ?? "I'm here to help! What can I do for you?";
+    return input.clarificationQuestion ?? DEFAULT_DIRECT_FALLBACK;
   }
 
   const successCount = input.actionResults.filter((a) => a.result.success).length;

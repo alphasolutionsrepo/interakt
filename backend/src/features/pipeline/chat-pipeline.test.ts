@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   extractMemoriesFromSession: vi.fn(),
   summarizeSession: vi.fn(),
   addMessages: vi.fn(),
+  withSpan: vi.fn(),
+  setAttribute: vi.fn(),
+  applyOutputGuardrail: vi.fn(),
 }));
 
 vi.mock('@/shared/logger/logger', () => ({
@@ -22,8 +25,14 @@ vi.mock('@/features/prompt-templates', () => ({
 }));
 vi.mock('@/features/telemetry', async () => {
   const { ATTR } = await vi.importActual<typeof import('@/features/telemetry/attribute-keys')>('@/features/telemetry/attribute-keys');
-  const span = { setAttribute: vi.fn(), setAttributes: vi.fn(), addEvent: vi.fn(), recordException: vi.fn(), setStatus: vi.fn(), end: vi.fn() };
-  return { ATTR, withSpan: (_options: unknown, fn: (s: typeof span) => unknown) => fn(span) };
+  const span = { setAttribute: mocks.setAttribute, setAttributes: vi.fn(), addEvent: vi.fn(), recordException: vi.fn(), setStatus: vi.fn(), end: vi.fn() };
+  mocks.withSpan.mockImplementation((_options: unknown, fn: (s: typeof span) => unknown) => fn(span));
+  return { ATTR, withSpan: mocks.withSpan };
+});
+vi.mock('@/features/guardrails/output-guardrail', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/guardrails/output-guardrail')>();
+  mocks.applyOutputGuardrail.mockImplementation(actual.applyOutputGuardrail);
+  return { ...actual, applyOutputGuardrail: mocks.applyOutputGuardrail };
 });
 vi.mock('@/features/search/search.service', () => ({
   withExperienceContext: (_experienceId: string, fn: () => unknown) => fn(),
@@ -253,21 +262,76 @@ describe('runChatPipeline model choice', () => {
       expect(JSON.stringify([events, saved])).not.toContain('red shoes for you');
     });
 
-    it('filters the reply to a greeting before it is saved and sent', async () => {
-      mocks.classifyMessage.mockResolvedValue({ classification: 'greeting', debug: { greetingRegexMatched: true, domainFilterEnabled: false } });
+    const GREETING_GUARDRAIL = {
+      ...OUTPUT_BLOCK,
+      inputGuardrail: { enabled: true, rules: [{ type: 'blocklist', enabled: true, config: { terms: [] } }], onBlock: { message: '' } },
+    };
+
+    it.each(['greeting', 'general', 'off_topic'])('filters the %s reply before it is saved and sent', async (classification) => {
+      mocks.classifyMessage.mockResolvedValue({ classification, debug: { greetingRegexMatched: true, domainFilterEnabled: false } });
       mocks.chat.mockResolvedValueOnce(chatResult('Hello there! How can I help you today?'));
       const onEvent = vi.fn();
-      const experience = makeExperience({
-        ...OUTPUT_BLOCK,
-        inputGuardrail: { enabled: true, rules: [{ type: 'blocklist', enabled: true, config: { terms: [] } }], onBlock: { message: '' } },
-      });
 
-      const result = await runChatPipeline({ experience, message: 'hi', onEvent });
+      const result = await runChatPipeline({ experience: makeExperience(GREETING_GUARDRAIL), message: 'hi', onEvent });
 
       expect(result.responseText).toBe('BLOCKED BY OUTPUT RULE');
       const events = onEvent.mock.calls.map(([e]) => e);
       expect(events.filter((e) => e.type === 'content')).toEqual([{ type: 'content', text: 'BLOCKED BY OUTPUT RULE' }]);
       expect(mocks.addMessages.mock.calls[0][1][1].content).toBe('BLOCKED BY OUTPUT RULE');
+    });
+
+    it('sends the block message, not the raw reply, when the filter throws on a short-circuit reply', async () => {
+      mocks.classifyMessage.mockResolvedValue({ classification: 'greeting', debug: { greetingRegexMatched: true, domainFilterEnabled: false } });
+      mocks.chat.mockResolvedValueOnce(chatResult('Hello there! How can I help you today?'));
+      mocks.applyOutputGuardrail.mockImplementationOnce(() => { throw new Error('filter boom'); });
+      const onEvent = vi.fn();
+
+      const result = await runChatPipeline({ experience: makeExperience(GREETING_GUARDRAIL), message: 'hi', onEvent });
+
+      expect(result.responseText).toBe('BLOCKED BY OUTPUT RULE');
+      const events = onEvent.mock.calls.map(([e]) => e);
+      expect(events.filter((e) => e.type === 'content')).toEqual([{ type: 'content', text: 'BLOCKED BY OUTPUT RULE' }]);
+      expect(events.some((e) => e.type === 'done')).toBe(true);
+      expect(mocks.addMessages.mock.calls[0][1][1].content).toBe('BLOCKED BY OUTPUT RULE');
+      expect(JSON.stringify([events, mocks.addMessages.mock.calls])).not.toContain('Hello there');
+    });
+
+    it('redacts a matching answer on a normal turn: the content event and saved message carry the redacted text', async () => {
+      scriptSearchTurn();
+      const onEvent = vi.fn();
+      const experience = makeExperience({
+        inputGuardrail: { enabled: false, rules: [], onBlock: { message: '' } },
+        outputGuardrail: {
+          enabled: true,
+          rules: [{ id: 'r2', name: 'shoes', type: 'regex_filter', config: { pattern: 'red shoes', replacement: '[ITEM]' }, action: 'redact', enabled: true, priority: 1 }],
+          onBlock: { message: 'unused' },
+        },
+      });
+
+      const result = await runChatPipeline({ experience, message: 'Search for red shoes', onEvent });
+
+      expect(result.responseText).toBe('I found some [ITEM] for you!');
+      const events = onEvent.mock.calls.map(([e]) => e);
+      expect(events.filter((e) => e.type === 'content')).toEqual([{ type: 'content', text: 'I found some [ITEM] for you!' }]);
+      expect(mocks.addMessages.mock.calls[0][1][1].content).toBe('I found some [ITEM] for you!');
+    });
+
+    it('records the outcome and fired rules on the output_guardrail span', async () => {
+      scriptSearchTurn();
+      await runChatPipeline({ experience: makeExperience(OUTPUT_BLOCK), message: 'Search for red shoes', onEvent: vi.fn() });
+
+      const spanNames = mocks.withSpan.mock.calls.map(([o]) => (o as { name: string }).name);
+      expect(spanNames).toContain('pipeline.v2.output_guardrail');
+      expect(mocks.setAttribute).toHaveBeenCalledWith('alpha.v2.guardrail.output_outcome', 'blocked');
+      expect(mocks.setAttribute).toHaveBeenCalledWith('alpha.v2.guardrail.output_fired_rules', 'short');
+    });
+
+    it('makes no output_guardrail span when no output rule is switched on', async () => {
+      scriptSearchTurn();
+      await runChatPipeline({ experience: makeExperience(), message: 'Search for red shoes', onEvent: vi.fn() });
+
+      const spanNames = mocks.withSpan.mock.calls.map(([o]) => (o as { name: string }).name);
+      expect(spanNames).not.toContain('pipeline.v2.output_guardrail');
     });
 
     it('leaves answers alone when no output rule is switched on', async () => {

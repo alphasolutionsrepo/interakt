@@ -30,7 +30,7 @@ import { classifyMessage } from '@/features/guardrails/message-classifier';
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
 import { withSpan } from '@/features/telemetry';
 import { ATTR } from '@/features/telemetry/attribute-keys';
-import { applyOutputGuardrail, outputGuardrailDecision } from '@/features/guardrails/output-guardrail';
+import { applyOutputGuardrail, DEFAULT_OUTPUT_BLOCK_MESSAGE, outputGuardrailDecision } from '@/features/guardrails/output-guardrail';
 
 import * as sessionsService from '@/features/sessions/sessions.service';
 import type { TopicGateRuleConfig } from '@/features/guardrails/topic-gate.service';
@@ -386,7 +386,16 @@ async function _runUnifiedPipeline(input: ChatPipelineInput): Promise<ChatPipeli
             },
           );
           // Output rules apply to this reply too, before it is traced, saved or sent
-          const safeText = await filterOutput(text);
+          // A filter that fails sends the block message, never the unchecked text
+          let safeText: string;
+          try {
+            safeText = await filterOutput(text);
+          } catch (error) {
+            logger.error('Output filter failed on short-circuit reply', error as Error, {
+              experienceId: experience.id,
+            });
+            safeText = guardrailConfig?.outputGuardrail?.onBlock?.message ?? DEFAULT_OUTPUT_BLOCK_MESSAGE;
+          }
           synthSpan.setAttribute('alpha.v2.guardrail.response_length', safeText.length);
           synthSpan.setAttribute('alpha.v2.guardrail.response_text', safeText.length > 2000 ? safeText.slice(0, 2000) + '…' : safeText);
           return safeText;

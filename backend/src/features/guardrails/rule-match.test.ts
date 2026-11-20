@@ -9,6 +9,13 @@ describe('ruleMatches', () => {
     expect(ruleMatches({ type: 'blocklist', config: { terms: [] } }, 'secret')).toBe(false);
   });
 
+  it('blocklist ignores stored terms that are not non-empty strings', () => {
+    const rule = { type: 'blocklist', config: { terms: [null, 42, '', 'secret'] } };
+    expect(ruleMatches(rule, 'a secret plan')).toBe(true);
+    expect(ruleMatches(rule, 'nothing here')).toBe(false);
+    expect(ruleMatches({ type: 'blocklist', config: { terms: [null, ''] } }, 'anything')).toBe(false);
+  });
+
   it('max_length matches only text longer than the limit', () => {
     expect(ruleMatches({ type: 'max_length', config: { maxChars: 5 } }, '123456')).toBe(true);
     expect(ruleMatches({ type: 'max_length', config: { maxChars: 5 } }, '12345')).toBe(false);
