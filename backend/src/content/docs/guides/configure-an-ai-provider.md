@@ -22,7 +22,7 @@ Sidebar → **Administration → Admin → AI Providers**.
 Interakt comes with an **OpenAI** provider already set up (OpenAI-compatible, `https://api.openai.com/v1`).
 
 1. Open its row's menu and click **Edit**.
-2. Paste your **API key** and save.
+2. Paste your **API key** and save. Interakt keeps it encrypted in the Secrets Vault as `ai_provider_openai`.
 3. Click **Test Connection**: Interakt reads OpenAI's `/v1/models`.
 
 For a second OpenAI account, click **Add Provider** and give it its own name (for example "OpenAI team"), with the same connection type and base URL.
@@ -128,6 +128,6 @@ A disabled provider stays configured but can't be selected when creating new exp
 ## Where to go next
 
 - [AI providers](../concepts/ai-providers) — concept page.
-- [Secrets](../concepts/secrets) — sometimes provider keys are stored there too.
+- [Secrets](../concepts/secrets) — where provider keys are kept; choose an existing secret instead of entering a key.
 - [Create a search index](create-a-search-index) — uses the embedding default.
 - [Create a chat experience](create-a-chat-experience) — uses the chat default.

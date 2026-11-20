@@ -4,7 +4,7 @@ sidebar_position: 17
 
 # Secrets
 
-The **Secrets Vault** is a place to store credentials — API keys, passwords, tokens — that you don't want hard-coded into tool configurations or visible in the admin UI. You save a secret once, give it a name, and refer to it elsewhere using `{{secret:name}}`. Interakt encrypts it at rest and resolves the placeholder at the moment a tool runs.
+The **Secrets Vault** is a place to store credentials — API keys, passwords, tokens — that you don't want hard-coded into tool configurations or visible in the admin UI. You save a secret once, give it a name, and refer to it elsewhere using `{{secret:name}}`. Interakt encrypts it at rest and resolves the placeholder at the moment a tool runs. AI providers keep their API keys here too.
 
 ## Where to find this screen
 Sidebar → **Admin → Secrets Vault**.
@@ -51,9 +51,11 @@ The edit dialog has the same fields as create, with these differences:
 
 ## Deleting a secret
 
-Confirms first. Deletion is hard — Interakt does **not** check whether any tools reference the secret. If you delete a secret that a live tool uses, the tool fails at runtime with a "secret not found" error.
+Confirms first. Interakt refuses to delete a secret that a tool, data source, MCP connection or AI provider still uses, and names each one; point those elsewhere first.
 
-Before deleting, search the tools list for `{{secret:name}}` references. (The tool detail page shows the raw config — including secret references.)
+## AI provider keys
+
+An AI provider's API key lives in the vault. Enter a key on the provider and Interakt saves it as `ai_provider_<provider key>` (or the next free name); or choose an existing secret on the provider form (needs a role that can manage secrets). Edit the secret's value here and the provider uses the new key on its next request. A secret made from a key entered on a provider is deleted with that provider, unless something else uses it.
 
 ## Referencing secrets in tools
 
@@ -95,11 +97,10 @@ Don't bother with a secret for non-sensitive shared config (a base URL, a defaul
 
 - **Forgetting to wire the secret into the tool.** You create the secret but the tool config still has the literal API key (or a different reference). Edit the tool and replace the literal with `{{secret:your_name}}`.
 - **Typos in the secret name.** `{{secret:orderskey}}` vs `orders_key` will silently fail at runtime. The tool detail page shows the raw config — eyeball it.
-- **Deleting a secret in use.** No safety net. Search before you delete.
 - **Trying to read a secret back.** You can't, by design. If you forgot what it was, rotate at source and update here.
 
 ## Where to go next
 
 - [Tools](tools) — where most secret references live.
-- [AI providers](ai-providers) — sometimes provider credentials route through secrets too.
+- [AI providers](ai-providers) — their API keys are kept here.
 - [Data sources](data-sources) — external sources often need authenticated connections.

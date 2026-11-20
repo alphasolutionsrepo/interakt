@@ -264,7 +264,8 @@ async function resolveEmbeddingDimensions(
   return fallback;
 }
 
-async function seedProvider(
+/** The demo's AI provider step: its key, connection and models. Exported for its tests. */
+export async function seedProvider(
   option: DemoProviderOption,
   creds: { apiKey?: string; baseUrl?: string; chatModel?: string; embeddingModel?: string },
 ) {

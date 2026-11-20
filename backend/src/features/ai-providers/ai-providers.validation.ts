@@ -123,6 +123,13 @@ export const modelCapabilitiesSchema = z.object({
 /**
  * Schema for creating a new AI provider
  */
+/** A vault secret name, as the Secrets Vault allows them; empty means none chosen */
+const apiKeySecretSchema = z.string()
+  .max(100, 'Secret name too long')
+  .regex(/^([a-z][a-z0-9_]*)?$/, 'Secret names are lowercase letters, numbers and underscores')
+  .optional()
+  .nullable();
+
 export const createAIProviderSchema = z.object({
   providerKey: z.string()
     .min(1, 'Provider key is required')
@@ -150,6 +157,9 @@ export const createAIProviderSchema = z.object({
     .max(500, 'API key too long')
     .optional()
     .nullable(),
+
+  // A Secrets Vault secret to use as the key, by name (instead of typing one)
+  apiKeySecret: apiKeySecretSchema,
   
   isEnabled: z.boolean().default(false),
   
@@ -186,6 +196,9 @@ export const updateAIProviderSchema = z.object({
     .max(500, 'API key too long')
     .optional()
     .nullable(),
+
+  // A Secrets Vault secret to use as the key, by name (instead of typing one)
+  apiKeySecret: apiKeySecretSchema,
 
   isEnabled: z.boolean().optional(),
   

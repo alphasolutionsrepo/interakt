@@ -20,6 +20,7 @@ import {
     getModelById,
     getResolvedDefaults,
 } from '@/features/ai-providers/ai-providers.service';
+import { withProviderKey } from '@/features/ai-providers/provider-key';
 import { defaultConnectionType } from '@/features/ai-providers/ai-providers.validation';
 import { CallerTimeoutError, CancelledRequestError, getAdapter } from './adapters';
 import { waitAsAsked, withResilience, withRetry } from './ai-service.resilience';
@@ -125,8 +126,8 @@ async function resolveProviderConfig(
     }
 
     // Load provider details (using internal config function to get apiKey)
-    const provider = await getProviderConfigById(providerId);
-    if (!provider) {
+    const stored = await getProviderConfigById(providerId);
+    if (!stored) {
         throw new AIServiceError(
             `Provider not found: ${providerId}`,
             'PROVIDER_NOT_FOUND',
@@ -134,14 +135,17 @@ async function resolveProviderConfig(
         );
     }
 
-    if (!provider.isEnabled) {
+    if (!stored.isEnabled) {
         throw new AIServiceError(
-            `Provider is disabled: ${provider.providerKey}`,
+            `Provider is disabled: ${stored.providerKey}`,
             'PROVIDER_DISABLED',
             providerId,
-            provider.providerKey
+            stored.providerKey
         );
     }
+
+    // Its API key, read from the Secrets Vault
+    const provider = await withProviderKey(stored);
 
     // Load model details
     const model = await getModelById(modelId);

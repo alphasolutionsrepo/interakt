@@ -10,6 +10,10 @@
  */
 export function classifyLlmFailure(error: Error): string | null {
   const msg = error.message ?? '';
+  // Our setup, not the provider: its API key secret is gone or can't be decrypted
+  if ((error as Error & { code?: unknown }).code === 'PROVIDER_KEY_UNAVAILABLE') {
+    return "Sorry — this experience cannot reach its AI provider: the provider's API key can't be read. An administrator needs to check it on the AI Providers page.";
+  }
   if (/tokens per min|TPM|rate limit/i.test(msg)) {
     return "Sorry — this experience's model hit its per-minute token limit. The tool returned more data than the model can process at the current rate. Try again in a minute, narrow your question, or have your administrator switch this experience to a model with a higher TPM tier.";
   }
