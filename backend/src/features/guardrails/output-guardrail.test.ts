@@ -96,6 +96,13 @@ describe('applyOutputGuardrail', () => {
     expect(applyOutputGuardrail(plain, 'pin 1234').text).toBe('pin [REDACTED]');
   });
 
+  it('redacts to an empty string when the replacement is empty and the match is the whole text', () => {
+    const cfg = config([rule({ type: 'regex_filter', action: 'redact', config: { pattern: '^.*$', replacement: '' }, name: 'wipe' })]);
+    expect(applyOutputGuardrail(cfg, 'secret answer')).toMatchObject({
+      outcome: 'redacted', text: '', firedRules: ['wipe'],
+    });
+  });
+
   it('ignores an invalid regex', () => {
     const block = config([rule({ type: 'regex_filter', config: { pattern: '(' } })]);
     expect(applyOutputGuardrail(block, 'text').outcome).toBe('passed');

@@ -326,6 +326,18 @@ describe('runChatPipeline model choice', () => {
       expect(mocks.setAttribute).toHaveBeenCalledWith('alpha.v2.guardrail.output_fired_rules', 'short');
     });
 
+    it('records the outcome and fired rules on the output_guardrail span for a greeting short-circuit turn', async () => {
+      mocks.classifyMessage.mockResolvedValue({ classification: 'greeting', debug: { greetingRegexMatched: true, domainFilterEnabled: false } });
+      mocks.chat.mockResolvedValueOnce(chatResult('Hello there! How can I help you today?'));
+
+      await runChatPipeline({ experience: makeExperience(GREETING_GUARDRAIL), message: 'hi', onEvent: vi.fn() });
+
+      const spanNames = mocks.withSpan.mock.calls.map(([o]) => (o as { name: string }).name);
+      expect(spanNames).toContain('pipeline.v2.output_guardrail');
+      expect(mocks.setAttribute).toHaveBeenCalledWith('alpha.v2.guardrail.output_outcome', 'blocked');
+      expect(mocks.setAttribute).toHaveBeenCalledWith('alpha.v2.guardrail.output_fired_rules', 'short');
+    });
+
     it('makes no output_guardrail span when no output rule is switched on', async () => {
       scriptSearchTurn();
       await runChatPipeline({ experience: makeExperience(), message: 'Search for red shoes', onEvent: vi.fn() });
