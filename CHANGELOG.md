@@ -67,6 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The widget bundle (`/embed/v1/widgets.js`) and other files in `public/` are cached for 5 minutes instead of a year, so copies fetched from this release on pick up later upgrades: after 5 minutes the browser checks for a new copy in the background and uses it from the next page load.
 - A tool, MCP connection or data source whose settings name a secret that is missing from the Secrets Vault fails with a message naming the secret, instead of sending the request without it.
 - A secret whose value contains `$&`, `$'` or a similar `$` sequence reaches a tool's request exactly as stored.
 - A chat continues a conversation only with the experience that started it; a session id from another experience starts a new conversation.

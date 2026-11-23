@@ -1,5 +1,18 @@
 import type { NextConfig } from "next";
 
+/**
+ * Cache-Control for fixed-name files in public/. Production: browsers reuse a
+ * copy for 5 minutes. After that, a page load within a day still uses the
+ * cached copy while the browser checks for a new one in the background (a
+ * cheap 304 via ETag when nothing changed); the next load uses the result.
+ * Development: always revalidate.
+ */
+function publicFileCacheControl(): string {
+  return process.env.NODE_ENV === "production"
+    ? "public, max-age=300, stale-while-revalidate=86400"
+    : "public, max-age=0, must-revalidate";
+}
+
 const nextConfig: NextConfig = {
   /* config options here */
   compress: true,
@@ -46,17 +59,14 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      // Static assets only (JS, CSS, images, fonts)
+      // Files in public/ keep a fixed name across releases (the widget bundle at
+      // /embed/v1/widgets.js, logos, favicons), so browsers must check back for a
+      // new copy after an upgrade. /_next/ is left out: Next.js gives its own
+      // hashed build files a one-year immutable cache, and this rule would
+      // override it.
       {
-        source: "/:path*\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: process.env.NODE_ENV === 'production'
-              ? "public, max-age=31536000, immutable"  // Production: 1 year
-              : "public, max-age=0, must-revalidate",   // Dev: no cache
-          },
-        ],
+        source: "/:path((?!_next/).*)\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)",
+        headers: [{ key: "Cache-Control", value: publicFileCacheControl() }],
       },
       // Drop-in embed bundle — must load cross-origin from any customer site.
       // API calls made by the widget are still gated by per-experience allowedOrigins
@@ -68,12 +78,7 @@ const nextConfig: NextConfig = {
             key: "Cross-Origin-Resource-Policy",
             value: "cross-origin",
           },
-          {
-            key: "Cache-Control",
-            value: process.env.NODE_ENV === 'production'
-              ? "public, max-age=31536000, immutable"
-              : "public, max-age=0, must-revalidate",
-          },
+          { key: "Cache-Control", value: publicFileCacheControl() },
         ],
       },
       // All API routes - NO CACHE
