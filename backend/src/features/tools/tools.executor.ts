@@ -212,7 +212,8 @@ async function resolveValue(val: unknown, unresolved: Set<string>): Promise<unkn
     let result = val;
     for (const { placeholder, secret } of resolved) {
       if (secret !== null) {
-        result = result.replace(placeholder, secret);
+        // A function keeps the value as stored: "$&", "$'" and the like aren't read as patterns
+        result = result.replace(placeholder, () => secret);
       } else {
         unresolved.add(placeholder.slice('{{secret:'.length, -2));
       }
