@@ -36,7 +36,6 @@ export interface AnalyticsFeatureFlags {
   trackSessions: boolean; // Session linking across events
   trackClicks: boolean; // Click-through on search results
   trackUserAgent: boolean; // Browser/device info
-  trackIPHash: boolean; // Hashed IP for geo (privacy-safe)
 
   // Advanced features
   enableRealTimeFeed: boolean; // Live search feed on dashboard
@@ -80,7 +79,6 @@ const DEFAULT_FLAGS: AnalyticsFeatureFlags = {
   trackSessions: false,
   trackClicks: false,
   trackUserAgent: false,
-  trackIPHash: false,
 
   // Advanced features - ON by default
   enableRealTimeFeed: true,
@@ -140,9 +138,6 @@ function parseEnvFlags(): Partial<AnalyticsFeatureFlags> {
   }
   if (process.env.ANALYTICS_TRACK_USER_AGENT !== undefined) {
     flags.trackUserAgent = process.env.ANALYTICS_TRACK_USER_AGENT === 'true';
-  }
-  if (process.env.ANALYTICS_TRACK_IP_HASH !== undefined) {
-    flags.trackIPHash = process.env.ANALYTICS_TRACK_IP_HASH === 'true';
   }
 
   // Advanced features
@@ -250,7 +245,6 @@ export const analyticsFlags = {
   canTrackSessions: (experienceId?: string) => isFeatureEnabled('trackSessions', experienceId),
   canTrackClicks: (experienceId?: string) => isFeatureEnabled('trackClicks', experienceId),
   canTrackUserAgent: () => isFeatureEnabled('trackUserAgent'),
-  canTrackIPHash: () => isFeatureEnabled('trackIPHash'),
 };
 
 // ============================================================================
@@ -324,7 +318,6 @@ export function enableUserTracking(): void {
   setRuntimeOverride('trackSessions', true);
   setRuntimeOverride('trackClicks', true);
   setRuntimeOverride('trackUserAgent', true);
-  setRuntimeOverride('trackIPHash', true);
 
   logger.info('User tracking enabled');
 }
@@ -337,7 +330,6 @@ export function disableUserTracking(): void {
   setRuntimeOverride('trackSessions', false);
   setRuntimeOverride('trackClicks', false);
   setRuntimeOverride('trackUserAgent', false);
-  setRuntimeOverride('trackIPHash', false);
 
   logger.info('User tracking disabled');
 }

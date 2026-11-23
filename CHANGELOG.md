@@ -72,7 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A chat continues a conversation only with the experience that started it; a session id from another experience starts a new conversation.
 - Output safety rules on an AI experience now apply before the answer reaches the visitor or is saved to the conversation, and also to replies to greetings and off-topic questions. Before, the visitor got the unchecked answer. A blocklist output rule set to redact now replaces the listed words; before, it changed nothing.
 - The production Docker image builds again: it installs dependencies with the backend's `.npmrc`, as CI and local installs do. CI now builds the image, migrates with it and starts it on every PR.
-- An access token or ID that isn't a UUID no longer answers 500. A public API request with such a token answers 401, like an unknown token. An admin request with such an ID in its address answers 400 "That ID isn't valid.", and an unknown job or queue answers 404.
+- An access token or ID that isn't a UUID no longer answers 500. A public API request with such a token answers 401, like an unknown token. An admin request with such an ID answers 400 "That ID isn't valid.", and an unknown job or queue answers 404.
 - The server starts with the current OpenTelemetry packages: the startup step that sets up tracing and the search providers loads them as ES modules. CI now builds, migrates and starts the app on every PR.
 - The filter box on the AI Experiences, Search Experiences, Search Indexes, Data Sources, Tools and MCP Connections lists no longer loses focus while the list reloads.
 - Find Record on an Azure AI Search index goes on to search by name when the id isn't a document key, as on Elasticsearch.
@@ -88,6 +88,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The `Access-Control-Allow-Credentials` response header.
 - The separate hourly rate limit on search token routes.
+- The analytics option to store a hash of the client's address with a session (`ANALYTICS_TRACK_IP_HASH`, and `trackIPHash` in the analytics settings API). Analytics sessions keep no client address: an analytics migration empties any hash stored before, and a later release drops the `ip_hash` column.
 
 ### Security
 

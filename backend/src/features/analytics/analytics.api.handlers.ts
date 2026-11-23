@@ -595,7 +595,6 @@ const configUpdateSchema = z.object({
   trackSessions: z.boolean().optional(),
   trackClicks: z.boolean().optional(),
   trackUserAgent: z.boolean().optional(),
-  trackIPHash: z.boolean().optional(),
   enableRealTimeFeed: z.boolean().optional(),
   enableAggregationJobs: z.boolean().optional(),
   enableAnalyticsChat: z.boolean().optional(),

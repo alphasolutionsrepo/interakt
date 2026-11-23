@@ -60,7 +60,8 @@ export const analyticsSessions = pgTable(
     // Client info
     originDomain: varchar('origin_domain', { length: 255 }),
     userAgent: text('user_agent'),
-    ipHash: varchar('ip_hash', { length: 64 }), // Hashed for privacy
+    // No longer written; the column is dropped in a later release
+    ipHash: varchar('ip_hash', { length: 64 }),
 
     // Aggregated counts (updated as events occur)
     totalSearches: integer('total_searches').default(0),
