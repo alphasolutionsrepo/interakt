@@ -67,6 +67,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A tool, MCP connection or data source whose settings name a secret that is missing from the Secrets Vault fails with a message naming the secret, instead of sending the request without it.
+- A secret whose value contains `$&`, `$'` or a similar `$` sequence reaches a tool's request exactly as stored.
 - A chat continues a conversation only with the experience that started it; a session id from another experience starts a new conversation.
 - Output safety rules on an AI experience now apply before the answer reaches the visitor or is saved to the conversation, and also to replies to greetings and off-topic questions. Before, the visitor got the unchecked answer. A blocklist output rule set to redact now replaces the listed words; before, it changed nothing.
 - The production Docker image builds again: it installs dependencies with the backend's `.npmrc`, as CI and local installs do. CI now builds the image, migrates with it and starts it on every PR.

@@ -17,7 +17,7 @@
  * 7. Full OTel tracing across entire lifecycle
  */
 
-import { SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
+import { MissingSecretError, missingSecretMessage, SECRET_TEMPLATE_PATTERN } from '@/features/secrets/secret-template';
 import { createLogger } from '@/shared/logger/logger';
 import { failureLevel } from '@/shared/errors/to-app-error';
 import { classifyUpstream, failedAtAIProvider, findAIServiceError, shardsUnavailable } from '@/shared/errors/upstream';
@@ -196,37 +196,32 @@ export interface ToolExecutionResult {
 
 
 
-async function resolveValue(val: unknown): Promise<unknown> {
+async function resolveValue(val: unknown, unresolved: Set<string>): Promise<unknown> {
   if (typeof val === 'string') {
     const matches = [...val.matchAll(SECRET_TEMPLATE_PATTERN)];
     if (matches.length === 0) return val;
 
-    // Fetch all referenced secrets in parallel
-    const resolved = await Promise.all(
-      matches.map(async ([, name]) => {
-        const secret = await secretsService.resolveSecret(name);
-        return { placeholder: `{{secret:${name}}}`, secret };
-      }),
+    // Fetch each referenced secret once, in parallel
+    const names = [...new Set(matches.map(([, name]) => name))];
+    const values = new Map(
+      await Promise.all(names.map(async (name) => [name, await secretsService.resolveSecret(name)] as const)),
     );
+    for (const name of names) if (values.get(name) === null) unresolved.add(name);
 
-    let result = val;
-    for (const { placeholder, secret } of resolved) {
-      if (secret !== null) {
-        result = result.replace(placeholder, secret);
-      }
-    }
-    return result;
+    // One pass over the original text: a value goes in exactly as stored ("$&" and the like
+    // aren't patterns), and a value that itself looks like {{secret:...}} is never filled again
+    return val.replace(SECRET_TEMPLATE_PATTERN, (placeholder, name: string) => values.get(name) ?? placeholder);
   }
 
   if (Array.isArray(val)) {
-    return Promise.all(val.map(resolveValue));
+    return Promise.all(val.map((item) => resolveValue(item, unresolved)));
   }
 
   if (val !== null && typeof val === 'object') {
     const entries = await Promise.all(
       Object.entries(val as Record<string, unknown>).map(async ([k, v]) => [
         k,
-        await resolveValue(v),
+        await resolveValue(v, unresolved),
       ]),
     );
     return Object.fromEntries(entries);
@@ -235,10 +230,16 @@ async function resolveValue(val: unknown): Promise<unknown> {
   return val;
 }
 
+/**
+ * Fills every {{secret:name}} in the config. `unresolved` lists the names the vault has no
+ * secret for or can't decrypt (names only); their placeholders stay in the config as text.
+ */
 export async function resolveSecretRefs(
   config: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  return resolveValue(config) as Promise<Record<string, unknown>>;
+): Promise<{ config: Record<string, unknown>; unresolved: string[] }> {
+  const unresolved = new Set<string>();
+  const resolved = (await resolveValue(config, unresolved)) as Record<string, unknown>;
+  return { config: resolved, unresolved: [...unresolved] };
 }
 
 // ============================================================================
@@ -331,6 +332,8 @@ function circuitOpen(error: unknown): boolean {
 
 function isRetryable(error: unknown, config: ToolRetryConfig): boolean {
   if (error instanceof ToolTimeoutError) return true;
+  // A missing secret stays missing on the next try, whatever its name or the tool's patterns say
+  if (error instanceof MissingSecretError) return false;
   // The circuit breaker has cut the provider off: another try fails the same way at once
   if (circuitOpen(error)) return false;
 
@@ -568,7 +571,26 @@ export async function executeTool(
 
       // 5. Resolve secret references in config
       const configSource = (tool.executorConfig as Record<string, unknown> | null) ?? {};
-      const resolvedConfig = await resolveSecretRefs(configSource);
+      const { config: resolvedConfig, unresolved } = await resolveSecretRefs(configSource);
+      if (unresolved.length > 0) {
+        // Nothing is sent with a placeholder in place of the secret, and a retry can't help.
+        // Like an error the executor returns, this skips the fallback (see the result.success branch below)
+        logger.warn('Tool not run: a secret in its settings is missing from the vault', {
+          toolId: tool.id, toolSlug: tool.slug, secrets: unresolved,
+        });
+        const durationMs = Date.now() - start;
+        span.setAttribute(ATTR.TOOL_SUCCESS, false);
+        span.setAttribute(ATTR.TOOL_DURATION_MS, durationMs);
+        span.setAttribute(ATTR.TOOL_RETRIES, 0);
+        return {
+          success: false,
+          error: unresolved
+            .map((name) => missingSecretMessage(name, "in this tool's settings"))
+            .join('. '),
+          durationMs,
+          retriesUsed: 0,
+        };
+      }
 
       // 6. Execute with retry + timeout
       const retryConfig = (tool.retryConfig as ToolRetryConfig) ?? { count: 2, backoff: 'exponential' };
