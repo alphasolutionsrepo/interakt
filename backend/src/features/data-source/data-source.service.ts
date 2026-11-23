@@ -7,7 +7,7 @@ import type {
 } from './data-source.validation';
 
 // The cache module itself, not the search-experience barrel, which imports this service back
-import { resolveExternalConnection } from './external-search/external-connection';
+import { resolveConnectionSecret, resolveExternalConnection } from './external-search/external-connection';
 import { discoverSitecoreFields, sampleSitecore } from './external-search/connectors/sitecore-search.connector';
 import { FixedFilterError, sitecoreFixedFilters } from './external-search/connectors/sitecore-search.request';
 import { ExternalSearchError } from './external-search/external-search.types';
@@ -17,7 +17,6 @@ import type { ExternalSearchIndexConfig, DataSourceField, DataSourceSchema, Data
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { invalidateByDataSource as invalidateSearchExperiencesByDataSource } from '@/features/search-experience/search-experience.cache';
 import * as searchIndexRepository from '@/features/search-index/search-index.repository';
-import { resolveSecret } from '@/features/secrets/secrets.service';
 import * as toolsService from '@/features/tools/tools.service';
 import { fetchOnSameServer, RedirectedElsewhereError } from '@/shared/http/same-server-fetch';
 import { createLogger } from '@/shared/logger/logger';
@@ -383,6 +382,14 @@ async function checkExternalIndexHealth(
     return connectivityResult;
   }
 
+  // The probe above sends no credentials. Stats and discovery do, so a secret the vault
+  // can't give makes the source unhealthy now (Sitecore resolved it in its probe).
+  try {
+    await resolveConnectionSecret(config.connection);
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : 'Unknown error', checkedAt: now };
+  }
+
   // Step 2: Fetch index statistics (best-effort)
   let documentCount: number | undefined;
   let storageSizeBytes: number | undefined;
@@ -542,20 +549,9 @@ async function probeSitecore(config: ExternalSearchIndexConfig, now: string): Pr
 // SHARED HELPERS
 // ============================================================================
 
-async function resolveCredentials(config: ExternalSearchIndexConfig): Promise<string | null> {
-  const secretRef = config.connection.credentials?.secretRef;
-  if (!secretRef) return null;
-
-  const resolved = await resolveSecret(secretRef);
-  if (!resolved) {
-    logger.warn('Failed to resolve secret reference — ensure the secret exists in the vault', { secretRef });
-  }
-  return resolved;
-}
-
 async function buildAuthHeaders(config: ExternalSearchIndexConfig): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'User-Agent': 'Interakt/1.0' };
-  const apiKey = await resolveCredentials(config);
+  const apiKey = await resolveConnectionSecret(config.connection);
   if (!apiKey) return headers;
 
   switch (config.provider) {

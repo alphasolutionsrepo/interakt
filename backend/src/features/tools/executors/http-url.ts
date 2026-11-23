@@ -38,11 +38,6 @@ export function urlProblemMessage(baseUrl: string): string | undefined {
   return hasFixedHost(baseUrl) ? undefined : FIXED_HOST_MESSAGE;
 }
 
-/** Names of {{secret:name}} templates still in the text: the vault had no secret by that name, or could not decrypt it. */
-export function unresolvedSecretNames(text: string): string[] {
-  return [...new Set([...text.matchAll(SECRET_TEMPLATE_PATTERN)].map((m) => m[1]))];
-}
-
 /**
  * Whether a tool's stored URL keeps its host fixed, with {{input.field}} only after the host and
  * its "/". A {{secret:name}} is the admin's own value, filled in before the call, so it counts
