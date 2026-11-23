@@ -86,6 +86,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The `Access-Control-Allow-Credentials` response header.
 - The separate hourly rate limit on search token routes.
+- The analytics option to store a hash of the client's address with a session (`ANALYTICS_TRACK_IP_HASH`, and `trackIPHash` in the analytics settings API). Analytics sessions keep no client address. The unused `ip_hash` column is dropped in a later release.
 
 ### Security
 

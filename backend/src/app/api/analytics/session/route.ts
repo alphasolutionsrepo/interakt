@@ -8,10 +8,8 @@ import {
   getOrCreateSession,
   endSession,
   generateSessionId,
-  hashIP,
 } from '@/features/analytics';
 import type { SessionType } from '@/features/analytics';
-import { clientIp } from '@/shared/api/client-ip';
 import { readJsonBody } from '@/shared/api/read-json-body';
 import { apiResponse } from '@/shared/api/response';
 import { z } from '@/shared/validation/zod';
@@ -50,8 +48,6 @@ export const POST = withPermission('analytics:manage', async function POST(reque
 
     // Get client info (privacy-respecting)
     const userAgent = request.headers.get('user-agent') || undefined;
-    const ip = clientIp(request);
-    const ipHash = ip ? hashIP(ip) : undefined;
     const origin = request.headers.get('origin') || undefined;
 
     // Create or get session
@@ -62,7 +58,6 @@ export const POST = withPermission('analytics:manage', async function POST(reque
       sessionType: data.sessionType as SessionType,
       originDomain: origin ? new URL(origin).hostname : undefined,
       userAgent,
-      ipHash,
     });
 
     return NextResponse.json({

@@ -309,7 +309,6 @@ export interface SessionData {
   // Client info
   originDomain?: string;
   userAgent?: string;
-  ipHash?: string;
 }
 
 // ============================================================================

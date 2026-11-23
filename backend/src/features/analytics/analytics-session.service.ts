@@ -10,7 +10,7 @@
  * - Sessions are created lazily on first event
  * - Session ID comes from frontend (externalSessionId)
  * - Sessions are updated atomically using upsert
- * - Privacy-sensitive data (userAgent, ipHash) only tracked if enabled
+ * - Privacy-sensitive data (userAgent) only tracked if enabled
  */
 
 import 'server-only';
@@ -128,9 +128,6 @@ export async function getOrCreateSession(data: SessionData): Promise<string | nu
     if (analyticsFlags.canTrackUserAgent() && data.userAgent) {
       sessionData.userAgent = data.userAgent;
     }
-    if (analyticsFlags.canTrackIPHash() && data.ipHash) {
-      sessionData.ipHash = data.ipHash;
-    }
 
     const [newSession] = await analyticsDB
       .insert(analyticsSessions)
@@ -242,26 +239,6 @@ export async function endSession(externalSessionId: string): Promise<void> {
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-
-/**
- * Hash an IP address for privacy-safe storage
- */
-export function hashIP(ip: string): string {
-  // Simple hash using built-in crypto
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    // Use async hashing in supported environments
-    // For now, use a simpler approach
-  }
-
-  // Simple hash for IP (not cryptographically secure, but good for analytics grouping)
-  let hash = 0;
-  for (let i = 0; i < ip.length; i++) {
-    const char = ip.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(16).padStart(8, '0');
-}
 
 /**
  * Generate a session ID for client-side use

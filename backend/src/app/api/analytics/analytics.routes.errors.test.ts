@@ -33,7 +33,7 @@ vi.mock('@/db/index', () => ({
   analyticsDB: { selectDistinct: () => ({ from: () => ({ where: () => ({ limit: async () => active.experiences }) }) }) },
 }));
 const sessions = vi.hoisted(() => ({ getOrCreateSession: vi.fn(), endSession: vi.fn() }));
-vi.mock('@/features/analytics', () => ({ ...sessions, generateSessionId: () => 'generated', hashIP: vi.fn() }));
+vi.mock('@/features/analytics', () => ({ ...sessions, generateSessionId: () => 'generated' }));
 
 import { DELETE as clearData } from './data/route';
 import { GET as experienceSummary } from './experience-summary/route';
