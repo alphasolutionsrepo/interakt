@@ -67,7 +67,10 @@ describe('an analytics session stored with every tracking option on', () => {
 
   it('keeps no client address after the settings API is sent trackIPHash: true', async () => {
     const body = JSON.stringify({ trackSessions: true, trackUserAgent: true, trackIPHash: true });
-    expect((await updateConfig(new NextRequest('http://interakt.test/api/analytics/config', { method: 'PUT', body }))).status).toBe(200);
+    const updated = await updateConfig(new NextRequest('http://interakt.test/api/analytics/config', { method: 'PUT', body }));
+    expect(updated.status).toBe(200);
+    // The settings it answers with have no address option to show
+    expect(JSON.stringify(await updated.json())).not.toMatch(/trackIPHash/i);
 
     expect((await start('session-b')).status).toBe(200);
 
