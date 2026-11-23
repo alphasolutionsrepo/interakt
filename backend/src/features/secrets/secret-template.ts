@@ -13,6 +13,17 @@ export function missingSecretMessage(name: string, usedFor: string): string {
 }
 
 /**
+ * Thrown when a connection's secret is missing. Its own type, so a tool run never retries it
+ * (another try can't find the secret), whatever words the secret's name has.
+ */
+export class MissingSecretError extends Error {
+  constructor(name: string, usedFor: string) {
+    super(missingSecretMessage(name, usedFor));
+    this.name = 'MissingSecretError';
+  }
+}
+
+/**
  * Config fields whose value is a bare secret name (MCP and data source auth, HTTP tool auth,
  * the web search key). Shared by the delete check (secrets.repository findSecretReferences)
  * and the access check, so both see the same references.

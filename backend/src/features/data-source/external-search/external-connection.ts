@@ -10,7 +10,7 @@
 import 'server-only';
 
 import type { ExternalSearchIndexConfig } from '@/db/schema/data-sources.schema';
-import { missingSecretMessage } from '@/features/secrets/secret-template';
+import { MissingSecretError } from '@/features/secrets/secret-template';
 import { resolveSecret } from '@/features/secrets/secrets.service';
 import type { ExternalConnection } from './external-search.types';
 
@@ -25,13 +25,13 @@ const PROVIDER_KEYS: Record<ExternalSearchIndexConfig['provider'], string> = {
  * The connection's secret, or '' when it uses none. An unauthenticated source has nothing to
  * resolve, so a leftover secret name is ignored. One rule for every request to the source.
  *
- * @throws Error naming the secret when the vault can't give it
+ * @throws MissingSecretError naming the secret when the vault can't give it
  */
 export async function resolveConnectionSecret(conn: ExternalSearchIndexConfig['connection']): Promise<string> {
   if (conn.authType === 'none' || !conn.credentials?.secretRef) return '';
   const resolved = await resolveSecret(conn.credentials.secretRef);
   if (!resolved) {
-    throw new Error(missingSecretMessage(conn.credentials.secretRef, "for this data source's connection"));
+    throw new MissingSecretError(conn.credentials.secretRef, "for this data source's connection");
   }
   return resolved;
 }

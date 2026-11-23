@@ -76,4 +76,15 @@ describe('a secret whose value has characters that are special in a text replace
     expect(result.success).toBe(true);
     expect(sentHeader('X-Login')).toBe("u$&1:p$'2");
   });
+
+  it('sends a value that looks like another secret placeholder as stored, without filling it again', async () => {
+    vault.set('first', '{{secret:second}}');
+    vault.set('second', 'SECOND_VALUE');
+    getToolById.mockResolvedValue(httpTool({ 'X-Pair': '{{secret:first}}|{{secret:second}}' }));
+
+    const result = await executeTool('tool-1', {});
+
+    expect(result.success).toBe(true);
+    expect(sentHeader('X-Pair')).toBe('{{secret:second}}|SECOND_VALUE');
+  });
 });

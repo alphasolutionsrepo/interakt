@@ -13,6 +13,8 @@ vi.mock('@/features/secrets/secrets.service', () => ({
   resolveSecret: vi.fn(async (name: string) => (name === 'mcp_token' ? 'tok-123' : null)),
 }));
 
+import { MissingSecretError } from '@/features/secrets/secret-template';
+
 import { callTool, probeAndDiscover } from './mcp-client';
 
 const reply = (result: unknown) =>
@@ -34,6 +36,7 @@ describe('an MCP connection with an auth secret', () => {
     await expect(callTool(connection('gone_token'), 'search', {})).rejects.toThrow(
       'The secret "gone_token" used for this connection\'s authentication is missing from the Secrets Vault or can\'t be read',
     );
+    await expect(callTool(connection('gone_token'), 'search', {})).rejects.toBeInstanceOf(MissingSecretError);
     expect(fetchOnSameServer).not.toHaveBeenCalled();
   });
 
