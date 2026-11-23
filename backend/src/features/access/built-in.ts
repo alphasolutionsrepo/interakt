@@ -39,7 +39,6 @@ const TABLES = {
 
 export type BuiltInKind = keyof typeof TABLES;
 
-
 export const REFUSAL = BUILT_IN_REFUSAL;
 
 export const GUARDS_BUILT_IN = Symbol.for('interakt.guardsBuiltIn');

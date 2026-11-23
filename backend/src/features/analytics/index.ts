@@ -147,7 +147,6 @@ export {
   getOrCreateSession,
   updateSessionCounters,
   endSession,
-  hashIP,
   generateSessionId,
   clearSessionCache,
   getSessionCacheStats,
