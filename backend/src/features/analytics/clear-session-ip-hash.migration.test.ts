@@ -43,4 +43,9 @@ describe('emptying address hashes stored before', () => {
       { id: 'without-hash', ipHash: null, userAgent: null },
     ]));
   });
+
+  it('is registered, so the migrator runs it', () => {
+    const journal = JSON.parse(readFileSync(path.resolve(__dirname, '../../../db/drizzle-analytics/meta/_journal.json'), 'utf8'));
+    expect(journal.entries.map((e: { tag: string }) => e.tag)).toContain('0015_clear_session_ip_hash');
+  });
 });

@@ -4,7 +4,7 @@
  * A session started through the real route and session service, stored in real Postgres
  * (PGlite with the analytics migrations): no client address and no hash of one is stored,
  * even with the old ANALYTICS_TRACK_IP_HASH setting on, user tracking switched on, or
- * `trackIPHash: true` sent to the settings API. The user agent is the control: it is stored,
+ * `trackIPHash: true` sent to the settings API or as one experience's override. The user agent is the control: it is stored,
  * so tracking is on and the row is written.
  */
 
@@ -29,6 +29,7 @@ import { clearAllRuntimeOverrides } from '@/features/analytics/analytics-config'
 
 import { PUT as updateConfig } from '../config/route';
 import { POST as enableUserTracking } from '../config/enable-user-tracking/route';
+import { PUT as setExperienceOverride } from '../config/experience/route';
 import { POST as startSession } from './route';
 
 beforeAll(async () => { testDb = await createAnalyticsTestDb(); });
@@ -72,6 +73,23 @@ describe('an analytics session stored with every tracking option on', () => {
 
     const row = await storedRow();
     expect(row.userAgent).toBe('TestBrowser/1.0');
+    expect(row.ipHash).toBeNull();
+  });
+
+  it('keeps no client address after an experience override is sent trackIPHash: true', async () => {
+    const experienceId = crypto.randomUUID();
+    const body = JSON.stringify({ experienceId, overrides: { trackSessions: true, trackUserAgent: true, trackIPHash: true } });
+    expect((await setExperienceOverride(new NextRequest('http://interakt.test/api/analytics/config/experience', { method: 'PUT', body }))).status).toBe(200);
+
+    const response = await startSession(new NextRequest('http://interakt.test/api/analytics/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': 'TestBrowser/1.0', 'X-Forwarded-For': '1.1.1.1, 9.9.9.9' },
+      body: JSON.stringify({ sessionId: 'session-c', experienceId, sessionType: 'chat' }),
+    }));
+    expect(response.status).toBe(200);
+
+    const row = await storedRow();
+    expect(row.experienceId).toBe(experienceId);
     expect(row.ipHash).toBeNull();
   });
 });

@@ -20,6 +20,8 @@ vi.mock('@/features/analytics', async (importOriginal) => ({
   generateSessionId: () => 'generated',
 }));
 
+import { accessStub } from '@/shared/test/access-stub';
+
 import { POST } from './route';
 
 function start(headers: Record<string, string>) {
@@ -33,6 +35,19 @@ function start(headers: Record<string, string>) {
 describe('POST /api/analytics/session', () => {
   beforeEach(() => {
     mocks.getOrCreateSession.mockReset().mockResolvedValue('internal-1');
+    accessStub.reset();
+  });
+
+  it('refuses a caller who is signed out, and stores nothing', async () => {
+    accessStub.session = null;
+    expect((await start({})).status).toBe(401);
+    expect(mocks.getOrCreateSession).not.toHaveBeenCalled();
+  });
+
+  it('refuses a signed-in role without analytics:manage, and stores nothing', async () => {
+    accessStub.access = { userId: 'viewer', roleId: 'viewer', roleName: 'Viewer', isAdmin: false, permissions: new Set(['analytics:view']) } as typeof accessStub.access;
+    expect((await start({})).status).toBe(403);
+    expect(mocks.getOrCreateSession).not.toHaveBeenCalled();
   });
 
   it.each([
