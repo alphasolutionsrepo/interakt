@@ -209,6 +209,7 @@ export async function planTurn(
       success: false,
       summary: `Turn planning failed: ${err.message}`,
       durationMs,
+      cause: err,
     };
   }
 }

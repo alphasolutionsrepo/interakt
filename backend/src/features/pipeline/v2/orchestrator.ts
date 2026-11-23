@@ -19,7 +19,7 @@ import type { Span } from '@opentelemetry/api';
 import { withSpan , ATTR } from '@/features/telemetry';
 import type { AIFeature } from '@/features/analytics/analytics.types';
 import { withExperienceContext } from '@/features/search/search.service';
-import { assembleContext } from './context-assembly';
+import { assembleContext, createProductionSessionLoader } from './context-assembly';
 import { planTurn } from './turn-planner';
 import { executeLoop } from './execution-loop';
 import { synthesizeResponse } from './response-synthesis';
@@ -45,6 +45,7 @@ import type { ExecutionLoopDeps } from './execution-loop';
 import type { SynthesisDeps } from './response-synthesis';
 import type { PersistenceDeps } from './persistence';
 import type { ChatResult } from '@/features/ai-service/ai-service.types';
+import { classifyLlmFailure } from '../fallback-messages';
 
 const logger = createLogger('v2:orchestrator');
 
@@ -376,7 +377,9 @@ export async function runV2Pipeline(
       planFailed = true;
       break;
     }
-    const errorText = "I'm having trouble understanding your request right now. Could you try again?";
+    // A setup or provider problem (unreadable key, billing, rate limit) is named; anything else gets the plain answer
+    const failure = planResult.cause instanceof Error ? classifyLlmFailure(planResult.cause, { stage: 'planning' }) : null;
+    const errorText = failure ?? "I'm having trouble understanding your request right now. Could you try again?";
     parentSpan.setAttribute('alpha.v2.outcome', 'plan_failed');
     onEvent({ type: 'content', text: errorText });
     onEvent({ type: 'done', sessionId: turnContext.sessionId, usage });
@@ -934,37 +937,7 @@ export function createProductionV2Deps(): V2PipelineDeps {
 
   return {
     contextAssembly: {
-      sessionLoader: {
-        async getSessionWithWindow(sessionId, windowSize) {
-          const { getSessionWithWindow } = await import('@/features/sessions/sessions.service');
-          const result = await getSessionWithWindow(sessionId, windowSize);
-          if (!result) return null;
-          return {
-            session: {
-              id: result.session.id,
-              summary: (result.session as any).summary ?? null,
-              facts: (result.session as any).facts as Record<string, string> | null ?? null,
-              pipelineState: (result.session as any).pipelineState as Record<string, unknown> | null ?? null,
-              userContext: (result.session as any).userContext as { userId?: string } | null ?? null,
-              messageCount: (result.session as any).messageCount ?? 0,
-              status: result.session.status,
-            },
-            messages: result.messages.map((m: any) => ({
-              role: m.role,
-              content: m.content,
-              createdAt: m.createdAt,
-            })),
-          };
-        },
-        async createSession(expId, ttlMinutes) {
-          const { createSession } = await import('@/features/sessions/sessions.service');
-          const newSession = await createSession({ aiExperienceId: expId, ttlMinutes });
-          return {
-            session: { id: newSession.id, summary: null, facts: null, pipelineState: null, userContext: null, messageCount: 0, status: 'active' },
-            messages: [],
-          };
-        },
-      },
+      sessionLoader: createProductionSessionLoader(),
       dataSchemaLoader: {
         async loadFieldSchema(dataSourceId) {
           const ds = await readDataSource(dataSourceId);

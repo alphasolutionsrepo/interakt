@@ -16,6 +16,7 @@ vi.mock('@/db/index', () => ({ get db() { return testDb.db; } }));
 
 import { seedAIProviders } from './index';
 
+import * as secretsRepository from '@/features/secrets/secrets.repository';
 import { createSecret } from '@/features/secrets/secrets.service';
 
 beforeAll(async () => { vi.stubEnv('SECRETS_ENCRYPTION_KEY', 'b'.repeat(64)); testDb = await createAppTestDb(); }, 60_000);
@@ -35,5 +36,22 @@ describe('force re-seeding providers', () => {
     await seedAIProviders({ keys: ['openai', 'ollama'], force: true });
 
     expect(await secretNames()).toEqual(['chosen_key']);
+  });
+
+  it('keeps the provider when deleting its own secret fails: both go or neither', async () => {
+    await seedAIProviders({ keys: ['openai'], force: true });
+    await createSecret({ name: 'ai_provider_openai', value: 'own-key' });
+    await testDb.db.execute(sql`UPDATE ai_providers SET api_key_secret = 'ai_provider_openai', api_key_secret_managed = true WHERE provider_key = 'openai'`);
+    const before = (await testDb.db.execute(sql`SELECT id FROM ai_providers WHERE provider_key = 'openai'`)).rows[0];
+
+    const find = vi.spyOn(secretsRepository, 'findSecretReferences').mockRejectedValueOnce(new Error('lookup down'));
+    try {
+      await seedAIProviders({ keys: ['openai'], force: true });
+    } finally {
+      find.mockRestore();
+    }
+
+    expect((await testDb.db.execute(sql`SELECT id FROM ai_providers WHERE provider_key = 'openai'`)).rows[0]).toEqual(before);
+    expect(await secretNames()).toContain('ai_provider_openai');
   });
 });

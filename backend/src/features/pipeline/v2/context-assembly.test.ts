@@ -153,7 +153,7 @@ describe('S2: Context Assembly', () => {
       const input = makeInput();
       await assembleContext(input, deps);
 
-      expect(deps.sessionLoader.getSessionWithWindow).toHaveBeenCalledWith('session-123', 6);
+      expect(deps.sessionLoader.getSessionWithWindow).toHaveBeenCalledWith('session-123', 6, 'exp-1');
     });
 
     it('uses default window size when experience config is missing', async () => {
@@ -163,7 +163,7 @@ describe('S2: Context Assembly', () => {
       });
       await assembleContext(input, deps);
 
-      expect(deps.sessionLoader.getSessionWithWindow).toHaveBeenCalledWith('session-123', 10);
+      expect(deps.sessionLoader.getSessionWithWindow).toHaveBeenCalledWith('session-123', 10, 'exp-1');
     });
   });
 
@@ -196,6 +196,22 @@ describe('S2: Context Assembly', () => {
 
       const result = await assembleContext(makeInput(), deps);
       expect(result.data!.sessionId).toBe('new-session');
+    });
+
+    it("creates a new session for the experience when the session id is another experience's", async () => {
+      // The production loader answers null for a session of another experience
+      const newSession = makeSessionData({ session: { id: 'new-session', summary: null, facts: null, pipelineState: null, userContext: null, messageCount: 0, status: 'active' } });
+      const getSessionWithWindow = vi.fn(async (_id: string, _size: number, experienceId: string) =>
+        experienceId === 'exp-A' ? makeSessionData() : null);
+      const deps = makeDeps({
+        sessionLoader: { getSessionWithWindow, createSession: vi.fn().mockResolvedValue(newSession) },
+      });
+
+      const result = await assembleContext(makeInput({ experienceId: 'exp-B' }), deps);
+
+      expect(getSessionWithWindow).toHaveBeenCalledWith('session-123', 6, 'exp-B');
+      expect(result.data!.sessionId).toBe('new-session');
+      expect(deps.sessionLoader.createSession).toHaveBeenCalledWith('exp-B', 1440);
     });
 
     it('creates new session when existing session is expired', async () => {

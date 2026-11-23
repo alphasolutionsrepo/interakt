@@ -10,7 +10,7 @@
 
 import type { AIProvider } from '@/db/schema/ai-providers.schema';
 import { AIServiceError } from '@/features/ai-service/ai-service.types';
-import { putSecretValue, readSecret, secretExists } from '@/features/secrets/secrets.service';
+import { findSecretReferences, putSecretValue, readSecret, secretExists } from '@/features/secrets/secrets.service';
 import type { DbExecutor } from '@/shared/db/executor';
 import { ValidationError } from '@/shared/errors/app-error';
 
@@ -100,12 +100,14 @@ type SavedKeyFields = Pick<AIProvider, 'apiKey' | 'apiKeySecret' | 'apiKeySecret
  * provider row is written if nothing else uses it.
  *
  * A typed key replaces the value of the provider's own secret, or makes one (the next free
- * name after ai_provider_<key>). A chosen secret must exist. The key column the provider
+ * name after ai_provider_<key>). When something else now uses the own secret (another
+ * provider, a tool, a connection, a data source), it is left as it is and the typed key goes
+ * to a new secret of this provider's. A chosen secret must exist. The key column the provider
  * used before keys moved to the vault is emptied on every change.
  */
 export async function applyKeyChange(
   change: KeyChange,
-  provider: { providerKey: string; displayName: string } & Partial<SavedKeyFields>,
+  provider: { id?: string; providerKey: string; displayName: string } & Partial<SavedKeyFields>,
   tx: DbExecutor
 ): Promise<{ fields: Partial<SavedKeyFields>; noLongerUsed?: string }> {
   const ownSecret = provider.apiKeySecretManaged ? provider.apiKeySecret ?? undefined : undefined;
@@ -124,9 +126,15 @@ export async function applyKeyChange(
       };
     }
     case 'typed': {
-      const name = ownSecret ?? (await freeSecretName(managedSecretName(provider.providerKey), tx));
+      // Overwrite the own secret only when this provider is its only user; a failed lookup fails the save
+      const sharedOwn = ownSecret !== undefined
+        && (await findSecretReferences(ownSecret, tx)).some((r) => !(r.type === 'ai_provider' && r.id === provider.id));
+      const name = ownSecret && !sharedOwn ? ownSecret : await freeSecretName(managedSecretName(provider.providerKey), tx);
       await putSecretValue(name, change.value, { description: `API key for the AI provider "${provider.displayName}"`, executor: tx });
-      return { fields: { apiKey: null, apiKeySecret: name, apiKeySecretManaged: true } };
+      return {
+        fields: { apiKey: null, apiKeySecret: name, apiKeySecretManaged: true },
+        noLongerUsed: sharedOwn ? ownSecret : undefined,
+      };
     }
   }
 }
