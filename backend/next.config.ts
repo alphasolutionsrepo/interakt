@@ -2,8 +2,10 @@ import type { NextConfig } from "next";
 
 /**
  * Cache-Control for fixed-name files in public/. Production: browsers reuse a
- * copy for 5 minutes, then revalidate (a cheap 304 via ETag); a copy up to a
- * day old may be shown while that check runs. Development: always revalidate.
+ * copy for 5 minutes. After that, a page load within a day still uses the
+ * cached copy while the browser checks for a new one in the background (a
+ * cheap 304 via ETag when nothing changed); the next load uses the result.
+ * Development: always revalidate.
  */
 function publicFileCacheControl(): string {
   return process.env.NODE_ENV === "production"
