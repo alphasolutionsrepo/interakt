@@ -343,3 +343,84 @@ describe('search widget: review follow-ups', () => {
     expect(summaries).toEqual(['shoes']);
   });
 });
+
+describe('search widget: review follow-ups, round 2', () => {
+  it('Enter within the search delay starts no summary for the previous results', async () => {
+    const { summaries } = stubServer();
+    await mount();
+    setValue('shoes');
+    await flush(500); // results for "shoes" are in
+    setValue('shoes red');
+    await flush(50); // its search hasn't run yet
+    pressEnter();
+    await flush(50);
+    expect(summaries).toHaveLength(0);
+  });
+
+  it('a filter click within the search delay keeps the filter on the search that follows', async () => {
+    const { searches } = stubServer();
+    await mount({ aiSummary: false });
+    setValue('shoes');
+    await flush(500);
+    setValue('shoes red');
+    await flush(50);
+    (root().querySelector('.ik-chip--facet') as HTMLButtonElement).click();
+    await flush(500); // past the search delay
+    const bodies = (fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+      .filter(([url]) => url.endsWith('/api/v1/search'))
+      .map(([, init]) => JSON.parse(String(init.body)));
+    expect(searches).toEqual(['shoes', 'shoes red']);
+    expect(bodies.at(-1).filters).toEqual([{ field: 'brand', operator: 'eq', value: 'Acme' }]);
+  });
+
+  it('an out-of-date search failing shows no error, and the current one ends "Searching…"', async () => {
+    const pending = new Map<string, () => void>();
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (!url.endsWith('/api/v1/search')) return new Response('{}', { status: 200 });
+      const q = JSON.parse(String(init?.body)).query as string;
+      await new Promise<void>((resolve) => pending.set(q, resolve));
+      if (q === 'sh') throw new TypeError('network down');
+      return new Response(JSON.stringify({ success: true, data: { results: docs(), total: { value: 3 } } }), { status: 200 });
+    }));
+    await mount({ aiSummary: false });
+    setValue('sh');
+    await flush(350);
+    setValue('shoes');
+    await flush(350);
+    pending.get('sh')!();
+    await flush(50);
+    expect(root().querySelector('.ik-status--error')).toBeNull();
+    expect(root().textContent).toContain('Searching');
+    pending.get('shoes')!();
+    await flush(50);
+    expect(root().textContent).not.toContain('Searching');
+  });
+
+  it('removing the widget while a summary waits for the pause starts no summary', async () => {
+    const { summaries } = stubServer();
+    await mount();
+    setValue('shoes');
+    await flush(500);
+    SearchDropinUI.destroy();
+    await flush(900);
+    expect(summaries).toHaveLength(0);
+  });
+
+  it('fewer than 3 results: no summary, and no button in button mode', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      url.endsWith('/api/v1/search')
+        ? new Response(JSON.stringify({ success: true, data: { results: docs().slice(0, 2), total: { value: 2 } } }), { status: 200 })
+        : new Response('{}', { status: 200 })));
+    await mount();
+    setValue('shoes');
+    await flush(1300);
+    expect((fetch as unknown as { mock: { calls: [string][] } }).mock.calls.some(([u]) => u.endsWith('/api/v1/summarize'))).toBe(false);
+    SearchDropinUI.destroy();
+
+    document.body.innerHTML = '<div id="ik"></div>';
+    await mount({ summaryTrigger: 'button' });
+    setValue('shoes');
+    await flush(500);
+    expect([...root().querySelectorAll('button')].some((b) => b.textContent?.includes('AI summary'))).toBe(false);
+  });
+});

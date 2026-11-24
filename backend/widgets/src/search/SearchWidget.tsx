@@ -297,8 +297,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   /** Start the summary for q now (Enter, the button, or the pause has passed). */
   const startSummaryNow = (q: string) => {
     clearSummaryTimer();
-    // Not while a newer search is loading: the results on screen are the old ones
-    if (loading.value || lastQueryRef.current !== q || summaryForRef.current === q || !startsSummary()) return;
+    // Not while a newer search is loading or waiting to run: the results on screen are the old ones
+    if (loading.value || query.value !== q || lastQueryRef.current !== q || summaryForRef.current === q || !startsSummary()) return;
     // Closed while waiting: write it when the search is reopened
     if (!open.value) {
       summaryStoppedForRef.current = q;
@@ -389,6 +389,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     const next = sameChip ? null : { field, value };
     activeChip.value = next;
     lastChangeAtRef.current = Date.now();
+    // This search covers the text typed so far: a search still waiting to run would drop the filter
+    if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
     config.onEvent?.({
       type: 'search:facet_toggled',
       payload: { field, value, selected: !sameChip },
