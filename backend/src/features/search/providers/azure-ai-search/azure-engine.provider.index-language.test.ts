@@ -14,6 +14,8 @@ vi.mock('@/shared/logger/logger', () => ({
 }));
 vi.mock('./azure-client', () => ({ getIndexClient: vi.fn(), getSearchClient: vi.fn(), checkAzureHealth: vi.fn() }));
 
+import { buildIndexSettingsContext } from '@/features/search-index/provider-settings.utils';
+
 import { AzureEngineProvider } from './azure-engine.provider';
 
 type Field = { name: string; analyzer?: string; searchable?: boolean };
@@ -75,5 +77,20 @@ describe('an Azure index in another language', () => {
             expect(by('body'), String(language)).not.toHaveProperty('analyzer');
             expect(by('special').analyzer).toBe('keyword');
         }
+    });
+});
+
+describe('a stored Azure index record', () => {
+    // The context builder is what reindex, recreate and first-upload create all call
+    it('carries its language through the production context builder to the field analyzers', () => {
+        const record = { searchProvider: 'azure-ai-search', language: 'danish', synonyms: [], stopWords: [], providerSettings: {}, numberOfShards: 1, numberOfReplicas: 0, refreshInterval: '1s' };
+        const fields = [
+            { fieldName: 'title', fieldType: 'text', isSearchable: true, isFacetable: false, isAutocomplete: false, customAnalyzer: null, providerFieldSettings: {} },
+            { fieldName: 'sku', fieldType: 'keyword', isSearchable: true, isFacetable: false, isAutocomplete: false, customAnalyzer: null, providerFieldSettings: {} },
+        ];
+        const result = new AzureEngineProvider().buildIndexSettings(buildIndexSettingsContext(record, fields));
+        const defs = (result.mappings as { fields: Field[] }).fields;
+        expect(defs.find(f => f.name === 'title')?.analyzer).toBe('da.microsoft');
+        expect(defs.find(f => f.name === 'sku')).not.toHaveProperty('analyzer');
     });
 });

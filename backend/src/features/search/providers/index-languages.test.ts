@@ -119,29 +119,17 @@ describe('custom stop words', () => {
     });
 });
 
-describe('the pages read the engine list', () => {
+// The create wizard and the stop words card are covered by behaviour tests (StepSearchSettings.test.ts,
+// CustomStopWordsCard.test.ts, IndexLanguageSelect.test.ts). The edit and detail pages are too heavy to
+// render without a DOM environment, so these two keep a source check.
+describe('the edit and detail pages read the engine list', () => {
     const read = (file: string) => readFileSync(path.join(__dirname, '../../..', file), 'utf8');
-    const wizard = read('app/search-indexes/_components/CreateWizard/StepSearchSettings.tsx');
     const edit = read('app/search-indexes/(pages)/[id]/edit/page.tsx');
     const detail = read('app/search-indexes/(pages)/[id]/page.tsx');
-    const picker = read('app/search-indexes/_components/IndexLanguageSelect.tsx');
 
-    it('the wizard keeps no language list of its own', () => {
-        expect(wizard).not.toMatch(/const LANGUAGES\b/);
-        expect(wizard).not.toContain("value: 'english'");
-    });
-
-    it('the wizard and the edit page use the shared picker with the index provider', () => {
-        expect(wizard).toMatch(/<IndexLanguageSelect[^>]*provider=\{provider\}/);
+    it('the edit page uses the shared picker with the index provider, on every engine', () => {
         expect(edit).toMatch(/<IndexLanguageSelect[^>]*provider=\{searchIndex\.searchProvider\}/);
         expect(edit).not.toContain('ES_LANGUAGES');
-    });
-
-    it('the picker takes its options from the engine list', () => {
-        expect(picker).toContain('getIndexLanguageChoices(provider, value)');
-    });
-
-    it('the edit page shows the language card on every engine, not only Elasticsearch', () => {
         const card = edit.slice(edit.indexOf('Language Settings') - 400, edit.indexOf('Language Settings'));
         expect(card).not.toContain('isElasticsearch');
     });
@@ -160,11 +148,5 @@ describe('switching engine in the create wizard', () => {
     it('keeps a language Azure has and leaves Elasticsearch settings alone', () => {
         expect(reconcileSettingsForProvider('azure-ai-search', { language: 'danish', stopWords: [] })).toEqual({ language: 'danish', stopWords: [] });
         expect(reconcileSettingsForProvider('elasticsearch', { language: 'cjk', stopWords: ['the'] })).toEqual({ language: 'cjk', stopWords: ['the'] });
-    });
-
-    it('is what the wizard runs when the engine changes', () => {
-        const wizard = readFileSync(path.join(__dirname, '../../../app/search-indexes/_components/CreateWizard/StepSearchSettings.tsx'), 'utf8');
-        expect(wizard).toMatch(/reconcileSettingsForProvider\(provider, \{ language, stopWords\b/);
-        expect(wizard).toContain("updateField('stopWords', next.stopWords)");
     });
 });

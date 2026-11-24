@@ -453,8 +453,11 @@ export async function updateSearchIndex(
         if (input.language !== undefined && input.language !== existing.language) {
             assertLanguageSupported(existing.searchProvider, input.language);
         }
-        if (input.stopWords !== undefined && JSON.stringify(input.stopWords) !== JSON.stringify(existing.stopWords ?? [])) {
-            assertStopWordsSupported(existing.searchProvider, input.stopWords);
+        // Stored stop words on an engine that can't apply them (legacy rows) may be kept or
+        // removed; only adding a word it doesn't already hold is refused.
+        if (input.stopWords !== undefined) {
+            const stored = (existing.stopWords ?? []) as string[];
+            assertStopWordsSupported(existing.searchProvider, input.stopWords.filter(word => !stored.includes(word)));
         }
 
         // Build update data

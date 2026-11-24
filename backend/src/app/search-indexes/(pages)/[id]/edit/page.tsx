@@ -55,12 +55,9 @@ import {
 
 import { searchIndexesApi } from '../../../_lib/api-client';
 import { ChangeAIConfigDialog } from '../../../_components/ChangeAIConfigDialog';
+import { CustomStopWordsCard } from '../../../_components/CustomStopWordsCard';
 import { IndexLanguageSelect } from '../../../_components/IndexLanguageSelect';
 import { IngestionKeysCard } from '../../../_components/IngestionKeysCard';
-import {
-  CUSTOM_STOP_WORDS_UNSUPPORTED_REASON,
-  supportsCustomStopWords,
-} from '@/features/search/providers/index-languages';
 
 import { noPermissionTo } from '@/features/access/ui-actions';
 import {
@@ -414,7 +411,6 @@ export default function EditSearchIndexPage() {
   const providerUI = getProviderUI(searchIndex.searchProvider);
   const providerLabel = providerUI?.label ?? searchIndex.searchProvider ?? 'Provider';
   const isElasticsearch = searchIndex.searchProvider === 'elasticsearch';
-  const stopWordsSupported = supportsCustomStopWords(searchIndex.searchProvider);
 
   const canSave = isDirty || isProviderSettingsDirty;
 
@@ -787,72 +783,15 @@ export default function EditSearchIndexPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/60 shadow-sm rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 font-semibold">
-                  <X className="h-4 w-4 text-red-500" />
-                  Custom Stop Words
-                  {dirtyFields.stopWords && (
-                    <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 rounded-md">
-                      modified
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription>
-                  Words to ignore during search (comma-separated)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {!stopWordsSupported && (
-                  <p className="text-sm text-muted-foreground">{CUSTOM_STOP_WORDS_UNSUPPORTED_REASON}</p>
-                )}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="e.g., the, a, an"
-                    disabled={!stopWordsSupported}
-                    value={newStopWord}
-                    onChange={(e) => setNewStopWord(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddStopWord();
-                      }
-                    }}
-                    className="rounded-lg"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleAddStopWord}
-                    disabled={!stopWordsSupported || !newStopWord.trim()}
-                    className="rounded-lg"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {stopWords.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {stopWords.map((word, i) => (
-                      <Badge key={i} variant="outline" className="pl-3 pr-1.5 py-1.5 rounded-lg">
-                        <span className="text-xs font-medium">{word}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveStopWord(i)}
-                          className="ml-2 hover:bg-destructive/20 rounded p-0.5 transition-colors"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                {stopWords.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4 bg-muted/30 rounded-xl">
-                    No custom stop words configured
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+            <CustomStopWordsCard
+              provider={searchIndex.searchProvider}
+              stopWords={stopWords}
+              modified={Boolean(dirtyFields.stopWords)}
+              draft={newStopWord}
+              onDraftChange={setNewStopWord}
+              onAdd={handleAddStopWord}
+              onRemove={handleRemoveStopWord}
+            />
           </TabsContent>
 
           {/* Provider Settings Tab */}

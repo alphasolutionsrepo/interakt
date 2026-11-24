@@ -161,6 +161,18 @@ describe('an unchanged stored value is not refused', () => {
         await expect(updateSearchIndex('i1', { stopWords: ['the'], description: 'x' }, 'u1')).resolves.toBeDefined();
         await expect(updateSearchIndex('i1', { stopWords: [] }, 'u1')).resolves.toBeDefined();
     });
+
+    it('lets legacy stop words be removed one at a time on Azure, but not added to', async () => {
+        state.existing = { id: 'i1', name: 'shop', searchProvider: 'azure-ai-search', language: 'standard', stopWords: ['a', 'the', 'of'] };
+        await updateSearchIndex('i1', { stopWords: ['a', 'the'] }, 'u1');
+        expect(vi.mocked(repository.updateSearchIndex).mock.calls.at(-1)?.[1]).toMatchObject({ stopWords: ['a', 'the'] });
+
+        const error = await updateSearchIndex('i1', { stopWords: ['a', 'the', 'of', 'and'] }, 'u1').catch(e => e);
+        expect(error).toBeInstanceOf(ValidationError);
+        expect(error.status).toBe(400);
+        const swapped = await updateSearchIndex('i1', { stopWords: ['a', 'and'] }, 'u1').catch(e => e);
+        expect(swapped).toBeInstanceOf(ValidationError);
+    });
 });
 
 describe('custom stop words on Azure', () => {
