@@ -33,6 +33,14 @@ interface InitializedWidget {
 
 const instances = new Map<string, InitializedWidget>();
 
+/** A search runs this long after the last keystroke. */
+const SEARCH_DELAY_MS = 300;
+/**
+ * With summaryTrigger 'pause', the summary starts once this long has passed since the
+ * visitor's last keystroke or filter click (and never before that search's results land).
+ */
+const SUMMARY_PAUSE_MS = 1000;
+
 export const SearchDropinUI = {
   /** The open-search shortcut as this visitor's keyboard shows it: '⌘K' or 'Ctrl+K'. */
   shortcutLabel(): string {
@@ -124,6 +132,12 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   const summaryStreaming = useSignal<boolean>(false);
   /** Set to false after a 403/404 so we stop attempting summaries for this session. */
   const summaryEnabled = useRef<boolean>(true);
+  const summaryOnClick = config.summaryTrigger === 'button';
+  /** The summary waiting for the visitor to pause, and when they last changed the search. */
+  const summaryTimerRef = useRef<number | null>(null);
+  const lastChangeAtRef = useRef<number>(0);
+  /** The query whose summary was started (shown, being written, or stopped). */
+  const summaryForRef = useRef<string | null>(null);
 
   const debounceRef = useRef<number | null>(null);
   const lastQueryRef = useRef<string>('');
@@ -134,8 +148,15 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   /** The query whose summary was stopped by closing the search; reopening writes it again. */
   const summaryStoppedForRef = useRef<string | null>(null);
 
+  const clearSummaryTimer = () => {
+    if (summaryTimerRef.current != null) window.clearTimeout(summaryTimerRef.current);
+    summaryTimerRef.current = null;
+  };
+
   /** Stop the summary being written, so the server stops generating it. */
   const cancelSummary = () => {
+    clearSummaryTimer();
+    summaryForRef.current = null;
     summaryAbortRef.current?.abort();
     summaryAbortRef.current = null;
     summary.value = '';
@@ -145,6 +166,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   useEffect(() => {
     return () => {
       if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+      clearSummaryTimer();
       // Removed from the page (destroy, or a new init on the same container)
       summaryAbortRef.current?.abort();
     };
@@ -156,6 +178,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     const stopped = summaryStoppedForRef.current;
     summaryStoppedForRef.current = null;
     if (stopped !== null && stopped === lastQueryRef.current && startsSummary()) {
+      summaryForRef.current = stopped;
       void runSummary(stopped, results.value);
     }
   };
@@ -259,11 +282,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       // Kick off the AI summary in parallel. Opt-out via `aiSummary: false`
       // on the caller's init. A 403 also flips summaryEnabled off for the
       // rest of the session so we don't hammer a disabled endpoint.
-      if (startsSummary()) {
-        if (open.value) void runSummary(q, results.value);
-        // Closed while the search was running: write it when the search is reopened
-        else summaryStoppedForRef.current = q;
-      }
+      if (startsSummary() && !summaryOnClick) scheduleSummary(q);
     } catch (err) {
       if (err instanceof ApiError && err.code === TURNED_OFF_CODE) {
         onTurnedOff();
@@ -284,6 +303,27 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
 
   const startsSummary = () =>
     config.aiSummary !== false && summaryEnabled.current && results.value.length >= 3;
+
+  /** Start the summary for q now (Enter, the button, or the pause has passed). */
+  const startSummaryNow = (q: string) => {
+    clearSummaryTimer();
+    // Not while a newer search is loading or waiting to run: the results on screen are the old ones
+    if (loading.value || query.value !== q || lastQueryRef.current !== q || summaryForRef.current === q || !startsSummary()) return;
+    // Closed while waiting: write it when the search is reopened
+    if (!open.value) {
+      summaryStoppedForRef.current = q;
+      return;
+    }
+    summaryForRef.current = q;
+    void runSummary(q, results.value);
+  };
+
+  /** Start the summary for q once the visitor has paused (SUMMARY_PAUSE_MS since their last change). */
+  const scheduleSummary = (q: string) => {
+    clearSummaryTimer();
+    const wait = Math.max(0, lastChangeAtRef.current + SUMMARY_PAUSE_MS - Date.now());
+    summaryTimerRef.current = window.setTimeout(() => startSummaryNow(q), wait);
+  };
 
   const runSummary = async (q: string, hits: SearchResultHit[]) => {
     const ac = new AbortController();
@@ -325,7 +365,11 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       }
       // Silent otherwise; summary is a progressive enhancement.
     } finally {
-      if (summaryAbortRef.current === ac) summaryStreaming.value = false;
+      if (summaryAbortRef.current === ac) {
+        summaryStreaming.value = false;
+        // Nothing came back (an error or an empty answer): the visitor can ask again
+        if (!ac.signal.aborted && summary.value === '' && summaryForRef.current === q) summaryForRef.current = null;
+      }
     }
   };
 
@@ -333,8 +377,16 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     query.value = raw;
     // New queries reset the chip so the full facet set gets reloaded.
     activeChip.value = null;
+    lastChangeAtRef.current = Date.now();
+    // Still typing: the summary waits for the pause
+    clearSummaryTimer();
     if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => runSearch(raw, null), 200);
+    // An emptied field clears at once; a search waits for the visitor to stop typing
+    if (!raw.trim()) {
+      void runSearch('', null);
+      return;
+    }
+    debounceRef.current = window.setTimeout(() => runSearch(raw, null), SEARCH_DELAY_MS);
   };
 
   /**
@@ -346,6 +398,9 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     const sameChip = current?.field === field && current?.value === value;
     const next = sameChip ? null : { field, value };
     activeChip.value = next;
+    lastChangeAtRef.current = Date.now();
+    // This search covers the text typed so far: a search still waiting to run would drop the filter
+    if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
     config.onEvent?.({
       type: 'search:facet_toggled',
       payload: { field, value, selected: !sameChip },
@@ -391,7 +446,12 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       const idx = selected.value;
       if (idx >= 0 && idx < r.length) {
         e.preventDefault();
+        // Opens a result with a link and reports the choice, as before. Without a link, Enter
+        // also asks for the summary now (with summaryTrigger 'button', only the button does)
         openResult(r[idx]);
+        if (!renderResultFields(r[idx], displayConfig.value).url && !summaryOnClick) {
+          startSummaryNow(lastQueryRef.current);
+        }
       }
     }
     // Esc is handled globally in the keydown listener above so the shortcut
@@ -492,6 +552,12 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
         <div class="ik-search-body" ref={bodyRef}>
           {(summary.value || summaryStreaming.value) && (
             <AiSummary text={summary.value} streaming={summaryStreaming.value} sources={summarySources.value} />
+          )}
+          {summaryOnClick && !summary.value && !summaryStreaming.value && !loading.value
+            && query.value.trim() !== '' && query.value === lastQueryRef.current && startsSummary() && (
+            <button type="button" class="ik-summary-ask" onClick={() => startSummaryNow(lastQueryRef.current)}>
+              <span aria-hidden="true">✦</span> AI summary
+            </button>
           )}
 
           <ResultsList
