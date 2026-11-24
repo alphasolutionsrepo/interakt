@@ -44,6 +44,15 @@ describe('searchShortcutLabel', () => {
   });
 });
 
+describe('SearchDropinUI.shortcutLabel', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([['MacIntel', '⌘K'], ['Win32', 'Ctrl+K']])('on %s is %s', (platform, label) => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+    expect(SearchDropinUI.shortcutLabel()).toBe(label);
+  });
+});
+
 describe('search widget: the modal search button', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="ik"></div>';
@@ -110,6 +119,20 @@ describe('search widget: keyboard after a filter click', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(MODES)('%s: pressed from the keyboard, focus stays on the chip so tabbing continues', async (mode) => {
+    await mountIn(mode, { aiSummary: false });
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(400);
+
+    const chip = root().querySelector('.ik-chip--facet') as HTMLButtonElement;
+    chip.focus();
+    chip.click(); // Enter or Space on a button: a click with detail 0
+    await flush(50);
+    expect(root().activeElement).toBe(chip);
+  });
+
   it.each(MODES)('%s: keeps the arrow keys working: focus returns to the search field', async (mode) => {
     await mountIn(mode, { aiSummary: false });
     const input = root().querySelector('input') as HTMLInputElement;
@@ -117,7 +140,8 @@ describe('search widget: keyboard after a filter click', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await flush(400);
 
-    (root().querySelector('.ik-chip--facet') as HTMLButtonElement).click();
+    // A mouse click (detail 1), not a keyboard press
+    root().querySelector('.ik-chip--facet')!.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
     await flush(50);
     expect(root().activeElement).toBe(input);
 

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `SearchDropinUI.shortcutLabel()`: the search widget's open shortcut as the visitor's keyboard shows it (`⌘K` or `Ctrl+K`), for a host's own search button.
 - `CLIENT_IP_SOURCE` setting: where Interakt reads a client's address for per-client rate limits: `forwarded-for:N` (N proxies in front of Interakt add to `X-Forwarded-For`), `header:<name>` for an edge's own header such as `CF-Connecting-IP` or `X-Azure-SocketIP`, or `none`. Unset, it uses `forwarded-for:<TRUSTED_PROXY_HOPS>`, so `TRUSTED_PROXY_HOPS` (the number of proxies in front of Interakt, default 1) keeps working as the fallback. Requests without a usable address share one count at 10 times the per-client limit.
 - Health has a Client addresses check. It shows degraded, and the home page lists "Check how client addresses are read", when `CLIENT_IP_SOURCE` is `none` or not understood, or when requests keep arriving without a usable address; it clears within the hour once the setup is fixed.
 - Find Record tools on a search index have name fields and code fields, set on the tool's Edit page and filled in by Create Tools. Find Record matches only on the chosen fields; a list left empty is worked out from field names, as before. A Find Record tool without any field can't be added to an AI experience until it has one; experiences that already use it keep working. Deleting an index field a Find Record tool uses is blocked, and a chosen field that leaves an external index, or that the latest sample of a sampled index didn't show, is flagged on the tool's page.
@@ -68,7 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- Search widget: the arrow keys and Enter keep working after a filter chip is clicked.
+- Search widget: after a filter chip is clicked with the mouse, the arrow keys and Enter keep working; a chip pressed from the keyboard keeps focus, so tabbing continues.
 - Search widget: a long AI summary scrolls together with the results, and the arrow keys bring the highlighted result into view.
 - The widget bundle (`/embed/v1/widgets.js`) and other files in `public/` are cached for 5 minutes instead of a year, so copies fetched from this release on pick up later upgrades: after 5 minutes the browser checks for a new copy in the background and uses it from the next page load.
 - A tool, MCP connection or data source whose settings name a secret that is missing from the Secrets Vault fails with a message naming the secret, instead of sending the request without it.

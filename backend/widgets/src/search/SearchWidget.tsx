@@ -33,6 +33,11 @@ interface InitializedWidget {
 const instances = new Map<string, InitializedWidget>();
 
 export const SearchDropinUI = {
+  /** The open-search shortcut as this visitor's keyboard shows it: '⌘K' or 'Ctrl+K'. */
+  shortcutLabel(): string {
+    return searchShortcutLabel();
+  },
+
   init(config: SearchConfig): void {
     if (!config?.containerId) throw new Error('[Interakt] containerId is required');
     if (!config?.accessToken) throw new Error('[Interakt] accessToken is required');
@@ -327,7 +332,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
    * Toggle a category chip. If the same chip is clicked again, clear it and
    * refetch the unfiltered result set. Otherwise apply the chip and refetch.
    */
-  const toggleChip = (field: string, value: string) => {
+  const toggleChip = (field: string, value: string, byPointer = false) => {
     const current = activeChip.value;
     const sameChip = current?.field === field && current?.value === value;
     const next = sameChip ? null : { field, value };
@@ -337,8 +342,9 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       payload: { field, value, selected: !sameChip },
     });
     runSearch(query.value, next);
-    // Back to the search field, so the arrow keys and Enter keep working after a click
-    inputRef.current?.focus();
+    // After a mouse click, back to the search field so the arrow keys and Enter keep
+    // working; from the keyboard, focus stays on the chip so the visitor can keep tabbing
+    if (byPointer) inputRef.current?.focus();
   };
 
   const openResult = (hit: SearchResultHit) => {
@@ -863,7 +869,7 @@ function CategoryChips({
 }: {
   facets: Facet[];
   activeChip: { field: string; value: string } | null;
-  onToggle: (field: string, value: string) => void;
+  onToggle: (field: string, value: string, byPointer: boolean) => void;
 }) {
   // Only render when we have a terms facet with at least 2 buckets — a
   // single-bucket facet offers no filtering value and just adds chrome.
@@ -884,7 +890,8 @@ function CategoryChips({
             key={b.key}
             type="button"
             class={`ik-chip ik-chip--facet${isActive ? ' ik-chip--active' : ''}`}
-            onClick={() => onToggle(primary.field, b.key)}
+            // detail is 0 when the chip is pressed from the keyboard (Enter or Space)
+            onClick={(e) => onToggle(primary.field, b.key, e.detail > 0)}
             aria-pressed={isActive}
           >
             <span>{b.key}</span>

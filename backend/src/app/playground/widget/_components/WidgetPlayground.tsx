@@ -55,7 +55,7 @@ const GLOBAL_NAME: Record<WidgetKind, string> = {
   search: 'SearchDropinUI',
 };
 
-interface AppliedSpec {
+export interface AppliedSpec {
   key: string;
   kind: WidgetKind;
   experienceId: string;
@@ -75,7 +75,7 @@ interface AppliedSpec {
  * an absolute URL because `srcdoc` iframes resolve relative paths against
  * `about:srcdoc`, not the parent origin.
  */
-function buildIframeDoc(spec: AppliedSpec, origin: string): string {
+export function buildIframeDoc(spec: AppliedSpec, origin: string): string {
   const scriptUrl = `${origin}/embed/v1/widgets.js`;
   const containerId = CONTAINER_ID[spec.kind];
   const globalName = GLOBAL_NAME[spec.kind];
@@ -311,7 +311,7 @@ function escapeHtml(s: string): string {
 // LAUNCHER OPTIONS PER WIDGET
 // ============================================================================
 
-const LAUNCHER_OPTIONS: Record<
+export const LAUNCHER_OPTIONS: Record<
   WidgetKind,
   Array<{ value: Launcher; label: string; icon: React.ComponentType<{ className?: string }> }>
 > = {
