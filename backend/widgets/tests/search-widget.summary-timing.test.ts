@@ -198,6 +198,14 @@ describe("search widget: summaryTrigger 'button'", () => {
     expect(askButton()).toBeUndefined();
   });
 
+  it('the button sits in the scroll area with the summary and results', async () => {
+    stubServer();
+    await mount({ summaryTrigger: 'button' });
+    setValue('shoes');
+    await flush(500);
+    expect(root().querySelector('.ik-search-body .ik-summary-ask')).not.toBeNull();
+  });
+
   it('shows no button when summaries are off', async () => {
     stubServer();
     await mount({ summaryTrigger: 'button', aiSummary: false });

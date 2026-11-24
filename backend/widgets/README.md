@@ -121,6 +121,7 @@ SearchDropinUI.init({
 })
 
 SearchDropinUI.destroy(containerId?)
+SearchDropinUI.shortcutLabel()   // '⌘K' on Apple devices, 'Ctrl+K' elsewhere: for your own search button's hint
 ```
 
 In `modal` mode, **⌘K / Ctrl+K** opens the search anywhere on the page; **Esc** closes it.

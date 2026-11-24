@@ -13,6 +13,8 @@ import type {
   SearchResultHit,
 } from '../shared/types';
 import { createShadowHost } from '../shared/shadow-host';
+import { searchShortcutLabel } from '../shared/shortcut';
+import { isMouseClick } from '../shared/pointer';
 import { resolveTheme } from '../shared/theme';
 import {
   resolveApiBase,
@@ -40,6 +42,11 @@ const SEARCH_DELAY_MS = 300;
 const SUMMARY_PAUSE_MS = 1000;
 
 export const SearchDropinUI = {
+  /** The open-search shortcut as this visitor's keyboard shows it: '⌘K' or 'Ctrl+K'. */
+  shortcutLabel(): string {
+    return searchShortcutLabel();
+  },
+
   init(config: SearchConfig): void {
     if (!config?.containerId) throw new Error('[Interakt] containerId is required');
     if (!config?.accessToken) throw new Error('[Interakt] accessToken is required');
@@ -136,6 +143,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   const lastQueryRef = useRef<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLUListElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const summaryAbortRef = useRef<AbortController | null>(null);
   /** The query whose summary was stopped by closing the search; reopening writes it again. */
   const summaryStoppedForRef = useRef<string | null>(null);
@@ -261,6 +269,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       suggestions.value = suggestionsList;
       // Auto-select the first result so Enter always does something.
       selected.value = results.value.length > 0 ? 0 : -1;
+      // New results start at the top, with the first (highlighted) result in view
+      if (bodyRef.current) bodyRef.current.scrollTop = 0;
       config.onEvent?.({
         type: 'search:results',
         payload: { query: q, count: results.value.length },
@@ -383,7 +393,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
    * Toggle a category chip. If the same chip is clicked again, clear it and
    * refetch the unfiltered result set. Otherwise apply the chip and refetch.
    */
-  const toggleChip = (field: string, value: string) => {
+  const toggleChip = (field: string, value: string, byMouse = false) => {
     const current = activeChip.value;
     const sameChip = current?.field === field && current?.value === value;
     const next = sameChip ? null : { field, value };
@@ -396,6 +406,19 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       payload: { field, value, selected: !sameChip },
     });
     runSearch(query.value, next);
+    // After a mouse click, back to the search field so the arrow keys and Enter keep
+    // working. From the keyboard, focus stays on the chip so the visitor can keep tabbing;
+    // after a tap, too, so no on-screen keyboard opens.
+    if (byMouse) inputRef.current?.focus();
+  };
+
+  /** Inline mode's clear (×) button: empties the field and the results at once. */
+  const clearSearch = () => {
+    if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+    query.value = '';
+    activeChip.value = null;
+    void runSearch('', null);
+    inputRef.current?.focus();
   };
 
   const openResult = (hit: SearchResultHit) => {
@@ -410,16 +433,15 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
 
   const onInputKeyDown = (e: KeyboardEvent) => {
     const r = results.value;
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (r.length === 0) return;
-      selected.value = Math.min(selected.value + 1, r.length - 1);
-      scrollSelectedIntoView();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (r.length === 0) return;
-      selected.value = Math.max(selected.value - 1, 0);
-      scrollSelectedIntoView();
+      const before = selected.value;
+      selected.value = e.key === 'ArrowDown'
+        ? Math.min(before + 1, r.length - 1)
+        : Math.max(before - 1, 0);
+      // Only a real move scrolls: Up on the first result leaves the area where the visitor put it
+      if (selected.value !== before) scrollSelectedIntoView();
     } else if (e.key === 'Enter') {
       const idx = selected.value;
       if (idx >= 0 && idx < r.length) {
@@ -437,9 +459,17 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   };
 
   const scrollSelectedIntoView = () => {
+    // Back on the first result: show the summary above it again. In a modal the results
+    // area scrolls; inline, the page does, so the summary is brought into view.
+    if (selected.value === 0 && bodyRef.current) {
+      bodyRef.current.scrollTop = 0;
+      if (isInline) bodyRef.current.firstElementChild?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
     const list = resultsRef.current;
     if (!list) return;
-    const el = list.querySelector<HTMLLIElement>('.ik-result--selected');
+    // By position: the highlight class moves on the next render, after this runs
+    const el = list.querySelectorAll<HTMLLIElement>('.ik-result')[selected.value];
     if (el) el.scrollIntoView({ block: 'nearest' });
   };
 
@@ -448,6 +478,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       <button
         class="ik-launcher ik-launcher--search"
         aria-label="Open search"
+        title={`Search (${searchShortcutLabel()})`}
+        aria-keyshortcuts="Control+K Meta+K"
         onClick={openSearch}
       >
         <SearchIcon />
@@ -475,6 +507,11 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
               selected.value >= 0 ? `ik-result-${selected.value}` : undefined
             }
           />
+          {isInline && query.value !== '' && (
+            <button class="ik-icon-btn" aria-label="Clear search" onClick={clearSearch}>
+              <CloseIcon />
+            </button>
+          )}
           {!isInline && <Kbd label="Esc" />}
           {!isInline && (
             <button class="ik-icon-btn" aria-label="Close search" onClick={close}>
@@ -510,25 +547,29 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
           />
         )}
 
-        {(summary.value || summaryStreaming.value) && (
-          <AiSummary text={summary.value} streaming={summaryStreaming.value} sources={summarySources.value} />
-        )}
-        {summaryOnClick && !summary.value && !summaryStreaming.value && !loading.value
-          && query.value.trim() !== '' && query.value === lastQueryRef.current && startsSummary() && (
-          <button type="button" class="ik-summary-ask" onClick={() => startSummaryNow(lastQueryRef.current)}>
-            <span aria-hidden="true">✦</span> AI summary
-          </button>
-        )}
+        {/* The summary and the results scroll as one area, so a long summary never
+            hides the results: moving down the results scrolls the summary away */}
+        <div class="ik-search-body" ref={bodyRef}>
+          {(summary.value || summaryStreaming.value) && (
+            <AiSummary text={summary.value} streaming={summaryStreaming.value} sources={summarySources.value} />
+          )}
+          {summaryOnClick && !summary.value && !summaryStreaming.value && !loading.value
+            && query.value.trim() !== '' && query.value === lastQueryRef.current && startsSummary() && (
+            <button type="button" class="ik-summary-ask" onClick={() => startSummaryNow(lastQueryRef.current)}>
+              <span aria-hidden="true">✦</span> AI summary
+            </button>
+          )}
 
-        <ResultsList
-          listRef={resultsRef}
-          results={results.value}
-          displayConfig={displayConfig.value}
-          query={query.value}
-          selectedIndex={selected.value}
-          onHover={(idx) => (selected.value = idx)}
-          onClick={(hit) => openResult(hit)}
-        />
+          <ResultsList
+            listRef={resultsRef}
+            results={results.value}
+            displayConfig={displayConfig.value}
+            query={query.value}
+            selectedIndex={selected.value}
+            onHover={(idx) => (selected.value = idx)}
+            onClick={(hit) => openResult(hit)}
+          />
+        </div>
 
         {total.value > 0 && (
           <div class="ik-search-footer">
@@ -920,7 +961,7 @@ function CategoryChips({
 }: {
   facets: Facet[];
   activeChip: { field: string; value: string } | null;
-  onToggle: (field: string, value: string) => void;
+  onToggle: (field: string, value: string, byMouse: boolean) => void;
 }) {
   // Only render when we have a terms facet with at least 2 buckets — a
   // single-bucket facet offers no filtering value and just adds chrome.
@@ -941,7 +982,7 @@ function CategoryChips({
             key={b.key}
             type="button"
             class={`ik-chip ik-chip--facet${isActive ? ' ik-chip--active' : ''}`}
-            onClick={() => onToggle(primary.field, b.key)}
+            onClick={(e) => onToggle(primary.field, b.key, isMouseClick(e as MouseEvent & { pointerType?: string }))}
             aria-pressed={isActive}
           >
             <span>{b.key}</span>

@@ -415,6 +415,27 @@ a {
   flex: 1;
   font-size: 15px;
 }
+/* The search bar is the field: focus shows as the caret plus an accent line
+   under the bar, not a ring inside it */
+/* A 2px line in the full accent colour, drawn inside the row so nothing moves; strong
+   enough to meet the 3:1 contrast a focus indicator needs on light and dark hosts */
+.ik-search-row:has(.ik-search-input:focus) {
+  box-shadow: inset 0 -2px 0 var(--ik-primary);
+}
+/* Browsers without :has() show the line while anything in the row has focus */
+@supports not selector(:has(*)) {
+  .ik-search-row:focus-within {
+    box-shadow: inset 0 -2px 0 var(--ik-primary);
+  }
+}
+/* No browser clear (×) button: the widget's own clear button (inline) or Esc and the
+   close button (modal) do that job, in the widget's style */
+.ik-search-input::-webkit-search-cancel-button,
+.ik-search-input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
 
 .ik-status {
   padding: 20px;
@@ -425,9 +446,12 @@ a {
   color: #991b1b;
 }
 
-.ik-results {
+.ik-search-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+}
+.ik-results {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1243,24 +1267,23 @@ a.ik-summary-source:hover {
 /* Scrollbars within the panel */
 .ik-messages::-webkit-scrollbar,
 .ik-welcome::-webkit-scrollbar,
-.ik-results::-webkit-scrollbar {
+.ik-search-body::-webkit-scrollbar {
   width: 8px;
 }
 .ik-messages::-webkit-scrollbar-thumb,
 .ik-welcome::-webkit-scrollbar-thumb,
-.ik-results::-webkit-scrollbar-thumb {
+.ik-search-body::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--ik-primary) 30%, transparent);
   border-radius: 4px;
 }
 .ik-messages::-webkit-scrollbar-thumb:hover,
 .ik-welcome::-webkit-scrollbar-thumb:hover,
-.ik-results::-webkit-scrollbar-thumb:hover {
+.ik-search-body::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--ik-primary) 50%, transparent);
 }
 
 /* Focus rings on interactive elements — accent the brand color */
 .ik-input:focus,
-.ik-search-input:focus-visible,
 .ik-welcome-q:focus-visible,
 .ik-chip:focus-visible,
 .ik-icon-btn:focus-visible,

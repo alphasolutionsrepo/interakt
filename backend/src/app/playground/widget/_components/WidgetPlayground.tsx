@@ -8,7 +8,7 @@ import {
   Smartphone,
   LayoutTemplate,
   CircleDot,
-  Command,
+  AppWindow,
   Lock,
   Loader2,
 } from 'lucide-react';
@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react';
 
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
 import { initialWidgetKind, pickFor, useKindPreview, WIDGET_KIND_AREA, type KindPick } from '@/app/playground/_lib/area-gate';
+import { searchModalHintHtml } from '@/app/playground/widget/_lib/search-modal-hint';
 import {
   useSearchExperiences,
   useSearchExperience,
@@ -54,7 +55,7 @@ const GLOBAL_NAME: Record<WidgetKind, string> = {
   search: 'SearchDropinUI',
 };
 
-interface AppliedSpec {
+export interface AppliedSpec {
   key: string;
   kind: WidgetKind;
   experienceId: string;
@@ -74,7 +75,7 @@ interface AppliedSpec {
  * an absolute URL because `srcdoc` iframes resolve relative paths against
  * `about:srcdoc`, not the parent origin.
  */
-function buildIframeDoc(spec: AppliedSpec, origin: string): string {
+export function buildIframeDoc(spec: AppliedSpec, origin: string): string {
   const scriptUrl = `${origin}/embed/v1/widgets.js`;
   const containerId = CONTAINER_ID[spec.kind];
   const globalName = GLOBAL_NAME[spec.kind];
@@ -117,12 +118,8 @@ function buildIframeDoc(spec: AppliedSpec, origin: string): string {
     ? `<div id="${containerId}" data-floating></div>`
     : '';
 
-  // Search modal is keyboard-triggered (⌘K / Ctrl+K) with no visible launcher,
-  // so the hero gets an extra hint nudging the user to try it.
   const searchModalHint =
-    spec.kind === 'search' && spec.launcher === 'modal'
-      ? `<div class="search-hint">Press <kbd>⌘</kbd> <kbd>K</kbd> (or <kbd>Ctrl</kbd> <kbd>K</kbd>) to open search</div>`
-      : '';
+    spec.kind === 'search' && spec.launcher === 'modal' ? searchModalHintHtml() : '';
 
   return `<!doctype html>
 <html lang="en">
@@ -314,7 +311,7 @@ function escapeHtml(s: string): string {
 // LAUNCHER OPTIONS PER WIDGET
 // ============================================================================
 
-const LAUNCHER_OPTIONS: Record<
+export const LAUNCHER_OPTIONS: Record<
   WidgetKind,
   Array<{ value: Launcher; label: string; icon: React.ComponentType<{ className?: string }> }>
 > = {
@@ -323,7 +320,7 @@ const LAUNCHER_OPTIONS: Record<
     { value: 'inline', label: 'Inline', icon: LayoutTemplate },
   ],
   search: [
-    { value: 'modal', label: 'Modal (⌘K)', icon: Command },
+    { value: 'modal', label: 'Modal', icon: AppWindow },
     { value: 'inline', label: 'Inline', icon: LayoutTemplate },
   ],
 };
