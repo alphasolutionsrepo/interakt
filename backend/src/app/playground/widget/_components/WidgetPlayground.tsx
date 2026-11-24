@@ -8,7 +8,7 @@ import {
   Smartphone,
   LayoutTemplate,
   CircleDot,
-  Command,
+  AppWindow,
   Lock,
   Loader2,
 } from 'lucide-react';
@@ -117,11 +117,13 @@ function buildIframeDoc(spec: AppliedSpec, origin: string): string {
     ? `<div id="${containerId}" data-floating></div>`
     : '';
 
-  // Search modal is keyboard-triggered (⌘K / Ctrl+K) with no visible launcher,
-  // so the hero gets an extra hint nudging the user to try it.
+  // The search modal opens from its round search button (bottom right) or the keyboard;
+  // the hint names the shortcut as the viewer's keyboard shows it (⌘K on a Mac, Ctrl K
+  // elsewhere; both keys work everywhere). It is set inside the preview, where navigator is.
   const searchModalHint =
     spec.kind === 'search' && spec.launcher === 'modal'
-      ? `<div class="search-hint">Press <kbd>⌘</kbd> <kbd>K</kbd> (or <kbd>Ctrl</kbd> <kbd>K</kbd>) to open search</div>`
+      ? `<div class="search-hint">Click the search button (bottom right), or press <kbd data-shortcut>Ctrl K</kbd></div>
+<script>if (/mac|iphone|ipad/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '')) document.querySelectorAll('[data-shortcut]').forEach(function (el) { el.textContent = '⌘ K'; });</script>`
       : '';
 
   return `<!doctype html>
@@ -323,7 +325,7 @@ const LAUNCHER_OPTIONS: Record<
     { value: 'inline', label: 'Inline', icon: LayoutTemplate },
   ],
   search: [
-    { value: 'modal', label: 'Modal (⌘K)', icon: Command },
+    { value: 'modal', label: 'Modal', icon: AppWindow },
     { value: 'inline', label: 'Inline', icon: LayoutTemplate },
   ],
 };

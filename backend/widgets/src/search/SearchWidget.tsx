@@ -13,6 +13,7 @@ import type {
   SearchResultHit,
 } from '../shared/types';
 import { createShadowHost } from '../shared/shadow-host';
+import { searchShortcutLabel } from '../shared/shortcut';
 import { resolveTheme } from '../shared/theme';
 import {
   resolveApiBase,
@@ -335,6 +336,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       payload: { field, value, selected: !sameChip },
     });
     runSearch(query.value, next);
+    // Back to the search field, so the arrow keys and Enter keep working after a click
+    inputRef.current?.focus();
   };
 
   const openResult = (hit: SearchResultHit) => {
@@ -382,6 +385,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       <button
         class="ik-launcher ik-launcher--search"
         aria-label="Open search"
+        title={`Search (${searchShortcutLabel()})`}
+        aria-keyshortcuts="Control+K Meta+K"
         onClick={openSearch}
       >
         <SearchIcon />
