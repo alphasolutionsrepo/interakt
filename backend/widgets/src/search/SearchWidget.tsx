@@ -246,6 +246,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       suggestions.value = suggestionsList;
       // Auto-select the first result so Enter always does something.
       selected.value = results.value.length > 0 ? 0 : -1;
+      // New results start at the top, with the first (highlighted) result in view
+      if (bodyRef.current) bodyRef.current.scrollTop = 0;
       config.onEvent?.({
         type: 'search:results',
         payload: { query: q, count: results.value.length },

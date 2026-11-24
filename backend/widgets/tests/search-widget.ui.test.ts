@@ -301,6 +301,20 @@ describe('search widget: a long summary never hides the results', () => {
     expect(scrolledTo).toEqual([root().querySelector('.ik-summary')]);
   });
 
+  it('new results from a filter click start at the top', async () => {
+    const facets = [{ field: 'brand', type: 'terms', buckets: [{ key: 'Acme', count: 2 }, { key: 'Bolt', count: 1 }] }];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      url.endsWith('/api/v1/search')
+        ? new Response(JSON.stringify({ success: true, data: { results: hits, total: { value: 3 }, facets } }), { status: 200 })
+        : new Response('{}', { status: 200 })));
+    await search();
+    const body = root().querySelector('.ik-search-body') as HTMLElement;
+    body.scrollTop = 300; // the visitor scrolled down the results
+    pointerClick(root().querySelector('.ik-chip--facet')!, 'mouse');
+    await flush(100);
+    expect(body.scrollTop).toBe(0);
+  });
+
   it('Up on the first result, or Down on the last, leaves the area where the visitor scrolled it', async () => {
     const input = await search();
     const body = root().querySelector('.ik-search-body') as HTMLElement;
