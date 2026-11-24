@@ -37,6 +37,7 @@ import {
     AlertCircle,
 } from 'lucide-react';
 import { StepProgress } from '@/components/ui/steps-progress';
+import { importBlockingMessage } from './import-blocking';
 import { StepUpload } from './StepUpload';
 import { StepConfigure } from './StepConfigure';
 import { StepAIConfig } from './StepAIConfig';
@@ -290,6 +291,13 @@ export function ImportWizard({ open, onOpenChange }: ImportWizardProps) {
     const handleFileLoaded = useCallback(async (data: unknown) => {
         try {
             const previewResult = await previewImport.mutateAsync(data);
+            const blocked = importBlockingMessage(previewResult);
+            if (blocked) {
+                // No preview is kept, so Next stays disabled until another file is chosen
+                setPreview(null, data);
+                setFileError(blocked);
+                return;
+            }
             setPreview(previewResult, data);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to preview import';

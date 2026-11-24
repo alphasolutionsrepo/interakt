@@ -211,16 +211,19 @@ describe('the import preview', () => {
     const preview = (language: string, stopWords: string[] = []) =>
         previewSearchIndexImport((importOf(language, stopWords) as unknown as { importData: never }).importData);
 
-    it('warns about a language the deployment engine lacks', async () => {
+    it('blocks the import for a language the deployment engine lacks', async () => {
         state.provider = 'azure-ai-search';
-        expect((await preview('cjk')).warnings).toContain("Language 'cjk' isn't available for Azure AI Search");
-        expect((await preview('danish')).warnings).not.toContain("Language 'danish' isn't available for Azure AI Search");
+        const blocked = await preview('cjk');
+        expect(blocked.blockingErrors).toEqual(["Language 'cjk' isn't available for Azure AI Search"]);
+        expect(blocked.warnings).not.toContain("Language 'cjk' isn't available for Azure AI Search");
+        expect((await preview('danish')).blockingErrors).toEqual([]);
     });
 
     it('warns that stop words are not imported on Azure only', async () => {
         const note = "Custom stop words aren't used on Azure AI Search and won't be imported";
         state.provider = 'azure-ai-search';
         expect((await preview('danish', ['the'])).warnings).toContain(note);
+        expect((await preview('danish', ['the'])).blockingErrors).toEqual([]);
         state.provider = 'elasticsearch';
         expect((await preview('danish', ['the'])).warnings).not.toContain(note);
     });

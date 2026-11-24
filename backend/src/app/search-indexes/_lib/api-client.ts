@@ -51,6 +51,7 @@ export interface SearchIndexImportPreview {
     };
     fieldCount: number;
     requiresAIConfig: boolean;
+    blockingErrors?: string[];
     warnings: string[];
 }
 

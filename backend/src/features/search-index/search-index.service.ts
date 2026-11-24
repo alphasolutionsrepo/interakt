@@ -1581,6 +1581,8 @@ export interface SearchIndexImportPreview {
     };
     fieldCount: number;
     requiresAIConfig: boolean;
+    /** Problems that make the import fail; the admin UI doesn't offer Import while any remain */
+    blockingErrors: string[];
     warnings: string[];
 }
 
@@ -1674,6 +1676,7 @@ export async function previewSearchIndexImport(
     importData: SearchIndexExportDTO
 ): Promise<SearchIndexImportPreview> {
     const warnings: string[] = [];
+    const blockingErrors: string[] = [];
 
     // Check for name conflict
     const nameExists = await repository.nameExists(importData.searchIndex.name);
@@ -1698,7 +1701,7 @@ export async function previewSearchIndexImport(
     const templateFound = false;
 
     if (!isIndexLanguageSupported(selectedSearchProvider, importData.searchIndex.language)) {
-        warnings.push(unsupportedLanguageMessage(selectedSearchProvider, importData.searchIndex.language));
+        blockingErrors.push(unsupportedLanguageMessage(selectedSearchProvider, importData.searchIndex.language));
     }
     if (!supportsCustomStopWords(selectedSearchProvider) && importData.searchIndex.stopWords.length > 0) {
         warnings.push(STOP_WORDS_NOT_IMPORTED);
@@ -1726,6 +1729,7 @@ export async function previewSearchIndexImport(
         },
         fieldCount: importData.fields.length,
         requiresAIConfig: requiresAI,
+        blockingErrors,
         warnings,
     };
 }
