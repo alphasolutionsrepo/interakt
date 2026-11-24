@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `SearchDropinUI.shortcutLabel()`: the search widget's open shortcut as the visitor's keyboard shows it (`⌘K` or `Ctrl+K`), for a host's own search button.
 - `CLIENT_IP_SOURCE` setting: where Interakt reads a client's address for per-client rate limits: `forwarded-for:N` (N proxies in front of Interakt add to `X-Forwarded-For`), `header:<name>` for an edge's own header such as `CF-Connecting-IP` or `X-Azure-SocketIP`, or `none`. Unset, it uses `forwarded-for:<TRUSTED_PROXY_HOPS>`, so `TRUSTED_PROXY_HOPS` (the number of proxies in front of Interakt, default 1) keeps working as the fallback. Requests without a usable address share one count at 10 times the per-client limit.
 - Health has a Client addresses check. It shows degraded, and the home page lists "Check how client addresses are read", when `CLIENT_IP_SOURCE` is `none` or not understood, or when requests keep arriving without a usable address; it clears within the hour once the setup is fixed.
 - Find Record tools on a search index have name fields and code fields, set on the tool's Edit page and filled in by Create Tools. Find Record matches only on the chosen fields; a list left empty is worked out from field names, as before. A Find Record tool without any field can't be added to an AI experience until it has one; experiences that already use it keep working. Deleting an index field a Find Record tool uses is blocked, and a chosen field that leaves an external index, or that the latest sample of a sampled index didn't show, is flagged on the tool's page.
@@ -39,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Search widget: the search field shows focus as an accent line under the bar, without the browser's clear (×) button (inline search has its own clear button); the modal search button's tooltip names the shortcut as the visitor's keyboard shows it (⌘K on a Mac, Ctrl+K elsewhere). In the admin's Widget playground the Modal option has a window icon, and its hint names the key for your computer.
 - AI provider API keys live in the Secrets Vault. A key entered on a provider is saved encrypted as the vault secret `ai_provider_<provider key>`, or the provider form can use an existing vault secret (needs a role that can manage secrets). Keys saved on providers before move into the vault when the server starts with `SECRETS_ENCRYPTION_KEY` set, and saving a key needs that setting. The vault won't delete a secret a provider uses. A typed key never changes a vault secret something else uses: it gets its own secret. Editing a provider that uses a chosen vault secret needs a role that can manage secrets. After the move, an earlier version needs provider keys entered again.
 - Validation errors give every field problem a stable `code` (`invalid_type`, `too_small`, `too_big`, `invalid_format`, `invalid_value`, `unrecognized_key`, `invalid`) beside its message, and the messages are Interakt's own ("This field is required.", "Enter a number of at most 100."). The public API reference documents the full error response, including `fields`. Analytics and trace requests with invalid parameters answer with the same field list instead of raw validation output.
 - AI experiences enforce their allowed origins, chats per minute (default 60) and requests per day (default 10,000 chat messages per experience). Settings saved on existing AI experiences take effect on upgrade.
@@ -67,6 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Search widget: after a filter chip is clicked with the mouse, the arrow keys and Enter keep working; a chip pressed from the keyboard or tapped keeps focus, so tabbing continues and no on-screen keyboard opens.
+- Search widget: a long AI summary scrolls together with the results, and the arrow keys bring the highlighted result into view.
 - The widget bundle (`/embed/v1/widgets.js`) and other files in `public/` are cached for 5 minutes instead of a year, so copies fetched from this release on pick up later upgrades: after 5 minutes the browser checks for a new copy in the background and uses it from the next page load.
 - A tool, MCP connection or data source whose settings name a secret that is missing from the Secrets Vault fails with a message naming the secret, instead of sending the request without it.
 - A secret whose value contains `$&`, `$'` or a similar `$` sequence reaches a tool's request exactly as stored.
