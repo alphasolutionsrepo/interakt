@@ -184,12 +184,15 @@ export async function keywordSearchChunks(
   const terms = keywordTermsFrom(query);
   if (terms.length === 0) return [];
 
-  const matches = terms.map((t) => sql`(${knowledgeChunks.content} ILIKE ${'%' + t + '%'})`);
+  // Terms are composed (NFC); compose the stored text too, so a chunk saved with decomposed
+  // accents (a letter plus a separate mark) still matches.
+  const content = sql`normalize(${knowledgeChunks.content}, NFC)`;
+  const matches = terms.map((t) => sql`(${content} ILIKE ${'%' + t + '%'})`);
   const anyMatch = sql.join(matches, sql` OR `);
   // One point per distinct term present, so a chunk covering more of the question ranks above
   // one that happens to repeat a single word.
   const hitScore = sql.join(
-    terms.map((t) => sql`(CASE WHEN ${knowledgeChunks.content} ILIKE ${'%' + t + '%'} THEN 1 ELSE 0 END)`),
+    terms.map((t) => sql`(CASE WHEN ${content} ILIKE ${'%' + t + '%'} THEN 1 ELSE 0 END)`),
     sql` + `,
   );
 

@@ -103,4 +103,22 @@ describe('keywordSearchChunks with non-ASCII terms', () => {
     const rows = await keywordSearchChunks(source.id, 'æblemost østerbro-butikken');
     expect(rows.map((r) => r.chunkIndex)).toEqual([0]);
   });
+
+  it('finds a chunk stored with decomposed accents', async () => {
+    const [source] = await testDb.db
+      .insert(dataSources)
+      .values({ name: 'Kb', slug: 'kb-nfd', type: 'file_store', config: {} } as never)
+      .returning();
+    const [doc] = await testDb.db
+      .insert(knowledgeDocuments)
+      .values({ dataSourceId: source.id, name: 'katalog.txt', status: 'ready' })
+      .returning();
+    await testDb.db.insert(knowledgeChunks).values([
+      { documentId: doc.id, dataSourceId: source.id, chunkIndex: 0, content: 'Gusseisentöpfe in drei Farben.'.normalize('NFD') },
+      { documentId: doc.id, dataSourceId: source.id, chunkIndex: 1, content: 'Kaffeebecher aus Glas.' },
+    ]);
+
+    const rows = await keywordSearchChunks(source.id, 'gusseisentöpfe');
+    expect(rows.map((r) => r.chunkIndex)).toEqual([0]);
+  });
 });
