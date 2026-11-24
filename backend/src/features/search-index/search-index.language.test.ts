@@ -94,9 +94,11 @@ describe.each(ENGINES)('on %s', (provider, engine) => {
         log.warn.mockClear();
         await createSearchIndex({ ...base, searchProvider: 'azure-ai-search', language: 'klingon' }, 'u1').catch(() => {});
         await updateSearchIndex('i1', { language: 'klingon' }, 'u1').catch(() => {});
+        await importSearchIndex(importOf('klingon'), 'u1').catch(() => {});
         expect(log.error).not.toHaveBeenCalled();
         expect(log.warn).toHaveBeenCalledWith('Failed to create search index', expect.objectContaining({ code: 'VALIDATION_ERROR' }));
         expect(log.warn).toHaveBeenCalledWith('Failed to update search index', expect.objectContaining({ code: 'VALIDATION_ERROR' }));
+        expect(log.warn).toHaveBeenCalledWith('Failed to import search index', expect.objectContaining({ code: 'VALIDATION_ERROR' }));
     });
 
     it('update refuses a language the engine lacks', async () => {

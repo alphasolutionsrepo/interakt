@@ -243,7 +243,7 @@ async function createDefaultSystemFields(searchIndexId: string): Promise<void> {
 // ============================================================================
 
 /**
- * Log a failed create or update. A request the service refused on purpose (a 4xx it
+ * Log a failed create, update or import. A request the service refused on purpose (a 4xx it
  * chose, such as an unsupported language) is a warning; anything else is an error.
  */
 function logWriteFailure(message: string, error: unknown, context: Record<string, unknown>): void {
@@ -1848,7 +1848,7 @@ export async function importSearchIndex(
             warnings: warnings.length > 0 ? warnings : undefined,
         };
     } catch (error) {
-        logger.error('Failed to import search index', error as Error, {
+        logWriteFailure('Failed to import search index', error, {
             name: importData.searchIndex.name,
         });
         throw error;
