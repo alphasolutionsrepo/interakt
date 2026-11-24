@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react';
 
 import { useAIExperiences } from '@/app/ai-experiences/_lib/hooks/useAIExperiences';
 import { initialWidgetKind, pickFor, useKindPreview, WIDGET_KIND_AREA, type KindPick } from '@/app/playground/_lib/area-gate';
+import { searchModalHintHtml } from '@/app/playground/widget/_lib/search-modal-hint';
 import {
   useSearchExperiences,
   useSearchExperience,
@@ -117,14 +118,8 @@ function buildIframeDoc(spec: AppliedSpec, origin: string): string {
     ? `<div id="${containerId}" data-floating></div>`
     : '';
 
-  // The search modal opens from its round search button (bottom right) or the keyboard;
-  // the hint names the shortcut as the viewer's keyboard shows it (⌘K on a Mac, Ctrl K
-  // elsewhere; both keys work everywhere). It is set inside the preview, where navigator is.
   const searchModalHint =
-    spec.kind === 'search' && spec.launcher === 'modal'
-      ? `<div class="search-hint">Click the search button (bottom right), or press <kbd data-shortcut>Ctrl K</kbd></div>
-<script>if (/mac|iphone|ipad/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '')) document.querySelectorAll('[data-shortcut]').forEach(function (el) { el.textContent = '⌘ K'; });</script>`
-      : '';
+    spec.kind === 'search' && spec.launcher === 'modal' ? searchModalHintHtml() : '';
 
   return `<!doctype html>
 <html lang="en">

@@ -14,6 +14,16 @@ const widgetCss = readFileSync(path.resolve(__dirname, '../src/styles/widget.css
 const flush = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 const root = () => document.querySelector('[data-interakt-widget]')?.shadowRoot as ShadowRoot;
 const launcher = () => root().querySelector('button[aria-label="Open search"]') as HTMLButtonElement;
+const MODES = ['inline', 'modal'] as const;
+/** Mounts the widget in a mode; a modal is opened, as a visitor would. */
+const mountIn = async (mode: (typeof MODES)[number], extra: Record<string, unknown> = {}) => {
+  SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode, ...extra } as Parameters<typeof SearchDropinUI.init>[0]);
+  await flush();
+  if (mode === 'modal') {
+    launcher().click();
+    await flush();
+  }
+};
 
 describe('searchShortcutLabel', () => {
   it.each([
@@ -100,9 +110,8 @@ describe('search widget: keyboard after a filter click', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps the arrow keys working: focus returns to the search field', async () => {
-    SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'inline', aiSummary: false });
-    await flush();
+  it.each(MODES)('%s: keeps the arrow keys working: focus returns to the search field', async (mode) => {
+    await mountIn(mode, { aiSummary: false });
     const input = root().querySelector('input') as HTMLInputElement;
     input.value = 'doc';
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -150,9 +159,8 @@ describe('search widget: a long summary never hides the results', () => {
     vi.unstubAllGlobals();
   });
 
-  const search = async () => {
-    SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'inline' });
-    await flush();
+  const search = async (mode: (typeof MODES)[number] = 'inline') => {
+    await mountIn(mode);
     const input = root().querySelector('input') as HTMLInputElement;
     input.value = 'doc';
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -164,27 +172,41 @@ describe('search widget: a long summary never hides the results', () => {
     await flush();
   };
 
-  it('the summary and the results scroll as one area', async () => {
-    await search();
+  it.each(MODES)('%s: the summary and the results scroll as one area', async (mode) => {
+    await search(mode);
     const body = root().querySelector('.ik-search-body')!;
     expect(body.querySelector('.ik-summary')).not.toBeNull();
     expect(body.querySelector('.ik-results')).not.toBeNull();
   });
 
-  it('moving down scrolls the newly highlighted result into view, not the one before', async () => {
-    const input = await search();
+  it.each(MODES)('%s: moving down scrolls the newly highlighted result into view, not the one before', async (mode) => {
+    const input = await search(mode);
     await press(input, 'ArrowDown');
     await press(input, 'ArrowDown');
     const rows = [...root().querySelectorAll('.ik-result')];
     expect(scrolledTo).toEqual([rows[1], rows[2]]);
   });
 
-  it('back on the first result, the summary above it shows again', async () => {
-    const input = await search();
+  it.each(MODES)('%s: back on the first result, the summary above it shows again', async (mode) => {
+    const input = await search(mode);
     const body = root().querySelector('.ik-search-body') as HTMLElement;
     await press(input, 'ArrowDown');
     body.scrollTop = 200;
     await press(input, 'ArrowUp');
     expect(body.scrollTop).toBe(0);
+  });
+
+  it('Up on the first result, or Down on the last, leaves the area where the visitor scrolled it', async () => {
+    const input = await search();
+    const body = root().querySelector('.ik-search-body') as HTMLElement;
+    body.scrollTop = 200;
+    await press(input, 'ArrowUp'); // already on the first result
+    expect(body.scrollTop).toBe(200);
+
+    await press(input, 'ArrowDown');
+    await press(input, 'ArrowDown'); // now on the last of three
+    scrolledTo = [];
+    await press(input, 'ArrowDown');
+    expect(scrolledTo).toEqual([]);
   });
 });

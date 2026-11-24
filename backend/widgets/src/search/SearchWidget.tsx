@@ -353,16 +353,15 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
 
   const onInputKeyDown = (e: KeyboardEvent) => {
     const r = results.value;
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (r.length === 0) return;
-      selected.value = Math.min(selected.value + 1, r.length - 1);
-      scrollSelectedIntoView();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (r.length === 0) return;
-      selected.value = Math.max(selected.value - 1, 0);
-      scrollSelectedIntoView();
+      const before = selected.value;
+      selected.value = e.key === 'ArrowDown'
+        ? Math.min(before + 1, r.length - 1)
+        : Math.max(before - 1, 0);
+      // Only a real move scrolls: Up on the first result leaves the area where the visitor put it
+      if (selected.value !== before) scrollSelectedIntoView();
     } else if (e.key === 'Enter') {
       const idx = selected.value;
       if (idx >= 0 && idx < r.length) {
