@@ -417,13 +417,15 @@ a {
 }
 /* The search bar is the field: focus shows as the caret plus an accent line
    under the bar, not a ring inside it */
+/* A 2px line in the full accent colour, drawn inside the row so nothing moves; strong
+   enough to meet the 3:1 contrast a focus indicator needs on light and dark hosts */
 .ik-search-row:has(.ik-search-input:focus) {
-  border-bottom-color: color-mix(in srgb, var(--ik-primary) 45%, var(--ik-border));
+  box-shadow: inset 0 -2px 0 var(--ik-primary);
 }
 /* Browsers without :has() show the line while anything in the row has focus */
 @supports not selector(:has(*)) {
   .ik-search-row:focus-within {
-    border-bottom-color: color-mix(in srgb, var(--ik-primary) 45%, var(--ik-border));
+    box-shadow: inset 0 -2px 0 var(--ik-primary);
   }
 }
 /* No browser clear (×) button: the widget's own clear button (inline) or Esc and the

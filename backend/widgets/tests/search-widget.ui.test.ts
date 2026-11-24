@@ -76,8 +76,8 @@ describe('search widget: the open shortcut', () => {
     await flush();
     expect(root().querySelector('input')).toBeNull();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ...mods }));
-    await flush();
-    expect(root().querySelector('input')).not.toBeNull();
+    // Wait for the render rather than a fixed delay: steady under a loaded test run
+    await vi.waitFor(() => expect(root().querySelector('input')).not.toBeNull(), { timeout: 2000 });
   });
 
   it('K alone does not open it', async () => {
@@ -130,7 +130,8 @@ describe('search widget styles', () => {
 
   it('show focus on the search bar, not as a ring inside the field', () => {
     // Only the text field: not the close or clear button in the same row
-    expect(widgetCss).toMatch(/\.ik-search-row:has\(\.ik-search-input:focus\)\s*\{[^}]*border-bottom-color/);
+    // A 2px line in the full accent colour (focus indicator contrast)
+    expect(widgetCss).toMatch(/\.ik-search-row:has\(\.ik-search-input:focus\)\s*\{[^}]*box-shadow:\s*inset 0 -2px 0 var\(--ik-primary\)/);
     // …with a fallback for browsers without :has(), inside @supports only
     expect(widgetCss).toMatch(/@supports not selector\(:has\(\*\)\)\s*\{\s*\.ik-search-row:focus-within/);
     expect(widgetCss.match(/\.ik-search-row:focus-within/g)).toHaveLength(1);
