@@ -186,7 +186,7 @@ export async function createSearchExperience(
   const rateLimitConfig = validated.rateLimitConfig
     ? {
         searchPerMinute: validated.rateLimitConfig.searchPerMinute,
-        chatPerMinute: validated.rateLimitConfig.chatPerMinute,
+        summaryPerMinute: validated.rateLimitConfig.summaryPerMinute,
         requestsPerDay: validated.rateLimitConfig.requestsPerDay,
       }
     : undefined;

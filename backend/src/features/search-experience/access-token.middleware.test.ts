@@ -25,7 +25,7 @@ import { rateLimiter } from '@/shared/api/rate-limit';
 
 const experience = {
   id: 's1', isActive: true, accessToken: 'tok', allowedOrigins: ['https://shop.example'],
-  rateLimitConfig: { searchPerMinute: 2, chatPerMinute: 9 },
+  rateLimitConfig: { searchPerMinute: 2, summaryPerMinute: 2 },
 };
 
 function req(headers: Record<string, string>): NextRequest {
@@ -61,7 +61,7 @@ describe('authenticateAccessToken', () => {
 
   it('applies no daily total to search experiences, whatever is stored', async () => {
     mocks.getSearchExperienceByAccessToken.mockResolvedValue({
-      ...experience, allowedOrigins: [], rateLimitConfig: { searchPerMinute: 100, chatPerMinute: 100, requestsPerDay: 2 },
+      ...experience, allowedOrigins: [], rateLimitConfig: { searchPerMinute: 100, summaryPerMinute: 100, requestsPerDay: 2 },
     });
     for (let i = 0; i < 5; i++) {
       expect(await authenticateAccessToken(req({ 'X-Access-Token': 'tok', 'X-Forwarded-For': `1.1.1.${i}` }))).toMatchObject({ success: true });

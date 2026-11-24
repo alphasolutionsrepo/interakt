@@ -8,7 +8,9 @@
  * - allowed origins: when the list is set, web pages on other sites may not call; an
  *   empty list allows any site.
  * - rate limits: requests per minute for each client, and for AI experiences a total
- *   of chat messages per day for the experience (widget setup calls don't count).
+ *   of chat messages per day for the experience (widget setup calls don't count). A search
+ *   experience counts its AI summaries apart from its searches, so a visitor who reaches the
+ *   summary limit can still search.
  *
  * Interakt's own pages (the admin's widget previews) are always allowed.
  *
@@ -19,6 +21,7 @@ import 'server-only';
 
 import type { NextRequest, NextResponse } from 'next/server';
 
+import { DEFAULT_RATE_LIMIT_CONFIG } from '@/features/search-experience/search-experience.types';
 import { clientKey, clientLabel, limitFor } from '@/shared/api/client-ip';
 import { rateLimiter } from '@/shared/api/rate-limit';
 import { apiResponse } from '@/shared/api/response';
@@ -54,7 +57,7 @@ const DAY = 24 * 60 * MINUTE;
 
 /** The experience being called, as far as access is concerned. */
 export interface ExperienceAccess {
-  /** Identifies the experience for rate limits; every route for one experience shares it. */
+  /** Identifies what is counted for rate limits: an experience's routes share it, except a search experience's AI summaries, which have their own. */
   scope: string;
   accessToken: string | null | undefined;
   policy: AccessPolicy;
@@ -62,21 +65,33 @@ export interface ExperienceAccess {
   isBuiltIn: boolean;
 }
 
-/** A search experience. Searches, autocomplete, AI summaries and document reads count against searchPerMinute. */
-export function searchExperienceAccess(experience: {
+/** A search experience, as far as access is concerned. */
+interface SearchExperienceAccessInput {
   id: string;
   accessToken?: string | null;
   allowedOrigins?: string[] | null;
-  rateLimitConfig?: { searchPerMinute?: number } | null;
+  rateLimitConfig?: { searchPerMinute?: number; summaryPerMinute?: number } | null;
   isBuiltIn?: boolean;
-}): ExperienceAccess {
+}
+
+/** A search experience's searches: searches, autocomplete and document reads count against searchPerMinute. */
+export function searchExperienceAccess(experience: SearchExperienceAccessInput): ExperienceAccess {
+  return searchAccess(experience, 'search', experience.rateLimitConfig?.searchPerMinute ?? DEFAULT_RATE_LIMIT_CONFIG.searchPerMinute);
+}
+
+/** A search experience's AI summaries: counted against summaryPerMinute, apart from its searches. */
+export function searchSummaryAccess(experience: SearchExperienceAccessInput): ExperienceAccess {
+  return searchAccess(experience, 'summary', experience.rateLimitConfig?.summaryPerMinute ?? DEFAULT_RATE_LIMIT_CONFIG.summaryPerMinute);
+}
+
+function searchAccess(experience: SearchExperienceAccessInput, counted: 'search' | 'summary', perMinute: number): ExperienceAccess {
   return {
-    scope: `search:${experience.id}`,
+    scope: `${counted}:${experience.id}`,
     accessToken: experience.accessToken,
     isBuiltIn: experience.isBuiltIn === true,
     policy: {
       allowedOrigins: experience.allowedOrigins ?? [],
-      perMinute: experience.rateLimitConfig?.searchPerMinute ?? DEFAULT_PER_MINUTE,
+      perMinute,
     },
   };
 }

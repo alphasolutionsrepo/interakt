@@ -15,7 +15,7 @@ import { NextRequest } from 'next/server';
 
 
 import { withAnalyticsSource } from '@/features/analytics/analytics-source-context';
-import { searchExperienceAccess } from '@/features/auth/public-access';
+import { searchSummaryAccess } from '@/features/auth/public-access';
 import { authenticateTokenOrSession } from '@/features/auth/token-or-session';
 import { createSummaryStream } from '@/features/chat/summary-stream';
 import { publicApiRoute } from '@/features/feature-switches/gate';
@@ -59,7 +59,7 @@ async function post(
 
     // 3. Authenticate: the experience's access token, or an admin session. Admin
     //    summaries are not traced unless the request asks for it (then in full).
-    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchExperienceAccess(experience));
+    const { caller, refused, analyticsSource } = await authenticateTokenOrSession(request, searchSummaryAccess(experience));
     if (!caller) {
       return refused ?? apiResponse.unauthorized('Unauthorized');
     }
