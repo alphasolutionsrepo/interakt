@@ -1,0 +1,640 @@
+{
+ "array": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ },
+ "boolean": {
+  "plain": {
+   "type": "boolean"
+  },
+  "autocomplete": {
+   "type": "boolean"
+  },
+  "custom": {
+   "type": "boolean"
+  },
+  "facet": {
+   "type": "boolean"
+  },
+  "both": {
+   "type": "boolean"
+  }
+ },
+ "currency": {
+  "plain": {
+   "type": "float"
+  },
+  "autocomplete": {
+   "type": "float"
+  },
+  "custom": {
+   "type": "float"
+  },
+  "facet": {
+   "type": "float"
+  },
+  "both": {
+   "type": "float"
+  }
+ },
+ "date": {
+  "plain": {
+   "type": "date"
+  },
+  "autocomplete": {
+   "type": "date"
+  },
+  "custom": {
+   "type": "date"
+  },
+  "facet": {
+   "type": "date"
+  },
+  "both": {
+   "type": "date"
+  }
+ },
+ "datetime": {
+  "plain": {
+   "type": "date"
+  },
+  "autocomplete": {
+   "type": "date"
+  },
+  "custom": {
+   "type": "date"
+  },
+  "facet": {
+   "type": "date"
+  },
+  "both": {
+   "type": "date"
+  }
+ },
+ "decimal": {
+  "plain": {
+   "type": "float"
+  },
+  "autocomplete": {
+   "type": "float"
+  },
+  "custom": {
+   "type": "float"
+  },
+  "facet": {
+   "type": "float"
+  },
+  "both": {
+   "type": "float"
+  }
+ },
+ "double": {
+  "plain": {
+   "type": "text"
+  },
+  "autocomplete": {
+   "type": "text"
+  },
+  "custom": {
+   "type": "text"
+  },
+  "facet": {
+   "type": "text"
+  },
+  "both": {
+   "type": "text"
+  }
+ },
+ "email": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ },
+ "float": {
+  "plain": {
+   "type": "float"
+  },
+  "autocomplete": {
+   "type": "float"
+  },
+  "custom": {
+   "type": "float"
+  },
+  "facet": {
+   "type": "float"
+  },
+  "both": {
+   "type": "float"
+  }
+ },
+ "geo_point": {
+  "plain": {
+   "type": "geo_point"
+  },
+  "autocomplete": {
+   "type": "geo_point"
+  },
+  "custom": {
+   "type": "geo_point"
+  },
+  "facet": {
+   "type": "geo_point"
+  },
+  "both": {
+   "type": "geo_point"
+  }
+ },
+ "html": {
+  "plain": {
+   "type": "text",
+   "analyzer": "interakt_text",
+   "search_analyzer": "interakt_text_search"
+  },
+  "autocomplete": {
+   "type": "text",
+   "analyzer": "autocomplete",
+   "search_analyzer": "autocomplete_search"
+  },
+  "custom": {
+   "type": "text",
+   "analyzer": "my_an"
+  },
+  "facet": {
+   "type": "text",
+   "analyzer": "interakt_text",
+   "search_analyzer": "interakt_text_search",
+   "fields": {
+    "keyword": {
+     "type": "keyword",
+     "ignore_above": 256
+    }
+   }
+  },
+  "both": {
+   "type": "text",
+   "analyzer": "autocomplete",
+   "search_analyzer": "autocomplete_search",
+   "fields": {
+    "keyword": {
+     "type": "keyword",
+     "ignore_above": 256
+    }
+   }
+  }
+ },
+ "id": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ },
+ "image_url": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ },
+ "integer": {
+  "plain": {
+   "type": "integer"
+  },
+  "autocomplete": {
+   "type": "integer"
+  },
+  "custom": {
+   "type": "integer"
+  },
+  "facet": {
+   "type": "integer"
+  },
+  "both": {
+   "type": "integer"
+  }
+ },
+ "json": {
+  "plain": {
+   "type": "object",
+   "enabled": true
+  },
+  "autocomplete": {
+   "type": "object",
+   "enabled": true
+  },
+  "custom": {
+   "type": "object",
+   "enabled": true
+  },
+  "facet": {
+   "type": "object",
+   "enabled": true
+  },
+  "both": {
+   "type": "object",
+   "enabled": true
+  }
+ },
+ "keyword": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ },
+ "long": {
+  "plain": {
+   "type": "text"
+  },
+  "autocomplete": {
+   "type": "text"
+  },
+  "custom": {
+   "type": "text"
+  },
+  "facet": {
+   "type": "text"
+  },
+  "both": {
+   "type": "text"
+  }
+ },
+ "markdown": {
+  "plain": {
+   "type": "text",
+   "analyzer": "interakt_text",
+   "search_analyzer": "interakt_text_search"
+  },
+  "autocomplete": {
+   "type": "text",
+   "analyzer": "autocomplete",
+   "search_analyzer": "autocomplete_search"
+  },
+  "custom": {
+   "type": "text",
+   "analyzer": "my_an"
+  },
+  "facet": {
+   "type": "text",
+   "analyzer": "interakt_text",
+   "search_analyzer": "interakt_text_search",
+   "fields": {
+    "keyword": {
+     "type": "keyword",
+     "ignore_above": 256
+    }
+   }
+  },
+  "both": {
+   "type": "text",
+   "analyzer": "autocomplete",
+   "search_analyzer": "autocomplete_search",
+   "fields": {
+    "keyword": {
+     "type": "keyword",
+     "ignore_above": 256
+    }
+   }
+  }
+ },
+ "nested": {
+  "plain": {
+   "type": "nested"
+  },
+  "autocomplete": {
+   "type": "nested"
+  },
+  "custom": {
+   "type": "nested"
+  },
+  "facet": {
+   "type": "nested"
+  },
+  "both": {
+   "type": "nested"
+  }
+ },
+ "not_a_type": {
+  "plain": {
+   "type": "text"
+  },
+  "autocomplete": {
+   "type": "text"
+  },
+  "custom": {
+   "type": "text"
+  },
+  "facet": {
+   "type": "text"
+  },
+  "both": {
+   "type": "text"
+  }
+ },
+ "number": {
+  "plain": {
+   "type": "integer"
+  },
+  "autocomplete": {
+   "type": "integer"
+  },
+  "custom": {
+   "type": "integer"
+  },
+  "facet": {
+   "type": "integer"
+  },
+  "both": {
+   "type": "integer"
+  }
+ },
+ "object": {
+  "plain": {
+   "type": "object",
+   "enabled": true
+  },
+  "autocomplete": {
+   "type": "object",
+   "enabled": true
+  },
+  "custom": {
+   "type": "object",
+   "enabled": true
+  },
+  "facet": {
+   "type": "object",
+   "enabled": true
+  },
+  "both": {
+   "type": "object",
+   "enabled": true
+  }
+ },
+ "percent": {
+  "plain": {
+   "type": "float"
+  },
+  "autocomplete": {
+   "type": "float"
+  },
+  "custom": {
+   "type": "float"
+  },
+  "facet": {
+   "type": "float"
+  },
+  "both": {
+   "type": "float"
+  }
+ },
+ "phone": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ },
+ "price": {
+  "plain": {
+   "type": "float"
+  },
+  "autocomplete": {
+   "type": "float"
+  },
+  "custom": {
+   "type": "float"
+  },
+  "facet": {
+   "type": "float"
+  },
+  "both": {
+   "type": "float"
+  }
+ },
+ "rating": {
+  "plain": {
+   "type": "float"
+  },
+  "autocomplete": {
+   "type": "float"
+  },
+  "custom": {
+   "type": "float"
+  },
+  "facet": {
+   "type": "float"
+  },
+  "both": {
+   "type": "float"
+  }
+ },
+ "richtext": {
+  "plain": {
+   "type": "text",
+   "analyzer": "interakt_text",
+   "search_analyzer": "interakt_text_search"
+  },
+  "autocomplete": {
+   "type": "text",
+   "analyzer": "autocomplete",
+   "search_analyzer": "autocomplete_search"
+  },
+  "custom": {
+   "type": "text",
+   "analyzer": "my_an"
+  },
+  "facet": {
+   "type": "text",
+   "analyzer": "interakt_text",
+   "search_analyzer": "interakt_text_search",
+   "fields": {
+    "keyword": {
+     "type": "keyword",
+     "ignore_above": 256
+    }
+   }
+  },
+  "both": {
+   "type": "text",
+   "analyzer": "autocomplete",
+   "search_analyzer": "autocomplete_search",
+   "fields": {
+    "keyword": {
+     "type": "keyword",
+     "ignore_above": 256
+    }
+   }
+  }
+ },
+ "slug": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ },
+ "text": {
+  "plain": {
+   "type": "text",
+   "analyzer": "interakt_text",
+   "search_analyzer": "interakt_text_search"
+  },
+  "autocomplete": {
+   "type": "text",
+   "analyzer": "autocomplete",
+   "search_analyzer": "autocomplete_search"
+  },
+  "custom": {
+   "type": "text",
+   "analyzer": "my_an"
+  },
+  "facet": {
+   "type": "text",
+   "analyzer": "interakt_text",
+   "search_analyzer": "interakt_text_search",
+   "fields": {
+    "keyword": {
+     "type": "keyword",
+     "ignore_above": 256
+    }
+   }
+  },
+  "both": {
+   "type": "text",
+   "analyzer": "autocomplete",
+   "search_analyzer": "autocomplete_search",
+   "fields": {
+    "keyword": {
+     "type": "keyword",
+     "ignore_above": 256
+    }
+   }
+  }
+ },
+ "timestamp": {
+  "plain": {
+   "type": "date"
+  },
+  "autocomplete": {
+   "type": "date"
+  },
+  "custom": {
+   "type": "date"
+  },
+  "facet": {
+   "type": "date"
+  },
+  "both": {
+   "type": "date"
+  }
+ },
+ "url": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ },
+ "uuid": {
+  "plain": {
+   "type": "keyword"
+  },
+  "autocomplete": {
+   "type": "keyword"
+  },
+  "custom": {
+   "type": "keyword"
+  },
+  "facet": {
+   "type": "keyword"
+  },
+  "both": {
+   "type": "keyword"
+  }
+ }
+}
