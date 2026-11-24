@@ -206,3 +206,140 @@ describe("search widget: summaryTrigger 'button'", () => {
     expect(askButton()).toBeUndefined();
   });
 });
+
+describe('search widget: review follow-ups', () => {
+  type SummaryAnswer = 'ok' | 'fail' | 'empty';
+  /** Like stubServer, with a slow search on demand and each summary answering in turn. */
+  function stub({ searchDelayMs = 0, summaryAnswers = [] as SummaryAnswer[], source = {} as Source } = {}) {
+    const searches: string[] = [];
+    const summaries: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (url.endsWith('/api/v1/search')) {
+        searches.push(body.query);
+        if (searchDelayMs) await flush(searchDelayMs);
+        return new Response(JSON.stringify({ success: true, data: { results: docs(source), total: { value: 3 }, facets } }), { status: 200 });
+      }
+      if (url.endsWith('/api/v1/autocomplete')) return new Response('{}', { status: 200 });
+      if (url.endsWith('/api/v1/summarize')) {
+        summaries.push(body.query);
+        const answer = summaryAnswers[summaries.length - 1] ?? 'ok';
+        if (answer === 'fail') return new Response('{}', { status: 500 });
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            if (answer === 'ok') controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', text: `About ${body.query}` })}\n\n`));
+            controller.close();
+          },
+        });
+        return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      throw new Error(`unexpected ${url}`);
+    }));
+    return { searches, summaries };
+  }
+  const askButton = () =>
+    [...root().querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('AI summary'));
+
+  it.each(['fail', 'empty'] as const)("'button' mode: after a summary that came back %s, the button asks again", async (answer) => {
+    const { summaries } = stub({ summaryAnswers: [answer, 'ok'] });
+    await mount({ summaryTrigger: 'button' });
+    setValue('shoes');
+    await flush(500);
+    askButton()!.click();
+    await flush(100);
+    expect(summaries).toHaveLength(1);
+    expect(askButton()).toBeDefined();
+
+    askButton()!.click();
+    await flush(100);
+    expect(summaries).toHaveLength(2);
+    expect(root().textContent).toContain('About shoes');
+  });
+
+  it("'pause' mode: after a failed summary, Enter asks again", async () => {
+    const { summaries } = stub({ summaryAnswers: ['fail', 'ok'] });
+    await mount();
+    setValue('shoes');
+    await flush(1300);
+    expect(summaries).toHaveLength(1);
+    pressEnter();
+    await flush(100);
+    expect(summaries).toHaveLength(2);
+  });
+
+  it("'button' mode: Enter on a result without a link starts no summary, and still reports the choice", async () => {
+    const onEvent = vi.fn();
+    const { summaries } = stub();
+    await mount({ summaryTrigger: 'button', onEvent });
+    setValue('shoes');
+    await flush(500);
+    pressEnter();
+    await flush(100);
+    expect(summaries).toHaveLength(0);
+    expect(onEvent).toHaveBeenCalledWith({ type: 'search:result_clicked', payload: { id: 'd1', url: undefined } });
+  });
+
+  it("'pause' mode: Enter on a result without a link reports the choice as before, and starts the summary", async () => {
+    const onEvent = vi.fn();
+    const { summaries } = stub();
+    await mount({ onEvent });
+    setValue('shoes');
+    await flush(500);
+    pressEnter();
+    await flush(100);
+    expect(onEvent).toHaveBeenCalledWith({ type: 'search:result_clicked', payload: { id: 'd1', url: undefined } });
+    expect(summaries).toEqual(['shoes']);
+  });
+
+  it('Enter while a newer search is loading does not summarise the old results', async () => {
+    const { summaries } = stub({ searchDelayMs: 300 });
+    await mount();
+    setValue('shoes');
+    await flush(700); // results for "shoes" are in
+    setValue('boots');
+    await flush(400); // the "boots" search is on its way
+    pressEnter();
+    await flush(50);
+    expect(summaries).toHaveLength(0);
+  });
+
+  it("'button' mode: the button hides while the field shows text that hasn't been searched yet", async () => {
+    stub();
+    await mount({ summaryTrigger: 'button' });
+    setValue('shoes');
+    await flush(500);
+    expect(askButton()).toBeDefined();
+    setValue('shoes and boots');
+    await flush(50);
+    expect(askButton()).toBeUndefined();
+  });
+
+  it('emptying the field clears the results at once', async () => {
+    stub();
+    await mount();
+    setValue('shoes');
+    await flush(500);
+    expect(root().querySelectorAll('.ik-result')).toHaveLength(3);
+    setValue('');
+    await flush(30);
+    expect(root().querySelectorAll('.ik-result')).toHaveLength(0);
+    expect(root().querySelector('.ik-search-footer')).toBeNull();
+  });
+
+  it('modal closed while waiting for the pause: no summary until it is reopened, then it is written', async () => {
+    const { summaries } = stub();
+    SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'modal' });
+    await flush();
+    (root().querySelector('button[aria-label="Open search"]') as HTMLButtonElement).click();
+    await flush();
+    setValue('shoes');
+    await flush(500); // results in, waiting for the pause
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await flush(1000); // the pause passes while closed
+    expect(summaries).toHaveLength(0);
+
+    (root().querySelector('button[aria-label="Open search"]') as HTMLButtonElement).click();
+    await flush(100);
+    expect(summaries).toEqual(['shoes']);
+  });
+});

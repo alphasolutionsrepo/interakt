@@ -212,6 +212,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     if (!q.trim()) {
       // A search still on its way is out of date now: its answer must not fill the results back in
       lastQueryRef.current = '';
+      loading.value = false;
       results.value = [];
       suggestions.value = [];
       total.value = 0;
@@ -277,13 +278,16 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
         onTurnedOff();
         return;
       }
+      // An out-of-date search failing says nothing about the current one
+      if (lastQueryRef.current !== q) return;
       errorMsg.value =
         err instanceof ApiError ? err.message : 'Search failed. Please try again.';
       results.value = [];
       total.value = 0;
       selected.value = -1;
     } finally {
-      loading.value = false;
+      // Only the current search ends the "Searching…" state
+      if (lastQueryRef.current === q) loading.value = false;
     }
   };
 
@@ -293,7 +297,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   /** Start the summary for q now (Enter, the button, or the pause has passed). */
   const startSummaryNow = (q: string) => {
     clearSummaryTimer();
-    if (lastQueryRef.current !== q || summaryForRef.current === q || !startsSummary()) return;
+    // Not while a newer search is loading: the results on screen are the old ones
+    if (loading.value || lastQueryRef.current !== q || summaryForRef.current === q || !startsSummary()) return;
     // Closed while waiting: write it when the search is reopened
     if (!open.value) {
       summaryStoppedForRef.current = q;
@@ -350,7 +355,11 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       }
       // Silent otherwise; summary is a progressive enhancement.
     } finally {
-      if (summaryAbortRef.current === ac) summaryStreaming.value = false;
+      if (summaryAbortRef.current === ac) {
+        summaryStreaming.value = false;
+        // Nothing came back (an error or an empty answer): the visitor can ask again
+        if (!ac.signal.aborted && summary.value === '' && summaryForRef.current === q) summaryForRef.current = null;
+      }
     }
   };
 
@@ -362,6 +371,11 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     // Still typing: the summary waits for the pause
     clearSummaryTimer();
     if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+    // An emptied field clears at once; a search waits for the visitor to stop typing
+    if (!raw.trim()) {
+      void runSearch('', null);
+      return;
+    }
     debounceRef.current = window.setTimeout(() => runSearch(raw, null), SEARCH_DELAY_MS);
   };
 
@@ -408,9 +422,12 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
       const idx = selected.value;
       if (idx >= 0 && idx < r.length) {
         e.preventDefault();
-        // A result with a link opens; without one, Enter asks for the summary now
-        if (renderResultFields(r[idx], displayConfig.value).url) openResult(r[idx]);
-        else startSummaryNow(lastQueryRef.current);
+        // Opens a result with a link and reports the choice, as before. Without a link, Enter
+        // also asks for the summary now (with summaryTrigger 'button', only the button does)
+        openResult(r[idx]);
+        if (!renderResultFields(r[idx], displayConfig.value).url && !summaryOnClick) {
+          startSummaryNow(lastQueryRef.current);
+        }
       }
     }
     // Esc is handled globally in the keydown listener above so the shortcut
@@ -495,7 +512,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
           <AiSummary text={summary.value} streaming={summaryStreaming.value} sources={summarySources.value} />
         )}
         {summaryOnClick && !summary.value && !summaryStreaming.value && !loading.value
-          && query.value.trim() !== '' && startsSummary() && (
+          && query.value.trim() !== '' && query.value === lastQueryRef.current && startsSummary() && (
           <button type="button" class="ik-summary-ask" onClick={() => startSummaryNow(lastQueryRef.current)}>
             <span aria-hidden="true">✦</span> AI summary
           </button>
