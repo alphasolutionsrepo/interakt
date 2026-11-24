@@ -11,8 +11,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
+const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 vi.mock('@/shared/logger/logger', () => ({
-    createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+    createLogger: () => log,
 }));
 
 const state = vi.hoisted(() => ({
@@ -86,6 +87,16 @@ describe.each(ENGINES)('on %s', (provider, engine) => {
             await updateSearchIndex('i1', { language }, 'u1');
         }
         expect(vi.mocked(repository.updateSearchIndex).mock.calls.map(c => c[1].language)).toEqual(['danish', 'norwegian']);
+    });
+
+    it('logs a refused language as a warning, not an error', async () => {
+        log.error.mockClear();
+        log.warn.mockClear();
+        await createSearchIndex({ ...base, searchProvider: 'azure-ai-search', language: 'klingon' }, 'u1').catch(() => {});
+        await updateSearchIndex('i1', { language: 'klingon' }, 'u1').catch(() => {});
+        expect(log.error).not.toHaveBeenCalled();
+        expect(log.warn).toHaveBeenCalledWith('Failed to create search index', expect.objectContaining({ code: 'VALIDATION_ERROR' }));
+        expect(log.warn).toHaveBeenCalledWith('Failed to update search index', expect.objectContaining({ code: 'VALIDATION_ERROR' }));
     });
 
     it('update refuses a language the engine lacks', async () => {

@@ -243,6 +243,18 @@ async function createDefaultSystemFields(searchIndexId: string): Promise<void> {
 // ============================================================================
 
 /**
+ * Log a failed create or update. A request the service refused on purpose (a 4xx it
+ * chose, such as an unsupported language) is a warning; anything else is an error.
+ */
+function logWriteFailure(message: string, error: unknown, context: Record<string, unknown>): void {
+    if (error instanceof AppError && error.status < 500 && !error.ourSide) {
+        logger.warn(message, { ...context, code: error.code, reason: error.message });
+        return;
+    }
+    logger.error(message, error as Error, context);
+}
+
+/**
  * Refuse a language the engine can't analyse text in. The create schema checks this
  * for API callers; the service checks it again so every path that stores a language
  * (update, import) is held to the same list.
@@ -333,7 +345,7 @@ export async function createSearchIndex(
 
         return result;
     } catch (error) {
-        logger.error('Failed to create search index', error as Error, {
+        logWriteFailure('Failed to create search index', error, {
             name: input.name,
             searchType: input.searchType,
         });
@@ -519,7 +531,7 @@ export async function updateSearchIndex(
 
         return updated;
     } catch (error) {
-        logger.error('Failed to update search index', error as Error, { id });
+        logWriteFailure('Failed to update search index', error, { id });
         throw error;
     }
 }

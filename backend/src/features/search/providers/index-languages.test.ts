@@ -31,7 +31,7 @@ describe('the languages an engine offers', () => {
         for (const provider of ['elasticsearch', 'azure-ai-search']) {
             expect(values(provider)).toEqual(expect.arrayContaining(['danish', 'norwegian']));
             expect(getIndexLanguages(provider).find(l => l.value === 'danish')?.label).toBe('Danish');
-            expect(getIndexLanguages(provider).find(l => l.value === 'norwegian')?.label).toBe('Norwegian');
+            expect(getIndexLanguages(provider).find(l => l.value === 'norwegian')?.label).toBe('Norwegian (Bokmål)');
         }
     });
 
@@ -107,7 +107,7 @@ describe('the language picker choices', () => {
     });
 
     it('label a value by its language, falling back to the raw value', () => {
-        expect(getIndexLanguageLabel('norwegian')).toBe('Norwegian');
+        expect(getIndexLanguageLabel('norwegian')).toBe('Norwegian (Bokmål)');
         expect(getIndexLanguageLabel('klingon')).toBeUndefined();
     });
 });
