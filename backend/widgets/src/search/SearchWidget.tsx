@@ -197,6 +197,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     if (!q.trim()) {
       // A search still on its way is out of date now: its answer must not fill the results back in
       lastQueryRef.current = '';
+      loading.value = false;
       results.value = [];
       suggestions.value = [];
       total.value = 0;
@@ -266,13 +267,16 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
         onTurnedOff();
         return;
       }
+      // An out-of-date search failing says nothing about the current one
+      if (lastQueryRef.current !== q) return;
       errorMsg.value =
         err instanceof ApiError ? err.message : 'Search failed. Please try again.';
       results.value = [];
       total.value = 0;
       selected.value = -1;
     } finally {
-      loading.value = false;
+      // Only the current search ends the "Searching…" state
+      if (lastQueryRef.current === q) loading.value = false;
     }
   };
 

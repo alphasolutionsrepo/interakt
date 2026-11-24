@@ -420,6 +420,12 @@ a {
 .ik-search-row:has(.ik-search-input:focus) {
   border-bottom-color: color-mix(in srgb, var(--ik-primary) 45%, var(--ik-border));
 }
+/* Browsers without :has() show the line while anything in the row has focus */
+@supports not selector(:has(*)) {
+  .ik-search-row:focus-within {
+    border-bottom-color: color-mix(in srgb, var(--ik-primary) 45%, var(--ik-border));
+  }
+}
 /* No browser clear (×) button: the widget's own clear button (inline) or Esc and the
    close button (modal) do that job, in the widget's style */
 .ik-search-input::-webkit-search-cancel-button,

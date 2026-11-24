@@ -60,6 +60,35 @@ describe('SearchDropinUI.shortcutLabel', () => {
   });
 });
 
+describe('search widget: the open shortcut', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="ik"></div>';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+  });
+  afterEach(() => {
+    SearchDropinUI.destroy();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([['⌘K', { metaKey: true }], ['Ctrl+K', { ctrlKey: true }]])('%s opens the modal search', async (_name, mods) => {
+    SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'modal' });
+    await flush();
+    expect(root().querySelector('input')).toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ...mods }));
+    await flush();
+    expect(root().querySelector('input')).not.toBeNull();
+  });
+
+  it('K alone does not open it', async () => {
+    SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'modal' });
+    await flush();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k' }));
+    await flush();
+    expect(root().querySelector('input')).toBeNull();
+  });
+});
+
 describe('search widget: the modal search button', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="ik"></div>';
@@ -102,7 +131,9 @@ describe('search widget styles', () => {
   it('show focus on the search bar, not as a ring inside the field', () => {
     // Only the text field: not the close or clear button in the same row
     expect(widgetCss).toMatch(/\.ik-search-row:has\(\.ik-search-input:focus\)\s*\{[^}]*border-bottom-color/);
-    expect(widgetCss).not.toMatch(/\.ik-search-row:focus-within/);
+    // …with a fallback for browsers without :has(), inside @supports only
+    expect(widgetCss).toMatch(/@supports not selector\(:has\(\*\)\)\s*\{\s*\.ik-search-row:focus-within/);
+    expect(widgetCss.match(/\.ik-search-row:focus-within/g)).toHaveLength(1);
     expect(widgetCss).not.toMatch(/\.ik-search-input:focus-visible/);
   });
 });
@@ -352,6 +383,30 @@ describe('search widget: inline clear button', () => {
     expect(input.value).toBe('');
     expect(root().querySelector('.ik-search-footer')).toBeNull();
     expect(root().querySelectorAll('.ik-chip--facet')).toHaveLength(0);
+  });
+
+  it('clearing while a search is on its way: "Searching…" goes, and that search failing shows no error', async () => {
+    let fail: (() => void) | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (!url.endsWith('/api/v1/search')) return new Response('{}', { status: 200 });
+      await new Promise<void>((resolve) => { fail = resolve; });
+      throw new TypeError('network down');
+    }));
+    await mountIn('inline', { aiSummary: false });
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(350);
+    expect(root().textContent).toContain('Searching');
+
+    clearButton()!.click();
+    await flush(50);
+    expect(root().textContent).not.toContain('Searching');
+
+    fail!();
+    await flush(50);
+    expect(root().querySelector('.ik-status--error')).toBeNull();
+    expect(root().textContent).not.toContain('Searching');
   });
 
   it('is not shown in a modal, which has Esc and the close button', async () => {
