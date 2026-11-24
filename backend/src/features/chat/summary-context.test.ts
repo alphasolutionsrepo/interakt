@@ -21,6 +21,21 @@ describe('queryTerms', () => {
   it('drops stop words and folds plurals', () => {
     expect(queryTerms('How do I get computer science degrees?')).toEqual(['computer', 'science', 'degree']);
   });
+
+  it('keeps Danish and Norwegian words whole', () => {
+    expect(queryTerms('Hvor kan jeg købe smørrebrød på Nørrebro?')).toEqual(
+      expect.arrayContaining(['smørrebrød', 'nørrebro']),
+    );
+    expect(queryTerms('Hvordan søker jeg etter blåbærsyltetøy på nettbutikken?')).toEqual(
+      expect.arrayContaining(['søker', 'nettbutikken', 'blåbærsyltetøy']),
+    );
+  });
+
+  it('gives the same terms as before for English', () => {
+    expect(queryTerms('How do I stop my assistant answering off-topic questions in 2026?')).toEqual([
+      'stop', 'assistant', 'answering', 'off', 'topic', 'question', '2026',
+    ]);
+  });
 });
 
 describe('selectPassages', () => {
@@ -62,5 +77,22 @@ describe('selectFieldPassages', () => {
     expect(out.title).toBe('Computer science');
     expect(out.credits).toBe(120);
     expect(String(out.body)).toContain('senior capstone');
+  });
+});
+
+describe('selectPassages with Danish text', () => {
+  it('reaches the passage that holds the whole query word, far down a long text', () => {
+    const filler = Array.from({ length: 30 }, (_, i) => `Fakturering og regning nummer ${i} sendes til kunden hver måned.`);
+    const text = [
+      '# Produkter',
+      'Lager i Aarhus, levering på fire dage, 240 varer.',
+      ...filler,
+      '## Køkken',
+      'Søgning efter støbejernsgryden giver tre farver på lager.',
+    ].join('\n');
+
+    const out = selectPassages(text, 'søgning', 1000);
+    expect(text.length).toBeGreaterThan(1000);
+    expect(out).toContain('støbejernsgryden');
   });
 });

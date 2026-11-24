@@ -25,7 +25,7 @@ const STOP_WORDS = new Set([
 export function queryTerms(query: string): string[] {
   const terms = query
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
+    .split(/[^\p{L}\p{N}]+/u)
     .filter((t) => t.length >= 2 && !STOP_WORDS.has(t))
     .map((t) => (t.length > 4 && t.endsWith('s') && !t.endsWith('ss') ? t.slice(0, -1) : t));
   return [...new Set(terms)];

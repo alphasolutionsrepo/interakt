@@ -147,12 +147,15 @@ const KEYWORD_STOP_WORDS = new Set([
   'would', 'you', 'your',
 ]);
 
-/** Significant search terms from a natural-language question, longest first. */
+/**
+ * Significant search terms from a natural-language question, longest first. Words are split on
+ * anything that is not a letter, digit or hyphen in any alphabet, so "smørrebrød" stays whole.
+ */
 export function keywordTermsFrom(query: string, max = 6): string[] {
   const seen = new Set<string>();
   return query
     .toLowerCase()
-    .split(/[^a-z0-9-]+/i)
+    .split(/[^\p{L}\p{N}-]+/u)
     .filter((w) => w.length > 2 && !KEYWORD_STOP_WORDS.has(w) && !seen.has(w) && seen.add(w))
     .sort((a, b) => b.length - a.length)
     .slice(0, max);
