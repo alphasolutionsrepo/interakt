@@ -86,8 +86,16 @@ describe('experience access settings', () => {
       id: 'e1', accessToken: 't1', allowedOrigins: ['https://shop.example'], rateLimitConfig: stored,
     })).toEqual({ scope: 'summary:e1', accessToken: 't1', isBuiltIn: false, policy: { allowedOrigins: ['https://shop.example'], perMinute: 7 } });
     expect(searchSummaryAccess({ id: 'e1', isBuiltIn: true }).isBuiltIn).toBe(true);
-    // Not set (experiences saved before the setting existed): 30 a minute, whatever the search limit
-    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: { searchPerMinute: 500 } }).policy).toEqual({ allowedOrigins: [], perMinute: 30 });
+    // Not set (experiences saved before the setting existed): 30 a minute...
+    expect(searchSummaryAccess({ id: 'e1' }).policy).toEqual({ allowedOrigins: [], perMinute: 30 });
+    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: { searchPerMinute: 500 } }).policy.perMinute).toBe(30);
+    // ...but never more than a lowered search limit, which summaries used to count against
+    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: { searchPerMinute: 5 } }).policy.perMinute).toBe(5);
+    // A set summary limit is used as it is, either way
+    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: { searchPerMinute: 5, summaryPerMinute: 20 } }).policy.perMinute).toBe(20);
+    // The old chatPerMinute, still in rows saved before, is not read
+    const old = { searchPerMinute: 60, chatPerMinute: 100 } as { searchPerMinute: number };
+    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: old }).policy.perMinute).toBe(30);
   });
 
   it('reads an AI experience: origins, chats per minute and requests per day from its access settings', () => {

@@ -76,12 +76,22 @@ interface SearchExperienceAccessInput {
 
 /** A search experience's searches: searches, autocomplete and document reads count against searchPerMinute. */
 export function searchExperienceAccess(experience: SearchExperienceAccessInput): ExperienceAccess {
-  return searchAccess(experience, 'search', experience.rateLimitConfig?.searchPerMinute ?? DEFAULT_RATE_LIMIT_CONFIG.searchPerMinute);
+  return searchAccess(experience, 'search', searchPerMinuteOf(experience));
 }
 
-/** A search experience's AI summaries: counted against summaryPerMinute, apart from its searches. */
+/**
+ * A search experience's AI summaries: counted against summaryPerMinute, apart from its searches.
+ * Without one set, the default, but never more than searchPerMinute (summaries used to count
+ * against it, so an experience that lowered it keeps that limit for summaries).
+ */
 export function searchSummaryAccess(experience: SearchExperienceAccessInput): ExperienceAccess {
-  return searchAccess(experience, 'summary', experience.rateLimitConfig?.summaryPerMinute ?? DEFAULT_RATE_LIMIT_CONFIG.summaryPerMinute);
+  const perMinute = experience.rateLimitConfig?.summaryPerMinute
+    ?? Math.min(DEFAULT_RATE_LIMIT_CONFIG.summaryPerMinute, searchPerMinuteOf(experience));
+  return searchAccess(experience, 'summary', perMinute);
+}
+
+function searchPerMinuteOf(experience: SearchExperienceAccessInput): number {
+  return experience.rateLimitConfig?.searchPerMinute ?? DEFAULT_RATE_LIMIT_CONFIG.searchPerMinute;
 }
 
 function searchAccess(experience: SearchExperienceAccessInput, counted: 'search' | 'summary', perMinute: number): ExperienceAccess {
