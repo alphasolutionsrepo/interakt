@@ -333,6 +333,27 @@ describe('search widget: inline clear button', () => {
     expect(root().activeElement).toBe(input);
   });
 
+  it('clearing while a search is on its way: that search does not fill the results back in', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (!url.endsWith('/api/v1/search')) return new Response('{}', { status: 200 });
+      await flush(200);
+      const facets = [{ field: 'brand', type: 'terms', buckets: [{ key: 'Acme', count: 2 }, { key: 'Bolt', count: 1 }] }];
+      return new Response(JSON.stringify({ success: true, data: { results: hits, total: { value: 3 }, facets } }), { status: 200 });
+    }));
+    await mountIn('inline', { aiSummary: false });
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(350); // the search is on its way
+    clearButton()!.click();
+    await flush(400); // its answer has arrived
+
+    // What the visitor would see from the old answer: the count and the filter chips
+    expect(input.value).toBe('');
+    expect(root().querySelector('.ik-search-footer')).toBeNull();
+    expect(root().querySelectorAll('.ik-chip--facet')).toHaveLength(0);
+  });
+
   it('is not shown in a modal, which has Esc and the close button', async () => {
     await mountIn('modal', { aiSummary: false });
     const input = root().querySelector('input') as HTMLInputElement;

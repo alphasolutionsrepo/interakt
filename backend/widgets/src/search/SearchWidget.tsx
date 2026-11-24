@@ -195,6 +195,8 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     summaryStoppedForRef.current = null;
 
     if (!q.trim()) {
+      // A search still on its way is out of date now: its answer must not fill the results back in
+      lastQueryRef.current = '';
       results.value = [];
       suggestions.value = [];
       total.value = 0;
