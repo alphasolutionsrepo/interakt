@@ -409,6 +409,61 @@ describe('search widget: inline clear button', () => {
     expect(root().textContent).not.toContain('Searching');
   });
 
+  it('a newer search keeps "Searching…" and ignores an older one failing', async () => {
+    const pending = new Map<string, () => void>();
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (!url.endsWith('/api/v1/search')) return new Response('{}', { status: 200 });
+      const q = JSON.parse(String(init?.body)).query as string;
+      await new Promise<void>((resolve) => pending.set(q, resolve));
+      if (q === 'do') throw new TypeError('network down');
+      return new Response(JSON.stringify({ success: true, data: { results: hits, total: { value: 3 } } }), { status: 200 });
+    }));
+    await mountIn('inline', { aiSummary: false });
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'do';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(350); // "do" on its way
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(350); // "doc" on its way too
+
+    pending.get('do')!(); // the older search fails
+    await flush(50);
+    expect(root().querySelector('.ik-status--error')).toBeNull();
+    expect(root().textContent).toContain('Searching');
+
+    pending.get('doc')!();
+    await flush(50);
+    expect(root().textContent).not.toContain('Searching');
+    expect(root().querySelectorAll('.ik-result')).toHaveLength(3);
+  });
+
+  it('clearing also turns off an active filter chip', async () => {
+    const facets = [{ field: 'brand', type: 'terms', buckets: [{ key: 'Acme', count: 2 }, { key: 'Bolt', count: 1 }] }];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      url.endsWith('/api/v1/search')
+        ? new Response(JSON.stringify({ success: true, data: { results: hits, total: { value: 3 }, facets } }), { status: 200 })
+        : new Response('{}', { status: 200 })));
+    await mountIn('inline', { aiSummary: false });
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(400);
+    pointerClick(root().querySelector('.ik-chip--facet')!, 'mouse');
+    await flush(50);
+    expect(root().querySelector('.ik-chip--active')).not.toBeNull();
+
+    clearButton()!.click();
+    await flush(50);
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(400);
+    expect(root().querySelector('.ik-chip--active')).toBeNull();
+    const lastSearch = (fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+      .filter(([url]) => url.endsWith('/api/v1/search')).at(-1)!;
+    expect(JSON.parse(String(lastSearch[1].body)).filters).toBeUndefined();
+  });
+
   it('is not shown in a modal, which has Esc and the close button', async () => {
     await mountIn('modal', { aiSummary: false });
     const input = root().querySelector('input') as HTMLInputElement;
