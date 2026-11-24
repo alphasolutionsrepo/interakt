@@ -20,12 +20,12 @@ vi.mock('./search-experience.service', () => {
 import { authenticateAccessToken, createCorsHeaders } from './access-token.middleware';
 import * as service from './search-experience.service';
 
-import { checkPublicAccess, searchExperienceAccess } from '@/features/auth/public-access';
+import { checkPublicAccess, searchExperienceAccess, searchSummaryAccess } from '@/features/auth/public-access';
 import { rateLimiter } from '@/shared/api/rate-limit';
 
 const experience = {
   id: 's1', isActive: true, accessToken: 'tok', allowedOrigins: ['https://shop.example'],
-  rateLimitConfig: { searchPerMinute: 2, chatPerMinute: 9 },
+  rateLimitConfig: { searchPerMinute: 2, summaryPerMinute: 2 },
 };
 
 function req(headers: Record<string, string>): NextRequest {
@@ -61,7 +61,7 @@ describe('authenticateAccessToken', () => {
 
   it('applies no daily total to search experiences, whatever is stored', async () => {
     mocks.getSearchExperienceByAccessToken.mockResolvedValue({
-      ...experience, allowedOrigins: [], rateLimitConfig: { searchPerMinute: 100, chatPerMinute: 100, requestsPerDay: 2 },
+      ...experience, allowedOrigins: [], rateLimitConfig: { searchPerMinute: 100, summaryPerMinute: 100, requestsPerDay: 2 },
     });
     for (let i = 0; i < 5; i++) {
       expect(await authenticateAccessToken(req({ 'X-Access-Token': 'tok', 'X-Forwarded-For': `1.1.1.${i}` }))).toMatchObject({ success: true });
@@ -75,6 +75,22 @@ describe('authenticateAccessToken', () => {
     expect(checkPublicAccess(req(shop), searchExperienceAccess(experience))).toBeNull();
     // … so the token route refuses the third.
     expect(await authenticateAccessToken(req(shop))).toMatchObject({ success: false, response: { status: 429 } });
+  });
+
+  it('counts a summary request against the summary limit, which the slug summary route shares', async () => {
+    const shop = { 'X-Access-Token': 'tok', Origin: 'https://shop.example' };
+    // The summary limit of 2: one through the slug route, one here, then refused
+    expect(checkPublicAccess(req(shop), searchSummaryAccess(experience))).toBeNull();
+    expect(await authenticateAccessToken(req(shop), { summary: true })).toEqual({ success: true, experience });
+    expect(await authenticateAccessToken(req(shop), { summary: true })).toMatchObject({ success: false, response: { status: 429 } });
+    // The search limit is untouched
+    expect(await authenticateAccessToken(req(shop))).toEqual({ success: true, experience });
+    expect(await authenticateAccessToken(req(shop))).toEqual({ success: true, experience });
+  });
+
+  it('applies the allowed origins to summary requests too', async () => {
+    const other = await authenticateAccessToken(req({ 'X-Access-Token': 'tok', Origin: 'https://other.example' }), { summary: true });
+    expect(other).toMatchObject({ success: false, response: { status: 403 } });
   });
 });
 

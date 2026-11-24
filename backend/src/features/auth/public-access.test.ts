@@ -14,6 +14,7 @@ import {
   isOriginAllowed,
   readAccessToken,
   searchExperienceAccess,
+  searchSummaryAccess,
   type ExperienceAccess,
 } from './public-access';
 
@@ -71,12 +72,30 @@ describe('isOriginAllowed', () => {
 
 describe('experience access settings', () => {
   it('reads a search experience: origins and searches per minute, with no daily total', () => {
-    const stored = { searchPerMinute: 5, chatPerMinute: 7, requestsPerDay: 100 };
+    const stored = { searchPerMinute: 5, summaryPerMinute: 7, requestsPerDay: 100 };
     expect(searchExperienceAccess({
       id: 'e1', accessToken: 't1', allowedOrigins: ['https://shop.example'], rateLimitConfig: stored,
     })).toEqual({ scope: 'search:e1', accessToken: 't1', isBuiltIn: false, policy: { allowedOrigins: ['https://shop.example'], perMinute: 5 } });
     expect(searchExperienceAccess({ id: 'e1', isBuiltIn: true }).isBuiltIn).toBe(true);
     expect(searchExperienceAccess({ id: 'e1' }).policy).toEqual({ allowedOrigins: [], perMinute: 60 });
+  });
+
+  it("reads a search experience's AI summaries: same origins, summaries per minute, their own count", () => {
+    const stored = { searchPerMinute: 5, summaryPerMinute: 7, requestsPerDay: 100 };
+    expect(searchSummaryAccess({
+      id: 'e1', accessToken: 't1', allowedOrigins: ['https://shop.example'], rateLimitConfig: stored,
+    })).toEqual({ scope: 'summary:e1', accessToken: 't1', isBuiltIn: false, policy: { allowedOrigins: ['https://shop.example'], perMinute: 7 } });
+    expect(searchSummaryAccess({ id: 'e1', isBuiltIn: true }).isBuiltIn).toBe(true);
+    // Not set (experiences saved before the setting existed): 30 a minute...
+    expect(searchSummaryAccess({ id: 'e1' }).policy).toEqual({ allowedOrigins: [], perMinute: 30 });
+    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: { searchPerMinute: 500 } }).policy.perMinute).toBe(30);
+    // ...but never more than a lowered search limit, which summaries used to count against
+    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: { searchPerMinute: 5 } }).policy.perMinute).toBe(5);
+    // A set summary limit is used as it is, either way
+    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: { searchPerMinute: 5, summaryPerMinute: 20 } }).policy.perMinute).toBe(20);
+    // The old chatPerMinute, still in rows saved before, is not read
+    const old = { searchPerMinute: 60, chatPerMinute: 100 } as { searchPerMinute: number };
+    expect(searchSummaryAccess({ id: 'e1', rateLimitConfig: old }).policy.perMinute).toBe(30);
   });
 
   it('reads an AI experience: origins, chats per minute and requests per day from its access settings', () => {
@@ -118,6 +137,17 @@ describe('checkPublicAccess', () => {
 
     vi.advanceTimersByTime(40_000);
     expect(checkPublicAccess(client, settings)).toBeNull();
+  });
+
+  it("counts a search experience's AI summaries apart from its searches, for the same visitor", () => {
+    const experience = { id: 'e1', rateLimitConfig: { searchPerMinute: 2, summaryPerMinute: 1 } };
+    const visitor = request({ 'X-Forwarded-For': '1.1.1.1' });
+    expect(checkPublicAccess(visitor, searchSummaryAccess(experience))).toBeNull();
+    expect(checkPublicAccess(visitor, searchSummaryAccess(experience))?.status).toBe(429);
+    // Past the summary limit, the visitor's searches still go through, up to their own limit
+    expect(checkPublicAccess(visitor, searchExperienceAccess(experience))).toBeNull();
+    expect(checkPublicAccess(visitor, searchExperienceAccess(experience))).toBeNull();
+    expect(checkPublicAccess(visitor, searchExperienceAccess(experience))?.status).toBe(429);
   });
 
   it('counts requests with no trusted address together at ten times the per-client limit; addressed clients keep their own count', () => {
