@@ -123,6 +123,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   const lastQueryRef = useRef<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLUListElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const summaryAbortRef = useRef<AbortController | null>(null);
   /** The query whose summary was stopped by closing the search; reopening writes it again. */
   const summaryStoppedForRef = useRef<string | null>(null);
@@ -374,9 +375,15 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   };
 
   const scrollSelectedIntoView = () => {
+    // Back on the first result: show the summary above it again
+    if (selected.value === 0 && bodyRef.current) {
+      bodyRef.current.scrollTop = 0;
+      return;
+    }
     const list = resultsRef.current;
     if (!list) return;
-    const el = list.querySelector<HTMLLIElement>('.ik-result--selected');
+    // By position: the highlight class moves on the next render, after this runs
+    const el = list.querySelectorAll<HTMLLIElement>('.ik-result')[selected.value];
     if (el) el.scrollIntoView({ block: 'nearest' });
   };
 
@@ -449,19 +456,23 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
           />
         )}
 
-        {(summary.value || summaryStreaming.value) && (
-          <AiSummary text={summary.value} streaming={summaryStreaming.value} sources={summarySources.value} />
-        )}
+        {/* The summary and the results scroll as one area, so a long summary never
+            hides the results: moving down the results scrolls the summary away */}
+        <div class="ik-search-body" ref={bodyRef}>
+          {(summary.value || summaryStreaming.value) && (
+            <AiSummary text={summary.value} streaming={summaryStreaming.value} sources={summarySources.value} />
+          )}
 
-        <ResultsList
-          listRef={resultsRef}
-          results={results.value}
-          displayConfig={displayConfig.value}
-          query={query.value}
-          selectedIndex={selected.value}
-          onHover={(idx) => (selected.value = idx)}
-          onClick={(hit) => openResult(hit)}
-        />
+          <ResultsList
+            listRef={resultsRef}
+            results={results.value}
+            displayConfig={displayConfig.value}
+            query={query.value}
+            selectedIndex={selected.value}
+            onHover={(idx) => (selected.value = idx)}
+            onClick={(hit) => openResult(hit)}
+          />
+        </div>
 
         {total.value > 0 && (
           <div class="ik-search-footer">

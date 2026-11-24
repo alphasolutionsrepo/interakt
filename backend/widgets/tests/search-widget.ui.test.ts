@@ -1,7 +1,7 @@
 /**
  * Search widget UI: the modal search button names the shortcut as the visitor's keyboard
- * shows it, the search field has no browser clear (×) button or inner focus ring, and the
- * arrow keys keep working after a filter click.
+ * shows it, the search field has no browser clear (×) button or inner focus ring, the
+ * arrow keys keep working after a filter click, and a long summary scrolls with the results.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SearchDropinUI } from '../src/search/SearchWidget';
@@ -116,5 +116,75 @@ describe('search widget: keyboard after a filter click', () => {
     await flush();
     const selected = [...root().querySelectorAll('.ik-result')].findIndex((li) => li.classList.contains('ik-result--selected'));
     expect(selected).toBe(1);
+  });
+});
+
+describe('search widget: a long summary never hides the results', () => {
+  const hits = [1, 2, 3].map((n) => ({ id: `d${n}`, score: 1, source: { title: `Doc ${n}` } }));
+  const encoder = new TextEncoder();
+  let scrolledTo: Element[] = [];
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="ik"></div>';
+    scrolledTo = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) { scrolledTo.push(this); });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/v1/search')) {
+        return new Response(JSON.stringify({ success: true, data: { results: hits, total: { value: 3 } } }), { status: 200 });
+      }
+      if (url.endsWith('/api/v1/summarize')) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', text: 'A long summary' })}\n\n`));
+            c.close();
+          },
+        });
+        return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return new Response('{}', { status: 200 });
+    }));
+  });
+  afterEach(() => {
+    SearchDropinUI.destroy();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const search = async () => {
+    SearchDropinUI.init({ containerId: 'ik', accessToken: 'token', apiBaseUrl: 'https://interakt.test', mode: 'inline' });
+    await flush();
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(1500);
+    return input;
+  };
+  const press = async (input: HTMLInputElement, key: string) => {
+    input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    await flush();
+  };
+
+  it('the summary and the results scroll as one area', async () => {
+    await search();
+    const body = root().querySelector('.ik-search-body')!;
+    expect(body.querySelector('.ik-summary')).not.toBeNull();
+    expect(body.querySelector('.ik-results')).not.toBeNull();
+  });
+
+  it('moving down scrolls the newly highlighted result into view, not the one before', async () => {
+    const input = await search();
+    await press(input, 'ArrowDown');
+    await press(input, 'ArrowDown');
+    const rows = [...root().querySelectorAll('.ik-result')];
+    expect(scrolledTo).toEqual([rows[1], rows[2]]);
+  });
+
+  it('back on the first result, the summary above it shows again', async () => {
+    const input = await search();
+    const body = root().querySelector('.ik-search-body') as HTMLElement;
+    await press(input, 'ArrowDown');
+    body.scrollTop = 200;
+    await press(input, 'ArrowUp');
+    expect(body.scrollTop).toBe(0);
   });
 });
