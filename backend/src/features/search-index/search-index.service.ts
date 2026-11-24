@@ -40,7 +40,7 @@ import {
     generateDocumentEmbeddings,
     getEmbeddingConfig,
 } from '@/features/document-indexing/document-indexer.service';
-import { isIndexLanguageSupported, unsupportedLanguageMessage } from '@/features/search/providers/index-languages';
+import { CUSTOM_STOP_WORDS_UNSUPPORTED_REASON, isIndexLanguageSupported, supportsCustomStopWords, unsupportedLanguageMessage } from '@/features/search/providers/index-languages';
 import { invalidateSearchExperienceCacheBySearchIndex } from '@/features/search-experience';
 import { embeddingFailureReason } from '@/features/document-indexing/embedding-warnings';
 
@@ -255,6 +255,20 @@ function assertLanguageSupported(provider: string, language: string): void {
     }
 }
 
+/** The message for custom stop words on an engine that can't apply them. */
+const STOP_WORDS_REFUSED = CUSTOM_STOP_WORDS_UNSUPPORTED_REASON;
+/** The import warning when stop words are dropped. */
+const STOP_WORDS_NOT_IMPORTED = "Custom stop words aren't used on Azure AI Search and won't be imported";
+
+/** Refuse custom stop words on an engine that can't apply them. An empty list is always fine. */
+function assertStopWordsSupported(provider: string, stopWords: string[] | undefined): void {
+    if (stopWords && stopWords.length > 0 && !supportsCustomStopWords(provider)) {
+        throw new ValidationError(STOP_WORDS_REFUSED, [
+            { field: 'stopWords', code: 'invalid_value', message: STOP_WORDS_REFUSED },
+        ]);
+    }
+}
+
 /**
  * Create a new search index with default system fields.
  */
@@ -263,7 +277,9 @@ export async function createSearchIndex(
     userId: string
 ): Promise<SearchIndexComplete> {
     try {
-        assertLanguageSupported(input.searchProvider ?? selectedSearchProvider, input.language ?? 'english');
+        const provider = input.searchProvider ?? selectedSearchProvider;
+        assertLanguageSupported(provider, input.language ?? 'english');
+        assertStopWordsSupported(provider, input.stopWords);
 
         // Validate index name is unique
         const nameExists = await repository.nameExists(input.name);
@@ -432,8 +448,13 @@ export async function updateSearchIndex(
             throw new Error(`Search index with ID ${id} not found`);
         }
 
-        if (input.language !== undefined) {
+        // Only a change is checked: an older value the engine lacks (the edit page sends
+        // the stored language back with every save) must not block unrelated edits.
+        if (input.language !== undefined && input.language !== existing.language) {
             assertLanguageSupported(existing.searchProvider, input.language);
+        }
+        if (input.stopWords !== undefined && JSON.stringify(input.stopWords) !== JSON.stringify(existing.stopWords ?? [])) {
+            assertStopWordsSupported(existing.searchProvider, input.stopWords);
         }
 
         // Build update data
@@ -1673,6 +1694,13 @@ export async function previewSearchIndexImport(
     const matchedTemplateName: string | undefined = undefined;
     const templateFound = false;
 
+    if (!isIndexLanguageSupported(selectedSearchProvider, importData.searchIndex.language)) {
+        warnings.push(unsupportedLanguageMessage(selectedSearchProvider, importData.searchIndex.language));
+    }
+    if (!supportsCustomStopWords(selectedSearchProvider) && importData.searchIndex.stopWords.length > 0) {
+        warnings.push(STOP_WORDS_NOT_IMPORTED);
+    }
+
     // Check if AI config is required
     const requiresAI = requiresAIConfiguration(importData.searchIndex.searchType);
     if (requiresAI) {
@@ -1715,6 +1743,8 @@ export async function importSearchIndex(
 
         // An imported index is created on the deployment's provider; its language must exist there
         assertLanguageSupported(selectedSearchProvider, importData.searchIndex.language ?? 'english');
+        const dropStopWords = !supportsCustomStopWords(selectedSearchProvider) && importData.searchIndex.stopWords.length > 0;
+        if (dropStopWords) warnings.push(STOP_WORDS_NOT_IMPORTED);
 
         // Validate name is unique
         const nameExists = await repository.nameExists(finalName);
@@ -1740,7 +1770,7 @@ export async function importSearchIndex(
             refreshInterval: importData.searchIndex.refreshInterval,
             language: importData.searchIndex.language,
             synonyms: importData.searchIndex.synonyms,
-            stopWords: importData.searchIndex.stopWords,
+            stopWords: dropStopWords ? [] : importData.searchIndex.stopWords,
             analyzerConfig: importData.searchIndex.analyzerConfig as { tokenizer?: string; filters?: string[]; charFilters?: string[] } | undefined,
             embeddingDimensions: aiConfig?.embeddingDimensions ?? importData.searchIndex.embeddingDimensions ?? undefined,
             vectorSimilarity: importData.searchIndex.vectorSimilarity ?? 'cosine',

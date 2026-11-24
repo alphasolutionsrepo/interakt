@@ -42,7 +42,7 @@ import {
 import type { WizardFormData } from '@/features/search-index/search-index.wizard-schemas';
 import {
     CUSTOM_STOP_WORDS_UNSUPPORTED_REASON,
-    isIndexLanguageSupported,
+    reconcileSettingsForProvider,
     supportsCustomStopWords,
 } from '@/features/search/providers/index-languages';
 import { IndexLanguageSelect } from '../IndexLanguageSelect';
@@ -143,11 +143,15 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
     const provider = formData.searchProvider || 'elasticsearch';
     const stopWordsSupported = supportsCustomStopWords(provider);
 
-    // Going back and switching engine can leave a language the new engine lacks; start over
-    // from the default rather than carry it to a create the server would refuse.
+    // Going back and switching engine can leave a language the new engine lacks, or stop
+    // words it can't apply; reset them rather than carry them to a create the server refuses.
+    const storedStopWords = formData.stopWords;
     useEffect(() => {
-        if (!isIndexLanguageSupported(provider, language)) updateField('language', 'english');
-    }, [provider, language, updateField]);
+        const current = storedStopWords ?? [];
+        const next = reconcileSettingsForProvider(provider, { language, stopWords: current });
+        if (next.language !== language) updateField('language', next.language);
+        if (next.stopWords.length !== current.length) updateField('stopWords', next.stopWords);
+    }, [provider, language, storedStopWords, updateField]);
 
     const advancedCount = [
         synonyms.length > 0,

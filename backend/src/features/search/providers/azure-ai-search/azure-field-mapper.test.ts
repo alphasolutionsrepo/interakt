@@ -144,3 +144,20 @@ describe('index language', () => {
         expect(mapper.mapFieldType({ fieldType: 'text' })).not.toHaveProperty('analyzer');
     });
 });
+
+describe('index language and field types', () => {
+    it('applies to prose field types only, as on Elasticsearch', () => {
+        for (const fieldType of ['text', 'html', 'markdown', 'richtext']) {
+            expect(mapper.mapFieldType({ fieldType, isSearchable: true, language: 'danish' })?.analyzer, fieldType).toBe('da.microsoft');
+        }
+        for (const fieldType of ['keyword', 'url', 'email', 'image_url', 'json', 'array']) {
+            const mapped = mapper.mapFieldType({ fieldType, isSearchable: true, language: 'danish' });
+            expect(mapped, fieldType).not.toBeNull();
+            expect(mapped, fieldType).not.toHaveProperty('analyzer');
+        }
+    });
+
+    it('still lets a searchable keyword field carry its own analyzer', () => {
+        expect(mapper.mapFieldType({ fieldType: 'keyword', isSearchable: true, language: 'danish', customAnalyzer: 'keyword' })?.analyzer).toBe('keyword');
+    });
+});

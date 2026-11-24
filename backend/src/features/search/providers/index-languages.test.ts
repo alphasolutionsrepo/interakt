@@ -19,6 +19,7 @@ import {
     getIndexLanguages,
     getIndexLanguageLabel,
     isIndexLanguageSupported,
+    reconcileSettingsForProvider,
     supportsCustomStopWords,
     unsupportedLanguageMessage,
 } from './index-languages';
@@ -148,5 +149,22 @@ describe('the pages read the engine list', () => {
     it('the detail page shows the label, not the raw value', () => {
         expect(detail).toContain('getIndexLanguageLabel(');
         expect(detail).not.toContain("{searchIndex.language || 'English'}");
+    });
+});
+
+describe('switching engine in the create wizard', () => {
+    it('clears stop words and an unavailable language on Azure', () => {
+        expect(reconcileSettingsForProvider('azure-ai-search', { language: 'cjk', stopWords: ['the'] })).toEqual({ language: 'english', stopWords: [] });
+    });
+
+    it('keeps a language Azure has and leaves Elasticsearch settings alone', () => {
+        expect(reconcileSettingsForProvider('azure-ai-search', { language: 'danish', stopWords: [] })).toEqual({ language: 'danish', stopWords: [] });
+        expect(reconcileSettingsForProvider('elasticsearch', { language: 'cjk', stopWords: ['the'] })).toEqual({ language: 'cjk', stopWords: ['the'] });
+    });
+
+    it('is what the wizard runs when the engine changes', () => {
+        const wizard = readFileSync(path.join(__dirname, '../../../app/search-indexes/_components/CreateWizard/StepSearchSettings.tsx'), 'utf8');
+        expect(wizard).toMatch(/reconcileSettingsForProvider\(provider, \{ language, stopWords\b/);
+        expect(wizard).toContain("updateField('stopWords', next.stopWords)");
     });
 });

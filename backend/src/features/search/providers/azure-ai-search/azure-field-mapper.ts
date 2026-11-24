@@ -15,6 +15,7 @@ import {
     FILTERABLE_EDM_TYPES,
     getAzureLanguageAnalyzer,
 } from './azure-constants';
+import { LANGUAGE_ANALYSED_FIELD_TYPES } from '@/shared/constants/search-index.constants';
 import type { FieldMapper } from '../search-engine-provider.interface';
 
 // Text-like field types that support faceting via the filterable flag
@@ -80,8 +81,11 @@ export class AzureFieldMapper implements FieldMapper {
         // analyzer. A language Azure has no analyzer for sets nothing (Azure's default).
         // Fields that are not searched (filter-only) are left alone.
         if (SEARCHABLE_EDM_TYPES.has(edmType)) {
-            const analyzer = field.customAnalyzer
-                || (field.isSearchable !== false ? getAzureLanguageAnalyzer(field.language) : undefined);
+            // The language analyses prose fields only, as on Elasticsearch
+            const languageAnalyzer = field.isSearchable !== false && LANGUAGE_ANALYSED_FIELD_TYPES.includes(field.fieldType)
+                ? getAzureLanguageAnalyzer(field.language)
+                : undefined;
+            const analyzer = field.customAnalyzer || languageAnalyzer;
             if (analyzer) result.analyzer = analyzer;
         }
 

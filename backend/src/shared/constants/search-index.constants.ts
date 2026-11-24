@@ -903,6 +903,14 @@ export const FIELD_SETTINGS_REQUIRING_REINDEX = [
 
 export type FieldRequiringReindex = typeof FIELDS_REQUIRING_REINDEX[number];
 
+/**
+ * Field types that hold prose, so the index language (stemming, stop words) applies to
+ * them. Every engine uses this one list: Elasticsearch maps these to analysed text, Azure
+ * gives them the language analyzer. Identifier-like types (keyword, url, array...) are not
+ * analysed on either engine.
+ */
+export const LANGUAGE_ANALYSED_FIELD_TYPES: readonly string[] = ['text', 'html', 'markdown', 'richtext'];
+
 const AZURE_REINDEX_FIELDS: readonly FieldRequiringReindex[] = ['language', 'synonyms'];
 
 /**

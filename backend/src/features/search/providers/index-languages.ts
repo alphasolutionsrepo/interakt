@@ -91,3 +91,19 @@ export function supportsCustomStopWords(provider: string | null | undefined): bo
 /** Shown wherever custom stop words are disabled. */
 export const CUSTOM_STOP_WORDS_UNSUPPORTED_REASON =
     "Custom stop words can't be applied on Azure AI Search because Azure doesn't allow them together with autocomplete. The language's own stop words still apply.";
+
+/**
+ * The language and stop words to carry over when the engine for a new index changes.
+ * A language the new engine lacks goes back to the default; custom stop words are
+ * cleared on an engine that can't apply them (their input is disabled there, so they
+ * would otherwise be stuck in the form and refused by the server).
+ */
+export function reconcileSettingsForProvider(
+    provider: string | null | undefined,
+    settings: { language: string; stopWords: string[] },
+): { language: string; stopWords: string[] } {
+    return {
+        language: isIndexLanguageSupported(provider, settings.language) ? settings.language : 'english',
+        stopWords: supportsCustomStopWords(provider) ? settings.stopWords : [],
+    };
+}
