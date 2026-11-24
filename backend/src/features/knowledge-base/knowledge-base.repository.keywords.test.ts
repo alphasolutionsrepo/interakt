@@ -43,6 +43,12 @@ describe('keywordTermsFrom', () => {
     );
   });
 
+  it('keeps a word whole when its accent is typed as a separate mark', () => {
+    // "Prüfung" with u + U+0308 (decomposed), as some keyboards and pasted text produce it
+    const decomposed = 'Prüfung der Bücher'.normalize('NFD');
+    expect(keywordTermsFrom(decomposed)).toEqual(expect.arrayContaining(['prüfung', 'bücher']));
+  });
+
   it('gives the same terms as before for English', () => {
     expect(keywordTermsFrom('how do I stop my assistant answering off-topic questions?')).toEqual([
       'assistant',
@@ -77,6 +83,24 @@ describe('keywordSearchChunks with non-ASCII terms', () => {
     ]);
 
     const rows = await keywordSearchChunks(source.id, 'smørrebrød opskrift');
+    expect(rows.map((r) => r.chunkIndex)).toEqual([0]);
+  });
+
+  it('matches a capitalised non-ASCII word in any letter case', async () => {
+    const [source] = await testDb.db
+      .insert(dataSources)
+      .values({ name: 'Kb', slug: 'kb-case', type: 'file_store', config: {} } as never)
+      .returning();
+    const [doc] = await testDb.db
+      .insert(knowledgeDocuments)
+      .values({ dataSourceId: source.id, name: 'butik.txt', status: 'ready' })
+      .returning();
+    await testDb.db.insert(knowledgeChunks).values([
+      { documentId: doc.id, dataSourceId: source.id, chunkIndex: 0, content: 'Østerbro-butikken har ÆBLEMOST på lager.' },
+      { documentId: doc.id, dataSourceId: source.id, chunkIndex: 1, content: 'Vesterbro-butikken har kaffe.' },
+    ]);
+
+    const rows = await keywordSearchChunks(source.id, 'æblemost østerbro-butikken');
     expect(rows.map((r) => r.chunkIndex)).toEqual([0]);
   });
 });

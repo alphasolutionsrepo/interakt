@@ -21,11 +21,12 @@ const STOP_WORDS = new Set([
   'where', 'which', 'who', 'why', 'with', 'you', 'your', 'about', 'there', 'their', 'this', 'that',
 ]);
 
-/** Query terms worth matching: lowercase, no stop words, simple plural folding. */
+/** Query terms worth matching: composed (NFC), lowercase, split on anything that isn't a letter, mark or digit in any alphabet, no stop words, simple plural folding. */
 export function queryTerms(query: string): string[] {
   const terms = query
+    .normalize('NFC')
     .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
     .filter((t) => t.length >= 2 && !STOP_WORDS.has(t))
     .map((t) => (t.length > 4 && t.endsWith('s') && !t.endsWith('ss') ? t.slice(0, -1) : t));
   return [...new Set(terms)];
@@ -84,7 +85,7 @@ export function selectPassages(text: string, query: string, budget: number): str
   const scored = units
     .filter((u) => !chosen.has(u.index))
     .map((u) => {
-      const lower = u.text.toLowerCase();
+      const lower = u.text.normalize('NFC').toLowerCase();
       return { unit: u, score: terms.filter((t) => lower.includes(t)).length };
     })
     .filter((s) => s.score > 0)

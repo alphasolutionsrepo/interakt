@@ -149,13 +149,16 @@ const KEYWORD_STOP_WORDS = new Set([
 
 /**
  * Significant search terms from a natural-language question, longest first. Words are split on
- * anything that is not a letter, digit or hyphen in any alphabet, so "smørrebrød" stays whole.
+ * anything that is not a letter, combining mark, digit or hyphen in any alphabet, so "smørrebrød"
+ * stays whole. The question is composed (NFC) first, so an accent typed as a separate mark still
+ * matches text stored with the precomposed letter.
  */
 export function keywordTermsFrom(query: string, max = 6): string[] {
   const seen = new Set<string>();
   return query
+    .normalize('NFC')
     .toLowerCase()
-    .split(/[^\p{L}\p{N}-]+/u)
+    .split(/[^\p{L}\p{M}\p{N}-]+/u)
     .filter((w) => w.length > 2 && !KEYWORD_STOP_WORDS.has(w) && !seen.has(w) && seen.add(w))
     .sort((a, b) => b.length - a.length)
     .slice(0, max);

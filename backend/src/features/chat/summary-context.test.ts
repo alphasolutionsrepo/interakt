@@ -31,6 +31,15 @@ describe('queryTerms', () => {
     );
   });
 
+  it('keeps a word whole when its accent is typed as a separate mark', () => {
+    expect(queryTerms('Prüfung der Bücher'.normalize('NFD'))).toEqual(expect.arrayContaining(['prüfung', 'bücher']));
+  });
+
+  it('folds a trailing s on a kept non-ASCII word the same way as on an English one', () => {
+    // "smørrebrøds" (genitive) folds to "smørrebrød", which still matches the word in the text
+    expect(queryTerms('smørrebrøds pris')).toEqual(['smørrebrød', 'pris']);
+  });
+
   it('gives the same terms as before for English', () => {
     expect(queryTerms('How do I stop my assistant answering off-topic questions in 2026?')).toEqual([
       'stop', 'assistant', 'answering', 'off', 'topic', 'question', '2026',
@@ -94,5 +103,20 @@ describe('selectPassages with Danish text', () => {
     const out = selectPassages(text, 'søgning', 1000);
     expect(text.length).toBeGreaterThan(1000);
     expect(out).toContain('støbejernsgryden');
+  });
+});
+
+describe('selectPassages with decomposed accents', () => {
+  it('matches a query word against text whose accents are stored as separate marks', () => {
+    const filler = Array.from({ length: 30 }, (_, i) => `Lieferung Nummer ${i} geht jeden Monat an den Kunden.`);
+    const text = [
+      '# Produkte',
+      ...filler,
+      '## Küche',
+      'Gusseisentöpfe in drei Farben auf Lager.'.normalize('NFD'),
+    ].join('\n');
+
+    const out = selectPassages(text, 'gusseisentöpfe', 1000);
+    expect(out.normalize('NFC')).toContain('Gusseisentöpfe');
   });
 });
