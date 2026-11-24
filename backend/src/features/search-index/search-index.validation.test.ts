@@ -38,3 +38,25 @@ describe('createSearchIndexSchema', () => {
     expect(createSearchIndexSchema.safeParse({ ...valid, refreshInterval: 'soon' }).success).toBe(false);
   });
 });
+
+describe('createSearchIndexSchema language', () => {
+  it('accepts Danish and Norwegian on both engines', () => {
+    for (const searchProvider of ['elasticsearch', 'azure-ai-search'] as const) {
+      for (const language of ['danish', 'norwegian']) {
+        expect(createSearchIndexSchema.safeParse({ ...valid, searchProvider, language }).success).toBe(true);
+      }
+    }
+  });
+
+  it('refuses a language the chosen engine lacks, naming the language and the engine', () => {
+    const result = createSearchIndexSchema.safeParse({ ...valid, searchProvider: 'azure-ai-search', language: 'cjk' });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues[0]).toMatchObject({ path: ['language'], message: "Language 'cjk' isn't available for Azure AI Search" });
+    expect(createSearchIndexSchema.safeParse({ ...valid, language: 'klingon' }).success).toBe(false);
+  });
+
+  it('takes the same language on the engine that has it', () => {
+    expect(createSearchIndexSchema.safeParse({ ...valid, searchProvider: 'elasticsearch', language: 'cjk' }).success).toBe(true);
+  });
+});

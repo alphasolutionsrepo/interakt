@@ -11,18 +11,11 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import {
     Collapsible,
     CollapsibleContent,
@@ -47,6 +40,12 @@ import {
     type IndexingStrategy,
 } from '@/features/search-index';
 import type { WizardFormData } from '@/features/search-index/search-index.wizard-schemas';
+import {
+    CUSTOM_STOP_WORDS_UNSUPPORTED_REASON,
+    isIndexLanguageSupported,
+    supportsCustomStopWords,
+} from '@/features/search/providers/index-languages';
+import { IndexLanguageSelect } from '../IndexLanguageSelect';
 import { getProviderUI } from '../providers';
 
 // ============================================================================
@@ -62,22 +61,6 @@ interface StepSearchSettingsProps {
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
-const LANGUAGES = [
-    { value: 'english', label: 'English' },
-    { value: 'spanish', label: 'Spanish' },
-    { value: 'french', label: 'French' },
-    { value: 'german', label: 'German' },
-    { value: 'italian', label: 'Italian' },
-    { value: 'portuguese', label: 'Portuguese' },
-    { value: 'dutch', label: 'Dutch' },
-    { value: 'russian', label: 'Russian' },
-    { value: 'chinese', label: 'Chinese' },
-    { value: 'japanese', label: 'Japanese' },
-    { value: 'korean', label: 'Korean' },
-    { value: 'arabic', label: 'Arabic' },
-    { value: 'standard', label: 'Standard (language-neutral)' },
-];
 
 function getStrategyColor(strategy: IndexingStrategy, isSelected: boolean) {
     if (!isSelected) {
@@ -157,6 +140,14 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
     // Get provider UI registration for dynamic settings rendering
     const providerUI = getProviderUI(formData.searchProvider || 'elasticsearch');
     const providerSettings = formData.providerSettings ?? providerUI?.defaultSettings ?? {};
+    const provider = formData.searchProvider || 'elasticsearch';
+    const stopWordsSupported = supportsCustomStopWords(provider);
+
+    // Going back and switching engine can leave a language the new engine lacks; start over
+    // from the default rather than carry it to a create the server would refuse.
+    useEffect(() => {
+        if (!isIndexLanguageSupported(provider, language)) updateField('language', 'english');
+    }, [provider, language, updateField]);
 
     const advancedCount = [
         synonyms.length > 0,
@@ -247,21 +238,13 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
                     <Languages className="h-4 w-4 text-muted-foreground" />
                     Analysis Language
                 </Label>
-                <Select
+                <IndexLanguageSelect
+                    id="language"
+                    provider={provider}
                     value={language}
-                    onValueChange={(value) => updateField('language', value)}
-                >
-                    <SelectTrigger className="h-11 transition-colors focus-visible:border-primary focus-visible:ring-primary/20">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {LANGUAGES.map((lang) => (
-                            <SelectItem key={lang.value} value={lang.value}>
-                                {lang.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    onChange={(value) => updateField('language', value)}
+                    triggerClassName="h-11 transition-colors focus-visible:border-primary focus-visible:ring-primary/20"
+                />
                 {errors.language && (
                     <p className="text-sm text-destructive font-medium">{errors.language}</p>
                 )}
@@ -349,6 +332,7 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
                         <div className="flex gap-2">
                             <Input
                                 placeholder="Words to exclude from indexing"
+                                disabled={!stopWordsSupported}
                                 value={newStopWord}
                                 onChange={(e) => setNewStopWord(e.target.value)}
                                 onKeyDown={(e) => {
@@ -364,12 +348,15 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
                                 variant="outline"
                                 size="icon"
                                 onClick={handleAddStopWord}
-                                disabled={!newStopWord.trim()}
+                                disabled={!stopWordsSupported || !newStopWord.trim()}
                                 className="h-10 w-10 shrink-0"
                             >
                                 <Plus className="h-4 w-4" />
                             </Button>
                         </div>
+                        {!stopWordsSupported && (
+                            <p className="text-xs text-muted-foreground">{CUSTOM_STOP_WORDS_UNSUPPORTED_REASON}</p>
+                        )}
                         {stopWords.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                                 {stopWords.map((word, index) => (

@@ -9,7 +9,12 @@
 
 import 'server-only';
 
-import { FIELD_TYPE_TO_EDM, SEARCHABLE_EDM_TYPES, FILTERABLE_EDM_TYPES } from './azure-constants';
+import {
+    FIELD_TYPE_TO_EDM,
+    SEARCHABLE_EDM_TYPES,
+    FILTERABLE_EDM_TYPES,
+    getAzureLanguageAnalyzer,
+} from './azure-constants';
 import type { FieldMapper } from '../search-engine-provider.interface';
 
 // Text-like field types that support faceting via the filterable flag
@@ -44,7 +49,10 @@ export class AzureFieldMapper implements FieldMapper {
         fieldType: string;
         isAutocomplete?: boolean;
         isFacetable?: boolean;
+        isSearchable?: boolean;
         customAnalyzer?: string | null;
+        /** The index language; picks the analyzer for searchable text fields. */
+        language?: string | null;
         providerFieldSettings?: Record<string, unknown>;
     }): Record<string, unknown> | null {
         const edmType = FIELD_TYPE_TO_EDM[field.fieldType];
@@ -67,9 +75,14 @@ export class AzureFieldMapper implements FieldMapper {
             retrievable: true, // Ensure all mapped fields are retrievable for $select
         };
 
-        // Azure uses built-in analyzers rather than custom analyzer names
-        if (field.customAnalyzer && SEARCHABLE_EDM_TYPES.has(edmType)) {
-            result.analyzer = field.customAnalyzer;
+        // Azure uses built-in analyzers rather than custom analyzer names. A field's own
+        // analyzer wins; otherwise a searchable text field runs on the index language's
+        // analyzer. A language Azure has no analyzer for sets nothing (Azure's default).
+        // Fields that are not searched (filter-only) are left alone.
+        if (SEARCHABLE_EDM_TYPES.has(edmType)) {
+            const analyzer = field.customAnalyzer
+                || (field.isSearchable !== false ? getAzureLanguageAnalyzer(field.language) : undefined);
+            if (analyzer) result.analyzer = analyzer;
         }
 
         return result;

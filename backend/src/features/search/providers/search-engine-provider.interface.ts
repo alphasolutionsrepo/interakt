@@ -86,7 +86,7 @@ export interface IndexSettingsBuildContext {
      */
     synonyms?: string[];
     /**
-     * Index language for text analysis (see ES_LANGUAGES / AZURE_LANGUAGES).
+     * Index language for text analysis (see getIndexLanguages in index-languages.ts).
      * Drives stemming and the built-in stop word list, so a search for
      * "jackets" matches a document containing "jacket". Defaults to 'english'.
      */
@@ -463,7 +463,10 @@ export interface FieldMapper {
         fieldType: string;
         isAutocomplete?: boolean;
         isFacetable?: boolean;
+        isSearchable?: boolean;
         customAnalyzer?: string | null;
+        /** The index language; a provider that sets analyzers per field uses it for searchable text fields */
+        language?: string | null;
         /** Provider-specific field settings (from providerFieldSettings JSON column) */
         providerFieldSettings?: Record<string, unknown>;
     }): Record<string, unknown> | null;

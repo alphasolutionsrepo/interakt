@@ -64,6 +64,7 @@ import { DangerZone } from '@/shared/ui/custom/DangerZone';
 import { DeleteConfirmDialog } from '@/shared/ui/custom/DeleteConfirmDialog';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 
+import { getIndexLanguageLabel } from '@/features/search/providers/index-languages';
 import { getProviderUI } from '../../_components/providers/provider-registry';
 import '../../_components/providers'; // ensure all providers are registered
 
@@ -741,8 +742,8 @@ export default function SearchIndexDetailPage() {
                 <Languages className="h-3 w-3" />
                 Language
               </p>
-              <p className="text-sm font-semibold mt-1 capitalize">
-                {searchIndex.language || 'English'}
+              <p className="text-sm font-semibold mt-1">
+                {getIndexLanguageLabel(searchIndex.language || 'english') ?? searchIndex.language}
               </p>
             </div>
 

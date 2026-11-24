@@ -127,3 +127,20 @@ describe('EDM type has the final say', () => {
         expect(result).toMatchObject({ filterable: true });
     });
 });
+
+describe('index language', () => {
+    it('sets the language analyzer on a searchable text field', () => {
+        expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: true, language: 'danish' })?.analyzer).toBe('da.microsoft');
+    });
+
+    it('keeps a field\'s own analyzer over the language one', () => {
+        expect(mapper.mapFieldType({ fieldType: 'text', language: 'danish', customAnalyzer: 'keyword' })?.analyzer).toBe('keyword');
+    });
+
+    it('sets none on a field that is not searched, a non-text field or an unknown language', () => {
+        expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: false, language: 'danish' })).not.toHaveProperty('analyzer');
+        expect(mapper.mapFieldType({ fieldType: 'number', language: 'danish' })).not.toHaveProperty('analyzer');
+        expect(mapper.mapFieldType({ fieldType: 'text', language: 'klingon' })).not.toHaveProperty('analyzer');
+        expect(mapper.mapFieldType({ fieldType: 'text' })).not.toHaveProperty('analyzer');
+    });
+});

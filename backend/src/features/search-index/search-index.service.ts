@@ -40,13 +40,14 @@ import {
     generateDocumentEmbeddings,
     getEmbeddingConfig,
 } from '@/features/document-indexing/document-indexer.service';
+import { isIndexLanguageSupported, unsupportedLanguageMessage } from '@/features/search/providers/index-languages';
 import { invalidateSearchExperienceCacheBySearchIndex } from '@/features/search-experience';
 import { embeddingFailureReason } from '@/features/document-indexing/embedding-warnings';
 
 
 import { requestIdFor } from '@/shared/api/request-id';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
-import { AppError, ConflictError, NotFoundError } from '@/shared/errors/app-error';
+import { AppError, ConflictError, NotFoundError, ValidationError } from '@/shared/errors/app-error';
 import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
 import { classifyUpstream, explainWriteFailure, leadingReason, scrub } from '@/shared/errors/upstream';
 import { getSearchEngineProvider, type SearchProviderType } from '@/features/search/providers';
@@ -242,6 +243,19 @@ async function createDefaultSystemFields(searchIndexId: string): Promise<void> {
 // ============================================================================
 
 /**
+ * Refuse a language the engine can't analyse text in. The create schema checks this
+ * for API callers; the service checks it again so every path that stores a language
+ * (update, import) is held to the same list.
+ */
+function assertLanguageSupported(provider: string, language: string): void {
+    if (!isIndexLanguageSupported(provider, language)) {
+        throw new ValidationError(unsupportedLanguageMessage(provider, language), [
+            { field: 'language', code: 'invalid_value', message: unsupportedLanguageMessage(provider, language) },
+        ]);
+    }
+}
+
+/**
  * Create a new search index with default system fields.
  */
 export async function createSearchIndex(
@@ -249,6 +263,8 @@ export async function createSearchIndex(
     userId: string
 ): Promise<SearchIndexComplete> {
     try {
+        assertLanguageSupported(input.searchProvider ?? selectedSearchProvider, input.language ?? 'english');
+
         // Validate index name is unique
         const nameExists = await repository.nameExists(input.name);
         if (nameExists) {
@@ -414,6 +430,10 @@ export async function updateSearchIndex(
         const existing = await repository.getSearchIndexById(id);
         if (!existing) {
             throw new Error(`Search index with ID ${id} not found`);
+        }
+
+        if (input.language !== undefined) {
+            assertLanguageSupported(existing.searchProvider, input.language);
         }
 
         // Build update data
@@ -1692,6 +1712,9 @@ export async function importSearchIndex(
     try {
         // Determine final name
         const finalName = overrideName || importData.searchIndex.name;
+
+        // An imported index is created on the deployment's provider; its language must exist there
+        assertLanguageSupported(selectedSearchProvider, importData.searchIndex.language ?? 'english');
 
         // Validate name is unique
         const nameExists = await repository.nameExists(finalName);
