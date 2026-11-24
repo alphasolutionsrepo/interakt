@@ -6,6 +6,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SearchDropinUI } from '../src/search/SearchWidget';
 
+// The search runs 300 ms after typing; the summary about 1 s after the last keystroke
+const SEARCH_RUNS = 350;
+const SUMMARY_STARTS = 1150;
 const flush = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 const encoder = new TextEncoder();
 const sse = (text: string) => encoder.encode(`data: ${JSON.stringify({ type: 'content', text })}\n\n`);
@@ -87,7 +90,7 @@ describe('search widget: closing stops a summary still being written', () => {
     const calls = stubServer();
     await mountModal();
     type('shoes');
-    await flush(300);
+    await flush(SUMMARY_STARTS);
     expect(calls).toHaveLength(1);
     expect(root().textContent).toContain('Partial');
     expect(calls[0].signal?.aborted).toBe(false);
@@ -102,7 +105,7 @@ describe('search widget: closing stops a summary still being written', () => {
     const calls = stubServer();
     await mountModal();
     type('shoes');
-    await flush(300);
+    await flush(SUMMARY_STARTS);
     pressEsc();
     await flush();
 
@@ -117,7 +120,7 @@ describe('search widget: closing stops a summary still being written', () => {
     const calls = stubServer();
     await mountModal();
     type('shoes');
-    await flush(300);
+    await flush(SUMMARY_STARTS);
     pressEsc();
     await flush();
 
@@ -133,9 +136,9 @@ describe('search widget: closing stops a summary still being written', () => {
     const calls = stubServer({ searchDelayMs: 100 });
     await mountModal({ aiSummary: false });
     type('shoes');
-    await flush(250);
+    await flush(SEARCH_RUNS);
     pressEsc();
-    await flush(150);
+    await flush(SUMMARY_STARTS);
     await openModal();
     await flush(50);
 
@@ -146,7 +149,7 @@ describe('search widget: closing stops a summary still being written', () => {
     const calls = stubServer({ finish: true });
     await mountModal();
     type('shoes');
-    await flush(300);
+    await flush(SUMMARY_STARTS);
     pressEsc();
     await flush();
     await openModal();
@@ -160,9 +163,9 @@ describe('search widget: closing stops a summary still being written', () => {
     const calls = stubServer({ searchDelayMs: 100 });
     await mountModal();
     type('shoes');
-    await flush(250); // debounce fired, search still answering
+    await flush(SEARCH_RUNS); // debounce fired, search still answering
     pressEsc();
-    await flush(150);
+    await flush(SUMMARY_STARTS); // past the pause: still nothing while closed
 
     expect(calls).toHaveLength(0);
 
@@ -174,9 +177,9 @@ describe('search widget: closing stops a summary still being written', () => {
     const calls = stubServer();
     await mountModal();
     type('shoes');
-    await flush(300);
+    await flush(SUMMARY_STARTS);
     type('boots');
-    await flush(300);
+    await flush(SUMMARY_STARTS);
 
     expect(calls).toHaveLength(2);
     expect(calls[0].signal?.aborted).toBe(true);

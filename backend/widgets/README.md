@@ -113,6 +113,10 @@ SearchDropinUI.init({
   theme?: 'light' | 'dark' | 'auto';
   primaryColor?: string;
 
+  // AI summary above the results (the experience needs AI summary on)
+  aiSummary?: boolean;                  // default true; false = no summaries
+  summaryTrigger?: 'pause' | 'button';  // default 'pause'
+
   onEvent?: (e: WidgetEvent) => void;
 })
 
@@ -120,6 +124,12 @@ SearchDropinUI.destroy(containerId?)
 ```
 
 In `modal` mode, **⌘K / Ctrl+K** opens the search anywhere on the page; **Esc** closes it.
+
+Results update as the visitor types (300 ms after the last keystroke). With
+`summaryTrigger: 'pause'`, the AI summary starts once the visitor has paused for
+about a second after their last keystroke or filter click; Enter on a highlighted
+result without a link starts it at once (a result with a link opens). With
+`'button'`, an **AI summary** button above the results starts it.
 
 ## Event catalog
 

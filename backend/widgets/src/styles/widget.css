@@ -1104,6 +1104,28 @@ a {
   border-bottom: 1px solid var(--ik-border);
   background: color-mix(in srgb, var(--ik-primary) 5%, var(--ik-bg));
 }
+/* summaryTrigger 'button': the summary runs only when the visitor asks */
+.ik-summary-ask {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ik-border);
+  background: color-mix(in srgb, var(--ik-primary) 5%, var(--ik-bg));
+  color: var(--ik-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ik-summary-ask:hover {
+  background: color-mix(in srgb, var(--ik-primary) 10%, var(--ik-bg));
+}
+.ik-summary-ask:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ik-primary) 35%, transparent);
+}
 .ik-summary-header {
   display: inline-flex;
   align-items: center;

@@ -62,6 +62,15 @@ export interface SearchConfig extends BaseConfig {
    */
   aiSummary?: boolean;
   /**
+   * When the AI summary starts (with `aiSummary` on):
+   * - `'pause'` (default): once the results have stopped changing for about a
+   *   second after the visitor's last keystroke or filter click; Enter on a
+   *   highlighted result without a link starts it at once.
+   * - `'button'`: only when the visitor clicks the "AI summary" button shown
+   *   above the results.
+   */
+  summaryTrigger?: 'pause' | 'button';
+  /**
    * When true (default), the widget renders a row of category filter chips
    * derived from the first terms facet in the search response. Set to
    * `false` to hide the chip row — useful when the host prefers a cleaner
