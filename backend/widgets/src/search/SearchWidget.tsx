@@ -14,6 +14,7 @@ import type {
 } from '../shared/types';
 import { createShadowHost } from '../shared/shadow-host';
 import { searchShortcutLabel } from '../shared/shortcut';
+import { isMouseClick } from '../shared/pointer';
 import { resolveTheme } from '../shared/theme';
 import {
   resolveApiBase,
@@ -332,7 +333,7 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
    * Toggle a category chip. If the same chip is clicked again, clear it and
    * refetch the unfiltered result set. Otherwise apply the chip and refetch.
    */
-  const toggleChip = (field: string, value: string, byPointer = false) => {
+  const toggleChip = (field: string, value: string, byMouse = false) => {
     const current = activeChip.value;
     const sameChip = current?.field === field && current?.value === value;
     const next = sameChip ? null : { field, value };
@@ -343,8 +344,18 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
     });
     runSearch(query.value, next);
     // After a mouse click, back to the search field so the arrow keys and Enter keep
-    // working; from the keyboard, focus stays on the chip so the visitor can keep tabbing
-    if (byPointer) inputRef.current?.focus();
+    // working. From the keyboard, focus stays on the chip so the visitor can keep tabbing;
+    // after a tap, too, so no on-screen keyboard opens.
+    if (byMouse) inputRef.current?.focus();
+  };
+
+  /** Inline mode's clear (×) button: empties the field and the results at once. */
+  const clearSearch = () => {
+    if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
+    query.value = '';
+    activeChip.value = null;
+    void runSearch('', null);
+    inputRef.current?.focus();
   };
 
   const openResult = (hit: SearchResultHit) => {
@@ -380,9 +391,11 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
   };
 
   const scrollSelectedIntoView = () => {
-    // Back on the first result: show the summary above it again
+    // Back on the first result: show the summary above it again. In a modal the results
+    // area scrolls; inline, the page does, so the summary is brought into view.
     if (selected.value === 0 && bodyRef.current) {
       bodyRef.current.scrollTop = 0;
+      if (isInline) bodyRef.current.firstElementChild?.scrollIntoView({ block: 'nearest' });
       return;
     }
     const list = resultsRef.current;
@@ -426,6 +439,11 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
               selected.value >= 0 ? `ik-result-${selected.value}` : undefined
             }
           />
+          {isInline && query.value !== '' && (
+            <button class="ik-icon-btn" aria-label="Clear search" onClick={clearSearch}>
+              <CloseIcon />
+            </button>
+          )}
           {!isInline && <Kbd label="Esc" />}
           {!isInline && (
             <button class="ik-icon-btn" aria-label="Close search" onClick={close}>
@@ -869,7 +887,7 @@ function CategoryChips({
 }: {
   facets: Facet[];
   activeChip: { field: string; value: string } | null;
-  onToggle: (field: string, value: string, byPointer: boolean) => void;
+  onToggle: (field: string, value: string, byMouse: boolean) => void;
 }) {
   // Only render when we have a terms facet with at least 2 buckets — a
   // single-bucket facet offers no filtering value and just adds chrome.
@@ -890,8 +908,7 @@ function CategoryChips({
             key={b.key}
             type="button"
             class={`ik-chip ik-chip--facet${isActive ? ' ik-chip--active' : ''}`}
-            // detail is 0 when the chip is pressed from the keyboard (Enter or Space)
-            onClick={(e) => onToggle(primary.field, b.key, e.detail > 0)}
+            onClick={(e) => onToggle(primary.field, b.key, isMouseClick(e as MouseEvent & { pointerType?: string }))}
             aria-pressed={isActive}
           >
             <span>{b.key}</span>

@@ -6,11 +6,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SearchDropinUI } from '../src/search/SearchWidget';
 import { searchShortcutLabel } from '../src/shared/shortcut';
+import { isMouseClick } from '../src/shared/pointer';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 // Read from disk: the test setup stubs CSS imports
 const widgetCss = readFileSync(path.resolve(__dirname, '../src/styles/widget.css'), 'utf8');
+/** A click as a browser sends it from a pointer of this type. */
+const pointerClick = (el: Element, pointerType: string) => {
+  const e = new MouseEvent('click', { bubbles: true, detail: 1 });
+  Object.defineProperty(e, 'pointerType', { value: pointerType });
+  el.dispatchEvent(e);
+};
 const flush = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 const root = () => document.querySelector('[data-interakt-widget]')?.shadowRoot as ShadowRoot;
 const launcher = () => root().querySelector('button[aria-label="Open search"]') as HTMLButtonElement;
@@ -93,7 +100,9 @@ describe('search widget styles', () => {
   });
 
   it('show focus on the search bar, not as a ring inside the field', () => {
-    expect(widgetCss).toMatch(/\.ik-search-row:focus-within\s*\{[^}]*border-bottom-color/);
+    // Only the text field: not the close or clear button in the same row
+    expect(widgetCss).toMatch(/\.ik-search-row:has\(\.ik-search-input:focus\)\s*\{[^}]*border-bottom-color/);
+    expect(widgetCss).not.toMatch(/\.ik-search-row:focus-within/);
     expect(widgetCss).not.toMatch(/\.ik-search-input:focus-visible/);
   });
 });
@@ -133,6 +142,39 @@ describe('search widget: keyboard after a filter click', () => {
     expect(root().activeElement).toBe(chip);
   });
 
+  it.each(MODES)('%s: a tap leaves focus off the field, so no on-screen keyboard opens', async (mode) => {
+    await mountIn(mode, { aiSummary: false });
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(400);
+    input.blur();
+
+    pointerClick(root().querySelector('.ik-chip--facet')!, 'touch');
+    await flush(50);
+    expect(root().activeElement).not.toBe(input);
+  });
+
+  it('clicking the active chip again clears the filter and returns focus', async () => {
+    await mountIn('inline', { aiSummary: false });
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(400);
+    const chip = () => root().querySelector('.ik-chip--facet') as HTMLButtonElement;
+
+    pointerClick(chip(), 'mouse');
+    await flush(50);
+    expect(chip().getAttribute('aria-pressed')).toBe('true');
+    pointerClick(chip(), 'mouse');
+    await flush(50);
+    expect(chip().getAttribute('aria-pressed')).toBe('false');
+    const lastSearch = (fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+      .filter(([url]) => url.endsWith('/api/v1/search')).at(-1)!;
+    expect(JSON.parse(String(lastSearch[1].body)).filters).toBeUndefined();
+    expect(root().activeElement).toBe(input);
+  });
+
   it.each(MODES)('%s: keeps the arrow keys working: focus returns to the search field', async (mode) => {
     await mountIn(mode, { aiSummary: false });
     const input = root().querySelector('input') as HTMLInputElement;
@@ -140,8 +182,7 @@ describe('search widget: keyboard after a filter click', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await flush(400);
 
-    // A mouse click (detail 1), not a keyboard press
-    root().querySelector('.ik-chip--facet')!.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    pointerClick(root().querySelector('.ik-chip--facet')!, 'mouse');
     await flush(50);
     expect(root().activeElement).toBe(input);
 
@@ -220,6 +261,14 @@ describe('search widget: a long summary never hides the results', () => {
     expect(body.scrollTop).toBe(0);
   });
 
+  it('inline: back on the first result brings the summary into view (the page scrolls, not the area)', async () => {
+    const input = await search('inline');
+    await press(input, 'ArrowDown');
+    scrolledTo = [];
+    await press(input, 'ArrowUp');
+    expect(scrolledTo).toEqual([root().querySelector('.ik-summary')]);
+  });
+
   it('Up on the first result, or Down on the last, leaves the area where the visitor scrolled it', async () => {
     const input = await search();
     const body = root().querySelector('.ik-search-body') as HTMLElement;
@@ -232,5 +281,64 @@ describe('search widget: a long summary never hides the results', () => {
     scrolledTo = [];
     await press(input, 'ArrowDown');
     expect(scrolledTo).toEqual([]);
+  });
+});
+
+describe('isMouseClick', () => {
+  const fine = () => true;
+  const coarse = () => false;
+  it.each([
+    [{ detail: 0, pointerType: 'mouse' }, fine, false], // keyboard press
+    [{ detail: 1, pointerType: 'mouse' }, coarse, true],
+    [{ detail: 1, pointerType: 'touch' }, fine, false],
+    [{ detail: 1, pointerType: 'pen' }, fine, false],
+    [{ detail: 1 }, fine, true], // browser doesn't say: a mouse or trackpad device
+    [{ detail: 1 }, coarse, false], // browser doesn't say: a touch device
+  ])('%o → %s', (e, pointer, expected) => {
+    expect(isMouseClick(e, pointer)).toBe(expected);
+  });
+});
+
+describe('search widget: inline clear button', () => {
+  const hits = [1, 2, 3].map((n) => ({ id: `d${n}`, score: 1, source: { title: `Doc ${n}` } }));
+  const clearButton = () => root().querySelector('button[aria-label="Clear search"]') as HTMLButtonElement | null;
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="ik"></div>';
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      url.endsWith('/api/v1/search')
+        ? new Response(JSON.stringify({ success: true, data: { results: hits, total: { value: 3 } } }), { status: 200 })
+        : new Response('{}', { status: 200 })));
+  });
+  afterEach(() => {
+    SearchDropinUI.destroy();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('shows only with text, and empties the field and the results', async () => {
+    await mountIn('inline', { aiSummary: false });
+    expect(clearButton()).toBeNull();
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(400);
+    expect(root().querySelectorAll('.ik-result')).toHaveLength(3);
+
+    clearButton()!.click();
+    await flush(50);
+    expect(input.value).toBe('');
+    expect(root().querySelectorAll('.ik-result')).toHaveLength(0);
+    expect(clearButton()).toBeNull();
+    expect(root().activeElement).toBe(input);
+  });
+
+  it('is not shown in a modal, which has Esc and the close button', async () => {
+    await mountIn('modal', { aiSummary: false });
+    const input = root().querySelector('input') as HTMLInputElement;
+    input.value = 'doc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush(400);
+    expect(clearButton()).toBeNull();
   });
 });

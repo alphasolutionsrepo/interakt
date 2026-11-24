@@ -417,10 +417,11 @@ a {
 }
 /* The search bar is the field: focus shows as the caret plus an accent line
    under the bar, not a ring inside it */
-.ik-search-row:focus-within {
+.ik-search-row:has(.ik-search-input:focus) {
   border-bottom-color: color-mix(in srgb, var(--ik-primary) 45%, var(--ik-border));
 }
-/* No browser clear (×) button: Esc and the close button already do that job */
+/* No browser clear (×) button: the widget's own clear button (inline) or Esc and the
+   close button (modal) do that job, in the widget's style */
 .ik-search-input::-webkit-search-cancel-button,
 .ik-search-input::-webkit-search-decoration {
   -webkit-appearance: none;

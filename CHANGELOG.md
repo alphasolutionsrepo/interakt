@@ -40,7 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Search widget: the search field shows focus as an accent line under the bar, without the browser's clear (×) button; the modal search button's tooltip names the shortcut as the visitor's keyboard shows it (⌘K on a Mac, Ctrl+K elsewhere). In the admin's Widget playground the Modal option has a window icon, and its hint names the key for your computer.
+- Search widget: the search field shows focus as an accent line under the bar, without the browser's clear (×) button (inline search has its own clear button); the modal search button's tooltip names the shortcut as the visitor's keyboard shows it (⌘K on a Mac, Ctrl+K elsewhere). In the admin's Widget playground the Modal option has a window icon, and its hint names the key for your computer.
 - AI provider API keys live in the Secrets Vault. A key entered on a provider is saved encrypted as the vault secret `ai_provider_<provider key>`, or the provider form can use an existing vault secret (needs a role that can manage secrets). Keys saved on providers before move into the vault when the server starts with `SECRETS_ENCRYPTION_KEY` set, and saving a key needs that setting. The vault won't delete a secret a provider uses. A typed key never changes a vault secret something else uses: it gets its own secret. Editing a provider that uses a chosen vault secret needs a role that can manage secrets. After the move, an earlier version needs provider keys entered again.
 - Validation errors give every field problem a stable `code` (`invalid_type`, `too_small`, `too_big`, `invalid_format`, `invalid_value`, `unrecognized_key`, `invalid`) beside its message, and the messages are Interakt's own ("This field is required.", "Enter a number of at most 100."). The public API reference documents the full error response, including `fields`. Analytics and trace requests with invalid parameters answer with the same field list instead of raw validation output.
 - AI experiences enforce their allowed origins, chats per minute (default 60) and requests per day (default 10,000 chat messages per experience). Settings saved on existing AI experiences take effect on upgrade.
@@ -69,7 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- Search widget: after a filter chip is clicked with the mouse, the arrow keys and Enter keep working; a chip pressed from the keyboard keeps focus, so tabbing continues.
+- Search widget: after a filter chip is clicked with the mouse, the arrow keys and Enter keep working; a chip pressed from the keyboard or tapped keeps focus, so tabbing continues and no on-screen keyboard opens.
 - Search widget: a long AI summary scrolls together with the results, and the arrow keys bring the highlighted result into view.
 - The widget bundle (`/embed/v1/widgets.js`) and other files in `public/` are cached for 5 minutes instead of a year, so copies fetched from this release on pick up later upgrades: after 5 minutes the browser checks for a new copy in the background and uses it from the next page load.
 - A tool, MCP connection or data source whose settings name a secret that is missing from the Secrets Vault fails with a message naming the secret, instead of sending the request without it.
