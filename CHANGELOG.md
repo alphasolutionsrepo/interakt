@@ -72,6 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Knowledge-base keyword search and the AI summary's passage picker keep words in any alphabet whole, such as "smørrebrød" or "Prüfungsgebühr", and the picker ranks passages by the length of the words they match. Main database migration `0044` stores knowledge chunks composed (NFC) (`npm run db:migrate`).
 - Search widget: emptying the search field clears the results at once; a search that was still on its way no longer brings back its results, summary or error.
 - Search widget: after a filter chip is clicked with the mouse, the arrow keys and Enter keep working; a chip pressed from the keyboard or tapped keeps focus, so tabbing continues and no on-screen keyboard opens.
 - Search widget: a long AI summary scrolls together with the results, and the arrow keys bring the highlighted result into view.

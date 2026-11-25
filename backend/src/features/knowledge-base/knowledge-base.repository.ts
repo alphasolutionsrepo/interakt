@@ -68,10 +68,12 @@ export async function deleteDocument(id: string): Promise<void> {
 
 export async function createChunks(chunks: NewKnowledgeChunk[]): Promise<void> {
   if (chunks.length === 0) return;
+  // Stored text is always composed (NFC): keyword search compares the column directly.
+  const composed = chunks.map((c) => ({ ...c, content: c.content.normalize('NFC') }));
   // Insert in batches of 100 to avoid parameter limits
   const BATCH = 100;
-  for (let i = 0; i < chunks.length; i += BATCH) {
-    await db.insert(knowledgeChunks).values(chunks.slice(i, i + BATCH));
+  for (let i = 0; i < composed.length; i += BATCH) {
+    await db.insert(knowledgeChunks).values(composed.slice(i, i + BATCH));
   }
 }
 
@@ -147,12 +149,18 @@ const KEYWORD_STOP_WORDS = new Set([
   'would', 'you', 'your',
 ]);
 
-/** Significant search terms from a natural-language question, longest first. */
+/**
+ * Significant search terms from a natural-language question, longest first. Words are split on
+ * anything that is not a letter, combining mark, digit or hyphen in any alphabet, so "smørrebrød"
+ * stays whole. The question is composed (NFC) first, so an accent typed as a separate mark still
+ * matches text stored with the precomposed letter.
+ */
 export function keywordTermsFrom(query: string, max = 6): string[] {
   const seen = new Set<string>();
   return query
+    .normalize('NFC')
     .toLowerCase()
-    .split(/[^a-z0-9-]+/i)
+    .split(/[^\p{L}\p{M}\p{N}-]+/u)
     .filter((w) => w.length > 2 && !KEYWORD_STOP_WORDS.has(w) && !seen.has(w) && seen.add(w))
     .sort((a, b) => b.length - a.length)
     .slice(0, max);
@@ -178,12 +186,16 @@ export async function keywordSearchChunks(
   const terms = keywordTermsFrom(query);
   if (terms.length === 0) return [];
 
-  const matches = terms.map((t) => sql`(${knowledgeChunks.content} ILIKE ${'%' + t + '%'})`);
+  // Terms are composed (NFC) and so is the stored text (createChunks writes NFC; migration 0044
+  // converted older rows), so the column is compared as it is. Normalizing it per query made
+  // the search several times slower on large knowledge bases.
+  const content = sql`${knowledgeChunks.content}`;
+  const matches = terms.map((t) => sql`(${content} ILIKE ${'%' + t + '%'})`);
   const anyMatch = sql.join(matches, sql` OR `);
   // One point per distinct term present, so a chunk covering more of the question ranks above
   // one that happens to repeat a single word.
   const hitScore = sql.join(
-    terms.map((t) => sql`(CASE WHEN ${knowledgeChunks.content} ILIKE ${'%' + t + '%'} THEN 1 ELSE 0 END)`),
+    terms.map((t) => sql`(CASE WHEN ${content} ILIKE ${'%' + t + '%'} THEN 1 ELSE 0 END)`),
     sql` + `,
   );
 

@@ -65,8 +65,9 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Upload
   });
 
   try {
-    // 2. Chunk the content
-    const chunks = chunkText(content);
+    // 2. Chunk the content. Compose it first so the chunks and their embeddings see the same
+    // text that is stored (createChunks stores NFC).
+    const chunks = chunkText(content.normalize('NFC'));
 
     if (chunks.length === 0) {
       await repository.updateDocumentStatus(document.id, 'failed', {
