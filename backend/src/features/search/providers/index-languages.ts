@@ -89,6 +89,10 @@ export function supportsCustomStopWords(provider: string | null | undefined): bo
 }
 
 /** Shown wherever custom stop words are disabled. */
+/** One plain line under the language picker, on every screen that shows it */
+export const INDEX_LANGUAGE_HINT =
+    "The language of the text in this index. Search then finds other forms of a word (shoe, shoes) and skips common words such as 'the'.";
+
 export const CUSTOM_STOP_WORDS_UNSUPPORTED_REASON =
     "Custom stop words can't be applied on Azure AI Search because Azure doesn't allow them together with autocomplete. The language's own stop words still apply.";
 

@@ -240,7 +240,7 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
             <div className="space-y-2">
                 <Label htmlFor="language" className="text-sm font-semibold text-foreground flex items-center gap-2">
                     <Languages className="h-4 w-4 text-muted-foreground" />
-                    Analysis Language
+                    Language
                 </Label>
                 <IndexLanguageSelect
                     id="language"

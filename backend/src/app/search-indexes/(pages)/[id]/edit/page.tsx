@@ -692,20 +692,19 @@ export default function EditSearchIndexPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2 font-semibold">
                   <Languages className="h-4 w-4 text-blue-500" />
-                  Language Settings
+                  Language
+                  {dirtyFields.language && (
+                    <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 rounded-md">
+                      modified
+                    </Badge>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    Language
-                    {dirtyFields.language && (
-                      <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 rounded-md">
-                        modified
-                      </Badge>
-                    )}
-                  </Label>
+                  <Label htmlFor="index-language" className="sr-only">Language</Label>
                   <IndexLanguageSelect
+                    id="index-language"
                     provider={searchIndex.searchProvider}
                     value={language}
                     onChange={(value) => setValue('language', value, { shouldDirty: true })}
@@ -713,9 +712,6 @@ export default function EditSearchIndexPage() {
                     contentClassName="rounded-xl max-h-64"
                     itemClassName="rounded-lg"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Determines stemming, stop words, and text analysis for this language
-                  </p>
                 </div>
               </CardContent>
             </Card>

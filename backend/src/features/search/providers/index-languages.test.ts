@@ -130,8 +130,14 @@ describe('the edit and detail pages read the engine list', () => {
     it('the edit page uses the shared picker with the index provider, on every engine', () => {
         expect(edit).toMatch(/<IndexLanguageSelect[^>]*provider=\{searchIndex\.searchProvider\}/);
         expect(edit).not.toContain('ES_LANGUAGES');
-        const card = edit.slice(edit.indexOf('Language Settings') - 400, edit.indexOf('Language Settings'));
+        const card = edit.slice(edit.indexOf('<Languages ') - 400, edit.indexOf('<Languages '));
         expect(card).not.toContain('isElasticsearch');
+    });
+
+    it('the wizard and the edit page call it plain "Language"', () => {
+        const wizard = read('app/search-indexes/_components/CreateWizard/StepSearchSettings.tsx');
+        expect(wizard).not.toContain('Analysis Language');
+        expect(edit).not.toContain('Language Settings');
     });
 
     it('the detail page shows the label, not the raw value', () => {

@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { IndexLanguageSelect } from './IndexLanguageSelect';
 
 import { SelectItem } from '@/components/ui/select';
+import { INDEX_LANGUAGE_HINT } from '@/features/search/providers/index-languages';
 
 
 function walk(node: ReactNode, visit: (el: ReactElement<Record<string, unknown>>) => void): void {
@@ -29,7 +30,7 @@ function render(provider: string, value: string) {
         if (el.type === SelectItem) items.push({ value: el.props.value as string, label: String(el.props.children) });
         if (el.type === 'p') text.push(String(el.props.children));
     });
-    return { items, values: items.map(i => i.value), note: text[0] };
+    return { items, values: items.map(i => i.value), note: text.find(t => t !== INDEX_LANGUAGE_HINT), text };
 }
 
 describe('IndexLanguageSelect', () => {
@@ -51,5 +52,12 @@ describe('IndexLanguageSelect', () => {
 
     it('shows no note for a value the engine has', () => {
         expect(render('azure-ai-search', 'danish').note).toBeUndefined();
+    });
+
+    it('explains the setting in one plain line on every engine', () => {
+        for (const provider of ['elasticsearch', 'azure-ai-search']) {
+            expect(render(provider, 'danish').text).toContain(INDEX_LANGUAGE_HINT);
+        }
+        expect(INDEX_LANGUAGE_HINT).not.toMatch(/stemm|analy/i);
     });
 });
