@@ -5,6 +5,8 @@
  * 15 s after its last word the stream ends with a timeout. The connection to the model
  * is closed, the call is recorded as failed, and its trace says it timed out. The words
  * already sent reach the caller first; the stream isn't retried (that would repeat them).
+ * A model that sends no text ends after the provider's timeout, once: not retried either,
+ * since a retry would make the caller wait that long again.
  *
  * Runs the real AI service and both adapters (Ollama-native and OpenAI-compatible);
  * only the network is faked.
@@ -48,12 +50,18 @@ const twoWords = {
     + 'data: {"choices":[{"delta":{"content":" are"},"finish_reason":null}]}\n\n',
 };
 
-/** A model that sends two words, then nothing, with the connection open; records the close */
-function stallingModel() {
+/** The start of an answer with no text: Ollama's thinking, the OpenAI role */
+const noText = {
+  ollama: '{"message":{"content":"","thinking":"Hmm"},"done":false}\n',
+  openai: 'data: {"choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+};
+
+/** A model that sends `opening` (two words by default), then nothing, with the connection open; records the close */
+function stallingModel(opening: Record<string, string> = twoWords) {
   const closed = vi.fn();
   const fetch = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(new TextEncoder().encode(twoWords[provider.key as keyof typeof twoWords]));
+      controller.enqueue(new TextEncoder().encode(opening[provider.key]));
     },
     cancel: closed,
   })));
@@ -101,5 +109,27 @@ describe('a model that goes quiet partway through a streamed answer', () => {
     expect(usage.trackUsage).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     const [span] = exporter.getFinishedSpans().filter((s) => s.name === 'ai.stream_chat');
     expect(span.status).toMatchObject({ code: SpanStatusCode.ERROR, message: 'Stream timed out: no data from the model for 15 s' });
+  });
+
+  it.each(['ollama', 'openai'])("ends a stream with no text after the provider's timeout, without a retry (%s API style)", async (key) => {
+    provider.key = key;
+    const model = stallingModel(noText);
+    let failure: unknown;
+    const reading = (async () => {
+      try {
+        for await (const chunk of streamChat([{ role: 'user', content: 'Summarize' }], { providerId: 'prov-1', modelId: 7 })) void chunk;
+      } catch (error) {
+        failure = error;
+      }
+    })();
+
+    // The default provider timeout
+    await vi.advanceTimersByTimeAsync(60_000);
+    await reading;
+
+    expect(failure).toBeInstanceOf(StreamStalledError);
+    expect((failure as Error).message).toBe('Stream timed out: no data from the model for 60 s');
+    expect(model.fetch).toHaveBeenCalledOnce();
+    expect(model.closed).toHaveBeenCalledOnce();
   });
 });

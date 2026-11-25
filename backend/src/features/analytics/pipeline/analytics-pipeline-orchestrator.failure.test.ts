@@ -9,6 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { StreamStalledError } from '@/features/ai-service/adapters/types';
 import { ConflictError } from '@/shared/errors/app-error';
 import { reported, type LogLine } from '@/shared/test/log-recorder';
 
@@ -59,6 +60,16 @@ describe('an analytics chat turn that fails', () => {
     expect(reported(logs)).toEqual([
       expect.objectContaining({ level: 'error', context: expect.objectContaining({ requestId: event.requestId, operation: 'analyticsChatTurn', err: modelDown }) }),
     ]);
+  });
+
+  it('tells the asker (an admin) that the model didn\'t answer in time, logged once', async () => {
+    steps.assemble.mockRejectedValue(new StreamStalledError('ollama', 15_000));
+    const emit = vi.fn();
+    await runAnalyticsPipeline({ message: 'How many searches today?', sessionId: 's1' } as never, emit);
+
+    const event = emit.mock.calls.map(([e]) => e).find((e) => e.type === 'error');
+    expect(event).toMatchObject({ code: 'UPSTREAM_TIMEOUT', message: "Ollama didn't respond in time.", requestId: expect.any(String) });
+    expect(reported(logs)).toEqual([expect.objectContaining({ context: expect.objectContaining({ requestId: event.requestId, operation: 'analyticsChatTurn' }) })]);
   });
 
   it("tells the asker a context it couldn't assemble without its text, logged once with the error as the cause", async () => {
