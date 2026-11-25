@@ -25,7 +25,7 @@ import type {
 import { estimateChatUsage } from '../utils/token-counter';
 
 import { ollamaHeaders } from './ollama-headers';
-import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseNDJSONStream, requestSignal, wasAborted } from './types';
+import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseNDJSONStream, requestSignal, StreamSilenceLimit, wasAborted } from './types';
 import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 
 import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
@@ -323,11 +323,13 @@ export class OllamaAdapter implements AIProviderAdapter {
         let fullContent = '';
         let lastChunk: OllamaChatResponse | null = null;
 
-        for await (const data of parseNDJSONStream(response, config.providerKey ?? this.providerKey)) {
+        const silence = new StreamSilenceLimit(config.timeout);
+        for await (const data of parseNDJSONStream(response, config.providerKey ?? this.providerKey, silence)) {
             try {
                 const chunk: OllamaChatResponse = JSON.parse(data);
 
                 if (chunk.message?.content) {
+                    silence.markTextStarted();
                     fullContent += chunk.message.content;
                     yield {
                         content: chunk.message.content,

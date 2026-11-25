@@ -31,6 +31,8 @@ vi.mock('@/features/chat/prompt-builder', () => ({ buildSummarySystemPrompt: () 
 
 import { createSummaryStream } from './summary-stream';
 
+import { StreamStalledError } from '@/features/ai-service/adapters/types';
+
 import { markAdminCaller, publicRoute } from '@/shared/api/public-route';
 import { PUBLIC_FAILURE_MESSAGE } from '@/shared/api/response';
 
@@ -107,5 +109,26 @@ describe('a summary whose provider key can\'t be read', () => {
     model.failure = undefined;
 
     expect(event.message).toContain('SECRETS_ENCRYPTION_KEY');
+  });
+});
+
+describe('a summary whose model goes quiet partway', () => {
+  const stalled = () => new StreamStalledError('ollama', 15_000);
+
+  it('sends a visitor the plain message', async () => {
+    model.failure = stalled;
+    const event = await errorEvent(false);
+    model.failure = undefined;
+
+    expect(event).toMatchObject({ type: 'error', message: PUBLIC_FAILURE_MESSAGE });
+    expect(JSON.stringify(event)).not.toContain('ollama');
+  });
+
+  it('tells an admin the model didn\'t answer in time', async () => {
+    model.failure = stalled;
+    const event = await errorEvent(true);
+    model.failure = undefined;
+
+    expect(event.message).toBe("Ollama didn't respond in time.");
   });
 });

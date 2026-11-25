@@ -363,7 +363,10 @@ function SearchApp({ config, apiBaseUrl, onTurnedOff }: SearchAppProps) {
         // Summarize not enabled for this experience — stop trying.
         summaryEnabled.current = false;
       }
-      // Silent otherwise; summary is a progressive enhancement.
+      // A summary that stopped partway is taken away rather than left looking finished: the
+      // results stay, and the visitor can ask again. Silent otherwise; summary is a
+      // progressive enhancement.
+      if (summaryAbortRef.current === ac && !ac.signal.aborted) summary.value = '';
     } finally {
       if (summaryAbortRef.current === ac) {
         summaryStreaming.value = false;

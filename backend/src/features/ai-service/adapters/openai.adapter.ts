@@ -27,7 +27,7 @@ import type {
 } from '../ai-service.types';
 import { estimateChatUsage } from '../utils/token-counter';
 
-import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseSSEStream, requestSignal } from './types';
+import { AIProviderAdapter, AdapterError, errorFromResponse, noAnswerError, parseSSEStream, requestSignal, StreamSilenceLimit } from './types';
 import { withoutUnsupportedDimensions, withoutUnsupportedReasoning } from './unsupported-field-fallback';
 
 import { fetchOnSameServer } from '@/shared/http/same-server-fetch';
@@ -477,7 +477,8 @@ export class OpenAIAdapter implements AIProviderAdapter {
         const toolCallsInProgress: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
         let chunkCount = 0;
-        for await (const data of parseSSEStream(response, config.providerKey ?? this.providerKey)) {
+        const silence = new StreamSilenceLimit(config.timeout);
+        for await (const data of parseSSEStream(response, config.providerKey ?? this.providerKey, silence)) {
             try {
                 chunkCount++;
                 const chunk: OpenAIStreamChunk = JSON.parse(data);
@@ -492,6 +493,7 @@ export class OpenAIAdapter implements AIProviderAdapter {
                 }
 
                 if (choice?.delta?.content) {
+                    silence.markTextStarted();
                     fullContent += choice.delta.content;
                     yield {
                         content: choice.delta.content,
