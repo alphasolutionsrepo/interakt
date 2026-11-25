@@ -238,16 +238,55 @@ export function abortedRequestError(providerKey: string, caller?: AbortSignal): 
     return new AdapterError('Request timed out', providerKey, undefined, true);
 }
 
+/** How long a model's stream may go quiet once it has started writing text */
+export const STREAM_SILENCE_AFTER_TEXT_MS = 15_000;
+
+/**
+ * How long a model's stream may go quiet before it counts as stalled. Until the first
+ * text, the provider's timeout (a slow or cold-starting model can take a while to begin,
+ * and a thinking model is quiet while it thinks); once text has started, a model writes
+ * well under a second apart, so STREAM_SILENCE_AFTER_TEXT_MS, or the provider's timeout
+ * when that is shorter. The adapter reading the stream says when the text has started.
+ */
+export class StreamSilenceLimit {
+    private textStarted = false;
+
+    constructor(
+        private readonly beforeTextMs: number,
+        private readonly afterTextMs: number = STREAM_SILENCE_AFTER_TEXT_MS,
+    ) {}
+
+    /** The model has started writing text: from now on a shorter silence ends the stream */
+    markTextStarted(): void {
+        this.textStarted = true;
+    }
+
+    /** The silence allowed before the next chunk */
+    get ms(): number {
+        return this.textStarted ? Math.min(this.afterTextMs, this.beforeTextMs) : this.beforeTextMs;
+    }
+}
+
+/** A model's stream that went quiet longer than its StreamSilenceLimit allows */
+export class StreamStalledError extends AdapterError {
+    constructor(providerKey: string, silenceMs: number) {
+        super(`Stream timed out: no data from the model for ${Math.round(silenceMs / 1000)} s`, providerKey, undefined, true);
+    }
+}
+
 /**
  * Read a provider's streaming response body as text.
  *
  * A caller that stops early (a summary the visitor cancelled) closes the body,
  * which drops the connection, so the provider stops generating. Releasing the
- * reader alone would leave the request running to its token limit.
+ * reader alone would leave the request running to its token limit. A stream that
+ * goes quiet longer than its silence limit allows ends with a StreamStalledError,
+ * and is closed the same way.
  */
 async function* readStreamText(
     response: Response,
-    providerKey: string
+    providerKey: string,
+    silence: StreamSilenceLimit,
 ): AsyncGenerator<string, void, unknown> {
     const reader = response.body?.getReader();
     if (!reader) {
@@ -259,7 +298,7 @@ async function* readStreamText(
 
     try {
         while (true) {
-            const { done, value } = await reader.read();
+            const { done, value } = await readWithin(reader, silence.ms, providerKey);
             if (done) {
                 finished = true;
                 return;
@@ -272,6 +311,21 @@ async function* readStreamText(
         }
         reader.releaseLock();
     }
+}
+
+/** The next chunk of a stream, or a StreamStalledError when none arrives within ms */
+function readWithin(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    ms: number,
+    providerKey: string,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new StreamStalledError(providerKey, ms)), ms);
+        reader.read().then(
+            (result) => { clearTimeout(timer); resolve(result); },
+            (error: unknown) => { clearTimeout(timer); reject(error); },
+        );
+    });
 }
 
 /**
@@ -297,9 +351,10 @@ async function* splitRecords(
  */
 export async function* parseSSEStream(
     response: Response,
-    providerKey: string
+    providerKey: string,
+    silence: StreamSilenceLimit,
 ): AsyncGenerator<string, void, unknown> {
-    for await (const event of splitRecords(readStreamText(response, providerKey), '\n\n')) {
+    for await (const event of splitRecords(readStreamText(response, providerKey, silence), '\n\n')) {
         if (!event.trim()) continue;
         for (const line of event.split('\n')) {
             if (line.startsWith('data: ')) {
@@ -317,9 +372,10 @@ export async function* parseSSEStream(
  */
 export async function* parseNDJSONStream(
     response: Response,
-    providerKey: string
+    providerKey: string,
+    silence: StreamSilenceLimit,
 ): AsyncGenerator<string, void, unknown> {
-    for await (const line of splitRecords(readStreamText(response, providerKey), '\n')) {
+    for await (const line of splitRecords(readStreamText(response, providerKey, silence), '\n')) {
         if (line.trim()) {
             yield line;
         }

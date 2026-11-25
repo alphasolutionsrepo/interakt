@@ -22,7 +22,7 @@ import {
 } from '@/features/ai-providers/ai-providers.service';
 import { withProviderKey } from '@/features/ai-providers/provider-key';
 import { defaultConnectionType } from '@/features/ai-providers/ai-providers.validation';
-import { CallerTimeoutError, CancelledRequestError, getAdapter } from './adapters';
+import { CallerTimeoutError, CancelledRequestError, getAdapter, StreamStalledError } from './adapters';
 import { waitAsAsked, withResilience, withRetry } from './ai-service.resilience';
 import { trackUsage, updateRealtimeMetrics } from './ai-service.analytics';
 import { processEmbeddingBatches } from './utils/batch-processor';
@@ -611,6 +611,9 @@ export async function* streamChat(
                     // because adapter.streamChat returns the iterator lazily.
                     // Fall through to a single retry of the whole iteration.
                     if (yielded) throw err;
+                    // A stream that went quiet already waited its full silence limit: a retry
+                    // would make the caller wait that long again
+                    if (err instanceof StreamStalledError) throw err;
                     // As long as the provider asked (Retry-After); a longer wait than any retry ends it here
                     await waitAsAsked(err, options?.signal);
                     // The caller left during the wait: the stream just ends, as a cancel does

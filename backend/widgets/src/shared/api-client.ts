@@ -164,7 +164,11 @@ export interface SummarizeParams {
   instruction?: string;
 }
 
-/** Yields summary text tokens as they arrive. Throws ApiError on non-OK response. */
+/**
+ * Yields summary text tokens as they arrive. Throws ApiError on a non-OK response, and on an
+ * `error` event: the summary stopped partway (the model failed or went quiet), so the text so
+ * far is not the whole summary.
+ */
 export async function* streamSummarize(
   apiBaseUrl: string,
   accessToken: string,
@@ -207,13 +211,16 @@ export async function* streamSummarize(
           if (!line.startsWith('data:')) continue;
           const data = line.slice(5).trim();
           if (!data || data === '[DONE]') continue;
+          let event: { type?: string; text?: string; error?: string; code?: string };
           try {
-            const event = JSON.parse(data) as { type?: string; text?: string };
-            if (event.type === 'content' && typeof event.text === 'string') {
-              yield event.text;
-            }
+            event = JSON.parse(data) as { type?: string; text?: string; error?: string; code?: string };
           } catch {
-            /* ignore malformed event */
+            continue; // malformed event
+          }
+          if (event.type === 'content' && typeof event.text === 'string') {
+            yield event.text;
+          } else if (event.type === 'error') {
+            throw new ApiError(event.error || 'Summary failed', 500, event.code);
           }
         }
       }

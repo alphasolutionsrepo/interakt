@@ -9,6 +9,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { StreamStalledError } from './adapters/types';
 import { AIServiceError } from './ai-service.types';
 
 import { reported, type LogLine } from '@/shared/test/log-recorder';
@@ -96,6 +97,14 @@ describe('a failed AI Provider playground call', () => {
     const event = await streamError();
 
     expect(event).toMatchObject({ error: 'Model "qwen9" not found', message: 'Model "qwen9" not found', code: 'NOT_FOUND', requestId: expect.any(String) });
+  });
+
+  it('a streamed chat whose model goes quiet tells the admin it timed out, logged once', async () => {
+    failWith.error = new StreamStalledError('ollama', 15_000);
+    const event = await streamError();
+
+    expect(event).toMatchObject({ code: 'UPSTREAM_TIMEOUT', message: "Ollama didn't respond in time.", requestId: expect.any(String) });
+    expect(reported(logs)).toEqual([expect.objectContaining({ context: expect.objectContaining({ requestId: event.requestId, operation: 'chatStream' }) })]);
   });
 
   it('a streamed chat that cannot start answers with the shared error and a request id, logged once', async () => {

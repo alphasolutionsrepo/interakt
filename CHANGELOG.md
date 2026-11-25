@@ -72,6 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A streamed AI answer (search summaries, analytics Ask, the AI playground) ends with a timeout when the model goes quiet: 15 seconds after its last word, or after the provider's timeout before the first one. In the search widget, a summary that ends this way is taken away and the results stay, so the visitor can ask for it again.
 - Search widget: emptying the search field clears the results at once; a search that was still on its way no longer brings back its results, summary or error.
 - Search widget: after a filter chip is clicked with the mouse, the arrow keys and Enter keep working; a chip pressed from the keyboard or tapped keeps focus, so tabbing continues and no on-screen keyboard opens.
 - Search widget: a long AI summary scrolls together with the results, and the arrow keys bring the highlighted result into view.
