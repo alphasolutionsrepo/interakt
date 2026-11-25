@@ -182,14 +182,8 @@ export async function createSearchExperience(
   };
   const toolsConfig = { ...DEFAULT_TOOLS_CONFIG, ...validated.toolsConfig };
 
-  // Build rate limit config with defaults if provided
-  const rateLimitConfig = validated.rateLimitConfig
-    ? {
-        searchPerMinute: validated.rateLimitConfig.searchPerMinute,
-        chatPerMinute: validated.rateLimitConfig.chatPerMinute,
-        requestsPerDay: validated.rateLimitConfig.requestsPerDay,
-      }
-    : undefined;
+  // Rate limits as validated (unset ones use the defaults when a request is checked)
+  const rateLimitConfig = validated.rateLimitConfig;
 
   // Map indexes to required type (searchIndexId is required after validation)
   const indexInputs: AddSearchExperienceIndexInput[] = validated.indexes.map((idx) => ({

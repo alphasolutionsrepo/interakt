@@ -196,10 +196,10 @@ export interface SearchExperienceToolsConfig {
  * Rate limiting configuration
  */
 export interface SearchExperienceRateLimitConfig {
-  /** Max search requests per minute */
+  /** Max search requests per minute for each client (searches, autocomplete, document reads) */
   searchPerMinute: number;
-  /** Max chat messages per minute */
-  chatPerMinute: number;
+  /** Max AI summaries per minute for each client, counted apart from searches (default 30) */
+  summaryPerMinute?: number;
   /** Max requests per day (optional) */
   requestsPerDay?: number;
 }

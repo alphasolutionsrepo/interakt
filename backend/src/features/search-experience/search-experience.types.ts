@@ -526,10 +526,11 @@ export const DEFAULT_TOOLS_CONFIG: SearchExperienceToolsConfig = {
   settings: {},
 };
 
-export const DEFAULT_RATE_LIMIT_CONFIG: SearchExperienceRateLimitConfig = {
+/** Used when an experience doesn't set its own limits (see public-access.ts) */
+export const DEFAULT_RATE_LIMIT_CONFIG = {
   searchPerMinute: 60,
-  chatPerMinute: 30,
-};
+  summaryPerMinute: 30,
+} as const satisfies SearchExperienceRateLimitConfig;
 
 // ============================================================================
 // UI INFO OBJECTS (for admin pages)

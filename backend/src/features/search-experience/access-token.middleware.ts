@@ -19,6 +19,7 @@ import {
   isOriginAllowed,
   readAccessToken,
   searchExperienceAccess,
+  searchSummaryAccess,
 } from '@/features/auth/public-access';
 import { refuseExperienceIfOff } from '@/features/feature-switches/gate';
 import { apiResponse } from '@/shared/api/response';
@@ -37,6 +38,11 @@ export interface AuthenticatedRequest extends NextRequest {
 export interface MiddlewareResult {
   success: true;
   experience: SearchExperienceWithIndexes;
+}
+
+export interface PublicRequestOptions {
+  /** An AI summary request: counted against the experience's summary limit, not its search limit */
+  summary?: boolean;
 }
 
 export interface MiddlewareError {
@@ -62,6 +68,7 @@ export interface MiddlewareError {
  */
 export async function authenticateAccessToken(
   request: NextRequest,
+  options: PublicRequestOptions = {},
 ): Promise<MiddlewareResult | MiddlewareError> {
   try {
     // 1. Extract access token
@@ -110,8 +117,9 @@ export async function authenticateAccessToken(
     const off = await refuseExperienceIfOff(request, experience);
     if (off) return { success: false, response: off };
 
-    // 4. The experience's allowed origins and rate limits
-    const refused = checkPublicAccess(request, searchExperienceAccess(experience));
+    // 4. The experience's allowed origins and rate limits (AI summaries have their own)
+    const access = options.summary ? searchSummaryAccess(experience) : searchExperienceAccess(experience);
+    const refused = checkPublicAccess(request, access);
     if (refused) {
       return { success: false, response: refused };
     }
@@ -190,9 +198,10 @@ export function handleCorsPreflightWithExperience(
  */
 export async function openPublicRequest(
   request: NextRequest,
+  options: PublicRequestOptions = {},
 ): Promise<{ response: NextResponse } | { experience: SearchExperienceWithIndexes; origin: string | null }> {
   if (request.method === 'OPTIONS') return { response: handleCorsPreflight() };
-  const authResult = await authenticateAccessToken(request);
+  const authResult = await authenticateAccessToken(request, options);
   if (!authResult.success) return { response: (authResult as MiddlewareError).response };
   return { experience: (authResult as MiddlewareResult).experience, origin: request.headers.get('origin') };
 }
