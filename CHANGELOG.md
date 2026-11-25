@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Index language on Azure AI Search, as on Elasticsearch: searchable prose fields use the language's Azure analyzer (Microsoft's where one exists, such as `da.microsoft`), and changing the language flags the index for reindex. Each engine's language list includes Danish and Norwegian (Bokmål). Main database migration `0044` sets existing Azure indexes to `standard`, which is how they search today (`npm run db:migrate`); pick a language and reindex to apply one.
 - Search widget `summaryTrigger` option: `'pause'` (default) or `'button'`, which shows an AI summary button above the results.
 - `SearchDropinUI.shortcutLabel()`: the search widget's open shortcut as the visitor's keyboard shows it (`⌘K` or `Ctrl+K`), for a host's own search button.
 - `CLIENT_IP_SOURCE` setting: where Interakt reads a client's address for per-client rate limits: `forwarded-for:N` (N proxies in front of Interakt add to `X-Forwarded-For`), `header:<name>` for an edge's own header such as `CF-Connecting-IP` or `X-Azure-SocketIP`, or `none`. Unset, it uses `forwarded-for:<TRUSTED_PROXY_HOPS>`, so `TRUSTED_PROXY_HOPS` (the number of proxies in front of Interakt, default 1) keeps working as the fallback. Requests without a usable address share one count at 10 times the per-client limit.
@@ -41,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Create, import and a language change answer 400 for a language outside the engine's list, naming the language and the engine. Custom stop words are for Elasticsearch indexes: the admin shows them as not available on Azure AI Search, the API answers 400 when one is added there, and an import onto Azure leaves them out with a warning.
 - Search widget: the AI summary starts once the visitor pauses for about a second after their last keystroke or filter click, so one summary is written per search instead of one per keystroke. Results update 300 ms after the last keystroke. Enter on a highlighted result without a link starts the summary at once.
 - Search experiences count AI summaries against their own per-visitor limit, `summaryPerMinute` (default 30, or the experience's `searchPerMinute` when that is lower). Searches, autocomplete and document reads keep `searchPerMinute`. In rate limit settings, `summaryPerMinute` replaces `chatPerMinute`; requests that still send `chatPerMinute` are accepted.
 - Search widget: the search field shows focus as an accent line under the bar, without the browser's clear (×) button (inline search has its own clear button); the modal search button's tooltip names the shortcut as the visitor's keyboard shows it (⌘K on a Mac, Ctrl+K elsewhere). In the admin's Widget playground the Modal option has a window icon, and its hint names the key for your computer.

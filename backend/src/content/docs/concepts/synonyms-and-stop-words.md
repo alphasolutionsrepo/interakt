@@ -66,7 +66,7 @@ That's why searching *"the running shoes"* and *"running shoes"* give the same r
 
 Most of the time you leave the defaults alone. But sometimes you want to **add** to the list — and very occasionally, **remove** from it.
 
-**This setting currently applies to Elasticsearch indexes only.** Azure AI Search indexes fall back to Azure's default analyser and ignore custom stop words entirely — the Custom Stop Words card is hidden when editing an Azure-backed index.
+**Custom stop words work on Elasticsearch indexes only.** Azure AI Search doesn't allow custom stop words together with autocomplete, so on an Azure index the Custom Stop Words section says "Not available on Azure" instead of showing an input (in the create wizard and on the Edit screen). Common words in the index's language, such as "og" in Danish or "the" in English, are still ignored there.
 
 ### When you'd customise stop words
 
@@ -89,17 +89,19 @@ Most of the time you leave the defaults alone. But sometimes you want to **add**
 
 ## Language
 
-The **Language** dropdown on the same tab controls the stemming and stop-word rules the index uses. English gets English stop words and English stemming, so "running" and "run" match each other — and, the one you notice first, "jackets" finds documents that say "jacket". French gets French equivalents, and so on.
+The **Language** setting controls the stemming and stop-word rules the index uses. You choose it when you create the index and can change it on the **Text Analysis** tab. It works on both search engines. English gets English stop words and English stemming, so "running" and "run" match each other — and, the one you notice first, "jackets" finds documents that say "jacket". Danish, Norwegian (Bokmål) and many other languages get their own equivalents.
 
-Two limits worth knowing:
+How each engine applies it:
 
-- **A few languages have stop words but no stemmer** in core Elasticsearch — Thai, Persian, Serbian, and the CJK languages. Those indexes still get lowercasing and stop-word removal; they just don't stem. Polish needs a plugin and gets neither. Picking **Standard** deliberately turns off both.
-- **This setting currently applies to Elasticsearch indexes only.** Azure AI Search indexes fall back to Azure's default analyser, which does not stem.
+- **Elasticsearch** uses its built-in analysers for the language. A few languages have stop words but no stemmer in core Elasticsearch — Thai, Persian, Serbian, and the CJK languages. Those indexes still get lowercasing and stop-word removal; they just don't stem. Polish needs a plugin and gets neither.
+- **Azure AI Search** uses Microsoft's language analysers where Microsoft has one for the language, and the Lucene analyser for a few others (Armenian, Basque, Galician, Irish, Persian). Every searchable prose field (text, HTML, Markdown, rich text) uses the language's analyser, unless that field has its own analyser set.
+
+Picking **Standard** turns off language-specific processing on either engine. The language list differs slightly: the CJK, Serbian and Sorani options are available on Elasticsearch only, because Azure has no single analyser for them.
 
 If your content is multilingual, you have a couple of options:
 
 - **One index per language**, each set to its language. Highest quality, more management.
-- **One index in a multilingual mode** if your search provider supports it (Elasticsearch's `cjk` analyser, Azure Cognitive Search's language detectors). Simpler, slightly lower quality.
+- **One index in a multilingual mode** if your search provider supports it (Elasticsearch's `cjk` analyser covers Chinese, Japanese and Korean together). Simpler, slightly lower quality.
 
 Changing the language requires a [rebuild](rebuilding-an-index). So does picking up stemming for the first time: an index built before language analysis was applied needs one reindex before "jackets" starts matching "jacket".
 

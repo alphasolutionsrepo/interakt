@@ -40,13 +40,14 @@ import {
     generateDocumentEmbeddings,
     getEmbeddingConfig,
 } from '@/features/document-indexing/document-indexer.service';
+import { CUSTOM_STOP_WORDS_UNSUPPORTED_REASON, isIndexLanguageSupported, supportsCustomStopWords, unsupportedLanguageMessage } from '@/features/search/providers/index-languages';
 import { invalidateSearchExperienceCacheBySearchIndex } from '@/features/search-experience';
 import { embeddingFailureReason } from '@/features/document-indexing/embedding-warnings';
 
 
 import { requestIdFor } from '@/shared/api/request-id';
 import { requiresAIConfiguration, SYSTEM_FIELD_MAPPING_CONFIGS , SearchType, getReindexFieldsForProvider } from '@/shared/constants/search-index.constants';
-import { AppError, ConflictError, NotFoundError } from '@/shared/errors/app-error';
+import { AppError, ConflictError, NotFoundError, ValidationError } from '@/shared/errors/app-error';
 import { toAppError, writeFailureLevel } from '@/shared/errors/to-app-error';
 import { classifyUpstream, explainWriteFailure, leadingReason, scrub } from '@/shared/errors/upstream';
 import { getSearchEngineProvider, type SearchProviderType } from '@/features/search/providers';
@@ -242,6 +243,45 @@ async function createDefaultSystemFields(searchIndexId: string): Promise<void> {
 // ============================================================================
 
 /**
+ * Log a failed create, update or import. A request the service refused on purpose (a 4xx it
+ * chose, such as an unsupported language) is a warning; anything else is an error.
+ */
+function logWriteFailure(message: string, error: unknown, context: Record<string, unknown>): void {
+    if (error instanceof AppError && error.status < 500 && !error.ourSide) {
+        logger.warn(message, { ...context, code: error.code, reason: error.message });
+        return;
+    }
+    logger.error(message, error as Error, context);
+}
+
+/**
+ * Refuse a language the engine can't analyse text in. The create schema checks this
+ * for API callers; the service checks it again so every path that stores a language
+ * (update, import) is held to the same list.
+ */
+function assertLanguageSupported(provider: string, language: string): void {
+    if (!isIndexLanguageSupported(provider, language)) {
+        throw new ValidationError(unsupportedLanguageMessage(provider, language), [
+            { field: 'language', code: 'invalid_value', message: unsupportedLanguageMessage(provider, language) },
+        ]);
+    }
+}
+
+/** The message for custom stop words on an engine that can't apply them. */
+const STOP_WORDS_REFUSED = CUSTOM_STOP_WORDS_UNSUPPORTED_REASON;
+/** The import warning when stop words are dropped. */
+const STOP_WORDS_NOT_IMPORTED = "Custom stop words aren't used on Azure AI Search and won't be imported";
+
+/** Refuse custom stop words on an engine that can't apply them. An empty list is always fine. */
+function assertStopWordsSupported(provider: string, stopWords: string[] | undefined): void {
+    if (stopWords && stopWords.length > 0 && !supportsCustomStopWords(provider)) {
+        throw new ValidationError(STOP_WORDS_REFUSED, [
+            { field: 'stopWords', code: 'invalid_value', message: STOP_WORDS_REFUSED },
+        ]);
+    }
+}
+
+/**
  * Create a new search index with default system fields.
  */
 export async function createSearchIndex(
@@ -249,6 +289,10 @@ export async function createSearchIndex(
     userId: string
 ): Promise<SearchIndexComplete> {
     try {
+        const provider = input.searchProvider ?? selectedSearchProvider;
+        assertLanguageSupported(provider, input.language ?? 'english');
+        assertStopWordsSupported(provider, input.stopWords);
+
         // Validate index name is unique
         const nameExists = await repository.nameExists(input.name);
         if (nameExists) {
@@ -301,7 +345,7 @@ export async function createSearchIndex(
 
         return result;
     } catch (error) {
-        logger.error('Failed to create search index', error as Error, {
+        logWriteFailure('Failed to create search index', error, {
             name: input.name,
             searchType: input.searchType,
         });
@@ -413,7 +457,19 @@ export async function updateSearchIndex(
         // Check if index exists
         const existing = await repository.getSearchIndexById(id);
         if (!existing) {
-            throw new Error(`Search index with ID ${id} not found`);
+            throw new NotFoundError(`Search index with ID ${id} not found`);
+        }
+
+        // Only a change is checked: an older value the engine lacks (the edit page sends
+        // the stored language back with every save) must not block unrelated edits.
+        if (input.language !== undefined && input.language !== existing.language) {
+            assertLanguageSupported(existing.searchProvider, input.language);
+        }
+        // Stored stop words on an engine that can't apply them (legacy rows) may be kept or
+        // removed; only adding a word it doesn't already hold is refused.
+        if (input.stopWords !== undefined) {
+            const stored = (existing.stopWords ?? []) as string[];
+            assertStopWordsSupported(existing.searchProvider, input.stopWords.filter(word => !stored.includes(word)));
         }
 
         // Build update data
@@ -475,7 +531,7 @@ export async function updateSearchIndex(
 
         return updated;
     } catch (error) {
-        logger.error('Failed to update search index', error as Error, { id });
+        logWriteFailure('Failed to update search index', error, { id });
         throw error;
     }
 }
@@ -1537,6 +1593,8 @@ export interface SearchIndexImportPreview {
     };
     fieldCount: number;
     requiresAIConfig: boolean;
+    /** Problems that make the import fail; the admin UI doesn't offer Import while any remain */
+    blockingErrors: string[];
     warnings: string[];
 }
 
@@ -1630,6 +1688,7 @@ export async function previewSearchIndexImport(
     importData: SearchIndexExportDTO
 ): Promise<SearchIndexImportPreview> {
     const warnings: string[] = [];
+    const blockingErrors: string[] = [];
 
     // Check for name conflict
     const nameExists = await repository.nameExists(importData.searchIndex.name);
@@ -1653,6 +1712,13 @@ export async function previewSearchIndexImport(
     const matchedTemplateName: string | undefined = undefined;
     const templateFound = false;
 
+    if (!isIndexLanguageSupported(selectedSearchProvider, importData.searchIndex.language)) {
+        blockingErrors.push(unsupportedLanguageMessage(selectedSearchProvider, importData.searchIndex.language));
+    }
+    if (!supportsCustomStopWords(selectedSearchProvider) && importData.searchIndex.stopWords.length > 0) {
+        warnings.push(STOP_WORDS_NOT_IMPORTED);
+    }
+
     // Check if AI config is required
     const requiresAI = requiresAIConfiguration(importData.searchIndex.searchType);
     if (requiresAI) {
@@ -1675,6 +1741,7 @@ export async function previewSearchIndexImport(
         },
         fieldCount: importData.fields.length,
         requiresAIConfig: requiresAI,
+        blockingErrors,
         warnings,
     };
 }
@@ -1692,6 +1759,11 @@ export async function importSearchIndex(
     try {
         // Determine final name
         const finalName = overrideName || importData.searchIndex.name;
+
+        // An imported index is created on the deployment's provider; its language must exist there
+        assertLanguageSupported(selectedSearchProvider, importData.searchIndex.language ?? 'english');
+        const dropStopWords = !supportsCustomStopWords(selectedSearchProvider) && importData.searchIndex.stopWords.length > 0;
+        if (dropStopWords) warnings.push(STOP_WORDS_NOT_IMPORTED);
 
         // Validate name is unique
         const nameExists = await repository.nameExists(finalName);
@@ -1717,7 +1789,7 @@ export async function importSearchIndex(
             refreshInterval: importData.searchIndex.refreshInterval,
             language: importData.searchIndex.language,
             synonyms: importData.searchIndex.synonyms,
-            stopWords: importData.searchIndex.stopWords,
+            stopWords: dropStopWords ? [] : importData.searchIndex.stopWords,
             analyzerConfig: importData.searchIndex.analyzerConfig as { tokenizer?: string; filters?: string[]; charFilters?: string[] } | undefined,
             embeddingDimensions: aiConfig?.embeddingDimensions ?? importData.searchIndex.embeddingDimensions ?? undefined,
             vectorSimilarity: importData.searchIndex.vectorSimilarity ?? 'cosine',
@@ -1776,7 +1848,7 @@ export async function importSearchIndex(
             warnings: warnings.length > 0 ? warnings : undefined,
         };
     } catch (error) {
-        logger.error('Failed to import search index', error as Error, {
+        logWriteFailure('Failed to import search index', error, {
             name: importData.searchIndex.name,
         });
         throw error;

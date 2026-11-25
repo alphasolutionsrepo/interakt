@@ -17,7 +17,8 @@ export { AzureFieldMapper } from './azure-field-mapper';
 export { AZURE_AI_SEARCH_CAPABILITIES } from './azure-capabilities';
 export {
     FIELD_TYPE_TO_EDM,
-    AZURE_LANGUAGES,
+    AZURE_LANGUAGE_ANALYZERS,
+    getAzureLanguageAnalyzer,
     AZURE_INDEX_DEFAULTS,
     isAzureSearchableFieldType,
 } from './azure-constants';

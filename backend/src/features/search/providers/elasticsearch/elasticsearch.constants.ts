@@ -137,7 +137,7 @@ export const ES_LANGUAGES = [
     { value: 'korean', label: 'Korean' },
     { value: 'latvian', label: 'Latvian' },
     { value: 'lithuanian', label: 'Lithuanian' },
-    { value: 'norwegian', label: 'Norwegian' },
+    { value: 'norwegian', label: 'Norwegian (Bokmål)' },
     { value: 'persian', label: 'Persian' },
     { value: 'polish', label: 'Polish' },
     { value: 'portuguese', label: 'Portuguese' },

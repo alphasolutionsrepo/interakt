@@ -8,6 +8,7 @@
  * (e.g., Azure AI Search uses Edm.* types).
  */
 
+import { LANGUAGE_ANALYSED_FIELD_TYPES } from '@/shared/constants/search-index.constants';
 import type { SearchIndexField } from '@/db/schema/search-index-fields.schema';
 import { INTERAKT_TEXT_ANALYZER, INTERAKT_TEXT_SEARCH_ANALYZER } from './elasticsearch.constants';
 
@@ -20,46 +21,44 @@ import { INTERAKT_TEXT_ANALYZER, INTERAKT_TEXT_SEARCH_ANALYZER } from './elastic
 export function mapFieldTypeToES(field: SearchIndexField): Record<string, unknown> | null {
     const { fieldType, isAutocomplete, isFacetable, customAnalyzer } = field;
 
-    switch (fieldType) {
-        case 'text':
-        case 'html':
-        case 'markdown':
-        case 'richtext': {
-            const mapping: Record<string, unknown> = { type: 'text' };
+    // Prose fields: analysed text, on the index language unless the field says otherwise
+    if (LANGUAGE_ANALYSED_FIELD_TYPES.includes(fieldType)) {
+        const mapping: Record<string, unknown> = { type: 'text' };
 
-            // Apply autocomplete analyzer if enabled
-            if (isAutocomplete) {
-                mapping.analyzer = 'autocomplete';
-                mapping.search_analyzer = 'autocomplete_search';
-            } else if (customAnalyzer) {
-                // Apply custom analyzer if specified. No search_analyzer, so ES
-                // uses the same analyzer on both sides — an explicit per-field
-                // override wins over the index's language analysis.
-                mapping.analyzer = customAnalyzer;
-            } else {
-                // Default: the analyzer pair built from the index's language and
-                // stop words. Without this the field falls back to ES `standard`,
-                // which does not stem — a search for "jackets" would then miss a
-                // document containing "jacket". buildIndexSettings always defines
-                // both analyzers, so these names are safe to reference here.
-                mapping.analyzer = INTERAKT_TEXT_ANALYZER;
-                mapping.search_analyzer = INTERAKT_TEXT_SEARCH_ANALYZER;
-            }
-
-            // Add keyword subfield for faceting/sorting if field is facetable
-            // This allows terms aggregations on text fields via field.keyword
-            if (isFacetable) {
-                mapping.fields = {
-                    keyword: {
-                        type: 'keyword',
-                        ignore_above: 256,
-                    },
-                };
-            }
-
-            return mapping;
+        // Apply autocomplete analyzer if enabled
+        if (isAutocomplete) {
+            mapping.analyzer = 'autocomplete';
+            mapping.search_analyzer = 'autocomplete_search';
+        } else if (customAnalyzer) {
+            // Apply custom analyzer if specified. No search_analyzer, so ES
+            // uses the same analyzer on both sides — an explicit per-field
+            // override wins over the index's language analysis.
+            mapping.analyzer = customAnalyzer;
+        } else {
+            // Default: the analyzer pair built from the index's language and
+            // stop words. Without this the field falls back to ES `standard`,
+            // which does not stem — a search for "jackets" would then miss a
+            // document containing "jacket". buildIndexSettings always defines
+            // both analyzers, so these names are safe to reference here.
+            mapping.analyzer = INTERAKT_TEXT_ANALYZER;
+            mapping.search_analyzer = INTERAKT_TEXT_SEARCH_ANALYZER;
         }
 
+        // Add keyword subfield for faceting/sorting if field is facetable
+        // This allows terms aggregations on text fields via field.keyword
+        if (isFacetable) {
+            mapping.fields = {
+                keyword: {
+                    type: 'keyword',
+                    ignore_above: 256,
+                },
+            };
+        }
+
+        return mapping;
+    }
+
+    switch (fieldType) {
         case 'keyword':
         case 'slug':
         case 'id':

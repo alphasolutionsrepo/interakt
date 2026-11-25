@@ -9,7 +9,7 @@
  * UPDATED: Added handlers for new mapping config endpoints
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 import * as fieldsService from './search-index-fields.service';
 import type { FieldMappingConfig, UpdateSearchIndexFieldDTO } from './search-index-fields.types';
@@ -35,7 +35,8 @@ import {
 
 import { withBuiltInFlag } from '@/features/access/built-in';
 import { refreshSchemaForSearchIndex } from '@/features/data-source/data-source.service';
-import { apiResponse } from '@/shared/api/response';
+import { apiResponse, describeUnloggedError } from '@/shared/api/response';
+import { AppError } from '@/shared/errors/app-error';
 import { createLogger } from '@/shared/logger/logger';
 import { getCurrentUserId } from '@/shared/utils/auth-utils';
 
@@ -49,6 +50,21 @@ const logger = createLogger('search-index-handlers');
 // ============================================================================
 // SEARCH INDEX: CRUD HANDLERS
 // ============================================================================
+
+/**
+ * A create, update or import the service refused on purpose (an AppError with a 4xx, such
+ * as an unsupported language) answers with the error's own status. The service has already
+ * logged it as a warning, so it is not logged again here. Anything else is undefined and
+ * goes on to the caller's other checks and, last, apiResponse.error, which logs it.
+ */
+function answerRefusedWrite(error: unknown): NextResponse | undefined {
+    if (!(error instanceof AppError) || error.status >= 500 || error.ourSide) return undefined;
+    const { status, body } = describeUnloggedError(error);
+    return NextResponse.json(body, { status });
+}
+
+/** Plain errors from older service code say "not found" in words; an AppError says it by its status */
+const saysNotFound = (error: unknown): boolean => !(error instanceof AppError) && (error as Error).message.includes('not found');
 
 /**
  * POST /api/search-indexes
@@ -80,12 +96,14 @@ export async function handleCreateSearchIndex(request: NextRequest) {
         return apiResponse.success(searchIndex, 201);
     } catch (error) {
         const err = error as Error;
+        const refusedWrite = answerRefusedWrite(error);
+        if (refusedWrite) return refusedWrite;
 
         if (err.message.includes('already exists')) {
             return apiResponse.refused(error, 'BAD_REQUEST', { operation: 'createSearchIndex' });
         }
 
-        if (err.message.includes('not found')) {
+        if (saysNotFound(error)) {
             return apiResponse.refused(error, 'NOT_FOUND', { operation: 'createSearchIndex' });
         }
 
@@ -231,8 +249,10 @@ export async function handleUpdateSearchIndex(
         return apiResponse.success(searchIndex);
     } catch (error) {
         const err = error as Error;
+        const refusedWrite = answerRefusedWrite(error);
+        if (refusedWrite) return refusedWrite;
 
-        if (err.message.includes('not found')) {
+        if (saysNotFound(error)) {
             return apiResponse.refused(error, 'NOT_FOUND', { operation: 'updateSearchIndex' });
         }
 
@@ -1597,6 +1617,8 @@ export async function handleImportSearchIndex(request: NextRequest) {
 
         return apiResponse.success(result);
     } catch (error) {
+        const refusedWrite = answerRefusedWrite(error);
+        if (refusedWrite) return refusedWrite;
         return apiResponse.error(error as Error, undefined, { operation: 'importSearchIndex' });
     }
 }

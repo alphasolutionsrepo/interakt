@@ -33,9 +33,9 @@ Click **Next**.
 | Field | What to put |
 |---|---|
 | **Indexing strategy** | **On Upload** for most cases. Documents become searchable as you upload them. |
-| **Language** | The primary language of your content. Drives stemming and stop-words. |
+| **Language** | The primary language of your content. Drives stemming and stop-words, on both Elasticsearch and Azure AI Search. |
 | **Synonyms** | Skip for now — see [Synonyms and stop words](../concepts/synonyms-and-stop-words) once you've seen the index in action. |
-| **Custom stop words** | Skip for now. |
+| **Custom stop words** | Skip for now. Available on Elasticsearch only. |
 | **Number of replicas** (ES) | 0 is fine for dev. |
 | **Refresh interval** (ES) | Default 1 second is fine. |
 

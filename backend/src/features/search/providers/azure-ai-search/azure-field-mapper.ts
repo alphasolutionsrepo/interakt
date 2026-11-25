@@ -9,7 +9,15 @@
 
 import 'server-only';
 
-import { FIELD_TYPE_TO_EDM, SEARCHABLE_EDM_TYPES, FILTERABLE_EDM_TYPES } from './azure-constants';
+import { KnownAnalyzerNames } from '@azure/search-documents';
+
+import {
+    FIELD_TYPE_TO_EDM,
+    SEARCHABLE_EDM_TYPES,
+    FILTERABLE_EDM_TYPES,
+    getAzureLanguageAnalyzer,
+} from './azure-constants';
+import { LANGUAGE_ANALYSED_FIELD_TYPES } from '@/shared/constants/search-index.constants';
 import type { FieldMapper } from '../search-engine-provider.interface';
 
 // Text-like field types that support faceting via the filterable flag
@@ -44,7 +52,10 @@ export class AzureFieldMapper implements FieldMapper {
         fieldType: string;
         isAutocomplete?: boolean;
         isFacetable?: boolean;
+        isSearchable?: boolean;
         customAnalyzer?: string | null;
+        /** The index language; picks the analyzer for searchable text fields. */
+        language?: string | null;
         providerFieldSettings?: Record<string, unknown>;
     }): Record<string, unknown> | null {
         const edmType = FIELD_TYPE_TO_EDM[field.fieldType];
@@ -67,9 +78,24 @@ export class AzureFieldMapper implements FieldMapper {
             retrievable: true, // Ensure all mapped fields are retrievable for $select
         };
 
-        // Azure uses built-in analyzers rather than custom analyzer names
-        if (field.customAnalyzer && SEARCHABLE_EDM_TYPES.has(edmType)) {
-            result.analyzer = field.customAnalyzer;
+        // Azure uses built-in analyzers rather than custom analyzer names. A field's own
+        // analyzer wins; otherwise a searchable text field runs on the index language's
+        // analyzer. A language Azure has no analyzer for sets nothing (Azure's default).
+        // Fields that are not searched (filter-only) are left alone.
+        if (SEARCHABLE_EDM_TYPES.has(edmType)) {
+            // The language analyses prose fields only, as on Elasticsearch
+            const languageAnalyzer = field.isSearchable !== false && LANGUAGE_ANALYSED_FIELD_TYPES.includes(field.fieldType)
+                ? getAzureLanguageAnalyzer(field.language)
+                : undefined;
+            // A field's own analyzer is only sent when Azure knows the name: an unknown one (an
+            // Elasticsearch name such as 'autocomplete') would make Azure refuse the whole index,
+            // and a reindex deletes the old index before creating the new one.
+            const ownAnalyzer = isAzureAnalyzerName(field.customAnalyzer) ? field.customAnalyzer : undefined;
+            const analyzer = ownAnalyzer || languageAnalyzer;
+            // The SDK property is `analyzerName` (sent to Azure as `analyzer`). The SDK
+            // replaces a field's `analyzer` with `analyzerName` when it builds the request,
+            // so the REST name here would be dropped without an error.
+            if (analyzer) result.analyzerName = analyzer;
         }
 
         return result;
@@ -110,4 +136,11 @@ export class AzureFieldMapper implements FieldMapper {
             vectorSearchDimensions: config.dimensions,
         };
     }
+}
+
+/** Built-in analyzer names Azure accepts; Azure compares them without regard to case. */
+const AZURE_ANALYZER_NAMES = new Set(Object.values(KnownAnalyzerNames).map((n) => String(n).toLowerCase()));
+
+function isAzureAnalyzerName(name: string | null | undefined): name is string {
+    return typeof name === 'string' && AZURE_ANALYZER_NAMES.has(name.toLowerCase());
 }

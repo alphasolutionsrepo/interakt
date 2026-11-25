@@ -49,3 +49,18 @@ describe('the active search index list', () => {
     expect(refreshesActive(label)).toBe(true);
   });
 });
+
+describe('the reindex notice on the index page', () => {
+  beforeEach(() => { mutations.length = 0; });
+
+  // Saving a language change flags the index for reindex; the page must ask again, not show a cached "in sync"
+  it('is fetched again after saving the index', () => {
+    useSearchIndex('i1');
+    const mutation = mutations.find((m) => m.meta?.label === 'Update search index')!;
+    invalidateQueries.mockClear();
+    mutation.onSuccess?.({ id: 'i1' });
+    const keys = invalidateQueries.mock.calls.map(([arg]) => JSON.stringify(arg.queryKey));
+    const covers = (key: readonly unknown[]) => keys.some((k) => JSON.stringify(key).startsWith(k.slice(0, -1)));
+    expect(covers(searchIndexKeys.syncStatus('i1'))).toBe(true);
+  });
+});

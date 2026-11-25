@@ -8,6 +8,7 @@
  * SINGLE SOURCE OF TRUTH: All DTOs are inferred from these schemas
  */
 
+import { isIndexLanguageSupported, unsupportedLanguageMessage } from '@/features/search/providers/index-languages';
 import {
     SEARCH_TYPES,
     INDEXING_STRATEGIES,
@@ -90,6 +91,15 @@ export const createSearchIndexSchema = z.object({
 
     // REMOVED: fieldMappings - no longer part of creation
     // Fields are now snapshotted from the template after index creation
+}).superRefine((data, ctx) => {
+    // The language must be one the chosen engine can analyse text in
+    if (!isIndexLanguageSupported(data.searchProvider, data.language)) {
+        ctx.addIssue({
+            code: 'custom',
+            path: ['language'],
+            message: unsupportedLanguageMessage(data.searchProvider, data.language),
+        });
+    }
 });
 
 export type CreateSearchIndexDTO = z.infer<typeof createSearchIndexSchema>;

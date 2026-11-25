@@ -904,14 +904,24 @@ export const FIELD_SETTINGS_REQUIRING_REINDEX = [
 export type FieldRequiringReindex = typeof FIELDS_REQUIRING_REINDEX[number];
 
 /**
+ * Field types that hold prose, so the index language (stemming, stop words) applies to
+ * them. Every engine uses this one list: Elasticsearch maps these to analysed text, Azure
+ * gives them the language analyzer. Identifier-like types (keyword, url, array...) are not
+ * analysed on either engine.
+ */
+export const LANGUAGE_ANALYSED_FIELD_TYPES: readonly string[] = ['text', 'html', 'markdown', 'richtext'];
+
+const AZURE_REINDEX_FIELDS: readonly FieldRequiringReindex[] = ['language', 'synonyms'];
+
+/**
  * Index-level fields that require reindex when changed, scoped to what the
- * given search provider actually consumes. Language and stop words only
- * affect Elasticsearch's analyzer chain today — Azure AI Search ignores them
- * and only reads synonyms — so flagging them as reindex-worthy on Azure would
- * be a false positive.
+ * given search provider actually consumes. Elasticsearch reads all of them.
+ * Azure AI Search reads the language (it picks the field analyzers) and the
+ * synonyms; custom stop words and analyzer config do not apply there, so
+ * flagging them as reindex-worthy on Azure would be a false positive.
  */
 export function getReindexFieldsForProvider(searchProvider: string | undefined): readonly FieldRequiringReindex[] {
-    return searchProvider === 'elasticsearch' ? FIELDS_REQUIRING_REINDEX : ['synonyms'];
+    return searchProvider === 'elasticsearch' ? FIELDS_REQUIRING_REINDEX : AZURE_REINDEX_FIELDS;
 }
 
 /**

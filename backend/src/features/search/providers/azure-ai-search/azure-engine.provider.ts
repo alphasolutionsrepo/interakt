@@ -840,6 +840,8 @@ export class AzureEngineProvider implements SearchEngineProvider {
             const mapped = this.fieldMapper.mapFieldType({
                 fieldType: field.fieldType,
                 isFacetable: field.isFacetable,
+                isSearchable: field.isSearchable,
+                language: context.language,
                 customAnalyzer: field.providerFieldSettings?.customAnalyzer as string | null | undefined,
                 // Carries isFilterable, which decides `filterable` independently of
                 // faceting. Without this the mapper can only infer it from isFacetable.

@@ -91,24 +91,70 @@ export const FILTERABLE_EDM_TYPES = new Set([
 ]);
 
 /**
- * Languages supported by Azure AI Search analyzers.
+ * The Azure AI Search analyzer each index language runs on.
+ *
+ * Keys are the same language values Elasticsearch uses (see ES_LANGUAGES), so one
+ * stored `language` means the same language on both engines. The value is the
+ * Azure analyzer name: the Microsoft analyzer where Microsoft has one for that
+ * exact language, otherwise the Lucene one.
+ *
+ * Names come from https://learn.microsoft.com/en-us/azure/search/index-add-language-analyzers
+ * (checked 24 Nov 2026). The Portuguese names use the casing in the SDK's known analyzer names
+ * (pt-BR, pt-PT), which differs from the docs table. Left out on purpose: `cjk` (no single Azure equivalent),
+ * `serbian` (Azure has separate Latin and Cyrillic analyzers and the index language
+ * does not say which) and `sorani`. A language missing from this table gets no
+ * analyzer, which is Azure's default (standard.lucene).
+ *
+ * This is the one table to edit if a language should move to a different analyzer.
  */
-export const AZURE_LANGUAGES = [
-    { value: 'en.microsoft', label: 'English (Microsoft)' },
-    { value: 'en.lucene', label: 'English (Lucene)' },
-    { value: 'es.microsoft', label: 'Spanish (Microsoft)' },
-    { value: 'fr.microsoft', label: 'French (Microsoft)' },
-    { value: 'de.microsoft', label: 'German (Microsoft)' },
-    { value: 'it.microsoft', label: 'Italian (Microsoft)' },
-    { value: 'pt-Br.microsoft', label: 'Portuguese (Microsoft)' },
-    { value: 'nl.microsoft', label: 'Dutch (Microsoft)' },
-    { value: 'ru.microsoft', label: 'Russian (Microsoft)' },
-    { value: 'zh-Hans.microsoft', label: 'Chinese Simplified (Microsoft)' },
-    { value: 'ja.microsoft', label: 'Japanese (Microsoft)' },
-    { value: 'ko.microsoft', label: 'Korean (Microsoft)' },
-    { value: 'ar.microsoft', label: 'Arabic (Microsoft)' },
-    { value: 'standard.lucene', label: 'Standard (Lucene)' },
-];
+export const AZURE_LANGUAGE_ANALYZERS: Readonly<Record<string, string>> = {
+    arabic: 'ar.microsoft',
+    armenian: 'hy.lucene',
+    basque: 'eu.lucene',
+    bengali: 'bn.microsoft',
+    brazilian: 'pt-BR.microsoft',
+    bulgarian: 'bg.microsoft',
+    catalan: 'ca.microsoft',
+    chinese: 'zh-Hans.microsoft',
+    czech: 'cs.microsoft',
+    danish: 'da.microsoft',
+    dutch: 'nl.microsoft',
+    english: 'en.microsoft',
+    estonian: 'et.microsoft',
+    finnish: 'fi.microsoft',
+    french: 'fr.microsoft',
+    galician: 'gl.lucene',
+    german: 'de.microsoft',
+    greek: 'el.microsoft',
+    hindi: 'hi.microsoft',
+    hungarian: 'hu.microsoft',
+    indonesian: 'id.microsoft',
+    irish: 'ga.lucene',
+    italian: 'it.microsoft',
+    japanese: 'ja.microsoft',
+    korean: 'ko.microsoft',
+    latvian: 'lv.microsoft',
+    lithuanian: 'lt.microsoft',
+    norwegian: 'nb.microsoft',
+    persian: 'fa.lucene',
+    polish: 'pl.microsoft',
+    portuguese: 'pt-PT.microsoft',
+    romanian: 'ro.microsoft',
+    russian: 'ru.microsoft',
+    spanish: 'es.microsoft',
+    swedish: 'sv.microsoft',
+    thai: 'th.microsoft',
+    turkish: 'tr.microsoft',
+    standard: 'standard.lucene',
+};
+
+/**
+ * The Azure analyzer for an index language, or undefined when Azure has none for it.
+ */
+export function getAzureLanguageAnalyzer(language: string | null | undefined): string | undefined {
+    if (!language || !Object.hasOwn(AZURE_LANGUAGE_ANALYZERS, language)) return undefined;
+    return AZURE_LANGUAGE_ANALYZERS[language];
+}
 
 /**
  * Default Azure index settings.
