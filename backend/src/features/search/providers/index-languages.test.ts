@@ -144,7 +144,7 @@ describe('the edit and detail pages read the engine list', () => {
     it('both explain it with the same plain hint next to the label', () => {
         const wizard = read('app/search-indexes/_components/CreateWizard/StepSearchSettings.tsx');
         for (const source of [wizard, edit]) expect(source).toContain('<InfoHint content={INDEX_LANGUAGE_HINT}');
-        expect(INDEX_LANGUAGE_HINT).not.toMatch(/stemm|analy/i);
+        expect(INDEX_LANGUAGE_HINT).toBe('Picks the language analyzer for your content.');
     });
 
     it('the detail page shows the label, not the raw value', () => {
