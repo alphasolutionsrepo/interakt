@@ -86,7 +86,10 @@ export class AzureFieldMapper implements FieldMapper {
                 ? getAzureLanguageAnalyzer(field.language)
                 : undefined;
             const analyzer = field.customAnalyzer || languageAnalyzer;
-            if (analyzer) result.analyzer = analyzer;
+            // The SDK property is `analyzerName` (sent to Azure as `analyzer`). The SDK
+            // replaces a field's `analyzer` with `analyzerName` when it builds the request,
+            // so the REST name here would be dropped without an error.
+            if (analyzer) result.analyzerName = analyzer;
         }
 
         return result;

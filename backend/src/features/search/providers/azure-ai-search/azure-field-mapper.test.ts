@@ -130,34 +130,34 @@ describe('EDM type has the final say', () => {
 
 describe('index language', () => {
     it('sets the language analyzer on a searchable text field', () => {
-        expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: true, language: 'danish' })?.analyzer).toBe('da.microsoft');
+        expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: true, language: 'danish' })?.analyzerName).toBe('da.microsoft');
     });
 
     it('keeps a field\'s own analyzer over the language one', () => {
-        expect(mapper.mapFieldType({ fieldType: 'text', language: 'danish', customAnalyzer: 'keyword' })?.analyzer).toBe('keyword');
+        expect(mapper.mapFieldType({ fieldType: 'text', language: 'danish', customAnalyzer: 'keyword' })?.analyzerName).toBe('keyword');
     });
 
     it('sets none on a field that is not searched, a non-text field or an unknown language', () => {
-        expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: false, language: 'danish' })).not.toHaveProperty('analyzer');
-        expect(mapper.mapFieldType({ fieldType: 'number', language: 'danish' })).not.toHaveProperty('analyzer');
-        expect(mapper.mapFieldType({ fieldType: 'text', language: 'klingon' })).not.toHaveProperty('analyzer');
-        expect(mapper.mapFieldType({ fieldType: 'text' })).not.toHaveProperty('analyzer');
+        expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: false, language: 'danish' })).not.toHaveProperty('analyzerName');
+        expect(mapper.mapFieldType({ fieldType: 'number', language: 'danish' })).not.toHaveProperty('analyzerName');
+        expect(mapper.mapFieldType({ fieldType: 'text', language: 'klingon' })).not.toHaveProperty('analyzerName');
+        expect(mapper.mapFieldType({ fieldType: 'text' })).not.toHaveProperty('analyzerName');
     });
 });
 
 describe('index language and field types', () => {
     it('applies to prose field types only, as on Elasticsearch', () => {
         for (const fieldType of ['text', 'html', 'markdown', 'richtext']) {
-            expect(mapper.mapFieldType({ fieldType, isSearchable: true, language: 'danish' })?.analyzer, fieldType).toBe('da.microsoft');
+            expect(mapper.mapFieldType({ fieldType, isSearchable: true, language: 'danish' })?.analyzerName, fieldType).toBe('da.microsoft');
         }
         for (const fieldType of ['keyword', 'url', 'email', 'image_url', 'json', 'array']) {
             const mapped = mapper.mapFieldType({ fieldType, isSearchable: true, language: 'danish' });
             expect(mapped, fieldType).not.toBeNull();
-            expect(mapped, fieldType).not.toHaveProperty('analyzer');
+            expect(mapped, fieldType).not.toHaveProperty('analyzerName');
         }
     });
 
     it('still lets a searchable keyword field carry its own analyzer', () => {
-        expect(mapper.mapFieldType({ fieldType: 'keyword', isSearchable: true, language: 'danish', customAnalyzer: 'keyword' })?.analyzer).toBe('keyword');
+        expect(mapper.mapFieldType({ fieldType: 'keyword', isSearchable: true, language: 'danish', customAnalyzer: 'keyword' })?.analyzerName).toBe('keyword');
     });
 });
