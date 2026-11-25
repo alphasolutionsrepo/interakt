@@ -86,7 +86,9 @@ export function selectPassages(text: string, query: string, budget: number): str
     .filter((u) => !chosen.has(u.index))
     .map((u) => {
       const lower = u.text.normalize('NFC').toLowerCase();
-      return { unit: u, score: terms.filter((t) => lower.includes(t)).length };
+      // Longer matched words count for more, so a short common word ("af", "de") that
+      // also sits inside other words can't outrank a passage holding the real subject
+      return { unit: u, score: terms.filter((t) => lower.includes(t)).reduce((sum, t) => sum + t.length, 0) };
     })
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score || a.unit.index - b.unit.index);

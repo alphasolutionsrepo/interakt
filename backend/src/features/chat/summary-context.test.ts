@@ -120,3 +120,17 @@ describe('selectPassages with decomposed accents', () => {
     expect(out.normalize('NFC')).toContain('Gusseisentöpfe');
   });
 });
+
+describe('selectPassages ranking', () => {
+  it('ranks a passage holding the long query word above many holding only a short one', () => {
+    // "af" is a common Danish word that also sits inside "Afsnit"; it must not crowd out the subject
+    const filler = Array.from({ length: 40 }, (_, i) => `## Afsnit ${i}\nFakturering og regning nummer ${i} sendes til kunden hver måned med posten.`);
+    const page = [
+      '# Køkkenudstyr', 'Lager i Aarhus, levering på fire dage.', ...filler,
+      '## Pleje af støbejern', 'Støbejernsgryden skal vaskes i hånden og tørres straks, ellers ruster den.', ...filler,
+    ].join('\n');
+    const out = selectPassages(page, 'pleje af støbejern', 600);
+    expect(out).toContain('Støbejernsgryden skal vaskes');
+    expect(out).toContain('## Pleje af støbejern');
+  });
+});
