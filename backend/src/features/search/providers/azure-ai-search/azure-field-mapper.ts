@@ -9,6 +9,8 @@
 
 import 'server-only';
 
+import { KnownAnalyzerNames } from '@azure/search-documents';
+
 import {
     FIELD_TYPE_TO_EDM,
     SEARCHABLE_EDM_TYPES,
@@ -85,7 +87,11 @@ export class AzureFieldMapper implements FieldMapper {
             const languageAnalyzer = field.isSearchable !== false && LANGUAGE_ANALYSED_FIELD_TYPES.includes(field.fieldType)
                 ? getAzureLanguageAnalyzer(field.language)
                 : undefined;
-            const analyzer = field.customAnalyzer || languageAnalyzer;
+            // A field's own analyzer is only sent when Azure knows the name: an unknown one (an
+            // Elasticsearch name such as 'autocomplete') would make Azure refuse the whole index,
+            // and a reindex deletes the old index before creating the new one.
+            const ownAnalyzer = isAzureAnalyzerName(field.customAnalyzer) ? field.customAnalyzer : undefined;
+            const analyzer = ownAnalyzer || languageAnalyzer;
             // The SDK property is `analyzerName` (sent to Azure as `analyzer`). The SDK
             // replaces a field's `analyzer` with `analyzerName` when it builds the request,
             // so the REST name here would be dropped without an error.
@@ -130,4 +136,11 @@ export class AzureFieldMapper implements FieldMapper {
             vectorSearchDimensions: config.dimensions,
         };
     }
+}
+
+/** Built-in analyzer names Azure accepts; Azure compares them without regard to case. */
+const AZURE_ANALYZER_NAMES = new Set(Object.values(KnownAnalyzerNames).map((n) => String(n).toLowerCase()));
+
+function isAzureAnalyzerName(name: string | null | undefined): name is string {
+    return typeof name === 'string' && AZURE_ANALYZER_NAMES.has(name.toLowerCase());
 }

@@ -137,6 +137,15 @@ describe('index language', () => {
         expect(mapper.mapFieldType({ fieldType: 'text', language: 'danish', customAnalyzer: 'keyword' })?.analyzerName).toBe('keyword');
     });
 
+    it('ignores a field analyzer Azure does not know and uses the language one', () => {
+        // An Elasticsearch name would make Azure refuse the index, and a reindex deletes the old one first
+        for (const name of ['autocomplete', 'interakt_text', 'not-an-analyzer']) {
+            expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: true, language: 'danish', customAnalyzer: name })?.analyzerName, name).toBe('da.microsoft');
+            expect(mapper.mapFieldType({ fieldType: 'keyword', isSearchable: true, language: 'danish', customAnalyzer: name }), name).not.toHaveProperty('analyzerName');
+        }
+        expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: true, language: 'danish', customAnalyzer: 'EN.Microsoft' })?.analyzerName).toBe('EN.Microsoft');
+    });
+
     it('sets none on a field that is not searched, a non-text field or an unknown language', () => {
         expect(mapper.mapFieldType({ fieldType: 'text', isSearchable: false, language: 'danish' })).not.toHaveProperty('analyzerName');
         expect(mapper.mapFieldType({ fieldType: 'number', language: 'danish' })).not.toHaveProperty('analyzerName');
