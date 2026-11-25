@@ -20,11 +20,11 @@ vi.mock('react', async (importOriginal) => ({
 vi.mock('../providers', () => ({ getProviderUI: () => undefined }));
 
 import { IndexLanguageSelect } from '../IndexLanguageSelect';
+import { StopWordsUnavailableBadge, StopWordsUnavailableNotice } from '../StopWordsUnavailable';
 
 import { StepSearchSettings } from './StepSearchSettings';
 
 import { Input } from '@/components/ui/input';
-import { CUSTOM_STOP_WORDS_UNSUPPORTED_REASON } from '@/features/search/providers/index-languages';
 import type { WizardFormData } from '@/features/search-index/search-index.wizard-schemas';
 
 
@@ -49,11 +49,11 @@ function render(formData: Partial<WizardFormData>) {
 beforeEach(() => updateField.mockClear());
 
 describe('the wizard settings step on Azure', () => {
-    it('disables the stop word input and says why', () => {
+    it('offers no stop word input and says why', () => {
         const tree = render({ searchProvider: 'azure-ai-search', language: 'danish', stopWords: [] });
-        const input = find(tree, el => el.type === Input && el.props.placeholder === 'Words to exclude from indexing')[0];
-        expect(input.props.disabled).toBe(true);
-        expect(find(tree, el => el.type === 'p' && el.props.children === CUSTOM_STOP_WORDS_UNSUPPORTED_REASON)).toHaveLength(1);
+        expect(find(tree, el => el.type === Input && el.props.placeholder === 'Words to exclude from indexing')).toHaveLength(0);
+        expect(find(tree, el => el.type === StopWordsUnavailableNotice)).toHaveLength(1);
+        expect(find(tree, el => el.type === StopWordsUnavailableBadge)).toHaveLength(1);
     });
 
     it('uses the shared language picker with the index provider', () => {
@@ -79,7 +79,8 @@ describe('the wizard settings step on Elasticsearch', () => {
     it('keeps the stop word input enabled and offers the picker with the ES provider', () => {
         const tree = render({ searchProvider: 'elasticsearch', language: 'cjk', stopWords: ['the'] });
         const input = find(tree, el => el.type === Input && el.props.placeholder === 'Words to exclude from indexing')[0];
-        expect(input.props.disabled).toBe(false);
+        expect(input).toBeDefined();
+        expect(find(tree, el => el.type === StopWordsUnavailableNotice)).toHaveLength(0);
         expect(find(tree, el => el.type === IndexLanguageSelect)[0].props.provider).toBe('elasticsearch');
         expect(updateField).not.toHaveBeenCalled();
     });

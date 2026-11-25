@@ -66,7 +66,7 @@ That's why searching *"the running shoes"* and *"running shoes"* give the same r
 
 Most of the time you leave the defaults alone. But sometimes you want to **add** to the list — and very occasionally, **remove** from it.
 
-**Custom stop words work on Elasticsearch indexes only.** Azure AI Search doesn't allow custom stop words together with autocomplete, so on an Azure index the Custom Stop Words input is disabled (in the create wizard and on the Edit screen). The language's own stop words still apply there.
+**Custom stop words work on Elasticsearch indexes only.** Azure AI Search doesn't allow custom stop words together with autocomplete, so on an Azure index the Custom Stop Words section says "Not available on Azure" instead of showing an input (in the create wizard and on the Edit screen). Common words in the index's language, such as "og" in Danish or "the" in English, are still ignored there.
 
 ### When you'd customise stop words
 

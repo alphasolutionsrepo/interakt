@@ -94,7 +94,7 @@ export const INDEX_LANGUAGE_HINT =
     'Picks the language analyzer for your content.';
 
 export const CUSTOM_STOP_WORDS_UNSUPPORTED_REASON =
-    "Custom stop words can't be applied on Azure AI Search because Azure doesn't allow them together with autocomplete. The language's own stop words still apply.";
+    "Azure AI Search can't use your own stop words together with autocomplete. Common words in the index's language, such as \"og\" or \"the\", are already ignored.";
 
 /**
  * The language and stop words to carry over when the engine for a new index changes.

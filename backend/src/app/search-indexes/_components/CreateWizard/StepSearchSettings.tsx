@@ -41,13 +41,13 @@ import {
 } from '@/features/search-index';
 import type { WizardFormData } from '@/features/search-index/search-index.wizard-schemas';
 import {
-    CUSTOM_STOP_WORDS_UNSUPPORTED_REASON,
     INDEX_LANGUAGE_HINT,
     reconcileSettingsForProvider,
     supportsCustomStopWords,
 } from '@/features/search/providers/index-languages';
 import { InfoHint } from '@/shared/ui/custom/InfoHint';
 import { IndexLanguageSelect } from '../IndexLanguageSelect';
+import { StopWordsUnavailableBadge, StopWordsUnavailableNotice } from '../StopWordsUnavailable';
 import { getProviderUI } from '../providers';
 
 // ============================================================================
@@ -335,11 +335,12 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
                         <div className="flex items-center gap-2">
                             <Ban className="h-4 w-4 text-muted-foreground" />
                             <Label className="text-sm font-semibold text-foreground">Stop Words</Label>
+                            {!stopWordsSupported && <StopWordsUnavailableBadge />}
                         </div>
-                        <div className="flex gap-2">
+                        {!stopWordsSupported && <StopWordsUnavailableNotice />}
+                        {stopWordsSupported && <div className="flex gap-2">
                             <Input
                                 placeholder="Words to exclude from indexing"
-                                disabled={!stopWordsSupported}
                                 value={newStopWord}
                                 onChange={(e) => setNewStopWord(e.target.value)}
                                 onKeyDown={(e) => {
@@ -355,15 +356,12 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
                                 variant="outline"
                                 size="icon"
                                 onClick={handleAddStopWord}
-                                disabled={!stopWordsSupported || !newStopWord.trim()}
+                                disabled={!newStopWord.trim()}
                                 className="h-10 w-10 shrink-0"
                             >
                                 <Plus className="h-4 w-4" />
                             </Button>
-                        </div>
-                        {!stopWordsSupported && (
-                            <p className="text-xs text-muted-foreground">{CUSTOM_STOP_WORDS_UNSUPPORTED_REASON}</p>
-                        )}
+                        </div>}
                         {stopWords.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                                 {stopWords.map((word, index) => (

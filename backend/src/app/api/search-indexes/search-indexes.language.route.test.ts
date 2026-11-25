@@ -84,7 +84,7 @@ describe('creating an index', () => {
   it('refuses custom stop words on Azure and takes them on Elasticsearch', async () => {
     const refused = await create({ searchProvider: 'azure-ai-search', stopWords: ['the'] });
     expect(refused.status).toBe(400);
-    expect(JSON.stringify(refused.body)).toContain("Custom stop words can't be applied on Azure AI Search");
+    expect(JSON.stringify(refused.body)).toContain("Azure AI Search can't use your own stop words");
     expect((await create({ searchProvider: 'elasticsearch', stopWords: ['the'] })).status).toBe(201);
   });
 });
@@ -115,7 +115,7 @@ describe('updating stop words on an Azure index', () => {
     await testDb.db.update(searchIndex).set({ searchProvider: 'azure-ai-search' }).where(eq(searchIndex.id, id));
     const { status, body } = await update(id, { stopWords: ['a', 'the', 'and'] });
     expect(status).toBe(400);
-    expect(JSON.stringify(body)).toContain("Custom stop words can't be applied on Azure AI Search");
+    expect(JSON.stringify(body)).toContain("Azure AI Search can't use your own stop words");
     expect((await stored(id)).stopWords).toEqual(['a', 'the']);
   });
 
@@ -178,7 +178,7 @@ describe('the same refusals for a role that may edit indexes', () => {
     await testDb.db.update(searchIndex).set({ searchProvider: 'azure-ai-search' }).where(eq(searchIndex.id, id));
     const { status, body } = await asEditor(() => update(id, { stopWords: ['a', 'new'] }));
     expect(status).toBe(400);
-    expect(JSON.stringify(body)).toContain("Custom stop words can't be applied on Azure AI Search");
+    expect(JSON.stringify(body)).toContain("Azure AI Search can't use your own stop words");
   });
 
   it('control: a role without edit permission is refused with 403 before any language rule', async () => {

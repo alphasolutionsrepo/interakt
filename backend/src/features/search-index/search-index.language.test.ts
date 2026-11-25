@@ -153,7 +153,7 @@ describe('reindex fields per engine', () => {
   });
 });
 
-const STOP_REASON = /Azure doesn't allow them together with autocomplete/;
+const STOP_REASON = /can't use your own stop words/;
 
 describe('an unchanged stored value is not refused', () => {
     it('lets an index with an unsupported stored language save a new description', async () => {
