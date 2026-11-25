@@ -94,7 +94,7 @@ The **Language** setting controls the stemming and stop-word rules the index use
 How each engine applies it:
 
 - **Elasticsearch** uses its built-in analysers for the language. A few languages have stop words but no stemmer in core Elasticsearch — Thai, Persian, Serbian, and the CJK languages. Those indexes still get lowercasing and stop-word removal; they just don't stem. Polish needs a plugin and gets neither.
-- **Azure AI Search** uses Microsoft's language analysers where Microsoft has one for the language, and the Lucene analyser for a few others (Armenian, Basque, Galician, Irish, Persian). Every searchable text field in the index uses the language's analyser, unless that field has its own analyser set.
+- **Azure AI Search** uses Microsoft's language analysers where Microsoft has one for the language, and the Lucene analyser for a few others (Armenian, Basque, Galician, Irish, Persian). Every searchable prose field (text, HTML, Markdown, rich text) uses the language's analyser, unless that field has its own analyser set.
 
 Picking **Standard** turns off language-specific processing on either engine. The language list differs slightly: the CJK, Serbian and Sorani options are available on Elasticsearch only, because Azure has no single analyser for them.
 
