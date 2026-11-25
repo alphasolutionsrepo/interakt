@@ -137,7 +137,7 @@ export const toolsConfigSchema = z.object({
 
 export const rateLimitConfigSchema = z.object({
   searchPerMinute: z.number().int().min(1).max(1000),
-  chatPerMinute: z.number().int().min(1).max(500),
+  summaryPerMinute: z.number().int().min(1).max(500).optional(),
   requestsPerDay: z.number().int().min(1).optional(),
 });
 

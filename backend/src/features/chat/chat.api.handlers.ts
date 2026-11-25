@@ -41,7 +41,7 @@ import { ZodError } from '@/shared/validation/zod';
  */
 export async function handleSummarize(request: NextRequest): Promise<Response> {
   // CORS preflight, or the access token's experience
-  const opened = await openPublicRequest(request);
+  const opened = await openPublicRequest(request, { summary: true });
   if ('response' in opened) return opened.response;
   const { experience, origin } = opened;
 

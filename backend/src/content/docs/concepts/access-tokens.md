@@ -88,7 +88,7 @@ CORS doesn't apply to server-to-server requests — the Origin header is set by 
 
 Set on the experience, and applied to every request made with its token.
 
-- **Per minute, for each client** — search experiences: searches per minute (default 60; autocomplete, AI summaries and document reads count too). AI experiences: chats per minute (default 60).
+- **Per minute, for each client** — search experiences: searches per minute, `searchPerMinute` (default 60; autocomplete and document reads count too), and AI summaries per minute, `summaryPerMinute`, counted apart (default 30, or `searchPerMinute` when that is lower). AI experiences: chats per minute (default 60).
 - **Per day, for the whole experience** — AI experiences: chat messages per day (default 10,000).
 
 Loading the widget's settings and fetching the embed snippet aren't counted towards either limit.

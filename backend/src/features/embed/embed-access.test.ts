@@ -27,7 +27,7 @@ const ai = {
   id: 'a1', name: 'Assistant', isActive: true,
   accessConfig: { allowedOrigins: ['https://shop.example'], rateLimits: { chatPerMinute: 1, requestsPerDay: 100 }, embedConfig: { widgetTheme: 'dark' } },
 };
-const search = { id: 's1', name: 'Catalog', allowedOrigins: ['https://shop.example'], rateLimitConfig: { searchPerMinute: 1, chatPerMinute: 1 } };
+const search = { id: 's1', name: 'Catalog', allowedOrigins: ['https://shop.example'], rateLimitConfig: { searchPerMinute: 1, summaryPerMinute: 1 } };
 
 function req(headers: Record<string, string>): NextRequest {
   return new NextRequest('http://interakt.test/api/v1/embed-snippet', { headers });

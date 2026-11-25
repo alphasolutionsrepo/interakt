@@ -78,7 +78,7 @@ const OTHER = 'https://other.example';
 
 const searchExperience = {
   id: 's1', slug: 'catalog', name: 'Catalog', isActive: true, accessToken: 'search-token',
-  allowedOrigins: [SHOP], rateLimitConfig: { searchPerMinute: 2, chatPerMinute: 9 },
+  allowedOrigins: [SHOP], rateLimitConfig: { searchPerMinute: 2, summaryPerMinute: 2 },
   aiConfig: { enabled: true, summary: { enabled: true } },
   indexes: [{ searchIndexId: 'i1', searchIndex: { isActive: true } }],
   searchConfig: { autocomplete: { enabled: true, minLength: 2 } },
@@ -230,6 +230,34 @@ describe.each(ROUTES)('$name', (route) => {
       expect(await settle(await route.call({ Origin: OTHER }))).not.toBe(403);
     }
     expect(route.work()).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('AI summaries and searches', () => {
+  const shop = { 'X-Access-Token': 'search-token', Origin: SHOP };
+  const search = () => searchByToken(req('/api/v1/search', 'POST', shop, { query: 'jeans' }));
+  const summaryByTokenCall = () => summaryByToken(req('/api/v1/summarize', 'POST', shop, SUMMARY));
+  const summaryBySlugCall = () => summaryBySlug(req('/api/v1/search/catalog/summarize', 'POST', shop, SUMMARY), slugParams('catalog'));
+  // A new stream for each summary (one stream can be read once)
+  beforeEach(() => mocks.createSummaryStream.mockImplementation(() => new ReadableStream({ start: (c) => c.close() })));
+
+  it('a visitor past the summary limit can still search', async () => {
+    // summaryPerMinute is 2, shared by both summary routes
+    expect(await settle(await summaryByTokenCall())).toBe(200);
+    expect(await settle(await summaryBySlugCall())).toBe(200);
+    expect(await settle(await summaryByTokenCall())).toBe(429);
+    expect(await settle(await summaryBySlugCall())).toBe(429);
+    expect(mocks.createSummaryStream).toHaveBeenCalledTimes(2);
+    expect(await settle(await search())).toBe(200);
+  });
+
+  it("a visitor past the search limit still gets summaries, and searches don't use up the summary limit", async () => {
+    // searchPerMinute is 2, shared by searches, autocomplete and document reads
+    expect(await settle(await search())).toBe(200);
+    expect(await settle(await autocomplete(req('/api/v1/autocomplete', 'POST', shop, { query: 'je' })))).toBe(200);
+    expect(await settle(await search())).toBe(429);
+    expect(await settle(await summaryByTokenCall())).toBe(200);
+    expect(await settle(await summaryBySlugCall())).toBe(200);
   });
 });
 
