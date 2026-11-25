@@ -9,7 +9,6 @@ import {
     Save,
     Timer,
     Blend,
-    Info,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
@@ -26,13 +25,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Slider } from '@/components/ui/slider';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { ActionButton, useActionGate } from '@/shared/access/ActionControls';
+import { InfoHint } from '@/shared/ui/custom/InfoHint';
 import { PageHeader } from '@/shared/ui/custom/PageHeader';
 import { z } from '@/shared/validation/zod';
 
@@ -87,20 +81,6 @@ function PageSkeleton() {
 // INFO TOOLTIP
 // ============================================================================
 
-function InfoTooltip({ content }: { content: string }) {
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <Info className="size-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                    <p className="text-sm">{content}</p>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
-}
 
 // ============================================================================
 // MAIN PAGE
@@ -237,7 +217,7 @@ export default function GlobalSearchSettingsPage() {
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <Label htmlFor="searchTimeout">Timeout (ms)</Label>
-                                        <InfoTooltip content="Maximum time in milliseconds before a search operation times out. Prevents long-running queries from blocking resources." />
+                                        <InfoHint content="Maximum time in milliseconds before a search operation times out. Prevents long-running queries from blocking resources." />
                                     </div>
                                     <span className="text-sm text-muted-foreground">
                                         {(form.watch('searchTimeout') / 1000).toFixed(1)}s
@@ -288,7 +268,7 @@ export default function GlobalSearchSettingsPage() {
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2">
                                     <Label htmlFor="rrfRankConstant">RRF Rank Constant (k)</Label>
-                                    <InfoTooltip content="Higher values reduce the impact of top-ranked documents. Formula: score = 1/(k + rank). Default: 60" />
+                                    <InfoHint content="Higher values reduce the impact of top-ranked documents. Formula: score = 1/(k + rank). Default: 60" />
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <Slider
@@ -312,7 +292,7 @@ export default function GlobalSearchSettingsPage() {
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2">
                                     <Label htmlFor="rrfWindowSize">Window Size</Label>
-                                    <InfoTooltip content="Number of results to consider from lexical and semantic searches before fusion. Default: 100" />
+                                    <InfoHint content="Number of results to consider from lexical and semantic searches before fusion. Default: 100" />
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <Slider
@@ -337,7 +317,7 @@ export default function GlobalSearchSettingsPage() {
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <Label htmlFor="lexicalWeight">Lexical Weight</Label>
-                                        <InfoTooltip content="Weight for keyword/text search results. Higher values favor exact keyword matches. Range: 0.1-3.0" />
+                                        <InfoHint content="Weight for keyword/text search results. Higher values favor exact keyword matches. Range: 0.1-3.0" />
                                     </div>
                                     <span className="text-sm font-mono text-muted-foreground">
                                         {form.watch('lexicalWeight').toFixed(1)}
@@ -357,7 +337,7 @@ export default function GlobalSearchSettingsPage() {
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <Label htmlFor="semanticWeight">Semantic Weight</Label>
-                                        <InfoTooltip content="Weight for vector/meaning-based search results. Higher values favor conceptual similarity. Range: 0.1-3.0" />
+                                        <InfoHint content="Weight for vector/meaning-based search results. Higher values favor conceptual similarity. Range: 0.1-3.0" />
                                     </div>
                                     <span className="text-sm font-mono text-muted-foreground">
                                         {form.watch('semanticWeight').toFixed(1)}

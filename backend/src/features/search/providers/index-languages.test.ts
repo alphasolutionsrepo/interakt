@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { AZURE_LANGUAGE_ANALYZERS } from './azure-ai-search/azure-constants';
 import { ES_LANGUAGE_ANALYSIS, ES_LANGUAGES } from './elasticsearch/elasticsearch.constants';
 import {
+    INDEX_LANGUAGE_HINT,
     getIndexLanguageChoices,
     getIndexLanguages,
     getIndexLanguageLabel,
@@ -138,6 +139,12 @@ describe('the edit and detail pages read the engine list', () => {
         const wizard = read('app/search-indexes/_components/CreateWizard/StepSearchSettings.tsx');
         expect(wizard).not.toContain('Analysis Language');
         expect(edit).not.toContain('Language Settings');
+    });
+
+    it('both explain it with the same plain hint next to the label', () => {
+        const wizard = read('app/search-indexes/_components/CreateWizard/StepSearchSettings.tsx');
+        for (const source of [wizard, edit]) expect(source).toContain('<InfoHint content={INDEX_LANGUAGE_HINT}');
+        expect(INDEX_LANGUAGE_HINT).not.toMatch(/stemm|analy/i);
     });
 
     it('the detail page shows the label, not the raw value', () => {

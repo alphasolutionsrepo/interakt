@@ -42,9 +42,11 @@ import {
 import type { WizardFormData } from '@/features/search-index/search-index.wizard-schemas';
 import {
     CUSTOM_STOP_WORDS_UNSUPPORTED_REASON,
+    INDEX_LANGUAGE_HINT,
     reconcileSettingsForProvider,
     supportsCustomStopWords,
 } from '@/features/search/providers/index-languages';
+import { InfoHint } from '@/shared/ui/custom/InfoHint';
 import { IndexLanguageSelect } from '../IndexLanguageSelect';
 import { getProviderUI } from '../providers';
 
@@ -241,6 +243,7 @@ export function StepSearchSettings({ formData, errors, updateField }: StepSearch
                 <Label htmlFor="language" className="text-sm font-semibold text-foreground flex items-center gap-2">
                     <Languages className="h-4 w-4 text-muted-foreground" />
                     Language
+                    <InfoHint content={INDEX_LANGUAGE_HINT} label="About Language" />
                 </Label>
                 <IndexLanguageSelect
                     id="language"

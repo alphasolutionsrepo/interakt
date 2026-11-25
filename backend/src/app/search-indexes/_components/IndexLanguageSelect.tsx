@@ -14,7 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { getIndexLanguageChoices, INDEX_LANGUAGE_HINT } from '@/features/search/providers/index-languages';
+import { getIndexLanguageChoices } from '@/features/search/providers/index-languages';
 
 interface IndexLanguageSelectProps {
     /** The index's search provider type, e.g. 'elasticsearch' or 'azure-ai-search' */
@@ -53,7 +53,6 @@ export function IndexLanguageSelect({
                 </SelectContent>
             </Select>
             {currentNote && <p className="text-xs text-amber-600 dark:text-amber-400">{currentNote}</p>}
-            <p className="text-xs text-muted-foreground">{INDEX_LANGUAGE_HINT}</p>
         </>
     );
 }

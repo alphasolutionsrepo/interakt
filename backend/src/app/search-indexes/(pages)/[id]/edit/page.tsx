@@ -73,6 +73,7 @@ import {
   type VectorSimilarity,
   type SearchType,
 } from '@/features/search-index';
+import { INDEX_LANGUAGE_HINT } from '@/features/search/providers/index-languages';
 
 import { getProviderUI } from '../../../_components/providers/provider-registry';
 
@@ -80,6 +81,7 @@ import { builtInGateFor } from '@/shared/access/ActionControls';
 import { Can } from '@/shared/access/Can';
 import { LockedPage } from '@/shared/access/PageAccessGate';
 import { useAccess } from '@/shared/access/useAccess';
+import { InfoHint } from '@/shared/ui/custom/InfoHint';
 import '../../../_components/providers'; // ensure all providers are registered
 
 // ============================================================================
@@ -693,6 +695,7 @@ export default function EditSearchIndexPage() {
                 <CardTitle className="text-base flex items-center gap-2 font-semibold">
                   <Languages className="h-4 w-4 text-blue-500" />
                   Language
+                  <InfoHint content={INDEX_LANGUAGE_HINT} label="About Language" />
                   {dirtyFields.language && (
                     <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 rounded-md">
                       modified
