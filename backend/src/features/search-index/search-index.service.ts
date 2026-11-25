@@ -457,7 +457,7 @@ export async function updateSearchIndex(
         // Check if index exists
         const existing = await repository.getSearchIndexById(id);
         if (!existing) {
-            throw new Error(`Search index with ID ${id} not found`);
+            throw new NotFoundError(`Search index with ID ${id} not found`);
         }
 
         // Only a change is checked: an older value the engine lacks (the edit page sends

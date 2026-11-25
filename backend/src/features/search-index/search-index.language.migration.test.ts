@@ -12,7 +12,11 @@ import { readFileSync } from 'fs';
 import path from 'path';
 
 import { PGlite } from '@electric-sql/pglite';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { searchIndex } from '@/db/schema';
+import { createAppTestDb, type AppTestDb } from '@/shared/test/app-test-db';
 
 const MIGRATION = readFileSync(path.join(__dirname, '../../../db/drizzle/0044_azure_index_language_standard.sql'), 'utf8');
 
@@ -51,5 +55,24 @@ describe('migration 0044', () => {
     const tags = journal.entries.map((e: { tag: string }) => e.tag);
     expect(tags.at(-1)).toBe('0044_azure_index_language_standard');
     expect(journal.entries.at(-1).when).toBeGreaterThan(journal.entries.at(-2).when);
+  });
+});
+
+describe('migration 0044 on the real schema', () => {
+  let app: AppTestDb;
+  beforeAll(async () => { app = await createAppTestDb(); }, 60_000);
+  afterAll(async () => { await app.close(); });
+
+  it('moves Azure rows to standard and leaves Elasticsearch rows alone', async () => {
+    const base = { searchType: 'lexical' as const, indexingStrategy: 'on_upload' as const };
+    await app.db.insert(searchIndex).values([
+      { ...base, name: 'azure_shop', displayName: 'Azure shop', searchProvider: 'azure-ai-search', language: 'french' },
+      { ...base, name: 'es_shop', displayName: 'ES shop', searchProvider: 'elasticsearch', language: 'danish' },
+    ]);
+    // The app schema is already at 0044 (azure rows inserted after it keep their value): run the file again
+    await app.db.execute(sql.raw(MIGRATION));
+    const language = async (name: string) => (await app.db.select().from(searchIndex).where(eq(searchIndex.name, name)))[0].language;
+    expect(await language('azure_shop')).toBe('standard');
+    expect(await language('es_shop')).toBe('danish');
   });
 });
