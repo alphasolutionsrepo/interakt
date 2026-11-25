@@ -188,6 +188,9 @@ export function useSearchIndex(id: string, options?: { enabled?: boolean }) {
         mutationFn: (data: UpdateSearchIndexDTO) => searchIndexesApi.update(id, data),
         onSuccess: (updated) => {
             queryClient.setQueryData(searchIndexKeys.detail(id), updated);
+            // A language, synonym or stop-word change can make the index need a reindex;
+            // the index page reads that from the sync status, which is cached on its own
+            queryClient.invalidateQueries({ queryKey: searchIndexKeys.syncStatus(id) });
             refreshIndexLists(queryClient);
             toast.success('Search index updated successfully');
         },
