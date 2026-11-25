@@ -16,9 +16,11 @@ vi.mock('@/db/index', () => ({
   },
 }));
 
+import { eq } from 'drizzle-orm';
+
 import { dataSources, knowledgeChunks, knowledgeDocuments } from '../../../db/schema';
 
-import { keywordSearchChunks, keywordTermsFrom } from './knowledge-base.repository';
+import { createChunks, keywordSearchChunks, keywordTermsFrom } from './knowledge-base.repository';
 
 describe('keywordTermsFrom', () => {
   it('keeps Danish words whole', () => {
@@ -104,7 +106,7 @@ describe('keywordSearchChunks with non-ASCII terms', () => {
     expect(rows.map((r) => r.chunkIndex)).toEqual([0]);
   });
 
-  it('finds a chunk stored with decomposed accents', async () => {
+  it('finds a chunk written with decomposed accents, and stores it composed', async () => {
     const [source] = await testDb.db
       .insert(dataSources)
       .values({ name: 'Kb', slug: 'kb-nfd', type: 'file_store', config: {} } as never)
@@ -113,10 +115,16 @@ describe('keywordSearchChunks with non-ASCII terms', () => {
       .insert(knowledgeDocuments)
       .values({ dataSourceId: source.id, name: 'katalog.txt', status: 'ready' })
       .returning();
-    await testDb.db.insert(knowledgeChunks).values([
-      { documentId: doc.id, dataSourceId: source.id, chunkIndex: 0, content: 'Gusseisentöpfe in drei Farben.'.normalize('NFD') },
+    const decomposed = 'Gusseisentöpfe in drei Farben.'.normalize('NFD');
+    expect(decomposed).not.toBe(decomposed.normalize('NFC'));
+    await createChunks([
+      { documentId: doc.id, dataSourceId: source.id, chunkIndex: 0, content: decomposed },
       { documentId: doc.id, dataSourceId: source.id, chunkIndex: 1, content: 'Kaffeebecher aus Glas.' },
     ]);
+
+    const stored = await testDb.db.select().from(knowledgeChunks).where(eq(knowledgeChunks.documentId, doc.id));
+    for (const row of stored) expect(row.content).toBe(row.content.normalize('NFC'));
+    expect(stored.find((r) => r.chunkIndex === 0)?.content).toBe('Gusseisentöpfe in drei Farben.'.normalize('NFC'));
 
     const rows = await keywordSearchChunks(source.id, 'gusseisentöpfe');
     expect(rows.map((r) => r.chunkIndex)).toEqual([0]);

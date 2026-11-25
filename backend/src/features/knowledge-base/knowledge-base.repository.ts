@@ -68,10 +68,12 @@ export async function deleteDocument(id: string): Promise<void> {
 
 export async function createChunks(chunks: NewKnowledgeChunk[]): Promise<void> {
   if (chunks.length === 0) return;
+  // Stored text is always composed (NFC): keyword search compares the column directly.
+  const composed = chunks.map((c) => ({ ...c, content: c.content.normalize('NFC') }));
   // Insert in batches of 100 to avoid parameter limits
   const BATCH = 100;
-  for (let i = 0; i < chunks.length; i += BATCH) {
-    await db.insert(knowledgeChunks).values(chunks.slice(i, i + BATCH));
+  for (let i = 0; i < composed.length; i += BATCH) {
+    await db.insert(knowledgeChunks).values(composed.slice(i, i + BATCH));
   }
 }
 
@@ -184,9 +186,10 @@ export async function keywordSearchChunks(
   const terms = keywordTermsFrom(query);
   if (terms.length === 0) return [];
 
-  // Terms are composed (NFC); compose the stored text too, so a chunk saved with decomposed
-  // accents (a letter plus a separate mark) still matches.
-  const content = sql`normalize(${knowledgeChunks.content}, NFC)`;
+  // Terms are composed (NFC) and so is the stored text (createChunks writes NFC; migration 0044
+  // converted older rows), so the column is compared as it is. Normalizing it per query made
+  // the search several times slower on large knowledge bases.
+  const content = sql`${knowledgeChunks.content}`;
   const matches = terms.map((t) => sql`(${content} ILIKE ${'%' + t + '%'})`);
   const anyMatch = sql.join(matches, sql` OR `);
   // One point per distinct term present, so a chunk covering more of the question ranks above
