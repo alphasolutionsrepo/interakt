@@ -188,6 +188,21 @@ describe('an unchanged stored value is not refused', () => {
     });
 });
 
+describe('what flags a reindex on Azure', () => {
+    // Azure never applies custom stop words, so removing one changes nothing on the engine
+    it('removing a stored stop word does not flag a reindex', async () => {
+        state.existing = { id: 'i1', name: 'shop', searchProvider: 'azure-ai-search', language: 'standard', stopWords: ['a', 'the'], synonyms: [] };
+        await updateSearchIndex('i1', { stopWords: ['a'] }, 'u1');
+        expect(repository.incrementMappingVersion).not.toHaveBeenCalled();
+    });
+
+    it('changing synonyms does', async () => {
+        state.existing = { id: 'i1', name: 'shop', searchProvider: 'azure-ai-search', language: 'standard', stopWords: [], synonyms: [] };
+        await updateSearchIndex('i1', { synonyms: ['pot, gryde'] }, 'u1');
+        expect(repository.incrementMappingVersion).toHaveBeenCalledWith('i1');
+    });
+});
+
 describe('custom stop words on Azure', () => {
     it('are refused on create, and an empty list is fine', async () => {
         const error = await createSearchIndex({ ...base, searchProvider: 'azure-ai-search', stopWords: ['the'] }, 'u1').catch(e => e);
